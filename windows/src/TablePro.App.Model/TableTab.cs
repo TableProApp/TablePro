@@ -27,6 +27,9 @@ public enum CellValueKind
     Default,
 }
 
+// The open editor's cell and text, which a commit would keep; Row counts the page's rows, then the new ones.
+public sealed record CellDraft(int Row, int Column, string Text);
+
 // The run that read the page shown, which the status words with the page.
 public readonly record struct PageRun(long Milliseconds, bool Truncated);
 
@@ -87,6 +90,12 @@ public interface ITableTabView
     // The grid has an editor open, whose text counts as a change until it is kept or cancelled.
     bool HasOpenEdit { get; }
 
+    // The open editor's text where it differs from what it opened with; null otherwise.
+    CellDraft? OpenDraft { get; }
+
+    // Writes the session file at once, the edits marked uncertain; a write the file refuses is logged, never thrown.
+    void WriteSessionNow();
+
     // The grid's open editor keeps its text first; false when the text was refused and the editor stays open.
     bool CommitOpenEdit();
 
@@ -113,6 +122,9 @@ public interface ITableTabView
 
     // Without the columns and their operators the filter bar has nothing to offer.
     void ShowFilterChoicesFailed(CoreError failure);
+
+    // Recovered changes back and waiting, and whether Save waits for a reload or a discard; all empty hides it.
+    void ShowRecovered(int restored, int waiting, bool saveBlocked);
 }
 
 // A sort and a filter are the page's ORDER BY and WHERE, so they order and pick from the whole table.
@@ -172,6 +184,12 @@ public sealed class TableTab : IWorkspaceTab
     private bool _saveBlocked;
     private Task<bool> _save = Task.FromResult(true);
 
+    // The block came from recovered changes, so the notice that says so goes with it.
+    private bool _recoveredBlock;
+
+    // Changes the app ended holding without a close that no page has taken yet; each page read tries them again.
+    private SavedEdits? _recovered;
+
     public TableTab(
         ITabSession session,
         ITableTabView view,
@@ -198,6 +216,7 @@ public sealed class TableTab : IWorkspaceTab
         // A restored filter stays until the user changes it, even when the first read refuses it.
         Filter = restore?.Filter?.ToFilter();
         _shownFilter = Filter;
+        _recovered = restore?.Edits is { Changes: > 0 } recovered ? recovered : null;
         _structure = new KeptRead<TableStructure>(
             _work,
             token => _session.GetStructureAsync(Table, ObjectKind, token),
@@ -383,6 +402,7 @@ public sealed class TableTab : IWorkspaceTab
         }
     }
 
+    // Recovered changes not yet put back go along, since nothing has asked about them.
     public SessionTab Snapshot() => new()
     {
         Kind = TabKind.Table,
@@ -393,7 +413,40 @@ public sealed class TableTab : IWorkspaceTab
         PageSize = _chosenSize,
         Offset = _page.Offset > 0 ? _page.Offset : null,
         Filter = Filter is { } filter ? SavedFilter.From(filter) : null,
+        Edits = _recovered,
     };
+
+    // Recovered changes still waiting, then the ones pending now, by key; a relaunch puts them back on its page.
+    public SessionTab WithPendingWork(SessionTab snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        // The open editor's text goes too, as if kept, while the grid keeps it open.
+        var draft = _view.OpenDraft;
+        if (Edits is not { } edits || _tableEditor is null || (!edits.HasChanges && draft is null))
+        {
+            return snapshot;
+        }
+
+        // A save that may have written them, or is writing them now, leaves them blocked after a relaunch as here.
+        var pending = SavedEdits.From(edits, ReadStoredValues, uncertain: _saveBlocked || IsSaving, draft);
+        return snapshot with { Edits = SavedEdits.Join(_recovered, pending) };
+    }
+
+    // Recovered changes no page has taken yet, which the tab's bar counts and offers to discard.
+    public int WaitingChanges => _recovered?.Changes ?? 0;
+
+    // Only the waiting changes go, without a question: the bar that offers this names them.
+    public void DiscardWaiting()
+    {
+        if (_recovered is null)
+        {
+            return;
+        }
+
+        _recovered = null;
+        _view.ShowRecovered(0, 0, _saveBlocked && _recoveredBlock);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     // The edits name rows of the page shown, so a reload asks first while any is pending, as macOS asks.
     public async Task<bool> MayReloadAsync(ReloadReason reason)
@@ -415,7 +468,7 @@ public sealed class TableTab : IWorkspaceTab
         }
 
         // The discarded edits took the blocked save with them, whether or not the reload then reads the page.
-        _saveBlocked = false;
+        Unblock();
         Edits?.Discard();
         return true;
     }
@@ -669,7 +722,7 @@ public sealed class TableTab : IWorkspaceTab
             return;
         }
 
-        _saveBlocked = false;
+        Unblock();
         edits.Discard();
     }
 
@@ -911,8 +964,9 @@ public sealed class TableTab : IWorkspaceTab
             _shownFilter = filter;
             _page = _page with { Rows = _results.RowCount };
             // The server's rows are read again, so a save whose outcome was unknown may be judged by them now.
-            _saveBlocked = false;
+            Unblock();
             BindEdits();
+            RestoreRecovered();
             CountIfNeeded();
             ReadKeysIfNeeded();
         }
@@ -982,6 +1036,52 @@ public sealed class TableTab : IWorkspaceTab
         var rows = (int)Math.Clamp(_results.RowCount, 0, int.MaxValue);
         SetEdits(new TableEdits(editor.Columns, rows), shown);
     }
+
+    // Each change goes back as if typed on the row its key finds; a lock keeps every one, and the rest wait.
+    private void RestoreRecovered()
+    {
+        if (_recovered is not { } recovered || Edits is not { } edits)
+        {
+            return;
+        }
+
+        if (Lock is not null)
+        {
+            _view.ShowRecovered(0, recovered.Changes, saveBlocked: false);
+            return;
+        }
+
+        var (restored, uncertain, waiting) = recovered.RestoreTo(edits, ReadStoredValues, (row, column, edit) =>
+            CellRefusal(edits, row, column) is null && Apply(edits, row, column, edit) is null);
+        _recovered = waiting;
+        // Changes a save may have written wait for a reload or a discard before the next save, as here after one.
+        if (uncertain)
+        {
+            _saveBlocked = true;
+            _recoveredBlock = true;
+        }
+
+        _view.ShowRecovered(restored, waiting?.Changes ?? 0, uncertain);
+        if (restored > 0)
+        {
+            OnEditsChanged(this, EventArgs.Empty);
+        }
+    }
+
+    // A reload or a discard settles a save whose outcome was unknown, and a recovered notice that said so is told.
+    private void Unblock()
+    {
+        _saveBlocked = false;
+        if (_recoveredBlock)
+        {
+            _recoveredBlock = false;
+            _view.ShowRecovered(0, WaitingChanges, saveBlocked: false);
+        }
+    }
+
+    // A key column's stored values with their kinds, which name a row in the session file and find it again.
+    private IReadOnlyList<StoredValue> ReadStoredValues(int column, int firstRow, int rowCount) =>
+        _tableEditor!.GetStoredValues(_editsRows, column, firstRow, rowCount);
 
     private void SetEdits(TableEdits? edits, ResultSet? rows)
     {
@@ -1182,6 +1282,8 @@ public sealed class TableTab : IWorkspaceTab
             SetSaving(true);
             try
             {
+                // On disk before the first statement: an end while it runs leaves the edits blocked, not saved twice.
+                _view.WriteSessionNow();
                 outcome = await save.RunAsync(confirmed, CancellationToken.None).ConfigureAwait(true);
             }
             catch (TableProException exception) when (exception.Error.Codes.Any(NothingSent.Contains))

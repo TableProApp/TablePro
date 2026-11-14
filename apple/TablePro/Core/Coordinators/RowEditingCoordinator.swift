@@ -60,7 +60,7 @@ final class RowEditingCoordinator: ObservableObject {
         let uuidKeys = uuidKeyForms(in: tableRows, tab: tab)
         var addResult: RowOperationsManager.AddNewRowResult?
         parent.mutateActiveTableRows(for: tabId) { rows in
-            let result = parent.rowOperationsManager.addNewRow(tableRows: &rows, uuidKeyForms: uuidKeys)
+            let result = parent.rowOperations(forTab: tabId).addNewRow(tableRows: &rows, uuidKeyForms: uuidKeys)
             addResult = result
             return result?.delta ?? .none
         }
@@ -87,7 +87,7 @@ final class RowEditingCoordinator: ObservableObject {
             delta: .none
         )
         parent.mutateActiveTableRows(for: tabId) { rows in
-            let result = parent.rowOperationsManager.deleteRows(
+            let result = parent.rowOperations(forTab: tabId).deleteRows(
                 rowIDs,
                 selectedDisplayIndices: displayIndices,
                 displayCount: displayCount,
@@ -112,9 +112,10 @@ final class RowEditingCoordinator: ObservableObject {
 
     func undoRowDeletions(_ rowIDs: [RowID]) {
         guard parent.canEditActiveResult(.delete), let tabId = parent.tabManager.selectedTabId else { return }
-        let deleted = rowIDs.filter { parent.changeManager.isRowDeleted($0) }
+        let changeManager = parent.changeManager(forTab: tabId)
+        let deleted = rowIDs.filter { changeManager.isRowDeleted($0) }
         guard !deleted.isEmpty else { return }
-        parent.changeManager.restoreDeletedRows(deleted)
+        changeManager.restoreDeletedRows(deleted)
         parent.existingGridModel(forTab: tabId)?.repaintRows(deleted)
     }
 
@@ -140,7 +141,7 @@ final class RowEditingCoordinator: ObservableObject {
         let uuidKeys = uuidKeyForms(in: tableRows, tab: tab)
         var duplicated: [RowOperationsManager.AddNewRowResult] = []
         parent.mutateActiveTableRows(for: tabId) { rows in
-            let result = parent.rowOperationsManager.duplicateRows(
+            let result = parent.rowOperations(forTab: tabId).duplicateRows(
                 sourceRowIndices: storageIndices,
                 tableRows: &rows,
                 uuidKeyForms: uuidKeys
@@ -189,7 +190,7 @@ final class RowEditingCoordinator: ObservableObject {
     }
 
     private func uuidKeyForms(in tableRows: TableRows, tab: QueryTab) -> [Int: UUIDCellForm] {
-        let changeManager = parent.changeManager
+        let changeManager = parent.changeManager(forTab: tab.id)
         return Self.uuidKeyForms(
             in: tableRows,
             primaryKeyColumns: changeManager.primaryKeyColumns,
@@ -308,31 +309,32 @@ final class RowEditingCoordinator: ObservableObject {
         guard !parent.isSavingSelectedTab,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex, !valuesByRow.isEmpty else { return }
         let tabId = tab.id
+        let changeManager = parent.changeManager(forTab: tabId)
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
         guard tableRows.columns.indices.contains(columnIndex) else { return }
         let columnName = tableRows.columns[columnIndex]
         // Checked before touching rows: a server-owned column is refused later, so the grid would show a value nothing writes.
-        guard parent.changeManager.isColumnWritable(columnName) else { return }
+        guard changeManager.isColumnWritable(columnName) else { return }
 
         var edits: [(row: Int, column: Int, value: PluginCellValue)] = []
         var removedCells: Set<CellPosition> = []
-        parent.changeManager.recordAsOneAction {
+        changeManager.recordAsOneAction {
             for (rowID, value) in valuesByRow {
                 guard let storageRow = tableRows.index(of: rowID) else { continue }
                 let row = tableRows.rows[storageRow]
                 guard row.unloadedByteCount(columnIndex) == nil else { continue }
                 let values = Array(row.values)
-                let removesField = removedRowIDs.contains(rowID) && parent.changeManager.supportsFieldRemoval
+                let removesField = removedRowIDs.contains(rowID) && changeManager.supportsFieldRemoval
                 let absence = FieldAbsence(
                     wasAbsent: row.isAbsent(columnIndex), isAbsent: removesField, originalRow: row.absentColumns
                 )
                 let isExpression = expressionRowIDs.contains(rowID) && !removesField
-                let wasExpression = parent.changeManager.isExpression(rowID: rowID, columnIndex: columnIndex)
+                let wasExpression = changeManager.isExpression(rowID: rowID, columnIndex: columnIndex)
                 guard values.indices.contains(columnIndex),
                       values[columnIndex] != value || absence.wasAbsent != absence.isAbsent
                         || wasExpression != isExpression else { continue }
                 if continuity == .typing {
-                    parent.changeManager.recordTypedCellChange(
+                    changeManager.recordTypedCellChange(
                         rowID: rowID,
                         columnIndex: columnIndex,
                         columnName: columnName,
@@ -343,7 +345,7 @@ final class RowEditingCoordinator: ObservableObject {
                         isExpression: isExpression
                     )
                 } else {
-                    parent.changeManager.recordCellChange(
+                    changeManager.recordCellChange(
                         rowID: rowID,
                         columnIndex: columnIndex,
                         columnName: columnName,
@@ -369,7 +371,7 @@ final class RowEditingCoordinator: ObservableObject {
 
     // One user command, one undo step named for it; the buffer write reaches the grid as one delta.
     func commitGridEdits(_ resolved: [DataGridResolvedEdit], actionName: String, tabId: UUID) -> Bool {
-        let changeManager = parent.changeManager
+        let changeManager = parent.changeManager(forTab: tabId)
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
         var edits: [(row: Int, column: Int, value: PluginCellValue)] = []
         var removedCells: Set<CellPosition> = []
@@ -399,14 +401,12 @@ final class RowEditingCoordinator: ObservableObject {
         return true
     }
 
-    func handleUndoResult(_ result: UndoResult) {
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
-
-        let tabId = tab.id
+    func handleUndoResult(_ result: UndoResult, tabId: UUID) {
+        guard let tabIndex = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
         var application = RowOperationsManager.UndoApplicationResult(clearsSelection: false, delta: .none)
         parent.mutateActiveTableRows(for: tabId) { rows in
-            let applied = parent.rowOperationsManager.applyUndoResult(result, tableRows: &rows)
+            let applied = parent.rowOperations(forTab: tabId).applyUndoResult(result, tableRows: &rows)
             application = applied
             return applied.delta
         }
@@ -440,7 +440,7 @@ final class RowEditingCoordinator: ObservableObject {
         guard parent.unloadedValuesAreLoaded(rowIDs: rowIDs, retry: { [weak self] in
             self?.copyRowsToClipboard(rowIDs, includeHeaders: includeHeaders)
         }) else { return }
-        parent.rowOperationsManager.copyRowsToClipboard(
+        parent.rowOperations(forTab: tab.id).copyRowsToClipboard(
             rowIDs,
             tableRows: parent.tabSessionRegistry.tableRows(for: tab.id),
             includeHeaders: includeHeaders,
@@ -459,7 +459,7 @@ final class RowEditingCoordinator: ObservableObject {
             tableRows: tableRows,
             displayIDs: model.displayedRowIDs,
             selectedDisplayIndices: Set(rowIDs.compactMap { model.displayIndex(of: $0) }),
-            defaultedCells: parent.changeManager.defaultedCells(in: tableRows),
+            defaultedCells: parent.changeManager(forTab: tab.id).defaultedCells(in: tableRows),
             columns: VisibleColumnProjection(indices: presentedColumnIndices(tabId: tab.id))
         )
         guard output.rowCount > 0 else { return }
@@ -485,9 +485,9 @@ final class RowEditingCoordinator: ObservableObject {
 
         var pasteResult = RowOperationsManager.PasteRowsResult(pastedRows: [], delta: .none)
         parent.mutateActiveTableRows(for: tabId) { rows in
-            let result = parent.rowOperationsManager.pasteRowsFromClipboard(
+            let result = parent.rowOperations(forTab: tabId).pasteRowsFromClipboard(
                 columns: columns,
-                primaryKeyColumns: parent.changeManager.primaryKeyColumns,
+                primaryKeyColumns: parent.changeManager(forTab: tabId).primaryKeyColumns,
                 tableRows: &rows,
                 uuidKeyForms: uuidKeys
             )

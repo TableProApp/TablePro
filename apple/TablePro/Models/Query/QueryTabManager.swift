@@ -699,7 +699,6 @@ final class QueryTabManager: ObservableObject {
         tab.sortState = SortState()
         tab.restoredSortSource = .unset
         tab.selectionSnapshot = .empty
-        tab.pendingChanges = TabChangeSnapshot()
         tab.autoRefreshInterval = .off
         tab.autoRefreshPause = nil
         tab.hasUserInteraction = false

@@ -187,7 +187,6 @@ struct ConnectionWindowChromeTests {
         let coordinator = MainContentCoordinator(
             connection: record,
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState(connection: record)
         )
         defer { coordinator.teardown() }

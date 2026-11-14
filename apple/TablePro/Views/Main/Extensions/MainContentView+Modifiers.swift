@@ -26,7 +26,6 @@ import SwiftUI
         tableOperationOptions: .constant([:]),
         trailingPaneState: TrailingPaneState(),
         tabManager: state.tabManager,
-        changeManager: state.changeManager,
         toolbarState: state.toolbarState,
         coordinator: state.coordinator
     )

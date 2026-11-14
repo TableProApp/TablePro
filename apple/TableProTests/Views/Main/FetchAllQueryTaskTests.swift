@@ -27,7 +27,6 @@ struct FetchAllQueryTaskTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         let tab = QueryTab(title: "Query", query: "SELECT 1", tabType: .query)
@@ -68,7 +67,6 @@ struct FetchAllQueryTaskTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         coordinator.executionGate = AlwaysDenyGate()
@@ -109,7 +107,6 @@ struct FetchAllQueryTaskTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         var tab = QueryTab(title: "Query", query: "SELECT noisy()", tabType: .query)

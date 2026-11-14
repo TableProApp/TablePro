@@ -186,8 +186,7 @@ struct QueryFailureReportingTests {
         #expect(coordinator.queryTasks.hasTask(for: tabId) == false)
     }
 
-    /// The change manager is one per window and holds whichever tab is selected. Clearing it from a
-    /// completion on a different tab throws away edits and undo history the user can never get back.
+    // A completion for one tab once cleared the edits and undo history of the tab the user had switched to.
     @Test("Clearing pending changes never reaches a tab the user has switched to")
     func pendingChangesOfAnotherTabSurvive() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -206,10 +205,12 @@ struct QueryFailureReportingTests {
             newValue: "edited"
         )
         #expect(coordinator.changeManager.hasChanges)
+        coordinator.changeManager(forTab: backgroundTabId).recordRowDeletion(rowID: .existing(0), originalRow: ["1"])
 
         coordinator.clearChangesIfCurrent(claim: claim)
 
         #expect(coordinator.changeManager.hasChanges)
+        #expect(!coordinator.hasStagedRowEdits(inTab: backgroundTabId))
     }
 
     private static func finishFailure(

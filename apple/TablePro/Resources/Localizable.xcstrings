@@ -191510,6 +191510,9 @@
         }
       }
     },
+    "The connection to %@ was lost while it waited and has been reconnected. This temporary table went with the old session. Create it again in a query tab." : {
+
+    },
     "The connection to %@ was lost while it waited, and the server rolled back its open transaction. It has been reconnected; run the statements again." : {
       "localizations" : {
         "fr" : {
@@ -192864,6 +192867,9 @@
           }
         }
       }
+    },
+    "The edits changed while the save waited for approval. Nothing was saved." : {
+
     },
     "The emulator endpoint must be a local address, such as http://127.0.0.1:9020." : {
       "extractionState" : "manual",

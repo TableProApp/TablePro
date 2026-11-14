@@ -1314,6 +1314,33 @@
   <data name="TransactionLost" xml:space="preserve">
     <value>The connection was lost, and its open transaction with it. The next run opens a new connection.</value>
   </data>
+  <data name="RolledBackTitle" xml:space="preserve">
+    <value>Transaction rolled back</value>
+  </data>
+  <data name="RolledBackMessage" xml:space="preserve">
+    <value>A transaction was open on this tab when TablePro last closed. The server rolled it back.</value>
+  </data>
+  <data name="RecoveredEditsTitle" xml:space="preserve">
+    <value>Unsaved changes restored</value>
+  </data>
+  <data name="RecoveredEditsMessage" xml:space="preserve">
+    <value>TablePro closed before these changes were saved. They are pending again.</value>
+  </data>
+  <data name="RecoveredUncertainMessage" xml:space="preserve">
+    <value>TablePro closed before it knew whether these changes were saved. They are pending again.</value>
+  </data>
+  <data name="RecoveredWaitingTitle" xml:space="preserve">
+    <value>Unsaved changes waiting</value>
+  </data>
+  <data name="RecoveredWaitingOne" xml:space="preserve">
+    <value>TablePro closed before 1 change was saved. It comes back as pending when a page shows its row and the table can take it.</value>
+  </data>
+  <data name="RecoveredWaitingMany" xml:space="preserve">
+    <value>TablePro closed before {0:N0} changes were saved. They come back as pending when a page shows their rows and the table can take them.</value>
+  </data>
+  <data name="DiscardWaitingButton.Content" xml:space="preserve">
+    <value>Discard</value>
+  </data>
   <data name="ReconnectButton.Content" xml:space="preserve">
     <value>Reconnect</value>
   </data>

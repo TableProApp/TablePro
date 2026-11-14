@@ -67,7 +67,7 @@ extension MainContentView {
     }
 
     func handleColumnsChange(newColumns: [String]?) {
-        // Skip during tab switch: handleTabChange already configures the change manager
+        // Skip during tab switch: handleTabChange already describes the incoming tab's result to its edits
         guard !coordinator.isHandlingTabSwitch else { return }
 
         if let newColumns = newColumns {

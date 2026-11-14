@@ -10,7 +10,6 @@ struct JoinBuilderOpeningTests {
         MainContentCoordinator(
             connection: TestFixtures.makeConnection(database: "shop", type: type),
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
     }

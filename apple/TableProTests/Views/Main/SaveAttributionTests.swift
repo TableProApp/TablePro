@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import TableProPluginKit
 import TableProTestSupport
@@ -11,11 +12,34 @@ private final class SaveAnswers {
     var second: Bool?
 }
 
+// Writes every statement as one row affected, so a keyed save lands.
+private final class RowWritingDriver: PluginDriverStub, @unchecked Sendable {
+    private let lock = NSLock()
+    private var received: [String] = []
+    private var database: String?
+
+    var queries: [String] { lock.withLock { received } }
+    var supportsSchemas: Bool { false }
+    var supportsTransactions: Bool { false }
+    var currentSchema: String? { nil }
+    var currentDatabase: String? { lock.withLock { database } }
+    var serverVersion: String? { nil }
+
+    func ping() async throws {}
+    func switchDatabase(to database: String) async throws {
+        lock.withLock { self.database = database }
+    }
+    func execute(query: String) async throws -> PluginQueryResult {
+        lock.withLock { received.append(query) }
+        return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 1, executionTime: 0)
+    }
+}
+
 @MainActor
 struct SaveAttributionTests {
     // A table tab with one edited cell, and a gate that holds the save until the test answers.
-    private func makeEditedTable() -> (CoordinatorFixture, HeldExecutionGate, UUID) {
-        let fixture = CoordinatorFixture()
+    private func makeEditedTable(connection: DatabaseConnection = TestFixtures.makeConnection()) -> (CoordinatorFixture, HeldExecutionGate, UUID) {
+        let fixture = CoordinatorFixture(connection: connection)
         let gate = HeldExecutionGate()
         fixture.coordinator.executionGate = gate
         var tab = QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table, tableName: "users")
@@ -52,24 +76,47 @@ struct SaveAttributionTests {
         )
     }
 
-    @Test("A save approved after a tab switch writes nothing and keeps the edits")
-    func saveApprovedAfterATabSwitchIsDropped() async throws {
-        let (fixture, gate, savingTabId) = makeEditedTable()
-        let other = fixture.addTab(QueryTab(title: "B", query: "SELECT 1", tabType: .query), select: false)
+    @Test("A save approved after a tab switch writes the saving tab's edits and clears only them")
+    func saveApprovedAfterATabSwitchClearsTheSavingTab() async throws {
+        let connection = TestFixtures.makeConnection()
+        let writer = RowWritingDriver()
+        var session = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: writer)
+        )
+        session.status = .connected
+        session.browseDatabase = connection.database
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        // A failed save reports in a sheet on this window rather than in a modal alert nothing answers.
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        defer { window.orderOut(nil) }
+        let (fixture, gate, savingTabId) = makeEditedTable(connection: connection)
+        fixture.coordinator.contentWindow = window
+        let other = fixture.addTab(QueryTab(title: "B", query: "SELECT * FROM orders", tabType: .query), select: false)
+        let otherEdits = fixture.coordinator.changeManager(forTab: other.id)
+        otherEdits.recordRowDeletion(rowID: .existing(0), originalRow: ["1"])
 
         save(fixture.coordinator)
         try await waitUntil { gate.askedCount == 1 }
         fixture.tabManager.selectedTabId = other.id
+        fixture.coordinator.handleTabChange(from: savingTabId, to: other.id, tabs: fixture.tabManager.tabs)
         await gate.answer(allowing: true)
 
+        let savingTab = { fixture.tabManager.tabs.first { $0.id == savingTabId } }
         try await waitUntil {
-            fixture.tabManager.tabs.first { $0.id == savingTabId }?.execution.errorMessage != nil
+            !fixture.coordinator.hasStagedRowEdits(inTab: savingTabId) || savingTab()?.execution.errorMessage != nil
         }
-        #expect(fixture.changeManager.hasChanges)
-        #expect(fixture.tabManager.tabs.first { $0.id == other.id }?.execution.errorMessage == nil)
+        #expect(savingTab()?.execution.errorMessage == nil)
+        #expect(!fixture.coordinator.hasStagedRowEdits(inTab: savingTabId))
+        #expect(writer.queries.contains { $0.hasPrefix("UPDATE") })
+        #expect(fixture.changeManager === otherEdits)
+        #expect(otherEdits.hasChanges)
         // The save is over: a second one is not refused as already running.
         #expect(fixture.coordinator.rowEditingCoordinator.beginSaveInFlight(tabId: nil))
         fixture.coordinator.rowEditingCoordinator.endSaveInFlight()
+        withExtendedLifetime(window) {}
     }
 
     @Test("A value loaded during the approval prompt is not an edit, a new cell change is")

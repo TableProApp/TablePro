@@ -37,8 +37,8 @@ extension MainContentCoordinator {
         rowEditingCoordinator.duplicateRows(rowIDs)
     }
 
-    func handleUndoResult(_ result: UndoResult) {
-        rowEditingCoordinator.handleUndoResult(result)
+    func handleUndoResult(_ result: UndoResult, forTab tabId: UUID) {
+        rowEditingCoordinator.handleUndoResult(result, tabId: tabId)
     }
 
     func stageInspectorFieldEdit(

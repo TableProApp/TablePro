@@ -65,7 +65,7 @@ extension MainContentCoordinator {
            tab.tabType == .query,
            tab.content.sourceFileURL == nil,
            tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           !tab.pendingChanges.hasChanges {
+           !hasStagedRowEdits(inTab: tab.id) {
             tabManager.mutate(at: tabIndex) { tab in
                 tab.content.sourceFileURL = favorite.fileURL
                 FileTabBaseline.adopt(loaded, into: &tab.content)

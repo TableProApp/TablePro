@@ -169,9 +169,8 @@ extension MainContentCoordinator {
             tab.schemaVersion += 1
         }
         let tab = tabManager.tabs[tabIdx]
-        guard tab.id == tabManager.selectedTabId else { return }
         let rows = tabSessionRegistry.tableRows(for: tab.id)
-        changeManager.configureForTable(
+        changeManager(forTab: tab.id).configureForTable(
             tableName: tab.tableContext.tableName ?? "",
             schemaName: tab.tableContext.schemaName,
             columns: resultSet.resultColumns,

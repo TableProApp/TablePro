@@ -37,26 +37,37 @@
 
         <editor:SqlEditor x:Name="SqlText" Grid.Row="1" AutomationProperties.AutomationId="SqlEditor" />
 
-        <!-- The transaction lives on this tab's own connection, so its bar and its end are here. -->
-        <InfoBar
-            x:Name="TransactionBar"
-            Grid.Row="2"
-            Margin="8,8,8,0"
-            AutomationProperties.AutomationId="TransactionBar"
-            IsClosable="False"
-            IsOpen="False">
-            <InfoBar.Content>
-                <StackPanel Margin="0,0,0,12" Orientation="Horizontal" Spacing="8">
-                    <Button
-                        x:Uid="CommitButton"
-                        x:Name="CommitButton"
-                        AutomationProperties.AutomationId="CommitButton"
-                        Click="OnCommit"
-                        Style="{StaticResource AccentButtonStyle}" />
-                    <Button x:Uid="RollBackButton" x:Name="RollBackButton" AutomationProperties.AutomationId="RollBackButton" Click="OnRollBack" />
-                </StackPanel>
-            </InfoBar.Content>
-        </InfoBar>
+        <StackPanel Grid.Row="2">
+            <!-- The app ended without a close while this tab held a transaction, which the server then rolled back. -->
+            <InfoBar
+                x:Name="RolledBackBar"
+                Margin="8,8,8,0"
+                AutomationProperties.AutomationId="RolledBackBar"
+                Closed="OnRolledBackBarClosed"
+                IsOpen="False"
+                Severity="Warning"
+                Visibility="Collapsed" />
+
+            <!-- The transaction lives on this tab's own connection, so its bar and its end are here. -->
+            <InfoBar
+                x:Name="TransactionBar"
+                Margin="8,8,8,0"
+                AutomationProperties.AutomationId="TransactionBar"
+                IsClosable="False"
+                IsOpen="False">
+                <InfoBar.Content>
+                    <StackPanel Margin="0,0,0,12" Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Uid="CommitButton"
+                            x:Name="CommitButton"
+                            AutomationProperties.AutomationId="CommitButton"
+                            Click="OnCommit"
+                            Style="{StaticResource AccentButtonStyle}" />
+                        <Button x:Uid="RollBackButton" x:Name="RollBackButton" AutomationProperties.AutomationId="RollBackButton" Click="OnRollBack" />
+                    </StackPanel>
+                </InfoBar.Content>
+            </InfoBar>
+        </StackPanel>
 
         <local:ResultsPane x:Name="Results" Grid.Row="3" />
     </Grid>

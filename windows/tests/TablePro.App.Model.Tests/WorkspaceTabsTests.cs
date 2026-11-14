@@ -252,6 +252,8 @@ internal sealed class FakeTab(string title, TabKind kind = TabKind.Query) : IWor
 
     public SessionTab Snapshot() => new() { Kind = Kind, Title = Title };
 
+    public SessionTab WithPendingWork(SessionTab snapshot) => snapshot;
+
     public async Task CloseAsync()
     {
         Closes++;

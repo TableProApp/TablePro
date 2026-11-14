@@ -168,36 +168,6 @@ struct PersistedTab: Codable {
     }
 }
 
-struct TabChangeSnapshot: Equatable {
-    var changes: [RowChange]
-    var deletedRowIDs: Set<RowID>
-    var insertedRowIDs: Set<RowID>
-    var modifiedCells: [RowID: Set<Int>]
-    var insertedRowData: [RowID: [PluginCellValue]]
-    var supersededUpdates: [RowID: RowChange] = [:]
-    // The result these edits were made on. They name its rows, so they are void on any other.
-    var resultSetId: UUID?
-    var primaryKeyColumns: [String]
-    var columns: [String]
-
-    init() {
-        self.changes = []
-        self.deletedRowIDs = []
-        self.insertedRowIDs = []
-        self.modifiedCells = [:]
-        self.insertedRowData = [:]
-        self.primaryKeyColumns = []
-        self.columns = []
-    }
-
-    var hasChanges: Bool {
-        !changes.isEmpty || !insertedRowIDs.isEmpty || !deletedRowIDs.isEmpty
-    }
-
-    mutating func adoptLoadedValues(_ values: [RowID: [Int: PluginCellValue]]) {
-        RowChange.adoptLoadedValues(values, into: &changes)
-    }
-}
 
 enum SortDirection: String, Equatable, Codable, CaseIterable, Identifiable {
     case ascending

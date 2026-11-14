@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using TablePro.Interop;
 
 namespace TablePro.App.Model;
@@ -38,6 +39,18 @@ public sealed record SessionTab
 
     // The database a query tab opened from a definition runs in, where the definition names none.
     public string? Database { get; set; }
+
+    // A table tab's pending changes by key, which the session's writes keep until a close has asked about them.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SavedEdits? Edits { get; set; }
+
+    // The tab's own connection held a transaction, which the server rolled back as the app ended.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool HeldTransaction { get; set; }
+
+    // What the app ended holding without a close, which a launch brings back even with Reopen at startup off.
+    [JsonIgnore]
+    public bool HasRecoveredWork => Edits is { Changes: > 0 } || HeldTransaction;
 
     // A name this build does not define, as from a later build, reads as the fallback.
     public ObjectKind ObjectKindOr(ObjectKind fallback) =>
@@ -218,6 +231,64 @@ public sealed record SessionState
                 .Where(window => window.Connection is { IsRestorable: true, Tabs.Count: > 0 })
                 .Select(window => window with { Placement = Usable(window.Placement) })],
         };
+    }
+
+    // Only the tabs holding recovered work, in their connections and windows, for a launch with Reopen at startup off.
+    public SessionState Recovered()
+    {
+        List<SessionConnection> kept = [];
+        var front = -1;
+        for (var index = 0; index < Connections.Count; index++)
+        {
+            if (RecoveredTabs(Connections[index]) is { } connection)
+            {
+                if (index == Front)
+                {
+                    front = kept.Count;
+                }
+
+                kept.Add(connection);
+            }
+        }
+
+        return new SessionState
+        {
+            Connections = kept,
+            Front = front < 0 && kept.Count > 0 ? 0 : front,
+            Window = Window,
+            ObjectPaneWidth = ObjectPaneWidth,
+            TabWindows = [.. TabWindows
+                .Select(window => window is not null && RecoveredTabs(window.Connection) is { } connection
+                    ? window with { Connection = connection }
+                    : null)
+                .OfType<TabWindowState>()],
+        };
+    }
+
+    private static SessionConnection? RecoveredTabs(SessionConnection? connection)
+    {
+        if (connection is null)
+        {
+            return null;
+        }
+
+        var tabs = connection.Tabs ?? [];
+        List<SessionTab> kept = [];
+        var selected = 0;
+        for (var index = 0; index < tabs.Count; index++)
+        {
+            if (tabs[index] is { HasRecoveredWork: true } tab)
+            {
+                if (index == connection.SelectedTab)
+                {
+                    selected = kept.Count;
+                }
+
+                kept.Add(tab);
+            }
+        }
+
+        return kept.Count == 0 ? null : connection with { Tabs = kept, SelectedTab = selected };
     }
 }
 

@@ -11,13 +11,11 @@ struct ExtractTableNameTests {
     private func makeCoordinator(type: DatabaseType = .mysql) -> MainContentCoordinator {
         let connection = TestFixtures.makeConnection(database: "db_a", type: type)
         let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
         let toolbarState = ConnectionToolbarState()
 
         return MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             toolbarState: toolbarState
         )
     }

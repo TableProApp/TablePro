@@ -31,7 +31,6 @@ struct SwitchDatabaseTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -43,13 +42,11 @@ struct SwitchDatabaseTests {
     func openTableTabSkipsForSameTableSameDatabase() throws {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
         let toolbarState = ConnectionToolbarState()
 
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }

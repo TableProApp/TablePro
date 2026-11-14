@@ -43,7 +43,7 @@ final class DataTabSQLExporter: DataGridSQLExporting {
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: coordinator.connection.type,
             connectionId: coordinator.connectionId,
-            changeManager: coordinator.changeManager,
+            changeManager: coordinator.changeManager(forTab: tabId),
             driver: coordinator.services.databaseManager.driver(for: coordinator.connectionId)
         )
     }

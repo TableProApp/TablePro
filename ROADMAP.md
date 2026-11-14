@@ -2,7 +2,7 @@
 
 The work that makes the Linux and Windows apps complete daily-use clients, the core work under them, and the sync service and features every platform still lacks. The bar is the macOS app plus what the market expects from a daily-use client.
 
-Written 2026-11-11 against main `8581bd6c7`, from code inventories of the macOS, Linux and Windows apps and the Rust core, and a survey of 20 other clients ([Sources](#sources)). The maintainer's answers of 2026-11-13 are under [Decisions](#decisions). What the Linux app does today is in [linux/docs/features.md](linux/docs/features.md).
+Written 2026-11-11 against main `8581bd6c7`, from code inventories of the macOS, Linux and Windows apps and the Rust core, and a survey of 20 other clients ([Sources](#sources)). Reconciled on 2026-11-14 against main `8758a2b56`. The maintainer's answers of 2026-11-13 are under [Decisions](#decisions). What the Linux app does today is in [linux/docs/features.md](linux/docs/features.md).
 
 ## How to track
 
@@ -29,26 +29,26 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 
 | Section | Boxes | Done |
 |---|---|---|
-| Phase 0: Release blockers | 16 | 0 |
-| Phase 1: Core enablers | 23 | 0 |
-| Phase 2: Windows daily use | 62 | 0 |
-| Phase 3: Standard features both apps lack | 116 | 0 |
-| Phase 4: Advanced tier | 60 | 0 |
+| Phase 0: Release blockers | 16 | 3 |
+| Phase 1: Core enablers | 23 | 2 |
+| Phase 2: Windows daily use | 62 | 2 |
+| Phase 3: Standard features both apps lack | 118 | 0 |
+| Phase 4: Advanced tier | 57 | 0 |
 | Phase 5: Engines | 27 | 0 |
 | Phase 6: Quality bars | 8 | 0 |
 | Phase 7: Sync and teams | 15 | 0 |
 | Phase 8: Beyond the market | 40 | 0 |
-| Total | 367 | 0 |
+| Total | 366 | 7 |
 
 ## Where each app stands
 
 **macOS**, the reference: 48 engine types (5 bundled driver plugins, 31 in the registry), and every survey tier up to ADV. Compare & Sync, Server Dashboard, Table Health, Query Insights, Data Rewind, EXPLAIN diagrams, charts, map mode, routine debugger, users and roles, backup and restore, an agent-mode AI with 15 providers, an MCP server with 47 tools, iCloud sync and Team features.
 
-**Linux**, 0.1.0-beta.3: 9 engines from the core. Covers most of the CORE tier: connections with SSH, TLS and sockets, filters, editing with undo, completion, formatter, snippets, Vim, history, saved queries, structure editing, ER diagram, 7 export formats, dump and SQL import, AI chat, MCP with 11 tools, a CLI. Missing: all of admin and monitoring, query parameters, drawn plans, charts, schema compare, data transfer, backup through native tools, SOCKS, cloud IAM, users and roles, view and routine editing, the 10 paid features. 0.1.0 waits on [release criteria](linux/docs/releasing.md#release-criteria) 8 and 10.
+**Linux**, 0.1.0-beta.3: 9 engines from the core. Covers most of the CORE tier: connections with SSH, TLS and sockets, filters, editing with undo, completion, formatter, snippets, Vim, history, saved queries, structure editing, ER diagram, 7 export formats, dump and SQL import, AI chat, MCP with 11 tools and client setup, a CLI, share links. Missing: all of admin and monitoring, query parameters, drawn plans, charts, schema compare, data transfer, backup through native tools, SOCKS, cloud IAM, users and roles, view and routine editing, the 10 paid features. 0.1.0 waits on [release criteria](linux/docs/releasing.md#release-criteria) 8 and 10.
 
-**Windows**, unreleased: 9 engines through the FFI. Has the connection library (groups, tags, favourites), in-process SSH, TLS with remedies, paging and sort, table-row editing with SQL review, a Direct2D editor with highlighting and multiple cursors, run statement, selection or script with transactions, Safe Mode (3 levels), tab tear-out, session restore, an MSIX build. Missing most of the CORE tier past that: filters, value viewers, row details, FK navigation, copy formats, completion, formatter, history, saved queries, .sql files, export, import, structure, sidebar actions, undo of edits.
+**Windows**, unreleased: 9 engines through the FFI. Has the connection library (groups, tags, favourites), in-process SSH, TLS with remedies, paging, sort and filters, a row estimate before an optional count, table-row editing with SQL review, read-only structure and routine, trigger and sequence definitions, export to 7 formats, query history with search, a Direct2D editor with highlighting and multiple cursors, run statement, selection or script with transactions, Safe Mode (3 levels), tab tear-out, session restore, account sign-in, share links, and an MSIX build whose release dry run passes. Missing most of the CORE tier past that: value viewers, row details, FK navigation, copy formats, completion, formatter, saved queries, .sql files, import, structure editing, a database switcher, Truncate and Drop in the sidebar, undo of edits.
 
-**Core**: the logic mostly exists, the FFI does not. `ddl`, `export`, `import`, `dump`, `filter`, history, saved queries, `ai`, `mcp`, `cli`, `account` and `foreign-import` are core code the FFI does not expose. The formatter, completion scope, script runner, key-based change tracker, copy renderer, highlight rules, Open Quickly and ER layout sit in `linux/crates/app`, GTK-free. Phase 1 moves both down so Windows builds on the code Linux already runs.
+**Core**: the FFI exposes filters, table structure and object definitions, export, query history, the account and share links. `ddl` drafts and plans, `import`, `dump`, saved queries, `ai`, `mcp`, `cli` and `foreign-import` are core code the FFI does not expose yet. The formatter, completion scope, script runner, key-based change tracker, copy renderer, highlight rules, Open Quickly and ER layout sit in `linux/crates/app`, GTK-free. Phase 1 moves both down so Windows builds on the code Linux already runs.
 
 ## What the market expects
 
@@ -70,11 +70,11 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 
 ### Windows first public release
 
-- [ ] **R-01** RUSTSEC-2026-0459 (bundled SQLite before 3.54.0): `deny.toml` blocks a Windows release until sqlx allows libsqlite3-sys 0.39 and the pin is raised
+- [ ] **R-01** RUSTSEC-2026-0459 (bundled SQLite before 3.54.0): `deny.toml` blocks a Windows release until sqlx allows libsqlite3-sys 0.39 and the pin is raised (#4166)
 - [ ] **R-02** Maintainer setup, `windows/RELEASING.md` steps 1-6: tag rulesets, Artifact Signing with a Public Trust profile, the OIDC app registration, the `windows-release` secrets, `WINDOWS_SIGNING_*` and `WINDOWS_PUBLISHER` (permanent after the first release), the `windows-winget` environment
-- [ ] **R-03** Dry run of `release-windows.yml` from main: the x64 package, the bundle, install-and-start tests and winget validation, all unverified (ADR 0005)
+- [x] **R-03** Dry run of `release-windows.yml` from main: the x64 and Arm64 packages, the bundle, install-and-start tests and winget validation, unsigned (ADR 0005): [run 43164825446](https://github.com/TableProApp/TablePro/actions/runs/43164825446)
 - [ ] **R-04** Real hardware: Windows 10 build 17763, Native AOT, Mica on a GPU, TabView in the title bar on Windows 10, loading from a signed MSIX (ADR 0001, 0004)
-- [ ] **R-05** Drop the Windows App SDK metapackage once Community Toolkit 8.3 is stable (41.8 MB of unused ONNX and DirectML per architecture)
+- [x] **R-05** Drop the Windows App SDK metapackage (41.8 MB of unused ONNX and DirectML per architecture): the app takes the WinUI component and prunes the metapackage the Community Toolkit names (ADR 0005): #4232
 - [ ] **R-06** Updates: an App Installer file or the Store, an in-app update check, stable and beta channels
 - [ ] **R-07** Live-server Windows tests for the 7 engines no Windows suite connects to: MySQL, SQL Server, DuckDB, ClickHouse, Cassandra, MongoDB, Redis
 - [ ] **R-08** Windows user guide on docs.tablepro.app and the download page
@@ -84,22 +84,22 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 
 - [ ] **R-10** [Release criterion](linux/docs/releasing.md#release-criteria) 8: the manual pass with Orca, the keyboard alone, High Contrast, 1.5x text and a right-to-left locale
 - [ ] **R-11** Release criterion 10: a dated week of daily use
-- [ ] **R-12** Bring [linux/docs/features.md](linux/docs/features.md) up to date: about 40 features from #4108 to #4159, #4145 and #4147 are missing, and the Saved queries, Sidebar, Preferences, Connections import, MCP Tools and Copy rows are stale
+- [x] **R-12** Bring [linux/docs/features.md](linux/docs/features.md) up to date: about 40 features from #4108 to #4159, #4145 and #4147 are missing, and the Saved queries, Sidebar, Preferences, Connections import, MCP Tools and Copy rows are stale: #4281
 - [ ] **R-13** The display-scale pass on a real GPU and a HiDPI screen, and a hand install on Ubuntu 26.04
-- [ ] **R-14** #4099 (KDE Wallet prompt opens behind the window) and #4101 (`flatpak list` shows "Usage data")
-- [ ] **R-15** After 0.1.0: the Flathub manifest and exception request, by the maintainer, under [Flathub's requirements](linux/docs/decisions/0041-beta-repositories-and-release-packages.md#context)
-- [ ] **R-16** After 0.1.0: an AUR PKGBUILD, kept by the community
+- [ ] **R-14** Not a 0.1.0 blocker: #4099 (KDE Wallet prompt opens behind the window) and #4101 (`flatpak list` shows "Usage data") are fixed upstream in [xdg-desktop-portal#2203](https://github.com/flatpak/xdg-desktop-portal/pull/2203) and [flatpak#6965](https://github.com/flatpak/flatpak/pull/6965), in no release yet, and are known issues in 0.1.0's notes. Once an xdg-desktop-portal release has #2203, pass `parent_window` and `activation_token` to RetrieveSecret; ksecretd's side is [KDE bug 528518](https://bugs.kde.org/show_bug.cgi?id=528518)
+- [ ] **R-15** After 0.1.0: the Flathub manifest and exception request, by the maintainer, under [Flathub's requirements](linux/docs/decisions/0041-beta-repositories-and-release-packages.md#context) (#3640)
+- [ ] **R-16** After 0.1.0: an AUR PKGBUILD, kept by the community (#3639)
 
 ## Phase 1: Core enablers
 
 Each item ends in an FFI surface Windows needs. Linux paths are under `linux/crates/app/src/`.
 
-- [ ] **C-01** Filters through the FFI: `table_query` takes a `FilterSet` (always `FilterSet::default()` in `core/crates/ffi/src/session.rs` today) and `operators_for`
-- [ ] **C-02** Export through the FFI: `core::export` encoders (CSV, TSV, JSON, JSON Lines, HTML, Markdown, SQL INSERT, XML, XLSX) as a streaming job with progress and Stop; the sinks and ledger in `ui/export/` move down
+- [x] **C-01** Filters through the FFI: table pages and counts take a filter, and `filter_choices` gives each column's operators: #4213
+- [ ] **C-02** Export through the FFI: `core::export` encoders (CSV, TSV, JSON, JSON Lines, HTML, Markdown, SQL INSERT, XML, XLSX) as a streaming job with progress and Stop; the sinks and ledger in `ui/export/` move down · partly #4213: TSV, JSON Lines, CSV options, progress and the move of the sinks and ledger are left
 - [ ] **C-03** CSV import and pasted rows through the FFI: `core::import::{csv_import, plan_import, PastedRows}`
 - [ ] **C-04** SQL dump and SQL file import through the FFI: `core::dump`, `SqlFileReader`, with the orchestration in `ui/export/dump_job.rs` and `services/import_file.rs` moved down
-- [ ] **C-05** Structure through the FFI: the table definition (columns, indexes, keys, comments), CREATE statements, `core::ddl` drafts, `diff_table`, plans and catalog operations (core ADR 0013); the logic in `services/pending_structure.rs` moves down
-- [ ] **C-06** Storage through the FFI: `QueryHistory` (FTS5, retention, export), `SavedQueries` with folders and keywords, `Favourites`, `DraftStore` (deferred by core ADR 0017)
+- [ ] **C-05** Structure through the FFI: the table definition (columns, indexes, keys, comments), CREATE statements, `core::ddl` drafts, `diff_table`, plans and catalog operations (core ADR 0013); the logic in `services/pending_structure.rs` moves down · partly #4213: `core::ddl` drafts, `diff_table`, plans, catalog operations and the move of `services/pending_structure.rs` are left
+- [ ] **C-06** Storage through the FFI: `QueryHistory` (FTS5, retention, export), `SavedQueries` with folders and keywords, `Favourites`, `DraftStore` (deferred by core ADR 0017) · partly #4213: history pins, retention and export, `SavedQueries`, `Favourites` and `DraftStore` are left
 - [ ] **C-07** SQL formatter into core: `ui/editor/format_plan.rs` and `significant_tokens.rs`
 - [ ] **C-08** Completion context into core: `completion/completion_scope.rs`, `catalog_read.rs` and the fuzzy ranking; proposal objects stay per app
 - [ ] **C-09** Script runner into core: `script_runner.rs` and `run_log.rs` with `BatchErrorPolicy` (the FFI's `QueryEditor::run` takes one statement or one `GO` batch)
@@ -112,7 +112,7 @@ Each item ends in an FFI surface Windows needs. Linux paths are under `linux/cra
 - [ ] **C-16** Foreign import through the FFI: a Windows `ForeignHost` and `ForeignAppDirs`, passwords into Credential Manager, DPAPI-held passwords read (core ADR 0008)
 - [ ] **C-17** AI through the FFI: providers, prompts, schema context, streamed replies
 - [ ] **C-18** MCP server through the FFI, with a Windows host
-- [ ] **C-19** Account through the FFI: the Windows `AppClient` once registered with tablepro-cloud, and the entitlement gate that every paid feature on Windows needs (core ADR 0016, D-02)
+- [x] **C-19** Account through the FFI: the Windows `AppClient`, registered with tablepro-cloud, and the entitlement gate that every paid feature on Windows needs (core ADR 0016 and 0026, D-02): #4253
 - [ ] **C-20** CLI on Windows: a `Host`, MCP dispatch, peer verification on the pipe, PowerShell completion (core ADR 0018)
 - [ ] **C-21** Query-result editing through the FFI (core ADR 0015, after ADR 0019)
 - [ ] **C-22** Connection library through the FFI: export to JSON, duplicate with secrets
@@ -135,23 +135,23 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 ### Sidebar
 
-- [ ] **W-09** Object context menu: Open, Open in New Tab, Copy Name, Show CREATE, Truncate, Drop, through Safe Mode · CORE · needs C-05
+- [ ] **W-09** Object context menu: Open, Open in New Tab, Copy Name, Show CREATE, Truncate, Drop, through Safe Mode · CORE · needs C-05 · partly #4213: Open in New Tab, Show CREATE for a table, Truncate and Drop are left
 - [ ] **W-10** Create and drop databases and schemas · CORE · needs C-05
 - [ ] **W-11** Database switcher per connection and per query tab · CORE
-- [ ] **W-12** Open a routine, trigger or sequence: its definition read-only, with Copy and Open in Editor · STD
+- [x] **W-12** Open a routine, trigger or sequence: its definition read-only, with Copy and Open in Editor · STD: #4213
 - [ ] **W-13** Columns, indexes and keys under a table node · STD · needs C-05
 - [ ] **W-14** Table info: rows, size, comment · STD
 
 ### Grid
 
-- [ ] **W-15** Filters: per-column operators, raw WHERE, match any or all, kept per table · CORE · needs C-01
+- [ ] **W-15** Filters: per-column operators, raw WHERE, match any or all, kept per table · CORE · needs C-01 · partly #4213: the filter is kept with its tab; keeping it for the table when it opens again is left
 - [ ] **W-16** Filter by a cell's value, or exclude it · CORE · needs C-01
 - [ ] **W-17** Value viewers for long text, JSON, binary (hex) and images; a tooltip on a cut cell · CORE
 - [ ] **W-18** Row details pane with editing · STD
 - [ ] **W-19** Follow a foreign key to the referenced row, and show referencing rows · CORE
 - [ ] **W-20** Copy as CSV or TSV with headers, JSON, Markdown, INSERT, IN clause · CORE · needs C-11
 - [ ] **W-21** Reorder, hide and freeze columns, kept per table (the control has frozen columns) · STD
-- [ ] **W-22** Context menu on query-result grids · CORE
+- [ ] **W-22** Context menu on query-result grids · CORE · partly #4253: the menu has Copy and Share Result; Copy As, filter by value and Export in it are left
 - [ ] **W-23** Selection summary: count, sum, average, min, max · STD
 - [ ] **W-24** Find in the grid · STD · needs C-12
 - [ ] **W-25** Grid display settings: NULL text, date format, grid font, row height, stripes · STD · needs C-11
@@ -161,16 +161,16 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 - [ ] **W-27** Undo and redo of pending edits · CORE · needs C-10
 - [ ] **W-28** Paste rows from the clipboard · STD · needs C-03, C-10
-- [ ] **W-29** Edit query results that read one keyed table · STD · needs C-21
+- [ ] **W-29** Edit query results that read one keyed table · STD · needs C-21 (#4275)
 - [ ] **W-30** Type editors: date and time picker, enum menu, JSON check, boolean toggle · STD
 
 ### SQL editor
 
-- [ ] **W-31** Completion: tables, columns, aliases, schemas, functions, keywords · CORE · needs C-08
+- [ ] **W-31** Completion: tables, columns, aliases, schemas, functions, keywords · CORE · needs C-08 (#4275)
 - [ ] **W-32** Formatter · CORE · needs C-07
 - [ ] **W-33** Replace, and regular expressions in Find · CORE
 - [ ] **W-34** Open and save .sql files, drop a file on the editor, recent files · CORE
-- [ ] **W-35** Query history with search, pins and retention · CORE · needs C-06
+- [ ] **W-35** Query history with search, pins and retention · CORE · needs C-06 · partly #4213: pins and retention are left
 - [ ] **W-36** Saved queries in folders · CORE · needs C-06
 - [ ] **W-37** Snippets with tab stops · STD · needs C-15
 - [ ] **W-38** Run a whole script with an error policy, one entry per result · CORE · needs C-09
@@ -180,13 +180,13 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 ### Structure
 
-- [ ] **W-42** Structure view: columns, indexes, foreign keys, comments, the CREATE statement · CORE · needs C-05
+- [x] **W-42** Structure view: columns, indexes, foreign keys, comments, the CREATE statement · CORE · needs C-05: #4213
 - [ ] **W-43** Table designer: create and alter columns, indexes and foreign keys, with the SQL reviewed · CORE · needs C-05
 - [ ] **W-44** ER diagram · STD · needs C-14
 
 ### Import and export
 
-- [ ] **W-45** Export a table or a result to CSV, JSON, XLSX, SQL INSERT, Markdown, HTML and XML, with progress and Stop · CORE · needs C-02
+- [ ] **W-45** Export a table or a result to CSV, JSON, XLSX, SQL INSERT, Markdown, HTML and XML, with progress and Stop · CORE · needs C-02 · partly #4213: SQL INSERT from a query result, and the rows written so far shown while it runs, are left
 - [ ] **W-46** CSV import into a table with a column mapping · CORE · needs C-03
 - [ ] **W-47** Import SQL File and Export Database · CORE · needs C-04
 
@@ -209,10 +209,10 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 - [ ] **W-57** AI assistant: providers, chat with schema context, Explain, Review, Optimize, Fix, AI policy per connection · STD · needs C-17
 - [ ] **W-58** MCP server with an External Clients level per connection · ADV · needs C-18
-- [ ] **W-59** Account page, license ask, and the paid-feature gate on the macOS license (D-02) · STD · needs C-19
-- [ ] **W-60** `tablepro://` and database URL links · STD
+- [ ] **W-59** Account page, license ask, and the paid-feature gate on the macOS license (D-02) · STD · needs C-19 · partly #4253: the license ask and the gate on paid features are left
+- [ ] **W-60** `tablepro://` and database URL links · STD · partly #4253: connection links and database URLs are left
 - [ ] **W-61** File associations for .sql, SQLite and DuckDB files · STD
-- [ ] **W-62** Launch arguments and the `tablepro` CLI (the execution alias ignores arguments today) · STD · needs C-20
+- [ ] **W-62** Launch arguments and the `tablepro` CLI (the execution alias reads only a share link today) · STD · needs C-20
 
 ## Phase 3: Standard features both apps lack
 
@@ -287,14 +287,14 @@ The Windows box assumes its Phase 2 base. Linux-only items have no Windows box.
   - [ ] core: parameter scan in `sql_syntax`, binding per driver
   - [ ] Linux
   - [ ] Windows
-- **S-17** EXPLAIN as a tree and a diagram, with EXPLAIN ANALYZE where the engine has it · STD · macOS: yes
+- **S-17** EXPLAIN as a tree and a diagram, with EXPLAIN ANALYZE where the engine has it · STD · macOS: yes (#3655)
   - [ ] core: a plan model parsed per engine
   - [ ] Linux
   - [ ] Windows
 - **S-18** Result tabs: keep earlier results, pin one, compare two · STD · macOS: yes
   - [ ] Linux
   - [ ] Windows
-- **S-19** Split editor or tab groups · STD · macOS: no
+- **S-19** Split editor or tab groups · STD · macOS: no (#4276)
   - [ ] Linux
   - [ ] Windows
 - **S-20** Inline diagnostics: syntax errors, unknown tables and columns · ADV · macOS: partly
@@ -360,7 +360,7 @@ The Windows box assumes its Phase 2 base. Linux-only items have no Windows box.
   - [ ] core
   - [ ] Linux
   - [ ] Windows
-- **S-35** Backup and restore through the engines' tools (pg_dump and pg_restore, mysqldump, mongodump). Flatpak needs `flatpak-spawn --host` or bundled tools; MSIX needs them on PATH · STD · macOS: yes
+- **S-35** Backup and restore through the engines' tools (pg_dump and pg_restore, mysqldump, mongodump). Flatpak needs `flatpak-spawn --host` or bundled tools; MSIX needs them on PATH · STD · macOS: yes (#3654)
   - [ ] core
   - [ ] Linux
   - [ ] Windows
@@ -404,16 +404,19 @@ The Windows box assumes its Phase 2 base. Linux-only items have no Windows box.
   - [ ] Windows
 - **S-44** GNOME Shell search provider for connections · STD
   - [ ] Linux
+- **S-45** Every database on the server in the sidebar for PostgreSQL and SQL Server: the connection's own expanded and marked active, others opened on expand, system and template databases hidden behind a filter · STD · macOS: yes (#4261)
+  - [ ] Linux
+  - [ ] Windows
 
 ## Phase 4: Advanced tier
 
-macOS has every item here, most as paid features, and the same license gates them on Linux and Windows (D-02). Linux and Windows have none; Linux's account page lists all 10 paid features as absent.
+macOS has every item here, most as paid features, and the same license gates them on Linux and Windows (D-02). Linux and Windows have none of them whole; #4211 brought MCP client setup (A-09). A-12 is not taken on Linux and Windows (D-08). Linux's account page lists all 10 paid features as absent.
 
-- **A-01** Compare & Sync: schema diff and row diff between connections, a sync script, saved comparisons · paid
+- **A-01** Compare & Sync: schema diff and row diff between connections, a sync script, saved comparisons · paid (#3656)
   - [ ] core
   - [ ] Linux
   - [ ] Windows
-- **A-02** Server Dashboard: sessions, metrics, slow queries, locks and blocking chains, replication status, saved-query tiles
+- **A-02** Server Dashboard: sessions, metrics, slow queries, locks and blocking chains, replication status, saved-query tiles (#3657)
   - [ ] core
   - [ ] Linux
   - [ ] Windows
@@ -442,8 +445,8 @@ macOS has every item here, most as paid features, and the same license gates the
   - [ ] Linux
   - [ ] Windows
 - **A-09** MCP server parity: 47 tools, resources, prompts, subscriptions, scoped tokens, pairing, an activity log, client setup snippets (Linux has 11 tools and one token)
-  - [ ] core
-  - [ ] Linux
+  - [ ] core · partly #4211: everything but the client setup catalog is left
+  - [ ] Linux · partly #4211: everything but client setup is left
   - [ ] Windows
 - **A-10** Linked SQL folders with Git status, commit, pull and push · paid
   - [ ] core
@@ -453,10 +456,7 @@ macOS has every item here, most as paid features, and the same license gates the
   - [ ] core
   - [ ] Linux
   - [ ] Windows
-- **A-12** Masking rules across the grid, copies, exports, AI and MCP
-  - [ ] core
-  - [ ] Linux
-  - [ ] Windows
+- **A-12** Not taken on Linux and Windows (D-08): masking rules across the grid, copies, exports, AI and MCP. Masking there is in share links only (#4253)
 - **A-13** Generate test rows: up to 1M, foreign-key aware, seeded
   - [ ] core
   - [ ] Linux
@@ -586,17 +586,17 @@ A TablePro sync service on every platform (D-01). macOS keeps iCloud beside it, 
 
 Survey features no client covers on every platform, and the macOS app lacks them too, so each has a macOS box. All but G-06 and G-12 were taken (D-05).
 
-- **G-01** SQL notebooks: SQL and Markdown cells with results (only VS Code mssql since Azure Data Studio retired)
+- **G-01** SQL notebooks: SQL and Markdown cells with results (only VS Code mssql since Azure Data Studio retired) (#3618)
   - [ ] core
   - [ ] Linux
   - [ ] Windows
   - [ ] macOS
-- **G-02** Scheduled jobs: export, backup or run SQL on a schedule, with a notification (Navicat, DBeaver PRO, TablePlus 27.2)
+- **G-02** Scheduled jobs: export, backup or run SQL on a schedule, with a notification (Navicat, DBeaver PRO, TablePlus 27.2) (#3621)
   - [ ] core
   - [ ] Linux
   - [ ] Windows
   - [ ] macOS
-- **G-03** Go to definition, find usages and rename in SQL (DataGrip, Navicat 18, dbForge)
+- **G-03** Go to definition, find usages and rename in SQL (DataGrip, Navicat 18, dbForge) (#4276)
   - [ ] core
   - [ ] Linux
   - [ ] Windows
@@ -612,7 +612,7 @@ Survey features no client covers on every platform, and the macOS app lacks them
   - [ ] Windows
   - [ ] macOS
 - **G-06** Not taken (D-05): a visual MongoDB aggregation pipeline builder (Navicat)
-- **G-07** Column profiling: nulls, distinct values, distribution (Navicat 17)
+- **G-07** Column profiling: nulls, distinct values, distribution (Navicat 17) (#4276)
   - [ ] core
   - [ ] Linux
   - [ ] Windows
@@ -641,7 +641,7 @@ Survey features no client covers on every platform, and the macOS app lacks them
 
 ## Decisions
 
-Answered by the maintainer on 2026-11-13.
+Answered by the maintainer on 2026-11-13, D-08 on 2026-11-14.
 
 | ID | Question | Decision |
 |---|---|---|
@@ -652,6 +652,7 @@ Answered by the maintainer on 2026-11-13.
 | D-05 | Which survey gaps to take | All but G-06 and G-12 ([Phase 8](#phase-8-beyond-the-market)) |
 | D-06 | Which comes first | Linux 0.1.0, then Phase 1 and Windows ([Order](#order)) |
 | D-07 | An Android app | Not now |
+| D-08 | Masking on Linux and Windows | In share links only: no rules per connection, and no masking in the grid, exports, MCP or the assistant ([core ADR 0028](core/docs/decisions/0028-data-masking.md)) |
 
 ## Out of scope
 
@@ -661,6 +662,7 @@ Answered by the maintainer on 2026-11-13.
 - KDE-native styling: the Linux app runs with the Adwaita style everywhere
 - An Android app, for now (D-07)
 - G-06 and G-12 (D-05)
+- A-12 on Linux and Windows (D-08)
 
 ## Sources
 

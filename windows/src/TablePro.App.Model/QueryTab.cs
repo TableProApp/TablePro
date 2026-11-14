@@ -110,6 +110,13 @@ public sealed class QueryTab : IWorkspaceTab
     public SessionTab Snapshot() =>
         new() { Kind = TabKind.Query, Title = Title, Sql = _view.WholeText, Database = Database };
 
+    // The server rolls the transaction back once the app ends, so a relaunch can say so.
+    public SessionTab WithPendingWork(SessionTab snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return WorkspaceNotices.Holds(Transaction) ? snapshot with { HeldTransaction = true } : snapshot;
+    }
+
     public async Task RunAsync()
     {
         if (IsRunning || _confirming || _work.IsClosed)

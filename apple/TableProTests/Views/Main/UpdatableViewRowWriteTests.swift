@@ -12,7 +12,6 @@ extension GlobalStateSuites {
             let coordinator = MainContentCoordinator(
                 connection: TestFixtures.makeConnection(database: "shop", type: .postgresql),
                 tabManager: QueryTabManager(),
-                changeManager: DataChangeManager(),
                 toolbarState: ConnectionToolbarState()
             )
             coordinator.openTableTab(TableInfo(name: "v_orders", type: .view, rowCount: nil, schema: "public"))

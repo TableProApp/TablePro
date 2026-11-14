@@ -361,11 +361,6 @@ extension QueryExecutionCoordinator {
         }
         parent.toolbarState.isResultsCollapsed = false
 
-        if parent.tabManager.selectedTabId == tabId {
-            parent.changeManager.clearChangesAndUndoHistory()
-            parent.changeManagerMatchesSelectedResult()
-        } else {
-            parent.dropParkedEdits(ofBackgroundTab: tabId)
-        }
+        parent.dropEdits(ofReplacedResultIn: tabId)
     }
 }

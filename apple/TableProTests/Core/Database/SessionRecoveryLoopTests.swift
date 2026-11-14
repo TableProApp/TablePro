@@ -317,7 +317,9 @@ struct SessionRecoveryLoopTests {
         #expect(!manager.sessionTransactions.holdsTransaction(connectionId: fixture.id, container: "app"))
         #expect(manager.sessionLanes.hasLoss(database: "app", for: fixture.id))
         let error = await #expect(throws: DatabaseError.self) {
-            try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .untracked) { _ in () }
+            try await manager.withScopedDriver(
+                scope: scope, route: .sessionDriver, cancellation: .untracked, sessionWork: .statements
+            ) { _ in () }
         }
         #expect(error?.localizedDescription.contains(DatabaseManager.parkedTransactionLostMessage(database: "app")) == true)
         #expect(!manager.sessionLanes.hasLoss(database: "app", for: fixture.id))
@@ -358,16 +360,27 @@ struct SessionRecoveryLoopTests {
         await loop.value
     }
 
-    private func runNextStatement(_ fixture: Fixture, ownsSessionState: Bool = true) async throws {
-        let scope = DatabaseScope(connectionId: fixture.id, database: "app", schema: nil)
+    private func runNextStatement(
+        _ fixture: Fixture,
+        sessionWork: SessionWork = .statements,
+        onTemporaryTable: Bool = false
+    ) async throws {
+        let table = DatabaseScope(connectionId: fixture.id, database: "app", schema: nil)
         try await fixture.manager.withScopedDriver(
-            scope: scope, route: .sessionDriver, cancellation: .untracked, ownsSessionState: ownsSessionState
+            scope: onTemporaryTable ? table.sessionBound : table,
+            route: .sessionDriver,
+            cancellation: .untracked,
+            sessionWork: sessionWork
         ) { _ in () }
     }
 
-    private func nextStatementRefusal(_ fixture: Fixture) async -> DatabaseError? {
+    private func nextStatementRefusal(
+        _ fixture: Fixture,
+        sessionWork: SessionWork = .statements,
+        onTemporaryTable: Bool = false
+    ) async -> DatabaseError? {
         do {
-            try await runNextStatement(fixture)
+            try await runNextStatement(fixture, sessionWork: sessionWork, onTemporaryTable: onTemporaryTable)
             return nil
         } catch {
             return error as? DatabaseError
@@ -413,10 +426,34 @@ struct SessionRecoveryLoopTests {
         await cleanUp(fixture)
     }
 
-    // A grid save, an Explain or an MCP statement takes the report as the user's statement would, as a lost
-    // transaction's report always went.
-    @Test("The first turn that owns the session after the loss is refused once, whatever work it is, and the next runs")
-    func firstOwningTurnTakesTheStateReport() async throws {
+    @Test("The app's own work and the next statement are each refused once with the whole loss; reads never are")
+    func appWorkAndStatementsAreEachToldOnce() async throws {
+        let fixture = makeFixture()
+        let manager = fixture.manager
+        fixture.driver.sessionTransactionStateToReturn = .inTransaction
+        try await runUserStatements(["SET XACT_ABORT ON"], on: fixture)
+
+        try await recover(fixture)
+
+        let expected = DatabaseManager.sessionLostMessage(
+            database: "app", loss: SessionLoss(transaction: true, state: .sessionSettings)
+        )
+        // A grid save would have joined the lost transaction, so it is not let to commit on its own unannounced.
+        let appRefusal = await nextStatementRefusal(fixture, sessionWork: .app)
+        #expect(appRefusal?.localizedDescription.contains(expected) == true)
+        try await runNextStatement(fixture, sessionWork: .app)
+        try await runNextStatement(fixture, sessionWork: .independent)
+        #expect(manager.sessionLanes.hasLoss(database: "app", for: fixture.id))
+
+        let refusal = await nextStatementRefusal(fixture)
+        #expect(refusal?.localizedDescription.contains(expected) == true)
+        #expect(!manager.sessionLanes.hasLoss(database: "app", for: fixture.id))
+        try await runNextStatement(fixture)
+        await cleanUp(fixture)
+    }
+
+    @Test("Work on a temporary table the lost session took is refused without taking the report, until a statement takes it")
+    func temporaryTableWorkIsRefusedWhileTheLossStands() async throws {
         let fixture = makeFixture()
         let manager = fixture.manager
         fixture.driver.sessionTransactionStateToReturn = .idle
@@ -424,16 +461,22 @@ struct SessionRecoveryLoopTests {
 
         try await recover(fixture)
 
-        let scope = DatabaseScope(connectionId: fixture.id, database: "app", schema: nil)
-        let error = await #expect(throws: DatabaseError.self) {
-            try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .protectedWrite) { _ in () }
-        }
+        let gone = DatabaseManager.temporaryTableLostMessage(database: "app")
+        let appRefusal = await nextStatementRefusal(fixture, sessionWork: .app, onTemporaryTable: true)
+        #expect(appRefusal?.localizedDescription.contains(gone) == true)
+        let readRefusal = await nextStatementRefusal(fixture, sessionWork: .independent, onTemporaryTable: true)
+        #expect(readRefusal?.localizedDescription.contains(gone) == true)
+        #expect(await nextStatementRefusal(fixture, sessionWork: .app) != nil)
+        try await runNextStatement(fixture, sessionWork: .app)
+        #expect(manager.sessionLanes.hasLoss(database: "app", for: fixture.id))
+
+        let statementRefusal = await nextStatementRefusal(fixture, onTemporaryTable: true)
         let expected = DatabaseManager.sessionLostMessage(
             database: "app", loss: SessionLoss(transaction: false, state: .temporaryObjects)
         )
-        #expect(error?.localizedDescription.contains(expected) == true)
+        #expect(statementRefusal?.localizedDescription.contains(expected) == true)
         #expect(!manager.sessionLanes.hasLoss(database: "app", for: fixture.id))
-        try await runNextStatement(fixture)
+        try await runNextStatement(fixture, sessionWork: .app, onTemporaryTable: true)
         await cleanUp(fixture)
     }
 
@@ -504,7 +547,7 @@ struct SessionRecoveryLoopTests {
         try await runUserStatements(["DECLARE c CURSOR FOR SELECT 1"], on: fixture)
 
         try await recover(fixture)
-        try await runNextStatement(fixture, ownsSessionState: false)
+        try await runNextStatement(fixture, sessionWork: .independent)
 
         #expect(manager.sessionLanes.hasLoss(database: "app", for: fixture.id))
         let refusal = await nextStatementRefusal(fixture)
