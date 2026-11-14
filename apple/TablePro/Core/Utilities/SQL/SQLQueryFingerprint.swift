@@ -69,10 +69,6 @@ enum SQLQueryFingerprint {
             case .comment, .whitespace, .directive:
                 continue
 
-            // MySQL's `/*! ... */` hint arrives as one token, and it was a comment to the shape before grammars.
-            case .string where token.value.hasPrefix("/*"):
-                continue
-
             // `@@version` names a server variable: two of them are two shapes, and neither is a literal.
             case .placeholder where token.value.hasPrefix("@@"):
                 parts.append(Part(token.value))
@@ -209,6 +205,10 @@ enum SQLQueryFingerprint {
     private static func tokens(of source: String, grammar: SQLLexicalGrammar) -> [SQLToken] {
         let tokenizer = SQLTokenizer()
         return tokenizer.tokenize(source, grammar: grammar).flatMap { token -> [SQLToken] in
+            // MySQL's `/*! ... */` hint arrives as one string token; to the shape it is a comment.
+            if token.type == .string, token.value.hasPrefix("/*") {
+                return [SQLToken(type: .comment, value: token.value)]
+            }
             guard token.type == .directive else { return [token] }
             return SQLStatementScanner.executableStatements(in: token.value, grammar: grammar).flatMap { statement in
                 tokenizer.tokenize(statement.sql, grammar: grammar.subtracting(.psqlScripts))

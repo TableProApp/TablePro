@@ -205,4 +205,10 @@ struct SQLQueryFingerprintTests {
         #expect(hash("SELECT * FROM \u{27E8}users\u{27E9}", .surrealdb) == hash("SELECT * FROM users", .surrealdb))
         #expect(hash("SELECT * FROM \u{27E8}users\u{27E9}", .surrealdb) != hash("SELECT * FROM \u{27E8}orders\u{27E9}", .surrealdb))
     }
+
+    @Test("A MySQL hint leaves the sign after it on its literal")
+    func hintIsNotAnOperand() {
+        #expect(hash("SELECT /*!40001 SQL_NO_CACHE */ -1", .mysql) == hash("SELECT /*!40001 SQL_NO_CACHE */ 1", .mysql))
+        #expect(normalize("SELECT /*!40001 SQL_NO_CACHE */ -1", .mysql) == "SELECT ?")
+    }
 }

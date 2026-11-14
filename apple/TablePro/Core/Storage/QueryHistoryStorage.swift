@@ -106,7 +106,13 @@ actor QueryHistoryStorage {
         createFingerprintIndex()
         createPlanSnapshotStorage()
         createRewindSnapshotStorage()
-        resetFingerprintsReadWithoutGrammar()
+        guard resetFingerprintsReadWithoutGrammar() else {
+            // Hashes of two readings would split every group, so the store stays closed as for a failed migration.
+            Self.logger.error("Query history fingerprint reset failed; the store stays closed")
+            sqlite3_close_v2(pointer)
+            dbHandle.pointer = nil
+            return
+        }
         protectDatabaseFiles(at: dbPath)
     }
 
@@ -231,16 +237,17 @@ actor QueryHistoryStorage {
 
     // Before version 6 a fingerprint was read without the engine's grammar. The backfill hashes a zero again, so a
     // group keeps the runs from before the upgrade.
-    private func resetFingerprintsReadWithoutGrammar() {
-        guard userVersion() < 6, beginTransaction() else { return }
+    private func resetFingerprintsReadWithoutGrammar() -> Bool {
+        guard userVersion() < 6 else { return true }
+        guard beginTransaction() else { return false }
         guard execute("UPDATE history SET fingerprint_hash = 0;"),
               execute("UPDATE plan_snapshots SET fingerprint_hash = 0;"),
               setUserVersion(6)
         else {
             rollbackTransaction()
-            return
+            return false
         }
-        commitTransaction()
+        return commitTransaction()
     }
 
     // first_row_time and server_time stay NULL for older rows: COALESCE falls back to execution_time.
