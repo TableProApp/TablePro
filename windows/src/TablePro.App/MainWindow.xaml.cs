@@ -285,7 +285,15 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
     }
 
-    private void OnRecentFilesChanged(object? sender, EventArgs e) => ShowRecentFiles();
+    // session.json keeps the list, so a change is written as any other session change is.
+    private void OnRecentFilesChanged(object? sender, EventArgs e)
+    {
+        ShowRecentFiles();
+        if (IsPrimary)
+        {
+            SessionChanged();
+        }
+    }
 
     // Built again when the list changes, in each window's own menu bar.
     private void ShowRecentFiles()
@@ -665,11 +673,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         open.View.SessionChanged += (_, _) => SessionChanged();
         open.View.EditRequested += async (_, _) => await EditAsync(open);
         open.View.DatabaseRequested += (_, database) => OpenDatabase(open, database);
-        open.View.FileUsed += (_, path) =>
-        {
-            _workbench.UseFile(path);
-            SessionChanged();
-        };
+        open.View.FileUsed += (_, path) => _workbench.UseFile(path);
         open.View.OpenFilesRequested += async (_, paths) =>
         {
             foreach (var path in paths)
