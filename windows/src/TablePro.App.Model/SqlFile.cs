@@ -1,3 +1,4 @@
+using System.Security.AccessControl;
 using System.Text;
 
 namespace TablePro.App.Model;
@@ -139,7 +140,7 @@ public static class SqlFile
         var moved = false;
         try
         {
-            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var stream = CreateBeside(temporary, full))
             {
                 if (format.ByteOrderMark)
                 {
@@ -151,7 +152,16 @@ public static class SqlFile
                 stream.Flush(flushToDisk: true);
             }
 
-            File.Move(temporary, full, overwrite: true);
+            // Replace keeps the file's own attributes and access list, which a move would swap for the folder's.
+            if (File.Exists(full))
+            {
+                File.Replace(temporary, full, destinationBackupFileName: null, ignoreMetadataErrors: false);
+            }
+            else
+            {
+                File.Move(temporary, full);
+            }
+
             moved = true;
         }
         finally
@@ -163,6 +173,31 @@ public static class SqlFile
         }
 
         return Stamp(full) ?? throw new FileNotFoundException(null, full);
+    }
+
+    // On Windows the new bytes take the access list of the file they replace from the first write, not the folder's.
+    private static FileStream CreateBeside(string temporary, string destination)
+    {
+        if (OperatingSystem.IsWindows() && File.Exists(destination))
+        {
+            FileSecurity? security = null;
+            try
+            {
+                security = new FileInfo(destination).GetAccessControl(AccessControlSections.Access);
+            }
+            catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+            {
+                // The access list cannot be read; File.Replace still carries it over once the write is done.
+            }
+
+            if (security is not null)
+            {
+                return new FileInfo(temporary).Create(
+                    FileMode.CreateNew, FileSystemRights.Write, FileShare.None, 4096, FileOptions.None, security);
+            }
+        }
+
+        return new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None);
     }
 
     // Null when the file is gone.
