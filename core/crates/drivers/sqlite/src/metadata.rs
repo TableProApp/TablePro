@@ -348,6 +348,7 @@ async fn inbound_keys(
         .map(|row| {
             Ok(InboundKeyRow {
                 child: text(row, "child")?,
+                child_sql: row.try_get("child_sql").map_err(map_error)?,
                 child_keys: usize::try_from(row.try_get::<i64, _>("child_keys").map_err(map_error)?).unwrap_or(0),
                 id: row.try_get("id").map_err(map_error)?,
                 from: text(row, "from")?,
@@ -355,20 +356,15 @@ async fn inbound_keys(
             })
         })
         .collect::<Result<Vec<_>, DriverError>>()?;
-    // Read once per child, not on every key column's row: a child declaring thousands of keys would repeat its
-    // whole CREATE TABLE in each.
-    let mut child_sql: HashMap<String, Option<String>> = HashMap::new();
-    for row in &rows {
-        if !child_sql.contains_key(&row.child) {
-            let child = TableRef::new(table.schema.clone(), row.child.clone());
-            child_sql.insert(row.child.clone(), create_statement(connection, &child).await?);
-        }
-    }
+    let child_sql: HashMap<String, Option<String>> = rows
+        .iter()
+        .map(|row| (row.child.clone(), row.child_sql.clone()))
+        .collect();
     let parent_sql = match rows.is_empty() {
         true => None,
         false => create_statement(connection, table).await?,
     };
-    let mut keys = inbound_foreign_keys(table.schema.as_deref(), rows, &shape.primary_key(), &child_sql);
+    let mut keys = inbound_foreign_keys(table.schema.as_deref(), rows, &shape.primary_key());
     for key in &mut keys {
         for column in &mut key.referenced_columns {
             *column = declared_spelling(column, shape.columns.iter().map(|declared| declared.name.as_str()));
