@@ -489,6 +489,18 @@ public sealed class QueryTabFileTests : IDisposable
         Assert.Equal("select 1;", _view.WholeText);
     }
 
+    [Fact]
+    public async Task ARestoredTabWhoseFileWentWhileTheAppWasClosedSaysSoOnceRead()
+    {
+        _view.WholeText = "select 'kept';";
+        var tab = Restoring(Path.Combine(_directory, "gone.sql"));
+
+        await tab.LoadRestoredFileAsync(null, unsaved: true);
+
+        Assert.Equal<DiskChange>([DiskChange.Gone], _files.Changes);
+        Assert.Equal("select 'kept';", _view.WholeText);
+    }
+
     private QueryTab Restoring(string path) => new(
         "report.sql",
         _session,

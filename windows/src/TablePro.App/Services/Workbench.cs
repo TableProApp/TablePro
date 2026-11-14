@@ -260,14 +260,17 @@ internal sealed class Workbench : IDisposable
         }
     }
 
-    // Every connection's runs, pinned ones too, as Settings' Clear history asks.
-    public async Task ClearHistoryAsync()
+    // Every connection's runs, pinned ones too, as Settings' Clear history asks. False when the store could not open.
+    public async Task<bool> ClearHistoryAsync()
     {
-        if (await GetHistoryAsync().ConfigureAwait(true) is { } history)
+        if (await GetHistoryAsync().ConfigureAwait(true) is not { } history)
         {
-            await history.ClearAsync().ConfigureAwait(true);
-            HistoryCleared?.Invoke(this, EventArgs.Empty);
+            return false;
         }
+
+        await history.ClearAsync().ConfigureAwait(true);
+        HistoryCleared?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     // The Chinook sample is copied out of the app once, so edits to it stay.

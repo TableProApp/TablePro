@@ -252,8 +252,8 @@ public sealed partial class SettingsView : UserControl
         ClearHistoryButton.IsEnabled = false;
         try
         {
-            await _workbench.ClearHistoryAsync().ConfigureAwait(true);
-            ClearHistoryCard.Description = Strings.Get("ClearHistoryDone");
+            ClearHistoryCard.Description = Strings.Get(
+                await _workbench.ClearHistoryAsync().ConfigureAwait(true) ? "ClearHistoryDone" : "ClearHistoryUnavailable");
         }
         catch (TableProException exception)
         {

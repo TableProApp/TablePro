@@ -212,7 +212,8 @@ public sealed class QueryTab : IWorkspaceTab
         var answer = await _files.AskSaveBeforeCloseAsync(Title, offerSave: true).ConfigureAwait(true);
         return answer switch
         {
-            SaveBeforeClose.Save => await SaveAsync().ConfigureAwait(true),
+            // Text typed while the file was written is still unsaved, so the tab stays.
+            SaveBeforeClose.Save => await SaveAsync().ConfigureAwait(true) && !HasUnsavedChanges,
             SaveBeforeClose.DontSave => true,
             _ => false,
         };
@@ -473,6 +474,8 @@ public sealed class QueryTab : IWorkspaceTab
 
         IsDirty = TextDiffers();
         StateChanged?.Invoke(this, EventArgs.Empty);
+        // A check asked for while the file was read found nothing to compare with, so it runs now.
+        await CheckDiskOnceAsync().ConfigureAwait(true);
     }
 
     // The tab's text becomes the file's, dropping what was typed since.

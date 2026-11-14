@@ -3507,6 +3507,9 @@ New fingerprint: {2}</value>
   <data name="ClearHistoryConfirm" xml:space="preserve">
     <value>Clear history</value>
   </data>
+  <data name="ClearHistoryUnavailable" xml:space="preserve">
+    <value>The history could not be opened, so nothing was cleared.</value>
+  </data>
   <data name="ClearHistoryDone" xml:space="preserve">
     <value>The history is empty.</value>
   </data>
