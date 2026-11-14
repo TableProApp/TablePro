@@ -3,7 +3,7 @@
 //! `catalog` owns the SQL and what the rows mean. This runs it.
 
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, HashMap, hash_map};
+use std::collections::{BTreeMap, HashMap, HashSet, hash_map};
 
 use futures::TryStreamExt;
 use sqlx::sqlite::{SqliteConnection as SqlxConnection, SqliteRow};
@@ -18,13 +18,15 @@ use tablepro_core::meta::{
     RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
 use tablepro_core::sql_syntax::{SqlGrammar, qualify_created_name, terminated};
-use tablepro_core::{CatalogBudget, DriverError, ForeignKeyInfo, ServerCode, ServerDiagnostics, UnsupportedFeature};
+use tablepro_core::{
+    ByteLimit, CatalogBudget, DriverError, ForeignKeyInfo, ServerCode, ServerDiagnostics, UnsupportedFeature,
+};
 
 use crate::catalog::{
     self, InboundKeyColumn, ListedKeyColumn, MAIN_SCHEMA, SchemaRow, SqliteColumnRow, TableFacts, foreign_key_names,
     generated_expressions, inbound_foreign_keys, select_dependents,
 };
-use crate::ddl::{DeclaredComparisons, declared_descending_key, declared_foreign_key_names};
+use crate::ddl::{DeclaredComparisons, declared_descending_key, declared_foreign_key_names, foreign_key_list_bytes};
 use crate::errors::{SQLITE_ERROR, map_error};
 use crate::index_sql::read_index_sql;
 
@@ -142,11 +144,8 @@ pub(crate) async fn fetch_foreign_keys(
     table: &TableRef,
 ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
     let mut budget = CatalogBudget::default();
-    let keys = foreign_key_rows(connection, table, &mut budget).await?;
-    let create = match keys.is_empty() {
-        true => None,
-        false => create_statement(connection, table, &mut budget).await?,
-    };
+    let create = create_statement(connection, table, &mut budget).await?;
+    let keys = foreign_key_rows(connection, table, create.as_deref(), &mut budget).await?;
     resolve_foreign_keys(connection, table, keys, create.as_deref(), &mut budget).await
 }
 
@@ -155,11 +154,11 @@ pub(crate) async fn fetch_outbound_foreign_keys(
     table: &TableRef,
 ) -> Result<Vec<OutboundForeignKey>, DriverError> {
     let mut budget = CatalogBudget::default();
-    let keys = foreign_key_rows(connection, table, &mut budget).await?;
+    let create = create_statement(connection, table, &mut budget).await?;
+    let keys = foreign_key_rows(connection, table, create.as_deref(), &mut budget).await?;
     if keys.is_empty() {
         return Ok(Vec::new());
     }
-    let create = create_statement(connection, table, &mut budget).await?;
     let keys = resolve_foreign_keys(connection, table, keys, create.as_deref(), &mut budget).await?;
     let child = create.as_deref().map(DeclaredComparisons::read);
     release(&mut budget, create);
@@ -212,8 +211,10 @@ pub(crate) async fn fetch_outbound_foreign_keys(
 async fn foreign_key_rows(
     connection: &mut SqlxConnection,
     table: &TableRef,
+    create_statement: Option<&str>,
     budget: &mut CatalogBudget,
 ) -> Result<BTreeMap<i64, (ForeignKeyInfo, bool)>, DriverError> {
+    budget.fits(create_statement.map_or(0, foreign_key_list_bytes))?;
     let schema = schema_of(table);
     let mut rows = sqlx::query(catalog::FOREIGN_KEY_LIST_SQL)
         .bind(table.name.as_str())
@@ -424,10 +425,6 @@ async fn inbound_keys(
     shape: &TableShape,
     budget: &mut CatalogBudget,
 ) -> Result<Vec<InboundForeignKey>, DriverError> {
-    let mut children = inbound_columns(connection, table, budget).await?;
-    if children.is_empty() {
-        return Ok(Vec::new());
-    }
     let parent_sql = create_statement(connection, table, budget).await?;
     let parent = Parent {
         table,
@@ -436,58 +433,115 @@ async fn inbound_keys(
         primary_key: shape.primary_key(),
     };
     release(budget, parent_sql);
-    let mut keys = Vec::new();
+    let mut keys = small_children_keys(connection, &parent, budget).await?;
     let schema_sql = quote(schema_of(table));
-    let mut rows = sqlx::query(AssertSqlSafe(catalog::inbound_children_sql(&schema_sql)))
-        .bind(table.name.as_str())
-        .bind(schema_of(table))
-        .fetch(&mut *connection);
-    while let Some(row) = rows.try_next().await.map_err(map_error)? {
-        let name: &str = row.try_get("child").map_err(map_error)?;
-        let Some((child, columns)) = children.remove_entry(name) else {
-            continue;
-        };
-        let sql = budget.keep_optional(row.try_get("sql").map_err(map_error)?)?;
-        let count = usize::try_from(row.try_get::<i64, _>("child_keys").map_err(map_error)?).unwrap_or(0);
-        keys.extend(parent.keys_of(child, columns, sql, count, budget)?);
+    let mut large = Vec::new();
+    {
+        let mut rows = sqlx::query_as::<_, (i64, String)>(AssertSqlSafe(catalog::large_children_sql(&schema_sql)))
+            .bind(table.name.as_str())
+            .bind(schema_of(table))
+            .bind(i64::try_from(ByteLimit::CATALOG_DEFAULT.get()).unwrap_or(i64::MAX))
+            .fetch(&mut *connection);
+        while let Some((rowid, child)) = rows.try_next().await.map_err(map_error)? {
+            large.push((rowid, budget.keep(child)?));
+        }
     }
-    // A child the second read no longer saw keeps made-up names.
-    for (child, columns) in children {
-        keys.extend(parent.keys_of(child, columns, None, 0, budget)?);
+    // One child at a time: its CREATE TABLE is let go before the next is read.
+    for (rowid, child) in large {
+        let row: Option<(String, Option<String>)> = sqlx::query_as(AssertSqlSafe(catalog::schema_row_sql(&schema_sql)))
+            .bind(rowid)
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(map_error)?;
+        // A row another connection gave to another table since is not this child's.
+        let sql = budget.keep_optional(row.filter(|(name, _)| *name == child).and_then(|(_, sql)| sql))?;
+        budget.fits(sql.as_deref().map_or(0, foreign_key_list_bytes))?;
+        let (columns, count) = key_columns_into(connection, &child, table, budget).await?;
+        match columns.is_empty() {
+            true => {
+                release(budget, sql);
+                budget.release_text(&child);
+            }
+            false => keys.extend(parent.keys_of(child, columns, sql, count, budget)?),
+        }
     }
     keys.sort_by(|left, right| left.table.name.cmp(&right.table.name));
     Ok(keys)
 }
 
-/// Each child's key columns, its name read once rather than kept on
-/// every row.
-async fn inbound_columns(
+/// The keys of the small referring tables, in one read: a child's rows
+/// come together, each with its CREATE TABLE, kept from its first row.
+async fn small_children_keys(
     connection: &mut SqlxConnection,
-    table: &TableRef,
+    parent: &Parent<'_>,
     budget: &mut CatalogBudget,
-) -> Result<HashMap<String, Vec<InboundKeyColumn>>, DriverError> {
-    let schema_sql = quote(schema_of(table));
-    let mut rows = sqlx::query(AssertSqlSafe(catalog::inbound_keys_sql(&schema_sql)))
-        .bind(table.name.as_str())
-        .bind(schema_of(table))
+) -> Result<Vec<InboundForeignKey>, DriverError> {
+    let schema_sql = quote(schema_of(parent.table));
+    let mut rows = sqlx::query(AssertSqlSafe(catalog::small_children_keys_sql(&schema_sql)))
+        .bind(parent.table.name.as_str())
+        .bind(schema_of(parent.table))
+        .bind(i64::try_from(ByteLimit::CATALOG_DEFAULT.get()).unwrap_or(i64::MAX))
         .fetch(&mut *connection);
-    let mut children: HashMap<String, Vec<InboundKeyColumn>> = HashMap::new();
+    let mut keys = Vec::new();
+    let mut child: Option<(String, Option<String>, usize, Vec<InboundKeyColumn>)> = None;
     while let Some(row) = rows.try_next().await.map_err(map_error)? {
-        let column = InboundKeyColumn {
-            id: row.try_get("id").map_err(map_error)?,
+        let name: &str = row.try_get("child").map_err(map_error)?;
+        if child.as_ref().is_none_or(|(read, ..)| read != name) {
+            if let Some((read, sql, count, columns)) = child.take() {
+                keys.extend(parent.keys_of(read, columns, sql, count, budget)?);
+            }
+            child = Some((
+                budget.keep(name.to_owned())?,
+                budget.keep_optional(row.try_get("sql").map_err(map_error)?)?,
+                usize::try_from(row.try_get::<i64, _>("child_keys").map_err(map_error)?).unwrap_or(0),
+                Vec::new(),
+            ));
+        }
+        if let Some((_, _, _, columns)) = &mut child {
+            columns.push(InboundKeyColumn {
+                id: row.try_get("id").map_err(map_error)?,
+                seq: row.try_get("seq").map_err(map_error)?,
+                from: budget.keep(text(&row, "from")?)?,
+                to: budget.keep_optional(row.try_get("to").map_err(map_error)?)?,
+            });
+        }
+    }
+    if let Some((read, sql, count, columns)) = child {
+        keys.extend(parent.keys_of(read, columns, sql, count, budget)?);
+    }
+    Ok(keys)
+}
+
+/// The columns of the child's keys that point at `parent`, and how many
+/// keys the child has wherever they point, since the ids number them
+/// all. SQLite compares a key's parent folding ASCII letters alone.
+async fn key_columns_into(
+    connection: &mut SqlxConnection,
+    child: &str,
+    parent: &TableRef,
+    budget: &mut CatalogBudget,
+) -> Result<(Vec<InboundKeyColumn>, usize), DriverError> {
+    let mut rows = sqlx::query(catalog::FOREIGN_KEY_LIST_SQL)
+        .bind(child)
+        .bind(schema_of(parent))
+        .fetch(&mut *connection);
+    let mut ids = HashSet::new();
+    let mut columns = Vec::new();
+    while let Some(row) = rows.try_next().await.map_err(map_error)? {
+        let id: i64 = row.try_get("id").map_err(map_error)?;
+        ids.insert(id);
+        let target: &str = row.try_get("table").map_err(map_error)?;
+        if !target.eq_ignore_ascii_case(&parent.name) {
+            continue;
+        }
+        columns.push(InboundKeyColumn {
+            id,
             seq: row.try_get("seq").map_err(map_error)?,
             from: budget.keep(text(&row, "from")?)?,
             to: budget.keep_optional(row.try_get("to").map_err(map_error)?)?,
-        };
-        let child: &str = row.try_get("child").map_err(map_error)?;
-        match children.get_mut(child) {
-            Some(columns) => columns.push(column),
-            None => {
-                children.insert(budget.keep(child.to_owned())?, vec![column]);
-            }
-        }
+        });
     }
-    Ok(children)
+    Ok((columns, ids.len()))
 }
 
 /// The table the inbound keys point at, read once for all its children.
@@ -681,7 +735,7 @@ pub(crate) async fn fetch_table_definition(
         columns: key_columns,
     });
     let indexes = indexes(connection, table, &shape, &mut budget).await?;
-    let foreign_keys = foreign_key_rows(connection, table, &mut budget).await?;
+    let foreign_keys = foreign_key_rows(connection, table, create_statement.as_deref(), &mut budget).await?;
     let foreign_keys = resolve_foreign_keys(
         connection,
         table,

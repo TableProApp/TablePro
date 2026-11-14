@@ -401,6 +401,35 @@ async fn a_large_catalog_reads_whole() {
     connection.close().await.unwrap();
 }
 
+// Only tables whose CREATE TABLE names the parent are asked for their keys, so a name written with its quote doubled,
+// or in other case, still finds them.
+#[tokio::test]
+async fn keys_into_a_table_are_found_however_its_name_is_written() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE \"we\"\"ird's\" (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE doubled (id INTEGER PRIMARY KEY, parent INTEGER REFERENCES \"WE\"\"IRD's\")",
+            "CREATE TABLE quoted (id INTEGER PRIMARY KEY, parent INTEGER REFERENCES 'we\"ird''s' (id))",
+            "CREATE TABLE ticked (id INTEGER PRIMARY KEY, parent INTEGER REFERENCES `we\"ird's`)",
+            "CREATE TABLE unrelated (id INTEGER PRIMARY KEY, other INTEGER REFERENCES doubled)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let inbound = connection
+        .fetch_inbound_foreign_keys(&TableRef::unqualified("we\"ird's"), call())
+        .await
+        .unwrap();
+
+    let children: Vec<&str> = inbound.iter().map(|key| key.table.name.as_str()).collect();
+    assert_eq!(children, ["doubled", "quoted", "ticked"]);
+    connection.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn dependents_and_source_are_read() {
     let file = TestFile::new().await;

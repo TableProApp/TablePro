@@ -14,24 +14,37 @@ use tablepro_core::{DriverError, ServerCode, ServerDiagnostics};
 
 use crate::errors::{SQLITE_CONSTRAINT, SQLITE_CONSTRAINT_FOREIGNKEY};
 
-// The rows of `foreign_key_check`, in its order. A file can hold millions of rows that break one key, so each row
-// is the key's index and its rowid rather than its own copy of the names. A rowid is None for a WITHOUT ROWID child
-// table, which has no rowid to name the row by, and for one whose rows the batch renumbers.
+// The rows of `foreign_key_check` for each child table checked, in its order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Violations {
+    tables: Vec<TableViolations>,
+}
+
+// A file can hold millions of rows that break thousands of keys of one table with a long name, so the table's name is
+// held once, each key once, and each row as the index of the key it breaks and its rowid. A rowid is None for a
+// WITHOUT ROWID child table, which has no rowid to name the row by, and for one whose rows the batch renumbers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TableViolations {
+    table: String,
     keys: Vec<BrokenKey>,
     rows: Vec<(usize, Option<i64>)>,
 }
 
-// A foreign key of one child table that some row breaks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BrokenKey {
-    pub table: String,
     pub parent: String,
     pub key: ViolatedKey,
 }
 
-impl Violations {
+impl TableViolations {
+    pub(crate) fn new(table: String) -> Self {
+        Self {
+            table,
+            keys: Vec::new(),
+            rows: Vec::new(),
+        }
+    }
+
     pub(crate) fn add_key(&mut self, key: BrokenKey) -> usize {
         self.keys.push(key);
         self.keys.len() - 1
@@ -40,12 +53,17 @@ impl Violations {
     pub(crate) fn add_row(&mut self, key: usize, rowid: Option<i64>) {
         self.rows.push((key, rowid));
     }
+}
+
+impl Violations {
+    pub(crate) fn push(&mut self, table: TableViolations) {
+        if !table.rows.is_empty() {
+            self.tables.push(table);
+        }
+    }
 
     pub(crate) fn extend(&mut self, other: Violations) {
-        let offset = self.keys.len();
-        self.keys.extend(other.keys);
-        self.rows
-            .extend(other.rows.into_iter().map(|(key, rowid)| (key + offset, rowid)));
+        self.tables.extend(other.tables);
     }
 }
 
@@ -95,19 +113,25 @@ impl Renames {
     /// itself.
     pub(crate) fn apply(&self, baseline: Violations) -> Violations {
         Violations {
-            keys: baseline
-                .keys
+            tables: baseline
+                .tables
                 .into_iter()
-                .map(|broken| BrokenKey {
-                    key: ViolatedKey {
-                        columns: self.column_names(&broken.table, broken.key.columns),
-                        parent_columns: self.column_names(&broken.parent, broken.key.parent_columns),
-                    },
-                    table: self.table_name(broken.table),
-                    parent: self.table_name(broken.parent),
+                .map(|checked| TableViolations {
+                    keys: checked
+                        .keys
+                        .into_iter()
+                        .map(|broken| BrokenKey {
+                            key: ViolatedKey {
+                                columns: self.column_names(&checked.table, broken.key.columns),
+                                parent_columns: self.column_names(&broken.parent, broken.key.parent_columns),
+                            },
+                            parent: self.table_name(broken.parent),
+                        })
+                        .collect(),
+                    table: self.table_name(checked.table),
+                    rows: checked.rows,
                 })
                 .collect(),
-            rows: baseline.rows,
         }
     }
 
@@ -130,59 +154,82 @@ impl Renames {
 /// multisets. Rows without a rowid are all alike, so for them it is the
 /// count per child, parent and key that compares.
 pub(crate) fn introduced(before: &Violations, after: &Violations) -> Vec<IntroducedViolations> {
-    let mut ids: HashMap<ViolationKey, usize> = HashMap::new();
-    let mut id_of = |broken: &BrokenKey| {
-        let next = ids.len();
-        *ids.entry(key(broken)).or_insert(next)
-    };
-    let before_ids: Vec<usize> = before.keys.iter().map(&mut id_of).collect();
-    let after_ids: Vec<usize> = after.keys.iter().map(&mut id_of).collect();
+    let mut ids = KeyIds::default();
     let mut remaining: HashMap<(usize, Option<i64>), usize> = HashMap::new();
-    for (key, rowid) in &before.rows {
-        if let Some(id) = before_ids.get(*key) {
-            *remaining.entry((*id, *rowid)).or_default() += 1;
+    for checked in &before.tables {
+        let (_, keys) = ids.of(checked);
+        for (key, rowid) in &checked.rows {
+            if let Some(id) = keys.get(*key) {
+                *remaining.entry((*id, *rowid)).or_default() += 1;
+            }
         }
     }
     let mut introduced: Vec<IntroducedViolations> = Vec::new();
-    let mut groups: HashMap<(String, String), usize> = HashMap::new();
-    for (key, rowid) in &after.rows {
-        let (Some(id), Some(broken)) = (after_ids.get(*key), after.keys.get(*key)) else {
-            continue;
-        };
-        if let Some(left) = remaining.get_mut(&(*id, *rowid))
-            && *left > 0
-        {
-            *left -= 1;
-            continue;
-        }
-        let group = (broken.table.to_lowercase(), broken.parent.to_lowercase());
-        match groups.get(&group).and_then(|index| introduced.get_mut(*index)) {
-            Some(group) => group.count += 1,
-            None => {
-                groups.insert(group, introduced.len());
-                introduced.push(IntroducedViolations {
-                    table: broken.table.clone(),
-                    parent: broken.parent.clone(),
-                    count: 1,
-                });
+    let mut groups: HashMap<(usize, String), usize> = HashMap::new();
+    for checked in &after.tables {
+        let (table, keys) = ids.of(checked);
+        let parents: Vec<String> = checked.keys.iter().map(|broken| broken.parent.to_lowercase()).collect();
+        for (key, rowid) in &checked.rows {
+            let (Some(id), Some(broken), Some(parent)) = (keys.get(*key), checked.keys.get(*key), parents.get(*key))
+            else {
+                continue;
+            };
+            if let Some(left) = remaining.get_mut(&(*id, *rowid))
+                && *left > 0
+            {
+                *left -= 1;
+                continue;
+            }
+            match groups
+                .get(&(table, parent.clone()))
+                .and_then(|index| introduced.get_mut(*index))
+            {
+                Some(group) => group.count += 1,
+                None => {
+                    groups.insert((table, parent.clone()), introduced.len());
+                    introduced.push(IntroducedViolations {
+                        table: checked.table.clone(),
+                        parent: broken.parent.clone(),
+                        count: 1,
+                    });
+                }
             }
         }
     }
     introduced
 }
 
-type ViolationKey = (String, String, Vec<String>, Vec<String>);
+// SQLite names tables and columns case-insensitively, and so does the comparison. A table's name is folded once,
+// whatever number of keys it breaks.
+#[derive(Default)]
+struct KeyIds {
+    tables: HashMap<String, usize>,
+    keys: HashMap<(usize, String, Vec<String>, Vec<String>), usize>,
+}
 
-/// SQLite names tables and columns case-insensitively, and so does the
-/// comparison.
-fn key(broken: &BrokenKey) -> ViolationKey {
-    let folded = |names: &[String]| names.iter().map(|name| name.to_lowercase()).collect();
-    (
-        broken.table.to_lowercase(),
-        broken.parent.to_lowercase(),
-        folded(&broken.key.columns),
-        folded(&broken.key.parent_columns),
-    )
+impl KeyIds {
+    fn of(&mut self, checked: &TableViolations) -> (usize, Vec<usize>) {
+        let next = self.tables.len();
+        let table = *self.tables.entry(checked.table.to_lowercase()).or_insert(next);
+        let folded = |names: &[String]| names.iter().map(|name| name.to_lowercase()).collect();
+        let keys = checked
+            .keys
+            .iter()
+            .map(|broken| {
+                let next = self.keys.len();
+                *self
+                    .keys
+                    .entry((
+                        table,
+                        broken.parent.to_lowercase(),
+                        folded(&broken.key.columns),
+                        folded(&broken.key.parent_columns),
+                    ))
+                    .or_insert(next)
+            })
+            .collect();
+        (table, keys)
+    }
 }
 
 /// The error a batch that introduced violations is rolled back with,
@@ -226,20 +273,31 @@ mod tests {
         (table, rowid, parent, columns, parent_columns)
     }
 
-    // One key per row, as two keys of the same columns compare alike.
+    // One key per row, as two keys of the same columns compare alike, and one table per name in the order it comes.
     fn found(rows: &[Row<'_>]) -> Violations {
         let owned = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect();
-        let mut violations = Violations::default();
+        let mut tables: Vec<TableViolations> = Vec::new();
         for (table, rowid, parent, columns, parent_columns) in rows {
-            let key = violations.add_key(BrokenKey {
-                table: (*table).to_owned(),
+            let position = match tables.iter().position(|checked| checked.table == *table) {
+                Some(position) => position,
+                None => {
+                    tables.push(TableViolations::new((*table).to_owned()));
+                    tables.len() - 1
+                }
+            };
+            let checked = &mut tables[position];
+            let key = checked.add_key(BrokenKey {
                 parent: (*parent).to_owned(),
                 key: ViolatedKey {
                     columns: owned(columns),
                     parent_columns: owned(parent_columns),
                 },
             });
-            violations.add_row(key, *rowid);
+            checked.add_row(key, *rowid);
+        }
+        let mut violations = Violations::default();
+        for checked in tables {
+            violations.push(checked);
         }
         violations
     }
@@ -329,24 +387,26 @@ mod tests {
 
     #[test]
     fn rows_of_one_key_compare_one_for_one_and_name_their_group_in_order() {
-        let mut before = Violations::default();
-        let broken = |table: &str, parent: &str| BrokenKey {
-            table: table.to_owned(),
+        let broken = |parent: &str| BrokenKey {
             parent: parent.to_owned(),
             key: ViolatedKey {
                 columns: vec!["a".to_owned()],
                 parent_columns: Vec::new(),
             },
         };
-        let key = before.add_key(broken("t", "p"));
+        let mut checked = TableViolations::new("t".to_owned());
+        let key = checked.add_key(broken("p"));
         for rowid in 0..1_000 {
-            before.add_row(key, Some(rowid));
+            checked.add_row(key, Some(rowid));
         }
-        let mut after = before.clone();
-        let other = after.add_key(broken("t", "q"));
-        after.add_row(other, Some(5));
-        after.add_row(key, Some(1_000));
-        after.add_row(other, Some(6));
+        let mut before = Violations::default();
+        before.push(checked.clone());
+        let other = checked.add_key(broken("q"));
+        checked.add_row(other, Some(5));
+        checked.add_row(key, Some(1_000));
+        checked.add_row(other, Some(6));
+        let mut after = Violations::default();
+        after.push(checked);
 
         assert_eq!(
             introduced(&before, &after),

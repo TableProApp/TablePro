@@ -352,6 +352,27 @@ fn comparison(source: &CreateTableSource<'_>, declared: &SourceColumn) -> crate:
     crate::catalog::Comparison::of(&type_text, collation.as_deref())
 }
 
+// SQLite compiles `PRAGMA foreign_key_list` with one row per key column in its program, each with its own copy of
+// the parent's name, the column's and the parent column's: a column carrying REFERENCES thousands of times costs its
+// name thousands of times before the first row. `ROW` covers a row's opcodes and its action names. Text that does
+// not read is costed as if each REFERENCES in it named the whole text.
+pub(crate) fn foreign_key_list_bytes(sql: &str) -> usize {
+    const ROW: usize = 512;
+    let Ok(source) = CreateTableSource::read(sql) else {
+        let references = sql.to_ascii_lowercase().matches("references").count();
+        return references.saturating_mul(sql.len().saturating_add(ROW));
+    };
+    source
+        .foreign_keys()
+        .iter()
+        .flat_map(|key| {
+            key.columns.iter().enumerate().map(|(position, column)| {
+                ROW + key.target.table.len() + column.len() + key.target.columns.get(position).map_or(0, String::len)
+            })
+        })
+        .fold(0, usize::saturating_add)
+}
+
 /// A type name as SQLite keeps it, which is what its affinity and the
 /// pragmas come from: a quoted name loses its quotes and whatever
 /// follows them, as `sqlite3Dequote` does.
@@ -965,6 +986,24 @@ mod tests {
         );
         assert_eq!(declared.of("d"), None);
         assert_eq!(DeclaredComparisons::read("CREATE TABLE t (a 'unclosed)"), None);
+    }
+
+    #[test]
+    fn the_key_list_costs_each_key_column_its_names() {
+        let column = "c".repeat(1_000);
+        let repeated = format!("CREATE TABLE t (\"{column}\" INTEGER{})", " REFERENCES p".repeat(100));
+
+        assert_eq!(foreign_key_list_bytes("CREATE TABLE t (a INTEGER)"), 0);
+        assert_eq!(
+            foreign_key_list_bytes("CREATE TABLE t (a, b, FOREIGN KEY (a, b) REFERENCES pp (x, yy))"),
+            (512 + 2 + 1 + 1) + (512 + 2 + 1 + 2)
+        );
+        assert_eq!(foreign_key_list_bytes(&repeated), 100 * (512 + 1 + 1_000));
+        assert_eq!(
+            foreign_key_list_bytes("CREATE TABLE t (a REFERENCES p, b 'unclosed)"),
+            "CREATE TABLE t (a REFERENCES p, b 'unclosed)".len() + 512,
+            "text that does not read"
+        );
     }
 
     #[test]

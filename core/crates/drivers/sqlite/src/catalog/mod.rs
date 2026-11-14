@@ -88,28 +88,53 @@ pub(crate) fn dependents_sql(schema_sql: &str) -> String {
     )
 }
 
-/// Each column of another table's key that points at the table, not
-/// sorted, as `FOREIGN_KEY_LIST_SQL`. The child's CREATE TABLE comes
-/// from `inbound_children_sql`, once per child: it grows with the keys
-/// it declares.
-pub(crate) fn inbound_keys_sql(schema_sql: &str) -> String {
+/// The tables whose CREATE TABLE names the table: the ones a key can
+/// point at it from. SQLite matches a key's parent folding ASCII letters
+/// alone, as `lower` does, and a name can be written with its quote
+/// character doubled. `small` is a CREATE TABLE of at most 64 KiB whose
+/// key list cannot cost SQLite more than `?3` bytes to compile: no more
+/// key columns than REFERENCES and commas, each with three names no
+/// longer than the text and 512 bytes of opcodes.
+fn referring_tables(schema_sql: &str) -> String {
     format!(
-        "SELECT m.name AS child, f.id AS id, f.seq AS seq, f.\"from\" AS \"from\", f.\"to\" AS \"to\" \
-         FROM {schema_sql}.sqlite_schema m, pragma_foreign_key_list(m.name, ?2) f \
-         WHERE m.type = 'table' AND f.\"table\" = ?1 COLLATE NOCASE"
+        "WITH named AS (SELECT rowid, name, sql, length(CAST(sql AS BLOB)) AS bytes, \
+           (length(sql) - length(replace(lower(sql), 'references', ''))) / 10 \
+             + length(sql) - length(replace(sql, ',', '')) AS key_columns \
+           FROM {schema_sql}.sqlite_schema WHERE type = 'table' AND sql IS NOT NULL AND ( \
+           instr(lower(sql), lower(?1)) > 0 \
+           OR instr(lower(sql), lower(replace(?1, '\"', '\"\"'))) > 0 \
+           OR instr(lower(sql), lower(replace(?1, '`', '``'))) > 0 \
+           OR instr(lower(sql), lower(replace(?1, '''', ''''''))) > 0)), \
+         referring AS (SELECT rowid, name, sql, \
+           bytes <= 65536 AND (key_columns + 1) * (3 * bytes + 512) <= ?3 AS small FROM named)"
     )
 }
 
-/// The tables with a key pointing at the table, each once. `child_keys`
-/// counts every key of the child, wherever it points, since the ids
-/// number them all.
-pub(crate) fn inbound_children_sql(schema_sql: &str) -> String {
+/// Each key column of the small referring tables that points at the
+/// table, with the child's CREATE TABLE on each row, not sorted: a sort
+/// holds every row before the first, and a child's rows come together.
+pub(crate) fn small_children_keys_sql(schema_sql: &str) -> String {
     format!(
-        "SELECT m.name AS child, m.sql AS sql, \
-         (SELECT count(DISTINCT k.id) FROM pragma_foreign_key_list(m.name, ?2) k) AS child_keys \
-         FROM {schema_sql}.sqlite_schema m WHERE m.type = 'table' AND EXISTS \
-         (SELECT 1 FROM pragma_foreign_key_list(m.name, ?2) f WHERE f.\"table\" = ?1 COLLATE NOCASE)"
+        "{} SELECT m.name AS child, m.sql AS sql, f.id AS id, f.seq AS seq, f.\"from\" AS \"from\", \
+           f.\"to\" AS \"to\", (SELECT count(DISTINCT k.id) FROM pragma_foreign_key_list(m.name, ?2) k) AS child_keys \
+         FROM referring m, pragma_foreign_key_list(m.name, ?2) f \
+         WHERE m.small AND f.\"table\" = ?1 COLLATE NOCASE",
+        referring_tables(schema_sql)
     )
+}
+
+/// The other referring tables, read one at a time.
+pub(crate) fn large_children_sql(schema_sql: &str) -> String {
+    format!(
+        "{} SELECT rowid, name FROM referring WHERE NOT small ORDER BY name",
+        referring_tables(schema_sql)
+    )
+}
+
+/// One schema row by rowid, which SQLite finds without reading the
+/// others, as a lookup by name would for each of thousands of children.
+pub(crate) fn schema_row_sql(schema_sql: &str) -> String {
+    format!("SELECT name, sql FROM {schema_sql}.sqlite_schema WHERE rowid = ?1")
 }
 
 /// `sqlite_stat1` exists only once ANALYZE has run, so its presence is

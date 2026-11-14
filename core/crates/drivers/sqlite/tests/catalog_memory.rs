@@ -27,6 +27,7 @@ const BOUND: usize = 2 * ByteLimit::CATALOG_DEFAULT.get() as usize;
 const LONG: usize = 64 * 1024;
 const KEYS: usize = 4_000;
 const BROKEN_ROWS: usize = 20_000;
+const BULKY_CHILDREN: usize = 60;
 
 fn quoted(name: &str) -> String {
     format!("\"{name}\"")
@@ -36,7 +37,9 @@ fn quoted(name: &str) -> String {
 // - one column carrying REFERENCES 4,000 times, which the pragma names on every key;
 // - a child with a 64 KiB name and 4,000 keys, each of which names the child;
 // - 4,000 keys naming no columns of a parent whose primary key is 64 KiB of names, each a copy of it;
-// - 20,000 rows of a table with a 64 KiB name that break its key, which a check named on every row.
+// - 20,000 rows of a table with a 64 KiB name that break its key, which a check named on every row;
+// - one row of a table with a 64 KiB name that breaks 4,000 keys, which the check named on every key;
+// - 60 children of one parent, each CREATE TABLE 256 KiB long, which SQLite queued 50 at a time.
 fn crafted_schema() -> Vec<String> {
     let column = "c".repeat(LONG);
     let child = "n".repeat(LONG);
@@ -76,8 +79,58 @@ fn crafted_schema() -> Vec<String> {
              INSERT INTO {} SELECT i FROM n",
             quoted(&broken())
         ),
+        format!(
+            "CREATE TABLE {} (a INTEGER{})",
+            quoted(&broken_keys()),
+            " REFERENCES named_parent".repeat(KEYS)
+        ),
+        format!("INSERT INTO {} VALUES (1)", quoted(&broken_keys())),
+        "CREATE TABLE bulky_parent (id INTEGER PRIMARY KEY)".to_owned(),
     ]
+    .into_iter()
+    .chain((0..BULKY_CHILDREN).map(|child| {
+        format!(
+            "CREATE TABLE bulky_{child:02} (a INTEGER REFERENCES bulky_parent /* {} */)",
+            "x".repeat(256 * 1024)
+        )
+    }))
+    .collect()
 }
+
+fn broken_keys() -> String {
+    "k".repeat(LONG)
+}
+
+// A rebuild checks the keys its table breaks before and after; the rows that broke them already are not its own.
+fn checked_save(table: &str) -> WriteBatch {
+    let mut builder = StatementBuilder::new();
+    builder.push_sql(&format!("UPDATE {} SET a = a WHERE 0", quoted(table)));
+    WriteBatch::new(
+        WriteKind::SchemaChanges,
+        TableRef::unqualified(table),
+        vec![GuardedStatement::unguarded(builder.finish())],
+        ForeignKeyMode::SuspendedThenVerified {
+            checks: vec![ForeignKeyCheck::same_table(TableRef::unqualified(table))],
+        },
+    )
+}
+
+// How far the heap and SQLite's own memory, which the heap counter does not see, rose while `read` ran. SQLite's is 0
+// where the library keeps no count.
+async fn measured<T>(read: impl std::future::Future<Output = T>) -> (T, usize, i64) {
+    // SAFETY: these calls only read and reset SQLite's own counters.
+    let start = unsafe {
+        libsqlite3_sys::sqlite3_memory_highwater(1);
+        libsqlite3_sys::sqlite3_memory_used()
+    };
+    let (value, heap) = peak_of(read).await;
+    // SAFETY: as above.
+    let native = unsafe { libsqlite3_sys::sqlite3_memory_highwater(1) } - start;
+    (value, heap, native)
+}
+
+// SQLite compiled a crafted table's key list, a copy of its long name for each key, into gigabytes.
+const NATIVE_BOUND: i64 = 32 << 20;
 
 fn broken() -> String {
     "b".repeat(LONG)
@@ -126,10 +179,10 @@ async fn a_crafted_catalog_stops_at_the_budget() {
     let table = |name: &str| TableRef::unqualified(name);
     let child = table(&"n".repeat(LONG));
 
-    let (objects, peak) = peak_of(connection.list_objects(&ObjectScope::DefaultSchema, call())).await;
-    assert_eq!(objects.unwrap().len(), 7);
-    assert!(peak < BOUND, "listing the tables held {peak} bytes");
-    let (columns, _) = peak_of(connection.fetch_columns(&table("repeated"), call())).await;
+    let (objects, heap, _) = measured(connection.list_objects(&ObjectScope::DefaultSchema, call())).await;
+    assert_eq!(objects.unwrap().len(), 9 + BULKY_CHILDREN);
+    assert!(heap < BOUND, "listing the tables held {heap} bytes");
+    let (columns, _, _) = measured(connection.fetch_columns(&table("repeated"), call())).await;
     assert_eq!(columns.unwrap().len(), 1, "a long name alone is read");
 
     for (name, table) in [
@@ -137,38 +190,55 @@ async fn a_crafted_catalog_stops_at_the_budget() {
         ("the long child", child.clone()),
         ("pointer", table("pointer")),
     ] {
-        let (read, peak) = peak_of(connection.fetch_foreign_keys(&table, call())).await;
+        let (read, heap, native) = measured(connection.fetch_foreign_keys(&table, call())).await;
         too_large(&format!("keys of {name}"), read);
-        assert!(peak < BOUND, "keys of {name} held {peak} bytes");
-        let (read, peak) = peak_of(connection.fetch_outbound_foreign_keys(&table, call())).await;
+        assert!(
+            heap < BOUND && native < NATIVE_BOUND,
+            "keys of {name}: {heap}, {native}"
+        );
+        let (read, heap, native) = measured(connection.fetch_outbound_foreign_keys(&table, call())).await;
         too_large(&format!("outbound keys of {name}"), read);
-        assert!(peak < BOUND, "outbound keys of {name} held {peak} bytes");
-        let (read, peak) = peak_of(connection.fetch_table_definition(&table, call())).await;
+        assert!(
+            heap < BOUND && native < NATIVE_BOUND,
+            "outbound keys of {name}: {heap}, {native}"
+        );
+        let (read, heap, native) = measured(connection.fetch_table_definition(&table, call())).await;
         too_large(&format!("definition of {name}"), read);
-        assert!(peak < BOUND, "definition of {name} held {peak} bytes");
+        assert!(
+            heap < BOUND && native < NATIVE_BOUND,
+            "definition of {name}: {heap}, {native}"
+        );
     }
     for parent in ["repeated_parent", "named_parent", "wide_key"] {
-        let (read, peak) = peak_of(connection.fetch_inbound_foreign_keys(&table(parent), call())).await;
+        let (read, heap, native) = measured(connection.fetch_inbound_foreign_keys(&table(parent), call())).await;
         too_large(&format!("keys into {parent}"), read);
-        assert!(peak < BOUND, "keys into {parent} held {peak} bytes");
-        let (read, peak) = peak_of(connection.fetch_table_definition(&table(parent), call())).await;
+        assert!(
+            heap < BOUND && native < NATIVE_BOUND,
+            "keys into {parent}: {heap}, {native}"
+        );
+        let (read, heap, native) = measured(connection.fetch_table_definition(&table(parent), call())).await;
         too_large(&format!("definition of {parent}"), read);
-        assert!(peak < BOUND, "definition of {parent} held {peak} bytes");
+        assert!(
+            heap < BOUND && native < NATIVE_BOUND,
+            "definition of {parent}: {heap}, {native}"
+        );
     }
 
-    // A rebuild checks the keys its table breaks before and after; the rows that broke them already are not its own.
-    let mut builder = StatementBuilder::new();
-    builder.push_sql(&format!("UPDATE {} SET a = a WHERE 0", quoted(&broken())));
-    let batch = WriteBatch::new(
-        WriteKind::SchemaChanges,
-        table(&broken()),
-        vec![GuardedStatement::unguarded(builder.finish())],
-        ForeignKeyMode::SuspendedThenVerified {
-            checks: vec![ForeignKeyCheck::same_table(table(&broken()))],
-        },
+    for (name, table) in [("broken rows", broken()), ("broken keys", broken_keys())] {
+        let (written, heap, native) = measured(connection.write_batch(&checked_save(&table), call())).await;
+        assert!(written.is_ok(), "{name}: {written:?}");
+        assert!(
+            heap < BOUND / 8 && native < NATIVE_BOUND,
+            "checking the {name}: {heap}, {native}"
+        );
+    }
+
+    // A child's CREATE TABLE is read alone, never 50 of them queued in SQLite's reader.
+    let (inbound, heap, native) = measured(connection.fetch_inbound_foreign_keys(&table("bulky_parent"), call())).await;
+    assert_eq!(inbound.unwrap().len(), BULKY_CHILDREN);
+    assert!(
+        heap < BOUND / 8 && native < 8 << 20,
+        "keys into bulky_parent: {heap}, {native}"
     );
-    let (written, peak) = peak_of(connection.write_batch(&batch, call())).await;
-    assert!(written.is_ok(), "{written:?}");
-    assert!(peak < BOUND / 8, "checking {BROKEN_ROWS} broken rows held {peak} bytes");
     connection.close().await.unwrap();
 }

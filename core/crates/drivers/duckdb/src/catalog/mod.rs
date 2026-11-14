@@ -461,6 +461,7 @@ pub(crate) fn outbound_foreign_keys(
             None => {
                 let referenced = TableRef::new(key.ref_schema.clone(), key.ref_table.clone());
                 let collated = collated_columns(link, catalog, &referenced, budget)?;
+                budget.charge_texts(parent.0.iter().chain([&parent.1]))?;
                 parents.entry(parent).or_insert(collated)
             }
         };
@@ -485,7 +486,7 @@ fn collated_columns(
     budget: &mut CatalogBudget,
 ) -> Result<Vec<String>, DriverError> {
     let sql = table_sql(link, catalog, table, budget)?;
-    let collated = sql
+    let collated: Vec<String> = sql
         .as_deref()
         .map(|sql| {
             declared_columns(sql)
@@ -496,7 +497,14 @@ fn collated_columns(
         })
         .unwrap_or_default();
     release(budget, sql);
+    budget.charge_texts(&collated)?;
     Ok(collated)
+}
+
+fn release_names(budget: &mut CatalogBudget, names: &[String]) {
+    for name in names {
+        budget.release_text(name);
+    }
 }
 
 fn split_names(joined: &str) -> Vec<String> {
@@ -535,6 +543,9 @@ pub(crate) fn inbound_foreign_keys(
         let referencing = TableRef::new(Some(take(&mut row, 1)), take(&mut row, 2));
         // The rows come by child, so each child's CREATE TABLE is read once.
         if child.as_ref().is_none_or(|(read, _)| *read != referencing) {
+            if let Some((_, collated)) = &child {
+                release_names(budget, collated);
+            }
             let collated = collated_columns(link, catalog, &referencing, budget)?;
             child = Some((referencing.clone(), collated));
         }

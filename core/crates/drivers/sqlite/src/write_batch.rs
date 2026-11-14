@@ -24,11 +24,14 @@ use tablepro_core::{
 
 use crate::autocommit::is_autocommit;
 use crate::catalog::{
-    DECLARED_TABLE_NAME_SQL, FOREIGN_KEY_CHECK_SQL, FOREIGN_KEY_LIST_SQL, ListedKeyColumn, MAIN_SCHEMA,
+    DECLARED_TABLE_NAME_SQL, FOREIGN_KEY_CHECK_SQL, FOREIGN_KEY_LIST_SQL, ListedKeyColumn, MAIN_SCHEMA, object_sql,
 };
+use crate::ddl::foreign_key_list_bytes;
 use crate::encode::bind_all;
 use crate::errors::{SQLITE_IOERR, is_interrupt, map_error, primary_of};
-use crate::foreign_key_verification::{BrokenKey, Renames, ViolatedKey, Violations, introduced, violation_error};
+use crate::foreign_key_verification::{
+    BrokenKey, Renames, TableViolations, ViolatedKey, Violations, introduced, violation_error,
+};
 use crate::interrupt::InterruptFlag;
 use crate::result_stream::{count, reports_changes};
 use crate::sqlite_pooled::SqlitePooled;
@@ -361,22 +364,19 @@ async fn violations(
         .fetch_optional(&mut *connection)
         .await
         .map_err(map_error)?;
-    let name = declared.unwrap_or_else(|| table.name.clone());
+    let mut found = TableViolations::new(declared.unwrap_or_else(|| table.name.clone()));
     let keys = foreign_keys(connection, table, schema).await?;
-    let mut found = Violations::default();
     let mut positions: HashMap<i64, usize> = HashMap::new();
     for (fkid, rowid) in rows {
         let position = *positions.entry(fkid).or_insert_with(|| {
             let (parent, key) = keys.get(&fkid).cloned().unwrap_or_default();
-            found.add_key(BrokenKey {
-                table: name.clone(),
-                parent,
-                key,
-            })
+            found.add_key(BrokenKey { parent, key })
         });
         found.add_row(position, rowid.filter(|_| !rowids_renumbered));
     }
-    Ok(found)
+    let mut violations = Violations::default();
+    violations.push(found);
+    Ok(violations)
 }
 
 /// The table's foreign keys, with the parent each names, by the id
@@ -387,6 +387,17 @@ async fn foreign_keys(
     schema: &str,
 ) -> Result<HashMap<i64, (String, ViolatedKey)>, DriverError> {
     let mut budget = CatalogBudget::default();
+    let schema_sql = format!("\"{}\"", schema.replace('"', "\"\""));
+    let create: Option<(String, Option<String>)> = sqlx::query_as(AssertSqlSafe(object_sql(&schema_sql)))
+        .bind(table.name.as_str())
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(map_error)?;
+    budget.fits(
+        create
+            .and_then(|(_, sql)| sql)
+            .map_or(0, |sql| foreign_key_list_bytes(&sql)),
+    )?;
     let mut rows = sqlx::query(FOREIGN_KEY_LIST_SQL)
         .bind(table.name.as_str())
         .bind(schema)
