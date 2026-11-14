@@ -268,7 +268,8 @@ private struct Lexer {
                 emit(.identifier, from: start)
                 return
             }
-            emit(opener == Self.backtick || opener == Self.openBracket ? .identifier : .string, from: start)
+            let quotesName = [Self.backtick, Self.openBracket, SqlLexer.openAngleQuote].contains(opener)
+            emit(quotesName ? .identifier : .string, from: start)
         }
     }
 

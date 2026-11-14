@@ -181,4 +181,19 @@ struct SQLQueryFingerprintTests {
         #expect(normalize("") == "")
         #expect(normalize("   \n\t ") == "")
     }
+
+    @Test("A psql COPY keeps its command in the shape, and its rows stay out")
+    func copyFromStandardInputKeepsItsCommand() {
+        let users = "COPY users FROM stdin;\n1\tada\n\\.\n"
+        let orders = "COPY orders FROM stdin;\n1\tada\n\\.\n"
+        #expect(normalize(users) == "COPY users FROM stdin")
+        #expect(hash(users) != hash(orders))
+        #expect(hash(users) == hash("COPY users FROM stdin;\n2\tbob\n\\.\n"))
+    }
+
+    @Test("A SurrealQL angle-quoted name is the name it quotes")
+    func angleQuotedNamesStayNames() {
+        #expect(hash("SELECT * FROM \u{27E8}users\u{27E9}", .surrealdb) == hash("SELECT * FROM users", .surrealdb))
+        #expect(hash("SELECT * FROM \u{27E8}users\u{27E9}", .surrealdb) != hash("SELECT * FROM \u{27E8}orders\u{27E9}", .surrealdb))
+    }
 }

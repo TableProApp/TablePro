@@ -57,7 +57,7 @@ enum SQLQueryFingerprint {
         var previousType: SQLTokenType?
         var previousValue = ""
 
-        for token in SQLTokenizer().tokenize(source, grammar: databaseType.lexicalGrammar) {
+        for token in tokens(of: source, grammar: databaseType.lexicalGrammar) {
             defer {
                 if token.type != .comment, token.type != .whitespace {
                     previousType = token.type
@@ -188,6 +188,7 @@ enum SQLQueryFingerprint {
         case "`": closing = "`"
         case "\"": closing = "\""
         case "[": closing = "]"
+        case "\u{27E8}": closing = "\u{27E9}"
         default: return value
         }
         var inner = value.dropFirst()
@@ -195,6 +196,19 @@ enum SQLQueryFingerprint {
             inner = inner.dropLast()
         }
         return String(inner)
+    }
+
+    // A psql `COPY ... FROM STDIN` is one directive token with its rows; the command is the shape, the rows are data.
+    private static func tokens(of source: String, grammar: SQLLexicalGrammar) -> [SQLToken] {
+        let tokenizer = SQLTokenizer()
+        return tokenizer.tokenize(source, grammar: grammar).flatMap { token -> [SQLToken] in
+            guard token.type == .directive, token.upperValue.hasPrefix("COPY"),
+                  let command = SQLStatementScanner.executableStatements(in: token.value, grammar: grammar).first?.sql
+            else {
+                return [token]
+            }
+            return tokenizer.tokenize(command, grammar: grammar.subtracting(.psqlScripts))
+        }
     }
 
     private static func truncated(_ sql: String) -> String {
