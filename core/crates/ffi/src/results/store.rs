@@ -194,6 +194,10 @@ impl ResultStore {
         stored_value(state.cell(row, column)?, read)
     }
 
+    pub(crate) fn cell_len(&self, row: u64, column: usize) -> Option<usize> {
+        Some(self.read().cell(row, column)?.bytes.len())
+    }
+
     // The kind of the value in a cell, `None` for null; a dynamically typed column can hold any.
     pub(crate) fn cell_kind(&self, row: u64, column: usize) -> Option<Option<ValueKind>> {
         Some(self.read().cell(row, column)?.kind)

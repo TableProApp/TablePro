@@ -52,6 +52,11 @@ impl ResultSet {
         self.store.stored_value(self.stored_row(row), column)
     }
 
+    // The bytes the store keeps for a cell, so a caller can refuse a large value before copying it.
+    pub(crate) fn cell_len(&self, row: u64, column: usize) -> Option<usize> {
+        self.store.cell_len(self.stored_row(row), column)
+    }
+
     pub(crate) fn cell_kind(&self, row: u64, column: usize) -> Option<Option<ValueKind>> {
         self.store.cell_kind(self.stored_row(row), column)
     }

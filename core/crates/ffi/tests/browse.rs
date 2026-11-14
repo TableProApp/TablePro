@@ -689,6 +689,27 @@ async fn keys_that_compare_otherwise_or_hold_an_inexact_value_stay_as_refusals()
     );
     assert_eq!(collated.referencing[0].filter, None);
 
+    execute(
+        &session,
+        "CREATE TABLE big (code TEXT PRIMARY KEY); CREATE TABLE small (code TEXT REFERENCES big(code)); \
+         INSERT INTO big VALUES (printf('%.9000c', 'x')); INSERT INTO small SELECT code FROM big",
+    )
+    .await;
+    let big = page_rows(&session, "big", None).await;
+    let large = session
+        .table_keys(table("big"), None)
+        .await
+        .unwrap()
+        .row_references(big, 0, None)
+        .unwrap();
+    assert_eq!(
+        large.referencing[0].refusal,
+        Some(ReferenceRefusal::NoFilterText {
+            column: "code".to_owned()
+        }),
+        "a key too long to filter on is refused before it is copied"
+    );
+
     let measured = page_rows(&session, "measured", None).await;
     let inexact = session
         .table_keys(table("measured"), None)

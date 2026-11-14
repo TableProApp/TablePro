@@ -133,6 +133,10 @@ impl TableKeys {
     }
 }
 
+// A key value past this has no filter: every key of a row is built as a menu opens, and a row could hold many
+// keys of megabytes each.
+const MAX_KEY_BYTES: usize = 8 * 1024;
+
 // Only the key's cells are copied, so a row of large values stays in the store. A value the store cannot name
 // exactly, such as a float, has no text a filter would match.
 fn key_cells(
@@ -150,6 +154,10 @@ fn key_cells(
         let Some(index) = read.iter().position(|column| column.name == *name) else {
             return Err(ReferenceError::MissingColumn { column: name.clone() });
         };
+        if rows.cell_len(row, index).is_some_and(|length| length > MAX_KEY_BYTES) {
+            unnamed.get_or_insert(position);
+            continue;
+        }
         match rows.stored_value(row, index) {
             Some(Value::Null) => return Err(ReferenceError::NullKey),
             Some(value) => {
