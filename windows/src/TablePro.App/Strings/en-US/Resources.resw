@@ -3600,4 +3600,10 @@ New fingerprint: {2}</value>
   <data name="ImportCsvRunning" xml:space="preserve">
     <value>Importing the file into {1}...</value>
   </data>
+  <data name="ImportCsvSampleDefault" xml:space="preserve">
+    <value>DEFAULT</value>
+  </data>
+  <data name="ImportCsvSampleEmpty" xml:space="preserve">
+    <value>(empty)</value>
+  </data>
 </root>

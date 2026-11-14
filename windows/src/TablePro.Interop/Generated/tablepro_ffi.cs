@@ -1940,7 +1940,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_csvimport_run(ulong @ptr,sbyte @confirmed,RustBuffer @cancel
+     ulong uniffi_tablepro_ffi_fn_method_csvimport_run(ulong @ptr,ulong @plan,sbyte @confirmed,RustBuffer @cancel
     );
 
     #if NET8_0_OR_GREATER
@@ -5824,8 +5824,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_csvimport_run();
-            if (checksum != 51215) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_csvimport_run` checksum `51215`, library returned `{checksum}`");
+            if (checksum != 28861) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_csvimport_run` checksum `28861`, library returned `{checksum}`");
             }
         }
         {
@@ -8104,7 +8104,7 @@ internal interface ICsvImport {
     /// <exception cref="CoreException"></exception>
     Task<CsvPreview> Preview(string @path, CsvReadOptions @options);
     /// <exception cref="CoreException"></exception>
-    Task<CsvImportOutcome> Run(bool @confirmed, CancelToken? @cancel);
+    Task<CsvImportOutcome> Run(ulong @plan, bool @confirmed, CancelToken? @cancel);
     uint?[] SuggestMapping(string[] @headers);
 }
 internal class CsvImport : ICsvImport, IDisposable {
@@ -8249,11 +8249,11 @@ internal class CsvImport : ICsvImport, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task<CsvImportOutcome> Run(bool @confirmed, CancelToken? @cancel) {
+    public async Task<CsvImportOutcome> Run(ulong @plan, bool @confirmed, CancelToken? @cancel) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_csvimport_run(thisPtr, FfiConverterBoolean.INSTANCE.Lower(@confirmed), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_csvimport_run(thisPtr, FfiConverterUInt64.INSTANCE.Lower(@plan), FfiConverterBoolean.INSTANCE.Lower(@confirmed), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
@@ -12428,7 +12428,8 @@ internal record ImportColumnInfo (
     string TypeName, 
     bool Nullable, 
     bool HasDefault, 
-    bool ServerFilled
+    bool ServerFilled, 
+    bool TakesEmpty
 ) {
 }
 
@@ -12441,7 +12442,8 @@ class FfiConverterTypeImportColumnInfo: FfiConverterRustBuffer<ImportColumnInfo>
             TypeName: FfiConverterString.INSTANCE.Read(stream),
             Nullable: FfiConverterBoolean.INSTANCE.Read(stream),
             HasDefault: FfiConverterBoolean.INSTANCE.Read(stream),
-            ServerFilled: FfiConverterBoolean.INSTANCE.Read(stream)
+            ServerFilled: FfiConverterBoolean.INSTANCE.Read(stream),
+            TakesEmpty: FfiConverterBoolean.INSTANCE.Read(stream)
         );
     }
 
@@ -12451,7 +12453,8 @@ class FfiConverterTypeImportColumnInfo: FfiConverterRustBuffer<ImportColumnInfo>
             + FfiConverterString.INSTANCE.AllocationSize(value.TypeName)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.Nullable)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.HasDefault)
-            + FfiConverterBoolean.INSTANCE.AllocationSize(value.ServerFilled);
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.ServerFilled)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.TakesEmpty);
     }
 
     public override void Write(ImportColumnInfo value, BigEndianStream stream) {
@@ -12460,6 +12463,7 @@ class FfiConverterTypeImportColumnInfo: FfiConverterRustBuffer<ImportColumnInfo>
             FfiConverterBoolean.INSTANCE.Write(value.Nullable, stream);
             FfiConverterBoolean.INSTANCE.Write(value.HasDefault, stream);
             FfiConverterBoolean.INSTANCE.Write(value.ServerFilled, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.TakesEmpty, stream);
     }
 }
 
@@ -14541,6 +14545,7 @@ class FfiConverterTypeCsvDelimiterTag: FfiConverterRustBuffer<CsvDelimiterTag> {
 internal record CsvImportCheck {
     
     public record Ready (
+        ulong Plan,
         ulong Rows,
         string[] Statements,
         SaveGate Gate
@@ -14566,6 +14571,7 @@ class FfiConverterTypeCsvImportCheck : FfiConverterRustBuffer<CsvImportCheck>{
             case 1:
                 return new CsvImportCheck.Ready(
                     FfiConverterUInt64.INSTANCE.Read(stream),
+                    FfiConverterUInt64.INSTANCE.Read(stream),
                     FfiConverterSequenceString.INSTANCE.Read(stream),
                     FfiConverterTypeSaveGate.INSTANCE.Read(stream)
                 );
@@ -14585,6 +14591,7 @@ class FfiConverterTypeCsvImportCheck : FfiConverterRustBuffer<CsvImportCheck>{
         switch (value) {
             case CsvImportCheck.Ready variant_value:
                 return 4
+                    + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.Plan)
                     + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.Rows)
                     + FfiConverterSequenceString.INSTANCE.AllocationSize(variant_value.Statements)
                     + FfiConverterTypeSaveGate.INSTANCE.AllocationSize(variant_value.Gate);
@@ -14602,6 +14609,7 @@ class FfiConverterTypeCsvImportCheck : FfiConverterRustBuffer<CsvImportCheck>{
         switch (value) {
             case CsvImportCheck.Ready variant_value:
                 stream.WriteInt(1);
+                FfiConverterUInt64.INSTANCE.Write(variant_value.Plan, stream);
                 FfiConverterUInt64.INSTANCE.Write(variant_value.Rows, stream);
                 FfiConverterSequenceString.INSTANCE.Write(variant_value.Statements, stream);
                 FfiConverterTypeSaveGate.INSTANCE.Write(variant_value.Gate, stream);

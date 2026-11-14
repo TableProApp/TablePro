@@ -1,6 +1,7 @@
 use std::io::Read;
 use std::ops::Range;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -60,6 +61,8 @@ pub struct ImportColumnInfo {
     pub has_default: bool,
     // A generated column or an identity that refuses a value: no field is ever mapped to it.
     pub server_filled: bool,
+    // An empty field is an empty value here rather than NULL, when the NULL text is empty.
+    pub takes_empty: bool,
 }
 
 // A field the column's type cannot read. `line` counts the header as line 1, as a spreadsheet shows it.
@@ -75,7 +78,9 @@ pub struct CsvRowFault {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum CsvImportCheck {
     // `statements` are the SQL texts the rows write as, in order; Safe Mode shows them before a confirmed run.
+    // `plan` names this plan to `run`, so a plan replaced since is never the one written.
     Ready {
+        plan: u64,
         rows: u64,
         statements: Vec<String>,
         gate: SaveGate,
@@ -123,9 +128,11 @@ pub struct CsvImport {
     table: TableRef,
     columns: Arc<[ImportColumn]>,
     planned: Mutex<Option<Planned>>,
+    plans: AtomicU64,
 }
 
 struct Planned {
+    id: u64,
     batch: Arc<WriteBatch>,
     step_rows: Vec<Range<usize>>,
     first_line: usize,
@@ -162,6 +169,7 @@ impl DatabaseSession {
                 table,
                 columns,
                 planned: Mutex::new(None),
+                plans: AtomicU64::new(0),
             }))
         })
         .await
@@ -179,6 +187,7 @@ impl CsvImport {
                 nullable: column.info.nullable,
                 has_default: !column.info.default.is_none(),
                 server_filled: column.server_filled,
+                takes_empty: column.info.column_type.kind.accepts_empty_string(),
             })
             .collect()
     }
@@ -220,6 +229,8 @@ impl CsvImport {
                 format!("{} fields mapped for {} columns", mapping.len(), self.columns.len()),
             ));
         }
+        // A plan that finishes after a later one began is dropped, whatever order they end in.
+        let id = self.plans.fetch_add(1, Ordering::AcqRel).wrapping_add(1);
         self.discard();
         let dialect = self
             .session
@@ -230,11 +241,12 @@ impl CsvImport {
         let table = self.table.clone();
         let options = CsvImportOptions::from(options);
         let planned = blocking(&self.tasks, move || {
-            plan_file(&path, &options, &mapping, &columns, &table, &*dialect, gate)
+            plan_file(id, &path, &options, &mapping, &columns, &table, &*dialect, gate)
         })
         .await?;
         let check = match &planned {
             Ok(Some(planned)) => CsvImportCheck::Ready {
+                plan: planned.id,
                 rows: u64::try_from(planned.rows).unwrap_or(u64::MAX),
                 statements: planned
                     .batch
@@ -248,33 +260,53 @@ impl CsvImport {
             Err(fault) => CsvImportCheck::RowRefused { fault: fault.clone() },
         };
         if let Ok(Some(planned)) = planned {
-            *self.planned.lock().unwrap_or_else(PoisonError::into_inner) = Some(planned);
+            let mut held = self.planned.lock().unwrap_or_else(PoisonError::into_inner);
+            if self.plans.load(Ordering::Acquire) != id {
+                return Err(CoreError::failed(
+                    "import.plan_replaced",
+                    "a later plan replaced this one",
+                ));
+            }
+            *held = Some(planned);
         }
         Ok(check)
     }
 
-    // Writes the import planned last, once. `confirmed` says the user answered Safe Mode's question; a level saved
-    // since the plan refuses before anything is sent.
-    pub async fn run(&self, confirmed: bool, cancel: Option<Arc<CancelToken>>) -> Result<CsvImportOutcome, CoreError> {
-        let Some(planned) = self.planned.lock().unwrap_or_else(PoisonError::into_inner).take() else {
-            return Err(CoreError::failed("import.not_planned", "no import is planned"));
-        };
-        if planned.gate == SaveGate::Confirm && !confirmed {
-            return Err(CoreError::failed(
-                "import.not_confirmed",
-                "Safe Mode asks before this import and it was not answered",
-            ));
-        }
-        match save_gate(self.session.safe_mode()) {
-            SaveGate::Refuse => {
+    // Writes the plan `plan` names, once, while it is the last one made. `confirmed` says the user answered Safe Mode's
+    // question; a level saved since the plan refuses before anything is sent.
+    pub async fn run(
+        &self,
+        plan: u64,
+        confirmed: bool,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<CsvImportOutcome, CoreError> {
+        // Checked before the plan is taken, so a refusal leaves it to run once answered.
+        let planned = {
+            let mut held = self.planned.lock().unwrap_or_else(PoisonError::into_inner);
+            let Some(planned) = held.as_ref().filter(|planned| planned.id == plan) else {
+                return Err(CoreError::failed("import.not_planned", "no import is planned"));
+            };
+            if planned.gate == SaveGate::Confirm && !confirmed {
                 return Err(CoreError::failed(
-                    "edit.read_only_connection",
-                    "the connection is read-only",
+                    "import.not_confirmed",
+                    "Safe Mode asks before this import and it was not answered",
                 ));
             }
-            now if now != planned.gate => return Err(safe_mode_changed()),
-            _ => {}
-        }
+            match save_gate(self.session.safe_mode()) {
+                SaveGate::Refuse => {
+                    return Err(CoreError::failed(
+                        "edit.read_only_connection",
+                        "the connection is read-only",
+                    ));
+                }
+                now if now != planned.gate => return Err(safe_mode_changed()),
+                _ => {}
+            }
+            held.take()
+        };
+        let Some(planned) = planned else {
+            return Err(CoreError::failed("import.not_planned", "no import is planned"));
+        };
         let session = self.session.clone();
         let cancel = token(cancel);
         on_runtime(&self.tasks, async move {
@@ -316,7 +348,12 @@ impl CsvImport {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one call, from plan, with what it read from the import"
+)]
 fn plan_file(
+    id: u64,
     path: &str,
     options: &CsvImportOptions,
     mapping: &[Option<u32>],
@@ -355,6 +392,7 @@ fn plan_file(
     let plan = plan_import(dialect, table, columns, rows)
         .map_err(|error| CoreError::failed(error.code(), error.to_string()))?;
     Ok(Ok(Some(Planned {
+        id,
         batch: Arc::new(plan.batch),
         step_rows: plan.step_rows,
         first_line,

@@ -93,7 +93,7 @@ internal static class ImportCsvDialog
             CsvImportReport report;
             try
             {
-                var outcome = await import.RunAsync(confirmed, cancellationToken).ConfigureAwait(true);
+                var outcome = await import.RunAsync(planned, confirmed, cancellationToken).ConfigureAwait(true);
                 report = CsvImportReport.From(outcome);
             }
             catch (TableProException exception)
@@ -537,7 +537,15 @@ internal static class ImportCsvDialog
             CsvColumnNote.UsesDefault => Strings.Get("ImportCsvUsesDefault"),
             CsvColumnNote.LeftOut => Strings.Get("ImportCsvLeftOut"),
             _ when line.Samples.Count == 0 => Strings.Get("ImportCsvNoValues"),
-            _ => string.Join(" · ", line.Samples.Select(sample => sample ?? Strings.Get("GridMenuNull"))),
+            _ => string.Join(" · ", line.Samples.Select(SampleText)),
+        };
+
+        private static string SampleText(CsvSample sample) => sample.Kind switch
+        {
+            CsvSampleKind.Null => Strings.Get("GridMenuNull"),
+            CsvSampleKind.Default => Strings.Get("ImportCsvSampleDefault"),
+            CsvSampleKind.Empty => Strings.Get("ImportCsvSampleEmpty"),
+            _ => sample.Text,
         };
 
         private static string SummaryText(CsvPreviewSummary summary)

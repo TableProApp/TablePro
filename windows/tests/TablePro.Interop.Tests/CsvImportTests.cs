@@ -15,18 +15,21 @@ public sealed class CsvImportTests
         var preview = await import.PreviewAsync(file, CsvOptions.Default, cancellationToken);
         var mapping = import.SuggestMapping(preview.Headers);
         var check = await import.PlanAsync(file, CsvOptions.Default, mapping, cancellationToken);
-        var outcome = await import.RunAsync(confirmed: false, cancellationToken);
+        var ready = Assert.IsType<CsvImportCheck.Ready>(check);
+        var outcome = await import.RunAsync(ready, confirmed: false, cancellationToken);
+        var again = await Assert.ThrowsAsync<TableProException>(() => import.RunAsync(ready, confirmed: false, cancellationToken));
 
         Assert.Equal(["id", "name", "note"], import.Columns.Select(column => column.Name));
+        Assert.Equal([false, true, true], import.Columns.Select(column => column.TakesEmpty));
         Assert.Equal(["Name", "NOTE"], preview.Headers);
         Assert.Equal(["Linus", "kernel"], preview.Rows[0]);
         Assert.False(preview.Truncated);
         Assert.Equal([null, 0, 1], mapping);
-        var ready = Assert.IsType<CsvImportCheck.Ready>(check);
         Assert.Equal(2, ready.Rows);
         Assert.Equal(SaveGate.Run, ready.Gate);
         Assert.NotEmpty(ready.Statements);
         Assert.Equal(new CsvImportOutcome.Imported(2), outcome);
+        Assert.Equal("import.not_planned", again.Error.Code);
         Assert.Equal(
             ["Ada", "Grace", "Zoë 👋", "Linus", "Barbara"],
             await ReadAsync(database, "SELECT name FROM people ORDER BY id", cancellationToken));
@@ -43,7 +46,8 @@ public sealed class CsvImportTests
         using var import = await database.Session.OpenCsvImportAsync(People, cancellationToken);
 
         var check = await import.PlanAsync(file, options, [0, 1, null], cancellationToken);
-        var unplanned = await Assert.ThrowsAsync<TableProException>(() => import.RunAsync(confirmed: false, cancellationToken));
+        var unplanned = await Assert.ThrowsAsync<TableProException>(
+            () => import.RunAsync(new CsvImportCheck.Ready(2, [], SaveGate.Run), confirmed: false, cancellationToken));
 
         var fault = Assert.IsType<CsvImportCheck.RowRefused>(check).Fault;
         Assert.Equal((3L, "id", "seven"), (fault.Line, fault.Column, fault.Text));
@@ -62,8 +66,8 @@ public sealed class CsvImportTests
         using var import = await database.Session.OpenCsvImportAsync(People, cancellationToken);
 
         var preview = await import.PreviewAsync(file, options, cancellationToken);
-        Assert.IsType<CsvImportCheck.Ready>(await import.PlanAsync(file, options, [0, 1, null], cancellationToken));
-        var outcome = await import.RunAsync(confirmed: false, cancellationToken);
+        var ready = Assert.IsType<CsvImportCheck.Ready>(await import.PlanAsync(file, options, [0, 1, null], cancellationToken));
+        var outcome = await import.RunAsync(ready, confirmed: false, cancellationToken);
 
         Assert.Equal(["", ""], preview.Headers);
         var rolledBack = Assert.IsType<CsvImportOutcome.RolledBack>(outcome);

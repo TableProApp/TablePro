@@ -35,8 +35,20 @@ public enum CsvImportEnding
 // Header is null where the file names none. Sample is the first row's value, null when it has none.
 public sealed record CsvField(int Index, string? Header, string? Sample);
 
-// Samples hold null where the file's NULL text stands.
-public sealed record CsvColumnLine(ImportColumn Column, int? Field, CsvColumnNote Note, IReadOnlyList<string?> Samples);
+public enum CsvSampleKind
+{
+    Text,
+    Empty,
+    Null,
+
+    // A NOT NULL column with a default takes its default for the NULL text, as the core imports it.
+    Default,
+}
+
+// A field's value as the import writes it into the column, which the NULL text and the column's type decide.
+public sealed record CsvSample(CsvSampleKind Kind, string Text);
+
+public sealed record CsvColumnLine(ImportColumn Column, int? Field, CsvColumnNote Note, IReadOnlyList<CsvSample> Samples);
 
 public sealed record CsvPreviewSummary(int Fields, int Rows, bool Truncated);
 
@@ -228,7 +240,7 @@ public sealed class CsvImportForm
             : field is not null ? CsvColumnNote.Samples
             : info.HasDefault ? CsvColumnNote.UsesDefault
             : CsvColumnNote.LeftOut;
-        return new CsvColumnLine(info, field, note, field is { } index ? Samples(index) : []);
+        return new CsvColumnLine(info, field, note, field is { } index ? Samples(info, index) : []);
     }
 
     // One line, cut short, so a value fits a list item.
@@ -273,13 +285,34 @@ public sealed class CsvImportForm
         return new CsvImportReview(text.ToString(), shown);
     }
 
-    private IReadOnlyList<string?> Samples(int field) =>
+    private IReadOnlyList<CsvSample> Samples(ImportColumn column, int field) =>
         Preview is not { } preview
             ? []
             : [.. preview.Rows
                 .Where(row => field < row.Count)
                 .Take(SampleCount)
-                .Select(row => row[field] == Options.NullText ? null : Clip(row[field]))];
+                .Select(row => Sample(column, row[field]))];
+
+    // The core's rule: the NULL text is an empty value where it is empty and the column takes one, else the default of
+    // a NOT NULL column that has one, else NULL.
+    private CsvSample Sample(ImportColumn column, string value)
+    {
+        if (string.Equals(value, Options.NullText, StringComparison.Ordinal))
+        {
+            if (value.Length == 0 && column.TakesEmpty)
+            {
+                return new CsvSample(CsvSampleKind.Empty, string.Empty);
+            }
+
+            return !column.Nullable && column.HasDefault
+                ? new CsvSample(CsvSampleKind.Default, string.Empty)
+                : new CsvSample(CsvSampleKind.Null, string.Empty);
+        }
+
+        return value.Length == 0
+            ? new CsvSample(CsvSampleKind.Empty, string.Empty)
+            : new CsvSample(CsvSampleKind.Text, Clip(value));
+    }
 
     // Never between the halves of a surrogate pair.
     private static string Cut(string text, int length) =>

@@ -714,12 +714,22 @@ impl ConnectionLibrary {
                     .and_then(|list| list.connections.iter().find(|saved| saved.id == id).cloned()))
             })
             .await;
-        match written {
-            Ok(stored) => Ok(ConnectionRecord::from(&stored.unwrap_or(copy))),
-            Err(error) => {
+        let error = match written {
+            Ok(stored) => return Ok(ConnectionRecord::from(&stored.unwrap_or(copy))),
+            Err(error) => error,
+        };
+        // A write can fail after the file was replaced, as when the folder's sync fails; a listed copy keeps its secrets.
+        let id = copy.id;
+        let listed = self
+            .blocking(move |store| Ok(store.list_blocking()?.connections.iter().any(|saved| saved.id == id)))
+            .await;
+        match listed {
+            Ok(true) => Ok(ConnectionRecord::from(&copy)),
+            Ok(false) => {
                 self.forget_secrets(copy.id).await;
                 Err(error)
             }
+            Err(_) => Err(error),
         }
     }
 

@@ -70,22 +70,47 @@ public sealed class CsvImportFormTests
         var name = form.Line(1);
         Assert.Equal(CsvColumnNote.Samples, name.Note);
         Assert.Equal(0, name.Field);
-        Assert.Equal<string?>(["Ada", "Grace", "Linus"], name.Samples);
+        Assert.Equal(["Ada", "Grace", "Linus"], name.Samples.Select(sample => sample.Text));
         Assert.Equal(CsvColumnNote.LeftOut, form.Line(2).Note);
         Assert.Empty(form.Line(2).Samples);
         Assert.Equal(CsvColumnNote.UsesDefault, form.Line(3).Note);
     }
 
     [Fact]
-    public void AFieldHoldingTheNullTextSamplesAsNull()
+    public void ASampleShowsWhatTheImportWritesForTheNullText()
     {
         var form = Form();
         form.Show(form.Read(CsvDelimiter.Comma, hasHeader: true), People(), [null, 0, 1, null]);
 
-        Assert.Equal<string?>(["London", null, "Helsinki"], form.Line(2).Samples);
+        // An empty field in a text column is an empty value while the NULL text is empty, as the core imports it.
+        Assert.Equal(
+            [Text("London"), new CsvSample(CsvSampleKind.Empty, string.Empty), Text("Helsinki")],
+            form.Line(2).Samples);
 
         form.SetNullText("Helsinki");
-        Assert.Equal<string?>(["London", string.Empty, null], form.Line(2).Samples);
+        Assert.Equal(
+            [Text("London"), new CsvSample(CsvSampleKind.Empty, string.Empty), new CsvSample(CsvSampleKind.Null, string.Empty)],
+            form.Line(2).Samples);
+    }
+
+    [Fact]
+    public void TheNullTextIsNullInAColumnThatTakesNoEmptyValueAndTheDefaultWhereTheColumnRefusesNull()
+    {
+        ImportColumn[] columns =
+        [
+            new("rank", "INTEGER", Nullable: true, HasDefault: false, ServerFilled: false, TakesEmpty: false),
+            new("status", "TEXT", Nullable: false, HasDefault: true, ServerFilled: false, TakesEmpty: true),
+        ];
+        var form = new CsvImportForm(columns, Path.Combine("data", "ranks.csv"));
+        form.Show(form.Read(CsvDelimiter.Comma, hasHeader: true), new CsvPreview(["rank", "status"], [["", "-"]], false), [0, 1]);
+        form.SetNullText("-");
+
+        Assert.Equal([new CsvSample(CsvSampleKind.Empty, string.Empty)], form.Line(0).Samples);
+        Assert.Equal([new CsvSample(CsvSampleKind.Default, string.Empty)], form.Line(1).Samples);
+
+        form.SetNullText(string.Empty);
+        Assert.Equal([new CsvSample(CsvSampleKind.Null, string.Empty)], form.Line(0).Samples);
+        Assert.Equal([Text("-")], form.Line(1).Samples);
     }
 
     [Fact]
@@ -232,11 +257,13 @@ public sealed class CsvImportFormTests
     // The id is an identity the server fills; joined has a default, city takes NULL.
     private static ImportColumn[] Columns() =>
     [
-        new ImportColumn("id", "INTEGER", Nullable: false, HasDefault: false, ServerFilled: true),
-        new ImportColumn("name", "TEXT", Nullable: false, HasDefault: false, ServerFilled: false),
-        new ImportColumn("city", "TEXT", Nullable: true, HasDefault: false, ServerFilled: false),
-        new ImportColumn("joined", "DATE", Nullable: true, HasDefault: true, ServerFilled: false),
+        new ImportColumn("id", "INTEGER", Nullable: false, HasDefault: false, ServerFilled: true, TakesEmpty: false),
+        new ImportColumn("name", "TEXT", Nullable: false, HasDefault: false, ServerFilled: false, TakesEmpty: true),
+        new ImportColumn("city", "TEXT", Nullable: true, HasDefault: false, ServerFilled: false, TakesEmpty: true),
+        new ImportColumn("joined", "DATE", Nullable: true, HasDefault: true, ServerFilled: false, TakesEmpty: false),
     ];
+
+    private static CsvSample Text(string text) => new(CsvSampleKind.Text, text);
 
     private static CsvImportForm Form() => new(Columns(), Path.Combine("data", "people.csv"));
 

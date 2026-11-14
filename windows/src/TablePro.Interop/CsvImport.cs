@@ -20,7 +20,14 @@ public sealed record CsvOptions(CsvDelimiter Delimiter, bool HasHeader, string N
 public sealed record CsvPreview(IReadOnlyList<string> Headers, IReadOnlyList<IReadOnlyList<string>> Rows, bool Truncated);
 
 // ServerFilled: a generated column or an identity that refuses a value; no field is ever mapped to it.
-public sealed record ImportColumn(string Name, string TypeName, bool Nullable, bool HasDefault, bool ServerFilled);
+// TakesEmpty: an empty field is an empty value here rather than NULL, while the NULL text is empty.
+public sealed record ImportColumn(
+    string Name,
+    string TypeName,
+    bool Nullable,
+    bool HasDefault,
+    bool ServerFilled,
+    bool TakesEmpty);
 
 // Line counts the header as line 1, as a spreadsheet shows it. Reason is the code a cell edit refused alike has.
 public sealed record CsvRowFault(long Line, string Column, string Text, string Reason);
@@ -34,7 +41,11 @@ public abstract record CsvImportCheck
     }
 
     // Statements are the SQL the rows write as, which Safe Mode shows before a confirmed run.
-    public sealed record Ready(long Rows, IReadOnlyList<string> Statements, SaveGate Gate) : CsvImportCheck;
+    public sealed record Ready(long Rows, IReadOnlyList<string> Statements, SaveGate Gate) : CsvImportCheck
+    {
+        // Names this plan to RunAsync, so a plan made since is never the one written.
+        internal ulong Plan { get; init; }
+    }
 
     public sealed record Empty : CsvImportCheck
     {
@@ -62,7 +73,7 @@ public abstract record CsvImportOutcome
     public sealed record Unknown(CoreError Error) : CsvImportOutcome;
 }
 
-// A table's columns as a CSV import writes them; Run writes the import planned last, once.
+// A table's columns as a CSV import writes them; RunAsync writes the import planned last, once.
 public sealed class CsvImport : IDisposable
 {
     private readonly Native.CsvImport _import;
@@ -75,7 +86,8 @@ public sealed class CsvImport : IDisposable
             column.TypeName,
             column.Nullable,
             column.HasDefault,
-            column.ServerFilled))];
+            column.ServerFilled,
+            column.TakesEmpty))];
     }
 
     public IReadOnlyList<ImportColumn> Columns { get; }
@@ -122,7 +134,10 @@ public sealed class CsvImport : IDisposable
             Native.CsvImportCheck.Ready ready => new CsvImportCheck.Ready(
                 Mapping.Count(ready.Rows),
                 [.. ready.Statements],
-                Mapping.Gate(ready.Gate)),
+                Mapping.Gate(ready.Gate))
+            {
+                Plan = ready.Plan,
+            },
             Native.CsvImportCheck.RowRefused refused => new CsvImportCheck.RowRefused(new CsvRowFault(
                 Mapping.Count(refused.Fault.Line),
                 refused.Fault.Column,
@@ -132,10 +147,16 @@ public sealed class CsvImport : IDisposable
         };
     }
 
-    // Confirmed says Safe Mode's question was answered; a level saved since the plan refuses before anything is sent.
-    public async Task<CsvImportOutcome> RunAsync(bool confirmed, CancellationToken cancellationToken = default)
+    // Writes the plan PlanAsync gave, once, while no later plan replaced it. Confirmed says Safe Mode's question was
+    // answered; a level saved since the plan refuses before anything is sent.
+    public async Task<CsvImportOutcome> RunAsync(
+        CsvImportCheck.Ready plan,
+        bool confirmed,
+        CancellationToken cancellationToken = default)
     {
-        var outcome = await CoreCall.RunAsync(token => _import.Run(confirmed, token), cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(plan);
+        var id = plan.Plan;
+        var outcome = await CoreCall.RunAsync(token => _import.Run(id, confirmed, token), cancellationToken).ConfigureAwait(false);
         return outcome switch
         {
             Native.CsvImportOutcome.Imported imported => new CsvImportOutcome.Imported(Mapping.Count(imported.Rows)),

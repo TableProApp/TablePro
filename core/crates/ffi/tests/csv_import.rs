@@ -125,6 +125,14 @@ fn row(values: [Option<&str>; 4]) -> Vec<Option<String>> {
     values.iter().map(|value| value.map(str::to_owned)).collect()
 }
 
+// The plan a Ready check names, which run takes; 0 names none, so a run of anything else is refused.
+fn plan_of(check: &CsvImportCheck) -> u64 {
+    match check {
+        CsvImportCheck::Ready { plan, .. } => *plan,
+        CsvImportCheck::Empty | CsvImportCheck::RowRefused { .. } => 0,
+    }
+}
+
 fn write(dir: &Path, name: &str, text: &str) -> String {
     let path = dir.join(name);
     std::fs::write(&path, text).unwrap();
@@ -147,7 +155,7 @@ async fn a_file_lands_in_the_table_by_the_mapping_its_headers_suggest() {
     let preview = import.preview(csv.clone(), comma()).await.unwrap();
     let mapping = import.suggest_mapping(preview.headers.clone());
     let check = import.plan(csv, comma(), mapping.clone()).await.unwrap();
-    let outcome = import.run(false, None).await.unwrap();
+    let outcome = import.run(plan_of(&check), false, None).await.unwrap();
 
     let names: Vec<(&str, bool)> = columns
         .iter()
@@ -164,6 +172,10 @@ async fn a_file_lands_in_the_table_by_the_mapping_its_headers_suggest() {
         ]
     );
     assert!(columns[3].has_default && !columns[3].nullable);
+    assert!(
+        columns[1].takes_empty && !columns[2].takes_empty,
+        "text takes an empty value, an integer does not"
+    );
     assert_eq!(preview.headers, ["Name", " AGE ", "id", "joined"]);
     assert_eq!(preview.rows.len(), 2);
     assert!(!preview.truncated);
@@ -172,12 +184,13 @@ async fn a_file_lands_in_the_table_by_the_mapping_its_headers_suggest() {
         rows: 2,
         statements,
         gate,
-    } = check
+        ..
+    } = &check
     else {
         panic!("{check:?}")
     };
     assert!(!statements.is_empty());
-    assert_eq!(gate, SaveGate::Run);
+    assert_eq!(*gate, SaveGate::Run);
     assert_eq!(outcome, CsvImportOutcome::Imported { rows: 2 });
     // An empty field is an empty text in a text column and NULL in a number column.
     assert_eq!(
@@ -187,7 +200,7 @@ async fn a_file_lands_in_the_table_by_the_mapping_its_headers_suggest() {
             row([Some("2"), Some("Grace"), None, Some("1906")]),
         ]
     );
-    let again = import.run(false, None).await.unwrap_err();
+    let again = import.run(plan_of(&check), false, None).await.unwrap_err();
     assert_eq!(again.code(), "import.not_planned");
     session.close().await.unwrap();
 }
@@ -208,7 +221,7 @@ async fn a_field_the_column_cannot_read_names_its_line_and_writes_nothing() {
         .plan(csv, options, vec![Some(0), Some(1), Some(2), None, None])
         .await
         .unwrap();
-    let unplanned = import.run(false, None).await.unwrap_err();
+    let unplanned = import.run(1, false, None).await.unwrap_err();
 
     let CsvImportCheck::RowRefused { fault } = check else {
         panic!("{check:?}")
@@ -241,7 +254,7 @@ async fn a_row_the_table_refuses_rolls_the_whole_file_back_and_names_its_lines()
         .plan(csv, options, vec![Some(0), Some(1), None, None, None])
         .await
         .unwrap();
-    let outcome = import.run(false, None).await.unwrap();
+    let outcome = import.run(plan_of(&check), false, None).await.unwrap();
 
     assert_eq!(preview.headers, ["", ""], "a file with no header names no field");
     assert!(matches!(check, CsvImportCheck::Ready { rows: 2, .. }), "{check:?}");
@@ -347,9 +360,8 @@ async fn confirm_writes_asks_first_and_read_only_refuses() {
     let import = session.open_csv_import(people(), None).await.unwrap();
 
     let check = import.plan(csv.clone(), comma(), mapping.clone()).await.unwrap();
-    let unanswered = import.run(false, None).await.unwrap_err();
-    import.plan(csv.clone(), comma(), mapping.clone()).await.unwrap();
-    let answered = import.run(true, None).await.unwrap();
+    let unanswered = import.run(plan_of(&check), false, None).await.unwrap_err();
+    let answered = import.run(plan_of(&check), true, None).await.unwrap();
     session.close().await.unwrap();
     let read_only = core
         .open_file(
@@ -389,8 +401,33 @@ async fn confirm_writes_asks_first_and_read_only_refuses() {
         "{refused:?}"
     );
     assert_eq!(
-        import.run(true, None).await.unwrap_err().code(),
+        import.run(plan_of(&refused), true, None).await.unwrap_err().code(),
         "edit.read_only_connection"
+    );
+    session.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_plan_made_later_replaces_the_one_before_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path());
+    let session = seeded(&core, &dir.path().join("people.sqlite")).await;
+    let first = write(dir.path(), "first.csv", "id,name\n1,Ada\n");
+    let second = write(dir.path(), "second.csv", "id,name\n2,Grace\n");
+    let mapping = vec![Some(0), Some(1), None, None, None];
+    let import = session.open_csv_import(people(), None).await.unwrap();
+
+    let earlier = import.plan(first, comma(), mapping.clone()).await.unwrap();
+    let later = import.plan(second, comma(), mapping).await.unwrap();
+    let replaced = import.run(plan_of(&earlier), false, None).await.unwrap_err();
+    let outcome = import.run(plan_of(&later), false, None).await.unwrap();
+
+    assert_ne!(plan_of(&earlier), plan_of(&later));
+    assert_eq!(replaced.code(), "import.not_planned");
+    assert_eq!(outcome, CsvImportOutcome::Imported { rows: 1 });
+    assert_eq!(
+        rows(&session).await,
+        [row([Some("2"), Some("Grace"), None, Some("today")])]
     );
     session.close().await.unwrap();
 }
