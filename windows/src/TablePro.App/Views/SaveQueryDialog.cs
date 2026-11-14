@@ -173,7 +173,10 @@ internal static class SaveQueryDialog
                 var held = (await store.GetAsync(connectionId).ConfigureAwait(true)).Queries
                     .FirstOrDefault(query => query.Id == added);
                 draft.StoredFolder = held?.FolderId;
-                draft.FolderId ??= draft.StoredFolder;
+                if (!draft.FolderChosen)
+                {
+                    draft.FolderId = draft.StoredFolder;
+                }
             }
         }
         else
@@ -228,6 +231,7 @@ internal static class SaveQueryDialog
         if (folders.Count > 0)
         {
             folder = FolderBox(folders, draft.FolderId);
+            folder.SelectionChanged += (_, _) => draft.FolderChosen = true;
             content.Children.Add(folder);
         }
 
@@ -402,6 +406,9 @@ internal static class SaveQueryDialog
         public string Sql { get; set; } = sql;
 
         public long? FolderId { get; set; } = folderId;
+
+        // No folder is also the box's start, so only a pick tells a move to the top level from no choice.
+        public bool FolderChosen { get; set; }
 
         public string StoredName { get; set; } = name;
 
