@@ -189,6 +189,15 @@ struct SQLQueryFingerprintTests {
         #expect(normalize(users) == "COPY users FROM stdin")
         #expect(hash(users) != hash(orders))
         #expect(hash(users) == hash("COPY users FROM stdin;\n2\tbob\n\\.\n"))
+        #expect(hash("/* load */ " + users) == hash(users))
+        #expect(hash("/* load */ " + users) != hash("/* load */ " + orders))
+    }
+
+    @Test("A quoted name that needs its quotes keeps them, so it never reads as the list it spells")
+    func quotedNamesKeepNeededQuotes() {
+        #expect(hash("SELECT [a, b] FROM t", .mssql) != hash("SELECT a, b FROM t", .mssql))
+        #expect(hash(#"SELECT "a, b" FROM t"#) != hash("SELECT a, b FROM t"))
+        #expect(hash("SELECT [a] FROM t", .mssql) == hash("SELECT a FROM t", .mssql))
     }
 
     @Test("A SurrealQL angle-quoted name is the name it quotes")

@@ -494,7 +494,7 @@ struct SQLFingerprintGoldenTests {
         (.mysql, "SELECT a'alias', b'alias' FROM t", "SELECT a ?, ? FROM t"),
         (.postgresql, "SELECT U&'d\\0061t', E'it\\'s' FROM t", "SELECT ?, ? FROM t"),
         (.oracle, "SELECT q'[it's]' FROM dual", "SELECT ? FROM dual"),
-        (.mssql, "SELECT [order id], [group] FROM [my table] WHERE [select] = 1", "SELECT order id, group FROM my table WHERE select = ?"),
+        (.mssql, "SELECT [order id], [group] FROM [my table] WHERE [select] = 1", "SELECT [order id], group FROM [my table] WHERE select = ?"),
         (.mssql, "SELECT * FROM [users]", "SELECT * FROM users"),
         (.mssql, "SELECT * FROM users", "SELECT * FROM users"),
         (.mssql, "SELECT * INTO #tmp FROM t; SELECT * FROM ##global", "SELECT * INTO #tmp FROM t; SELECT * FROM ##global"),

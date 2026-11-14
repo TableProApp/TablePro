@@ -195,19 +195,24 @@ enum SQLQueryFingerprint {
         if inner.last == closing {
             inner = inner.dropLast()
         }
-        return String(inner)
+        // `[a, b]` is one column and `a, b` two, so only a name that needs no quotes loses them.
+        return isPlainIdentifier(inner) ? String(inner) : value
     }
 
-    // A psql `COPY ... FROM STDIN` is one directive token with its rows; the command is the shape, the rows are data.
+    private static func isPlainIdentifier(_ name: Substring) -> Bool {
+        guard let first = name.first, first.isLetter || first == "_" else { return false }
+        return name.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "$" }
+    }
+
+    // A psql `COPY ... FROM STDIN` is one directive token with its rows: the command it sends is the shape, the rows are
+    // data. A directive that sends nothing, such as `GO`, leaves nothing.
     private static func tokens(of source: String, grammar: SQLLexicalGrammar) -> [SQLToken] {
         let tokenizer = SQLTokenizer()
         return tokenizer.tokenize(source, grammar: grammar).flatMap { token -> [SQLToken] in
-            guard token.type == .directive, token.upperValue.hasPrefix("COPY"),
-                  let command = SQLStatementScanner.executableStatements(in: token.value, grammar: grammar).first?.sql
-            else {
-                return [token]
+            guard token.type == .directive else { return [token] }
+            return SQLStatementScanner.executableStatements(in: token.value, grammar: grammar).flatMap { statement in
+                tokenizer.tokenize(statement.sql, grammar: grammar.subtracting(.psqlScripts))
             }
-            return tokenizer.tokenize(command, grammar: grammar.subtracting(.psqlScripts))
         }
     }
 
