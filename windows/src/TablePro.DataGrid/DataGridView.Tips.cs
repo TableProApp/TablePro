@@ -18,6 +18,7 @@ public sealed partial class DataGridView
 
     private readonly DispatcherTimer _tipTimer = new();
     private ToolTip? _tip;
+    private UIElement? _tipOwner;
     private (bool Frozen, int Row, int Column)? _tipCell;
     private long _tipClosedAt = long.MinValue / 2;
 
@@ -61,6 +62,11 @@ public sealed partial class DataGridView
                 _tipClosedAt = Environment.TickCount64;
             }
         }
+        if (_tipOwner is { } owner)
+        {
+            _tipOwner = null;
+            ToolTipService.SetToolTip(owner, null);
+        }
     }
 
     // Opened now rather than after the hover time, as the tests do.
@@ -72,16 +78,20 @@ public sealed partial class DataGridView
             return;
         }
         var pane = at.Frozen ? (UIElement)_frozenContent : _content;
-        // A tooltip opened by code has no pointer to follow, so it docks to the cell's rectangle.
+        // A tooltip opened by code has no pointer to follow, so it docks to the cell's rectangle. It opens only
+        // through an owner ToolTipService knows (ToolTip::OnIsOpenChanged takes the owner as its container), and the
+        // pane is that owner only while the tip shows, so ToolTipService opens nothing of its own on the pane.
         _tip = new ToolTip
         {
             Content = text,
             XamlRoot = XamlRoot,
             RequestedTheme = ActualTheme,
-            PlacementTarget = pane,
             PlacementRect = new Rect(_columns.PaneX(at.Column), at.Row * _rowHeight, _columns.Width(at.Column), _rowHeight),
             Placement = PlacementMode.Top,
         };
+        ToolTipService.SetPlacement(pane, PlacementMode.Top);
+        ToolTipService.SetToolTip(pane, _tip);
+        _tipOwner = pane;
         _tip.IsOpen = true;
     }
 
