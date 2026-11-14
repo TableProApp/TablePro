@@ -163,7 +163,7 @@ struct QueryHistoryFingerprintMigrationTests {
         #expect(snapshot.mostRun.first?.callCount == 2)
     }
 
-    @Test("Rows the previous stable wrote get their shape, and this build leaves that release its own fingerprint")
+    @Test("Rows the previous stable wrote get their shape, and a new row keeps that release's fingerprint")
     func shapeColumnLeavesThePreviousStableItsFingerprint() async {
         let connectionId = UUID()
         let url = makeVersion3Database(
@@ -190,7 +190,7 @@ struct QueryHistoryFingerprintMigrationTests {
         #expect(snapshot.mostRun.first?.callCount == 3)
         #expect(snapshot.mostRun.first?.normalizedQuery == "SELECT ? AS p, a FROM t")
 
-        // The previous stable fills a zero `fingerprint_hash` with its own reading when it opens the store.
+        // The previous stable groups and matches by `fingerprint_hash`, so a new row carries that release's reading.
         var db: OpaquePointer?
         guard sqlite3_open(url.path(percentEncoded: false), &db) == SQLITE_OK else { return }
         defer { sqlite3_close_v2(db) }
@@ -199,7 +199,8 @@ struct QueryHistoryFingerprintMigrationTests {
         let sql = "SELECT fingerprint_hash, shape_hash FROM history WHERE query LIKE '%E:%';"
         #expect(sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK)
         #expect(sqlite3_step(statement) == SQLITE_ROW)
-        #expect(sqlite3_column_int64(statement, 0) == 0)
-        #expect(sqlite3_column_int64(statement, 1) != 0)
+        let query = "SELECT 'E:\\' AS p, a FROM t"
+        #expect(sqlite3_column_int64(statement, 0) == SQLLegacyFingerprint.hash(query, databaseType: .postgresql))
+        #expect(sqlite3_column_int64(statement, 1) == SQLQueryFingerprint.hash(query, databaseType: .postgresql))
     }
 }

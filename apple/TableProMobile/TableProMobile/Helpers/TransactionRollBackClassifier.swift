@@ -7,13 +7,20 @@ nonisolated enum TransactionRollBackClassifier {
     private static let wholeTransactionTails: Set<String> = ["AND", "RELEASE"]
     // A name after ROLLBACK TRAN may be a savepoint, and TO, PREPARED or FORCE target something else.
     private static let otherTarget = "?"
+    // `/*!` alone runs on every MySQL and MariaDB server; `/*!NNNNN` and `/*M!` only on some.
+    private static let unversionedOpenerLength = 3
 
     static func rollsBackTransaction(_ sql: String, grammar: SQLLexicalGrammar, statusMessage: String? = nil) -> Bool {
         // PostgreSQL answers a COMMIT in a failed transaction by rolling it back.
         if let statusMessage, statusMessage == PostgreSQLSessionTransaction.failedTransactionRolledBackMessage {
             return true
         }
-        let words = leadingWords(of: sql, limit: 3, grammar: grammar)
+        // A versioned `/*!80000 ... */` runs only on a server that new, so either reading may be the one that ran.
+        return rollsBack(leadingWords(of: sql, limit: 3, grammar: grammar, readsVersionedBodies: true))
+            || rollsBack(leadingWords(of: sql, limit: 3, grammar: grammar, readsVersionedBodies: false))
+    }
+
+    private static func rollsBack(_ words: [String]) -> Bool {
         switch words.first ?? "" {
         case "ABORT":
             return true
@@ -30,7 +37,12 @@ nonisolated enum TransactionRollBackClassifier {
     }
 
     // Comments end where the engine ends them: a MySQL `#` line, a nested PostgreSQL `/* */`.
-    private static func leadingWords(of sql: String, limit: Int, grammar: SQLLexicalGrammar) -> [String] {
+    private static func leadingWords(
+        of sql: String,
+        limit: Int,
+        grammar: SQLLexicalGrammar,
+        readsVersionedBodies: Bool
+    ) -> [String] {
         let text = sql as NSString
         var words: [String] = []
         var index = 0
@@ -49,9 +61,14 @@ nonisolated enum TransactionRollBackClassifier {
             }
             if let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar) {
                 if span.kind == .executableComment,
-                   let opener = SqlLexer.executableCommentOpenerLength(text, at: index, length: text.length) {
+                   let opener = SqlLexer.executableCommentOpenerLength(text, at: index, length: text.length),
+                   readsVersionedBodies || opener == unversionedOpenerLength {
                     executableBody = span
                     index += opener
+                    continue
+                }
+                if span.kind == .executableComment {
+                    index = max(span.end, index + 1)
                     continue
                 }
                 guard span.kind.isComment else {

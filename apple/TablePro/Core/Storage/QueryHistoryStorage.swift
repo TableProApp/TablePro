@@ -225,8 +225,7 @@ actor QueryHistoryStorage {
         if !hasSource {
             guard migrateToVersion3() else { return false }
         }
-        // `shape_hash` is the shape read with the engine's grammar. `fingerprint_hash` stays the previous stable's: this
-        // build writes it as 0, which that release's backfill fills with its own reading.
+        // `shape_hash` is the shape read with the engine's grammar; `fingerprint_hash` keeps the previous stable's reading.
         guard addColumnIfMissing("fingerprint_hash", definition: "INTEGER NOT NULL DEFAULT 0"),
               addColumnIfMissing("first_row_time", definition: "REAL"),
               addColumnIfMissing("server_time", definition: "REAL"),
@@ -505,8 +504,8 @@ actor QueryHistoryStorage {
             INSERT INTO history (
                 id, query, connection_id, database_name, database_type, schema_name,
                 source, statement_type, executed_at, execution_time, row_count,
-                was_successful, error_message, shape_hash, first_row_time, server_time
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                was_successful, error_message, shape_hash, first_row_time, server_time, fingerprint_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """
 
         var statement: OpaquePointer?
@@ -549,6 +548,7 @@ actor QueryHistoryStorage {
         } else {
             sqlite3_bind_null(statement, 16)
         }
+        sqlite3_bind_int64(statement, 17, SQLLegacyFingerprint.hash(entry.query, databaseType: entry.databaseType))
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
             logSqliteError(context: "insert")

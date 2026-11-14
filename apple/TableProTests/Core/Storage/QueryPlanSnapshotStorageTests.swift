@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import SQLite3
 @testable import TablePro
 import TableProPluginKit
 import Testing
@@ -21,6 +22,24 @@ struct QueryPlanSnapshotStorageTests {
 
         let found = await store.storage.planSnapshots(matching: second, excluding: nil, limit: 10)
         #expect(found.map(\.id) == [first])
+    }
+
+    @Test("A plan keeps the previous stable's fingerprint beside its shape")
+    func planKeepsThePreviousStablesFingerprint() async throws {
+        let store = TemporaryQueryHistoryStore()
+        let subject = "SELECT data #>> '{a}' FROM t WHERE tags @> ARRAY['x']"
+        _ = await store.record(subjectSQL: subject, rawPlan: "plan")
+
+        var db: OpaquePointer?
+        try #require(sqlite3_open(store.url.path(percentEncoded: false), &db) == SQLITE_OK)
+        defer { sqlite3_close_v2(db) }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        try #require(sqlite3_prepare_v2(db, "SELECT fingerprint_hash, shape_hash FROM plan_snapshots;", -1, &statement, nil) == SQLITE_OK)
+        try #require(sqlite3_step(statement) == SQLITE_ROW)
+        #expect(sqlite3_column_int64(statement, 0) == SQLLegacyFingerprint.hash(subject, databaseType: .postgresql))
+        #expect(sqlite3_column_int64(statement, 1) == SQLQueryFingerprint.hash(subject, databaseType: .postgresql))
+        #expect(sqlite3_column_int64(statement, 0) != sqlite3_column_int64(statement, 1))
     }
 
     @Test("A different statement does not")
@@ -168,11 +187,12 @@ struct QueryPlanSnapshotStorageTests {
 /// developer's own history.
 private final class TemporaryQueryHistoryStore {
     let storage: QueryHistoryStorage
+    let url: URL
     private let connectionId = UUID()
     private(set) var lastHistoryId = UUID()
 
     init() {
-        let url = FileManager.default.temporaryDirectory
+        url = FileManager.default.temporaryDirectory
             .appendingPathComponent("plan-snapshots-\(UUID().uuidString).db")
         storage = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
     }

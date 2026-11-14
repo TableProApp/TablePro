@@ -63,5 +63,7 @@ struct TransactionRollBackClassifierTests {
         #expect(TransactionRollBackClassifier.rollsBackTransaction("ROLLBACK /*! AND CHAIN */", grammar: mysql))
         #expect(TransactionRollBackClassifier.rollsBackTransaction("/*!40001 ROLLBACK */", grammar: mysql))
         #expect(!TransactionRollBackClassifier.rollsBackTransaction("ROLLBACK /*! TO a */", grammar: mysql))
+        #expect(TransactionRollBackClassifier.rollsBackTransaction("ROLLBACK /*!99999 TO s */", grammar: mysql))
+        #expect(TransactionRollBackClassifier.rollsBackTransaction("/*!40001 ROLLBACK */", grammar: mysql))
     }
 }

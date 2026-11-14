@@ -68,8 +68,7 @@ extension QueryHistoryStorage {
     func recordPlanSnapshot(_ capture: QueryPlanCapture) -> Bool {
         guard let db, capture.isWithinPlanSizeLimit else { return false }
 
-        // The previous stable matches plans on `fingerprint_hash`, and its reading agrees with the grammar's for nearly
-        // every statement, so the shape goes in both.
+        // The previous stable matches plans on `fingerprint_hash`, read its own way; this build matches on `shape_hash`.
         let sql = """
             INSERT INTO plan_snapshots (
                 id, history_id, fingerprint_hash, subject_sql, connection_id, database_name,
@@ -88,7 +87,7 @@ extension QueryHistoryStorage {
         let bindings: [QueryHistorySqlBinding?] = [
             .text(capture.id.uuidString),
             capture.historyId.map { .text($0.uuidString) },
-            .int64(identity.fingerprintHash),
+            .int64(SQLLegacyFingerprint.hash(capture.subjectSQL, databaseType: identity.scope.databaseType)),
             .text(capture.subjectSQL),
             .text(identity.scope.connectionId.uuidString),
             .text(identity.scope.databaseName),
