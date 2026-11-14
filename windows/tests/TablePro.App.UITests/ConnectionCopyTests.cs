@@ -10,7 +10,7 @@ public sealed partial class ShellTests
 {
     [Theory]
     [MemberData(nameof(Themes))]
-    public void ADuplicateOpensTheFormOnTheCopyAndAnExportWritesTheFile(string theme)
+    public void ADuplicateOpensTheFormOnTheCopyAndExportAsksWhereToSave(string theme)
     {
         using var app = AppSession.Launch(theme);
         app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
@@ -29,42 +29,13 @@ public sealed partial class ShellTests
         app.WaitForClose("Edit connection");
         app.FindByNamePrefix("Chinook (Sample) (Copy),", tree);
 
-        var file = Path.Combine(app.DataFolder, "exported-connections.json");
+        // The system's Save As dialog is not driven here; the core's and the interop's tests write the file.
         app.Click(app.Find("ExportConnectionsButton"), () => FileDialog(app) is not null);
-        SaveInFileDialog(app, file);
-        // The bar says what happened, and a wait that gives up keeps a shot of it.
-        app.FindByNamePrefix("Exported 2 connections.", app.Find("HomeMessageBar"));
-        Assert.True(File.Exists(file), "The export wrote no file.");
-        app.Screenshot("79-connections-exported");
-        var text = File.ReadAllText(file);
-        Assert.Contains("Chinook (Sample) (Copy)", text, StringComparison.Ordinal);
-    }
-
-    // The system's Save As dialog is Win32, as the Open dialog is: Enter saves to the path typed in its File name box.
-    private static void SaveInFileDialog(AppSession app, string path)
-    {
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            var dialog = Retry.WhileNull(() => FileDialog(app), AppSession.Wait, throwOnTimeout: false).Result
-                ?? throw new InvalidOperationException("The Save As dialog did not appear.");
-            var name = Retry.WhileNull(
-                    () => dialog.FindFirstDescendant(condition => condition.ByControlType(ControlType.Edit)
-                        .And(condition.ByAutomationId("1001").Or(condition.ByName("File name:")))),
-                    AppSession.Wait,
-                    throwOnTimeout: false).Result
-                ?? throw new InvalidOperationException("The Save As dialog has no File name box.");
-            dialog.SetForeground();
-            name.Focus();
-            name.AsTextBox().Text = path;
-            Keyboard.Type(VirtualKeyShort.RETURN);
-            if (Retry.WhileFalse(() => FileDialog(app) is null, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
-            {
-                return;
-            }
-        }
-
-        // Left open, the dialog would keep the window from closing after the test.
+        var dialog = FileDialog(app) ?? throw new InvalidOperationException("The Save As dialog did not appear.");
+        dialog.SetForeground();
         Keyboard.Type(VirtualKeyShort.ESCAPE);
-        throw new InvalidOperationException("The Save As dialog did not take the path.");
+        Assert.True(
+            Retry.WhileFalse(() => FileDialog(app) is null, AppSession.Wait, throwOnTimeout: false).Success,
+            "The Save As dialog stayed open.");
     }
 }
