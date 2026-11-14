@@ -174,6 +174,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _header.SizeChanged += (_, _) => MeasureInsets();
         _frozenContent.SizeChanged += (_, _) => MeasureInsets();
         Content = _scroller;
+        InitializeCellTips();
 
         IsTabStop = true;
         UseSystemFocusVisuals = false;
@@ -240,8 +241,10 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         get => _sort;
         set
         {
+            var previous = _sort;
             _sort = value;
             RebindHeaders();
+            RaiseSortStatus(previous, value);
         }
     }
 
@@ -357,6 +360,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     // Shows data, or nothing for null. The grid opens its own reader on this thread and disposes it with the data.
     public void SetData(IGridData? data)
     {
+        ClearCellTip();
         Cancel(EditorFocused);
         // A copy still reading the old data would read it after the host lets it go, then put it on the clipboard.
         _copy?.Cancel();
@@ -563,6 +567,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        ClearCellTip();
         // As when the editor loses focus, so text typed into a grid that leaves the window still reaches the host.
         CommitOrCancel(refocus: false);
         foreach (var rows in new[] { _rowsLayout.Realized.Values, _frozenRowsLayout.Realized.Values, _rowPool.Pooled, _frozenRowPool.Pooled })
@@ -604,6 +609,8 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     private void ColumnsChanged()
     {
+        // A wider column may show the value whole now.
+        ClearCellTip();
         _layoutVersion++;
         _content.Width = _columns.ScrollWidth;
         _frozenContent.Width = _columns.FrozenWidth;
@@ -725,6 +732,10 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     private void Follow(double x, double y)
     {
+        if (x != _viewX || y != _viewY)
+        {
+            ClearCellTip();
+        }
         _viewX = x;
         _viewY = y;
         var origin = Math.Floor(y / OriginStep) * OriginStep;

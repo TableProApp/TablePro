@@ -116,6 +116,7 @@ public sealed partial class DataGridView
 
     public void EditsChanged()
     {
+        ClearCellTip();
         if (_data is null)
         {
             return;
@@ -325,6 +326,7 @@ public sealed partial class DataGridView
 
     private void OpenEditor(int row, int column, string text)
     {
+        ClearCellTip();
         var editor = _editor ??= CreateEditor();
         var window = column < _columns.FrozenCount ? _frozenWindow : _window;
         if (!ReferenceEquals(editor.Parent, window))

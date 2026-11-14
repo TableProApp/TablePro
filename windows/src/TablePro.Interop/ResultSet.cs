@@ -2,6 +2,11 @@ using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
+public sealed record CellTextHead(string Text, bool Cut);
+
+// Bytes is the value's start, Length the whole value's.
+public sealed record CellBytes(ReadOnlyMemory<byte> Bytes, long Length);
+
 // Held by the core and readable while its rows still arrive.
 public sealed class ResultSet : IDisposable
 {
@@ -29,6 +34,27 @@ public sealed class ResultSet : IDisposable
         ArgumentOutOfRangeException.ThrowIfNegative(row);
         ArgumentOutOfRangeException.ThrowIfNegative(column);
         return CoreCall.Run(() => _set.CellText(checked((ulong)row), checked((uint)column)));
+    }
+
+    // A value's start for a viewer, read without copying the rest: its text with line breaks kept, or a binary
+    // value's hex. Null for SQL NULL.
+    public CellTextHead? GetCellTextHead(long row, int column, int maxCharacters)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxCharacters);
+        return CoreCall.Run(() => _set.CellTextHead(checked((ulong)row), checked((uint)column), (uint)maxCharacters))
+            is { } head ? new CellTextHead(head.Text, head.Cut) : null;
+    }
+
+    // A binary value's first maxBytes and its whole length. Null for SQL NULL or a value that is not binary.
+    public CellBytes? GetCellBytes(long row, int column, long maxBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxBytes);
+        return CoreCall.Run(() => _set.CellBytes(checked((ulong)row), checked((uint)column), (ulong)maxBytes))
+            is { } binary ? new CellBytes(binary.Bytes, Mapping.Count(binary.Length)) : null;
     }
 
     // Each thread that reads windows opens its own.

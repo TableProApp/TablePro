@@ -13,6 +13,18 @@ pub struct ResultSet {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CellTextHead {
+    pub text: String,
+    pub cut: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CellBytes {
+    pub bytes: Vec<u8>,
+    pub length: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ResultColumnInfo {
     pub name: String,
     pub type_name: String,
@@ -38,6 +50,11 @@ impl ResultSet {
 
     pub(crate) fn stored_value(&self, row: u64, column: usize) -> Option<tablepro_core::Value> {
         self.store.stored_value(self.stored_row(row), column)
+    }
+
+    // The bytes the store keeps for a cell, so a caller can refuse a large value before copying it.
+    pub(crate) fn cell_len(&self, row: u64, column: usize) -> Option<usize> {
+        self.store.cell_len(self.stored_row(row), column)
     }
 
     pub(crate) fn cell_kind(&self, row: u64, column: usize) -> Option<Option<ValueKind>> {
@@ -81,6 +98,28 @@ impl ResultSet {
         usize::try_from(column)
             .ok()
             .and_then(|column| self.store.full_text(self.stored_row(row), column))
+            .ok_or_else(|| CoreError::failed("ffi.out_of_range", format!("no cell at row {row}, column {column}")))
+    }
+
+    // A value's start for a viewer, read without copying the rest: its text with line breaks kept, or a binary
+    // value's hex. `None` for null.
+    pub fn cell_text_head(&self, row: u64, column: u32, max_chars: u32) -> Result<Option<CellTextHead>, CoreError> {
+        let max_chars = usize::try_from(max_chars).unwrap_or(usize::MAX);
+        usize::try_from(column)
+            .ok()
+            .and_then(|column| self.store.text_head(self.stored_row(row), column, max_chars))
+            .map(|head| head.map(|(text, cut)| CellTextHead { text, cut }))
+            .ok_or_else(|| CoreError::failed("ffi.out_of_range", format!("no cell at row {row}, column {column}")))
+    }
+
+    // A binary value's first `max_bytes` and its whole length, for an image or a hex view; `None` for null or a
+    // value that is not binary.
+    pub fn cell_bytes(&self, row: u64, column: u32, max_bytes: u64) -> Result<Option<CellBytes>, CoreError> {
+        let max_bytes = usize::try_from(max_bytes).unwrap_or(usize::MAX);
+        usize::try_from(column)
+            .ok()
+            .and_then(|column| self.store.binary(self.stored_row(row), column, max_bytes))
+            .map(|binary| binary.map(|(bytes, length)| CellBytes { bytes, length }))
             .ok_or_else(|| CoreError::failed("ffi.out_of_range", format!("no cell at row {row}, column {column}")))
     }
 

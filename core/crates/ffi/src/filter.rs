@@ -116,6 +116,28 @@ fn takes_raw_sql(dialect: &dyn SqlDialect) -> bool {
     SqlGrammar::SQL.contains(&dialect.grammar())
 }
 
+impl From<FilterSet> for TableFilterArg {
+    fn from(filter: FilterSet) -> Self {
+        Self {
+            combinator: filter.combinator.into(),
+            rules: filter
+                .rules
+                .into_iter()
+                .map(|rule| FilterRuleArg {
+                    column: rule.column,
+                    op: rule.op.into(),
+                    value: rule.value.map(|value| match value {
+                        FilterValue::Single(value) => FilterValueArg::Single { value },
+                        FilterValue::Pair(low, high) => FilterValueArg::Pair { low, high },
+                        FilterValue::List(values) => FilterValueArg::List { values },
+                    }),
+                })
+                .collect(),
+            raw_sql: filter.extra_sql,
+        }
+    }
+}
+
 impl From<TableFilterArg> for FilterSet {
     fn from(filter: TableFilterArg) -> Self {
         Self {

@@ -623,6 +623,42 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         await ShareSheet.ShowAsync(this, _workbench, subject).ConfigureAwait(true);
     }
 
+    // The menu opened on the tab shown, which is the one ExportAsync reads.
+    private async void OnExportRequested(object? sender, EventArgs e)
+    {
+        if (ReferenceEquals(sender, ActiveTab))
+        {
+            await ExportAsync().ConfigureAwait(true);
+        }
+    }
+
+    // A tab already showing the reference's rows comes forward; otherwise a new one opens beside the tab it came from.
+    private void OnReferenceRequested(object? sender, FollowedReference.Rows reference)
+    {
+        if (_share is null)
+        {
+            return;
+        }
+
+        int? index = null;
+        foreach (var item in Tabs.TabItems.OfType<TabViewItem>().ToList())
+        {
+            if (item.Content is TableTabView view && view.Model.ShowsReference(reference))
+            {
+                view.ShowData();
+                Tabs.SelectedItem = item;
+                return;
+            }
+
+            if (ReferenceEquals(item.Content, sender))
+            {
+                index = Tabs.TabItems.IndexOf(item) + 1;
+            }
+        }
+
+        AddTable(reference.Table.Schema, reference.Table.Name, ObjectKind.Table, index, TableTab.TabFor(reference));
+    }
+
     private async void OnShareRequested(object? sender, ShareKind kind) =>
         await ShareAsync(sender as ITabContent, kind).ConfigureAwait(true);
 
@@ -748,8 +784,14 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             source.ShareRequested += OnShareRequested;
         }
 
+        if (item.Content is IExportSource exports)
+        {
+            exports.ExportRequested += OnExportRequested;
+        }
+
         if (item.Content is TableTabView tableTab)
         {
+            tableTab.ReferenceRequested += OnReferenceRequested;
             tableTab.DraftChanged += OnEditorTextChanged;
             tableTab.SessionWriteRequested += OnSessionWriteRequested;
         }
@@ -798,8 +840,14 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             source.ShareRequested -= OnShareRequested;
         }
 
+        if (item.Content is IExportSource exports)
+        {
+            exports.ExportRequested -= OnExportRequested;
+        }
+
         if (item.Content is TableTabView tableTab)
         {
+            tableTab.ReferenceRequested -= OnReferenceRequested;
             tableTab.DraftChanged -= OnEditorTextChanged;
             tableTab.SessionWriteRequested -= OnSessionWriteRequested;
         }
