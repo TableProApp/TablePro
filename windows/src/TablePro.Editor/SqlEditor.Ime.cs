@@ -79,6 +79,11 @@ public sealed partial class SqlEditor
 
         public void ShowComposition(string text, int caret, IReadOnlyList<CompositionRun> runs)
         {
+            // Every focus loss clears the composition; with none shown, the swap chain has nothing new to draw.
+            if (text.Length == 0 && editor._composition.Length == 0)
+            {
+                return;
+            }
             editor._composition = text;
             editor._compositionCaret = caret;
             editor._compositionRuns = runs;

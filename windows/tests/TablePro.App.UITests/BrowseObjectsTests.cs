@@ -23,7 +23,7 @@ public sealed partial class ShellTests
         app.FindByName("Track", tree);
         app.TypeInto("Query 1", CreateTrigger);
         app.Chord(
-            () => app.Find("QueryStatus").Name.StartsWith("Done", StringComparison.Ordinal),
+            () => AppSession.TextOf(app.Find("QueryStatus")).StartsWith("Done", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL,
             VirtualKeyShort.ENTER);
 
@@ -61,7 +61,7 @@ public sealed partial class ShellTests
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", CountTracks);
         app.Chord(
-            () => app.Find("QueryStatus").Name.StartsWith("Rows: 1", StringComparison.Ordinal),
+            () => AppSession.TextOf(app.Find("QueryStatus")).StartsWith("Rows: 1", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL,
             VirtualKeyShort.ENTER);
         Assert.Equal("3503", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "3503"));
