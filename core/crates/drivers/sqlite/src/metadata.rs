@@ -418,7 +418,7 @@ pub(crate) async fn fetch_inbound_foreign_keys(
 
 /// The keys of the schema's other tables that point at `table`, its
 /// columns spelled as `shape` declares them, since a child's REFERENCES
-/// clause can spell them otherwise. Ordered by child, then key.
+/// clause can spell them otherwise.
 async fn inbound_keys(
     connection: &mut SqlxConnection,
     table: &TableRef,
@@ -437,7 +437,7 @@ async fn inbound_keys(
     let schema_sql = quote(schema_of(table));
     let mut large = Vec::new();
     {
-        let mut rows = sqlx::query_as::<_, (i64, String)>(AssertSqlSafe(catalog::large_children_sql(&schema_sql)))
+        let mut rows = sqlx::query_as::<_, (i64, String)>(AssertSqlSafe(catalog::large_tables_sql(&schema_sql)))
             .bind(table.name.as_str())
             .bind(schema_of(table))
             .bind(i64::try_from(ByteLimit::CATALOG_DEFAULT.get()).unwrap_or(i64::MAX))
@@ -455,6 +455,11 @@ async fn inbound_keys(
             .map_err(map_error)?;
         // A row another connection gave to another table since is not this child's.
         let sql = budget.keep_optional(row.filter(|(name, _)| *name == child).and_then(|(_, sql)| sql))?;
+        if !sql.as_deref().is_some_and(|sql| names_table(sql, &table.name)) {
+            release(budget, sql);
+            budget.release_text(&child);
+            continue;
+        }
         budget.fits(sql.as_deref().map_or(0, foreign_key_list_bytes))?;
         let (columns, count) = key_columns_into(connection, &child, table, budget).await?;
         match columns.is_empty() {
@@ -469,8 +474,6 @@ async fn inbound_keys(
     Ok(keys)
 }
 
-/// The keys of the small referring tables, in one read: a child's rows
-/// come together, each with its CREATE TABLE, kept from its first row.
 async fn small_children_keys(
     connection: &mut SqlxConnection,
     parent: &Parent<'_>,
@@ -512,9 +515,19 @@ async fn small_children_keys(
     Ok(keys)
 }
 
-/// The columns of the child's keys that point at `parent`, and how many
-/// keys the child has wherever they point, since the ids number them
-/// all. SQLite compares a key's parent folding ASCII letters alone.
+// Linear time, since the file chooses both texts. SQLite folds ASCII letters alone, and a quoted name doubles its
+// quote character.
+fn names_table(sql: &str, table: &str) -> bool {
+    let sql = sql.to_ascii_lowercase();
+    let table = table.to_ascii_lowercase();
+    sql.contains(&table)
+        || ['"', '`', '\''].into_iter().any(|quote| {
+            let doubled: String = [quote, quote].iter().collect();
+            table.contains(quote) && sql.contains(&table.replace(quote, &doubled))
+        })
+}
+
+// The count is of every key of the child, wherever it points, since the ids number them all.
 async fn key_columns_into(
     connection: &mut SqlxConnection,
     child: &str,
@@ -544,7 +557,6 @@ async fn key_columns_into(
     Ok((columns, ids.len()))
 }
 
-/// The table the inbound keys point at, read once for all its children.
 struct Parent<'a> {
     table: &'a TableRef,
     shape: &'a TableShape,
@@ -553,8 +565,6 @@ struct Parent<'a> {
 }
 
 impl Parent<'_> {
-    /// One child's keys, from its CREATE TABLE, which is let go before
-    /// the next child's is read.
     fn keys_of(
         &self,
         child: String,
@@ -1033,4 +1043,20 @@ fn no_such_table(schema: &str, name: &str) -> DriverError {
         }),
         format!("no such table: {schema}.{name}"),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_table_is_named_in_any_case_and_quote_style() {
+        let sql = "CREATE TABLE c (a REFERENCES \"WE\"\"IRD\", b REFERENCES 'it''s', d REFERENCES `x``y`)";
+
+        assert!(names_table(sql, "we\"ird"));
+        assert!(names_table(sql, "IT's"));
+        assert!(names_table(sql, "x`y"));
+        assert!(!names_table(sql, "other"));
+        assert!(!names_table(&"a".repeat(1 << 20), &format!("{}b", "a".repeat(1 << 14))));
+    }
 }

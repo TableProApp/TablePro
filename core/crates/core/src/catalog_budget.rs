@@ -1,8 +1,7 @@
 use crate::byte_limit::ByteLimit;
 use crate::error::DriverError;
 
-// A file's catalog can repeat one long name across thousands of keys, so what a read holds grows with both; this
-// bounds it the way `retained_bytes` measures a result's text.
+// A file's catalog can repeat one long name across thousands of keys; counted as `retained_bytes` counts text.
 #[derive(Debug)]
 pub struct CatalogBudget {
     limit: u64,
@@ -55,11 +54,13 @@ impl CatalogBudget {
         texts.into_iter().try_for_each(|text| self.charge_text(text))
     }
 
-    // For a text the read drops before it reads the next one, such as each child's CREATE TABLE.
+    // For what the read drops before it reads the next, such as each child's CREATE TABLE.
+    pub fn release(&mut self, bytes: usize) {
+        self.held = self.held.saturating_sub(u64::try_from(bytes).unwrap_or(u64::MAX));
+    }
+
     pub fn release_text(&mut self, text: &str) {
-        self.held = self
-            .held
-            .saturating_sub(u64::try_from(text_bytes(text)).unwrap_or(u64::MAX));
+        self.release(text_bytes(text));
     }
 }
 

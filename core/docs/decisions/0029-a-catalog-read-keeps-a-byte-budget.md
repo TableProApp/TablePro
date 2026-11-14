@@ -13,9 +13,9 @@ A file engine reads its catalog from the file the user opened, and the file choo
 
 - SQLite and DuckDB charge each text a read keeps as it arrives, and each copy made per key before it is made. A text read and dropped before the next one, as each child's CREATE TABLE, is released.
 - Each text of the file is read once per call, and SQLite's catalog rows stream, unsorted where a sort would hold every row first.
-- SQLite runs `pragma_foreign_key_list` on a table only once the key list's cost, worked out from its CREATE TABLE (`foreign_key_list_bytes`), fits the budget. The keys into a table ask only the tables whose CREATE TABLE names it: those of at most 64 KiB whose key list cannot cost more than the budget in one read, the others one at a time.
-- A save's foreign key check holds each checked table's name once and each row as a key index and a rowid.
-- DuckDB reads each child's and each parent's CREATE TABLE once, and charges the column names it keeps from them.
+- SQLite runs `pragma_foreign_key_list` on a table only once the key list's cost, worked out from its CREATE TABLE (`foreign_key_list_bytes`), fits the budget. The keys into a table ask every table of at most 64 KiB whose key list cannot cost more than the budget in one read; each other table is read alone, searched in linear time for the parent's name, and costed first.
+- A save's foreign key check holds each checked table's name once and each row as a key index and a rowid, up to the budget; past it the table compares by count per key, as a table whose rows the save renumbers does.
+- DuckDB bounds what a constraint read can return from `duckdb_tables()` before it runs, since it holds the whole result first. It reads each child's and each parent's CREATE TABLE once, and charges the column names it keeps from them.
 
 ## Rationale
 
@@ -27,6 +27,6 @@ A file engine reads its catalog from the file the user opened, and the file choo
 
 - Large real schemas read as before, and the keys into a table read faster: 5,000 children in 0.2 s, against 1.4 s.
 - One value is read before it is charged, and sqlx queues up to 50 rows ahead of the reader. SQLite bounds a value at `SQLITE_MAX_LENGTH`, and a CREATE TABLE over 64 KiB is read alone.
-- DuckDB holds a catalog query's whole result before the first row, and names each constraint after its table. The budget bounds what the driver keeps, not that.
+- DuckDB names every constraint of a table after it as it scans, a chunk of rows at a time, whatever the query keeps. That is DuckDB's own work, and no read here bounds it.
 - Not budgeted: the schema list, reads of one value, and the SQL dumps, which read each object once.
 - The apps word the code: Linux in `linux/crates/app/src/ui/error_text/driver.rs`, Windows in `Resources.resw`.

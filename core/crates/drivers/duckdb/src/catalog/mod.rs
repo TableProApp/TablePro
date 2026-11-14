@@ -39,8 +39,7 @@ fn schema_of(table: &TableRef) -> &str {
         .unwrap_or(DEFAULT_SCHEMA)
 }
 
-/// Rows of a catalogue query whose columns are all text or NULL, each
-/// value counted against `budget` as it is read.
+/// Rows of a catalogue query whose columns are all text or NULL.
 fn text_rows(
     link: &Link,
     sql: &str,
@@ -61,6 +60,56 @@ fn text_rows(
         read.push(values);
     }
     Ok(read)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Constraints {
+    Own,
+    Referencing,
+}
+
+// Constraints: REFERENCES, CHECK, UNIQUE and PRIMARY in the text and a NOT NULL per column; each names its table
+// `{names}` times and a column, beside at most four copies of the text. DOUBLE, since the file chooses the numbers.
+const CONSTRAINT_BYTES: &str = "CAST((strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'references', ''))) / 10 \
+       + (strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'check', ''))) / 5 \
+       + (strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'unique', ''))) / 6 \
+       + (strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'primary', ''))) / 7 + t.column_count + 1 AS DOUBLE) \
+     * ({names} * strlen(t.table_name) + 512 + coalesce((SELECT max(strlen(c.column_name)) FROM duckdb_columns() c \
+         WHERE c.table_oid = t.table_oid), 0)) \
+     + 4 * strlen(t.sql)";
+
+// DuckDB holds a query's whole result before its first row and names each constraint after its table, so the result
+// is bounded before the query runs.
+fn constraints_fit(
+    link: &Link,
+    catalog: &str,
+    table: &TableRef,
+    from: Constraints,
+    budget: &CatalogBudget,
+) -> Result<(), DriverError> {
+    // A constraint's name holds its table's, and the keys into a table also read the child's name.
+    let (names, tables) = match from {
+        Constraints::Own => ("1", "t.database_name = ? AND t.schema_name = ? AND t.table_name = ?"),
+        Constraints::Referencing => (
+            "2",
+            "t.table_oid IN (SELECT d.refobjid FROM duckdb_dependencies() d \
+             JOIN duckdb_tables() p ON d.objid = p.table_oid \
+             WHERE p.database_name = ? AND p.schema_name = ? AND p.table_name = ?)",
+        ),
+    };
+    let bytes_sql = CONSTRAINT_BYTES.replace("{names}", names);
+    let sql = format!("SELECT sum({bytes_sql}) FROM duckdb_tables() t WHERE {tables}");
+    let bytes: Option<f64> = link
+        .connection
+        .query_row(&sql, duckdb::params![catalog, schema_of(table), table.name], |row| {
+            row.get(0)
+        })
+        .map_err(map_error)?;
+    let bytes = bytes.unwrap_or(0.0);
+    budget.fits(match bytes < usize::MAX as f64 {
+        true => bytes as usize,
+        false => usize::MAX,
+    })
 }
 
 fn text(row: &[Option<String>], index: usize) -> String {
@@ -252,6 +301,7 @@ fn key_constraints(
     table: &TableRef,
     budget: &mut CatalogBudget,
 ) -> Result<Vec<(String, String, Vec<String>)>, DriverError> {
+    constraints_fit(link, catalog, table, Constraints::Own, budget)?;
     let rows = text_rows(
         link,
         "SELECT constraint_name, constraint_type, array_to_string(constraint_column_names, chr(31)) \
@@ -413,6 +463,7 @@ pub(crate) fn fetch_foreign_keys(
     table: &TableRef,
     budget: &mut CatalogBudget,
 ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
+    constraints_fit(link, catalog, table, Constraints::Own, budget)?;
     let rows = text_rows(
         link,
         "SELECT constraint_name, referenced_table, \
@@ -525,6 +576,7 @@ pub(crate) fn inbound_foreign_keys(
     budget: &mut CatalogBudget,
 ) -> Result<Vec<InboundForeignKey>, DriverError> {
     // Not the child's CREATE TABLE on every key: it grows with the keys the child declares.
+    constraints_fit(link, catalog, table, Constraints::Referencing, budget)?;
     let rows = text_rows(
         link,
         "SELECT c.constraint_name, c.schema_name, c.table_name, \
@@ -722,6 +774,7 @@ fn check_constraints(
     table: &TableRef,
     budget: &mut CatalogBudget,
 ) -> Result<std::collections::HashMap<String, SqlExpression>, DriverError> {
+    constraints_fit(link, catalog, table, Constraints::Own, budget)?;
     let rows = text_rows(
         link,
         "SELECT array_to_string(constraint_column_names, chr(31)), expression FROM duckdb_constraints() \

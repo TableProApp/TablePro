@@ -125,8 +125,10 @@ impl Write<'_> {
             }
         };
 
+        // Shared by the check before the batch and the one after it, which are held together.
+        let mut budget = CatalogBudget::default();
         let baseline = match checks {
-            Some(checks) => match baseline(&mut transaction, checks).await {
+            Some(checks) => match baseline(&mut transaction, checks, &mut budget).await {
                 Ok(baseline) => baseline,
                 Err(error) => {
                     let fate = self.rollback(transaction).await;
@@ -156,7 +158,7 @@ impl Write<'_> {
         }
 
         if let Some(checks) = checks {
-            let after = match violations_after(&mut transaction, checks).await {
+            let after = match violations_after(&mut transaction, checks, &mut budget).await {
                 Ok(after) => after,
                 Err(error) => {
                     let fate = self.rollback(transaction).await;
@@ -307,14 +309,18 @@ fn stop_cause(reason: StopReason) -> DriverError {
 }
 
 /// The violations already there, named as they will be after the batch.
-async fn baseline(connection: &mut SqlxConnection, checks: &[ForeignKeyCheck]) -> Result<Violations, DriverError> {
+async fn baseline(
+    connection: &mut SqlxConnection,
+    checks: &[ForeignKeyCheck],
+    budget: &mut CatalogBudget,
+) -> Result<Violations, DriverError> {
     let mut found = Violations::default();
     let mut renames = Renames::default();
     for check in checks {
         let Some(before) = &check.before else {
             continue;
         };
-        found.extend(violations(connection, before, check.rowids_renumbered).await?);
+        found.extend(violations(connection, before, check.rowids_renumbered, budget).await?);
         renames.add(&before.name, &check.after.name, &check.renamed_columns);
     }
     Ok(renames.apply(found))
@@ -323,10 +329,11 @@ async fn baseline(connection: &mut SqlxConnection, checks: &[ForeignKeyCheck]) -
 async fn violations_after(
     connection: &mut SqlxConnection,
     checks: &[ForeignKeyCheck],
+    budget: &mut CatalogBudget,
 ) -> Result<Violations, DriverError> {
     let mut found = Violations::default();
     for check in checks {
-        found.extend(violations(connection, &check.after, check.rowids_renumbered).await?);
+        found.extend(violations(connection, &check.after, check.rowids_renumbered, budget).await?);
     }
     Ok(found)
 }
@@ -338,26 +345,13 @@ async fn violations(
     connection: &mut SqlxConnection,
     table: &TableRef,
     rowids_renumbered: bool,
+    budget: &mut CatalogBudget,
 ) -> Result<Violations, DriverError> {
     let schema = table
         .schema
         .as_deref()
         .filter(|schema| !schema.is_empty())
         .unwrap_or(MAIN_SCHEMA);
-    let mut rows: Vec<(i64, Option<i64>)> = Vec::new();
-    {
-        let mut read = sqlx::query(FOREIGN_KEY_CHECK_SQL)
-            .bind(table.name.as_str())
-            .bind(schema)
-            .fetch(&mut *connection);
-        while let Some(row) = read.try_next().await.map_err(map_error)? {
-            let rowid: Option<i64> = row.try_get("rowid").map_err(map_error)?;
-            rows.push((row.try_get("fkid").map_err(map_error)?, rowid));
-        }
-    }
-    if rows.is_empty() {
-        return Ok(Violations::default());
-    }
     let declared: Option<String> = sqlx::query_scalar(DECLARED_TABLE_NAME_SQL)
         .bind(table.name.as_str())
         .bind(schema)
@@ -367,20 +361,25 @@ async fn violations(
     let mut found = TableViolations::new(declared.unwrap_or_else(|| table.name.clone()));
     let keys = foreign_keys(connection, table, schema).await?;
     let mut positions: HashMap<i64, usize> = HashMap::new();
-    for (fkid, rowid) in rows {
+    let mut rows = sqlx::query(FOREIGN_KEY_CHECK_SQL)
+        .bind(table.name.as_str())
+        .bind(schema)
+        .fetch(&mut *connection);
+    while let Some(row) = rows.try_next().await.map_err(map_error)? {
+        let rowid: Option<i64> = row.try_get("rowid").map_err(map_error)?;
+        let fkid: i64 = row.try_get("fkid").map_err(map_error)?;
         let position = *positions.entry(fkid).or_insert_with(|| {
             let (parent, key) = keys.get(&fkid).cloned().unwrap_or_default();
             found.add_key(BrokenKey { parent, key })
         });
-        found.add_row(position, rowid.filter(|_| !rowids_renumbered));
+        found.add_row(position, rowid.filter(|_| !rowids_renumbered), budget);
     }
     let mut violations = Violations::default();
     violations.push(found);
     Ok(violations)
 }
 
-/// The table's foreign keys, with the parent each names, by the id
-/// `foreign_key_check` names them by.
+/// The table's foreign keys by the id `foreign_key_check` names them by.
 async fn foreign_keys(
     connection: &mut SqlxConnection,
     table: &TableRef,

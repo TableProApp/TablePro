@@ -28,6 +28,7 @@ const LONG: usize = 64 * 1024;
 const KEYS: usize = 4_000;
 const BROKEN_ROWS: usize = 20_000;
 const BULKY_CHILDREN: usize = 60;
+const ORPHANS: usize = 3_000;
 
 fn quoted(name: &str) -> String {
     format!("\"{name}\"")
@@ -39,7 +40,8 @@ fn quoted(name: &str) -> String {
 // - 4,000 keys naming no columns of a parent whose primary key is 64 KiB of names, each a copy of it;
 // - 20,000 rows of a table with a 64 KiB name that break its key, which a check named on every row;
 // - one row of a table with a 64 KiB name that breaks 4,000 keys, which the check named on every key;
-// - 60 children of one parent, each CREATE TABLE 256 KiB long, which SQLite queued 50 at a time.
+// - 60 children of one parent, each CREATE TABLE 256 KiB long, which SQLite queued 50 at a time;
+// - 3,000 rows that each break 1,000 keys, three million broken keys from 30 KB of text and rows.
 fn crafted_schema() -> Vec<String> {
     let column = "c".repeat(LONG);
     let child = "n".repeat(LONG);
@@ -86,6 +88,14 @@ fn crafted_schema() -> Vec<String> {
         ),
         format!("INSERT INTO {} VALUES (1)", quoted(&broken_keys())),
         "CREATE TABLE bulky_parent (id INTEGER PRIMARY KEY)".to_owned(),
+        format!(
+            "CREATE TABLE orphans (a INTEGER{})",
+            " REFERENCES named_parent".repeat(1_000)
+        ),
+        format!(
+            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < {ORPHANS}) \
+             INSERT INTO orphans SELECT i FROM n"
+        ),
     ]
     .into_iter()
     .chain((0..BULKY_CHILDREN).map(|child| {
@@ -180,7 +190,7 @@ async fn a_crafted_catalog_stops_at_the_budget() {
     let child = table(&"n".repeat(LONG));
 
     let (objects, heap, _) = measured(connection.list_objects(&ObjectScope::DefaultSchema, call())).await;
-    assert_eq!(objects.unwrap().len(), 9 + BULKY_CHILDREN);
+    assert_eq!(objects.unwrap().len(), 10 + BULKY_CHILDREN);
     assert!(heap < BOUND, "listing the tables held {heap} bytes");
     let (columns, _, _) = measured(connection.fetch_columns(&table("repeated"), call())).await;
     assert_eq!(columns.unwrap().len(), 1, "a long name alone is read");
@@ -232,6 +242,12 @@ async fn a_crafted_catalog_stops_at_the_budget() {
             "checking the {name}: {heap}, {native}"
         );
     }
+    let (written, heap, native) = measured(connection.write_batch(&checked_save("orphans"), call())).await;
+    assert!(written.is_ok(), "orphans: {written:?}");
+    assert!(
+        heap < BOUND && native < NATIVE_BOUND,
+        "checking the orphans: {heap}, {native}"
+    );
 
     // A child's CREATE TABLE is read alone, never 50 of them queued in SQLite's reader.
     let (inbound, heap, native) = measured(connection.fetch_inbound_foreign_keys(&table("bulky_parent"), call())).await;

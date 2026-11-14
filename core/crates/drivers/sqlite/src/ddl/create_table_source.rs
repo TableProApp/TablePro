@@ -352,10 +352,8 @@ fn comparison(source: &CreateTableSource<'_>, declared: &SourceColumn) -> crate:
     crate::catalog::Comparison::of(&type_text, collation.as_deref())
 }
 
-// SQLite compiles `PRAGMA foreign_key_list` with one row per key column in its program, each with its own copy of
-// the parent's name, the column's and the parent column's: a column carrying REFERENCES thousands of times costs its
-// name thousands of times before the first row. `ROW` covers a row's opcodes and its action names. Text that does
-// not read is costed as if each REFERENCES in it named the whole text.
+// SQLite compiles `PRAGMA foreign_key_list` with a copy of the parent's, the column's and the parent column's names
+// for each key column, so a column carrying REFERENCES thousands of times costs its name as often.
 pub(crate) fn foreign_key_list_bytes(sql: &str) -> usize {
     const ROW: usize = 512;
     let Ok(source) = CreateTableSource::read(sql) else {

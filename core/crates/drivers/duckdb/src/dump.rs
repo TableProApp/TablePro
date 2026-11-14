@@ -62,8 +62,8 @@ const TABLES_SQL: &str = "SELECT schema_name, table_name, sql FROM duckdb_tables
      WHERE database_name = ? AND (? IS NULL OR schema_name = ?) AND NOT internal AND NOT temporary \
      ORDER BY schema_name, table_name";
 
-/// DuckDB keeps a foreign key's parent in the child's schema. One row
-/// per child, not per key, which would repeat the child's name.
+/// DuckDB keeps a foreign key's parent in the child's schema.
+// One row per child: one per key would repeat the child's name.
 const FOREIGN_KEYS_SQL: &str = "SELECT schema_name, table_name, \
             list(referenced_table ORDER BY constraint_index) \
      FROM duckdb_constraints() \
