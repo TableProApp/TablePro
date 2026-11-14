@@ -84,6 +84,11 @@ enum SQLQueryFingerprint {
                 if isDoubleQuoted(token.value), !treatsDoubleQuoteAsString {
                     parts.append(Part(unquotedIdentifier(token.value)))
                     previousWasLiteral = false
+                } else if let prefix = literalPrefix(token.value) {
+                    // `N'x'` and SQLite's `b'alias'`, a column and its alias, stay apart from a bare `'x'`.
+                    parts.append(Part(prefix))
+                    previousWasLiteral = false
+                    appendLiteral(to: &parts, previousWasLiteral: &previousWasLiteral)
                 } else {
                     appendLiteral(to: &parts, previousWasLiteral: &previousWasLiteral)
                 }
@@ -169,6 +174,16 @@ enum SQLQueryFingerprint {
         case .identifier, .number, .string, .placeholder, .comment, .whitespace, .directive:
             return false
         }
+    }
+
+    private static func literalPrefix(_ value: String) -> String? {
+        let prefix = value.prefix { $0 != "'" && $0 != "\"" }
+        guard let first = prefix.first, first.isLetter || first == "_", prefix.count < value.count,
+              prefix.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "&" })
+        else {
+            return nil
+        }
+        return String(prefix)
     }
 
     private static func isDoubleQuoted(_ value: String) -> Bool {

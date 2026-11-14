@@ -211,4 +211,11 @@ struct SQLQueryFingerprintTests {
         #expect(hash("SELECT /*!40001 SQL_NO_CACHE */ -1", .mysql) == hash("SELECT /*!40001 SQL_NO_CACHE */ 1", .mysql))
         #expect(normalize("SELECT /*!40001 SQL_NO_CACHE */ -1", .mysql) == "SELECT ?")
     }
+
+    @Test("A word glued to a literal stays in the shape, so SQLite's column and alias never read as one literal")
+    func literalPrefixStaysInTheShape() {
+        #expect(hash("SELECT b'alias' FROM t", .sqlite) != hash("SELECT n'alias' FROM t", .sqlite))
+        #expect(normalize("SELECT b'alias' FROM t", .sqlite) == "SELECT b ? FROM t")
+        #expect(hash("SELECT N'x' FROM t", .mssql) == hash("SELECT N'other' FROM t", .mssql))
+    }
 }
