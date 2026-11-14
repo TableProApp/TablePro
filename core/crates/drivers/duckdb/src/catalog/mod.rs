@@ -6,7 +6,7 @@
 
 mod declared_columns;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnType, SqlExpression};
 use tablepro_core::ddl::{
@@ -21,7 +21,7 @@ use tablepro_core::meta::{
 };
 use tablepro_core::sql_syntax::{LiteralToken, MAX_EXPRESSION_LEN, SqlGrammar, parse_expression};
 use tablepro_core::value::Value;
-use tablepro_core::{DriverError, ForeignKeyInfo};
+use tablepro_core::{CatalogBudget, DriverError, ForeignKeyInfo};
 
 use self::declared_columns::declared_columns;
 use crate::duck_type::column_type_from_text;
@@ -40,7 +40,12 @@ fn schema_of(table: &TableRef) -> &str {
 }
 
 /// Rows of a catalogue query whose columns are all text or NULL.
-fn text_rows(link: &Link, sql: &str, params: &[&str]) -> Result<Vec<Vec<Option<String>>>, DriverError> {
+fn text_rows(
+    link: &Link,
+    sql: &str,
+    params: &[&str],
+    budget: &mut CatalogBudget,
+) -> Result<Vec<Vec<Option<String>>>, DriverError> {
     let mut statement = link.connection.prepare(sql).map_err(map_error)?;
     let mut rows = statement
         .query(duckdb::params_from_iter(params.iter()))
@@ -50,15 +55,86 @@ fn text_rows(link: &Link, sql: &str, params: &[&str]) -> Result<Vec<Vec<Option<S
     while let Some(row) = rows.next().map_err(map_error)? {
         let mut values = Vec::with_capacity(width);
         for index in 0..width {
-            values.push(row.get::<_, Option<String>>(index).map_err(map_error)?);
+            values.push(budget.keep_optional(row.get::<_, Option<String>>(index).map_err(map_error)?)?);
         }
         read.push(values);
     }
     Ok(read)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Constraints {
+    Own,
+    Referencing,
+}
+
+// A table's constraints: REFERENCES, CHECK, UNIQUE and PRIMARY in its text, and a NOT NULL per column. DOUBLE, since
+// the file chooses the numbers.
+const CONSTRAINT_COUNT: &str = "CAST((strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'references', ''))) / 10 \
+       + (strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'check', ''))) / 5 \
+       + (strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'unique', ''))) / 6 \
+       + (strlen(lower(t.sql)) - strlen(replace(lower(t.sql), 'primary', ''))) / 7 + t.column_count + 1 AS DOUBLE)";
+
+// Beside its table's name, a constraint row's own words. Not `duckdb_columns()`, which repeats each table's name on
+// every column row it builds, for every table, before a filter.
+const ROW_BYTES: &str = "512";
+
+// DuckDB builds every table's constraint rows, 2,048 to a chunk across tables, before a query filters them, and holds
+// the whole result before its first row; it names each constraint after its table. A read runs only once the result,
+// its table's name `names` times a row and four copies of the text, and the costliest 2,048 rows of any tables fit.
+fn constraint_bounds(names: &str, tables: &str) -> String {
+    format!(
+        "SELECT \
+           (SELECT sum({CONSTRAINT_COUNT} * ({names} * strlen(t.table_name) + {ROW_BYTES}) + 4 * strlen(t.sql)) \
+            FROM duckdb_tables() t WHERE {tables}), \
+           (SELECT coalesce(sum(bytes * greatest(0, least(rows, 2048 - (upto - rows)))), 0) FROM \
+             (SELECT rows, bytes, sum(rows) OVER (ORDER BY bytes DESC ROWS UNBOUNDED PRECEDING) AS upto FROM \
+               (SELECT least({CONSTRAINT_COUNT}, 2048) AS rows, 2 * strlen(t.table_name) + {ROW_BYTES} AS bytes \
+                FROM duckdb_tables() t))) \
+           + 3 * coalesce((SELECT sum(b) FROM (SELECT CAST(strlen(sql) AS DOUBLE) AS b FROM duckdb_tables() \
+             ORDER BY b DESC LIMIT 2048)), 0)"
+    )
+}
+
+fn constraints_fit(
+    link: &Link,
+    catalog: &str,
+    table: &TableRef,
+    from: Constraints,
+    budget: &CatalogBudget,
+) -> Result<(), DriverError> {
+    // A constraint's name holds its table's, and the keys into a table also read the child's name.
+    let (names, tables) = match from {
+        Constraints::Own => ("1", "t.database_name = ? AND t.schema_name = ? AND t.table_name = ?"),
+        Constraints::Referencing => (
+            "2",
+            "t.table_oid IN (SELECT d.refobjid FROM duckdb_dependencies() d \
+             JOIN duckdb_tables() p ON d.objid = p.table_oid \
+             WHERE p.database_name = ? AND p.schema_name = ? AND p.table_name = ?)",
+        ),
+    };
+    let (kept, built): (Option<f64>, Option<f64>) = link
+        .connection
+        .query_row(
+            &constraint_bounds(names, tables),
+            duckdb::params![catalog, schema_of(table), table.name],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(map_error)?;
+    let bytes = kept.unwrap_or(0.0) + built.unwrap_or(0.0);
+    budget.fits(match bytes < usize::MAX as f64 {
+        true => bytes as usize,
+        false => usize::MAX,
+    })
+}
+
 fn text(row: &[Option<String>], index: usize) -> String {
     row.get(index).cloned().flatten().unwrap_or_default()
+}
+
+// Moved out rather than copied, so a row of long names is not held twice.
+fn take(row: &mut [Option<String>], index: usize) -> String {
+    row.get_mut(index).and_then(Option::take).unwrap_or_default()
 }
 
 fn flag(row: &[Option<String>], index: usize) -> bool {
@@ -72,6 +148,7 @@ pub(crate) fn list_schemas(link: &Link, catalog: &str) -> Result<Vec<SchemaInfo>
         link,
         "SELECT schema_name FROM duckdb_schemas() WHERE database_name = ? ORDER BY schema_name",
         &[catalog],
+        &mut CatalogBudget::default(),
     )?;
     Ok(rows
         .iter()
@@ -86,7 +163,12 @@ pub(crate) fn list_schemas(link: &Link, catalog: &str) -> Result<Vec<SchemaInfo>
         .collect())
 }
 
-pub(crate) fn list_objects(link: &Link, catalog: &str, scope: &ObjectScope) -> Result<Vec<ObjectInfo>, DriverError> {
+pub(crate) fn list_objects(
+    link: &Link,
+    catalog: &str,
+    scope: &ObjectScope,
+    budget: &mut CatalogBudget,
+) -> Result<Vec<ObjectInfo>, DriverError> {
     let schema = match scope {
         ObjectScope::DefaultSchema => Some(DEFAULT_SCHEMA),
         ObjectScope::Schema(schema) => Some(schema.as_str()),
@@ -106,8 +188,8 @@ pub(crate) fn list_objects(link: &Link, catalog: &str, scope: &ObjectScope) -> R
     while let Some(row) = rows.next().map_err(map_error)? {
         let kind: String = row.get(2).map_err(map_error)?;
         objects.push(ObjectInfo {
-            schema: Some(row.get(0).map_err(map_error)?),
-            name: row.get(1).map_err(map_error)?,
+            schema: Some(budget.keep(row.get(0).map_err(map_error)?)?),
+            name: budget.keep(row.get(1).map_err(map_error)?)?,
             kind: match kind.as_str() {
                 "view" => ObjectKind::View,
                 _ => ObjectKind::Table,
@@ -120,7 +202,12 @@ pub(crate) fn list_objects(link: &Link, catalog: &str, scope: &ObjectScope) -> R
 
 /// A table's columns, with the primary key marked and the generated
 /// columns told apart from defaults.
-pub(crate) fn fetch_columns(link: &Link, catalog: &str, table: &TableRef) -> Result<Vec<ColumnInfo>, DriverError> {
+pub(crate) fn fetch_columns(
+    link: &Link,
+    catalog: &str,
+    table: &TableRef,
+    budget: &mut CatalogBudget,
+) -> Result<Vec<ColumnInfo>, DriverError> {
     let schema = schema_of(table);
     let rows = text_rows(
         link,
@@ -128,19 +215,23 @@ pub(crate) fn fetch_columns(link: &Link, catalog: &str, table: &TableRef) -> Res
          FROM duckdb_columns() WHERE database_name = ? AND schema_name = ? AND table_name = ? \
          ORDER BY column_index",
         &[catalog, schema, &table.name],
+        budget,
     )?;
-    let keys = primary_key(link, catalog, table)?
+    let keys = primary_key(link, catalog, table, budget)?
         .map(|key| key.columns)
         .unwrap_or_default();
-    let generated: HashSet<String> = table_sql(link, catalog, table)?
+    let sql = table_sql(link, catalog, table, budget)?;
+    let generated: HashSet<String> = sql
+        .as_deref()
         .map(|sql| {
-            declared_columns(&sql)
+            declared_columns(sql)
                 .into_iter()
                 .filter(|column| column.generated)
                 .map(|column| column.name)
                 .collect()
         })
         .unwrap_or_default();
+    release(budget, sql);
     Ok(rows
         .iter()
         .map(|row| {
@@ -196,13 +287,26 @@ pub(crate) fn classify_default(text: Option<&str>, column_type: &ColumnType) -> 
 
 /// The CREATE TABLE statement DuckDB keeps for a table, which a view has
 /// none of.
-fn table_sql(link: &Link, catalog: &str, table: &TableRef) -> Result<Option<String>, DriverError> {
-    let rows = text_rows(
+fn table_sql(
+    link: &Link,
+    catalog: &str,
+    table: &TableRef,
+    budget: &mut CatalogBudget,
+) -> Result<Option<String>, DriverError> {
+    let mut rows = text_rows(
         link,
         "SELECT sql FROM duckdb_tables() WHERE database_name = ? AND schema_name = ? AND table_name = ?",
         &[catalog, schema_of(table), &table.name],
+        budget,
     )?;
-    Ok(rows.first().and_then(|row| row.first().cloned().flatten()))
+    Ok(rows.first_mut().and_then(|row| row.first_mut().and_then(Option::take)))
+}
+
+// For a text read, used and dropped before the next one is read.
+fn release(budget: &mut CatalogBudget, text: Option<String>) {
+    if let Some(text) = text {
+        budget.release_text(&text);
+    }
 }
 
 /// The columns of a table's PRIMARY KEY and UNIQUE constraints, in key
@@ -211,7 +315,9 @@ fn key_constraints(
     link: &Link,
     catalog: &str,
     table: &TableRef,
+    budget: &mut CatalogBudget,
 ) -> Result<Vec<(String, String, Vec<String>)>, DriverError> {
+    constraints_fit(link, catalog, table, Constraints::Own, budget)?;
     let rows = text_rows(
         link,
         "SELECT constraint_name, constraint_type, array_to_string(constraint_column_names, chr(31)) \
@@ -220,10 +326,11 @@ fn key_constraints(
            AND constraint_type IN ('PRIMARY KEY', 'UNIQUE') \
          ORDER BY constraint_index",
         &[catalog, schema_of(table), &table.name],
+        budget,
     )?;
     Ok(rows
-        .iter()
-        .map(|row| (text(row, 0), text(row, 1), split_names(&text(row, 2))))
+        .into_iter()
+        .map(|mut row| (take(&mut row, 0), take(&mut row, 1), split_names(&take(&mut row, 2))))
         .collect())
 }
 
@@ -231,8 +338,9 @@ pub(crate) fn primary_key(
     link: &Link,
     catalog: &str,
     table: &TableRef,
+    budget: &mut CatalogBudget,
 ) -> Result<Option<PrimaryKeyConstraint>, DriverError> {
-    Ok(key_constraints(link, catalog, table)?
+    Ok(key_constraints(link, catalog, table, budget)?
         .into_iter()
         .find(|(_, kind, _)| kind == "PRIMARY KEY")
         .map(|(name, _, columns)| PrimaryKeyConstraint {
@@ -244,8 +352,13 @@ pub(crate) fn primary_key(
 /// The table's indexes: the ones created with CREATE INDEX, and the
 /// index behind each PRIMARY KEY and UNIQUE constraint, which DuckDB
 /// lists only as the constraint.
-pub(crate) fn fetch_indexes(link: &Link, catalog: &str, table: &TableRef) -> Result<Vec<IndexInfo>, DriverError> {
-    let mut indexes: Vec<IndexInfo> = key_constraints(link, catalog, table)?
+pub(crate) fn fetch_indexes(
+    link: &Link,
+    catalog: &str,
+    table: &TableRef,
+    budget: &mut CatalogBudget,
+) -> Result<Vec<IndexInfo>, DriverError> {
+    let mut indexes: Vec<IndexInfo> = key_constraints(link, catalog, table, budget)?
         .into_iter()
         .map(|(name, kind, columns)| IndexInfo {
             name,
@@ -262,7 +375,7 @@ pub(crate) fn fetch_indexes(link: &Link, catalog: &str, table: &TableRef) -> Res
             definition: None,
         })
         .collect();
-    let columns: HashSet<String> = fetch_columns(link, catalog, table)?
+    let columns: HashSet<String> = fetch_columns(link, catalog, table, budget)?
         .into_iter()
         .map(|column| column.name)
         .collect();
@@ -274,6 +387,7 @@ pub(crate) fn fetch_indexes(link: &Link, catalog: &str, table: &TableRef) -> Res
          FROM duckdb_indexes() WHERE database_name = ? AND schema_name = ? AND table_name = ? \
          ORDER BY index_name",
         &[catalog, schema_of(table), &table.name],
+        budget,
     )?;
     let quote = |name: &str| format!("\"{}\"", name.replace('"', "\"\""));
     let target = format!("{}.{}.{}", quote(catalog), quote(schema_of(table)), quote(&table.name));
@@ -363,7 +477,9 @@ pub(crate) fn fetch_foreign_keys(
     link: &Link,
     catalog: &str,
     table: &TableRef,
+    budget: &mut CatalogBudget,
 ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
+    constraints_fit(link, catalog, table, Constraints::Own, budget)?;
     let rows = text_rows(
         link,
         "SELECT constraint_name, referenced_table, \
@@ -373,20 +489,23 @@ pub(crate) fn fetch_foreign_keys(
          WHERE database_name = ? AND schema_name = ? AND table_name = ? AND constraint_type = 'FOREIGN KEY' \
          ORDER BY constraint_index",
         &[catalog, schema_of(table), &table.name],
+        budget,
     )?;
-    let schema = schema_of(table).to_owned();
-    Ok(rows
-        .iter()
-        .map(|row| ForeignKeyInfo {
-            name: text(row, 0),
-            columns: split_names(&text(row, 2)),
-            ref_schema: Some(schema.clone()),
-            ref_table: text(row, 1),
-            ref_columns: split_names(&text(row, 3)),
-            on_delete: Some(ReferentialAction::NoAction),
-            on_update: Some(ReferentialAction::NoAction),
+    let schema = schema_of(table);
+    rows.into_iter()
+        .map(|mut row| {
+            // Each key holds its own copy of the schema's name, which the file chose.
+            Ok(ForeignKeyInfo {
+                name: take(&mut row, 0),
+                columns: split_names(&take(&mut row, 2)),
+                ref_schema: Some(budget.keep(schema.to_owned())?),
+                ref_table: take(&mut row, 1),
+                ref_columns: split_names(&take(&mut row, 3)),
+                on_delete: Some(ReferentialAction::NoAction),
+                on_update: Some(ReferentialAction::NoAction),
+            })
         })
-        .collect())
+        .collect()
 }
 
 /// The table's own keys, each with whether `=` on the referenced columns
@@ -396,12 +515,23 @@ pub(crate) fn outbound_foreign_keys(
     link: &Link,
     catalog: &str,
     table: &TableRef,
+    budget: &mut CatalogBudget,
 ) -> Result<Vec<OutboundForeignKey>, DriverError> {
-    let keys = fetch_foreign_keys(link, catalog, table)?;
+    let keys = fetch_foreign_keys(link, catalog, table, budget)?;
     let mut outbound = Vec::with_capacity(keys.len());
+    // Each parent's CREATE TABLE once, however many keys point at it.
+    let mut parents: HashMap<(Option<String>, String), Vec<String>> = HashMap::new();
     for key in keys {
-        let referenced = TableRef::new(key.ref_schema.clone(), key.ref_table.clone());
-        let collated = collated_columns(link, catalog, &referenced)?;
+        let parent = (key.ref_schema.clone(), key.ref_table.clone());
+        let collated = match parents.get(&parent) {
+            Some(collated) => collated,
+            None => {
+                let referenced = TableRef::new(key.ref_schema.clone(), key.ref_table.clone());
+                let collated = collated_columns(link, catalog, &referenced, budget)?;
+                budget.charge_texts(parent.0.iter().chain([&parent.1]))?;
+                parents.entry(parent).or_insert(collated)
+            }
+        };
         let parent_compares_alike = !key
             .ref_columns
             .iter()
@@ -416,16 +546,32 @@ pub(crate) fn outbound_foreign_keys(
 
 /// The columns of a table declared with a collation, as its stored SQL
 /// spells them.
-fn collated_columns(link: &Link, catalog: &str, table: &TableRef) -> Result<Vec<String>, DriverError> {
-    Ok(table_sql(link, catalog, table)?
+fn collated_columns(
+    link: &Link,
+    catalog: &str,
+    table: &TableRef,
+    budget: &mut CatalogBudget,
+) -> Result<Vec<String>, DriverError> {
+    let sql = table_sql(link, catalog, table, budget)?;
+    let collated: Vec<String> = sql
+        .as_deref()
         .map(|sql| {
-            declared_columns(&sql)
+            declared_columns(sql)
                 .into_iter()
                 .filter(|column| column.collation.is_some())
                 .map(|column| column.name)
                 .collect()
         })
-        .unwrap_or_default())
+        .unwrap_or_default();
+    release(budget, sql);
+    budget.charge_texts(&collated)?;
+    Ok(collated)
+}
+
+fn release_names(budget: &mut CatalogBudget, names: &[String]) {
+    for name in names {
+        budget.release_text(name);
+    }
 }
 
 fn split_names(joined: &str) -> Vec<String> {
@@ -443,41 +589,48 @@ pub(crate) fn inbound_foreign_keys(
     link: &Link,
     catalog: &str,
     table: &TableRef,
+    budget: &mut CatalogBudget,
 ) -> Result<Vec<InboundForeignKey>, DriverError> {
+    // Not the child's CREATE TABLE on every key: it grows with the keys the child declares.
+    constraints_fit(link, catalog, table, Constraints::Referencing, budget)?;
     let rows = text_rows(
         link,
         "SELECT c.constraint_name, c.schema_name, c.table_name, \
                 array_to_string(c.constraint_column_names, chr(31)), \
-                array_to_string(c.referenced_column_names, chr(31)), t.sql \
+                array_to_string(c.referenced_column_names, chr(31)) \
          FROM duckdb_constraints() c \
-         JOIN duckdb_tables() t \
-           ON t.database_name = c.database_name AND t.schema_name = c.schema_name AND t.table_name = c.table_name \
          WHERE c.database_name = ? AND c.schema_name = ? AND c.referenced_table = ? \
            AND c.constraint_type = 'FOREIGN KEY' \
          ORDER BY c.table_name, c.constraint_index",
         &[catalog, schema_of(table), &table.name],
+        budget,
     )?;
-    Ok(rows
-        .iter()
-        .map(|row| {
-            let columns = split_names(&text(row, 3));
-            let collated: Vec<String> = declared_columns(&text(row, 5))
-                .into_iter()
-                .filter(|column| column.collation.is_some())
-                .map(|column| column.name)
-                .collect();
-            let compares_alike = !columns
-                .iter()
-                .any(|column| collated.iter().any(|name| name.eq_ignore_ascii_case(column)));
-            InboundForeignKey {
-                name: text(row, 0),
-                table: TableRef::new(Some(text(row, 1)), text(row, 2)),
-                child_compares_alike: compares_alike,
-                columns,
-                referenced_columns: split_names(&text(row, 4)),
+    let mut keys = Vec::with_capacity(rows.len());
+    let mut child: Option<(TableRef, Vec<String>)> = None;
+    for mut row in rows {
+        let referencing = TableRef::new(Some(take(&mut row, 1)), take(&mut row, 2));
+        // The rows come by child, so each child's CREATE TABLE is read once.
+        if child.as_ref().is_none_or(|(read, _)| *read != referencing) {
+            if let Some((_, collated)) = &child {
+                release_names(budget, collated);
             }
-        })
-        .collect())
+            let collated = collated_columns(link, catalog, &referencing, budget)?;
+            child = Some((referencing.clone(), collated));
+        }
+        let collated: &[String] = child.as_ref().map_or(&[], |(_, collated)| collated);
+        let columns = split_names(&take(&mut row, 3));
+        let compares_alike = !columns
+            .iter()
+            .any(|column| collated.iter().any(|name| name.eq_ignore_ascii_case(column)));
+        keys.push(InboundForeignKey {
+            name: take(&mut row, 0),
+            table: referencing,
+            child_compares_alike: compares_alike,
+            columns,
+            referenced_columns: split_names(&take(&mut row, 4)),
+        });
+    }
+    Ok(keys)
 }
 
 /// How a row is named again: by the primary key, else by a UNIQUE key
@@ -486,14 +639,19 @@ pub(crate) fn inbound_foreign_keys(
 /// over a column declared with a collation: DuckDB keeps the key unique
 /// byte for byte, while `=` and ORDER BY compare under the collation, so
 /// `'ABC'` and `'abc'` are two rows one predicate finds.
-pub(crate) fn row_identity(link: &Link, catalog: &str, table: &TableRef) -> Result<RowIdentity, DriverError> {
-    let collated = collated_columns(link, catalog, table)?;
+pub(crate) fn row_identity(
+    link: &Link,
+    catalog: &str,
+    table: &TableRef,
+    budget: &mut CatalogBudget,
+) -> Result<RowIdentity, DriverError> {
+    let collated = collated_columns(link, catalog, table, budget)?;
     let compares_bytes = |columns: &[String]| {
         !columns
             .iter()
             .any(|column| collated.iter().any(|name| name.eq_ignore_ascii_case(column)))
     };
-    let constraints = key_constraints(link, catalog, table)?;
+    let constraints = key_constraints(link, catalog, table, budget)?;
     if let Some((_, _, columns)) = constraints
         .iter()
         .find(|(_, kind, columns)| kind == "PRIMARY KEY" && compares_bytes(columns))
@@ -502,7 +660,7 @@ pub(crate) fn row_identity(link: &Link, catalog: &str, table: &TableRef) -> Resu
             columns: columns.clone(),
         });
     }
-    let not_null: HashSet<String> = fetch_columns(link, catalog, table)?
+    let not_null: HashSet<String> = fetch_columns(link, catalog, table, budget)?
         .into_iter()
         .filter(|column| !column.nullable)
         .map(|column| column.name)
@@ -526,6 +684,7 @@ pub(crate) fn table_estimate(link: &Link, catalog: &str, table: &TableRef) -> Re
         "SELECT CAST(estimated_size AS VARCHAR) FROM duckdb_tables() \
          WHERE database_name = ? AND schema_name = ? AND table_name = ?",
         &[catalog, schema_of(table), &table.name],
+        &mut CatalogBudget::default(),
     )?;
     let estimate = rows
         .first()
@@ -542,10 +701,11 @@ pub(crate) fn fetch_table_definition(
     link: &Link,
     catalog: &str,
     table: &TableRef,
+    budget: &mut CatalogBudget,
 ) -> Result<TableDefinition, DriverError> {
-    let create_sql = table_sql(link, catalog, table)?;
-    let columns = fetch_columns(link, catalog, table)?;
-    let check_columns = check_constraints(link, catalog, table)?;
+    let create_sql = table_sql(link, catalog, table, budget)?;
+    let columns = fetch_columns(link, catalog, table, budget)?;
+    let check_columns = check_constraints(link, catalog, table, budget)?;
     let collations: Vec<(String, String)> = create_sql
         .as_deref()
         .map(declared_columns)
@@ -581,18 +741,25 @@ pub(crate) fn fetch_table_definition(
             ColumnDefinition::new(info, attributes)
         })
         .collect();
-    let indexes = fetch_indexes(link, catalog, table)?;
-    let source = create_sql.map(|create_statement| TableSource {
-        create_statement,
-        dependents: dependent_sources(link, catalog, table).unwrap_or_default(),
-    });
+    let indexes = fetch_indexes(link, catalog, table, budget)?;
+    let source = match create_sql {
+        Some(create_statement) => Some(TableSource {
+            create_statement,
+            // Missing indexes would be dropped by a rebuild, so a definition past the budget is no definition.
+            dependents: match dependent_sources(link, catalog, table, budget) {
+                Err(error @ DriverError::CatalogTooLarge { .. }) => return Err(error),
+                read => read.unwrap_or_default(),
+            },
+        }),
+        None => None,
+    };
     Ok(TableDefinition {
         table: TableRef::new(Some(schema_of(table).to_owned()), table.name.clone()),
         columns: definitions,
-        primary_key: primary_key(link, catalog, table)?,
+        primary_key: primary_key(link, catalog, table, budget)?,
         indexes,
-        foreign_keys: fetch_foreign_keys(link, catalog, table)?,
-        inbound_foreign_keys: inbound_foreign_keys(link, catalog, table)?,
+        foreign_keys: fetch_foreign_keys(link, catalog, table, budget)?,
+        inbound_foreign_keys: inbound_foreign_keys(link, catalog, table, budget)?,
         source,
         options: None,
     })
@@ -605,6 +772,7 @@ fn generation_expression(link: &Link, catalog: &str, table: &TableRef, column: &
         "SELECT column_default FROM duckdb_columns() \
          WHERE database_name = ? AND schema_name = ? AND table_name = ? AND column_name = ?",
         &[catalog, schema_of(table), &table.name, column],
+        &mut CatalogBudget::default(),
     )
     .ok()?;
     rows.first()
@@ -620,57 +788,71 @@ fn check_constraints(
     link: &Link,
     catalog: &str,
     table: &TableRef,
+    budget: &mut CatalogBudget,
 ) -> Result<std::collections::HashMap<String, SqlExpression>, DriverError> {
+    constraints_fit(link, catalog, table, Constraints::Own, budget)?;
     let rows = text_rows(
         link,
         "SELECT array_to_string(constraint_column_names, chr(31)), expression FROM duckdb_constraints() \
          WHERE database_name = ? AND schema_name = ? AND table_name = ? AND constraint_type = 'CHECK' \
          ORDER BY constraint_index",
         &[catalog, schema_of(table), &table.name],
+        budget,
     )?;
-    let mut checks: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for row in &rows {
-        let Some(expression) = row.get(1).cloned().flatten() else {
-            continue;
-        };
-        for column in split_names(&text(row, 0)) {
-            checks.entry(column).or_default().push(expression.clone());
+    // A CHECK over every column is each column's, so its text is held once per column it names.
+    let mut checks: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
+    for (index, row) in rows.iter().enumerate() {
+        if row.get(1).is_some_and(Option::is_some) {
+            for column in split_names(&text(row, 0)) {
+                checks.entry(column).or_default().push(index);
+            }
         }
     }
-    Ok(checks
+    let expression = |index: &usize| {
+        rows.get(*index)
+            .map_or("", |row| row.get(1).and_then(Option::as_deref).unwrap_or(""))
+    };
+    checks
         .into_iter()
         .map(|(column, expressions)| {
             let joined = match expressions.as_slice() {
-                [only] => only.clone(),
+                [only] => expression(only).to_owned(),
                 many => many
                     .iter()
-                    .map(|one| format!("({one})"))
+                    .map(|one| format!("({})", expression(one)))
                     .collect::<Vec<_>>()
                     .join(" AND "),
             };
-            (column, SqlExpression::from_catalog_text(joined))
+            Ok((column, SqlExpression::from_catalog_text(budget.keep(joined)?)))
         })
-        .collect())
+        .collect()
 }
 
 /// The indexes created on the table, which a table rebuilt from its
 /// CREATE TABLE text would lose.
-fn dependent_sources(link: &Link, catalog: &str, table: &TableRef) -> Result<Vec<SchemaObjectSource>, DriverError> {
+fn dependent_sources(
+    link: &Link,
+    catalog: &str,
+    table: &TableRef,
+    budget: &mut CatalogBudget,
+) -> Result<Vec<SchemaObjectSource>, DriverError> {
     let rows = text_rows(
         link,
         "SELECT index_name, sql FROM duckdb_indexes() \
          WHERE database_name = ? AND schema_name = ? AND table_name = ? AND sql IS NOT NULL ORDER BY index_name",
         &[catalog, schema_of(table), &table.name],
+        budget,
     )?;
-    Ok(rows
-        .iter()
-        .map(|row| SchemaObjectSource {
-            kind: SchemaObjectKind::Index,
-            name: text(row, 0),
-            table: table.name.clone(),
-            sql: text(row, 1),
+    rows.into_iter()
+        .map(|mut row| {
+            Ok(SchemaObjectSource {
+                kind: SchemaObjectKind::Index,
+                name: take(&mut row, 0),
+                table: budget.keep(table.name.clone())?,
+                sql: take(&mut row, 1),
+            })
         })
-        .collect())
+        .collect()
 }
 
 #[cfg(test)]

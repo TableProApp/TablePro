@@ -10,19 +10,71 @@
 use std::collections::HashMap;
 
 use tablepro_core::ddl::ColumnRename;
-use tablepro_core::{DriverError, ServerCode, ServerDiagnostics};
+use tablepro_core::{CatalogBudget, DriverError, ServerCode, ServerDiagnostics};
 
 use crate::errors::{SQLITE_CONSTRAINT, SQLITE_CONSTRAINT_FOREIGNKEY};
 
-/// One row of `foreign_key_check`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct Violation {
-    pub table: String,
-    /// `None` for a WITHOUT ROWID child table, which has no rowid to
-    /// name the row by, and for one whose rows the batch renumbers.
-    pub rowid: Option<i64>,
+// The rows of `foreign_key_check` for each child table checked, in its order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Violations {
+    tables: Vec<TableViolations>,
+}
+
+// A crafted file can break thousands of keys of a long-named table in millions of rows, so names are held once and
+// every row and key is charged to the save's budget: past it the save stops rather than compare less.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TableViolations {
+    table: String,
+    keys: Vec<BrokenKey>,
+    rows: Vec<(usize, Option<i64>)>,
+}
+
+const ROW_BYTES: usize = size_of::<(usize, Option<i64>)>();
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BrokenKey {
     pub parent: String,
     pub key: ViolatedKey,
+}
+
+impl TableViolations {
+    pub(crate) fn new(table: String, budget: &mut CatalogBudget) -> Result<Self, DriverError> {
+        Ok(Self {
+            table: budget.keep(table)?,
+            keys: Vec::new(),
+            rows: Vec::new(),
+        })
+    }
+
+    pub(crate) fn add_key(&mut self, key: BrokenKey, budget: &mut CatalogBudget) -> Result<usize, DriverError> {
+        budget.charge_text(&key.parent)?;
+        budget.charge_texts(key.key.columns.iter().chain(&key.key.parent_columns))?;
+        self.keys.push(key);
+        Ok(self.keys.len() - 1)
+    }
+
+    pub(crate) fn add_row(
+        &mut self,
+        key: usize,
+        rowid: Option<i64>,
+        budget: &mut CatalogBudget,
+    ) -> Result<(), DriverError> {
+        budget.charge(ROW_BYTES)?;
+        self.rows.push((key, rowid));
+        Ok(())
+    }
+}
+
+impl Violations {
+    pub(crate) fn push(&mut self, table: TableViolations) {
+        if !table.rows.is_empty() {
+            self.tables.push(table);
+        }
+    }
+
+    pub(crate) fn extend(&mut self, other: Violations) {
+        self.tables.extend(other.tables);
+    }
 }
 
 /// The foreign key a row breaks, by its columns rather than its number:
@@ -69,19 +121,28 @@ impl Renames {
     /// Name `baseline` rows by the names their tables and key columns
     /// have after the batch, so a renamed table or key compares with
     /// itself.
-    pub(crate) fn apply(&self, baseline: Vec<Violation>) -> Vec<Violation> {
-        baseline
-            .into_iter()
-            .map(|violation| Violation {
-                key: ViolatedKey {
-                    columns: self.column_names(&violation.table, violation.key.columns),
-                    parent_columns: self.column_names(&violation.parent, violation.key.parent_columns),
-                },
-                table: self.table_name(violation.table),
-                rowid: violation.rowid,
-                parent: self.table_name(violation.parent),
-            })
-            .collect()
+    pub(crate) fn apply(&self, baseline: Violations) -> Violations {
+        Violations {
+            tables: baseline
+                .tables
+                .into_iter()
+                .map(|checked| TableViolations {
+                    keys: checked
+                        .keys
+                        .into_iter()
+                        .map(|broken| BrokenKey {
+                            key: ViolatedKey {
+                                columns: self.column_names(&checked.table, broken.key.columns),
+                                parent_columns: self.column_names(&broken.parent, broken.key.parent_columns),
+                            },
+                            parent: self.table_name(broken.parent),
+                        })
+                        .collect(),
+                    table: self.table_name(checked.table),
+                    rows: checked.rows,
+                })
+                .collect(),
+        }
     }
 
     fn table_name(&self, name: String) -> String {
@@ -102,56 +163,130 @@ impl Renames {
 /// The rows of `after` that `before` does not account for, compared as
 /// multisets. Rows without a rowid are all alike, so for them it is the
 /// count per child, parent and key that compares.
-pub(crate) fn introduced(before: &[Violation], after: &[Violation]) -> Vec<IntroducedViolations> {
-    let mut remaining: HashMap<ViolationKey, usize> = HashMap::new();
-    for violation in before {
-        *remaining.entry(key(violation)).or_default() += 1;
-    }
-    let mut introduced: Vec<IntroducedViolations> = Vec::new();
-    for violation in after {
-        if let Some(left) = remaining.get_mut(&key(violation))
-            && *left > 0
-        {
-            *left -= 1;
-            continue;
-        }
-        let table = violation.table.to_lowercase();
-        let parent = violation.parent.to_lowercase();
-        match introduced
-            .iter_mut()
-            .find(|group| group.table.to_lowercase() == table && group.parent.to_lowercase() == parent)
-        {
-            Some(group) => group.count += 1,
-            None => introduced.push(IntroducedViolations {
-                table: violation.table.clone(),
-                parent: violation.parent.clone(),
-                count: 1,
-            }),
+pub(crate) fn introduced(
+    before: &Violations,
+    after: &Violations,
+    budget: &mut CatalogBudget,
+) -> Result<Vec<IntroducedViolations>, DriverError> {
+    let mut ids = KeyIds::default();
+    let mut remaining: HashMap<(usize, Option<i64>), usize> = HashMap::new();
+    for checked in &before.tables {
+        let (_, keys) = ids.of(checked);
+        for (key, rowid) in &checked.rows {
+            if let Some(id) = keys.get(*key) {
+                *remaining.entry((*id, *rowid)).or_default() += 1;
+            }
         }
     }
-    introduced
+    let mut found = Introduced::default();
+    for checked in &after.tables {
+        let (table, keys) = ids.of(checked);
+        let mut groups: Vec<Option<usize>> = vec![None; checked.keys.len()];
+        for (key, rowid) in &checked.rows {
+            let Some(id) = keys.get(*key) else {
+                continue;
+            };
+            if let Some(left) = remaining.get_mut(&(*id, *rowid))
+                && *left > 0
+            {
+                *left -= 1;
+                continue;
+            }
+            if let Some(group) = groups.get_mut(*key) {
+                let group = match group {
+                    Some(group) => *group,
+                    None => *group.insert(found.group_of(table, checked, *key, budget)?),
+                };
+                found.add(group);
+            }
+        }
+    }
+    Ok(found.groups)
 }
 
-type ViolationKey = (String, Option<i64>, String, Vec<String>, Vec<String>);
+// The groups by child and parent, in the order their first row came. Each key's group is looked up once, not on
+// each of millions of rows, since a parent's name can be long.
+#[derive(Default)]
+struct Introduced {
+    groups: Vec<IntroducedViolations>,
+    positions: HashMap<(usize, String), usize>,
+}
 
-/// SQLite names tables and columns case-insensitively, and so does the
-/// comparison.
-fn key(violation: &Violation) -> ViolationKey {
-    let folded = |names: &[String]| names.iter().map(|name| name.to_lowercase()).collect();
-    (
-        violation.table.to_lowercase(),
-        violation.rowid,
-        violation.parent.to_lowercase(),
-        folded(&violation.key.columns),
-        folded(&violation.key.parent_columns),
-    )
+impl Introduced {
+    // Each group holds the child's and the parent's names, which a crafted file makes long and many.
+    fn group_of(
+        &mut self,
+        table: usize,
+        checked: &TableViolations,
+        key: usize,
+        budget: &mut CatalogBudget,
+    ) -> Result<usize, DriverError> {
+        let Some(broken) = checked.keys.get(key) else {
+            return Ok(usize::MAX);
+        };
+        let next = self.groups.len();
+        let group = *self
+            .positions
+            .entry((table, broken.parent.to_lowercase()))
+            .or_insert(next);
+        if group == next {
+            self.groups.push(IntroducedViolations {
+                table: budget.keep(checked.table.clone())?,
+                parent: budget.keep(broken.parent.clone())?,
+                count: 0,
+            });
+        }
+        Ok(group)
+    }
+
+    fn add(&mut self, group: usize) {
+        if let Some(found) = self.groups.get_mut(group) {
+            found.count += 1;
+        }
+    }
+}
+
+// SQLite names tables and columns case-insensitively, and so does the comparison. A table's name is folded once,
+// whatever number of keys it breaks.
+#[derive(Default)]
+struct KeyIds {
+    tables: HashMap<String, usize>,
+    keys: HashMap<(usize, String, Vec<String>, Vec<String>), usize>,
+}
+
+impl KeyIds {
+    fn of(&mut self, checked: &TableViolations) -> (usize, Vec<usize>) {
+        let next = self.tables.len();
+        let table = *self.tables.entry(checked.table.to_lowercase()).or_insert(next);
+        let folded = |names: &[String]| names.iter().map(|name| name.to_lowercase()).collect();
+        let keys = checked
+            .keys
+            .iter()
+            .map(|broken| {
+                let next = self.keys.len();
+                *self
+                    .keys
+                    .entry((
+                        table,
+                        broken.parent.to_lowercase(),
+                        folded(&broken.key.columns),
+                        folded(&broken.key.parent_columns),
+                    ))
+                    .or_insert(next)
+            })
+            .collect();
+        (table, keys)
+    }
 }
 
 /// The error a batch that introduced violations is rolled back with,
 /// in the form SQLite reports a foreign key failure itself.
 pub(crate) fn violation_error(introduced: &[IntroducedViolations]) -> DriverError {
-    let listed: Vec<String> = introduced
+    // The first few say where to look; a crafted file can make thousands, each with long names.
+    const LISTED: usize = 10;
+    let mut listed: Vec<String> = introduced
         .iter()
+        .take(LISTED)
         .map(|group| {
             format!(
                 "{} rows of {} point at missing rows of {}",
@@ -159,6 +294,9 @@ pub(crate) fn violation_error(introduced: &[IntroducedViolations]) -> DriverErro
             )
         })
         .collect();
+    if introduced.len() > LISTED {
+        listed.push(format!("and {} more", introduced.len() - LISTED));
+    }
     DriverError::reported(ServerDiagnostics::new(
         Some(ServerCode::Sqlite {
             primary: SQLITE_CONSTRAINT,
@@ -172,21 +310,55 @@ pub(crate) fn violation_error(introduced: &[IntroducedViolations]) -> DriverErro
 mod tests {
     use super::*;
 
-    fn violation(table: &str, rowid: Option<i64>, parent: &str) -> Violation {
-        keyed(table, rowid, parent, &["parent"], &["id"])
+    type Row<'a> = (&'a str, Option<i64>, &'a str, &'a [&'a str], &'a [&'a str]);
+
+    fn violation<'a>(table: &'a str, rowid: Option<i64>, parent: &'a str) -> Row<'a> {
+        (table, rowid, parent, &["parent"], &["id"])
     }
 
-    fn keyed(table: &str, rowid: Option<i64>, parent: &str, columns: &[&str], parent_columns: &[&str]) -> Violation {
+    fn keyed<'a>(
+        table: &'a str,
+        rowid: Option<i64>,
+        parent: &'a str,
+        columns: &'a [&'a str],
+        parent_columns: &'a [&'a str],
+    ) -> Row<'a> {
+        (table, rowid, parent, columns, parent_columns)
+    }
+
+    // One key per row, as two keys of the same columns compare alike, and one table per name in the order it comes.
+    fn found(rows: &[Row<'_>]) -> Violations {
         let owned = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect();
-        Violation {
-            table: table.to_owned(),
-            rowid,
-            parent: parent.to_owned(),
-            key: ViolatedKey {
-                columns: owned(columns),
-                parent_columns: owned(parent_columns),
-            },
+        let mut tables: Vec<TableViolations> = Vec::new();
+        for (table, rowid, parent, columns, parent_columns) in rows {
+            let position = match tables.iter().position(|checked| checked.table == *table) {
+                Some(position) => position,
+                None => {
+                    tables.push(TableViolations::new((*table).to_owned(), &mut CatalogBudget::default()).unwrap());
+                    tables.len() - 1
+                }
+            };
+            let checked = &mut tables[position];
+            let budget = &mut CatalogBudget::default();
+            let key = checked
+                .add_key(
+                    BrokenKey {
+                        parent: (*parent).to_owned(),
+                        key: ViolatedKey {
+                            columns: owned(columns),
+                            parent_columns: owned(parent_columns),
+                        },
+                    },
+                    budget,
+                )
+                .unwrap();
+            checked.add_row(key, *rowid, budget).unwrap();
         }
+        let mut violations = Violations::default();
+        for checked in tables {
+            violations.push(checked);
+        }
+        violations
     }
 
     fn renames(before: &str, after: &str, columns: &[(&str, &str)]) -> Renames {
@@ -215,7 +387,12 @@ mod tests {
             violation("lines", Some(2), "orders"),
         ];
 
-        let introduced = introduced(&renames.apply(before), &after);
+        let introduced = introduced(
+            &renames.apply(found(&before)),
+            &found(&after),
+            &mut CatalogBudget::default(),
+        )
+        .unwrap();
 
         assert_eq!(
             introduced,
@@ -233,7 +410,7 @@ mod tests {
         let after = vec![keyed("children", Some(1), "parents", &["b"], &["id"])];
 
         assert_eq!(
-            introduced(&before, &after),
+            introduced(&found(&before), &found(&after), &mut CatalogBudget::default()).unwrap(),
             [IntroducedViolations {
                 table: "children".to_owned(),
                 parent: "parents".to_owned(),
@@ -254,7 +431,15 @@ mod tests {
             keyed("grandchildren", Some(4), "children", &["child"], &["parent_id"]),
         ];
 
-        assert!(introduced(&renames.apply(before), &after).is_empty());
+        assert!(
+            introduced(
+                &renames.apply(found(&before)),
+                &found(&after),
+                &mut CatalogBudget::default()
+            )
+            .unwrap()
+            .is_empty()
+        );
     }
 
     #[test]
@@ -267,9 +452,81 @@ mod tests {
             violation("tags", None, "posts"),
         ];
 
-        assert!(introduced(&before, &same).is_empty());
-        assert_eq!(introduced(&before, &more).len(), 1);
-        assert_eq!(introduced(&before, &more)[0].count, 1);
+        assert!(
+            introduced(&found(&before), &found(&same), &mut CatalogBudget::default())
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            introduced(&found(&before), &found(&more), &mut CatalogBudget::default())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            introduced(&found(&before), &found(&more), &mut CatalogBudget::default()).unwrap()[0].count,
+            1
+        );
+    }
+
+    #[test]
+    fn rows_of_one_key_compare_one_for_one_and_name_their_group_in_order() {
+        let broken = |parent: &str| BrokenKey {
+            parent: parent.to_owned(),
+            key: ViolatedKey {
+                columns: vec!["a".to_owned()],
+                parent_columns: Vec::new(),
+            },
+        };
+        let budget = &mut CatalogBudget::default();
+        let mut checked = TableViolations::new("t".to_owned(), budget).unwrap();
+        let key = checked.add_key(broken("p"), budget).unwrap();
+        for rowid in 0..1_000 {
+            checked.add_row(key, Some(rowid), budget).unwrap();
+        }
+        let mut before = Violations::default();
+        before.push(checked.clone());
+        let other = checked.add_key(broken("q"), budget).unwrap();
+        checked.add_row(other, Some(5), budget).unwrap();
+        checked.add_row(key, Some(1_000), budget).unwrap();
+        checked.add_row(other, Some(6), budget).unwrap();
+        let mut after = Violations::default();
+        after.push(checked);
+
+        assert_eq!(
+            introduced(&before, &after, budget).unwrap(),
+            [
+                IntroducedViolations {
+                    table: "t".to_owned(),
+                    parent: "q".to_owned(),
+                    count: 2
+                },
+                IntroducedViolations {
+                    table: "t".to_owned(),
+                    parent: "p".to_owned(),
+                    count: 1
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn rows_past_the_budget_stop_the_check() {
+        let budget = &mut CatalogBudget::new(tablepro_core::ByteLimit::new(4_096).unwrap());
+        let mut checked = TableViolations::new("t".to_owned(), budget).unwrap();
+        let key = checked
+            .add_key(
+                BrokenKey {
+                    parent: "p".to_owned(),
+                    key: ViolatedKey::default(),
+                },
+                budget,
+            )
+            .unwrap();
+
+        let stopped = (0..1_000).try_for_each(|rowid| checked.add_row(key, Some(rowid), budget));
+
+        assert_eq!(stopped, Err(DriverError::CatalogTooLarge { limit_bytes: 4_096 }));
     }
 
     #[test]

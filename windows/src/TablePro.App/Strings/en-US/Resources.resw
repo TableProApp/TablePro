@@ -2337,6 +2337,9 @@ New fingerprint: {2}</value>
   <data name="Error_driver_unsupported" xml:space="preserve">
     <value>This database doesn't support that.</value>
   </data>
+  <data name="Error_driver_catalog_too_large" xml:space="preserve">
+    <value>The database's structure is larger than TablePro reads at once.</value>
+  </data>
   <data name="TableViews.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Data or structure</value>
   </data>

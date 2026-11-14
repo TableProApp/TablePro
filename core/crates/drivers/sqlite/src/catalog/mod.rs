@@ -20,7 +20,7 @@ use tablepro_core::value::{SqlDecimal, Value};
 pub(crate) use dependents::{SchemaRow, select_dependents};
 pub use runtime_version::{SQLITE_MIN_VERSION, SqliteVersion, check_runtime_version};
 pub(crate) use sqlite_column_row::{SqliteColumnRow, TableFacts};
-pub(crate) use table_definition::{InboundKeyRow, foreign_key_names, generated_expressions, inbound_foreign_keys};
+pub(crate) use table_definition::{InboundKeyColumn, foreign_key_names, generated_expressions, inbound_foreign_keys};
 
 /// The schema unqualified names resolve to.
 pub(crate) const MAIN_SCHEMA: &str = "main";
@@ -45,11 +45,15 @@ pub(crate) const INDEX_LIST_SQL: &str =
 pub(crate) const INDEX_XINFO_SQL: &str =
     "SELECT cid, name, \"desc\" FROM pragma_index_xinfo(?1, ?2) WHERE key = 1 ORDER BY seqno";
 
-pub(crate) const FOREIGN_KEY_LIST_SQL: &str = "SELECT id, \"table\", \"from\", \"to\", on_update, on_delete \
-     FROM pragma_foreign_key_list(?1, ?2) ORDER BY id, seq";
+// Unsorted: a sort holds every row before the first, and a column can carry REFERENCES thousands of times.
+pub(crate) const FOREIGN_KEY_LIST_SQL: &str = "SELECT id, seq, \"table\", \"from\", \"to\", on_update, on_delete \
+     FROM pragma_foreign_key_list(?1, ?2)";
 
-pub(crate) const FOREIGN_KEY_CHECK_SQL: &str =
-    "SELECT \"table\", rowid, parent, fkid FROM pragma_foreign_key_check(?1, ?2)";
+// A key column as `FOREIGN_KEY_LIST_SQL` reads it: its `seq`, the child's column and the parent's, if named.
+pub(crate) type ListedKeyColumn = (i64, String, Option<String>);
+
+// Not the table and parent names, which repeat on every row that breaks a key.
+pub(crate) const FOREIGN_KEY_CHECK_SQL: &str = "SELECT rowid, fkid FROM pragma_foreign_key_check(?1, ?2)";
 
 /// `sqlite_schema` of one schema, which has to be named in the FROM.
 pub(crate) fn objects_sql(schema_sql: &str) -> String {
@@ -82,16 +86,43 @@ pub(crate) fn dependents_sql(schema_sql: &str) -> String {
     )
 }
 
-/// `child_keys` counts every key of the child, wherever it points, since
-/// the ids number them all.
-pub(crate) fn inbound_keys_sql(schema_sql: &str) -> String {
+// `small`: at most 64 KiB, with a key list SQLite cannot compile past ?3 bytes: no more key columns than REFERENCES
+// and commas, each with three names no longer than the text and 512 bytes of opcodes.
+fn sized_tables(schema_sql: &str) -> String {
     format!(
-        "SELECT m.name AS child, m.sql AS child_sql, \
-         (SELECT count(DISTINCT k.id) FROM pragma_foreign_key_list(m.name, ?2) k) AS child_keys, \
-         f.id AS id, f.\"from\" AS \"from\", f.\"to\" AS \"to\" \
-         FROM {schema_sql}.sqlite_schema m, pragma_foreign_key_list(m.name, ?2) f \
-         WHERE m.type = 'table' AND f.\"table\" = ?1 COLLATE NOCASE ORDER BY m.name, f.id, f.seq"
+        "WITH tables AS (SELECT rowid, name, sql, length(CAST(sql AS BLOB)) AS bytes, \
+           (length(sql) - length(replace(lower(sql), 'references', ''))) / 10 \
+             + length(sql) - length(replace(sql, ',', '')) AS key_columns \
+           FROM {schema_sql}.sqlite_schema WHERE type = 'table' AND sql IS NOT NULL), \
+         sized AS (SELECT rowid, name, sql, \
+           bytes <= 65536 AND (key_columns + 1) * (3 * bytes + 512) <= ?3 AS small FROM tables)"
     )
+}
+
+// Every key of every small table, unsorted so the rows stream, a child's together: the child's keys are counted as
+// they pass, and only those pointing here carry their names and the child's CREATE TABLE.
+pub(crate) fn small_children_keys_sql(schema_sql: &str) -> String {
+    format!(
+        "{} SELECT m.name AS child, f.id AS id, f.seq AS seq, \
+           CASE WHEN f.\"table\" = ?1 COLLATE NOCASE THEN m.sql END AS sql, \
+           CASE WHEN f.\"table\" = ?1 COLLATE NOCASE THEN f.\"from\" END AS \"from\", \
+           CASE WHEN f.\"table\" = ?1 COLLATE NOCASE THEN f.\"to\" END AS \"to\", \
+           f.\"table\" = ?1 COLLATE NOCASE AS points_here \
+         FROM sized m, pragma_foreign_key_list(m.name, ?2) f WHERE m.small",
+        sized_tables(schema_sql)
+    )
+}
+
+pub(crate) fn large_tables_sql(schema_sql: &str) -> String {
+    format!(
+        "{} SELECT rowid, name FROM sized WHERE NOT small ORDER BY name",
+        sized_tables(schema_sql)
+    )
+}
+
+// By rowid: a lookup by name scans the whole schema, once per child.
+pub(crate) fn schema_row_sql(schema_sql: &str) -> String {
+    format!("SELECT name, sql FROM {schema_sql}.sqlite_schema WHERE rowid = ?1")
 }
 
 /// `sqlite_stat1` exists only once ANALYZE has run, so its presence is

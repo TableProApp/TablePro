@@ -7,6 +7,7 @@ mod byte_limit;
 mod byte_limited_sink;
 mod call_options;
 mod capabilities;
+mod catalog_budget;
 mod certificate_file_problem;
 mod client_identity;
 pub mod column;
@@ -114,6 +115,7 @@ pub use capabilities::{
     CommitResolutionSupport, DataModel, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
     ScriptExecution, StatementStop,
 };
+pub use catalog_budget::CatalogBudget;
 pub use certificate_file_problem::CertificateFileProblem;
 pub use client_identity::ClientIdentity;
 pub use column::ColumnInfo;

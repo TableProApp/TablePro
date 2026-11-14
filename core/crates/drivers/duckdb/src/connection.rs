@@ -8,7 +8,7 @@ use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use tablepro_core::statement::Statement;
 use tablepro_core::{
-    CallOptions, ColumnInfo, CommitResolution, CommitToken, Connection, DriverError, EditorSession,
+    CallOptions, CatalogBudget, ColumnInfo, CommitResolution, CommitToken, Connection, DriverError, EditorSession,
     EditorSessionOptions, FileEndpoint, ForeignKeyInfo, LinkState, LinkWatch, LivenessPolicy, LossPhase, OwnedCalls,
     QueryResult, ReadOnlyRefusal, ReadStatement, ResultSink, RowLimit, ServerInfo, SinkFlow, StopRequest,
     StreamSummary, TimeoutPhase, WorkspaceSettings, WriteAtomicity, WriteBatch, WriteKind, WriteLedger, WriteReport,
@@ -269,7 +269,7 @@ impl Connection for DuckDbConnection {
     async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {
         let scope = scope.clone();
         self.read(options, move |link, catalog| {
-            catalog::list_objects(link, catalog, &scope)
+            catalog::list_objects(link, catalog, &scope, &mut CatalogBudget::default())
         })
         .await
     }
@@ -277,7 +277,7 @@ impl Connection for DuckDbConnection {
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
-            catalog::fetch_columns(link, catalog, &table)
+            catalog::fetch_columns(link, catalog, &table, &mut CatalogBudget::default())
         })
         .await
     }
@@ -285,7 +285,7 @@ impl Connection for DuckDbConnection {
     async fn fetch_indexes(&self, table: &TableRef, options: CallOptions) -> Result<Vec<IndexInfo>, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
-            catalog::fetch_indexes(link, catalog, &table)
+            catalog::fetch_indexes(link, catalog, &table, &mut CatalogBudget::default())
         })
         .await
     }
@@ -297,7 +297,7 @@ impl Connection for DuckDbConnection {
     ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
-            catalog::fetch_foreign_keys(link, catalog, &table)
+            catalog::fetch_foreign_keys(link, catalog, &table, &mut CatalogBudget::default())
         })
         .await
     }
@@ -309,7 +309,7 @@ impl Connection for DuckDbConnection {
     ) -> Result<Vec<OutboundForeignKey>, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
-            catalog::outbound_foreign_keys(link, catalog, &table)
+            catalog::outbound_foreign_keys(link, catalog, &table, &mut CatalogBudget::default())
         })
         .await
     }
@@ -321,7 +321,7 @@ impl Connection for DuckDbConnection {
     ) -> Result<Vec<InboundForeignKey>, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
-            catalog::inbound_foreign_keys(link, catalog, &table)
+            catalog::inbound_foreign_keys(link, catalog, &table, &mut CatalogBudget::default())
         })
         .await
     }
@@ -335,7 +335,7 @@ impl Connection for DuckDbConnection {
         // One transaction, so the parts come from the same moment.
         self.read(options, move |link, catalog| {
             batch(link, "BEGIN TRANSACTION READ ONLY")?;
-            let definition = catalog::fetch_table_definition(link, catalog, &table);
+            let definition = catalog::fetch_table_definition(link, catalog, &table, &mut CatalogBudget::default());
             link.hold_stops();
             batch(link, "ROLLBACK")?;
             definition
@@ -359,7 +359,7 @@ impl Connection for DuckDbConnection {
     async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
-            catalog::row_identity(link, catalog, &table)
+            catalog::row_identity(link, catalog, &table, &mut CatalogBudget::default())
         })
         .await
     }

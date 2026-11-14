@@ -3,8 +3,9 @@
 //! `catalog` owns the SQL and what the rows mean. This runs it.
 
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet, hash_map};
 
+use futures::TryStreamExt;
 use sqlx::sqlite::{SqliteConnection as SqlxConnection, SqliteRow};
 use sqlx::{AssertSqlSafe, Row};
 use tablepro_core::column::ColumnInfo;
@@ -17,13 +18,15 @@ use tablepro_core::meta::{
     RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
 use tablepro_core::sql_syntax::{SqlGrammar, qualify_created_name, terminated};
-use tablepro_core::{DriverError, ForeignKeyInfo, ServerCode, ServerDiagnostics, UnsupportedFeature};
+use tablepro_core::{
+    ByteLimit, CatalogBudget, DriverError, ForeignKeyInfo, ServerCode, ServerDiagnostics, UnsupportedFeature,
+};
 
 use crate::catalog::{
-    self, InboundKeyRow, MAIN_SCHEMA, SchemaRow, SqliteColumnRow, TableFacts, foreign_key_names, generated_expressions,
-    inbound_foreign_keys, select_dependents,
+    self, InboundKeyColumn, ListedKeyColumn, MAIN_SCHEMA, SchemaRow, SqliteColumnRow, TableFacts, foreign_key_names,
+    generated_expressions, inbound_foreign_keys, select_dependents,
 };
-use crate::ddl::{declared_comparison, declared_descending_key, declared_foreign_key_names};
+use crate::ddl::{DeclaredComparisons, declared_descending_key, declared_foreign_key_names, foreign_key_list_bytes};
 use crate::errors::{SQLITE_ERROR, map_error};
 use crate::index_sql::read_index_sql;
 
@@ -69,18 +72,17 @@ pub(crate) async fn list_objects(
         ObjectScope::Schema(schema) => vec![schema.clone()],
         ObjectScope::AllSchemas => schema_names(connection).await?,
     };
+    let mut budget = CatalogBudget::default();
     let mut objects = Vec::new();
     for schema in schemas {
-        let rows = sqlx::query(AssertSqlSafe(catalog::objects_sql(&quote(&schema))))
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(map_error)?;
-        for row in rows {
-            let name = text(&row, "name")?;
+        let mut rows = sqlx::query(AssertSqlSafe(catalog::objects_sql(&quote(&schema)))).fetch(&mut *connection);
+        while let Some(row) = rows.try_next().await.map_err(map_error)? {
+            let name = budget.keep(text(&row, "name")?)?;
+            let schema = budget.keep_optional(qualifier(&schema))?;
             objects.push(match text(&row, "type")?.as_str() {
-                "trigger" => ObjectInfo::trigger(qualifier(&schema), name, text(&row, "tbl_name")?),
-                "view" => ObjectInfo::new(qualifier(&schema), name, ObjectKind::View),
-                _ => ObjectInfo::new(qualifier(&schema), name, ObjectKind::Table),
+                "trigger" => ObjectInfo::trigger(schema, name, budget.keep(text(&row, "tbl_name")?)?),
+                "view" => ObjectInfo::new(schema, name, ObjectKind::View),
+                _ => ObjectInfo::new(schema, name, ObjectKind::Table),
             });
         }
     }
@@ -121,7 +123,7 @@ pub(crate) async fn fetch_columns(
     connection: &mut SqlxConnection,
     table: &TableRef,
 ) -> Result<Vec<ColumnInfo>, DriverError> {
-    let shape = table_shape(connection, table).await?;
+    let shape = table_shape(connection, table, &mut CatalogBudget::default()).await?;
     Ok(shape
         .visible_columns()
         .map(|column| column.column_info(&shape.facts))
@@ -132,54 +134,76 @@ pub(crate) async fn fetch_indexes(
     connection: &mut SqlxConnection,
     table: &TableRef,
 ) -> Result<Vec<IndexInfo>, DriverError> {
-    let shape = table_shape(connection, table).await?;
-    indexes(connection, table, &shape).await
+    let mut budget = CatalogBudget::default();
+    let shape = table_shape(connection, table, &mut budget).await?;
+    indexes(connection, table, &shape, &mut budget).await
 }
 
 pub(crate) async fn fetch_foreign_keys(
     connection: &mut SqlxConnection,
     table: &TableRef,
 ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
-    let keys = foreign_key_rows(connection, table).await?;
-    let create = match keys.is_empty() {
-        true => None,
-        false => create_statement(connection, table).await?,
-    };
-    resolve_foreign_keys(connection, table, keys, create.as_deref()).await
+    let mut budget = CatalogBudget::default();
+    let create = create_statement(connection, table, &mut budget).await?;
+    let keys = foreign_key_rows(connection, table, create.as_deref(), &mut budget).await?;
+    resolve_foreign_keys(connection, table, keys, create.as_deref(), &mut budget).await
 }
 
 pub(crate) async fn fetch_outbound_foreign_keys(
     connection: &mut SqlxConnection,
     table: &TableRef,
 ) -> Result<Vec<OutboundForeignKey>, DriverError> {
-    let keys = fetch_foreign_keys(connection, table).await?;
-    let child_sql = match keys.is_empty() {
-        true => None,
-        false => create_statement(connection, table).await?,
-    };
-    let mut parents: HashMap<String, Option<String>> = HashMap::new();
-    let mut outbound = Vec::with_capacity(keys.len());
-    for key in keys {
-        let parent_sql = match parents.get(&key.ref_table) {
-            Some(sql) => sql.clone(),
-            None => {
-                let parent = TableRef::new(table.schema.clone(), key.ref_table.clone());
-                let sql = create_statement(connection, &parent).await?;
-                parents.insert(key.ref_table.clone(), sql.clone());
-                sql
+    let mut budget = CatalogBudget::default();
+    let create = create_statement(connection, table, &mut budget).await?;
+    let keys = foreign_key_rows(connection, table, create.as_deref(), &mut budget).await?;
+    if keys.is_empty() {
+        return Ok(Vec::new());
+    }
+    let keys = resolve_foreign_keys(connection, table, keys, create.as_deref(), &mut budget).await?;
+    let child = create.as_deref().map(DeclaredComparisons::read);
+    release(&mut budget, create);
+    let mut parents: HashMap<String, Vec<usize>> = HashMap::new();
+    for (index, key) in keys.iter().enumerate() {
+        match parents.entry(key.ref_table.to_ascii_lowercase()) {
+            hash_map::Entry::Occupied(entry) => entry.into_mut().push(index),
+            hash_map::Entry::Vacant(entry) => {
+                budget.charge_text(entry.key())?;
+                entry.insert(vec![index]);
             }
+        }
+    }
+    let mut alike = vec![true; keys.len()];
+    // Each parent's CREATE TABLE is read and parsed once, however many keys point at it.
+    for indices in parents.values() {
+        let Some(first) = indices.first().and_then(|index| keys.get(*index)) else {
+            continue;
         };
-        let parent_compares_alike = compares_alike(
-            child_sql.as_deref(),
-            parent_sql.as_deref(),
-            key.columns.iter().zip(&key.ref_columns),
-        );
-        outbound.push(OutboundForeignKey {
+        let parent_sql = create_statement(
+            connection,
+            &TableRef::new(table.schema.clone(), first.ref_table.clone()),
+            &mut budget,
+        )
+        .await?;
+        let parent = parent_sql.as_deref().map(DeclaredComparisons::read);
+        release(&mut budget, parent_sql);
+        for index in indices {
+            if let (Some(key), Some(alike)) = (keys.get(*index), alike.get_mut(*index)) {
+                *alike = compares_alike(
+                    child.as_ref(),
+                    parent.as_ref(),
+                    key.columns.iter().zip(&key.ref_columns),
+                );
+            }
+        }
+    }
+    Ok(keys
+        .into_iter()
+        .zip(alike)
+        .map(|(key, parent_compares_alike)| OutboundForeignKey {
             key,
             parent_compares_alike,
-        });
-    }
-    Ok(outbound)
+        })
+        .collect())
 }
 
 /// The table's foreign keys by pragma id, each with whether it points
@@ -187,40 +211,55 @@ pub(crate) async fn fetch_outbound_foreign_keys(
 async fn foreign_key_rows(
     connection: &mut SqlxConnection,
     table: &TableRef,
+    create_statement: Option<&str>,
+    budget: &mut CatalogBudget,
 ) -> Result<BTreeMap<i64, (ForeignKeyInfo, bool)>, DriverError> {
+    budget.fits(create_statement.map_or(0, foreign_key_list_bytes))?;
     let schema = schema_of(table);
-    let rows = sqlx::query(catalog::FOREIGN_KEY_LIST_SQL)
+    let mut rows = sqlx::query(catalog::FOREIGN_KEY_LIST_SQL)
         .bind(table.name.as_str())
         .bind(schema)
-        .fetch_all(&mut *connection)
-        .await
-        .map_err(map_error)?;
-    let mut keys: BTreeMap<i64, (ForeignKeyInfo, bool)> = BTreeMap::new();
-    for row in rows {
+        .fetch(&mut *connection);
+    let mut keys: BTreeMap<i64, (ForeignKeyInfo, Vec<ListedKeyColumn>)> = BTreeMap::new();
+    while let Some(row) = rows.try_next().await.map_err(map_error)? {
         let id: i64 = row.try_get("id").map_err(map_error)?;
-        let to: Option<String> = row.try_get("to").map_err(map_error)?;
-        let (key, to_primary) = match keys.entry(id) {
+        let (_, columns) = match keys.entry(id) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => entry.insert((
                 ForeignKeyInfo {
                     name: String::new(),
                     columns: Vec::new(),
-                    ref_schema: table.schema.clone(),
-                    ref_table: text(&row, "table")?,
+                    ref_schema: budget.keep_optional(table.schema.clone())?,
+                    ref_table: budget.keep(text(&row, "table")?)?,
                     ref_columns: Vec::new(),
                     on_delete: referential_action(&text(&row, "on_delete")?),
                     on_update: referential_action(&text(&row, "on_update")?),
                 },
-                false,
+                Vec::new(),
             )),
         };
-        key.columns.push(text(&row, "from")?);
-        match to {
-            Some(to) => key.ref_columns.push(to),
-            None => *to_primary = true,
-        }
+        // A column can carry REFERENCES many times over, so its declared name comes back once per key.
+        columns.push((
+            row.try_get("seq").map_err(map_error)?,
+            budget.keep(text(&row, "from")?)?,
+            budget.keep_optional(row.try_get("to").map_err(map_error)?)?,
+        ));
     }
-    Ok(keys)
+    Ok(keys
+        .into_iter()
+        .map(|(id, (mut key, mut columns))| {
+            columns.sort_by_key(|(seq, _, _)| *seq);
+            let mut to_primary = false;
+            for (_, from, to) in columns {
+                key.columns.push(from);
+                match to {
+                    Some(to) => key.ref_columns.push(to),
+                    None => to_primary = true,
+                }
+            }
+            (id, (key, to_primary))
+        })
+        .collect())
 }
 
 /// Name the keys from the table's CREATE TABLE, and spell each parent
@@ -236,35 +275,58 @@ async fn resolve_foreign_keys(
     table: &TableRef,
     keys: BTreeMap<i64, (ForeignKeyInfo, bool)>,
     create_statement: Option<&str>,
+    budget: &mut CatalogBudget,
 ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
     let declared = create_statement.and_then(declared_foreign_key_names);
-    let mut names = foreign_key_names(&table.name, declared, keys.len()).into_iter();
-    let mut parents: Vec<(String, Option<DeclaredTable>)> = Vec::new();
-    let mut resolved = Vec::with_capacity(keys.len());
-    for (mut key, to_primary) in keys.into_values() {
-        key.name = names.next().unwrap_or_default();
-        let known = parents
-            .iter()
-            .position(|(written, _)| written.eq_ignore_ascii_case(&key.ref_table));
-        let index = match known {
-            Some(index) => index,
-            None => {
-                let parent = TableRef::new(table.schema.clone(), key.ref_table.clone());
-                let found = declared_table(connection, &parent).await?;
-                parents.push((key.ref_table.clone(), found));
-                parents.len() - 1
+    let names = foreign_key_names(&table.name, declared, keys.len(), budget)?;
+    let mut resolved: Vec<(ForeignKeyInfo, bool)> = keys
+        .into_values()
+        .zip(names)
+        .map(|((mut key, to_primary), name)| {
+            key.name = name;
+            (key, to_primary)
+        })
+        .collect();
+    // SQLite folds ASCII letters alone when it compares names.
+    let mut parents: Vec<(String, Vec<usize>)> = Vec::new();
+    let mut by_name: HashMap<String, usize> = HashMap::new();
+    for (index, (key, _)) in resolved.iter().enumerate() {
+        match by_name.entry(key.ref_table.to_ascii_lowercase()) {
+            hash_map::Entry::Occupied(entry) => {
+                if let Some((_, indices)) = parents.get_mut(*entry.get()) {
+                    indices.push(index);
+                }
             }
+            hash_map::Entry::Vacant(entry) => {
+                budget.charge_text(entry.key())?;
+                entry.insert(parents.len());
+                parents.push((key.ref_table.clone(), vec![index]));
+            }
+        }
+    }
+    for (written, indices) in parents {
+        let parent = TableRef::new(table.schema.clone(), written);
+        let Some(found) = declared_table(connection, &parent, budget).await? else {
+            continue;
         };
-        if let Some((_, Some(parent))) = parents.get(index) {
-            key.ref_table = parent.name.clone();
+        let primary_key = found.primary_key();
+        for index in indices {
+            let Some((key, to_primary)) = resolved.get_mut(index) else {
+                continue;
+            };
+            key.ref_table = budget.keep(found.name.clone())?;
             key.ref_columns = match to_primary {
-                true => parent.primary_key(),
-                false => key.ref_columns.iter().map(|column| parent.spelling(column)).collect(),
+                // Each key naming no columns holds its own copy of the parent's whole primary key.
+                true => {
+                    budget.charge_texts(&primary_key)?;
+                    primary_key.clone()
+                }
+                false => key.ref_columns.iter().map(|column| found.spelling(column)).collect(),
             };
         }
-        resolved.push(key);
+        release_columns(budget, &found.columns);
     }
-    Ok(resolved)
+    Ok(resolved.into_iter().map(|(key, _)| key).collect())
 }
 
 /// A table's declared name and columns.
@@ -298,6 +360,7 @@ fn declared_spelling<'a>(written: &str, mut declared: impl Iterator<Item = &'a s
 async fn declared_table(
     connection: &mut SqlxConnection,
     table: &TableRef,
+    budget: &mut CatalogBudget,
 ) -> Result<Option<DeclaredTable>, DriverError> {
     let schema = schema_of(table);
     let name: Option<String> = sqlx::query_scalar(catalog::DECLARED_TABLE_NAME_SQL)
@@ -309,24 +372,48 @@ async fn declared_table(
     let Some(name) = name else {
         return Ok(None);
     };
-    let columns = sqlx::query(catalog::TABLE_XINFO_SQL)
-        .bind(name.as_str())
-        .bind(schema)
-        .fetch_all(&mut *connection)
-        .await
-        .map_err(map_error)?
-        .iter()
-        .map(SqliteColumnRow::from_row)
-        .collect::<Result<Vec<_>, _>>()?;
+    let columns = column_rows(connection, &name, schema, budget).await?;
     Ok(Some(DeclaredTable { name, columns }))
+}
+
+async fn column_rows(
+    connection: &mut SqlxConnection,
+    table: &str,
+    schema: &str,
+    budget: &mut CatalogBudget,
+) -> Result<Vec<SqliteColumnRow>, DriverError> {
+    let mut rows = sqlx::query(catalog::TABLE_XINFO_SQL)
+        .bind(table)
+        .bind(schema)
+        .fetch(&mut *connection);
+    let mut columns = Vec::new();
+    while let Some(row) = rows.try_next().await.map_err(map_error)? {
+        let column = SqliteColumnRow::from_row(&row)?;
+        budget.charge_text(&column.name)?;
+        budget.charge_text(&column.declared_type)?;
+        budget.charge_texts(&column.default)?;
+        columns.push(column);
+    }
+    Ok(columns)
+}
+
+fn release_columns(budget: &mut CatalogBudget, columns: &[SqliteColumnRow]) {
+    for column in columns {
+        budget.release_text(&column.name);
+        budget.release_text(&column.declared_type);
+        if let Some(default) = &column.default {
+            budget.release_text(default);
+        }
+    }
 }
 
 pub(crate) async fn fetch_inbound_foreign_keys(
     connection: &mut SqlxConnection,
     table: &TableRef,
 ) -> Result<Vec<InboundForeignKey>, DriverError> {
-    let shape = table_shape(connection, table).await?;
-    inbound_keys(connection, table, &shape).await
+    let mut budget = CatalogBudget::default();
+    let shape = table_shape(connection, table, &mut budget).await?;
+    inbound_keys(connection, table, &shape, &mut budget).await
 }
 
 /// The keys of the schema's other tables that point at `table`, its
@@ -336,47 +423,220 @@ async fn inbound_keys(
     connection: &mut SqlxConnection,
     table: &TableRef,
     shape: &TableShape,
+    budget: &mut CatalogBudget,
 ) -> Result<Vec<InboundForeignKey>, DriverError> {
-    let schema_sql = quote(schema_of(table));
-    let rows = sqlx::query(AssertSqlSafe(catalog::inbound_keys_sql(&schema_sql)))
-        .bind(table.name.as_str())
-        .bind(schema_of(table))
-        .fetch_all(&mut *connection)
-        .await
-        .map_err(map_error)?
-        .iter()
-        .map(|row| {
-            Ok(InboundKeyRow {
-                child: text(row, "child")?,
-                child_sql: row.try_get("child_sql").map_err(map_error)?,
-                child_keys: usize::try_from(row.try_get::<i64, _>("child_keys").map_err(map_error)?).unwrap_or(0),
-                id: row.try_get("id").map_err(map_error)?,
-                from: text(row, "from")?,
-                to: row.try_get("to").map_err(map_error)?,
-            })
-        })
-        .collect::<Result<Vec<_>, DriverError>>()?;
-    let child_sql: HashMap<String, Option<String>> = rows
-        .iter()
-        .map(|row| (row.child.clone(), row.child_sql.clone()))
-        .collect();
-    let parent_sql = match rows.is_empty() {
-        true => None,
-        false => create_statement(connection, table).await?,
+    let parent_sql = create_statement(connection, table, budget).await?;
+    let parent = Parent {
+        table,
+        shape,
+        declared: parent_sql.as_deref().map(DeclaredComparisons::read),
+        primary_key: shape.primary_key(),
     };
-    let mut keys = inbound_foreign_keys(table.schema.as_deref(), rows, &shape.primary_key());
-    for key in &mut keys {
-        for column in &mut key.referenced_columns {
-            *column = declared_spelling(column, shape.columns.iter().map(|declared| declared.name.as_str()));
+    release(budget, parent_sql);
+    let mut keys = small_children_keys(connection, &parent, budget).await?;
+    let schema_sql = quote(schema_of(table));
+    let mut large = Vec::new();
+    {
+        let mut rows = sqlx::query_as::<_, (i64, String)>(AssertSqlSafe(catalog::large_tables_sql(&schema_sql)))
+            .bind(table.name.as_str())
+            .bind(schema_of(table))
+            .bind(i64::try_from(ByteLimit::CATALOG_DEFAULT.get()).unwrap_or(i64::MAX))
+            .fetch(&mut *connection);
+        while let Some((rowid, child)) = rows.try_next().await.map_err(map_error)? {
+            large.push((rowid, budget.keep(child)?));
         }
-        let child = child_sql.get(&key.table.name).and_then(Option::as_deref);
-        key.child_compares_alike = compares_alike(
-            child,
-            parent_sql.as_deref(),
-            key.columns.iter().zip(&key.referenced_columns),
-        );
+    }
+    // One child at a time: its CREATE TABLE is let go before the next is read.
+    for (rowid, child) in large {
+        let row: Option<(String, Option<String>)> = sqlx::query_as(AssertSqlSafe(catalog::schema_row_sql(&schema_sql)))
+            .bind(rowid)
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(map_error)?;
+        // A row another connection gave to another table since is not this child's.
+        let sql = budget.keep_optional(row.filter(|(name, _)| *name == child).and_then(|(_, sql)| sql))?;
+        if !sql.as_deref().is_some_and(|sql| names_table(sql, &table.name)) {
+            release(budget, sql);
+            budget.release_text(&child);
+            continue;
+        }
+        budget.fits(sql.as_deref().map_or(0, foreign_key_list_bytes))?;
+        let (columns, count) = key_columns_into(connection, &child, table, budget).await?;
+        match columns.is_empty() {
+            true => {
+                release(budget, sql);
+                budget.release_text(&child);
+            }
+            false => keys.extend(parent.keys_of(child, columns, sql, count, budget)?),
+        }
+    }
+    keys.sort_by(|left, right| left.table.name.cmp(&right.table.name));
+    Ok(keys)
+}
+
+async fn small_children_keys(
+    connection: &mut SqlxConnection,
+    parent: &Parent<'_>,
+    budget: &mut CatalogBudget,
+) -> Result<Vec<InboundForeignKey>, DriverError> {
+    let schema_sql = quote(schema_of(parent.table));
+    let mut rows = sqlx::query(AssertSqlSafe(catalog::small_children_keys_sql(&schema_sql)))
+        .bind(parent.table.name.as_str())
+        .bind(schema_of(parent.table))
+        .bind(i64::try_from(ByteLimit::CATALOG_DEFAULT.get()).unwrap_or(i64::MAX))
+        .fetch(&mut *connection);
+    let mut keys = Vec::new();
+    let mut child: Option<ChildRows> = None;
+    while let Some(row) = rows.try_next().await.map_err(map_error)? {
+        let name: &str = row.try_get("child").map_err(map_error)?;
+        if child.as_ref().is_none_or(|read| read.name != name) {
+            if let Some(done) = child.take() {
+                keys.extend(done.keys(parent, budget)?);
+            }
+            child = Some(ChildRows::new(budget.keep(name.to_owned())?));
+        }
+        let Some(read) = &mut child else {
+            continue;
+        };
+        let id: i64 = row.try_get("id").map_err(map_error)?;
+        read.ids.insert(id);
+        if !row.try_get::<bool, _>("points_here").map_err(map_error)? {
+            continue;
+        }
+        if read.sql.is_none() {
+            read.sql = budget.keep_optional(row.try_get("sql").map_err(map_error)?)?;
+        }
+        read.columns.push(InboundKeyColumn {
+            id,
+            seq: row.try_get("seq").map_err(map_error)?,
+            from: budget.keep(text(&row, "from")?)?,
+            to: budget.keep_optional(row.try_get("to").map_err(map_error)?)?,
+        });
+    }
+    if let Some(done) = child {
+        keys.extend(done.keys(parent, budget)?);
     }
     Ok(keys)
+}
+
+// One child's rows of the small tables' key list, as they pass.
+struct ChildRows {
+    name: String,
+    sql: Option<String>,
+    ids: HashSet<i64>,
+    columns: Vec<InboundKeyColumn>,
+}
+
+impl ChildRows {
+    fn new(name: String) -> Self {
+        Self {
+            name,
+            sql: None,
+            ids: HashSet::new(),
+            columns: Vec::new(),
+        }
+    }
+
+    fn keys(self, parent: &Parent<'_>, budget: &mut CatalogBudget) -> Result<Vec<InboundForeignKey>, DriverError> {
+        if self.columns.is_empty() {
+            budget.release_text(&self.name);
+            release(budget, self.sql);
+            return Ok(Vec::new());
+        }
+        parent.keys_of(self.name, self.columns, self.sql, self.ids.len(), budget)
+    }
+}
+
+// Linear time, since the file chooses both texts. SQLite folds ASCII letters alone, and a quoted name doubles its
+// quote character.
+fn names_table(sql: &str, table: &str) -> bool {
+    let sql = sql.to_ascii_lowercase();
+    let table = table.to_ascii_lowercase();
+    sql.contains(&table)
+        || ['"', '`', '\''].into_iter().any(|quote| {
+            let doubled: String = [quote, quote].iter().collect();
+            table.contains(quote) && sql.contains(&table.replace(quote, &doubled))
+        })
+}
+
+// The count is of every key of the child, wherever it points, since the ids number them all.
+async fn key_columns_into(
+    connection: &mut SqlxConnection,
+    child: &str,
+    parent: &TableRef,
+    budget: &mut CatalogBudget,
+) -> Result<(Vec<InboundKeyColumn>, usize), DriverError> {
+    let mut rows = sqlx::query(catalog::FOREIGN_KEY_LIST_SQL)
+        .bind(child)
+        .bind(schema_of(parent))
+        .fetch(&mut *connection);
+    let mut ids = HashSet::new();
+    let mut columns = Vec::new();
+    while let Some(row) = rows.try_next().await.map_err(map_error)? {
+        let id: i64 = row.try_get("id").map_err(map_error)?;
+        ids.insert(id);
+        let target: &str = row.try_get("table").map_err(map_error)?;
+        if !target.eq_ignore_ascii_case(&parent.name) {
+            continue;
+        }
+        columns.push(InboundKeyColumn {
+            id,
+            seq: row.try_get("seq").map_err(map_error)?,
+            from: budget.keep(text(&row, "from")?)?,
+            to: budget.keep_optional(row.try_get("to").map_err(map_error)?)?,
+        });
+    }
+    Ok((columns, ids.len()))
+}
+
+struct Parent<'a> {
+    table: &'a TableRef,
+    shape: &'a TableShape,
+    declared: Option<Option<DeclaredComparisons>>,
+    primary_key: Vec<String>,
+}
+
+impl Parent<'_> {
+    fn keys_of(
+        &self,
+        child: String,
+        columns: Vec<InboundKeyColumn>,
+        sql: Option<String>,
+        count: usize,
+        budget: &mut CatalogBudget,
+    ) -> Result<Vec<InboundForeignKey>, DriverError> {
+        let names = foreign_key_names(
+            &child,
+            sql.as_deref().and_then(declared_foreign_key_names),
+            count,
+            budget,
+        )?;
+        let declared = sql.as_deref().map(DeclaredComparisons::read);
+        release(budget, sql);
+        let mut keys = inbound_foreign_keys(
+            self.table.schema.as_deref(),
+            &child,
+            columns,
+            &names,
+            &self.primary_key,
+            budget,
+        )?;
+        for name in &names {
+            budget.release_text(name);
+        }
+        budget.release_text(&child);
+        for key in &mut keys {
+            for column in &mut key.referenced_columns {
+                *column = declared_spelling(column, self.shape.columns.iter().map(|declared| declared.name.as_str()));
+            }
+            key.child_compares_alike = compares_alike(
+                declared.as_ref(),
+                self.declared.as_ref(),
+                key.columns.iter().zip(&key.referenced_columns),
+            );
+        }
+        Ok(keys)
+    }
 }
 
 /// SQLite compares a key under the parent columns' affinity and
@@ -385,19 +645,19 @@ async fn inbound_keys(
 /// either way, so the key is not followed. A missing table is followed,
 /// to say that it is missing.
 fn compares_alike<'a>(
-    child_sql: Option<&str>,
-    parent_sql: Option<&str>,
+    child: Option<&Option<DeclaredComparisons>>,
+    parent: Option<&Option<DeclaredComparisons>>,
     pairs: impl IntoIterator<Item = (&'a String, &'a String)>,
 ) -> bool {
-    let (Some(child_sql), Some(parent_sql)) = (child_sql, parent_sql) else {
+    let (Some(child), Some(parent)) = (child, parent) else {
         return true;
     };
     pairs.into_iter().all(|(child_column, parent_column)| {
         match (
-            declared_comparison(child_sql, child_column),
-            declared_comparison(parent_sql, parent_column),
+            child.as_ref().and_then(|declared| declared.of(child_column)),
+            parent.as_ref().and_then(|declared| declared.of(parent_column)),
         ) {
-            (Some(child), Some(parent)) => child.alike(&parent),
+            (Some(child), Some(parent)) => child.alike(parent),
             _ => false,
         }
     })
@@ -409,7 +669,8 @@ pub(crate) async fn row_identity(
     connection: &mut SqlxConnection,
     table: &TableRef,
 ) -> Result<RowIdentity, DriverError> {
-    let shape = table_shape(connection, table).await?;
+    let mut budget = CatalogBudget::default();
+    let shape = table_shape(connection, table, &mut budget).await?;
     // A view has no rowid and no key, and a virtual table's rowid is
     // whatever its module makes of it.
     if shape.kind != "table" {
@@ -425,13 +686,16 @@ pub(crate) async fn row_identity(
         .filter(|column| column.not_null)
         .map(|column| column.name.as_str())
         .collect();
-    let unique = indexes(connection, table, &shape).await?.into_iter().find(|index| {
-        index.can_identify_rows()
-            && index
-                .key_columns()
-                .iter()
-                .all(|column| not_null.iter().any(|name| name.eq_ignore_ascii_case(column)))
-    });
+    let unique = indexes(connection, table, &shape, &mut budget)
+        .await?
+        .into_iter()
+        .find(|index| {
+            index.can_identify_rows()
+                && index
+                    .key_columns()
+                    .iter()
+                    .all(|column| not_null.iter().any(|name| name.eq_ignore_ascii_case(column)))
+        });
     if let Some(index) = unique {
         return Ok(RowIdentity::UniqueKey {
             columns: index.key_columns(),
@@ -484,9 +748,10 @@ pub(crate) async fn fetch_table_definition(
     connection: &mut SqlxConnection,
     table: &TableRef,
 ) -> Result<TableDefinition, DriverError> {
-    let shape = table_shape(connection, table).await?;
+    let mut budget = CatalogBudget::default();
+    let shape = table_shape(connection, table, &mut budget).await?;
     let schema_sql = quote(schema_of(table));
-    let create_statement = create_statement(connection, table).await?;
+    let create_statement = create_statement(connection, table, &mut budget).await?;
 
     let expressions = match (
         &create_statement,
@@ -511,16 +776,23 @@ pub(crate) async fn fetch_table_definition(
         name: None,
         columns: key_columns,
     });
-    let indexes = indexes(connection, table, &shape).await?;
-    let foreign_keys = foreign_key_rows(connection, table).await?;
-    let foreign_keys = resolve_foreign_keys(connection, table, foreign_keys, create_statement.as_deref()).await?;
+    let indexes = indexes(connection, table, &shape, &mut budget).await?;
+    let foreign_keys = foreign_key_rows(connection, table, create_statement.as_deref(), &mut budget).await?;
+    let foreign_keys = resolve_foreign_keys(
+        connection,
+        table,
+        foreign_keys,
+        create_statement.as_deref(),
+        &mut budget,
+    )
+    .await?;
 
-    let inbound = inbound_keys(connection, table, &shape).await?;
+    let inbound = inbound_keys(connection, table, &shape, &mut budget).await?;
 
     let source = match create_statement {
         Some(create_statement) => Some(TableSource {
             create_statement,
-            dependents: dependents(connection, &schema_sql, &table.name).await?,
+            dependents: dependents(connection, &schema_sql, &table.name, &mut budget).await?,
         }),
         None => None,
     };
@@ -538,9 +810,13 @@ pub(crate) async fn fetch_table_definition(
 }
 
 /// The CREATE statement SQLite stored for the table.
-async fn create_statement(connection: &mut SqlxConnection, table: &TableRef) -> Result<Option<String>, DriverError> {
+async fn create_statement(
+    connection: &mut SqlxConnection,
+    table: &TableRef,
+    budget: &mut CatalogBudget,
+) -> Result<Option<String>, DriverError> {
     let schema_sql = quote(schema_of(table));
-    Ok(sqlx::query(AssertSqlSafe(catalog::object_sql(&schema_sql)))
+    let sql = sqlx::query(AssertSqlSafe(catalog::object_sql(&schema_sql)))
         .bind(table.name.as_str())
         .fetch_optional(&mut *connection)
         .await
@@ -548,20 +824,25 @@ async fn create_statement(connection: &mut SqlxConnection, table: &TableRef) -> 
         .map(|row| row.try_get::<Option<String>, _>("sql"))
         .transpose()
         .map_err(map_error)?
-        .flatten())
+        .flatten();
+    budget.keep_optional(sql)
+}
+
+fn release(budget: &mut CatalogBudget, text: Option<String>) {
+    if let Some(text) = text {
+        budget.release_text(&text);
+    }
 }
 
 async fn dependents(
     connection: &mut SqlxConnection,
     schema_sql: &str,
     table: &str,
+    budget: &mut CatalogBudget,
 ) -> Result<Vec<tablepro_core::ddl::SchemaObjectSource>, DriverError> {
-    let rows = sqlx::query(AssertSqlSafe(catalog::dependents_sql(schema_sql)))
-        .fetch_all(&mut *connection)
-        .await
-        .map_err(map_error)?;
-    let mut schema_rows = Vec::with_capacity(rows.len());
-    for row in rows {
+    let mut rows = sqlx::query(AssertSqlSafe(catalog::dependents_sql(schema_sql))).fetch(&mut *connection);
+    let mut schema_rows = Vec::new();
+    while let Some(row) = rows.try_next().await.map_err(map_error)? {
         let kind = match text(&row, "type")?.as_str() {
             "index" => SchemaObjectKind::Index,
             "trigger" => SchemaObjectKind::Trigger,
@@ -569,9 +850,9 @@ async fn dependents(
         };
         schema_rows.push(SchemaRow {
             kind,
-            name: text(&row, "name")?,
-            table: text(&row, "tbl_name")?,
-            sql: text(&row, "sql")?,
+            name: budget.keep(text(&row, "name")?)?,
+            table: budget.keep(text(&row, "tbl_name")?)?,
+            sql: budget.keep(text(&row, "sql")?)?,
         });
     }
     Ok(select_dependents(table, schema_rows))
@@ -581,69 +862,27 @@ async fn indexes(
     connection: &mut SqlxConnection,
     table: &TableRef,
     shape: &TableShape,
+    budget: &mut CatalogBudget,
 ) -> Result<Vec<IndexInfo>, DriverError> {
     let schema = schema_of(table);
-    let schema_sql = quote(schema);
-    let list = sqlx::query(catalog::INDEX_LIST_SQL)
-        .bind(table.name.as_str())
-        .bind(schema)
-        .fetch_all(&mut *connection)
-        .await
-        .map_err(map_error)?;
-    let mut indexes = Vec::with_capacity(list.len() + 1);
-    for entry in list {
-        let name = text(&entry, "name")?;
-        let unique: i64 = entry.try_get("unique").map_err(map_error)?;
-        let partial: i64 = entry.try_get("partial").map_err(map_error)?;
-        let primary = text(&entry, "origin")? == "pk";
-        let stored_sql: Option<String> = sqlx::query_scalar(AssertSqlSafe(catalog::index_sql(&schema_sql)))
-            .bind(name.as_str())
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(map_error)?
-            .flatten();
-        let parsed = stored_sql.as_deref().and_then(read_index_sql);
-        let key_rows = sqlx::query(catalog::INDEX_XINFO_SQL)
-            .bind(name.as_str())
+    let mut listed = Vec::new();
+    {
+        let mut rows = sqlx::query(catalog::INDEX_LIST_SQL)
+            .bind(table.name.as_str())
             .bind(schema)
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(map_error)?;
-        let mut keys = Vec::with_capacity(key_rows.len());
-        for (position, key) in key_rows.iter().enumerate() {
-            let cid: i64 = key.try_get("cid").map_err(map_error)?;
-            let descending = key.try_get::<i64, _>("desc").map_err(map_error)? != 0;
-            let column: Option<String> = key.try_get("name").map_err(map_error)?;
-            keys.push(match (cid, column) {
-                (-2, _) => IndexKey::Expression {
-                    sql: parsed
-                        .as_ref()
-                        .and_then(|parsed| parsed.keys.get(position).cloned())
-                        .unwrap_or_default(),
-                    descending,
-                },
-                (-1, _) => IndexKey::Column {
-                    name: "rowid".to_owned(),
-                    descending,
-                },
-                (_, column) => IndexKey::Column {
-                    name: column.unwrap_or_default(),
-                    descending,
-                },
-            });
+            .fetch(&mut *connection);
+        while let Some(entry) = rows.try_next().await.map_err(map_error)? {
+            listed.push((
+                budget.keep(text(&entry, "name")?)?,
+                entry.try_get::<i64, _>("unique").map_err(map_error)? != 0,
+                entry.try_get::<i64, _>("partial").map_err(map_error)? != 0,
+                text(&entry, "origin")? == "pk",
+            ));
         }
-        let predicate = match partial {
-            0 => None,
-            _ => parsed.and_then(|parsed| parsed.predicate),
-        };
-        indexes.push(IndexInfo {
-            name,
-            keys,
-            unique: unique != 0,
-            primary,
-            predicate,
-            definition: stored_sql.map(|sql| in_schema(&sql, schema)),
-        });
+    }
+    let mut indexes = Vec::with_capacity(listed.len() + 1);
+    for (name, unique, partial, primary) in listed {
+        indexes.push(index(connection, schema, name, unique, partial, primary, budget).await?);
     }
     // An INTEGER PRIMARY KEY is the rowid itself and has no index of its
     // own, but the structure tab still shows the key.
@@ -667,7 +906,80 @@ async fn indexes(
     Ok(indexes)
 }
 
-async fn table_shape(connection: &mut SqlxConnection, table: &TableRef) -> Result<TableShape, DriverError> {
+async fn index(
+    connection: &mut SqlxConnection,
+    schema: &str,
+    name: String,
+    unique: bool,
+    partial: bool,
+    primary: bool,
+    budget: &mut CatalogBudget,
+) -> Result<IndexInfo, DriverError> {
+    let stored_sql: Option<String> = sqlx::query_scalar(AssertSqlSafe(catalog::index_sql(&quote(schema))))
+        .bind(name.as_str())
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(map_error)?
+        .flatten();
+    let stored_sql = budget.keep_optional(stored_sql)?;
+    let parsed = stored_sql.as_deref().and_then(read_index_sql);
+    let mut keys = Vec::new();
+    let mut rows = sqlx::query(catalog::INDEX_XINFO_SQL)
+        .bind(name.as_str())
+        .bind(schema)
+        .fetch(&mut *connection);
+    while let Some(key) = rows.try_next().await.map_err(map_error)? {
+        let position = keys.len();
+        let cid: i64 = key.try_get("cid").map_err(map_error)?;
+        let descending = key.try_get::<i64, _>("desc").map_err(map_error)? != 0;
+        let column: Option<String> = budget.keep_optional(key.try_get("name").map_err(map_error)?)?;
+        keys.push(match (cid, column) {
+            (-2, _) => IndexKey::Expression {
+                sql: budget.keep(
+                    parsed
+                        .as_ref()
+                        .and_then(|parsed| parsed.keys.get(position).cloned())
+                        .unwrap_or_default(),
+                )?,
+                descending,
+            },
+            (-1, _) => IndexKey::Column {
+                name: "rowid".to_owned(),
+                descending,
+            },
+            (_, column) => IndexKey::Column {
+                name: column.unwrap_or_default(),
+                descending,
+            },
+        });
+    }
+    let predicate = match partial {
+        false => None,
+        true => parsed.and_then(|parsed| parsed.predicate),
+    };
+    let definition = match stored_sql {
+        Some(sql) => {
+            let definition = budget.keep(in_schema(&sql, schema))?;
+            budget.release_text(&sql);
+            Some(definition)
+        }
+        None => None,
+    };
+    Ok(IndexInfo {
+        name,
+        keys,
+        unique,
+        primary,
+        predicate,
+        definition,
+    })
+}
+
+async fn table_shape(
+    connection: &mut SqlxConnection,
+    table: &TableRef,
+    budget: &mut CatalogBudget,
+) -> Result<TableShape, DriverError> {
     let schema = schema_of(table);
     let listed = sqlx::query(catalog::TABLE_LIST_SQL)
         .bind(table.name.as_str())
@@ -682,15 +994,7 @@ async fn table_shape(connection: &mut SqlxConnection, table: &TableRef) -> Resul
     let without_rowid = listed.try_get::<i64, _>("wr").map_err(map_error)? != 0;
     let strict = listed.try_get::<i64, _>("strict").map_err(map_error)? != 0;
 
-    let columns = sqlx::query(catalog::TABLE_XINFO_SQL)
-        .bind(table.name.as_str())
-        .bind(schema)
-        .fetch_all(&mut *connection)
-        .await
-        .map_err(map_error)?
-        .iter()
-        .map(SqliteColumnRow::from_row)
-        .collect::<Result<Vec<_>, _>>()?;
+    let columns = column_rows(connection, &table.name, schema, budget).await?;
     let single_column_key = columns.iter().filter(|column| column.pk > 0).count() == 1;
     let mut facts = TableFacts {
         strict,
@@ -699,9 +1003,11 @@ async fn table_shape(connection: &mut SqlxConnection, table: &TableRef) -> Resul
         descending_key: false,
     };
     if let Some(candidate) = columns.iter().find(|column| column.is_rowid_candidate(&facts)) {
-        facts.descending_key = create_statement(connection, table)
-            .await?
-            .is_some_and(|sql| declared_descending_key(&sql, &candidate.name));
+        let sql = create_statement(connection, table, budget).await?;
+        facts.descending_key = sql
+            .as_deref()
+            .is_some_and(|sql| declared_descending_key(sql, &candidate.name));
+        release(budget, sql);
     }
     Ok(TableShape { kind, facts, columns })
 }
@@ -769,4 +1075,20 @@ fn no_such_table(schema: &str, name: &str) -> DriverError {
         }),
         format!("no such table: {schema}.{name}"),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_table_is_named_in_any_case_and_quote_style() {
+        let sql = "CREATE TABLE c (a REFERENCES \"WE\"\"IRD\", b REFERENCES 'it''s', d REFERENCES `x``y`)";
+
+        assert!(names_table(sql, "we\"ird"));
+        assert!(names_table(sql, "IT's"));
+        assert!(names_table(sql, "x`y"));
+        assert!(!names_table(sql, "other"));
+        assert!(!names_table(&"a".repeat(1 << 20), &format!("{}b", "a".repeat(1 << 14))));
+    }
 }

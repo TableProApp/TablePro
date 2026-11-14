@@ -9,22 +9,29 @@
 //! and the batch then rolls back.
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::time::Duration;
 
+use futures::TryStreamExt;
 use sqlx::sqlite::SqliteConnection as SqlxConnection;
 use sqlx::{AssertSqlSafe, Connection as _, Row};
 use tablepro_core::meta::TableRef;
 use tablepro_core::statement::{GuardedStatement, RowGuard};
 use tablepro_core::{
-    BusyReason, DriverError, ForeignKeyCheck, ForeignKeyMode, LossPhase, SessionFate, StopReason, StopRequest,
-    TimeoutPhase, WriteBatch, WriteLedger, WriteReport,
+    BusyReason, CatalogBudget, DriverError, ForeignKeyCheck, ForeignKeyMode, LossPhase, SessionFate, StopReason,
+    StopRequest, TimeoutPhase, WriteBatch, WriteLedger, WriteReport,
 };
 
 use crate::autocommit::is_autocommit;
-use crate::catalog::{FOREIGN_KEY_CHECK_SQL, FOREIGN_KEY_LIST_SQL, MAIN_SCHEMA};
+use crate::catalog::{
+    DECLARED_TABLE_NAME_SQL, FOREIGN_KEY_CHECK_SQL, FOREIGN_KEY_LIST_SQL, ListedKeyColumn, MAIN_SCHEMA, object_sql,
+};
+use crate::ddl::foreign_key_list_bytes;
 use crate::encode::bind_all;
 use crate::errors::{SQLITE_IOERR, is_interrupt, map_error, primary_of};
-use crate::foreign_key_verification::{Renames, ViolatedKey, Violation, introduced, violation_error};
+use crate::foreign_key_verification::{
+    BrokenKey, Renames, TableViolations, ViolatedKey, Violations, introduced, violation_error,
+};
 use crate::interrupt::InterruptFlag;
 use crate::result_stream::{count, reports_changes};
 use crate::sqlite_pooled::SqlitePooled;
@@ -118,15 +125,17 @@ impl Write<'_> {
             }
         };
 
+        // Shared by the check before the batch and the one after it, which are held together.
+        let mut budget = CatalogBudget::default();
         let baseline = match checks {
-            Some(checks) => match baseline(&mut transaction, checks).await {
+            Some(checks) => match baseline(&mut transaction, checks, &mut budget).await {
                 Ok(baseline) => baseline,
                 Err(error) => {
                     let fate = self.rollback(transaction).await;
                     return Err(self.failure(0, error, fate));
                 }
             },
-            None => Vec::new(),
+            None => Violations::default(),
         };
 
         let mut rows_affected = Vec::with_capacity(self.batch.steps.len());
@@ -149,14 +158,20 @@ impl Write<'_> {
         }
 
         if let Some(checks) = checks {
-            let after = match violations_after(&mut transaction, checks).await {
+            let after = match violations_after(&mut transaction, checks, &mut budget).await {
                 Ok(after) => after,
                 Err(error) => {
                     let fate = self.rollback(transaction).await;
                     return Err(self.failure(self.batch.steps.len(), error, fate));
                 }
             };
-            let introduced = introduced(&baseline, &after);
+            let introduced = match introduced(&baseline, &after, &mut budget) {
+                Ok(introduced) => introduced,
+                Err(error) => {
+                    let fate = self.rollback(transaction).await;
+                    return Err(self.failure(self.batch.steps.len(), error, fate));
+                }
+            };
             if !introduced.is_empty() {
                 self.rollback(transaction).await;
                 return Err(DriverError::RolledBack {
@@ -300,14 +315,18 @@ fn stop_cause(reason: StopReason) -> DriverError {
 }
 
 /// The violations already there, named as they will be after the batch.
-async fn baseline(connection: &mut SqlxConnection, checks: &[ForeignKeyCheck]) -> Result<Vec<Violation>, DriverError> {
-    let mut found = Vec::new();
+async fn baseline(
+    connection: &mut SqlxConnection,
+    checks: &[ForeignKeyCheck],
+    budget: &mut CatalogBudget,
+) -> Result<Violations, DriverError> {
+    let mut found = Violations::default();
     let mut renames = Renames::default();
     for check in checks {
         let Some(before) = &check.before else {
             continue;
         };
-        found.extend(violations(connection, before, check.rowids_renumbered).await?);
+        found.extend(violations(connection, before, check.rowids_renumbered, budget).await?);
         renames.add(&before.name, &check.after.name, &check.renamed_columns);
     }
     Ok(renames.apply(found))
@@ -316,10 +335,11 @@ async fn baseline(connection: &mut SqlxConnection, checks: &[ForeignKeyCheck]) -
 async fn violations_after(
     connection: &mut SqlxConnection,
     checks: &[ForeignKeyCheck],
-) -> Result<Vec<Violation>, DriverError> {
-    let mut found = Vec::new();
+    budget: &mut CatalogBudget,
+) -> Result<Violations, DriverError> {
+    let mut found = Violations::default();
     for check in checks {
-        found.extend(violations(connection, &check.after, check.rowids_renumbered).await?);
+        found.extend(violations(connection, &check.after, check.rowids_renumbered, budget).await?);
     }
     Ok(found)
 }
@@ -331,34 +351,43 @@ async fn violations(
     connection: &mut SqlxConnection,
     table: &TableRef,
     rowids_renumbered: bool,
-) -> Result<Vec<Violation>, DriverError> {
+    budget: &mut CatalogBudget,
+) -> Result<Violations, DriverError> {
     let schema = table
         .schema
         .as_deref()
         .filter(|schema| !schema.is_empty())
         .unwrap_or(MAIN_SCHEMA);
-    let rows = sqlx::query(FOREIGN_KEY_CHECK_SQL)
+    let declared: Option<String> = sqlx::query_scalar(DECLARED_TABLE_NAME_SQL)
         .bind(table.name.as_str())
         .bind(schema)
-        .fetch_all(&mut *connection)
+        .fetch_optional(&mut *connection)
         .await
         .map_err(map_error)?;
-    if rows.is_empty() {
-        return Ok(Vec::new());
-    }
+    let mut found = TableViolations::new(declared.unwrap_or_else(|| table.name.clone()), budget)?;
     let keys = foreign_keys(connection, table, schema).await?;
-    rows.iter()
-        .map(|row| {
-            let rowid: Option<i64> = row.try_get("rowid").map_err(map_error)?;
-            let fkid: i64 = row.try_get("fkid").map_err(map_error)?;
-            Ok(Violation {
-                table: row.try_get("table").map_err(map_error)?,
-                rowid: rowid.filter(|_| !rowids_renumbered),
-                parent: row.try_get("parent").map_err(map_error)?,
-                key: keys.get(&fkid).cloned().unwrap_or_default(),
-            })
-        })
-        .collect()
+    let mut positions: HashMap<i64, usize> = HashMap::new();
+    let mut rows = sqlx::query(FOREIGN_KEY_CHECK_SQL)
+        .bind(table.name.as_str())
+        .bind(schema)
+        .fetch(&mut *connection);
+    while let Some(row) = rows.try_next().await.map_err(map_error)? {
+        let rowid: Option<i64> = row.try_get("rowid").map_err(map_error)?;
+        let fkid: i64 = row.try_get("fkid").map_err(map_error)?;
+        let position = match positions.get(&fkid) {
+            Some(position) => *position,
+            None => {
+                let (parent, key) = keys.get(&fkid).cloned().unwrap_or_default();
+                let position = found.add_key(BrokenKey { parent, key }, budget)?;
+                positions.insert(fkid, position);
+                position
+            }
+        };
+        found.add_row(position, rowid.filter(|_| !rowids_renumbered), budget)?;
+    }
+    let mut violations = Violations::default();
+    violations.push(found);
+    Ok(violations)
 }
 
 /// The table's foreign keys by the id `foreign_key_check` names them by.
@@ -366,21 +395,48 @@ async fn foreign_keys(
     connection: &mut SqlxConnection,
     table: &TableRef,
     schema: &str,
-) -> Result<HashMap<i64, ViolatedKey>, DriverError> {
-    let rows = sqlx::query(FOREIGN_KEY_LIST_SQL)
+) -> Result<HashMap<i64, (String, ViolatedKey)>, DriverError> {
+    let mut budget = CatalogBudget::default();
+    let schema_sql = format!("\"{}\"", schema.replace('"', "\"\""));
+    let create: Option<(String, Option<String>)> = sqlx::query_as(AssertSqlSafe(object_sql(&schema_sql)))
         .bind(table.name.as_str())
-        .bind(schema)
-        .fetch_all(&mut *connection)
+        .fetch_optional(&mut *connection)
         .await
         .map_err(map_error)?;
-    let mut keys: HashMap<i64, ViolatedKey> = HashMap::new();
-    for row in rows {
+    budget.fits(
+        create
+            .and_then(|(_, sql)| sql)
+            .map_or(0, |sql| foreign_key_list_bytes(&sql)),
+    )?;
+    let mut rows = sqlx::query(FOREIGN_KEY_LIST_SQL)
+        .bind(table.name.as_str())
+        .bind(schema)
+        .fetch(&mut *connection);
+    let mut keys: HashMap<i64, (String, Vec<ListedKeyColumn>)> = HashMap::new();
+    while let Some(row) = rows.try_next().await.map_err(map_error)? {
         let id: i64 = row.try_get("id").map_err(map_error)?;
-        let from: String = row.try_get("from").map_err(map_error)?;
-        let to: Option<String> = row.try_get("to").map_err(map_error)?;
-        let key = keys.entry(id).or_default();
-        key.columns.push(from);
-        key.parent_columns.extend(to);
+        let column = (
+            row.try_get("seq").map_err(map_error)?,
+            budget.keep(row.try_get("from").map_err(map_error)?)?,
+            budget.keep_optional(row.try_get("to").map_err(map_error)?)?,
+        );
+        match keys.entry(id) {
+            Entry::Occupied(entry) => entry.into_mut().1.push(column),
+            Entry::Vacant(entry) => {
+                entry.insert((budget.keep(row.try_get("table").map_err(map_error)?)?, vec![column]));
+            }
+        }
     }
-    Ok(keys)
+    Ok(keys
+        .into_iter()
+        .map(|(id, (parent, mut columns))| {
+            columns.sort_by_key(|(seq, _, _)| *seq);
+            let mut key = ViolatedKey::default();
+            for (_, from, to) in columns {
+                key.columns.push(from);
+                key.parent_columns.extend(to);
+            }
+            (id, (parent, key))
+        })
+        .collect())
 }

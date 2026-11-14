@@ -9,7 +9,7 @@
 //! so what a rebuild does not change goes into the new table as it was
 //! written.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use tablepro_core::ddl::TableDefinition;
@@ -316,13 +316,28 @@ pub(crate) fn declared_foreign_key_names(sql: &str) -> Option<Vec<Option<String>
     Some(names)
 }
 
-/// How a CREATE TABLE has `column` compare its values. `None` when the
-/// text does not read or names no such column.
-pub(crate) fn declared_comparison(sql: &str, column: &str) -> Option<crate::catalog::Comparison> {
-    let source = CreateTableSource::read(sql).ok()?;
-    let (_, declared) = source
-        .columns()
-        .find(|(_, declared)| declared.name.eq_ignore_ascii_case(column))?;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DeclaredComparisons(HashMap<String, crate::catalog::Comparison>);
+
+impl DeclaredComparisons {
+    // Read once per table, not once per key column: a table can declare thousands of keys.
+    pub(crate) fn read(sql: &str) -> Option<Self> {
+        let source = CreateTableSource::read(sql).ok()?;
+        let mut columns = HashMap::new();
+        for (_, declared) in source.columns() {
+            columns
+                .entry(declared.name.to_ascii_lowercase())
+                .or_insert_with(|| comparison(&source, declared));
+        }
+        Some(Self(columns))
+    }
+
+    pub(crate) fn of(&self, column: &str) -> Option<&crate::catalog::Comparison> {
+        self.0.get(&column.to_ascii_lowercase())
+    }
+}
+
+fn comparison(source: &CreateTableSource<'_>, declared: &SourceColumn) -> crate::catalog::Comparison {
     let type_text = kept_type_name(declared.type_range.clone().map_or("", |range| source.text(range)));
     let collation = declared
         .segments
@@ -334,7 +349,28 @@ pub(crate) fn declared_comparison(sql: &str, column: &str) -> Option<crate::cata
             Some(unquote(name.trim()))
         })
         .next_back();
-    Some(crate::catalog::Comparison::of(&type_text, collation.as_deref()))
+    crate::catalog::Comparison::of(&type_text, collation.as_deref())
+}
+
+// SQLite compiles `PRAGMA foreign_key_list` with a copy of the parent's, the column's and the parent column's names
+// for each key column, so a column carrying REFERENCES thousands of times costs its name as often.
+pub(crate) fn foreign_key_list_bytes(sql: &str) -> usize {
+    const ROW: usize = 512;
+    // Text this reader cannot follow, SQLite may: no more key columns than REFERENCES and commas, each with three names
+    // no longer than the text.
+    let Ok(source) = CreateTableSource::read(sql) else {
+        let columns = sql.to_ascii_lowercase().matches("references").count() + sql.matches(',').count() + 1;
+        return columns.saturating_mul(sql.len().saturating_mul(3).saturating_add(ROW));
+    };
+    source
+        .foreign_keys()
+        .iter()
+        .flat_map(|key| {
+            key.columns.iter().enumerate().map(|(position, column)| {
+                ROW + key.target.table.len() + column.len() + key.target.columns.get(position).map_or(0, String::len)
+            })
+        })
+        .fold(0, usize::saturating_add)
 }
 
 /// A type name as SQLite keeps it, which is what its affinity and the
@@ -936,18 +972,38 @@ mod tests {
         assert_eq!(kept_type_name("\"VARCHAR\"(10)"), "VARCHAR");
         assert_eq!(kept_type_name("`a``b`"), "a`b");
         assert_eq!(kept_type_name("VARCHAR(10)"), "VARCHAR(10)");
+        let declared = DeclaredComparisons::read(sql).expect("the text reads");
+        assert_eq!(declared.of("a"), Some(&crate::catalog::Comparison::of("BOOLEAN", None)));
         assert_eq!(
-            declared_comparison(sql, "a"),
-            Some(crate::catalog::Comparison::of("BOOLEAN", None))
+            declared.of("B"),
+            Some(&crate::catalog::Comparison::of("INTEGER", None)),
+            "a name in other case"
         );
         assert_eq!(
-            declared_comparison(sql, "b"),
-            Some(crate::catalog::Comparison::of("INTEGER", None))
-        );
-        assert_eq!(
-            declared_comparison(sql, "c"),
-            Some(crate::catalog::Comparison::of("TEXT", Some("NOCASE"))),
+            declared.of("c"),
+            Some(&crate::catalog::Comparison::of("TEXT", Some("NOCASE"))),
             "a default with digit separators"
+        );
+        assert_eq!(declared.of("d"), None);
+        assert_eq!(DeclaredComparisons::read("CREATE TABLE t (a 'unclosed)"), None);
+    }
+
+    #[test]
+    fn the_key_list_costs_each_key_column_its_names() {
+        let column = "c".repeat(1_000);
+        let repeated = format!("CREATE TABLE t (\"{column}\" INTEGER{})", " REFERENCES p".repeat(100));
+
+        assert_eq!(foreign_key_list_bytes("CREATE TABLE t (a INTEGER)"), 0);
+        assert_eq!(
+            foreign_key_list_bytes("CREATE TABLE t (a, b, FOREIGN KEY (a, b) REFERENCES pp (x, yy))"),
+            (512 + 2 + 1 + 1) + (512 + 2 + 1 + 2)
+        );
+        assert_eq!(foreign_key_list_bytes(&repeated), 100 * (512 + 1 + 1_000));
+        let unread = "CREATE TABLE t (a, b, FOREIGN KEY (a, b) REFERENCES p (x, y)) /*";
+        assert_eq!(
+            foreign_key_list_bytes(unread),
+            (1 + 4 + 1) * (3 * unread.len() + 512),
+            "text that does not read, a key column per REFERENCES and comma"
         );
     }
 

@@ -340,6 +340,10 @@ fn internal_message(error: &DriverError) -> String {
             &[("column", column)],
         ),
         DriverError::Protocol(_) => crate::i18n::gettext("The driver could not read the server's reply."),
+        DriverError::CatalogTooLarge { limit_bytes } => crate::i18n::gettext_f(
+            "The database's structure is larger than TablePro reads at once ({size}).",
+            &[("size", gtk4::glib::format_size(*limit_bytes).as_str())],
+        ),
         _ => crate::i18n::gettext("The driver hit an internal error."),
     }
 }

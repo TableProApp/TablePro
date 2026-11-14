@@ -41,6 +41,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 | `Decode { column, detail }` | The driver could not read a value. A bug on our side, not the server's. The detail is for the log. |
 | `Protocol(String)` | The server or the client library said something the driver did not expect. The text is for the log. |
 | `Unsupported { feature }` | The engine has no such feature. `UnsupportedFeature` names it, and the app writes the sentence. |
+| `CatalogTooLarge { limit_bytes }` | A catalog read would hold more than its budget, as a crafted file makes it ([core ADR 0029](../../core/docs/decisions/0029-a-catalog-read-keeps-a-byte-budget.md)). |
 
 Rules:
 
@@ -67,7 +68,7 @@ Rules:
 | `WriteOutcome` | `RolledBack`, `RowGuardFailed`, `CommitOutcomeUnknown`, `PartiallyApplied` | Says what is in the database now. Only `RolledBack` and `RowGuardFailed` may say nothing changed. |
 | `File` | the four file variants | Names the path. A connect that failed on the file is not retried. |
 | `Busy` | `Busy`, `EditorSessionBusy` | Says to try again shortly, that another program or tab holds the file's lock, or to wait for the tab's statement. |
-| `Internal` | `GuardUnsupported`, `Decode`, `Protocol`; `SshFailure::Protocol` and `SshFailure::Internal` | Says what the driver could not do: check a save, read a value, read the reply. |
+| `Internal` | `GuardUnsupported`, `Decode`, `Protocol`, `CatalogTooLarge`; `SshFailure::Protocol` and `SshFailure::Internal` | Says what the driver could not do: check a save, read a value, read the reply, read a catalog past its budget. |
 
 ## `ServerDiagnostics`
 

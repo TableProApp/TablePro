@@ -9,6 +9,8 @@ pub struct ByteLimit(NonZeroU64);
 impl ByteLimit {
     // SI bytes, as the Linux banner prints them: "256.0 MB".
     pub const EDITOR_DEFAULT: Self = Self(NonZeroU64::new(256_000_000).expect("256 MB is not zero"));
+    // About a thousand times the largest real table's columns, keys and indexes, and a million table names.
+    pub const CATALOG_DEFAULT: Self = Self(NonZeroU64::new(64_000_000).expect("64 MB is not zero"));
 
     pub fn new(bytes: u64) -> Option<Self> {
         NonZeroU64::new(bytes).map(Self)
