@@ -219,10 +219,44 @@ public sealed class HistoryListTests
         Assert.Null(list.Failure);
     }
 
+    [Fact]
+    public async Task APinnedRunComesFirstAndAnUnpinnedOneGoesBack()
+    {
+        var list = new HistoryList(_store, Chinook);
+        await list.SearchAsync(string.Empty);
+
+        await list.SetPinnedAsync(list.Entries[3], pinned: true);
+
+        Assert.Equal<long>([2, 5, 4, 3, 1], Ids(list));
+        Assert.True(list.Entries[0].Pinned);
+        Assert.Equal((2L, true), Assert.Single(_store.Pins));
+
+        await list.SetPinnedAsync(list.Entries[0], pinned: false);
+
+        Assert.Equal<long>([5, 4, 3, 2, 1], Ids(list));
+        Assert.All(list.Entries, entry => Assert.False(entry.Pinned));
+        Assert.Null(list.Failure);
+    }
+
+    [Fact]
+    public async Task APinThatFailsKeepsTheRunsAndSaysWhy()
+    {
+        var list = new HistoryList(_store, Chinook);
+        await list.SearchAsync(string.Empty);
+        _store.Failure = Errors.Of("storage.not_found");
+
+        await list.SetPinnedAsync(list.Entries[3], pinned: true);
+
+        Assert.Equal("storage.not_found", list.Failure?.Code);
+        Assert.Equal<long>([5, 4, 3, 2, 1], Ids(list));
+        Assert.Empty(_store.Pins);
+        Assert.False(list.IsLoading);
+    }
+
     private static IEnumerable<long> Ids(HistoryList list) => list.Entries.Select(entry => entry.Id);
 }
 
-// Newest first, paged by offset behind a cursor only it reads back, as the core's store pages.
+// Pinned first, then newest, paged by offset behind a cursor only it reads back, as the core's store pages.
 internal sealed class FakeHistoryStore : IHistoryStore
 {
     private readonly Dictionary<HistoryCursor, int> _cursors = new(ReferenceEqualityComparer.Instance);
@@ -242,6 +276,8 @@ internal sealed class FakeHistoryStore : IHistoryStore
     public List<IReadOnlyList<long>> Deleted { get; } = [];
 
     public int Clears { get; private set; }
+
+    public List<(long Id, bool Pinned)> Pins { get; } = [];
 
     public static HistoryEntry Entry(long id, string sql, Guid? connectionId) => new(
         id,
@@ -272,6 +308,7 @@ internal sealed class FakeHistoryStore : IHistoryStore
         var found = Entries
             .Where(entry => connectionId is null || entry.ConnectionId == connectionId)
             .Where(entry => entry.Sql.Contains(text, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(entry => entry.Pinned)
             .ToList();
         var page = found.Skip(offset).Take(limit).ToList();
         HistoryCursor? next = null;
@@ -310,6 +347,23 @@ internal sealed class FakeHistoryStore : IHistoryStore
 
         Clears++;
         Entries.Clear();
+        return Task.CompletedTask;
+    }
+
+    public Task SetPinnedAsync(long id, bool pinned)
+    {
+        if (Failure is { } failure)
+        {
+            return Task.FromException(new TableProException(failure));
+        }
+
+        Pins.Add((id, pinned));
+        var at = Entries.FindIndex(entry => entry.Id == id);
+        if (at >= 0)
+        {
+            Entries[at] = Entries[at] with { Pinned = pinned };
+        }
+
         return Task.CompletedTask;
     }
 

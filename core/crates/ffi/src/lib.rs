@@ -15,10 +15,12 @@ mod drivers;
 mod editor;
 mod error;
 mod export;
+mod favourites;
 mod filter;
 mod history;
 mod host;
 mod host_key;
+mod import;
 mod library;
 mod masking;
 mod prompter;
@@ -27,6 +29,7 @@ mod row_edits;
 mod run;
 mod runtime;
 mod safe_mode_gate;
+mod saved_queries;
 mod session;
 mod statement_at;
 mod structure;
@@ -50,13 +53,19 @@ pub use drivers::{DataModelTag, DriverInfo, EndpointInfo, EngineCategoryTag, Ser
 pub use editor::{QueryEditor, RunSettings};
 pub use error::{BoxedErrorInfo, CoreError, ErrorInfo, HostKeyFailure, ServerMessage, TlsFailureTag};
 pub use export::ExportFormatTag;
+pub use favourites::{DatabaseEnvironmentTag, FavouriteDatabaseInfo, FavouriteStore, FavouriteTableInfo};
 pub use filter::{
     CombinatorTag, FilterChoices, FilterColumn, FilterOpTag, FilterRuleArg, FilterValueArg, TableFilterArg,
 };
 pub use history::{
-    HistoryCursorArg, HistoryEntryInfo, HistoryOutcomeTag, HistoryPageInfo, HistoryRun, QueryHistoryStore,
+    HistoryCursorArg, HistoryEntryInfo, HistoryExportFormat, HistoryOutcomeTag, HistoryPageInfo, HistoryRun,
+    QueryHistoryStore,
 };
 pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
+pub use import::{
+    CsvDelimiterTag, CsvImport, CsvImportCheck, CsvImportOutcome, CsvPreview, CsvReadOptions, CsvRowFault,
+    ImportColumnInfo, LineSpan,
+};
 pub use library::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, GroupRecord, ImportSummary, LibrarySnapshot, SafeModeTag,
     SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings,
@@ -73,6 +82,7 @@ pub use row_edits::{
 };
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
 pub use safe_mode_gate::RunGate;
+pub use saved_queries::{SavedQueriesInfo, SavedQueryDraft, SavedQueryFolderInfo, SavedQueryInfo, SavedQueryStore};
 pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, RowEstimate, SessionHealthTag, TablePageRead};
 pub use statement_at::StatementSpan;
 pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableStructure};

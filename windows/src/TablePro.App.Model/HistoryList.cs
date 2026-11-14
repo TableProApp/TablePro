@@ -15,6 +15,8 @@ public interface IHistoryStore
     Task DeleteAsync(IReadOnlyList<long> ids, CancellationToken cancellationToken);
 
     Task ClearAsync(CancellationToken cancellationToken);
+
+    Task SetPinnedAsync(long id, bool pinned);
 }
 
 public sealed class CoreHistoryStore(QueryHistory history) : IHistoryStore
@@ -31,6 +33,8 @@ public sealed class CoreHistoryStore(QueryHistory history) : IHistoryStore
         history.DeleteAsync(ids, cancellationToken);
 
     public Task ClearAsync(CancellationToken cancellationToken) => history.ClearAsync(cancellationToken);
+
+    public Task SetPinnedAsync(long id, bool pinned) => history.SetPinnedAsync(id, pinned);
 }
 
 // One connection's runs, a page at a time in the store's order. A failure lands in Failure and is never thrown.
@@ -103,6 +107,24 @@ public sealed class HistoryList
         Entries = [.. Entries.Where(shown => shown.Id != entry.Id)];
         Failure = null;
         OnChanged();
+    }
+
+    // Pinned runs come first, so the list is read again in the store's order.
+    public async Task SetPinnedAsync(HistoryEntry entry, bool pinned)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        try
+        {
+            await _store.SetPinnedAsync(entry.Id, pinned).ConfigureAwait(true);
+        }
+        catch (TableProException exception)
+        {
+            Failure = exception.Error;
+            OnChanged();
+            return;
+        }
+
+        await RefreshAsync().ConfigureAwait(true);
     }
 
     // The core's store clears every connection's runs, not only this list's.

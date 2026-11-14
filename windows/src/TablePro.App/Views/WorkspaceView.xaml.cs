@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Media;
 using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.DataGrid.Model;
+using TablePro.Editor;
 using TablePro.Editor.Model;
 using TablePro.Interop;
 using Windows.ApplicationModel.DataTransfer;
@@ -20,7 +21,7 @@ namespace TablePro.App.Views;
 // The closing and reopening of tabs is WorkspaceTabs'; the tree, the bars and the strip's moves are drawn here.
 public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabViewItem>
 {
-    private const double HistoryPaneWidth = 320;
+    private const double SidePaneWidth = 320;
 
     private readonly Workbench _workbench;
     private readonly OpenConnection _connection;
@@ -52,6 +53,11 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     private HistoryPane? _historyPane;
     private Guid _historyConnection;
     private bool _openingHistory;
+    private SavedQueriesPane? _savedPane;
+    private bool _openingSaved;
+
+    // Whether each editor held text at its last change, so Save query... follows the shown one going blank or not.
+    private readonly Dictionary<SqlEditor, bool> _editorHasText = [];
     private CancellationTokenSource? _exporting;
 
     internal WorkspaceView(Workbench workbench, OpenConnection connection)
@@ -108,7 +114,19 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
     public bool CanReopenTab => _session is not null && _tabs.ClosedCount > 0;
 
-    public bool HistoryVisible => HistoryHost.Visibility == Visibility.Visible;
+    public bool HistoryVisible => SideHost.Visibility == Visibility.Visible && SideHost.Child is HistoryPane;
+
+    public bool SavedQueriesVisible => SideHost.Visibility == Visibility.Visible && SideHost.Child is SavedQueriesPane;
+
+    // A file opened without saving gets a new id each time it opens, so only a saved connection keeps queries.
+    public bool CanShowSavedQueries => _connection.ConnectionId is not null;
+
+    // Read on every command update, so only the editor's leading blanks are read.
+    public bool CanSaveQuery =>
+        _session is not null
+        && CanShowSavedQueries
+        && ActiveTab is QueryTabView { Editor: { } editor }
+        && HasText(editor.Document);
 
     // One export at a time, of rows the tab shows now.
     // Rows still arriving would be written as if they were all of them.
@@ -222,6 +240,10 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         if (HistoryVisible)
         {
             _ = ShowHistoryAsync(focus: false);
+        }
+        else if (SavedQueriesVisible)
+        {
+            _ = ShowSavedQueriesAsync(focus: false);
         }
     }
 
@@ -444,7 +466,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     {
         if (HistoryVisible)
         {
-            HideHistory();
+            HideSidePane();
             return;
         }
 
@@ -480,21 +502,22 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
             // A file opened without saving gets a new id each time it opens, so its pane lists every connection's runs.
             var connection = _connection.ConnectionId is null ? (Guid?)null : session.Id;
-            pane = new HistoryPane(history is null ? null : new HistoryList(new CoreHistoryStore(history), connection));
+            pane = new HistoryPane(history is null ? null : new HistoryList(new CoreHistoryStore(history), connection))
+            {
+                CanSaveQuery = CanShowSavedQueries,
+            };
             pane.OpenRequested += (_, sql) => NewQueryTab(sql);
+            pane.SaveRequested += async (_, sql) => await SaveQueryAsync(sql).ConfigureAwait(true);
             pane.CloseRequested += (_, _) =>
             {
-                HideHistory();
+                HideSidePane();
                 ActiveTab?.FocusContent();
             };
             _historyPane = pane;
             _historyConnection = session.Id;
-            HistoryHost.Child = pane;
         }
 
-        HistoryColumn.Width = new GridLength(HistoryPaneWidth);
-        HistoryHost.Visibility = Visibility.Visible;
-        CommandsChanged?.Invoke(this, EventArgs.Empty);
+        ShowSidePane(pane);
         if (focus)
         {
             pane.FocusSearch();
@@ -503,11 +526,157 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         await pane.RefreshAsync().ConfigureAwait(true);
     }
 
-    private void HideHistory()
+    public async Task ToggleSavedQueriesAsync()
     {
-        HistoryHost.Visibility = Visibility.Collapsed;
-        HistoryColumn.Width = new GridLength(0);
+        if (SavedQueriesVisible)
+        {
+            HideSidePane();
+            return;
+        }
+
+        await ShowSavedQueriesAsync(focus: true).ConfigureAwait(true);
+    }
+
+    // The store opens once for the app, in the history's database; a pane without one says they are unavailable.
+    private async Task ShowSavedQueriesAsync(bool focus)
+    {
+        if (_session is not { } session || _connection.ConnectionId is not { } connectionId || _openingSaved)
+        {
+            return;
+        }
+
+        var pane = _savedPane;
+        if (pane is null)
+        {
+            _openingSaved = true;
+            SavedQueries? store;
+            try
+            {
+                store = await _workbench.GetSavedQueriesAsync().ConfigureAwait(true);
+            }
+            finally
+            {
+                _openingSaved = false;
+            }
+
+            if (!ReferenceEquals(_session, session))
+            {
+                return;
+            }
+
+            pane = new SavedQueriesPane(store, connectionId, () => _connection.Name);
+            pane.InsertRequested += (_, sql) => InsertQuery(sql);
+            pane.OpenRequested += (_, sql) => NewQueryTab(sql);
+            pane.CloseRequested += (_, _) =>
+            {
+                HideSidePane();
+                ActiveTab?.FocusContent();
+            };
+            _savedPane = pane;
+        }
+
+        ShowSidePane(pane);
+        await pane.RefreshAsync().ConfigureAwait(true);
+        if (focus)
+        {
+            pane.FocusTree();
+        }
+    }
+
+    // One pane at a time beside the tabs, so showing one puts the other away.
+    private void ShowSidePane(UserControl pane)
+    {
+        SideHost.Child = pane;
+        SideColumn.Width = new GridLength(SidePaneWidth);
+        SideHost.Visibility = Visibility.Visible;
         CommandsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void HideSidePane()
+    {
+        SideHost.Visibility = Visibility.Collapsed;
+        SideColumn.Width = new GridLength(0);
+        CommandsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // Query > Save query...: the whole tab's text.
+    public async Task SaveQueryAsync()
+    {
+        if (CanSaveQuery && ActiveTab is QueryTabView { Editor: { } editor })
+        {
+            await SaveQueryAsync(editor.Document.Snapshot()).ConfigureAwait(true);
+        }
+    }
+
+    private async Task SaveQueryAsync(string sql)
+    {
+        sql = sql.Trim();
+        if (_connection.ConnectionId is not { } connectionId || sql.Length == 0)
+        {
+            return;
+        }
+
+        if (await _workbench.GetSavedQueriesAsync().ConfigureAwait(true) is not { } store)
+        {
+            var dialog = new ContentDialog
+            {
+                RequestedTheme = ActualTheme,
+                Title = Strings.Get("SavedQueriesUnavailableTitle"),
+                Content = Strings.Get("SavedQueriesUnavailableMessage"),
+                CloseButtonText = Strings.Get("Close"),
+                DefaultButton = ContentDialogButton.Close,
+            };
+            await WindowDialogs.ShowAsync(dialog, this).ConfigureAwait(true);
+            return;
+        }
+
+        if (await SaveQueryDialog.SaveAsync(this, store, connectionId, _connection.Name, sql).ConfigureAwait(true)
+                is { } place
+            && _savedPane is { } pane)
+        {
+            await pane.RevealAsync(place).ConfigureAwait(true);
+        }
+    }
+
+    private async void OnSaveQueryRequested(object? sender, EventArgs e)
+    {
+        if (sender is QueryTabView { Editor: { } editor })
+        {
+            await SaveQueryAsync(editor.Document.Snapshot()).ConfigureAwait(true);
+        }
+    }
+
+    // Insert in editor: a blank query tab takes the text, one with text gets it after a blank line, else a new tab opens.
+    private void InsertQuery(string sql)
+    {
+        var query = ActiveTab as QueryTabView;
+        var editor = query?.Editor;
+        var insertion = SavedQueryText.Insertion(editor?.Document.Snapshot(), sql);
+        if (query is null || editor is null || insertion.Kind == SavedQueryInsertKind.NewTab)
+        {
+            NewQueryTab(sql);
+            return;
+        }
+
+        // Through the editor's model, so Undo takes it back.
+        var start = insertion.Kind == SavedQueryInsertKind.Replace ? 0 : editor.Document.Length;
+        editor.Model.ReplaceRange(start, editor.Document.Length, insertion.Text);
+        editor.EnsureCaretVisible();
+        editor.Invalidate();
+        query.FocusContent();
+    }
+
+    private static bool HasText(TextDocument document)
+    {
+        foreach (var chunk in document.Chunks(0, document.Length))
+        {
+            if (!chunk.Span.IsWhiteSpace())
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async void OnHistoryRecorded(object? sender, EventArgs e)
@@ -588,6 +757,59 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         finally
         {
             _exporting = null;
+            CommandsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    // One at a time with exports, so the bar and its Stop button belong to it while the rows go in.
+    private async Task ImportCsvAsync(ObjectEntry entry)
+    {
+        if (_session is not { } session || _exporting is not null)
+        {
+            return;
+        }
+
+        var table = new TableName(entry.Schema, entry.Name);
+        var importing = new CancellationTokenSource();
+        _exporting = importing;
+        CommandsChanged?.Invoke(this, EventArgs.Empty);
+        try
+        {
+            var result = await ImportCsvDialog.RunAsync(
+                    this,
+                    session,
+                    table,
+                    rows => ShowExport(InfoBarSeverity.Informational, Strings.Format("ImportCsvRunning", rows, entry.Name), running: true),
+                    importing.Token)
+                .ConfigureAwait(true);
+            if (result is null)
+            {
+                ExportBar.IsOpen = false;
+                return;
+            }
+
+            ShowExport(result.Succeeded ? InfoBarSeverity.Success : InfoBarSeverity.Error, result.Message, running: false);
+            if (result.TableChanged)
+            {
+                // Taken before the first refresh, since a tab can open, close or move while one runs.
+                var views = Tabs.TabItems.OfType<TabViewItem>()
+                    .Select(item => item.Content)
+                    .OfType<TableTabView>()
+                    .Where(view => view.Shows(entry.Schema, entry.Name))
+                    .ToList();
+                foreach (var view in views)
+                {
+                    if (Tabs.TabItems.OfType<TabViewItem>().Any(item => ReferenceEquals(item.Content, view)))
+                    {
+                        await view.RefreshRowsAsync().ConfigureAwait(true);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            _exporting = null;
+            importing.Dispose();
             CommandsChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -739,6 +961,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             if (content.Editor is { } editor)
             {
                 editor.TextChanged += OnEditorTextChanged;
+                _editorHasText[editor] = HasText(editor.Document);
             }
         }
 
@@ -757,6 +980,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         if (item.Content is QueryTabView query)
         {
             query.HistoryRecorded += OnHistoryRecorded;
+            query.CanSaveQuery = CanShowSavedQueries;
+            query.SaveQueryRequested += OnSaveQueryRequested;
         }
         else if (item.Content is DefinitionTabView definition)
         {
@@ -788,6 +1013,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             if (content.Editor is { } editor)
             {
                 editor.TextChanged -= OnEditorTextChanged;
+                _editorHasText.Remove(editor);
             }
 
             _snapshots.Remove(content);
@@ -807,6 +1033,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         if (item.Content is QueryTabView query)
         {
             query.HistoryRecorded -= OnHistoryRecorded;
+            query.SaveQueryRequested -= OnSaveQueryRequested;
         }
         else if (item.Content is DefinitionTabView definition)
         {
@@ -871,7 +1098,21 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         SessionChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void OnEditorTextChanged(object? sender, EventArgs e) => SessionChanged?.Invoke(this, EventArgs.Empty);
+    private void OnEditorTextChanged(object? sender, EventArgs e)
+    {
+        SessionChanged?.Invoke(this, EventArgs.Empty);
+        if (sender is SqlEditor editor
+            && _editorHasText.TryGetValue(editor, out var had)
+            && HasText(editor.Document) is var has
+            && has != had)
+        {
+            _editorHasText[editor] = has;
+            if (ReferenceEquals(ActiveTab?.Editor, editor))
+            {
+                CommandsChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
 
     private void OnSessionWriteRequested(object? sender, EventArgs e) => Host?.WriteSessionNow();
 
@@ -1492,6 +1733,11 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             menu.Items.Add(ObjectMenuItem("ObjectMenuOpen", Symbol.OpenFile, () => OpenTable(entry)));
             menu.Items.Add(ObjectMenuItem(
                 "ObjectMenuShowStructure", Symbol.List, () => OpenTable(entry)?.ShowStructure()));
+            if (entry.Kind is ObjectKind.Table or ObjectKind.PartitionedTable)
+            {
+                menu.Items.Add(ObjectMenuItem("ObjectMenuImportCsv", Symbol.Import, async () => await ImportCsvAsync(entry).ConfigureAwait(true)));
+            }
+
             menu.Items.Add(new MenuFlyoutSeparator());
         }
         else if (ObjectFolders.HasDefinition(entry.Kind))

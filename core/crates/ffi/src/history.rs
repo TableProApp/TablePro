@@ -11,8 +11,11 @@ use tablepro_storage::{QueryHistory, StoragePaths};
 use uuid::Uuid;
 
 use crate::error::CoreError;
+use crate::export::write_whole_file;
+use crate::favourites::FavouriteStore;
 use crate::library::parse_id;
 use crate::runtime::on_runtime;
+use crate::saved_queries::SavedQueryStore;
 use crate::session::DatabaseSession;
 
 #[derive(uniffi::Object)]
@@ -58,6 +61,13 @@ pub struct HistoryPageInfo {
     pub entries: Vec<HistoryEntryInfo>,
     // None on the last page.
     pub next: Option<HistoryCursorArg>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum HistoryExportFormat {
+    // Each run as it ran, under comments that say where and when.
+    Sql,
+    Csv,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
@@ -143,6 +153,42 @@ impl QueryHistoryStore {
             Ok(())
         })
         .await
+    }
+
+    // A pinned run comes first in every search and stays through the store's pruning.
+    pub async fn set_pinned(&self, id: i64, pinned: bool) -> Result<(), CoreError> {
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move { Ok(history.set_pinned(id, pinned).await?) }).await
+    }
+
+    // The runs `ids` names, pinned first then newest, into the file at `path`, which appears only once whole.
+    pub async fn export(&self, ids: Vec<i64>, format: HistoryExportFormat, path: String) -> Result<(), CoreError> {
+        let history = self.history.clone();
+        let tasks = self.tasks.clone();
+        on_runtime(&self.tasks, async move {
+            let text = match format {
+                HistoryExportFormat::Sql => history.export_sql(&ids).await?,
+                HistoryExportFormat::Csv => history.export_csv(&ids).await?,
+            };
+            tasks
+                .spawn_blocking_task(move || write_whole_file(&path, text.as_bytes()))
+                .await
+                .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))?
+        })
+        .await
+    }
+
+    // The same database, so a store that opened serves both.
+    pub fn saved_queries(&self) -> Arc<SavedQueryStore> {
+        SavedQueryStore::new(
+            self.history.saved_queries(),
+            self.history.saved_query_folders(),
+            self.tasks.clone(),
+        )
+    }
+
+    pub fn favourites(&self) -> Arc<FavouriteStore> {
+        FavouriteStore::new(self.history.favourites(), self.tasks.clone())
     }
 }
 
@@ -254,7 +300,7 @@ fn from_epoch(span: Duration, before: bool) -> SystemTime {
     time.unwrap_or(UNIX_EPOCH)
 }
 
-fn millis(time: SystemTime) -> i64 {
+pub(crate) fn millis(time: SystemTime) -> i64 {
     match time.duration_since(UNIX_EPOCH) {
         Ok(after) => i64::try_from(after.as_millis()).unwrap_or(i64::MAX),
         Err(before) => i64::try_from(before.duration().as_millis()).map_or(i64::MIN, |value| -value),

@@ -238,6 +238,19 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
     }
 
+    public async Task ExportConnectionsAsync()
+    {
+        if (_home is null)
+        {
+            _primary.Activate();
+            await _primary.ExportConnectionsAsync();
+            return;
+        }
+
+        ShowHome();
+        await _home.ExportConnectionsAsync();
+    }
+
     public async Task OpenSampleAsync()
     {
         if (_home is null)
@@ -1274,6 +1287,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuFilterObjects.IsEnabled = workspace is not null;
         MenuShowHistory.IsEnabled = workspace is not null;
         MenuShowHistory.IsChecked = workspace?.HistoryVisible ?? false;
+        MenuShowSavedQueries.IsEnabled = workspace?.CanShowSavedQueries ?? false;
+        MenuShowSavedQueries.IsChecked = workspace?.SavedQueriesVisible ?? false;
+        MenuSaveQuery.IsEnabled = workspace?.CanSaveQuery ?? false;
         MenuExportResults.IsEnabled = workspace?.CanExport ?? false;
         MenuShareResult.IsEnabled = workspace?.CanShareResult ?? false;
         MenuShareQuery.IsEnabled = workspace?.CanShareQuery ?? false;
@@ -1310,6 +1326,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private async void OnOpenFile(object sender, RoutedEventArgs e) => await OpenFileAsync();
 
     private async void OnImport(object sender, RoutedEventArgs e) => await ImportAsync();
+
+    private async void OnExportConnections(object sender, RoutedEventArgs e) => await ExportConnectionsAsync();
 
     private void OnNewQueryTab(object sender, RoutedEventArgs e) => Workspace?.NewQueryTab();
 
@@ -1416,6 +1434,24 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         UpdateCommands();
+    }
+
+    private async void OnToggleSavedQueries(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.ToggleSavedQueriesAsync();
+        }
+
+        UpdateCommands();
+    }
+
+    private async void OnSaveQuery(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.SaveQueryAsync();
+        }
     }
 
     private async void OnExportResults(object sender, RoutedEventArgs e)

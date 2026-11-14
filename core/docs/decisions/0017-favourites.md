@@ -1,6 +1,6 @@
 # 0017: Favourites keep folders and keywords on saved queries, and the tables and databases a user marks
 
-- **Status**: Accepted
+- **Status**: Accepted; the FFI surface added by [0029](0029-storage-import-and-library-through-the-ffi.md)
 - **Date**: 2026-11-08
 
 ## Context

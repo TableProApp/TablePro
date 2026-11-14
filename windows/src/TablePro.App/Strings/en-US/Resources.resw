@@ -868,7 +868,7 @@
     <value>Delete {0}?</value>
   </data>
   <data name="DeleteConnectionMessage" xml:space="preserve">
-    <value>The connection and its saved passwords leave this PC. This can't be undone.</value>
+    <value>The connection, its saved passwords and its saved queries leave this PC. This can't be undone.</value>
   </data>
   <data name="DeleteGroupTitle" xml:space="preserve">
     <value>Delete the group {0}?</value>
@@ -1231,7 +1231,7 @@
     <value>Delete {0} connections?</value>
   </data>
   <data name="DeleteConnectionsMessage" xml:space="preserve">
-    <value>The connections and their saved passwords leave this PC. This can't be undone.</value>
+    <value>The connections, their saved passwords and their saved queries leave this PC. This can't be undone.</value>
   </data>
   <data name="DropAddFavorites" xml:space="preserve">
     <value>Add to Favorites</value>
@@ -3218,5 +3218,386 @@ New fingerprint: {2}</value>
   </data>
   <data name="Error_ffi_share_unfinished" xml:space="preserve">
     <value>The rows are still arriving. Share them once the query finishes.</value>
+  </data>
+  <data name="MenuDuplicate" xml:space="preserve">
+    <value>Duplicate</value>
+  </data>
+  <data name="CopyNamePattern" xml:space="preserve">
+    <value>{0} (Copy)</value>
+  </data>
+  <data name="CopyNameNumberedPattern" xml:space="preserve">
+    <value>{0} (Copy {1})</value>
+  </data>
+  <data name="DuplicateFailed" xml:space="preserve">
+    <value>The connection couldn't be duplicated. {0}</value>
+  </data>
+  <data name="ExportConnectionsButton.Label" xml:space="preserve">
+    <value>Export</value>
+  </data>
+  <data name="ExportConnectionsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Export the connections to a file, without their passwords</value>
+  </data>
+  <data name="MenuExportConnections.Text" xml:space="preserve">
+    <value>Export connections...</value>
+  </data>
+  <data name="ExportConnectionsFileName" xml:space="preserve">
+    <value>TablePro connections</value>
+  </data>
+  <data name="ConnectionsFileType" xml:space="preserve">
+    <value>TablePro connections</value>
+  </data>
+  <data name="ExportConnectionsDone" xml:space="preserve">
+    <value>Exported {0} connections. Passwords are not in the file.</value>
+  </data>
+  <data name="ExportConnectionsDoneOne" xml:space="preserve">
+    <value>Exported 1 connection. Its password is not in the file.</value>
+  </data>
+  <data name="ExportConnectionsFailed" xml:space="preserve">
+    <value>The connections couldn't be exported. {0}</value>
+  </data>
+  <data name="Error_storage_name_taken" xml:space="preserve">
+    <value>Another saved query of this connection has that name.</value>
+  </data>
+  <data name="Error_storage_empty_name" xml:space="preserve">
+    <value>Enter a name.</value>
+  </data>
+  <data name="Error_storage_too_large" xml:space="preserve">
+    <value>It's too large to save.</value>
+  </data>
+  <data name="Error_storage_not_found" xml:space="preserve">
+    <value>It's gone. It may have been deleted.</value>
+  </data>
+  <data name="Error_storage_folder_name_taken" xml:space="preserve">
+    <value>Another folder in the same place has that name.</value>
+  </data>
+  <data name="Error_storage_folder_name_invalid" xml:space="preserve">
+    <value>A folder name can't hold control characters.</value>
+  </data>
+  <data name="Error_storage_folder_cycle" xml:space="preserve">
+    <value>A folder can't go inside itself.</value>
+  </data>
+  <data name="MenuSaveQuery.Text" xml:space="preserve">
+    <value>Save query...</value>
+  </data>
+  <data name="MenuSaveQuery.AccessKey" xml:space="preserve">
+    <value>Q</value>
+  </data>
+  <data name="MenuShowSavedQueries.Text" xml:space="preserve">
+    <value>Show saved queries</value>
+  </data>
+  <data name="MenuShowSavedQueries.AccessKey" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="SavedQueriesCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Saved queries commands</value>
+  </data>
+  <data name="SavedQueriesHeader.Text" xml:space="preserve">
+    <value>Saved queries</value>
+  </data>
+  <data name="NewSavedFolderButton.Label" xml:space="preserve">
+    <value>New folder</value>
+  </data>
+  <data name="NewSavedFolderButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>New folder</value>
+  </data>
+  <data name="CloseSavedQueriesButton.Label" xml:space="preserve">
+    <value>Close saved queries</value>
+  </data>
+  <data name="CloseSavedQueriesButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Close saved queries</value>
+  </data>
+  <data name="SavedQueriesTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Queries saved for this connection</value>
+  </data>
+  <data name="SavedQueriesEmpty.Text" xml:space="preserve">
+    <value>No saved queries. Save one from a query tab with Query &gt; Save query.</value>
+  </data>
+  <data name="SavedQueriesUnavailableTitle" xml:space="preserve">
+    <value>Saved queries are unavailable</value>
+  </data>
+  <data name="SavedQueriesUnavailableMessage" xml:space="preserve">
+    <value>The history database couldn't be opened, so queries can't be saved.</value>
+  </data>
+  <data name="SavedQueriesReadFailedTitle" xml:space="preserve">
+    <value>The saved queries couldn't be read</value>
+  </data>
+  <data name="SavedQueriesChangeFailedTitle" xml:space="preserve">
+    <value>The change couldn't be saved</value>
+  </data>
+  <data name="SavedQueryMenuInsert" xml:space="preserve">
+    <value>Insert in editor</value>
+  </data>
+  <data name="SavedQueryMenuOpen" xml:space="preserve">
+    <value>Open in new tab</value>
+  </data>
+  <data name="SavedQueryMenuCopy" xml:space="preserve">
+    <value>Copy query</value>
+  </data>
+  <data name="SavedQueryMenuMoveTo" xml:space="preserve">
+    <value>Move to</value>
+  </data>
+  <data name="SavedQueryMenuTopLevel" xml:space="preserve">
+    <value>Top level</value>
+  </data>
+  <data name="SavedQueryMenuNewSubfolder" xml:space="preserve">
+    <value>New subfolder...</value>
+  </data>
+  <data name="SavedQueryMenuDeleteFolder" xml:space="preserve">
+    <value>Delete folder</value>
+  </data>
+  <data name="DeleteSavedQueryTitle" xml:space="preserve">
+    <value>Delete saved query?</value>
+  </data>
+  <data name="DeleteSavedQueryMessage" xml:space="preserve">
+    <value>"{0}" will be deleted.</value>
+  </data>
+  <data name="DeleteSavedFolderTitle" xml:space="preserve">
+    <value>Delete folder?</value>
+  </data>
+  <data name="DeleteSavedFolderMessage" xml:space="preserve">
+    <value>The folders inside "{0}" are deleted too, and every query it holds moves to the top level.</value>
+  </data>
+  <data name="NewSavedFolderTitle" xml:space="preserve">
+    <value>New folder</value>
+  </data>
+  <data name="NewSavedSubfolderTitle" xml:space="preserve">
+    <value>New subfolder</value>
+  </data>
+  <data name="RenameSavedFolderTitle" xml:space="preserve">
+    <value>Rename folder</value>
+  </data>
+  <data name="NewSavedFolderName" xml:space="preserve">
+    <value>New folder</value>
+  </data>
+  <data name="SaveQueryTitle" xml:space="preserve">
+    <value>Save query</value>
+  </data>
+  <data name="EditSavedQueryTitle" xml:space="preserve">
+    <value>Edit saved query</value>
+  </data>
+  <data name="SaveQueryAction" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="SavedQueryNameHeader" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="SavedQueryFolderHeader" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="SavedQueryNoFolder" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="SavedQuerySqlHeader" xml:space="preserve">
+    <value>Query</value>
+  </data>
+  <data name="SavedQueryUntitled" xml:space="preserve">
+    <value>Untitled</value>
+  </data>
+  <data name="ReplaceSavedQueryMessage" xml:space="preserve">
+    <value>A saved query named {0} already exists. Replace it?</value>
+  </data>
+  <data name="ReplaceButton" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="HistoryMenuSaveQuery" xml:space="preserve">
+    <value>Save query...</value>
+  </data>
+  <data name="HistoryMenuPin" xml:space="preserve">
+    <value>Pin</value>
+  </data>
+  <data name="HistoryMenuUnpin" xml:space="preserve">
+    <value>Unpin</value>
+  </data>
+  <data name="HistoryPinned" xml:space="preserve">
+    <value>Pinned</value>
+  </data>
+  <data name="ObjectMenuImportCsv" xml:space="preserve">
+    <value>Import CSV...</value>
+  </data>
+  <data name="ImportCsvTitle" xml:space="preserve">
+    <value>Import into {0}</value>
+  </data>
+  <data name="ImportCsvFile" xml:space="preserve">
+    <value>From {0}</value>
+  </data>
+  <data name="ImportCsvAction" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="ImportCsvDelimiter" xml:space="preserve">
+    <value>Delimiter</value>
+  </data>
+  <data name="ImportCsvDelimiterComma" xml:space="preserve">
+    <value>Comma</value>
+  </data>
+  <data name="ImportCsvDelimiterSemicolon" xml:space="preserve">
+    <value>Semicolon</value>
+  </data>
+  <data name="ImportCsvDelimiterTab" xml:space="preserve">
+    <value>Tab</value>
+  </data>
+  <data name="ImportCsvDelimiterPipe" xml:space="preserve">
+    <value>Pipe</value>
+  </data>
+  <data name="ImportCsvHasHeader" xml:space="preserve">
+    <value>First row is a header</value>
+  </data>
+  <data name="ImportCsvNullText" xml:space="preserve">
+    <value>NULL text</value>
+  </data>
+  <data name="ImportCsvNullTextPlaceholder" xml:space="preserve">
+    <value>An empty field</value>
+  </data>
+  <data name="ImportCsvReading" xml:space="preserve">
+    <value>Reading the file...</value>
+  </data>
+  <data name="ImportCsvPlanning" xml:space="preserve">
+    <value>Reading the whole file...</value>
+  </data>
+  <data name="ImportCsvFieldsOne" xml:space="preserve">
+    <value>1 field</value>
+  </data>
+  <data name="ImportCsvFieldsMany" xml:space="preserve">
+    <value>{0:N0} fields</value>
+  </data>
+  <data name="ImportCsvRowsOne" xml:space="preserve">
+    <value>1 row</value>
+  </data>
+  <data name="ImportCsvRowsMany" xml:space="preserve">
+    <value>{0:N0} rows</value>
+  </data>
+  <data name="ImportCsvSummary" xml:space="preserve">
+    <value>{0}, {1}.</value>
+  </data>
+  <data name="ImportCsvSummaryTruncated" xml:space="preserve">
+    <value>{0}. Showing the first {1}; the whole file is imported.</value>
+  </data>
+  <data name="ImportCsvNoRows" xml:space="preserve">
+    <value>The file has no rows to import.</value>
+  </data>
+  <data name="ImportCsvNothingMapped" xml:space="preserve">
+    <value>Every column is set to Skip. Pick a field for at least one column to import.</value>
+  </data>
+  <data name="ImportCsvColumns" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="ImportCsvSkip" xml:space="preserve">
+    <value>Skip</value>
+  </data>
+  <data name="ImportCsvFieldNumber" xml:space="preserve">
+    <value>Field {0}</value>
+  </data>
+  <data name="ImportCsvFieldSample" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="ImportCsvServerFilled" xml:space="preserve">
+    <value>The database fills this column</value>
+  </data>
+  <data name="ImportCsvUsesDefault" xml:space="preserve">
+    <value>Uses the column's own default</value>
+  </data>
+  <data name="ImportCsvLeftOut" xml:space="preserve">
+    <value>Left out of the import</value>
+  </data>
+  <data name="ImportCsvNoValues" xml:space="preserve">
+    <value>No values in the file</value>
+  </data>
+  <data name="ImportCsvRowFault" xml:space="preserve">
+    <value>Line {0}, column {1}: "{2}" {3}</value>
+  </data>
+  <data name="ImportCsvRowFaultUnknown" xml:space="preserve">
+    <value>The column can't hold this value.</value>
+  </data>
+  <data name="ImportCsvReviewTitleOne" xml:space="preserve">
+    <value>Import 1 row into {0}?</value>
+  </data>
+  <data name="ImportCsvReviewTitleMany" xml:space="preserve">
+    <value>Import {0:N0} rows into {1}?</value>
+  </data>
+  <data name="ImportCsvReviewOne" xml:space="preserve">
+    <value>The import runs 1 statement.</value>
+  </data>
+  <data name="ImportCsvReviewMany" xml:space="preserve">
+    <value>The import runs {0:N0} statements.</value>
+  </data>
+  <data name="ImportCsvReviewFirstShown" xml:space="preserve">
+    <value>The import runs {0:N0} statements; the first is shown.</value>
+  </data>
+  <data name="ImportCsvReviewSomeShown" xml:space="preserve">
+    <value>The import runs {0:N0} statements; the first {1:N0} are shown.</value>
+  </data>
+  <data name="ImportCsvDoneOne" xml:space="preserve">
+    <value>Imported 1 row into {0}.</value>
+  </data>
+  <data name="ImportCsvDoneMany" xml:space="preserve">
+    <value>Imported {0:N0} rows into {1}.</value>
+  </data>
+  <data name="ImportCsvLine" xml:space="preserve">
+    <value>Line {0}</value>
+  </data>
+  <data name="ImportCsvLines" xml:space="preserve">
+    <value>Lines {0} to {1}</value>
+  </data>
+  <data name="ImportCsvSomeLines" xml:space="preserve">
+    <value>Some lines</value>
+  </data>
+  <data name="ImportCsvRolledBack" xml:space="preserve">
+    <value>{0} could not be written, so the import was rolled back and no rows were added.</value>
+  </data>
+  <data name="ImportCsvNotWritten" xml:space="preserve">
+    <value>No rows were imported.</value>
+  </data>
+  <data name="ImportCsvUnknown" xml:space="preserve">
+    <value>The import did not finish, so the table may hold some of the rows. Refresh it to see what is there.</value>
+  </data>
+  <data name="ImportCsvStopped" xml:space="preserve">
+    <value>Import stopped. The table may hold some of the rows.</value>
+  </data>
+  <data name="Error_import_unreadable" xml:space="preserve">
+    <value>That file could not be read.</value>
+  </data>
+  <data name="Error_import_too_large" xml:space="preserve">
+    <value>That file is too large to import in one go. An import reads up to 64 MB.</value>
+  </data>
+  <data name="Error_import_not_utf8" xml:space="preserve">
+    <value>The file isn't UTF-8 text. Save it as UTF-8 and import it again.</value>
+  </data>
+  <data name="Error_import_malformed" xml:space="preserve">
+    <value>The file couldn't be read as CSV.</value>
+  </data>
+  <data name="Error_import_no_columns" xml:space="preserve">
+    <value>The file has no columns.</value>
+  </data>
+  <data name="Error_import_too_many_fields" xml:space="preserve">
+    <value>A line has more than 4,096 fields, more than any table holds. Check the delimiter.</value>
+  </data>
+  <data name="Error_import_mapping_invalid" xml:space="preserve">
+    <value>A column is set to a field the file doesn't have. Check the mapping and import again.</value>
+  </data>
+  <data name="Error_import_no_table_columns" xml:space="preserve">
+    <value>The table has no columns to import into.</value>
+  </data>
+  <data name="Error_import_not_confirmed" xml:space="preserve">
+    <value>Safe Mode asks before this import. Import again to answer it.</value>
+  </data>
+  <data name="Error_import_safe_mode_changed" xml:space="preserve">
+    <value>The connection's Safe Mode changed. Import again to see what it asks.</value>
+  </data>
+  <data name="Error_import_not_planned" xml:space="preserve">
+    <value>Nothing is ready to import. Import again.</value>
+  </data>
+  <data name="ImportCsvRunning" xml:space="preserve">
+    <value>Importing the file into {1}...</value>
+  </data>
+  <data name="ImportCsvSampleDefault" xml:space="preserve">
+    <value>DEFAULT</value>
+  </data>
+  <data name="ImportCsvSampleEmpty" xml:space="preserve">
+    <value>(empty)</value>
+  </data>
+  <data name="SaveQueryCommand" xml:space="preserve">
+    <value>Save query...</value>
+  </data>
+  <data name="ImportCsvUnknownLines" xml:space="preserve">
+    <value>{0} could not be written, and the table has no transaction to undo the import, so it may hold some of the rows. Refresh it to see what is there.</value>
   </data>
 </root>

@@ -606,6 +606,17 @@ impl Drop for PartFile {
     }
 }
 
+// A file a store's export writes whole, beside its place and renamed over it once synced. Blocking.
+pub(crate) fn write_whole_file(path: &str, bytes: &[u8]) -> Result<(), CoreError> {
+    let part = PartFile::beside(destination(path)?)?;
+    let mut file = File::create(&part.path).map_err(|error| io_error(&part.target, &error))?;
+    file.write_all(bytes)
+        .and_then(|()| file.sync_all())
+        .map_err(|error| io_error(&part.target, &error))?;
+    drop(file);
+    part.place()
+}
+
 async fn blocking<T, F>(tasks: &Tasks, work: F) -> Result<T, CoreError>
 where
     T: Send + 'static,
