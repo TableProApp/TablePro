@@ -155,8 +155,11 @@ public sealed class CsvImportForm
     public bool CanImport => State == CsvImportState.Ready && !IsPlanning;
 
     public CsvPreviewSummary? Summary => Preview is { } preview
-        ? new CsvPreviewSummary(preview.Headers.Count, preview.Rows.Count, preview.Truncated)
+        ? new CsvPreviewSummary(Width(preview), preview.Rows.Count, preview.Truncated)
         : null;
+
+    private static int Width(CsvPreview preview) =>
+        Math.Max(preview.Headers.Count, preview.Rows.Count == 0 ? 0 : preview.Rows.Max(row => row.Count));
 
     // A .tsv is tab separated by its name; any other file starts as comma separated.
     public static CsvDelimiter DelimiterFor(string filePath) =>
@@ -186,9 +189,12 @@ public sealed class CsvImportForm
         Preview = preview;
         ReadError = null;
         IReadOnlyList<string> first = preview.Rows.Count > 0 ? preview.Rows[0] : [];
-        Fields = [.. preview.Headers.Select((header, index) => new CsvField(
+        // A row wider than the header keeps its extra fields, which are offered by position.
+        Fields = [.. Enumerable.Range(0, Width(preview)).Select(index => new CsvField(
             index,
-            string.IsNullOrWhiteSpace(header) ? null : Clip(header),
+            index < preview.Headers.Count && !string.IsNullOrWhiteSpace(preview.Headers[index])
+                ? Clip(preview.Headers[index])
+                : null,
             index < first.Count && first[index].Length > 0 ? Clip(first[index]) : null))];
         for (var column = 0; column < _mapping.Length; column++)
         {

@@ -61,6 +61,20 @@ public sealed class CsvImportFormTests
     }
 
     [Fact]
+    public void AFieldPastTheHeaderIsOfferedByPositionAndCounted()
+    {
+        var form = Form();
+        var preview = new CsvPreview(["id"], [["1", "Ada"], ["2", "Grace"]], false);
+
+        form.Show(form.Read(CsvDelimiter.Comma, hasHeader: true), preview, []);
+        form.Choose(1, 2);
+
+        Assert.Equal<CsvField>([new CsvField(0, "id", "1"), new CsvField(1, null, "Ada")], form.Fields);
+        Assert.Equal(1, form.Mapping[1]);
+        Assert.Equal(new CsvPreviewSummary(2, 2, false), form.Summary);
+    }
+
+    [Fact]
     public void EachColumnSaysWhatItTakes()
     {
         var form = Form();
