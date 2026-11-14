@@ -85,6 +85,12 @@ public sealed partial class ShellTests
             AppSession.Wait,
             throwOnTimeout: false).Success;
         Assert.True(pinned, app.FindByNamePrefix(FiveTracks, runs).Name);
+        // The list is built again with the pinned run first, and UI Automation lists a row before it is drawn.
+        Assert.True(Retry.WhileFalse(
+            () => app.FindByNamePrefix(FiveTracks, runs) is { IsOffscreen: false } row && row.BoundingRectangle.Height > 0,
+            AppSession.Wait,
+            throwOnTimeout: false).Success);
+        Thread.Sleep(1_000);
         app.Screenshot("73-history-pinned");
 
         app.RightClick(app.FindByNamePrefix(FiveTracks, runs), () => app.TryFindMenuItem("Unpin") is not null);
