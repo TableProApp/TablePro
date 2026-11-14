@@ -9,6 +9,7 @@ internal sealed class Workbench : IDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private bool _settingsUnsaved;
     private Task<QueryHistory?>? _history;
+    private Task<SavedQueries?>? _savedQueries;
     private Task<TableProAccount?>? _account;
     private CancellationTokenSource? _signingIn;
 
@@ -197,6 +198,35 @@ internal sealed class Workbench : IDisposable
         }
     }
 
+    // Kept in the history's database, so null when the history cannot open.
+    public Task<SavedQueries?> GetSavedQueriesAsync() => _savedQueries ??= OpenSavedQueriesAsync();
+
+    private async Task<SavedQueries?> OpenSavedQueriesAsync()
+    {
+        if (await GetHistoryAsync().ConfigureAwait(true) is not { } history)
+        {
+            return null;
+        }
+
+        try
+        {
+            return history.OpenSavedQueries();
+        }
+        catch (TableProException)
+        {
+            return null;
+        }
+    }
+
+    // A deleted connection's saved queries, folders and favourites go with it, as on Linux; none are kept without a store.
+    public async Task ForgetSavedQueriesAsync(Guid connectionId)
+    {
+        if (await GetSavedQueriesAsync().ConfigureAwait(true) is { } savedQueries)
+        {
+            await savedQueries.DeleteForConnectionAsync(connectionId).ConfigureAwait(true);
+        }
+    }
+
     // The Chinook sample is copied out of the app once, so edits to it stay.
     public async Task<SavedConnection> InstallSampleAsync()
     {
@@ -227,6 +257,11 @@ internal sealed class Workbench : IDisposable
     {
         _lifetime.Cancel();
         _signingIn?.Cancel();
+        if (_savedQueries is { IsCompletedSuccessfully: true, Result: { } savedQueries })
+        {
+            savedQueries.Dispose();
+        }
+
         if (_history is { IsCompletedSuccessfully: true, Result: { } history })
         {
             history.Dispose();

@@ -115,6 +115,22 @@ public sealed class ConnectionLibrary : IDisposable
         return new ImportSummary(checked((int)summary.Added), checked((int)summary.Updated));
     }
 
+    // A copy under a new id right after the original, with every secret the original keeps; it is no favourite.
+    public async Task<SavedConnection> DuplicateAsync(Guid id, string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        var copy = await CoreCall.RunAsync(() => _library.Duplicate(id.ToString(), name)).ConfigureAwait(false);
+        return Mapping.Connection(copy);
+    }
+
+    // Every connection, group and tag, and no password, in a file that appears at path only once whole.
+    public async Task<int> ExportAsync(string path)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        var count = await CoreCall.RunAsync(() => _library.ExportFile(path)).ConfigureAwait(false);
+        return checked((int)count);
+    }
+
     public void Dispose() => _library.Dispose();
 
     private static string[] Names(IReadOnlyList<Guid> ids)

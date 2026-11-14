@@ -757,7 +757,10 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     private async void OnCountRows(object sender, RoutedEventArgs e) =>
         await _model.CountRowsAsync().ConfigureAwait(true);
 
-    private async void OnRefresh(object sender, RoutedEventArgs e)
+    private async void OnRefresh(object sender, RoutedEventArgs e) => await RefreshRowsAsync().ConfigureAwait(true);
+
+    // As Refresh does, for rows written from outside the tab, such as an import.
+    internal async Task RefreshRowsAsync()
     {
         await _model.RefreshAsync().ConfigureAwait(true);
         await ReloadShownAsync().ConfigureAwait(true);

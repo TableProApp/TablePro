@@ -66,6 +66,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="16" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -83,9 +84,18 @@
                             Text="{x:Bind FirstLine}"
                             TextTrimming="CharacterEllipsis"
                             TextWrapping="NoWrap" />
+                        <FontIcon
+                            Grid.Column="2"
+                            AutomationProperties.Name="{x:Bind PinName}"
+                            FontSize="12"
+                            Glyph="&#xE718;"
+                            ToolTipService.ToolTip="{x:Bind PinName}"
+                            VerticalAlignment="Center"
+                            Visibility="{x:Bind PinVisibility}" />
                         <TextBlock
                             Grid.Row="1"
                             Grid.Column="1"
+                            Grid.ColumnSpan="2"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Text="{x:Bind Detail}"

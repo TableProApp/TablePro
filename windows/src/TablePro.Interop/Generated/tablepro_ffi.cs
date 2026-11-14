@@ -1163,6 +1163,70 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -1623,6 +1687,94 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_clone_favouritestore(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     void uniffi_tablepro_ffi_fn_free_favouritestore(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_favouritestore_add_table(ulong @ptr,RustBuffer @connectionId,RustBuffer @table
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_favouritestore_databases(ulong @ptr,RustBuffer @connectionId
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_favouritestore_remove_database(ulong @ptr,RustBuffer @connectionId,RustBuffer @database
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_favouritestore_remove_table(ulong @ptr,RustBuffer @connectionId,RustBuffer @table
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_favouritestore_set_database(ulong @ptr,RustBuffer @connectionId,RustBuffer @database,RustBuffer @environment
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_favouritestore_tables(ulong @ptr,RustBuffer @connectionId
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_clone_queryhistorystore(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -1667,6 +1819,28 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_export(ulong @ptr,RustBuffer @ids,RustBuffer @format,RustBuffer @path
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_favourites(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_record(ulong @ptr,ulong @session,RustBuffer @run
     );
 
@@ -1678,7 +1852,106 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_saved_queries(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_search(ulong @ptr,RustBuffer @text,RustBuffer @connectionId,RustBuffer @after,uint @limit
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_set_pinned(ulong @ptr,long @id,sbyte @pinned
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_clone_csvimport(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     void uniffi_tablepro_ffi_fn_free_csvimport(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_csvimport_columns(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_csvimport_plan(ulong @ptr,RustBuffer @path,RustBuffer @options,RustBuffer @mapping
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_csvimport_preview(ulong @ptr,RustBuffer @path,RustBuffer @options
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_csvimport_run(ulong @ptr,sbyte @confirmed,RustBuffer @cancel
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_csvimport_suggest_mapping(ulong @ptr,RustBuffer @headers,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -1789,6 +2062,28 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_delete_tag(ulong @ptr,RustBuffer @id
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_duplicate(ulong @ptr,RustBuffer @id,RustBuffer @name
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_export_file(ulong @ptr,RustBuffer @path
     );
 
     #if NET8_0_OR_GREATER
@@ -2283,6 +2578,149 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_clone_savedquerystore(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     void uniffi_tablepro_ffi_fn_free_savedquerystore(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_savedquerystore_create_folder(ulong @ptr,RustBuffer @connectionId,RustBuffer @name,RustBuffer @parentId
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_savedquerystore_delete(ulong @ptr,long @id
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_savedquerystore_delete_folder(ulong @ptr,long @id
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_savedquerystore_delete_for_connection(ulong @ptr,RustBuffer @connectionId
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_savedquerystore_move_folder(ulong @ptr,long @id,RustBuffer @parentId
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_savedquerystore_move_query(ulong @ptr,long @id,RustBuffer @folderId,RustBuffer @before
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_savedquerystore_rename(ulong @ptr,long @id,RustBuffer @name
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_savedquerystore_rename_folder(ulong @ptr,long @id,RustBuffer @name
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_savedquerystore_save(ulong @ptr,RustBuffer @draft,sbyte @replace
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_savedquerystore_set_keyword(ulong @ptr,long @id,RustBuffer @keyword
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_savedquerystore_snapshot(ulong @ptr,RustBuffer @connectionId
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_clone_databasesession(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -2317,6 +2755,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_databasesession_export_table(ulong @ptr,RustBuffer @table,RustBuffer @sort,RustBuffer @filter,RustBuffer @format,RustBuffer @path,RustBuffer @cancel
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_databasesession_open_csv_import(ulong @ptr,RustBuffer @table,RustBuffer @cancel
     );
 
     #if NET8_0_OR_GREATER
@@ -3713,6 +4162,72 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_favouritestore_add_table(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_favouritestore_databases(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_favouritestore_remove_database(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_favouritestore_remove_table(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_favouritestore_set_database(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_favouritestore_tables(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_clear(
     );
 
@@ -3735,6 +4250,28 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_export(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_favourites(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_record(
     );
 
@@ -3746,7 +4283,84 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_saved_queries(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_search(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_set_pinned(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_csvimport_columns(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_csvimport_plan(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_csvimport_preview(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_csvimport_run(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_csvimport_suggest_mapping(
     );
 
     #if NET8_0_OR_GREATER
@@ -3835,6 +4449,28 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_tag(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_duplicate(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_export_file(
     );
 
     #if NET8_0_OR_GREATER
@@ -4241,6 +4877,127 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_create_folder(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_delete(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_delete_folder(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_delete_for_connection(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_move_folder(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_move_query(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_rename(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_rename_folder(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_save(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_set_keyword(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_savedquerystore_snapshot(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_databasesession_export_rows(
     );
 
@@ -4253,6 +5010,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_databasesession_export_table(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_databasesession_open_csv_import(
     );
 
     #if NET8_0_OR_GREATER
@@ -4953,6 +5721,42 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_favouritestore_add_table();
+            if (checksum != 20993) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_favouritestore_add_table` checksum `20993`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_favouritestore_databases();
+            if (checksum != 28125) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_favouritestore_databases` checksum `28125`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_favouritestore_remove_database();
+            if (checksum != 21763) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_favouritestore_remove_database` checksum `21763`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_favouritestore_remove_table();
+            if (checksum != 57779) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_favouritestore_remove_table` checksum `57779`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_favouritestore_set_database();
+            if (checksum != 55747) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_favouritestore_set_database` checksum `55747`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_favouritestore_tables();
+            if (checksum != 53725) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_favouritestore_tables` checksum `53725`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_clear();
             if (checksum != 34195) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_clear` checksum `34195`, library returned `{checksum}`");
@@ -4965,15 +5769,69 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_export();
+            if (checksum != 44920) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_export` checksum `44920`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_favourites();
+            if (checksum != 6052) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_favourites` checksum `6052`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_record();
             if (checksum != 56193) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_record` checksum `56193`, library returned `{checksum}`");
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_saved_queries();
+            if (checksum != 23109) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_saved_queries` checksum `23109`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_search();
             if (checksum != 1588) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_search` checksum `1588`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_set_pinned();
+            if (checksum != 35139) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_set_pinned` checksum `35139`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_csvimport_columns();
+            if (checksum != 53368) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_csvimport_columns` checksum `53368`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_csvimport_plan();
+            if (checksum != 47204) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_csvimport_plan` checksum `47204`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_csvimport_preview();
+            if (checksum != 61172) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_csvimport_preview` checksum `61172`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_csvimport_run();
+            if (checksum != 51215) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_csvimport_run` checksum `51215`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_csvimport_suggest_mapping();
+            if (checksum != 55321) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_csvimport_suggest_mapping` checksum `55321`, library returned `{checksum}`");
             }
         }
         {
@@ -5022,6 +5880,18 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_tag();
             if (checksum != 12898) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_tag` checksum `12898`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_duplicate();
+            if (checksum != 33545) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_duplicate` checksum `33545`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_export_file();
+            if (checksum != 30567) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_export_file` checksum `30567`, library returned `{checksum}`");
             }
         }
         {
@@ -5241,6 +6111,72 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_create_folder();
+            if (checksum != 59321) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_create_folder` checksum `59321`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_delete();
+            if (checksum != 53352) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_delete` checksum `53352`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_delete_folder();
+            if (checksum != 36458) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_delete_folder` checksum `36458`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_delete_for_connection();
+            if (checksum != 64092) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_delete_for_connection` checksum `64092`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_move_folder();
+            if (checksum != 25305) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_move_folder` checksum `25305`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_move_query();
+            if (checksum != 54680) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_move_query` checksum `54680`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_rename();
+            if (checksum != 12960) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_rename` checksum `12960`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_rename_folder();
+            if (checksum != 18150) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_rename_folder` checksum `18150`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_save();
+            if (checksum != 6222) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_save` checksum `6222`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_set_keyword();
+            if (checksum != 46468) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_set_keyword` checksum `46468`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_savedquerystore_snapshot();
+            if (checksum != 6061) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_savedquerystore_snapshot` checksum `6061`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_export_rows();
             if (checksum != 61480) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_export_rows` checksum `61480`, library returned `{checksum}`");
@@ -5250,6 +6186,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_export_table();
             if (checksum != 50830) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_export_table` checksum `50830`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_open_csv_import();
+            if (checksum != 47282) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_open_csv_import` checksum `47282`, library returned `{checksum}`");
             }
         }
         {
@@ -6309,6 +7251,10 @@ internal interface IConnectionLibrary {
     /// <exception cref="CoreException"></exception>
     Task DeleteTag(string @id);
     /// <exception cref="CoreException"></exception>
+    Task<ConnectionRecord> Duplicate(string @id, string @name);
+    /// <exception cref="CoreException"></exception>
+    Task<uint> ExportFile(string @path);
+    /// <exception cref="CoreException"></exception>
     Task<ImportSummary> ImportFile(string @path);
     /// <exception cref="CoreException"></exception>
     Task MoveGroups(string[] @ids, string? @parentId, string? @before);
@@ -6571,6 +7517,50 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
         },
         // Free
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<ConnectionRecord> Duplicate(string @id, string @name) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_duplicate(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterString.INSTANCE.Lower(@name));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeConnectionRecord.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<uint> ExportFile(string @path) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_export_file(thisPtr, FfiConverterString.INSTANCE.Lower(@path));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_u32(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_u32(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_u32(future),
+        // Lift
+        (result) => FfiConverterUInt32.INSTANCE.Lift(result),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -7107,11 +8097,224 @@ class FfiConverterTypeCore: FfiConverter<Core, ulong> {
 
 
 
+internal interface ICsvImport {
+    ImportColumnInfo[] Columns();
+    /// <exception cref="CoreException"></exception>
+    Task<CsvImportCheck> Plan(string @path, CsvReadOptions @options, uint?[] @mapping);
+    /// <exception cref="CoreException"></exception>
+    Task<CsvPreview> Preview(string @path, CsvReadOptions @options);
+    /// <exception cref="CoreException"></exception>
+    Task<CsvImportOutcome> Run(bool @confirmed, CancelToken? @cancel);
+    uint?[] SuggestMapping(string[] @headers);
+}
+internal class CsvImport : ICsvImport, IDisposable {
+    protected ulong pointer;
+    private int _wasDestroyed = 0;
+    private long _callCounter = 1;
+
+    public CsvImport(ulong pointer) {
+        this.pointer = pointer;
+    }
+
+    ~CsvImport() {
+        Destroy();
+    }
+
+    protected void FreeRustArcPtr() {
+        _UniffiHelpers.RustCall((ref UniffiRustCallStatus status) => {
+            _UniFFILib.uniffi_tablepro_ffi_fn_free_csvimport(this.pointer, ref status);
+        });
+    }
+
+    protected ulong CloneRustArcPtr() {
+        return _UniffiHelpers.RustCall((ref UniffiRustCallStatus status) => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_clone_csvimport(this.pointer, ref status);
+        });
+    }
+
+    public void Destroy()
+    {
+        // Only allow a single call to this method.
+        if (Interlocked.CompareExchange(ref _wasDestroyed, 1, 0) == 0)
+        {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (Interlocked.Decrement(ref _callCounter) == 0)
+            {
+                FreeRustArcPtr();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        Destroy();
+        GC.SuppressFinalize(this); // Suppress finalization to avoid unnecessary GC overhead.
+    }
+
+    private void IncrementCallCounter() 
+    {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        long count;
+        do
+        {
+            count = Interlocked.Read(ref _callCounter);
+            if (count == 0L) throw new System.ObjectDisposedException(String.Format("'{0}' object has already been destroyed", this.GetType().Name));
+            if (count == long.MaxValue) throw new System.OverflowException(String.Format("'{0}' call counter would overflow", this.GetType().Name));
+
+        } while (Interlocked.CompareExchange(ref _callCounter, count + 1, count) != count);
+    }
+
+    private void DecrementCallCounter() 
+    {
+        // This decrement always matches the increment we performed above.
+        if (Interlocked.Decrement(ref _callCounter) == 0) {
+            FreeRustArcPtr();
+        }
+    }
+
+    internal void CallWithPointer(Action<ulong> action)
+    {
+        IncrementCallCounter();
+        try {
+            action(CloneRustArcPtr());
+        }
+        finally {
+            DecrementCallCounter();
+        }
+    }
+
+    internal T CallWithPointer<T>(Func<ulong, T> func)
+    {   
+        IncrementCallCounter();
+        try {
+            return func(CloneRustArcPtr());
+        }
+        finally {
+            DecrementCallCounter();
+        }
+    }
+
+    
+    public ImportColumnInfo[] Columns() {
+        return CallWithPointer(thisPtr => FfiConverterSequenceTypeImportColumnInfo.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_csvimport_columns(thisPtr,  ref _status)
+)));
+    }
+    
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<CsvImportCheck> Plan(string @path, CsvReadOptions @options, uint?[] @mapping) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_csvimport_plan(thisPtr, FfiConverterString.INSTANCE.Lower(@path), FfiConverterTypeCsvReadOptions.INSTANCE.Lower(@options), FfiConverterSequenceOptionalUInt32.INSTANCE.Lower(@mapping));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeCsvImportCheck.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<CsvPreview> Preview(string @path, CsvReadOptions @options) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_csvimport_preview(thisPtr, FfiConverterString.INSTANCE.Lower(@path), FfiConverterTypeCsvReadOptions.INSTANCE.Lower(@options));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeCsvPreview.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<CsvImportOutcome> Run(bool @confirmed, CancelToken? @cancel) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_csvimport_run(thisPtr, FfiConverterBoolean.INSTANCE.Lower(@confirmed), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeCsvImportOutcome.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    public uint?[] SuggestMapping(string[] @headers) {
+        return CallWithPointer(thisPtr => FfiConverterSequenceOptionalUInt32.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_csvimport_suggest_mapping(thisPtr, FfiConverterSequenceString.INSTANCE.Lower(@headers), ref _status)
+)));
+    }
+    
+    
+
+    
+}
+class FfiConverterTypeCsvImport: FfiConverter<CsvImport, ulong> {
+    public static FfiConverterTypeCsvImport INSTANCE = new FfiConverterTypeCsvImport();
+
+
+    public override ulong Lower(CsvImport value) {
+        return value.CallWithPointer(thisPtr => thisPtr);
+    }
+
+    public override CsvImport Lift(ulong value) {
+        return new CsvImport(value);
+    }
+
+    public override CsvImport Read(BigEndianStream stream) {
+        return Lift(stream.ReadULong());
+    }
+
+    public override int AllocationSize(CsvImport value) {
+        return 8;
+    }
+
+    public override void Write(CsvImport value, BigEndianStream stream) {
+        stream.WriteULong(Lower(value));
+    }
+}
+
+
+
 internal interface IDatabaseSession {
     /// <exception cref="CoreException"></exception>
     Task<ulong> ExportRows(ResultSet @rows, uint @visibleColumns, ExportFormatTag @format, TableName? @table, string @path, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
     Task<ulong> ExportTable(TableName @table, ColumnSort? @sort, TableFilterArg? @filter, ExportFormatTag @format, string @path, CancelToken? @cancel);
+    /// <exception cref="CoreException"></exception>
+    Task<CsvImport> OpenCsvImport(TableName @table, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
     Task Close();
     /// <exception cref="CoreException"></exception>
@@ -7280,6 +8483,28 @@ internal class DatabaseSession : IDatabaseSession, IDisposable {
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_u64(future),
         // Lift
         (result) => FfiConverterUInt64.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<CsvImport> OpenCsvImport(TableName @table, CancelToken? @cancel) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_open_csv_import(thisPtr, FfiConverterTypeTableName.INSTANCE.Lower(@table), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_u64(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_u64(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_u64(future),
+        // Lift
+        (result) => FfiConverterTypeCsvImport.INSTANCE.Lift(result),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -7701,6 +8926,255 @@ class FfiConverterTypeDatabaseSession: FfiConverter<DatabaseSession, ulong> {
 
 
 
+internal interface IFavouriteStore {
+    /// <exception cref="CoreException"></exception>
+    Task AddTable(string @connectionId, FavouriteTableInfo @table);
+    /// <exception cref="CoreException"></exception>
+    Task<FavouriteDatabaseInfo[]> Databases(string @connectionId);
+    /// <exception cref="CoreException"></exception>
+    Task RemoveDatabase(string @connectionId, string @database);
+    /// <exception cref="CoreException"></exception>
+    Task RemoveTable(string @connectionId, FavouriteTableInfo @table);
+    /// <exception cref="CoreException"></exception>
+    Task SetDatabase(string @connectionId, string @database, DatabaseEnvironmentTag @environment);
+    /// <exception cref="CoreException"></exception>
+    Task<FavouriteTableInfo[]> Tables(string @connectionId);
+}
+internal class FavouriteStore : IFavouriteStore, IDisposable {
+    protected ulong pointer;
+    private int _wasDestroyed = 0;
+    private long _callCounter = 1;
+
+    public FavouriteStore(ulong pointer) {
+        this.pointer = pointer;
+    }
+
+    ~FavouriteStore() {
+        Destroy();
+    }
+
+    protected void FreeRustArcPtr() {
+        _UniffiHelpers.RustCall((ref UniffiRustCallStatus status) => {
+            _UniFFILib.uniffi_tablepro_ffi_fn_free_favouritestore(this.pointer, ref status);
+        });
+    }
+
+    protected ulong CloneRustArcPtr() {
+        return _UniffiHelpers.RustCall((ref UniffiRustCallStatus status) => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_clone_favouritestore(this.pointer, ref status);
+        });
+    }
+
+    public void Destroy()
+    {
+        // Only allow a single call to this method.
+        if (Interlocked.CompareExchange(ref _wasDestroyed, 1, 0) == 0)
+        {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (Interlocked.Decrement(ref _callCounter) == 0)
+            {
+                FreeRustArcPtr();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        Destroy();
+        GC.SuppressFinalize(this); // Suppress finalization to avoid unnecessary GC overhead.
+    }
+
+    private void IncrementCallCounter() 
+    {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        long count;
+        do
+        {
+            count = Interlocked.Read(ref _callCounter);
+            if (count == 0L) throw new System.ObjectDisposedException(String.Format("'{0}' object has already been destroyed", this.GetType().Name));
+            if (count == long.MaxValue) throw new System.OverflowException(String.Format("'{0}' call counter would overflow", this.GetType().Name));
+
+        } while (Interlocked.CompareExchange(ref _callCounter, count + 1, count) != count);
+    }
+
+    private void DecrementCallCounter() 
+    {
+        // This decrement always matches the increment we performed above.
+        if (Interlocked.Decrement(ref _callCounter) == 0) {
+            FreeRustArcPtr();
+        }
+    }
+
+    internal void CallWithPointer(Action<ulong> action)
+    {
+        IncrementCallCounter();
+        try {
+            action(CloneRustArcPtr());
+        }
+        finally {
+            DecrementCallCounter();
+        }
+    }
+
+    internal T CallWithPointer<T>(Func<ulong, T> func)
+    {   
+        IncrementCallCounter();
+        try {
+            return func(CloneRustArcPtr());
+        }
+        finally {
+            DecrementCallCounter();
+        }
+    }
+
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task AddTable(string @connectionId, FavouriteTableInfo @table) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_favouritestore_add_table(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId), FfiConverterTypeFavouriteTableInfo.INSTANCE.Lower(@table));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<FavouriteDatabaseInfo[]> Databases(string @connectionId) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_favouritestore_databases(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterSequenceTypeFavouriteDatabaseInfo.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task RemoveDatabase(string @connectionId, string @database) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_favouritestore_remove_database(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId), FfiConverterString.INSTANCE.Lower(@database));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task RemoveTable(string @connectionId, FavouriteTableInfo @table) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_favouritestore_remove_table(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId), FfiConverterTypeFavouriteTableInfo.INSTANCE.Lower(@table));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task SetDatabase(string @connectionId, string @database, DatabaseEnvironmentTag @environment) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_favouritestore_set_database(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId), FfiConverterString.INSTANCE.Lower(@database), FfiConverterTypeDatabaseEnvironmentTag.INSTANCE.Lower(@environment));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<FavouriteTableInfo[]> Tables(string @connectionId) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_favouritestore_tables(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterSequenceTypeFavouriteTableInfo.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+
+    
+}
+class FfiConverterTypeFavouriteStore: FfiConverter<FavouriteStore, ulong> {
+    public static FfiConverterTypeFavouriteStore INSTANCE = new FfiConverterTypeFavouriteStore();
+
+
+    public override ulong Lower(FavouriteStore value) {
+        return value.CallWithPointer(thisPtr => thisPtr);
+    }
+
+    public override FavouriteStore Lift(ulong value) {
+        return new FavouriteStore(value);
+    }
+
+    public override FavouriteStore Read(BigEndianStream stream) {
+        return Lift(stream.ReadULong());
+    }
+
+    public override int AllocationSize(FavouriteStore value) {
+        return 8;
+    }
+
+    public override void Write(FavouriteStore value, BigEndianStream stream) {
+        stream.WriteULong(Lower(value));
+    }
+}
+
+
+
 /// <summary>
 /// An editor tab's own connection, which keeps its transaction and
 /// session settings from one run to the next.
@@ -7918,9 +9392,15 @@ internal interface IQueryHistoryStore {
     /// <exception cref="CoreException"></exception>
     Task Delete(long[] @ids);
     /// <exception cref="CoreException"></exception>
+    Task Export(long[] @ids, HistoryExportFormat @format, string @path);
+    FavouriteStore Favourites();
+    /// <exception cref="CoreException"></exception>
     Task<long?> Record(DatabaseSession @session, HistoryRun @run);
+    SavedQueryStore SavedQueries();
     /// <exception cref="CoreException"></exception>
     Task<HistoryPageInfo> Search(string @text, string? @connectionId, HistoryCursorArg? @after, uint @limit);
+    /// <exception cref="CoreException"></exception>
+    Task SetPinned(long @id, bool @pinned);
 }
 internal class QueryHistoryStore : IQueryHistoryStore, IDisposable {
     protected ulong pointer;
@@ -8048,6 +9528,32 @@ internal class QueryHistoryStore : IQueryHistoryStore, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
+    public async Task Export(long[] @ids, HistoryExportFormat @format, string @path) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_queryhistorystore_export(thisPtr, FfiConverterSequenceInt64.INSTANCE.Lower(@ids), FfiConverterTypeHistoryExportFormat.INSTANCE.Lower(@format), FfiConverterString.INSTANCE.Lower(@path));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    public FavouriteStore Favourites() {
+        return CallWithPointer(thisPtr => FfiConverterTypeFavouriteStore.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_queryhistorystore_favourites(thisPtr,  ref _status)
+)));
+    }
+    
+    
+    /// <exception cref="CoreException"></exception>
     public async Task<long?> Record(DatabaseSession @session, HistoryRun @run) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
@@ -8069,6 +9575,14 @@ internal class QueryHistoryStore : IQueryHistoryStore, IDisposable {
     );
     }
     
+    public SavedQueryStore SavedQueries() {
+        return CallWithPointer(thisPtr => FfiConverterTypeSavedQueryStore.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_queryhistorystore_saved_queries(thisPtr,  ref _status)
+)));
+    }
+    
+    
     /// <exception cref="CoreException"></exception>
     public async Task<HistoryPageInfo> Search(string @text, string? @connectionId, HistoryCursorArg? @after, uint @limit) {
     return await _UniFFIAsync.UniffiRustCallAsync(
@@ -8086,6 +9600,24 @@ internal class QueryHistoryStore : IQueryHistoryStore, IDisposable {
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
         // Lift
         (result) => FfiConverterTypeHistoryPageInfo.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task SetPinned(long @id, bool @pinned) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_queryhistorystore_set_pinned(thisPtr, FfiConverterInt64.INSTANCE.Lower(@id), FfiConverterBoolean.INSTANCE.Lower(@pinned));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -8766,6 +10298,363 @@ class FfiConverterTypeRowSave: FfiConverter<RowSave, ulong> {
     }
 
     public override void Write(RowSave value, BigEndianStream stream) {
+        stream.WriteULong(Lower(value));
+    }
+}
+
+
+
+internal interface ISavedQueryStore {
+    /// <exception cref="CoreException"></exception>
+    Task<long> CreateFolder(string @connectionId, string @name, long? @parentId);
+    /// <exception cref="CoreException"></exception>
+    Task Delete(long @id);
+    /// <exception cref="CoreException"></exception>
+    Task DeleteFolder(long @id);
+    /// <exception cref="CoreException"></exception>
+    Task<ulong> DeleteForConnection(string @connectionId);
+    /// <exception cref="CoreException"></exception>
+    Task MoveFolder(long @id, long? @parentId);
+    /// <exception cref="CoreException"></exception>
+    Task MoveQuery(long @id, long? @folderId, long? @before);
+    /// <exception cref="CoreException"></exception>
+    Task Rename(long @id, string @name);
+    /// <exception cref="CoreException"></exception>
+    Task RenameFolder(long @id, string @name);
+    /// <exception cref="CoreException"></exception>
+    Task<long?> Save(SavedQueryDraft @draft, bool @replace);
+    /// <exception cref="CoreException"></exception>
+    Task SetKeyword(long @id, string? @keyword);
+    /// <exception cref="CoreException"></exception>
+    Task<SavedQueriesInfo> Snapshot(string @connectionId);
+}
+internal class SavedQueryStore : ISavedQueryStore, IDisposable {
+    protected ulong pointer;
+    private int _wasDestroyed = 0;
+    private long _callCounter = 1;
+
+    public SavedQueryStore(ulong pointer) {
+        this.pointer = pointer;
+    }
+
+    ~SavedQueryStore() {
+        Destroy();
+    }
+
+    protected void FreeRustArcPtr() {
+        _UniffiHelpers.RustCall((ref UniffiRustCallStatus status) => {
+            _UniFFILib.uniffi_tablepro_ffi_fn_free_savedquerystore(this.pointer, ref status);
+        });
+    }
+
+    protected ulong CloneRustArcPtr() {
+        return _UniffiHelpers.RustCall((ref UniffiRustCallStatus status) => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_clone_savedquerystore(this.pointer, ref status);
+        });
+    }
+
+    public void Destroy()
+    {
+        // Only allow a single call to this method.
+        if (Interlocked.CompareExchange(ref _wasDestroyed, 1, 0) == 0)
+        {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (Interlocked.Decrement(ref _callCounter) == 0)
+            {
+                FreeRustArcPtr();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        Destroy();
+        GC.SuppressFinalize(this); // Suppress finalization to avoid unnecessary GC overhead.
+    }
+
+    private void IncrementCallCounter() 
+    {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        long count;
+        do
+        {
+            count = Interlocked.Read(ref _callCounter);
+            if (count == 0L) throw new System.ObjectDisposedException(String.Format("'{0}' object has already been destroyed", this.GetType().Name));
+            if (count == long.MaxValue) throw new System.OverflowException(String.Format("'{0}' call counter would overflow", this.GetType().Name));
+
+        } while (Interlocked.CompareExchange(ref _callCounter, count + 1, count) != count);
+    }
+
+    private void DecrementCallCounter() 
+    {
+        // This decrement always matches the increment we performed above.
+        if (Interlocked.Decrement(ref _callCounter) == 0) {
+            FreeRustArcPtr();
+        }
+    }
+
+    internal void CallWithPointer(Action<ulong> action)
+    {
+        IncrementCallCounter();
+        try {
+            action(CloneRustArcPtr());
+        }
+        finally {
+            DecrementCallCounter();
+        }
+    }
+
+    internal T CallWithPointer<T>(Func<ulong, T> func)
+    {   
+        IncrementCallCounter();
+        try {
+            return func(CloneRustArcPtr());
+        }
+        finally {
+            DecrementCallCounter();
+        }
+    }
+
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<long> CreateFolder(string @connectionId, string @name, long? @parentId) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_create_folder(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId), FfiConverterString.INSTANCE.Lower(@name), FfiConverterOptionalInt64.INSTANCE.Lower(@parentId));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_i64(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_i64(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_i64(future),
+        // Lift
+        (result) => FfiConverterInt64.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task Delete(long @id) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_delete(thisPtr, FfiConverterInt64.INSTANCE.Lower(@id));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task DeleteFolder(long @id) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_delete_folder(thisPtr, FfiConverterInt64.INSTANCE.Lower(@id));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<ulong> DeleteForConnection(string @connectionId) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_delete_for_connection(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_u64(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_u64(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_u64(future),
+        // Lift
+        (result) => FfiConverterUInt64.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task MoveFolder(long @id, long? @parentId) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_move_folder(thisPtr, FfiConverterInt64.INSTANCE.Lower(@id), FfiConverterOptionalInt64.INSTANCE.Lower(@parentId));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task MoveQuery(long @id, long? @folderId, long? @before) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_move_query(thisPtr, FfiConverterInt64.INSTANCE.Lower(@id), FfiConverterOptionalInt64.INSTANCE.Lower(@folderId), FfiConverterOptionalInt64.INSTANCE.Lower(@before));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task Rename(long @id, string @name) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_rename(thisPtr, FfiConverterInt64.INSTANCE.Lower(@id), FfiConverterString.INSTANCE.Lower(@name));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task RenameFolder(long @id, string @name) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_rename_folder(thisPtr, FfiConverterInt64.INSTANCE.Lower(@id), FfiConverterString.INSTANCE.Lower(@name));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<long?> Save(SavedQueryDraft @draft, bool @replace) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_save(thisPtr, FfiConverterTypeSavedQueryDraft.INSTANCE.Lower(@draft), FfiConverterBoolean.INSTANCE.Lower(@replace));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterOptionalInt64.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task SetKeyword(long @id, string? @keyword) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_set_keyword(thisPtr, FfiConverterInt64.INSTANCE.Lower(@id), FfiConverterOptionalString.INSTANCE.Lower(@keyword));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<SavedQueriesInfo> Snapshot(string @connectionId) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_savedquerystore_snapshot(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeSavedQueriesInfo.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+
+    
+}
+class FfiConverterTypeSavedQueryStore: FfiConverter<SavedQueryStore, ulong> {
+    public static FfiConverterTypeSavedQueryStore INSTANCE = new FfiConverterTypeSavedQueryStore();
+
+
+    public override ulong Lower(SavedQueryStore value) {
+        return value.CallWithPointer(thisPtr => thisPtr);
+    }
+
+    public override SavedQueryStore Lift(ulong value) {
+        return new SavedQueryStore(value);
+    }
+
+    public override SavedQueryStore Read(BigEndianStream stream) {
+        return Lift(stream.ReadULong());
+    }
+
+    public override int AllocationSize(SavedQueryStore value) {
+        return 8;
+    }
+
+    public override void Write(SavedQueryStore value, BigEndianStream stream) {
         stream.WriteULong(Lower(value));
     }
 }
@@ -9673,6 +11562,112 @@ class FfiConverterTypeCreatedShareInfo: FfiConverterRustBuffer<CreatedShareInfo>
 
 
 
+internal record CsvPreview (
+    string[] Headers, 
+    string[][] Rows, 
+    bool Truncated
+) {
+}
+
+class FfiConverterTypeCsvPreview: FfiConverterRustBuffer<CsvPreview> {
+    public static FfiConverterTypeCsvPreview INSTANCE = new FfiConverterTypeCsvPreview();
+
+    public override CsvPreview Read(BigEndianStream stream) {
+        return new CsvPreview(
+            Headers: FfiConverterSequenceString.INSTANCE.Read(stream),
+            Rows: FfiConverterSequenceSequenceString.INSTANCE.Read(stream),
+            Truncated: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CsvPreview value) {
+        return 0
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Headers)
+            + FfiConverterSequenceSequenceString.INSTANCE.AllocationSize(value.Rows)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Truncated);
+    }
+
+    public override void Write(CsvPreview value, BigEndianStream stream) {
+            FfiConverterSequenceString.INSTANCE.Write(value.Headers, stream);
+            FfiConverterSequenceSequenceString.INSTANCE.Write(value.Rows, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Truncated, stream);
+    }
+}
+
+
+
+internal record CsvReadOptions (
+    CsvDelimiterTag Delimiter, 
+    bool HasHeader, 
+    string NullText
+) {
+}
+
+class FfiConverterTypeCsvReadOptions: FfiConverterRustBuffer<CsvReadOptions> {
+    public static FfiConverterTypeCsvReadOptions INSTANCE = new FfiConverterTypeCsvReadOptions();
+
+    public override CsvReadOptions Read(BigEndianStream stream) {
+        return new CsvReadOptions(
+            Delimiter: FfiConverterTypeCsvDelimiterTag.INSTANCE.Read(stream),
+            HasHeader: FfiConverterBoolean.INSTANCE.Read(stream),
+            NullText: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CsvReadOptions value) {
+        return 0
+            + FfiConverterTypeCsvDelimiterTag.INSTANCE.AllocationSize(value.Delimiter)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.HasHeader)
+            + FfiConverterString.INSTANCE.AllocationSize(value.NullText);
+    }
+
+    public override void Write(CsvReadOptions value, BigEndianStream stream) {
+            FfiConverterTypeCsvDelimiterTag.INSTANCE.Write(value.Delimiter, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.HasHeader, stream);
+            FfiConverterString.INSTANCE.Write(value.NullText, stream);
+    }
+}
+
+
+
+internal record CsvRowFault (
+    ulong Line, 
+    string Column, 
+    string Text, 
+    string Reason
+) {
+}
+
+class FfiConverterTypeCsvRowFault: FfiConverterRustBuffer<CsvRowFault> {
+    public static FfiConverterTypeCsvRowFault INSTANCE = new FfiConverterTypeCsvRowFault();
+
+    public override CsvRowFault Read(BigEndianStream stream) {
+        return new CsvRowFault(
+            Line: FfiConverterUInt64.INSTANCE.Read(stream),
+            Column: FfiConverterString.INSTANCE.Read(stream),
+            Text: FfiConverterString.INSTANCE.Read(stream),
+            Reason: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CsvRowFault value) {
+        return 0
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.Line)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Column)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Text)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Reason);
+    }
+
+    public override void Write(CsvRowFault value, BigEndianStream stream) {
+            FfiConverterUInt64.INSTANCE.Write(value.Line, stream);
+            FfiConverterString.INSTANCE.Write(value.Column, stream);
+            FfiConverterString.INSTANCE.Write(value.Text, stream);
+            FfiConverterString.INSTANCE.Write(value.Reason, stream);
+    }
+}
+
+
+
 internal record DeviceInfo (
     string Id, 
     string Platform, 
@@ -9928,6 +11923,70 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             FfiConverterOptionalTypeSecretKindTag.INSTANCE.Write(value.Secret, stream);
             FfiConverterOptionalTypeHostKeyFailure.INSTANCE.Write(value.HostKey, stream);
             FfiConverterOptionalTypeTlsFailureTag.INSTANCE.Write(value.TlsFailure, stream);
+    }
+}
+
+
+
+internal record FavouriteDatabaseInfo (
+    string Database, 
+    DatabaseEnvironmentTag Environment
+) {
+}
+
+class FfiConverterTypeFavouriteDatabaseInfo: FfiConverterRustBuffer<FavouriteDatabaseInfo> {
+    public static FfiConverterTypeFavouriteDatabaseInfo INSTANCE = new FfiConverterTypeFavouriteDatabaseInfo();
+
+    public override FavouriteDatabaseInfo Read(BigEndianStream stream) {
+        return new FavouriteDatabaseInfo(
+            Database: FfiConverterString.INSTANCE.Read(stream),
+            Environment: FfiConverterTypeDatabaseEnvironmentTag.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(FavouriteDatabaseInfo value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Database)
+            + FfiConverterTypeDatabaseEnvironmentTag.INSTANCE.AllocationSize(value.Environment);
+    }
+
+    public override void Write(FavouriteDatabaseInfo value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Database, stream);
+            FfiConverterTypeDatabaseEnvironmentTag.INSTANCE.Write(value.Environment, stream);
+    }
+}
+
+
+
+internal record FavouriteTableInfo (
+    string? Database, 
+    string? Schema, 
+    string Name
+) {
+}
+
+class FfiConverterTypeFavouriteTableInfo: FfiConverterRustBuffer<FavouriteTableInfo> {
+    public static FfiConverterTypeFavouriteTableInfo INSTANCE = new FfiConverterTypeFavouriteTableInfo();
+
+    public override FavouriteTableInfo Read(BigEndianStream stream) {
+        return new FavouriteTableInfo(
+            Database: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Schema: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Name: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(FavouriteTableInfo value) {
+        return 0
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Database)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Schema)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Name);
+    }
+
+    public override void Write(FavouriteTableInfo value, BigEndianStream stream) {
+            FfiConverterOptionalString.INSTANCE.Write(value.Database, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Schema, stream);
+            FfiConverterString.INSTANCE.Write(value.Name, stream);
     }
 }
 
@@ -10364,6 +12423,48 @@ class FfiConverterTypeHostKeyFailure: FfiConverterRustBuffer<HostKeyFailure> {
 
 
 
+internal record ImportColumnInfo (
+    string Name, 
+    string TypeName, 
+    bool Nullable, 
+    bool HasDefault, 
+    bool ServerFilled
+) {
+}
+
+class FfiConverterTypeImportColumnInfo: FfiConverterRustBuffer<ImportColumnInfo> {
+    public static FfiConverterTypeImportColumnInfo INSTANCE = new FfiConverterTypeImportColumnInfo();
+
+    public override ImportColumnInfo Read(BigEndianStream stream) {
+        return new ImportColumnInfo(
+            Name: FfiConverterString.INSTANCE.Read(stream),
+            TypeName: FfiConverterString.INSTANCE.Read(stream),
+            Nullable: FfiConverterBoolean.INSTANCE.Read(stream),
+            HasDefault: FfiConverterBoolean.INSTANCE.Read(stream),
+            ServerFilled: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(ImportColumnInfo value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterString.INSTANCE.AllocationSize(value.TypeName)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Nullable)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.HasDefault)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.ServerFilled);
+    }
+
+    public override void Write(ImportColumnInfo value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Name, stream);
+            FfiConverterString.INSTANCE.Write(value.TypeName, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Nullable, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.HasDefault, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.ServerFilled, stream);
+    }
+}
+
+
+
 internal record ImportSummary (
     uint Added, 
     uint Updated
@@ -10485,6 +12586,36 @@ class FfiConverterTypeLicenseInfo: FfiConverterRustBuffer<LicenseInfo> {
             FfiConverterOptionalInt64.INSTANCE.Write(value.RenewsAtSecs, stream);
             FfiConverterOptionalInt64.INSTANCE.Write(value.EndsAtSecs, stream);
             FfiConverterOptionalTypeTeamInfo.INSTANCE.Write(value.Team, stream);
+    }
+}
+
+
+
+internal record LineSpan (
+    ulong First, 
+    ulong Last
+) {
+}
+
+class FfiConverterTypeLineSpan: FfiConverterRustBuffer<LineSpan> {
+    public static FfiConverterTypeLineSpan INSTANCE = new FfiConverterTypeLineSpan();
+
+    public override LineSpan Read(BigEndianStream stream) {
+        return new LineSpan(
+            First: FfiConverterUInt64.INSTANCE.Read(stream),
+            Last: FfiConverterUInt64.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(LineSpan value) {
+        return 0
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.First)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.Last);
+    }
+
+    public override void Write(LineSpan value, BigEndianStream stream) {
+            FfiConverterUInt64.INSTANCE.Write(value.First, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.Last, stream);
     }
 }
 
@@ -10970,6 +13101,162 @@ class FfiConverterTypeRunSettings: FfiConverterRustBuffer<RunSettings> {
             FfiConverterOptionalUInt64.INSTANCE.Write(value.RowLimit, stream);
             FfiConverterOptionalUInt64.INSTANCE.Write(value.TimeoutMs, stream);
             FfiConverterOptionalUInt64.INSTANCE.Write(value.ByteLimit, stream);
+    }
+}
+
+
+
+internal record SavedQueriesInfo (
+    SavedQueryInfo[] Queries, 
+    SavedQueryFolderInfo[] Folders
+) {
+}
+
+class FfiConverterTypeSavedQueriesInfo: FfiConverterRustBuffer<SavedQueriesInfo> {
+    public static FfiConverterTypeSavedQueriesInfo INSTANCE = new FfiConverterTypeSavedQueriesInfo();
+
+    public override SavedQueriesInfo Read(BigEndianStream stream) {
+        return new SavedQueriesInfo(
+            Queries: FfiConverterSequenceTypeSavedQueryInfo.INSTANCE.Read(stream),
+            Folders: FfiConverterSequenceTypeSavedQueryFolderInfo.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SavedQueriesInfo value) {
+        return 0
+            + FfiConverterSequenceTypeSavedQueryInfo.INSTANCE.AllocationSize(value.Queries)
+            + FfiConverterSequenceTypeSavedQueryFolderInfo.INSTANCE.AllocationSize(value.Folders);
+    }
+
+    public override void Write(SavedQueriesInfo value, BigEndianStream stream) {
+            FfiConverterSequenceTypeSavedQueryInfo.INSTANCE.Write(value.Queries, stream);
+            FfiConverterSequenceTypeSavedQueryFolderInfo.INSTANCE.Write(value.Folders, stream);
+    }
+}
+
+
+
+internal record SavedQueryDraft (
+    string ConnectionId, 
+    string ConnectionName, 
+    string Name, 
+    string Sql
+) {
+}
+
+class FfiConverterTypeSavedQueryDraft: FfiConverterRustBuffer<SavedQueryDraft> {
+    public static FfiConverterTypeSavedQueryDraft INSTANCE = new FfiConverterTypeSavedQueryDraft();
+
+    public override SavedQueryDraft Read(BigEndianStream stream) {
+        return new SavedQueryDraft(
+            ConnectionId: FfiConverterString.INSTANCE.Read(stream),
+            ConnectionName: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterString.INSTANCE.Read(stream),
+            Sql: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SavedQueryDraft value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.ConnectionId)
+            + FfiConverterString.INSTANCE.AllocationSize(value.ConnectionName)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Sql);
+    }
+
+    public override void Write(SavedQueryDraft value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.ConnectionId, stream);
+            FfiConverterString.INSTANCE.Write(value.ConnectionName, stream);
+            FfiConverterString.INSTANCE.Write(value.Name, stream);
+            FfiConverterString.INSTANCE.Write(value.Sql, stream);
+    }
+}
+
+
+
+internal record SavedQueryFolderInfo (
+    long Id, 
+    string Name, 
+    long? ParentId, 
+    long Order
+) {
+}
+
+class FfiConverterTypeSavedQueryFolderInfo: FfiConverterRustBuffer<SavedQueryFolderInfo> {
+    public static FfiConverterTypeSavedQueryFolderInfo INSTANCE = new FfiConverterTypeSavedQueryFolderInfo();
+
+    public override SavedQueryFolderInfo Read(BigEndianStream stream) {
+        return new SavedQueryFolderInfo(
+            Id: FfiConverterInt64.INSTANCE.Read(stream),
+            Name: FfiConverterString.INSTANCE.Read(stream),
+            ParentId: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            Order: FfiConverterInt64.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SavedQueryFolderInfo value) {
+        return 0
+            + FfiConverterInt64.INSTANCE.AllocationSize(value.Id)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.ParentId)
+            + FfiConverterInt64.INSTANCE.AllocationSize(value.Order);
+    }
+
+    public override void Write(SavedQueryFolderInfo value, BigEndianStream stream) {
+            FfiConverterInt64.INSTANCE.Write(value.Id, stream);
+            FfiConverterString.INSTANCE.Write(value.Name, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.ParentId, stream);
+            FfiConverterInt64.INSTANCE.Write(value.Order, stream);
+    }
+}
+
+
+
+internal record SavedQueryInfo (
+    long Id, 
+    string Name, 
+    string Sql, 
+    string? Keyword, 
+    long? FolderId, 
+    long Order, 
+    long UpdatedAtMs
+) {
+}
+
+class FfiConverterTypeSavedQueryInfo: FfiConverterRustBuffer<SavedQueryInfo> {
+    public static FfiConverterTypeSavedQueryInfo INSTANCE = new FfiConverterTypeSavedQueryInfo();
+
+    public override SavedQueryInfo Read(BigEndianStream stream) {
+        return new SavedQueryInfo(
+            Id: FfiConverterInt64.INSTANCE.Read(stream),
+            Name: FfiConverterString.INSTANCE.Read(stream),
+            Sql: FfiConverterString.INSTANCE.Read(stream),
+            Keyword: FfiConverterOptionalString.INSTANCE.Read(stream),
+            FolderId: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            Order: FfiConverterInt64.INSTANCE.Read(stream),
+            UpdatedAtMs: FfiConverterInt64.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SavedQueryInfo value) {
+        return 0
+            + FfiConverterInt64.INSTANCE.AllocationSize(value.Id)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Sql)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Keyword)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.FolderId)
+            + FfiConverterInt64.INSTANCE.AllocationSize(value.Order)
+            + FfiConverterInt64.INSTANCE.AllocationSize(value.UpdatedAtMs);
+    }
+
+    public override void Write(SavedQueryInfo value, BigEndianStream stream) {
+            FfiConverterInt64.INSTANCE.Write(value.Id, stream);
+            FfiConverterString.INSTANCE.Write(value.Name, stream);
+            FfiConverterString.INSTANCE.Write(value.Sql, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Keyword, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.FolderId, stream);
+            FfiConverterInt64.INSTANCE.Write(value.Order, stream);
+            FfiConverterInt64.INSTANCE.Write(value.UpdatedAtMs, stream);
     }
 }
 
@@ -12209,6 +14496,245 @@ class FfiConverterTypeCoreError : FfiConverterRustBuffer<CoreException>, CallSta
 
 
 
+internal enum CsvDelimiterTag: int {
+    Comma,
+    Semicolon,
+    Tab,
+    Pipe
+}
+
+class FfiConverterTypeCsvDelimiterTag: FfiConverterRustBuffer<CsvDelimiterTag> {
+    public static FfiConverterTypeCsvDelimiterTag INSTANCE = new FfiConverterTypeCsvDelimiterTag();
+
+    public override CsvDelimiterTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return CsvDelimiterTag.Comma;
+            case 2: return CsvDelimiterTag.Semicolon;
+            case 3: return CsvDelimiterTag.Tab;
+            case 4: return CsvDelimiterTag.Pipe;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCsvDelimiterTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(CsvDelimiterTag value) {
+        return 4;
+    }
+
+    public override void Write(CsvDelimiterTag value, BigEndianStream stream) {
+        switch (value) {
+            case CsvDelimiterTag.Comma: stream.WriteInt(1); break;
+            case CsvDelimiterTag.Semicolon: stream.WriteInt(2); break;
+            case CsvDelimiterTag.Tab: stream.WriteInt(3); break;
+            case CsvDelimiterTag.Pipe: stream.WriteInt(4); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCsvDelimiterTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal record CsvImportCheck {
+    
+    public record Ready (
+        ulong Rows,
+        string[] Statements,
+        SaveGate Gate
+    ) : CsvImportCheck {}
+    
+    public record Empty: CsvImportCheck {}
+    
+    
+    public record RowRefused (
+        CsvRowFault Fault
+    ) : CsvImportCheck {}
+    
+
+    
+}
+
+class FfiConverterTypeCsvImportCheck : FfiConverterRustBuffer<CsvImportCheck>{
+    public static FfiConverterRustBuffer<CsvImportCheck> INSTANCE = new FfiConverterTypeCsvImportCheck();
+
+    public override CsvImportCheck Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new CsvImportCheck.Ready(
+                    FfiConverterUInt64.INSTANCE.Read(stream),
+                    FfiConverterSequenceString.INSTANCE.Read(stream),
+                    FfiConverterTypeSaveGate.INSTANCE.Read(stream)
+                );
+            case 2:
+                return new CsvImportCheck.Empty(
+                );
+            case 3:
+                return new CsvImportCheck.RowRefused(
+                    FfiConverterTypeCsvRowFault.INSTANCE.Read(stream)
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCsvImportCheck.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(CsvImportCheck value) {
+        switch (value) {
+            case CsvImportCheck.Ready variant_value:
+                return 4
+                    + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.Rows)
+                    + FfiConverterSequenceString.INSTANCE.AllocationSize(variant_value.Statements)
+                    + FfiConverterTypeSaveGate.INSTANCE.AllocationSize(variant_value.Gate);
+            case CsvImportCheck.Empty variant_value:
+                return 4;
+            case CsvImportCheck.RowRefused variant_value:
+                return 4
+                    + FfiConverterTypeCsvRowFault.INSTANCE.AllocationSize(variant_value.Fault);
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCsvImportCheck.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(CsvImportCheck value, BigEndianStream stream) {
+        switch (value) {
+            case CsvImportCheck.Ready variant_value:
+                stream.WriteInt(1);
+                FfiConverterUInt64.INSTANCE.Write(variant_value.Rows, stream);
+                FfiConverterSequenceString.INSTANCE.Write(variant_value.Statements, stream);
+                FfiConverterTypeSaveGate.INSTANCE.Write(variant_value.Gate, stream);
+                break;
+            case CsvImportCheck.Empty variant_value:
+                stream.WriteInt(2);
+                break;
+            case CsvImportCheck.RowRefused variant_value:
+                stream.WriteInt(3);
+                FfiConverterTypeCsvRowFault.INSTANCE.Write(variant_value.Fault, stream);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCsvImportCheck.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal record CsvImportOutcome {
+    
+    public record Imported (
+        ulong Rows
+    ) : CsvImportOutcome {}
+    
+    public record RolledBack (
+        BoxedErrorInfo Error,
+        LineSpan? Lines
+    ) : CsvImportOutcome {}
+    
+    public record PartlyWritten (
+        BoxedErrorInfo Error,
+        ulong WrittenRows,
+        LineSpan? Lines
+    ) : CsvImportOutcome {}
+    
+    public record Unknown (
+        BoxedErrorInfo Error
+    ) : CsvImportOutcome {}
+    
+
+    
+}
+
+class FfiConverterTypeCsvImportOutcome : FfiConverterRustBuffer<CsvImportOutcome>{
+    public static FfiConverterRustBuffer<CsvImportOutcome> INSTANCE = new FfiConverterTypeCsvImportOutcome();
+
+    public override CsvImportOutcome Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new CsvImportOutcome.Imported(
+                    FfiConverterUInt64.INSTANCE.Read(stream)
+                );
+            case 2:
+                return new CsvImportOutcome.RolledBack(
+                    FfiConverterTypeBoxedErrorInfo.INSTANCE.Read(stream),
+                    FfiConverterOptionalTypeLineSpan.INSTANCE.Read(stream)
+                );
+            case 3:
+                return new CsvImportOutcome.PartlyWritten(
+                    FfiConverterTypeBoxedErrorInfo.INSTANCE.Read(stream),
+                    FfiConverterUInt64.INSTANCE.Read(stream),
+                    FfiConverterOptionalTypeLineSpan.INSTANCE.Read(stream)
+                );
+            case 4:
+                return new CsvImportOutcome.Unknown(
+                    FfiConverterTypeBoxedErrorInfo.INSTANCE.Read(stream)
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCsvImportOutcome.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(CsvImportOutcome value) {
+        switch (value) {
+            case CsvImportOutcome.Imported variant_value:
+                return 4
+                    + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.Rows);
+            case CsvImportOutcome.RolledBack variant_value:
+                return 4
+                    + FfiConverterTypeBoxedErrorInfo.INSTANCE.AllocationSize(variant_value.Error)
+                    + FfiConverterOptionalTypeLineSpan.INSTANCE.AllocationSize(variant_value.Lines);
+            case CsvImportOutcome.PartlyWritten variant_value:
+                return 4
+                    + FfiConverterTypeBoxedErrorInfo.INSTANCE.AllocationSize(variant_value.Error)
+                    + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.WrittenRows)
+                    + FfiConverterOptionalTypeLineSpan.INSTANCE.AllocationSize(variant_value.Lines);
+            case CsvImportOutcome.Unknown variant_value:
+                return 4
+                    + FfiConverterTypeBoxedErrorInfo.INSTANCE.AllocationSize(variant_value.Error);
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCsvImportOutcome.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(CsvImportOutcome value, BigEndianStream stream) {
+        switch (value) {
+            case CsvImportOutcome.Imported variant_value:
+                stream.WriteInt(1);
+                FfiConverterUInt64.INSTANCE.Write(variant_value.Rows, stream);
+                break;
+            case CsvImportOutcome.RolledBack variant_value:
+                stream.WriteInt(2);
+                FfiConverterTypeBoxedErrorInfo.INSTANCE.Write(variant_value.Error, stream);
+                FfiConverterOptionalTypeLineSpan.INSTANCE.Write(variant_value.Lines, stream);
+                break;
+            case CsvImportOutcome.PartlyWritten variant_value:
+                stream.WriteInt(3);
+                FfiConverterTypeBoxedErrorInfo.INSTANCE.Write(variant_value.Error, stream);
+                FfiConverterUInt64.INSTANCE.Write(variant_value.WrittenRows, stream);
+                FfiConverterOptionalTypeLineSpan.INSTANCE.Write(variant_value.Lines, stream);
+                break;
+            case CsvImportOutcome.Unknown variant_value:
+                stream.WriteInt(4);
+                FfiConverterTypeBoxedErrorInfo.INSTANCE.Write(variant_value.Error, stream);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCsvImportOutcome.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal enum DataModelTag: int {
     Relational,
     KeyValue,
@@ -12238,6 +14764,48 @@ class FfiConverterTypeDataModelTag: FfiConverterRustBuffer<DataModelTag> {
             case DataModelTag.KeyValue: stream.WriteInt(2); break;
             case DataModelTag.Document: stream.WriteInt(3); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeDataModelTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal enum DatabaseEnvironmentTag: int {
+    Development,
+    Testing,
+    Production,
+    Unassigned
+}
+
+class FfiConverterTypeDatabaseEnvironmentTag: FfiConverterRustBuffer<DatabaseEnvironmentTag> {
+    public static FfiConverterTypeDatabaseEnvironmentTag INSTANCE = new FfiConverterTypeDatabaseEnvironmentTag();
+
+    public override DatabaseEnvironmentTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return DatabaseEnvironmentTag.Development;
+            case 2: return DatabaseEnvironmentTag.Testing;
+            case 3: return DatabaseEnvironmentTag.Production;
+            case 4: return DatabaseEnvironmentTag.Unassigned;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeDatabaseEnvironmentTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(DatabaseEnvironmentTag value) {
+        return 4;
+    }
+
+    public override void Write(DatabaseEnvironmentTag value, BigEndianStream stream) {
+        switch (value) {
+            case DatabaseEnvironmentTag.Development: stream.WriteInt(1); break;
+            case DatabaseEnvironmentTag.Testing: stream.WriteInt(2); break;
+            case DatabaseEnvironmentTag.Production: stream.WriteInt(3); break;
+            case DatabaseEnvironmentTag.Unassigned: stream.WriteInt(4); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeDatabaseEnvironmentTag.Write()", value));
         }
     }
 }
@@ -12901,6 +15469,42 @@ class FfiConverterTypeFilterValueArg : FfiConverterRustBuffer<FilterValueArg>{
                 break;
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeFilterValueArg.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal enum HistoryExportFormat: int {
+    Sql,
+    Csv
+}
+
+class FfiConverterTypeHistoryExportFormat: FfiConverterRustBuffer<HistoryExportFormat> {
+    public static FfiConverterTypeHistoryExportFormat INSTANCE = new FfiConverterTypeHistoryExportFormat();
+
+    public override HistoryExportFormat Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return HistoryExportFormat.Sql;
+            case 2: return HistoryExportFormat.Csv;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeHistoryExportFormat.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(HistoryExportFormat value) {
+        return 4;
+    }
+
+    public override void Write(HistoryExportFormat value, BigEndianStream stream) {
+        switch (value) {
+            case HistoryExportFormat.Sql: stream.WriteInt(1); break;
+            case HistoryExportFormat.Csv: stream.WriteInt(2); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeHistoryExportFormat.Write()", value));
         }
     }
 }
@@ -16568,6 +19172,37 @@ class FfiConverterOptionalTypeHostKeyFailure: FfiConverterRustBuffer<HostKeyFail
 
 
 
+class FfiConverterOptionalTypeLineSpan: FfiConverterRustBuffer<LineSpan?> {
+    public static FfiConverterOptionalTypeLineSpan INSTANCE = new FfiConverterOptionalTypeLineSpan();
+
+    public override LineSpan? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeLineSpan.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(LineSpan? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeLineSpan.INSTANCE.AllocationSize((LineSpan)value);
+        }
+    }
+
+    public override void Write(LineSpan? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeLineSpan.INSTANCE.Write((LineSpan)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalTypeMaskSuggestionInfo: FfiConverterRustBuffer<MaskSuggestionInfo?> {
     public static FfiConverterOptionalTypeMaskSuggestionInfo INSTANCE = new FfiConverterOptionalTypeMaskSuggestionInfo();
 
@@ -17694,6 +20329,98 @@ class FfiConverterSequenceTypeEditColumnInfo: FfiConverterRustBuffer<EditColumnI
 
 
 
+class FfiConverterSequenceTypeFavouriteDatabaseInfo: FfiConverterRustBuffer<FavouriteDatabaseInfo[]> {
+    public static FfiConverterSequenceTypeFavouriteDatabaseInfo INSTANCE = new FfiConverterSequenceTypeFavouriteDatabaseInfo();
+
+    public override FavouriteDatabaseInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new FavouriteDatabaseInfo[length];
+        var readFn = FfiConverterTypeFavouriteDatabaseInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(FavouriteDatabaseInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeFavouriteDatabaseInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(FavouriteDatabaseInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeFavouriteDatabaseInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeFavouriteTableInfo: FfiConverterRustBuffer<FavouriteTableInfo[]> {
+    public static FfiConverterSequenceTypeFavouriteTableInfo INSTANCE = new FfiConverterSequenceTypeFavouriteTableInfo();
+
+    public override FavouriteTableInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new FavouriteTableInfo[length];
+        var readFn = FfiConverterTypeFavouriteTableInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(FavouriteTableInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeFavouriteTableInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(FavouriteTableInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeFavouriteTableInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
 class FfiConverterSequenceTypeFilterColumn: FfiConverterRustBuffer<FilterColumn[]> {
     public static FfiConverterSequenceTypeFilterColumn INSTANCE = new FfiConverterSequenceTypeFilterColumn();
 
@@ -17871,6 +20598,52 @@ class FfiConverterSequenceTypeHistoryEntryInfo: FfiConverterRustBuffer<HistoryEn
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeHistoryEntryInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeImportColumnInfo: FfiConverterRustBuffer<ImportColumnInfo[]> {
+    public static FfiConverterSequenceTypeImportColumnInfo INSTANCE = new FfiConverterSequenceTypeImportColumnInfo();
+
+    public override ImportColumnInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new ImportColumnInfo[length];
+        var readFn = FfiConverterTypeImportColumnInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(ImportColumnInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeImportColumnInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(ImportColumnInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeImportColumnInfo.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }
@@ -18193,6 +20966,98 @@ class FfiConverterSequenceTypeResultColumnInfo: FfiConverterRustBuffer<ResultCol
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeResultColumnInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeSavedQueryFolderInfo: FfiConverterRustBuffer<SavedQueryFolderInfo[]> {
+    public static FfiConverterSequenceTypeSavedQueryFolderInfo INSTANCE = new FfiConverterSequenceTypeSavedQueryFolderInfo();
+
+    public override SavedQueryFolderInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new SavedQueryFolderInfo[length];
+        var readFn = FfiConverterTypeSavedQueryFolderInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(SavedQueryFolderInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeSavedQueryFolderInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(SavedQueryFolderInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeSavedQueryFolderInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeSavedQueryInfo: FfiConverterRustBuffer<SavedQueryInfo[]> {
+    public static FfiConverterSequenceTypeSavedQueryInfo INSTANCE = new FfiConverterSequenceTypeSavedQueryInfo();
+
+    public override SavedQueryInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new SavedQueryInfo[length];
+        var readFn = FfiConverterTypeSavedQueryInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(SavedQueryInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeSavedQueryInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(SavedQueryInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeSavedQueryInfo.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }
@@ -18975,6 +21840,98 @@ class FfiConverterSequenceTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag[]> {
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeTlsModeTag.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceOptionalUInt32: FfiConverterRustBuffer<uint?[]> {
+    public static FfiConverterSequenceOptionalUInt32 INSTANCE = new FfiConverterSequenceOptionalUInt32();
+
+    public override uint?[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new uint?[length];
+        var readFn = FfiConverterOptionalUInt32.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(uint?[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterOptionalUInt32.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(uint?[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterOptionalUInt32.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceSequenceString: FfiConverterRustBuffer<string[][]> {
+    public static FfiConverterSequenceSequenceString INSTANCE = new FfiConverterSequenceSequenceString();
+
+    public override string[][]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new string[length][];
+        var readFn = FfiConverterSequenceString.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(string[][]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterSequenceString.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(string[][] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterSequenceString.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }

@@ -39,6 +39,7 @@
                 <MenuFlyoutItem x:Uid="MenuImport" x:Name="MenuImport" Click="OnImport">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Import" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuExportConnections" x:Name="MenuExportConnections" Click="OnExportConnections" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuNewQueryTab" x:Name="MenuNewQueryTab" Click="OnNewQueryTab" IsEnabled="False">
                     <MenuFlyoutItem.KeyboardAccelerators>
@@ -149,6 +150,7 @@
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <ToggleMenuFlyoutItem x:Uid="MenuShowHistory" x:Name="MenuShowHistory" Click="OnToggleHistory" IsEnabled="False" />
+                <ToggleMenuFlyoutItem x:Uid="MenuShowSavedQueries" x:Name="MenuShowSavedQueries" Click="OnToggleSavedQueries" IsEnabled="False" />
             </MenuBarItem>
 
             <MenuBarItem x:Uid="DatabaseMenu" x:Name="DatabaseMenu">
@@ -183,6 +185,11 @@
                     <MenuFlyoutItem.KeyboardAccelerators>
                         <KeyboardAccelerator Modifiers="Shift" Key="F5" />
                     </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <!-- No shortcut: Ctrl+D is the editor's next occurrence. -->
+                <MenuFlyoutItem x:Uid="MenuSaveQuery" x:Name="MenuSaveQuery" Click="OnSaveQuery" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Save" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuFilterRows" x:Name="MenuFilterRows" Click="OnFilterRows" IsEnabled="False">
