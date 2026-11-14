@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -12,7 +13,7 @@ using TablePro.Interop;
 namespace TablePro.App.Views;
 
 // Data and Structure over one table; the page, its count and filter, every reload and every save are TableTab's.
-public sealed partial class TableTabView : UserControl, ITabContent, ITableTabView, IShareSource
+public sealed partial class TableTabView : UserControl, ITabContent, ITableTabView, IShareSource, IExportSource
 {
     private readonly TableTab _model;
     private bool _messagesIsTarget;
@@ -74,6 +75,11 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     // Share... on the grid's menu shares the page shown; the workspace opens the sheet.
     public event EventHandler<ShareKind>? ShareRequested;
+
+    public event EventHandler? ExportRequested;
+
+    // A foreign key's rows to open, in a tab of the workspace that holds this one.
+    public event EventHandler<FollowedReference.Rows>? ReferenceRequested;
 
     // The open cell editor's text changed, which the session file keeps as a draft.
     public event EventHandler? DraftChanged;
@@ -643,31 +649,99 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
-        var copy = new MenuFlyoutItem { Text = Strings.Get("GridMenuCopy"), IsEnabled = grid.RowCount > 0 };
-        copy.Click += async (_, _) => await grid.CopySelectionAsync().ConfigureAwait(true);
-        menu.Items.Add(copy);
+        menu.Items.Add(GridMenus.Copy(grid));
+        menu.Items.Add(GridMenus.ViewValue(Results));
+        AddReferences(menu, _model.ReferencesAt(row, column));
         menu.Items.Add(new MenuFlyoutSeparator());
-        var share = new MenuFlyoutItem
+        var finished = !IsRunning && Results.ShownSet is { IsFinished: true };
+        menu.Items.Add(GridMenus.Item("GridMenuExport", finished, () => ExportRequested?.Invoke(this, EventArgs.Empty)));
+        menu.Items.Add(GridMenus.Item(
+            "ShareCommand",
+            finished && !_model.HasUnsavedChanges,
+            () => ShareRequested?.Invoke(this, ShareKind.Result),
+            Symbol.Share));
+        GridMenus.Show(menu, grid, args);
+    }
+
+    // One key the cell's column is in opens from the menu itself; several, and every key pointing at the row, are
+    // listed by the other table and the key's columns, which tell two keys into one table apart.
+    private void AddReferences(MenuFlyout menu, ReferenceMenu references)
+    {
+        if (references.References.IsEmpty)
         {
-            Text = Strings.Get("ShareCommand"),
-            Icon = new SymbolIcon(Symbol.Share),
-            IsEnabled = !IsRunning && !_model.HasUnsavedChanges && Results.ShownSet is { IsFinished: true },
-        };
-        share.Click += (_, _) => ShareRequested?.Invoke(this, ShareKind.Result);
-        menu.Items.Add(share);
-        if (args.TryGetPosition(grid, out var point))
-        {
-            menu.ShowAt(grid, new FlyoutShowOptions { Position = point });
+            return;
         }
-        else if (grid.FocusedCellMenuPoint() is { } cell)
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var open = Labels(references.References.Referenced);
+        if (open.Count == 1)
         {
-            // From the keyboard, the menu opens at the cell it acts on, not over the editor.
-            menu.ShowAt(grid, new FlyoutShowOptions { Position = cell });
+            menu.Items.Add(ReferenceItem(Strings.Get("GridMenuOpenReferenced"), references, open[0].Choice, "OpenReferencedRow"));
         }
-        else
+        else if (open.Count > 1)
         {
-            menu.ShowAt(grid);
+            var choose = new MenuFlyoutSubItem { Text = Strings.Get("GridMenuOpenReferenced") };
+            foreach (var (label, choice) in open)
+            {
+                choose.Items.Add(ReferenceItem(label, references, choice, null));
+            }
+
+            menu.Items.Add(choose);
         }
+
+        var pointing = Labels(references.References.Referencing);
+        if (pointing.Count > 0)
+        {
+            var show = new MenuFlyoutSubItem { Text = Strings.Get("GridMenuShowReferencing") };
+            foreach (var (label, choice) in pointing)
+            {
+                show.Items.Add(ReferenceItem(label, references, choice, null));
+            }
+
+            menu.Items.Add(show);
+        }
+    }
+
+    private MenuFlyoutItem ReferenceItem(string label, ReferenceMenu references, RowReferenceChoice choice, string? automationId)
+    {
+        var item = new MenuFlyoutItem { Text = label };
+        if (automationId is not null)
+        {
+            AutomationProperties.SetAutomationId(item, automationId);
+        }
+
+        item.Click += (_, _) => FollowReference(references, choice);
+        return item;
+    }
+
+    // A key that cannot be followed is still offered, so choosing it says why.
+    private void FollowReference(ReferenceMenu references, RowReferenceChoice choice)
+    {
+        switch (_model.Follow(references, choice))
+        {
+            case FollowedReference.Refused refused:
+                Results.ShowNotice(Strings.Format("Reference" + refused.Refusal, refused.Subject));
+                break;
+            case FollowedReference.Rows rows:
+                ReferenceRequested?.Invoke(this, rows);
+                break;
+            default:
+                break;
+        }
+    }
+
+    private List<(string Label, RowReferenceChoice Choice)> Labels(IReadOnlyList<RowReferenceChoice> choices)
+    {
+        var shorts = choices.Select(choice =>
+        {
+            var table = choice.Table.Schema is { } schema && !string.Equals(schema, _model.Table.Schema, StringComparison.Ordinal)
+                ? $"{schema}.{choice.Table.Name}"
+                : choice.Table.Name;
+            return Strings.Format("ReferenceKey", table, string.Join(", ", choice.Columns));
+        }).ToList();
+        var counts = shorts.CountBy(label => label).ToDictionary(StringComparer.Ordinal);
+        return [.. choices.Select((choice, index) =>
+            (counts[shorts[index]] > 1 ? Strings.Format("ReferenceKeyThrough", shorts[index], choice.KeyName) : shorts[index], choice))];
     }
 
     private MenuFlyoutItem ValueItem(string text, int row, int column, CellValueKind kind) =>

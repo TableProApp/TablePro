@@ -260,6 +260,9 @@ internal sealed class DefinitionSession : ITabSession
         CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 
+    public Task<ITableKeys> ReadTableKeysAsync(TableName table, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
     public RunGate GateRun(string sql) => throw new NotSupportedException();
 
     public Range? StatementAt(string sql, int caret) => throw new NotSupportedException();
