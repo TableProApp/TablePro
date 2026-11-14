@@ -19,12 +19,10 @@ struct MultiConnectionNavigationTests {
     ) -> (coordinator: MainContentCoordinator, tabManager: QueryTabManager) {
         let connection = TestFixtures.makeConnection(id: id, name: name, database: database, type: type)
         let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
         let toolbarState = ConnectionToolbarState()
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             toolbarState: toolbarState
         )
         return (coordinator, tabManager)

@@ -34,7 +34,9 @@ struct MainContentView: View {
     // MARK: - State Objects
 
     @ObservedObject var tabManager: QueryTabManager
-    @ObservedObject var changeManager: DataChangeManager
+    // The selected tab's edits; each tab keeps its own, and this follows the selection.
+    @ObservedObject var selectedEdits: SelectedTabEdits
+    var changeManager: DataChangeManager { selectedEdits.manager }
     @ObservedObject var toolbarState: ConnectionToolbarState
     @ObservedObject var coordinator: MainContentCoordinator
 
@@ -63,7 +65,6 @@ struct MainContentView: View {
         tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>,
         trailingPaneState: TrailingPaneState,
         tabManager: QueryTabManager,
-        changeManager: DataChangeManager,
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator
     ) {
@@ -77,7 +78,7 @@ struct MainContentView: View {
         self._tableOperationOptions = tableOperationOptions
         self.trailingPaneState = trailingPaneState
         self.tabManager = tabManager
-        self.changeManager = changeManager
+        self.selectedEdits = coordinator.selectedTabEdits
         self.toolbarState = toolbarState
         self.coordinator = coordinator
     }
@@ -530,7 +531,7 @@ struct MainContentView: View {
             tabManager: tabManager,
             coordinator: coordinator,
             historyState: HistoryPanelState.forConnection(connection.id),
-            changeManager: changeManager,
+            selectedEdits: selectedEdits,
             connection: connection,
             windowId: windowId,
             connectionId: connection.id,

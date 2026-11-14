@@ -28,6 +28,7 @@ A table tab edits its page as the macOS app does, with the commands and words of
 - A value still in the open editor counts as a pending change: Save takes it, and every close asks about it.
 - A sort, a page, a page size or Refresh asks "Discard unsaved changes?" while changes are pending, as macOS asks, since the edits name rows of the page shown. An open edit is kept first; one the grid cannot keep holds the reload back.
 - Closing the tab, Disconnect, Reconnect, connecting an edited connection, closing the window and Exit show the tab and ask "Do you want to save changes to name?" with Save, Don't save and Cancel, beside the questions about held transactions. The workspace asks, since a tab that is not shown is out of the tree. A save that fails keeps the tab open and the window with it. A close while a save runs waits for it and asks only about what it left pending. Making the connection read only asks with Don't save and Cancel alone, since the changes would not be written there.
+- Windows ending the app without asking, as a forced update or "Sign out anyway" does, leaves them in the session file by key, and the relaunch puts them back as pending ([0004](0004-app-shell.md), Workspace, An open transaction).
 
 ### Saving
 

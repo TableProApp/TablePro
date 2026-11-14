@@ -52,9 +52,6 @@ extension MainContentCoordinator {
             if confirmed {
                 rowEditingCoordinator.restoreRowBufferToOriginals()
                 changeManager.clearChangesAndUndoHistory()
-                if let (_, index) = tabManager.selectedTabAndIndex {
-                    tabManager.mutate(at: index) { $0.pendingChanges = TabChangeSnapshot() }
-                }
             }
             completion(confirmed)
         }

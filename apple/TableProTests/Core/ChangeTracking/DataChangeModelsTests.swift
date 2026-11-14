@@ -110,55 +110,6 @@ struct DataChangeModelsTests {
         #expect(rowChange.type == .insert)
     }
 
-    @Test("TabChangeSnapshot initializes as empty")
-    func tabPendingChangesInit() {
-        let pending = TabChangeSnapshot()
-
-        #expect(pending.changes.isEmpty)
-        #expect(pending.deletedRowIDs.isEmpty)
-        #expect(pending.insertedRowIDs.isEmpty)
-        #expect(pending.modifiedCells.isEmpty)
-        #expect(pending.insertedRowData.isEmpty)
-        #expect(pending.primaryKeyColumns.isEmpty)
-        #expect(pending.columns.isEmpty)
-    }
-
-    @Test("TabChangeSnapshot hasChanges is false when empty")
-    func tabPendingChangesHasChangesEmpty() {
-        let pending = TabChangeSnapshot()
-
-        #expect(!pending.hasChanges)
-    }
-
-    @Test("TabChangeSnapshot hasChanges is true with changes")
-    func tabPendingChangesHasChangesWithChanges() {
-        let rowChange = RowChange(
-            rowID: .existing(0),
-            type: .update
-        )
-
-        var pending = TabChangeSnapshot()
-        pending.changes = [rowChange]
-
-        #expect(pending.hasChanges)
-    }
-
-    @Test("TabChangeSnapshot hasChanges is true with deletedRowIDs")
-    func tabPendingChangesHasChangesWithDeleted() {
-        var pending = TabChangeSnapshot()
-        pending.deletedRowIDs = [.existing(1), .existing(2), .existing(3)]
-
-        #expect(pending.hasChanges)
-    }
-
-    @Test("TabChangeSnapshot hasChanges is true with insertedRowIDs")
-    func tabPendingChangesHasChangesWithInserted() {
-        var pending = TabChangeSnapshot()
-        pending.insertedRowIDs = [.inserted(UUID()), .inserted(UUID())]
-
-        #expect(pending.hasChanges)
-    }
-
     @Test("Array safe subscript with valid index")
     func arraySafeSubscriptValid() {
         let array = ["a", "b", "c"]

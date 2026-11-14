@@ -1000,7 +1000,6 @@ internal final class MainSplitViewController: NSSplitViewController {
                     tableOperationOptions: sessionBinding(for: workspace, get: { $0.tableOperationOptions }, set: { $0.tableOperationOptions = $1 }, defaultValue: [:]),
                     trailingPaneState: trailingPaneState,
                     tabManager: sessionState.tabManager,
-                    changeManager: sessionState.changeManager,
                     toolbarState: sessionState.toolbarState,
                     coordinator: sessionState.coordinator
                 )

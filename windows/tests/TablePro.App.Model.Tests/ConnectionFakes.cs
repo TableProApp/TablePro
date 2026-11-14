@@ -114,6 +114,6 @@ internal sealed class FakeConnectionView : IConnectionView<FakeDatabase>
         return Task.CompletedTask;
     }
 
-    public SessionConnection Snapshot(SessionConnection origin) =>
+    public SessionConnection Snapshot(SessionConnection origin, bool withWork) =>
         Share is null ? origin : origin with { Tabs = Strip };
 }

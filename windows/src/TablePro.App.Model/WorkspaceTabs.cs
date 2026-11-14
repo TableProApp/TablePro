@@ -21,6 +21,9 @@ public interface IWorkspaceTab
 
     SessionTab Snapshot();
 
+    // For the session's own writes alone: what an end without a close would lose, which a relaunch brings back.
+    SessionTab WithPendingWork(SessionTab snapshot);
+
     // Once only, however often it is asked for: the tab lets go of its session exactly once.
     Task CloseAsync();
 }

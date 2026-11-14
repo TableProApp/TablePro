@@ -393,7 +393,6 @@ struct ERDiagramSchemaEditsTests {
         let coordinator = MainContentCoordinator(
             connection: fixture.connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         tabManager.addERDiagramTab(schemaKey: "shop.public", databaseName: "shop", schemaName: "public")
@@ -426,7 +425,6 @@ struct ERDiagramSchemaEditsTests {
         let coordinator = MainContentCoordinator(
             connection: fixture.connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         tabManager.addERDiagramTab(schemaKey: "shop.public", databaseName: "shop", schemaName: "public")

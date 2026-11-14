@@ -564,11 +564,27 @@ internal sealed class FakeTableView : ITableTabView
 
     public List<int> Focused { get; } = [];
 
+    // What each recovered notice said: the changes put back, the ones still waiting, and whether Save waits.
+    public List<(int Restored, int Waiting, bool SaveBlocked)> Recovered { get; } = [];
+
     public bool ShowsAllRows { get; set; } = true;
 
     public bool CommitsOpenEdit { get; set; } = true;
 
     public bool HasOpenEdit { get; set; }
+
+    public CellDraft? OpenDraft { get; set; }
+
+    public int SessionWrites { get; private set; }
+
+    // What the window does as it writes the session file before a save.
+    public Action? OnSessionWrite { get; set; }
+
+    public void WriteSessionNow()
+    {
+        SessionWrites++;
+        OnSessionWrite?.Invoke();
+    }
 
     // What keeping the open editor's text does, as the grid raises CellEditCommitting.
     public Action? OnCommit { get; set; }
@@ -671,6 +687,9 @@ internal sealed class FakeTableView : ITableTabView
     public void ShowStructureFailed(CoreError failure) => StructureFailures.Add(failure);
 
     public void ShowFilterChoicesFailed(CoreError failure) => ChoicesFailures.Add(failure);
+
+    public void ShowRecovered(int restored, int waiting, bool saveBlocked) =>
+        Recovered.Add((restored, waiting, saveBlocked));
 }
 
 // A stored cell reads "r{row}c{column}", and each change plans one statement named for its kind.
@@ -705,6 +724,10 @@ internal sealed class FakeTableEditor : ITableEditor
 
     public Func<long, int, EditStart> Start { get; set; } = (row, column) => new EditStart.Editable(Stored(row, column), IsNull: false);
 
+    // Any cell's stored value with its kind, the key's too, which names a row in the session file.
+    public Func<long, int, StoredValue> Values { get; set; } =
+        (row, column) => new StoredValue(column == 0 ? ValueKind.Integer : ValueKind.Text, Stored(row, column));
+
     public Func<int, CellEdit, bool, CoreError?> Checker { get; set; } = (_, _, _) => null;
 
     public SaveGate Verdict { get; set; } = SaveGate.Run;
@@ -729,6 +752,9 @@ internal sealed class FakeTableEditor : ITableEditor
     public EditLock? LockFor(ResultSet? rows) => PageLock;
 
     public EditStart GetEditStart(ResultSet? rows, long row, int column) => Start(row, column);
+
+    public IReadOnlyList<StoredValue> GetStoredValues(ResultSet? rows, int column, long firstRow, int rowCount) =>
+        [.. Enumerable.Range(0, rowCount).Select(row => Values(firstRow + row, column))];
 
     public CoreError? Check(int column, CellEdit edit, bool newRow) => Checker(column, edit, newRow);
 

@@ -19,4 +19,7 @@ internal interface IWorkspaceHost
     void TearOut(TabViewItem tab, WindowId window);
 
     void MoveToNewWindow(TabViewItem tab);
+
+    // At once and on this thread, before a table tab's save sends anything; a refused write is logged.
+    void WriteSessionNow();
 }

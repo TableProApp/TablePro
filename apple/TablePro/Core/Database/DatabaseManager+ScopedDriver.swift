@@ -23,6 +23,13 @@ enum ScopedDriverRoute: Equatable {
     }
 }
 
+// Who hears of a lost session: `.statements`, text someone wrote, and `.app`, work the app builds, each once; never `.independent`.
+enum SessionWork: Sendable {
+    case independent
+    case app
+    case statements
+}
+
 /// What a table read's turn on the session driver came to.
 private enum TableReadTurn: Sendable {
     case ran(any Sendable)
@@ -79,7 +86,7 @@ extension DatabaseManager {
         }
         // A database the user has browsed keeps its own session connection, so its tabs carry on in the transaction,
         // temp tables and settings they left there. A database whose connection ended holding a transaction or session
-        // state takes the session path once more, where that loss is reported before anything runs on a replacement.
+        // state takes the session path once more, where the next statements hear of that loss before they run.
         if usesDatabaseLanes(session) {
             if sessionLanes.parkedDriver(for: scope.connectionId, database: scope.database) != nil {
                 return .sessionDriver
@@ -114,7 +121,7 @@ extension DatabaseManager {
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload = .interactive,
         cancellation: DriverCancellationPolicy,
-        ownsSessionState: Bool = true,
+        sessionWork: SessionWork = .app,
         readsOnly: Bool = false,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
@@ -124,7 +131,7 @@ extension DatabaseManager {
                 route: route,
                 workload: workload,
                 cancellation: cancellation,
-                ownsSessionState: ownsSessionState,
+                sessionWork: sessionWork,
                 readsOnly: readsOnly
             ) { driver in
                 try await body(driver)
@@ -138,7 +145,7 @@ extension DatabaseManager {
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload,
         cancellation: DriverCancellationPolicy,
-        ownsSessionState: Bool,
+        sessionWork: SessionWork,
         readsOnly: Bool,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
     ) async throws -> any Sendable {
@@ -152,7 +159,7 @@ extension DatabaseManager {
             )
         case .sessionDriver:
             return try await withPinnedSessionDriver(
-                scope: scope, ownsSessionState: ownsSessionState, readsOnly: readsOnly, leased
+                scope: scope, sessionWork: sessionWork, readsOnly: readsOnly, leased
             )
         }
     }
@@ -170,7 +177,7 @@ extension DatabaseManager {
         scope: DatabaseScope,
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload = .interactive,
-        ownsSessionState: Bool = true,
+        sessionWork: SessionWork = .app,
         readsOnly: Bool = false,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
@@ -179,7 +186,7 @@ extension DatabaseManager {
                 scope: scope,
                 route: route,
                 workload: workload,
-                ownsSessionState: ownsSessionState,
+                sessionWork: sessionWork,
                 readsOnly: readsOnly
             ) { driver in
                 try await body(driver)
@@ -191,7 +198,7 @@ extension DatabaseManager {
         scope: DatabaseScope,
         route: ScopedDriverRoute,
         workload: MetadataConnectionPool.Workload,
-        ownsSessionState: Bool,
+        sessionWork: SessionWork,
         readsOnly: Bool,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
     ) async throws -> any Sendable {
@@ -203,7 +210,7 @@ extension DatabaseManager {
                 route: route,
                 workload: workload,
                 cancellation: .cancellableRead(owner),
-                ownsSessionState: ownsSessionState,
+                sessionWork: sessionWork,
                 readsOnly: readsOnly,
                 body
             )
@@ -439,11 +446,11 @@ extension DatabaseManager {
 
     private func withPinnedSessionDriver<T: Sendable>(
         scope: DatabaseScope,
-        ownsSessionState: Bool,
+        sessionWork: SessionWork,
         readsOnly: Bool,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        try await withSessionDriverTurn(scope: scope, ownsSessionState: ownsSessionState, readsOnly: readsOnly) { driver in
+        try await withSessionDriverTurn(scope: scope, sessionWork: sessionWork, readsOnly: readsOnly) { driver in
             try await pin(driver, to: scope)
             return try await body(driver)
         }
@@ -456,7 +463,7 @@ extension DatabaseManager {
         scope: DatabaseScope,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
     ) async throws -> TableReadTurn {
-        try await withSessionDriverTurn(scope: scope, ownsSessionState: false, readsOnly: true) { driver in
+        try await withSessionDriverTurn(scope: scope, sessionWork: .independent, readsOnly: true) { driver in
             let route = tableReadRoute(for: scope)
             guard route == .sessionDriver else { return .moved(route) }
             try await pin(driver, to: scope)
@@ -464,12 +471,10 @@ extension DatabaseManager {
         }
     }
 
-    // `ownsSessionState` is false for a table read or a metadata read, which depend on nothing the session holds. Such
-    // a turn neither opens a session connection nor takes the report of a lost session, which is kept for the next
-    // turn that owns session state. That turn is refused once with the whole loss, whatever work it is.
+    // Statements and the app's own work each take a lost session's report once; work on a temporary table it took is refused.
     private func withSessionDriverTurn<R>(
         scope: DatabaseScope,
-        ownsSessionState: Bool,
+        sessionWork: SessionWork,
         readsOnly: Bool = false,
         _ turn: (DatabaseDriver) async throws -> R
     ) async throws -> R {
@@ -509,7 +514,13 @@ extension DatabaseManager {
                 guard let lane else {
                     // A driver replaced while it held a transaction or session state, by a reconnect or a Vault lease
                     // rotation.
-                    if ownsSessionState, let lost = sessionLanes.takeAnyLoss(for: connectionId) {
+                    if sessionWork == .statements, let lost = sessionLanes.takeAnyLoss(for: connectionId) {
+                        throw DatabaseError.connectionFailed(Self.sessionLostMessage(database: lost.database, loss: lost.loss))
+                    }
+                    if scope.isSessionBound, sessionLanes.anyLossIncludes(.temporaryObjects, for: connectionId) {
+                        throw DatabaseError.connectionFailed(Self.temporaryTableLostMessage(database: scope.database))
+                    }
+                    if sessionWork == .app, let lost = sessionLanes.takeAnyAppLoss(for: connectionId) {
                         throw DatabaseError.connectionFailed(Self.sessionLostMessage(database: lost.database, loss: lost.loss))
                     }
                     return try await recordingTransaction(
@@ -521,9 +532,9 @@ extension DatabaseManager {
                 let driver: DatabaseDriver
                 if let held = sessionDriver(for: connectionId, laneDatabase: lane) {
                     driver = held
-                } else if ownsSessionState, !scope.isSessionBound,
+                } else if sessionWork != .independent, !scope.isSessionBound,
                           startsWithoutLane || sessionLanes.wasClosedIdle(database: lane, for: connectionId),
-                          !sessionLanes.hasLoss(database: lane, for: connectionId) {
+                          sessionWork == .app || !sessionLanes.hasLoss(database: lane, for: connectionId) {
                     driver = try await openedLaneDriver(database: lane, for: connectionId)
                 } else {
                     driver = browsedDriver
@@ -531,7 +542,13 @@ extension DatabaseManager {
                 let laneDriver = sessionLanes.isParked(driver, for: connectionId)
                     ? try await verifiedParkedDriver(driver, database: lane, for: connectionId)
                     : driver
-                if ownsSessionState, let loss = sessionLanes.takeLoss(database: lane, for: connectionId) {
+                if sessionWork == .statements, let loss = sessionLanes.takeLoss(database: lane, for: connectionId) {
+                    throw DatabaseError.connectionFailed(Self.sessionLostMessage(database: lane, loss: loss))
+                }
+                if scope.isSessionBound, sessionLanes.lossIncludes(.temporaryObjects, database: lane, for: connectionId) {
+                    throw DatabaseError.connectionFailed(Self.temporaryTableLostMessage(database: lane))
+                }
+                if sessionWork == .app, let loss = sessionLanes.takeAppLoss(database: lane, for: connectionId) {
                     throw DatabaseError.connectionFailed(Self.sessionLostMessage(database: lane, loss: loss))
                 }
                 sessionLanes.noteOpenedUse(database: lane, for: connectionId)
@@ -612,8 +629,8 @@ extension DatabaseManager {
     }
 
     // A parked connection nobody watched may have died while it sat idle. One that no longer answers is replaced
-    // before the work runs, and if it held a transaction or session state the work is refused once, because running it
-    // on the new connection would carry on as if the server had not just dropped them.
+    // before the work runs, and if it held a transaction or session state the next statements are refused once, because
+    // running them on the new connection would carry on as if the server had not just dropped them.
     private func verifiedParkedDriver(
         _ driver: DatabaseDriver,
         database: String,

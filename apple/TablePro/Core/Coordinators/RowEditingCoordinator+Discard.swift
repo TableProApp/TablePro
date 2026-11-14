@@ -63,10 +63,6 @@ extension RowEditingCoordinator {
         pendingTruncates.removeAll()
         pendingDeletes.removeAll()
         parent.changeManager.clearChangesAndUndoHistory()
-
-        if let (_, index) = parent.tabManager.selectedTabAndIndex {
-            parent.tabManager.mutate(at: index) { $0.pendingChanges = TabChangeSnapshot() }
-        }
         parent.resumeDeferredTableRefresh()
     }
 

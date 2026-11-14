@@ -108,7 +108,6 @@ struct TableLoadConfirmationTests {
             let coordinator = MainContentCoordinator(
                 connection: connection,
                 tabManager: QueryTabManager(),
-                changeManager: DataChangeManager(),
                 toolbarState: toolbarState
             )
             coordinator.executionGate = gate

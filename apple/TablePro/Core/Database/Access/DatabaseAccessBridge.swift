@@ -597,7 +597,8 @@ internal actor DatabaseAccessBridge {
         return try await manager.withScopedDriver(
             scope: scope,
             route: route,
-            cancellation: .protectedWrite
+            cancellation: .protectedWrite,
+            sessionWork: .statements
         ) { driver -> (affected: Int, notice: String?) in
             reach.mark()
             // The hold and savepoint execute_query gets, so a Manual Commit insert waits for Commit too.
@@ -691,7 +692,8 @@ internal actor DatabaseAccessBridge {
         try await manager.withScopedDriver(
             scope: scope,
             route: .sessionDriver,
-            cancellation: .protectedWrite
+            cancellation: .protectedWrite,
+            sessionWork: .statements
         ) { driver in
             reach.mark()
             switch action {
@@ -829,7 +831,9 @@ internal actor DatabaseAccessBridge {
                 timeoutSeconds: timeoutSeconds,
                 onLateCompletion: onLateCompletion
             ) { enterDriver in
-                try await manager.withScopedDriver(scope: scope, route: route, cancellation: policy) { driver in
+                try await manager.withScopedDriver(
+                    scope: scope, route: route, cancellation: policy, sessionWork: .statements
+                ) { driver in
                     try enterDriver()
                     return try await body(driver)
                 }
@@ -841,6 +845,7 @@ internal actor DatabaseAccessBridge {
                     scope: scope,
                     route: route,
                     cancellation: policy,
+                    sessionWork: .statements,
                     body
                 )
             }

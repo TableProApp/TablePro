@@ -218,7 +218,6 @@ private final class AutoRefreshHarness {
         coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState(),
             services: AppServices.live.replacingQueryHistory(history)
         )

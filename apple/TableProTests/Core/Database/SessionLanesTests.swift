@@ -498,7 +498,7 @@ struct SessionLanesTests {
 
         await #expect(throws: (any Error).self) {
             try await DatabaseManager.shared.withScopedDriver(
-                scope: scope, route: .sessionDriver, cancellation: .untracked
+                scope: scope, route: .sessionDriver, cancellation: .untracked, sessionWork: .statements
             ) { _ in () }
         }
 
@@ -506,7 +506,7 @@ struct SessionLanesTests {
         #expect(harness.home.disconnectCallCount == 1)
         #expect(DatabaseManager.shared.sessionLanes.parkedDriver(for: harness.connection.id, database: "app") === replacement)
         let ranOn = try await DatabaseManager.shared.withScopedDriver(
-            scope: scope, route: .sessionDriver, cancellation: .untracked
+            scope: scope, route: .sessionDriver, cancellation: .untracked, sessionWork: .statements
         ) { driver in ObjectIdentifier(driver) }
         #expect(ranOn == ObjectIdentifier(replacement))
     }
@@ -547,11 +547,11 @@ struct SessionLanesTests {
         let scope = DatabaseScope(connectionId: harness.connection.id, database: "app", schema: nil)
         await #expect(throws: (any Error).self) {
             try await DatabaseManager.shared.withScopedDriver(
-                scope: scope, route: .sessionDriver, cancellation: .untracked
+                scope: scope, route: .sessionDriver, cancellation: .untracked, sessionWork: .statements
             ) { _ in () }
         }
         let ranOn = try await DatabaseManager.shared.withScopedDriver(
-            scope: scope, route: .sessionDriver, cancellation: .untracked
+            scope: scope, route: .sessionDriver, cancellation: .untracked, sessionWork: .statements
         ) { driver in ObjectIdentifier(driver) }
         #expect(ranOn == ObjectIdentifier(replacement))
     }
@@ -661,7 +661,8 @@ struct SessionLanesTests {
             try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
                 route: DatabaseManager.shared.executionRoute(for: scope),
-                cancellation: .untracked
+                cancellation: .untracked,
+                sessionWork: .statements
             ) { _ in () }
         }
         #expect(!DatabaseManager.shared.sessionLanes.hasLoss(database: "app", for: harness.connection.id))
@@ -685,7 +686,7 @@ struct SessionLanesTests {
         #expect(manager.executionRoute(for: scope) == .sessionDriver)
         let error = await #expect(throws: DatabaseError.self) {
             try await manager.withScopedDriver(
-                scope: scope, route: manager.executionRoute(for: scope), cancellation: .untracked
+                scope: scope, route: manager.executionRoute(for: scope), cancellation: .untracked, sessionWork: .statements
             ) { _ in () }
         }
         let expected = DatabaseManager.sessionLostMessage(
@@ -710,7 +711,7 @@ struct SessionLanesTests {
 
         let error = await #expect(throws: DatabaseError.self) {
             try await manager.withScopedDriver(
-                scope: scope, route: .sessionDriver, cancellation: .untracked
+                scope: scope, route: .sessionDriver, cancellation: .untracked, sessionWork: .statements
             ) { _ in () }
         }
 
@@ -721,13 +722,13 @@ struct SessionLanesTests {
         let replacement = try #require(harness.opener.opened["app"])
         #expect(harness.home.disconnectCallCount == 1)
         let ranOn = try await manager.withScopedDriver(
-            scope: scope, route: .sessionDriver, cancellation: .untracked
+            scope: scope, route: .sessionDriver, cancellation: .untracked, sessionWork: .statements
         ) { driver in ObjectIdentifier(driver) }
         #expect(ranOn == ObjectIdentifier(replacement))
     }
 
-    @Test("A grid save on a database whose lane died with session state is refused once, and the next one runs")
-    func firstOwningTurnOnALostLaneTakesTheReport() async throws {
+    @Test("A grid save on a database whose lane died with session state reopens it, is told once, and leaves a statement's report")
+    func gridSaveOnALostLaneLeavesTheReport() async throws {
         let harness = makeHarness()
         defer { cleanUp(harness) }
         let manager = DatabaseManager.shared
@@ -738,24 +739,56 @@ struct SessionLanesTests {
         manager.sessionStateLedger.record(SQLSessionStateEffect(creates: .temporaryObjects), on: harness.home, for: lane)
         await manager.closeTransportLanes(for: connectionId) { true }
         let scope = DatabaseScope(connectionId: connectionId, database: "app", schema: nil)
+        let expected = DatabaseManager.sessionLostMessage(
+            database: "app", loss: SessionLoss(transaction: false, state: .temporaryObjects)
+        )
 
-        let error = await #expect(throws: DatabaseError.self) {
+        let saveError = await #expect(throws: DatabaseError.self) {
             try await manager.withScopedDriver(
                 scope: scope, route: manager.executionRoute(for: scope), cancellation: .protectedWrite
             ) { _ in () }
         }
-
-        let expected = DatabaseManager.sessionLostMessage(
-            database: "app", loss: SessionLoss(transaction: false, state: .temporaryObjects)
-        )
-        #expect(error?.localizedDescription.contains(expected) == true)
-        #expect(harness.opener.opened["app"] == nil)
-        #expect(!manager.sessionLanes.hasLoss(database: "app", for: connectionId))
+        #expect(saveError?.localizedDescription.contains(expected) == true)
         let savedOn = try await manager.withScopedDriver(
             scope: scope, route: manager.executionRoute(for: scope), cancellation: .protectedWrite
         ) { driver in ObjectIdentifier(driver) }
+
         let reopened = try #require(harness.opener.opened["app"])
         #expect(savedOn == ObjectIdentifier(reopened))
+        #expect(manager.sessionLanes.hasLoss(database: "app", for: connectionId))
+        let error = await #expect(throws: DatabaseError.self) {
+            try await manager.withScopedDriver(
+                scope: scope, route: manager.executionRoute(for: scope), cancellation: .untracked, sessionWork: .statements
+            ) { _ in () }
+        }
+        #expect(error?.localizedDescription.contains(expected) == true)
+        #expect(!manager.sessionLanes.hasLoss(database: "app", for: connectionId))
+        let ranOn = try await manager.withScopedDriver(
+            scope: scope, route: manager.executionRoute(for: scope), cancellation: .untracked, sessionWork: .statements
+        ) { driver in ObjectIdentifier(driver) }
+        #expect(ranOn == ObjectIdentifier(reopened))
+        #expect(harness.opener.openCount == 2)
+    }
+
+    @Test("A lost session's kinds are asked without taking the report")
+    func lossKindsAreAskedWithoutTakingTheReport() {
+        let lanes = SessionLanes(opener: { _ in MockDatabaseDriver() })
+        let connectionId = UUID()
+        lanes.markLost(database: "app", state: [.temporaryObjects, .sessionSettings], for: connectionId)
+
+        #expect(lanes.lossIncludes(.temporaryObjects, database: "app", for: connectionId))
+        #expect(!lanes.lossIncludes(.userVariables, database: "app", for: connectionId))
+        #expect(!lanes.lossIncludes(.temporaryObjects, database: "logs", for: connectionId))
+        #expect(lanes.anyLossIncludes(.temporaryObjects, for: connectionId))
+        #expect(!lanes.anyLossIncludes(.listeners, for: connectionId))
+        #expect(lanes.hasLoss(database: "app", for: connectionId))
+
+        // The app's copy and the statements' copy are taken apart.
+        #expect(lanes.takeAppLoss(database: "app", for: connectionId) != nil)
+        #expect(lanes.takeAppLoss(database: "app", for: connectionId) == nil)
+        #expect(lanes.hasLoss(database: "app", for: connectionId))
+        #expect(lanes.takeLoss(database: "app", for: connectionId) != nil)
+        #expect(!lanes.hasLoss(database: "app", for: connectionId))
     }
 
     @Test("A run notes what ran: every statement, through the one that failed, or only those a Stop let run")
@@ -785,7 +818,9 @@ struct SessionLanesTests {
         #expect(ranOn == ObjectIdentifier(harness.home))
         #expect(manager.sessionLanes.hasLoss(database: "app", for: harness.connection.id))
         await #expect(throws: DatabaseError.self) {
-            try await manager.withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .untracked) { _ in () }
+            try await manager.withScopedDriver(
+                scope: scope, route: .sessionDriver, cancellation: .untracked, sessionWork: .statements
+            ) { _ in () }
         }
     }
 

@@ -51,16 +51,6 @@ extension MainContentCoordinator {
         )
     }
 
-    // Heard a turn later: the manager publishes before it stores, and by then a cleaning switch or save has started the load.
-    func resumeWhenEditsClear() -> AnyCancellable {
-        changeManager.$hasChanges
-            .removeDuplicates()
-            .dropFirst()
-            .filter { !$0 }
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.resumeDeferredTableRefresh() }
-    }
-
     // A scope-wide change can alter columns of tables no tab shows, so every cached column list goes.
     func applyDataRefresh(_ request: DataRefreshRequest) {
         guard request.connectionId == connectionId else { return }
@@ -128,9 +118,8 @@ extension MainContentCoordinator {
 
     // The one answer for every reload path, the lazy load included: an open cell counts, or a reload drops what is typed in it.
     func holdsUnsavedWork(_ tab: QueryTab) -> Bool {
-        if tab.pendingChanges.hasChanges { return true }
-        guard tab.id == changeManagerTabId else { return false }
-        return changeManager.hasChanges || isEditingActiveGrid
+        if hasStagedRowEdits(inTab: tab.id) { return true }
+        return tab.id == tabManager.selectedTabId && isEditingActiveGrid
     }
 
     private func selectedTabLoad(_ tabId: UUID) -> TableRowsRefreshPlan.SelectedTabLoad {

@@ -247,7 +247,8 @@ extension QueryExecutionCoordinator {
                 let (fetchResult, tableEdits) = try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
                     route: DatabaseManager.shared.executionRoute(for: scope),
-                    cancellation: .cancellableRead(lease)
+                    cancellation: .cancellableRead(lease),
+                    sessionWork: .statements
                 ) { [queryExecutor = parent.queryExecutor, boundValues] driver in
                     let fetched = try await held.running([statement.sql], on: driver) {
                         // Before it runs, so a statement that fails or a connection lost under it is still noted.
@@ -593,7 +594,8 @@ extension QueryExecutionCoordinator {
             var run = try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
                 route: DatabaseManager.shared.executionRoute(for: scope),
-                cancellation: .cancellableRead(lease)
+                cancellation: .cancellableRead(lease),
+                sessionWork: .statements
             ) { driver in
                 let context = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly)
                 let startState = await driver.heldSessionTransactionState()
@@ -975,7 +977,7 @@ extension QueryExecutionCoordinator {
             }
         }
         parent.seedBufferFromActiveResult(tabId: tabId)
-        parent.dropParkedEdits(ofBackgroundTab: tabId)
+        parent.dropEdits(ofReplacedResultIn: tabId)
         if parent.tabManager.selectedTabId == tabId {
             parent.toolbarState.isResultsCollapsed = false
             parent.toolbarState.recordQueryTiming(timing, for: tabId)
