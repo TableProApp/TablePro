@@ -164,8 +164,9 @@ public sealed partial class ShellTests
         app.FindByName("ssh_proof", app.Find("ObjectTree"));
         Assert.Equal("Database: tablepro_ssh", app.Find("DatabaseButton").Name);
 
+        // A RadioMenuFlyoutItem offers no Invoke pattern, so the item is clicked.
         app.Click(app.Find("QueryDatabaseButton"), () => app.TryFindMenuItem("postgres") is not null);
-        app.FindMenuItem("postgres").Patterns.Invoke.Pattern.Invoke();
+        app.Click(app.FindMenuItem("postgres"), () => app.TryFindMenuItem("postgres") is null);
         app.TypeInto("Query 1", "SELECT current_database()");
         app.Chord(
             () => app.Find("QueryStatus").Properties.Name.ValueOrDefault?.StartsWith("Rows: 1", StringComparison.Ordinal) == true,
@@ -175,7 +176,7 @@ public sealed partial class ShellTests
         app.Screenshot("93-query-tab-database");
 
         app.Click(app.Find("DatabaseButton"), () => app.TryFindMenuItem("postgres") is not null);
-        app.FindMenuItem("postgres").Patterns.Invoke.Pattern.Invoke();
+        app.Click(app.FindMenuItem("postgres"), () => app.TryFind("Rail_Server · postgres") is not null);
         var beside = Retry.WhileNull(() => app.TryFind("Rail_Server · postgres"), AppSession.Wait, throwOnTimeout: false).Result;
         Assert.NotNull(beside);
         Assert.True(Retry.WhileFalse(
