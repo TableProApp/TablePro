@@ -13,6 +13,21 @@ pub(super) fn full(kind: ValueKind, bytes: &[u8]) -> String {
     }
 }
 
+// The value's start as `full` gives it, control characters kept, and whether anything was cut.
+pub(super) fn head(kind: ValueKind, bytes: &[u8], max_chars: usize) -> (String, bool) {
+    match kind {
+        ValueKind::Bytes => {
+            let mut out = Vec::new();
+            let cut = push_hex(bytes, max_chars.saturating_sub(2) / 2, &mut out);
+            (String::from_utf8_lossy(&out).into_owned(), cut)
+        }
+        _ => {
+            let end = char_boundary_after(bytes, max_chars);
+            (String::from_utf8_lossy(&bytes[..end]).into_owned(), end < bytes.len())
+        }
+    }
+}
+
 // Returns whether anything was cut.
 pub(super) fn display(kind: ValueKind, bytes: &[u8], max_chars: usize, out: &mut Vec<u8>) -> bool {
     match kind {
@@ -86,6 +101,19 @@ mod tests {
             ("日本".to_owned(), true)
         );
         assert_eq!(shown(ValueKind::Text, "👋👋".as_bytes(), 1), ("👋".to_owned(), true));
+    }
+
+    #[test]
+    fn a_head_keeps_line_breaks_and_cuts_at_a_character() {
+        assert_eq!(
+            head(ValueKind::Text, "a\nb👋c".as_bytes(), 3),
+            ("a\nb".to_owned(), true)
+        );
+        assert_eq!(head(ValueKind::Json, b"{}", 10), ("{}".to_owned(), false));
+        assert_eq!(
+            head(ValueKind::Bytes, &[0xde, 0xad, 0xbe], 6),
+            ("0xdead".to_owned(), true)
+        );
     }
 
     #[test]

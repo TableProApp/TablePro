@@ -167,6 +167,23 @@ impl ResultStore {
         let cell = state.cell(row, column)?;
         Some(cell.kind.map(|kind| cell_text::full(kind, cell.bytes)))
     }
+
+    // `Some(None)` for null; otherwise the start of what `full_text` gives, and whether it was cut.
+    pub(crate) fn text_head(&self, row: u64, column: usize, max_chars: usize) -> Option<Option<(String, bool)>> {
+        let state = self.read();
+        let cell = state.cell(row, column)?;
+        Some(cell.kind.map(|kind| cell_text::head(kind, cell.bytes, max_chars)))
+    }
+
+    // `Some(None)` for null or a value that is not binary; otherwise its first `max_bytes` and its whole length.
+    pub(crate) fn binary(&self, row: u64, column: usize, max_bytes: usize) -> Option<Option<(Vec<u8>, u64)>> {
+        let state = self.read();
+        let cell = state.cell(row, column)?;
+        Some((cell.kind == Some(ValueKind::Bytes)).then(|| {
+            let kept = &cell.bytes[..cell.bytes.len().min(max_bytes)];
+            (kept.to_vec(), cell.bytes.len() as u64)
+        }))
+    }
 }
 
 impl ResultStore {
@@ -175,6 +192,10 @@ impl ResultStore {
         let state = self.read();
         let read = &state.columns.get(column)?.column_type;
         stored_value(state.cell(row, column)?, read)
+    }
+
+    pub(crate) fn cell_len(&self, row: u64, column: usize) -> Option<usize> {
+        Some(self.read().cell(row, column)?.bytes.len())
     }
 
     // The kind of the value in a cell, `None` for null; a dynamically typed column can hold any.

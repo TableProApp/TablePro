@@ -338,26 +338,6 @@ public sealed partial class DataGridView
         return new Rect(bounds.X * scale, bounds.Y * scale, bounds.Width * scale, bounds.Height * scale);
     }
 
-    internal AutomationPeer? CellPeerAt(Point physical)
-    {
-        if (XamlRoot is null || FrameworkElementAutomationPeer.CreatePeerForElement(this) is not DataGridAutomationPeer peer)
-        {
-            return null;
-        }
-        var scale = XamlRoot.RasterizationScale;
-        var point = new Point(physical.X / scale, physical.Y / scale);
-        foreach (var frozen in new[] { true, false })
-        {
-            var pane = frozen ? (UIElement)_frozenContent : _content;
-            var local = pane.TransformToVisual(null).Inverse.TransformPoint(point);
-            if (HitTest(frozen, local) is { Column: >= 0 } hit && IsCellVisible(hit.Row, hit.Column))
-            {
-                return peer.Cell(hit.Row, hit.Column);
-            }
-        }
-        return null;
-    }
-
     protected override void OnKeyDown(KeyRoutedEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
@@ -444,6 +424,7 @@ public sealed partial class DataGridView
     // A press picks a cell, or a row on the row numbers; Shift extends from the anchor. Dragging extends too.
     private void OnPanePressed(PointerRoutedEventArgs e, bool frozen)
     {
+        ClearCellTip();
         var pane = frozen ? (UIElement)_frozenContent : _content;
         var point = e.GetCurrentPoint(pane);
         if (!point.Properties.IsLeftButtonPressed)
@@ -462,9 +443,9 @@ public sealed partial class DataGridView
     private void OnPaneMoved(PointerRoutedEventArgs e, bool frozen)
     {
         var pane = frozen ? (UIElement)_frozenContent : _content;
-        if (!_dragging && ShowsCellTips)
+        if (!_dragging)
         {
-            ShowCellTip(pane, HitTest(frozen, e.GetCurrentPoint(pane).Position));
+            TrackCellTip(frozen, HitTest(frozen, e.GetCurrentPoint(pane).Position));
         }
         if (!_dragging || frozen != _dragFrozen)
         {
@@ -485,30 +466,6 @@ public sealed partial class DataGridView
         {
             SelectCell(hit.Row, hit.Column, extend: true);
         }
-    }
-
-    // One tooltip per pane, its text following the cell under the pointer; none over a NULL or the row numbers.
-    private void ShowCellTip(UIElement pane, (int Row, int Column)? hit)
-    {
-        string? text = null;
-        if (hit is { Column: >= 0 } at)
-        {
-            var cell = Cell(at.Row, at.Column);
-            text = cell.IsNull || cell.IsDefault ? null
-                : cell.IsTruncated ? _cache?.ReadWhole(at.Row, at.Column)
-                : cell.Text.ToString();
-        }
-        if (string.IsNullOrEmpty(text))
-        {
-            ToolTipService.SetToolTip(pane, null);
-            return;
-        }
-        var tip = ToolTipService.GetToolTip(pane) as ToolTip ?? new ToolTip();
-        if (!string.Equals(tip.Content as string, text, StringComparison.Ordinal))
-        {
-            tip.Content = text;
-        }
-        ToolTipService.SetToolTip(pane, tip);
     }
 
     // A press at a point in a pane, in that pane's coordinates. Also how the tests click.

@@ -103,6 +103,9 @@
 - `ISelectionProvider.GetSelection` reads the model, so cells off the screen are in it, up to 10,000 cells.
 - A point query reaches a drawn cell through the pane's peer, which maps the point to the cell.
 - A header is a HeaderItem with Invoke, which sorts and raises the Invoked event, Transform, which resizes in physical pixels, and its sort order as `ItemStatus`, the property the [HeaderItem control type](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-supportheaderitemcontroltype) gives sort orders. A change raises ItemStatus's property-changed event. The host words it through `SortedAscendingStatus` and `SortedDescendingStatus`.
+- A column's header is a peer of its own, one per column like a cell's, not the header element: ItemsRepeater hands an element to another column as it scrolls, so a client holding the element's peer would read another column. The element's peer leaves the control view and sends a point query to its column's peer. `GetColumnHeaders` lists every column, a cell's TableItem names its column header on screen or not, and the tree lists the headers in view.
+- A row number is a HeaderItem too, named as drawn, with Invoke, which selects the row as a click on the number does, and ScrollItem. `GetRowHeaders` lists the rows in view, a cell's TableItem names its row's, and the tree lists each row in view as its header then its cells.
+- With `ShowsCellTips`, a cell the core cut or its column cuts shows its text, up to 1,000 characters, in a ToolTip after the pointer rests on it: twice `SPI_GETMOUSEHOVERTIME`, one and a half within 200 ms of the last tip closing, as ToolTipService times one. ToolTipService arms a tooltip only on its owner's `PointerEntered` (`ToolTipService_Partial.cpp`), so a ToolTip owned by a pane would open for the first cell alone; each cell's is opened by the grid instead, docked above the cell through `PlacementRect`, since a tooltip opened from code has no pointer to follow. A ToolTip opens from code only through an owner ToolTipService knows, which it takes as its container (`ToolTip::OnIsOpenChanged`; with none, `IsOpen` throws, run 43604877228), so the pane owns the tip only while it shows. Moving to another cell, pressing, scrolling, resizing a column, an edit and new data close it.
 - A cell's `ItemStatus` is its pending change: `EditedStatus`, `NewRowStatus` or `DeletedStatus`, the macOS grid's VoiceOver words. A change raises ItemStatus's property-changed event. Its Name stays the value, `DefaultText` for a DEFAULT cell.
 - An open editor is its pane's one automation child.
 
@@ -115,11 +118,11 @@
 ## Consequences
 
 - Text, hit testing, high contrast, text scale, DPI, device loss, right to left and color fonts are ours to keep right; a TextBlock would do them. Each has a test or a gate check.
-- `TablePattern.ColumnHeaders` reads empty for clients on Windows App SDK 2.6.4: `CUIATableProviderWrapper::GetColumnHeaders` releases its SAFEARRAY before filling it. microsoft/microsoft-ui-xaml#11820 fixed it after 2.6.4. The grid returns the header peers on screen, and a cell's TableItem names its column header while that header is realized.
+- `TablePattern.ColumnHeaders` reads empty for clients on Windows App SDK 2.6.4: `CUIATableProviderWrapper::GetColumnHeaders` releases its SAFEARRAY before filling it. microsoft/microsoft-ui-xaml#11820 fixed it after 2.6.4. Until the SDK has it, a client reads a cell's headers from its TableItem (`ColumnHeaderItems`, `RowHeaderItems`), which reaches every column and row, and the headers in view from the tree.
 - The grid raises `SortRequested` and the host sorts: on the server, or with the core's sort of the rows held.
 - A UI in a right-to-left language would need the grid mirrored; only values read right to left today.
 - The gate runs WARP on hosted runners; no machine with a GPU is measured yet.
-- Not yet: column reorder, row header peers, find, tooltips for cut cells.
+- Not yet: column reorder and find.
 
 ## Alternatives considered
 

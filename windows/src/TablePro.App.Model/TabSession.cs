@@ -43,6 +43,8 @@ public interface ITabSession
     // Refresh reads the table's columns from the server again, as a Refresh of the tab asks.
     Task<ITableEditor> OpenTableEditorAsync(TableName table, bool refresh, CancellationToken cancellationToken);
 
+    Task<ITableKeys> ReadTableKeysAsync(TableName table, CancellationToken cancellationToken);
+
     ValueTask ReleaseAsync();
 }
 
@@ -68,6 +70,15 @@ public interface ITableEditor : IDisposable
     CoreError? Check(int column, CellEdit edit, bool newRow);
 
     IRowSave Plan(ResultSet? rows, IReadOnlyList<RowEdit> edits);
+}
+
+// A table's foreign keys both ways, read once; what a row of a page leads to is worked out from them.
+public interface ITableKeys : IDisposable
+{
+    // `rows` is the page the row is in, null when no set is shown.
+    RowReferences ReferencesAt(ResultSet? rows, long row, string? column);
+
+    FollowedReference Follow(ResultSet? rows, long row, RowReferenceChoice choice);
 }
 
 // One save, which runs only the statements it was planned with.
@@ -171,7 +182,24 @@ public sealed class CoreTabSession : ITabSession
         new CoreTableEditor(
             await _share.Session.OpenTableEditorAsync(table, refresh, cancellationToken).ConfigureAwait(true));
 
+    public async Task<ITableKeys> ReadTableKeysAsync(TableName table, CancellationToken cancellationToken) =>
+        new CoreTableKeys(await _share.Session.ReadTableKeysAsync(table, cancellationToken).ConfigureAwait(true));
+
     public ValueTask ReleaseAsync() => _share.ReleaseAsync();
+}
+
+internal sealed class CoreTableKeys(TableKeys keys) : ITableKeys
+{
+    public RowReferences ReferencesAt(ResultSet? rows, long row, string? column) =>
+        rows is null ? RowReferences.None : keys.GetRowReferences(rows, row, column);
+
+    public FollowedReference Follow(ResultSet? rows, long row, RowReferenceChoice choice)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        return keys.Follow(rows, row, choice);
+    }
+
+    public void Dispose() => keys.Dispose();
 }
 
 internal sealed class CoreTableEditor(TableEditor editor) : ITableEditor
