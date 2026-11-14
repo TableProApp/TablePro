@@ -34,8 +34,7 @@ public sealed partial class ShellTests
         Assert.NotNull(app.TryFindMenuItem("Share result..."));
         app.Screenshot("80-results-grid-menu");
         app.Click(app.FindMenuItem("View value..."), () => app.TryFind("ValueViewer") is not null);
-        var text = AppSession.WaitForText(
-            app.Find("ValueViewerText"), value => value.Contains("\"tracks\": [", StringComparison.Ordinal));
+        var text = ViewerText(app, value => value.Contains("\"tracks\": [", StringComparison.Ordinal));
         Assert.Contains("\"album\": \"Let There Be Rock\"", text, StringComparison.Ordinal);
         app.Screenshot("81-value-viewer-json");
         app.CloseDialog();
@@ -46,10 +45,19 @@ public sealed partial class ShellTests
         app.Screenshot("82-value-viewer-image");
         app.Click(app.Find("ValueViewerHexItem"), () => app.TryFind("ValueViewerText") is { IsOffscreen: false });
         Assert.StartsWith(
-            "0x89504e47",
-            AppSession.WaitForText(app.Find("ValueViewerText"), value => value.StartsWith("0x", StringComparison.Ordinal)),
-            StringComparison.Ordinal);
+            "0x89504e47", ViewerText(app, value => value.StartsWith("0x", StringComparison.Ordinal)), StringComparison.Ordinal);
         app.Screenshot("83-value-viewer-hex");
         app.CloseDialog();
+    }
+
+    // The viewer's TextBox holds the value; its Name is the column's.
+    private static string ViewerText(AppSession app, Func<string, bool> done)
+    {
+        var text = string.Empty;
+        Retry.WhileFalse(
+            () => done(text = app.Find("ValueViewerText").AsTextBox().Text),
+            AppSession.Wait,
+            throwOnTimeout: false);
+        return text;
     }
 }
