@@ -28,11 +28,11 @@ struct StatementRowsBuild: Sendable {
 extension QueryExecutionCoordinator {
     func executeMultipleStatements(
         _ statements: [SQLStatementScanner.ExecutableStatement],
-        bypassRowLimit: Bool = false,
-        onTab target: UUID? = nil
+        onTab tabId: UUID,
+        bypassRowLimit: Bool = false
     ) {
         executeMultipleStatementsWithParameters(
-            statements, parameters: [], bypassRowLimit: bypassRowLimit, onTab: target
+            statements, parameters: [], onTab: tabId, bypassRowLimit: bypassRowLimit
         )
     }
 
@@ -260,41 +260,7 @@ extension QueryExecutionCoordinator {
         )
     }
 
-    /// `unresolvedOutcome` is what a statement whose commit went unanswered carries. The statement
-    /// itself succeeded, so its rows and its timing are real, but whether the server kept it is not
-    /// something anything here can find out, and a plain success badge would say it did.
-    func recordStatementHistory(
-        sql: String,
-        result: QueryResult,
-        connection: DatabaseConnection,
-        databaseName: String,
-        parameterValues: [QueryParameter]? = nil,
-        unresolvedOutcome: String? = nil
-    ) {
-        let historySQL = sql.hasSuffix(";") ? sql : sql + ";"
-        recordHistory(
-            QueryHistoryRecordRequest(
-                query: historySQL,
-                connectionId: connection.id,
-                databaseName: databaseName,
-                databaseType: connection.type,
-                source: .editor,
-                executionTime: result.executionTime,
-                rowCount: result.rows.count,
-                wasSuccessful: unresolvedOutcome == nil,
-                errorMessage: unresolvedOutcome,
-                timing: result.resolvedTiming
-            )
-        )
-    }
-
-    /// The settle gate, the task retirement, the history and the outcome notification belong to the
-    /// caller: a stopped run has already settled its claim and reports a cancellation rather than a
-    /// success, and still shows the results of the statements its plan could not take back.
-    ///
-    /// `sessionNotice` is the one thing a successful run may still have to say: a batch that joined
-    /// a transaction the user already had open committed nothing, and nothing else in the window
-    /// reports an open transaction.
+    // Below the caller's settle gate. `sessionNotice` says a batch joined a transaction the user had open and committed nothing.
     func presentMultiStatementResults(
         tabId: UUID,
         timing: PluginQueryTiming,
@@ -359,8 +325,37 @@ extension QueryExecutionCoordinator {
                 parameterValues: activeResultSet?.baseQueryParameterValues
             )
         }
-        parent.toolbarState.isResultsCollapsed = false
-
         parent.dropEdits(ofReplacedResultIn: tabId)
+        if parent.tabManager.selectedTabId == tabId {
+            parent.toolbarState.isResultsCollapsed = false
+        }
+    }
+
+    // Below the caller's settle gate: the results that ran stay, with the error as the last one.
+    func presentFailedRun(
+        tabId: UUID,
+        resultSets: [ResultSet],
+        error: ResultSet,
+        timing: PluginQueryTiming,
+        announcing message: String
+    ) {
+        parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
+        parent.tabManager.mutate(tabId: tabId) { tab in
+            // The Error result carries the failure, so the banner stays on it rather than over every other result.
+            tab.execution.errorMessage = nil
+            tab.execution.errorQuery = nil
+            tab.execution.executionTime = timing.total
+            tab.execution.lastExecutedAt = Date()
+            tab.display.replaceUnpinnedResults(with: resultSets + [error])
+            if tab.display.isResultsCollapsed {
+                tab.display.isResultsCollapsed = false
+            }
+        }
+        parent.seedBufferFromActiveResult(tabId: tabId)
+        parent.dropEdits(ofReplacedResultIn: tabId)
+        guard parent.tabManager.selectedTabId == tabId else { return }
+        parent.toolbarState.isResultsCollapsed = false
+        parent.toolbarState.recordQueryTiming(timing, for: tabId)
+        parent.announceQueryError(message)
     }
 }

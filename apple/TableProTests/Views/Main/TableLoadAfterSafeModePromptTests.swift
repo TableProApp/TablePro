@@ -21,13 +21,13 @@ struct TableLoadAfterSafeModePromptTests {
         defer { fixture.coordinator.cancelAllQueryTasks() }
 
         fixture.addTab(QueryTab(title: "Query", query: "SELECT 1", tabType: .query))
-        #expect(fixture.coordinator.runStatement("SELECT 1"))
+        #expect(fixture.coordinator.runStatement("SELECT 1", onTab: fixture.coordinator.commandTabId))
         try await waitUntil { gate.askedCount == 1 }
 
         var table = QueryTab(title: "users", query: "SELECT * FROM users LIMIT 1000", tabType: .table, tableName: "users")
         table.pagination.isLoading = true
         fixture.addTab(table)
-        #expect(fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow) == nil)
+        #expect(fixture.coordinator.executeTableTabQueryDirectly(onTab: fixture.coordinator.commandTabId, viewport: .firstRow) == nil)
         #expect(fixture.tabManager.tabs.first { $0.id == table.id }?.pagination.isLoading == false)
 
         await gate.answer(allowing: true)

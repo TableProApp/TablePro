@@ -68,7 +68,9 @@ extension RowEditingCoordinator {
             return
         }
 
-        guard parent.selectedTabScope != nil else {
+        // With no tab the save is table operations staged from the sidebar, on the browse scope.
+        let savingTab = savingTabId.flatMap { id in parent.tabManager.tabs.first { $0.id == id } }
+        guard (savingTab.flatMap({ parent.scope(for: $0) }) ?? parent.browseScope) != nil else {
             failSave(message: String(localized: "Not connected to database"), tabId: savingTabId, waiter: waiter)
             return
         }
@@ -420,7 +422,7 @@ extension RowEditingCoordinator {
         /// retiring it the reload's automatic count refuses to replace it, and the bar
         /// keeps the pre-save total with no `Count Exactly` offered to correct it.
         parent.tabManager.mutate(at: savedTabIndex) { $0.pagination.retireDerivedRowCount() }
-        parent.reloadActiveResult()
+        parent.reloadActiveResult(onTab: parent.tabManager.tabs[savedTabIndex].id)
     }
 
     // The saving tab reloads itself and is left out.
@@ -699,9 +701,7 @@ extension RowEditingCoordinator {
 }
 
 fileprivate extension RowEditingCoordinator {
-    /// The save is owned by the tab that started it, not by whichever tab is selected when it
-    /// lands: `failSave` writes into the selected tab, so keying a completion off that would
-    /// attribute a slow save to a tab the user switched to while waiting.
+    // Keyed on the tab that started the save, never the one in front when it lands.
     func reportSaveFinished(
         _ outcome: OperationOutcome,
         connection: DatabaseConnection,

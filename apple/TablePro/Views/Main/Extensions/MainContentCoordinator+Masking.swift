@@ -97,16 +97,18 @@ extension MainContentCoordinator {
     ) async {
         guard let tab = tabManager.tabs.first(where: { $0.id == tabId }), !tab.revealsMaskedValues else { return }
         guard await authenticator.authenticate(reason: Self.revealMaskedValuesReason) else { return }
-        tabManager.mutate(tabId: tabId) { $0.revealsMaskedValues = true }
-        guard tabManager.selectedTabId == tabId else { return }
-        switch tab.tabType {
+        // Read again after the prompt: the editor text, or the tab itself, may have changed while it was up.
+        guard tabManager.mutate(tabId: tabId, { $0.revealsMaskedValues = true }),
+              tabManager.selectedTabId == tabId,
+              let revealed = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
+        switch revealed.tabType {
         case .table:
-            runQuery(viewport: .keepPlace)
+            runQuery(onTab: tabId, viewport: .keepPlace)
         default:
             // Running a query tab again could repeat a write, so only a read reruns; anything else shows on its next run.
-            let classification = QueryClassifier.classify(tab.content.query, databaseType: connection.type)
+            let classification = QueryClassifier.classify(revealed.content.query, databaseType: connection.type)
             guard classification.tier == .safe else { return }
-            runQuery(viewport: .keepPlace)
+            runQuery(onTab: tabId, viewport: .keepPlace)
         }
     }
 }

@@ -17,48 +17,30 @@ final class FilterCoordinator: ObservableObject {
 
     // MARK: - Filtering
 
-    func applyFilters(_ filters: [TableFilter], logicMode: FilterLogicMode? = nil) {
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              let tableName = tab.tableContext.tableName else { return }
-
-        let capturedTabIndex = tabIndex
-        let capturedTableName = tableName
-        let capturedFilters = filters
-        let capturedLogicMode = logicMode
-        parent.confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
+    func applyFilters(_ filters: [TableFilter], logicMode: FilterLogicMode? = nil, forTab tabId: UUID) {
+        guard let tableName = existingTab(tabId)?.tableContext.tableName else { return }
+        parent.confirmDiscardChangesIfNeeded(forTab: tabId, action: .filter) { [weak self] confirmed in
             guard let self, confirmed else { return }
-            commitFilters(
-                capturedFilters,
-                logicMode: capturedLogicMode,
-                tabIndex: capturedTabIndex,
-                tableName: capturedTableName
-            )
+            commitFilters(filters, logicMode: logicMode, tabId: tabId, tableName: tableName)
         }
     }
 
-    /// Writes the one predicate a reference jump carries and re-queries for it.
-    ///
-    /// The caller has already taken the discard guard, because it also records the view the tab is
-    /// leaving and both have to land on the same side of a refusal.
-    func commitReferenceFilter(_ filter: TableFilter) {
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              let tableName = tab.tableContext.tableName else { return }
-        setFKFilter(filter)
-        commitFilters([filter], logicMode: nil, tabIndex: tabIndex, tableName: tableName)
+    // The caller holds the discard guard: it also records the view the tab leaves, and both land on one side of a refusal.
+    func commitReferenceFilter(_ filter: TableFilter, forTab tabId: UUID) {
+        guard let tableName = existingTab(tabId)?.tableContext.tableName else { return }
+        mutateFilterState(ofTab: tabId) { $0.setReferenceFilter(filter) }
+        commitFilters([filter], logicMode: nil, tabId: tabId, tableName: tableName)
     }
 
-    /// Builds the query first and writes the filter state only once it exists, so a refusal leaves
-    /// the panel, the commit and the rows on screen as they were, with the reason in their place.
+    // Builds the query before writing the filter state, so a refusal leaves the panel, commit and rows as they were.
     private func commitFilters(
         _ filters: [TableFilter],
         logicMode: FilterLogicMode?,
-        tabIndex: Int,
+        tabId: UUID,
         tableName: String,
         adopting proposed: TabFilterState? = nil
     ) {
-        guard tabIndex < parent.tabManager.tabs.count else { return }
-
-        let tab = parent.tabManager.tabs[tabIndex]
+        guard let tab = existingTab(tabId) else { return }
         var next = proposed ?? tab.filterState
         if let logicMode {
             next.filterLogicMode = logicMode
@@ -84,7 +66,7 @@ final class FilterCoordinator: ObservableObject {
         ) else {
             let message = FilterSQLGenerator.refusalMessage(for: filters, databaseType: parent.connection.type)
                 ?? String(localized: "This database cannot filter rows with these conditions.")
-            parent.tabManager.mutate(at: tabIndex) {
+            parent.tabManager.mutate(tabId: tabId) {
                 $0.execution.errorMessage = message
             }
             return
@@ -92,13 +74,15 @@ final class FilterCoordinator: ObservableObject {
 
         next.executedFilters = filters
         next.executedLogicMode = next.filterLogicMode
-        parent.tabManager.mutate(at: tabIndex) {
+        parent.tabManager.mutate(tabId: tabId) {
             $0.pagination.reset()
             $0.content.query = newQuery
             $0.filterState = next
         }
-        saveLastFilters(of: parent.tabManager.tabs[tabIndex])
-        parent.runQuery(viewport: .firstRow)
+        if let committed = existingTab(tabId) {
+            saveLastFilters(of: committed)
+        }
+        parent.runQuery(onTab: tabId, viewport: .firstRow)
     }
 
     /// Stops filtering and keeps the rows in the panel, so Apply brings them back.
@@ -114,21 +98,18 @@ final class FilterCoordinator: ObservableObject {
     }
 
     private func unsetFilters(removingRows: Bool) {
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              let tableName = tab.tableContext.tableName else { return }
+        guard let (selected, _) = parent.tabManager.selectedTabAndIndex,
+              let tableName = selected.tableContext.tableName else { return }
 
-        let capturedTabIndex = tabIndex
-        let capturedTableName = tableName
-        parent.confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
-            guard let self, confirmed else { return }
-            guard capturedTabIndex < parent.tabManager.tabs.count else { return }
+        let tabId = selected.id
+        parent.confirmDiscardChangesIfNeeded(forTab: tabId, action: .filter) { [weak self] confirmed in
+            guard let self, confirmed,
+                  parent.tabManager.mutate(tabId: tabId, { $0.pagination.reset() }),
+                  let tab = existingTab(tabId) else { return }
 
-            parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
-
-            let tab = parent.tabManager.tabs[capturedTabIndex]
-            let buffer = parent.tabSessionRegistry.tableRows(for: tab.id)
+            let buffer = parent.tabSessionRegistry.tableRows(for: tabId)
             let newQuery = parent.queryBuilder.buildBaseQuery(
-                tableName: capturedTableName,
+                tableName: tableName,
                 schemaName: tab.tableContext.schemaName,
                 sortState: querySortState(for: tab),
                 columns: buffer.columns,
@@ -138,7 +119,7 @@ final class FilterCoordinator: ObservableObject {
                 offset: tab.pagination.currentOffset
             )
 
-            parent.tabManager.mutate(at: capturedTabIndex) {
+            parent.tabManager.mutate(tabId: tabId) {
                 $0.content.query = newQuery
                 $0.filterState.commit = nil
                 $0.filterState.executedFilters = []
@@ -147,11 +128,11 @@ final class FilterCoordinator: ObservableObject {
                     $0.filterState.filters = []
                 }
             }
-            /// Saved rather than deleted, because the rows left in the panel are still the table's
-            /// working set and reopening it should bring them back with nothing running. Removing
-            /// the rows empties that set, and an empty set is what the storage reads as a delete.
-            saveLastFilters(of: parent.tabManager.tabs[capturedTabIndex])
-            parent.runQuery(viewport: .firstRow)
+            // Saved, not deleted: the rows left in the panel are the table's working set, and an empty set reads as a delete.
+            if let unset = existingTab(tabId) {
+                saveLastFilters(of: unset)
+            }
+            parent.runQuery(onTab: tabId, viewport: .firstRow)
         }
     }
 
@@ -195,58 +176,52 @@ final class FilterCoordinator: ObservableObject {
     }
 
     func applyBrowseSearch(_ search: BrowseSearchState) {
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              let tableName = tab.tableContext.tableName else { return }
+        guard let (selected, _) = parent.tabManager.selectedTabAndIndex,
+              let tableName = selected.tableContext.tableName else { return }
 
-        let capturedTabIndex = tabIndex
-        let capturedTableName = tableName
-        parent.confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
-            guard let self, confirmed else { return }
-            guard capturedTabIndex < parent.tabManager.tabs.count else { return }
+        let tabId = selected.id
+        parent.confirmDiscardChangesIfNeeded(forTab: tabId, action: .filter) { [weak self] confirmed in
+            guard let self, confirmed, existingTab(tabId) != nil else { return }
 
-            mutateSelectedTabFilterState { state in
+            mutateFilterState(ofTab: tabId) { state in
                 state.browseSearch = search
                 state.isVisible = true
             }
-            /// The total on screen counted the previous search's keys, or the whole database. An
-            /// exact one is never replaced by a later estimate, so left in place it would go on
-            /// describing this search.
-            parent.tabManager.mutate(at: capturedTabIndex) { tab in
+            // An exact total is never replaced by a later estimate, so the previous search's would describe this one.
+            parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.pagination.reset()
                 tab.pagination.retireDerivedRowCount()
             }
-            rebuildTableQuery(at: capturedTabIndex)
-            saveBrowseSearch(for: capturedTableName)
-            parent.runQuery(viewport: .firstRow)
+            rebuildTableQuery(forTab: tabId)
+            saveBrowseSearch(for: tableName, ofTab: tabId)
+            parent.runQuery(onTab: tabId, viewport: .firstRow)
         }
     }
 
     func clearBrowseSearchAndReload() {
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              let tableName = tab.tableContext.tableName else { return }
+        guard let (selected, _) = parent.tabManager.selectedTabAndIndex,
+              let tableName = selected.tableContext.tableName else { return }
 
-        let capturedTabIndex = tabIndex
-        let capturedTableName = tableName
-        parent.confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
-            guard let self, confirmed else { return }
-            guard capturedTabIndex < parent.tabManager.tabs.count else { return }
+        let tabId = selected.id
+        parent.confirmDiscardChangesIfNeeded(forTab: tabId, action: .filter) { [weak self] confirmed in
+            guard let self, confirmed, existingTab(tabId) != nil else { return }
 
-            mutateSelectedTabFilterState { state in
+            mutateFilterState(ofTab: tabId) { state in
                 state.browseSearch = BrowseSearchState()
             }
-            /// A total counted for the search does not describe the whole database.
-            parent.tabManager.mutate(at: capturedTabIndex) { tab in
+            // A total counted for the search does not describe the whole database.
+            parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.pagination.reset()
                 tab.pagination.retireDerivedRowCount()
             }
-            rebuildTableQuery(at: capturedTabIndex)
-            saveBrowseSearch(for: capturedTableName)
-            parent.runQuery(viewport: .firstRow)
+            rebuildTableQuery(forTab: tabId)
+            saveBrowseSearch(for: tableName, ofTab: tabId)
+            parent.runQuery(onTab: tabId, viewport: .firstRow)
         }
     }
 
-    func saveBrowseSearch(for tableName: String) {
-        guard let tab = parent.tabManager.selectedTab else { return }
+    func saveBrowseSearch(for tableName: String, ofTab tabId: UUID) {
+        guard let tab = existingTab(tabId) else { return }
         FilterSettingsStorage.shared.saveBrowseSearch(
             tab.filterState.browseSearch,
             for: tableName,
@@ -299,6 +274,11 @@ final class FilterCoordinator: ObservableObject {
             $0.filterState.executedFilters = built.executed
             $0.filterState.executedLogicMode = $0.filterState.commit == nil ? nil : built.logicMode
         }
+    }
+
+    func rebuildTableQuery(forTab tabId: UUID) {
+        guard let index = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        rebuildTableQuery(at: index)
     }
 
     // The table tab's view, its filters, search and sort, read from the first row: what Share Result reads.
@@ -434,21 +414,15 @@ final class FilterCoordinator: ObservableObject {
     /// One CONTAINS row per searchable column, joined with OR, replacing the filter set. Only the
     /// find bar calls this, and only when no filters are applied, because `filterLogicMode` is one
     /// mode for the whole array: switching it to OR would silently loosen filters the user wrote.
-    func applyCrossColumnSearch(term: String, columns: [String]) {
+    func applyCrossColumnSearch(term: String, columns: [String], forTab tabId: UUID) {
         guard !columns.isEmpty, parent.supportsMatchAnyFilters || columns.count == 1 else { return }
-        applyFilters(TabFilterState.crossColumnSearchFilters(term: term, columns: columns), logicMode: .or)
+        applyFilters(TabFilterState.crossColumnSearchFilters(term: term, columns: columns), logicMode: .or, forTab: tabId)
     }
 
     func addFilterForColumn(_ columnName: String) {
         let settings = FilterSettingsStorage.shared.loadSettings()
         mutateSelectedTabFilterState { state in
             state.addFilter(forColumn: columnName, settings: settings)
-        }
-    }
-
-    func setFKFilter(_ filter: TableFilter) {
-        mutateSelectedTabFilterState { state in
-            state.setReferenceFilter(filter)
         }
     }
 
@@ -480,40 +454,32 @@ final class FilterCoordinator: ObservableObject {
         return !usesBrowseSearch
     }
 
-    /// Narrows what the grid shows by one more condition, which a cell's Filter menu offers.
-    func applyCellFilter(_ filter: TableFilter) {
+    // A cell's Filter menu: narrows the grid by one more condition.
+    func applyCellFilter(_ filter: TableFilter, forTab tabId: UUID) {
         guard canFilterRows, filter.isValid,
-              !TabFilterState.isRunning(filter, in: selectedTabFilterState) else { return }
-        applyTransition { state in
+              let tab = existingTab(tabId),
+              !TabFilterState.isRunning(filter, in: tab.filterState) else { return }
+        applyTransition(forTab: tabId) { state in
             state = TabFilterState.cellFilterState(state, adding: filter)
         }
     }
 
-    /// Writes the commit, persists it and re-queries, all behind the discard guard.
-    ///
-    /// Behind it, because `commit` is the record of what the rows on screen were fetched with.
-    /// Setting it first and taking the guard afterwards left a declined apply reporting a filter
-    /// the grid had never run, saved to disk, and re-run by the next page turn.
+    // Behind the discard guard: `commit` records what the rows on screen were fetched with, so a declined apply must not write it.
     private func applyCommit(_ commit: FilterCommit) {
-        applyTransition { $0.commit = commit }
+        guard let tabId = parent.tabManager.selectedTabAndIndex?.tab.id else { return }
+        applyTransition(forTab: tabId) { $0.commit = commit }
     }
 
-    private func applyTransition(_ transition: @escaping (inout TabFilterState) -> Void) {
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              let tableName = tab.tableContext.tableName else { return }
-
-        let capturedTabIndex = tabIndex
-        let capturedTableName = tableName
-        parent.confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
-            guard let self, confirmed else { return }
-            guard capturedTabIndex < parent.tabManager.tabs.count else { return }
-            var next = parent.tabManager.tabs[capturedTabIndex].filterState
+    private func applyTransition(forTab tabId: UUID, _ transition: @escaping (inout TabFilterState) -> Void) {
+        guard let tableName = existingTab(tabId)?.tableContext.tableName else { return }
+        parent.confirmDiscardChangesIfNeeded(forTab: tabId, action: .filter) { [weak self] confirmed in
+            guard let self, confirmed, var next = existingTab(tabId)?.filterState else { return }
             transition(&next)
             commitFilters(
                 next.appliedFilters,
                 logicMode: nil,
-                tabIndex: capturedTabIndex,
-                tableName: capturedTableName,
+                tabId: tabId,
+                tableName: tableName,
                 adopting: next
             )
         }
@@ -655,8 +621,17 @@ final class FilterCoordinator: ObservableObject {
 
     // MARK: - Private
 
+    private func existingTab(_ tabId: UUID) -> QueryTab? {
+        parent.tabManager.tabs.first { $0.id == tabId }
+    }
+
     private func mutateSelectedTabFilterState(_ mutate: (inout TabFilterState) -> Void) {
         guard let index = parent.tabManager.selectedTabIndex else { return }
+        mutateFilterState(at: index, mutate)
+    }
+
+    private func mutateFilterState(ofTab tabId: UUID, _ mutate: (inout TabFilterState) -> Void) {
+        guard let index = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         mutateFilterState(at: index, mutate)
     }
 

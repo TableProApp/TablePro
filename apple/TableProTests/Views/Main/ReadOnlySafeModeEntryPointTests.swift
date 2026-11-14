@@ -219,7 +219,7 @@ struct ReadOnlySafeModeEntryPointTests {
         defer { fixture.coordinator.cancelAllQueryTasks() }
         fixture.addTab(QueryTab(title: "Query", query: "SELECT purge_orders()", tabType: .query))
 
-        #expect(fixture.coordinator.runStatement("SELECT purge_orders()"))
+        #expect(fixture.coordinator.runStatement("SELECT purge_orders()", onTab: fixture.coordinator.commandTabId))
         try await waitUntil { driver.call(containing: Self.purge) != nil }
 
         #expect(driver.call(containing: Self.purge)?.context?.enforcesReadOnly == true)
@@ -231,7 +231,7 @@ struct ReadOnlySafeModeEntryPointTests {
         defer { fixture.coordinator.cancelAllQueryTasks() }
         fixture.addTab(QueryTab(title: "Query", query: "SELECT purge_orders()", tabType: .query))
 
-        #expect(fixture.coordinator.runStatement("SELECT purge_orders()"))
+        #expect(fixture.coordinator.runStatement("SELECT purge_orders()", onTab: fixture.coordinator.commandTabId))
         try await waitUntil { driver.call(containing: Self.purge) != nil }
 
         #expect(driver.call(containing: Self.purge)?.context?.enforcesReadOnly != true)
@@ -245,7 +245,7 @@ struct ReadOnlySafeModeEntryPointTests {
         defer { fixture.coordinator.cancelAllQueryTasks() }
         fixture.addTab(QueryTab(title: "Query", query: "SELECT purge_orders();\nSELECT 42", tabType: .query))
 
-        fixture.coordinator.queryExecutionCoordinator.runAllStatements()
+        fixture.coordinator.runAllStatements(onTab: fixture.coordinator.commandTabId)
         try await waitUntil { driver.call(containing: "42") != nil }
 
         let statements = driver.calls.filter { $0.query.contains(Self.purge) || $0.query.contains("42") }
@@ -260,7 +260,7 @@ struct ReadOnlySafeModeEntryPointTests {
         defer { fixture.coordinator.cancelAllQueryTasks() }
         fixture.addTab(QueryTab(title: "Query", query: "SELECT purge_orders();\nSELECT 42", tabType: .query))
 
-        fixture.coordinator.queryExecutionCoordinator.runAllStatements()
+        fixture.coordinator.runAllStatements(onTab: fixture.coordinator.commandTabId)
         try await waitUntil { driver.entries.contains("COMMIT") }
 
         let entries = driver.entries
@@ -280,7 +280,7 @@ struct ReadOnlySafeModeEntryPointTests {
         defer { fixture.coordinator.cancelAllQueryTasks() }
         fixture.addTab(rawFilterTableTab())
 
-        #expect(fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow) == nil)
+        #expect(fixture.coordinator.executeTableTabQueryDirectly(onTab: fixture.coordinator.commandTabId, viewport: .firstRow) == nil)
         try await waitUntil { driver.call(containing: Self.purge) != nil }
 
         #expect(await gate.requests.isEmpty)
@@ -295,11 +295,11 @@ struct ReadOnlySafeModeEntryPointTests {
         defer { fixture.coordinator.cancelAllQueryTasks() }
         let tab = fixture.addTab(rawFilterTableTab())
 
-        let first = fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)
+        let first = fixture.coordinator.executeTableTabQueryDirectly(onTab: fixture.coordinator.commandTabId, viewport: .firstRow)
         #expect(first != nil)
         await first?.value
         try await waitUntil { driver.call(containing: Self.purge) != nil }
-        let second = fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)
+        let second = fixture.coordinator.executeTableTabQueryDirectly(onTab: fixture.coordinator.commandTabId, viewport: .firstRow)
         #expect(second != nil)
         await second?.value
 
@@ -329,7 +329,7 @@ struct ReadOnlySafeModeEntryPointTests {
         defer { fixture.coordinator.cancelAllQueryTasks() }
         fixture.addTab(QueryTab(title: "order_cleanup", query: "SELECT * FROM order_cleanup LIMIT 100", tabType: .table, tableName: "order_cleanup"))
 
-        #expect(fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow) == nil)
+        #expect(fixture.coordinator.executeTableTabQueryDirectly(onTab: fixture.coordinator.commandTabId, viewport: .firstRow) == nil)
         try await waitUntil { driver.call(containing: "FROM order_cleanup") != nil }
 
         #expect(await gate.requests.isEmpty)
@@ -631,7 +631,7 @@ struct ReadOnlySafeModeEntryPointTests {
         defer { fixture.coordinator.cancelAllQueryTasks() }
         fixture.addTab(rawFilterTableTab())
 
-        let refusal = fixture.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)
+        let refusal = fixture.coordinator.executeTableTabQueryDirectly(onTab: fixture.coordinator.commandTabId, viewport: .firstRow)
         #expect(refusal != nil)
         await refusal?.value
 

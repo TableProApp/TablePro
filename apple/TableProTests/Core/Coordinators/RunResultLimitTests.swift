@@ -32,7 +32,7 @@ extension GlobalStateSuites {
 
             let tab = fixture.addTab(QueryTab(title: "Query", query: text, tabType: .query))
             let runner: QueryExecutionCoordinator = fixture.coordinator.queryExecutionCoordinator
-            runner.executeBatches(runner.executionBatches(in: text), parameters: [])
+            runner.executeBatches(runner.executionBatches(in: text), parameters: [], onTab: tab.id)
             let handle = try #require(fixture.coordinator.queryTasks.task(for: tab.id))
             await handle.value
             return try #require(fixture.tabManager.tabs.first { $0.id == tab.id }).display.resultSets

@@ -213,8 +213,8 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// also what re-runs `StatefulToolbarItem.validate()`, so the safe-mode glyph tracks the level
     /// through the same channel rather than through an observer of its own.
     ///
-    /// The tab manager is watched for the visibility key alone. It publishes on every edit to a
-    /// tab, typing included, so its observer builds the key from its eight inputs, compares it and
+    /// The tab manager is watched for the visibility key alone. It publishes on every tab edit
+    /// except plain typing, so its observer builds the key from its eight inputs, compares it and
     /// returns: no whole context, no validation pass and no write.
     private func observeItemState() {
         itemStateObservation = nil

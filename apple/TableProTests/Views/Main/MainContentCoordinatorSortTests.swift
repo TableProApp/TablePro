@@ -223,7 +223,7 @@ struct MainContentCoordinatorSortTests {
         let harness = try await ParameterizedRunHarness.running(
             query: "INSERT INTO audit (msg) VALUES (:m);\nSELECT id, msg FROM audit WHERE msg = :m",
             parameterValue: "hello"
-        ) { coordinator in coordinator.runAllStatements() }
+        ) { coordinator in coordinator.runAllStatements(onTab: coordinator.commandTabId) }
         defer { harness.tearDown() }
         #expect(harness.driver.sentSQL.contains { $0.hasPrefix("INSERT") })
 
@@ -240,7 +240,7 @@ struct MainContentCoordinatorSortTests {
         let statement = "SELECT id, msg FROM audit WHERE msg = :m"
         let editorText = "DELETE FROM audit WHERE msg = :m;\n\(statement)"
         let harness = try await ParameterizedRunHarness.running(query: editorText, parameterValue: "hello") { coordinator in
-            coordinator.runStatement(statement, sourceOffset: (editorText as NSString).range(of: statement).location)
+            coordinator.runStatement(statement, sourceOffset: (editorText as NSString).range(of: statement).location, onTab: coordinator.commandTabId)
         }
         defer { harness.tearDown() }
         #expect(harness.driver.sentSQL.allSatisfy { !$0.contains("DELETE") })
@@ -260,7 +260,7 @@ struct MainContentCoordinatorSortTests {
         let harness = try await ParameterizedRunHarness.running(
             query: "SELECT id, msg FROM audit WHERE msg = :m",
             parameterValue: "hello"
-        ) { coordinator in coordinator.runStatement("SELECT id, msg FROM audit WHERE msg = :m") }
+        ) { coordinator in coordinator.runStatement("SELECT id, msg FROM audit WHERE msg = :m", onTab: coordinator.commandTabId) }
         defer { harness.tearDown() }
         harness.tabManager.mutate(tabId: harness.tabId) {
             $0.content.queryParameters = [QueryParameter(name: "m", value: "typed later")]
@@ -280,7 +280,7 @@ struct MainContentCoordinatorSortTests {
         let harness = try await ParameterizedRunHarness.running(
             query: statement,
             parameters: [QueryParameter(name: "m", value: "hello"), QueryParameter(name: "pinned", value: "2")]
-        ) { coordinator in coordinator.runStatement(statement) }
+        ) { coordinator in coordinator.runStatement(statement, onTab: coordinator.commandTabId) }
         defer { harness.tearDown() }
 
         let sorted = try await harness.sort(byColumn: 1)
@@ -298,7 +298,7 @@ struct MainContentCoordinatorSortTests {
         let statement = "SELECT id, msg FROM audit WHERE msg = :m"
         let editorText = "DELETE FROM audit WHERE msg = :m;\n\(statement)"
         let harness = try await ParameterizedRunHarness.running(query: editorText, parameterValue: "hello") { coordinator in
-            coordinator.runStatement(statement, sourceOffset: (editorText as NSString).range(of: statement).location)
+            coordinator.runStatement(statement, sourceOffset: (editorText as NSString).range(of: statement).location, onTab: coordinator.commandTabId)
         }
         defer { harness.tearDown() }
 
@@ -314,7 +314,7 @@ struct MainContentCoordinatorSortTests {
     func reloadKeepsTheGridSort() async throws {
         let statement = "SELECT id, msg FROM audit WHERE msg = :m"
         let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
-            coordinator.runStatement(statement)
+            coordinator.runStatement(statement, onTab: coordinator.commandTabId)
         }
         defer { harness.tearDown() }
         _ = try await harness.sort(byColumn: 1)
@@ -331,7 +331,7 @@ struct MainContentCoordinatorSortTests {
     func reloadKeepsTheStatementsOwnOrderBy() async throws {
         let statement = "SELECT id, msg FROM audit WHERE msg = :m ORDER BY id DESC"
         let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
-            coordinator.runStatement(statement)
+            coordinator.runStatement(statement, onTab: coordinator.commandTabId)
         }
         defer { harness.tearDown() }
 
@@ -345,7 +345,7 @@ struct MainContentCoordinatorSortTests {
     func reloadKeepsTheValueFilter() async throws {
         let statement = "SELECT id, msg FROM audit WHERE msg = :m"
         let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
-            coordinator.runStatement(statement)
+            coordinator.runStatement(statement, onTab: coordinator.commandTabId)
         }
         defer { harness.tearDown() }
         var filter = GridValueFilterState()
@@ -361,7 +361,7 @@ struct MainContentCoordinatorSortTests {
     func runDropsTheGridSort() async throws {
         let statement = "SELECT id, msg FROM audit WHERE msg = :m"
         let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
-            coordinator.runStatement(statement)
+            coordinator.runStatement(statement, onTab: coordinator.commandTabId)
         }
         defer { harness.tearDown() }
         _ = try await harness.sort(byColumn: 1)
@@ -380,7 +380,7 @@ struct MainContentCoordinatorSortTests {
         written.baseQuery = "UPDATE users SET name = 'x' WHERE id = 1 RETURNING id, name"
         tabManager.mutate(at: idx) { $0.display.replaceUnpinnedResults(with: [written]) }
 
-        #expect(!coordinator.rerunActiveResult(.statement(written.baseQuery ?? ""), viewport: .keepPlace))
+        #expect(!coordinator.rerunActiveResult(.statement(written.baseQuery ?? ""), viewport: .keepPlace, onTab: coordinator.commandTabId))
     }
 
     @Test("A re-read lands only on its own result and database, and starts only on the selected tab")
@@ -419,13 +419,13 @@ struct MainContentCoordinatorSortTests {
     func reloadDroppedWhenTheResultChangesFirst() async throws {
         let statement = "SELECT id, msg FROM audit WHERE msg = :m"
         let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
-            coordinator.runStatement(statement)
+            coordinator.runStatement(statement, onTab: coordinator.commandTabId)
         }
         defer { harness.tearDown() }
         let alreadySent = harness.driver.sent.count
         let other = ResultSet(label: "Result 2", tableRows: TableRows())
 
-        harness.coordinator.reloadActiveResult()
+        harness.coordinator.reloadActiveResult(onTab: harness.coordinator.commandTabId)
         harness.tabManager.mutate(tabId: harness.tabId) { tab in
             tab.display.resultSets.append(other)
             tab.display.activeResultSetId = other.id
@@ -446,7 +446,7 @@ struct MainContentCoordinatorSortTests {
     func reloadKeepsAPinnedResultInItsPlace() async throws {
         let statement = "SELECT id, msg FROM audit WHERE msg = :m"
         let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
-            coordinator.runStatement(statement)
+            coordinator.runStatement(statement, onTab: coordinator.commandTabId)
         }
         defer { harness.tearDown() }
         let before = try #require(harness.tabManager.tabs.first { $0.id == harness.tabId }?.display.activeResultSet)
@@ -471,7 +471,7 @@ struct MainContentCoordinatorSortTests {
     func headerClickDuringRunLeavesNothingForTheNextRun(ending: InFlightRunEnding) async throws {
         let statement = "SELECT id, msg FROM audit WHERE msg = :m"
         let harness = try await ParameterizedRunHarness.running(query: statement, parameterValue: "hello") { coordinator in
-            coordinator.runStatement(statement)
+            coordinator.runStatement(statement, onTab: coordinator.commandTabId)
         }
         defer { harness.tearDown() }
         let alreadySent = harness.driver.sent.count
@@ -503,7 +503,7 @@ struct MainContentCoordinatorSortTests {
     ])
     func sortAfterFetchAllRerunsItsOwnStatement(script: String) async throws {
         let harness = try await ParameterizedRunHarness.running(query: script, parameterValue: "hello") { coordinator in
-            coordinator.runAllStatements()
+            coordinator.runAllStatements(onTab: coordinator.commandTabId)
         }
         defer { harness.tearDown() }
         try await harness.fetchAll()
@@ -820,7 +820,7 @@ private struct ParameterizedRunHarness {
     /// Reads the result again the way a save does and returns every statement that sent.
     func reload() async throws -> [SentStatement] {
         let alreadySent = driver.sent.count
-        coordinator.reloadActiveResult()
+        coordinator.reloadActiveResult(onTab: coordinator.commandTabId)
         try await waitUntilIdle {
             driver.sent.dropFirst(alreadySent).contains { $0.sql.hasPrefix(Self.resultPrefix) }
         }
@@ -830,7 +830,7 @@ private struct ParameterizedRunHarness {
     /// Presses Run with the caret where it is and returns every statement the run sent.
     func runAtCaret() async throws -> [SentStatement] {
         let alreadySent = driver.sent.count
-        coordinator.runQuery(viewport: .firstRow)
+        coordinator.runQuery(onTab: coordinator.commandTabId, viewport: .firstRow)
         try await waitUntilIdle {
             driver.sent.dropFirst(alreadySent).contains { $0.sql.hasPrefix(Self.resultPrefix) }
         }

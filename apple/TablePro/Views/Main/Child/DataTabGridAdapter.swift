@@ -141,7 +141,7 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
             apply()
             return
         }
-        coordinator.confirmDiscardRestoringRowsIfNeeded(action: .displayOrder) { confirmed in
+        coordinator.confirmDiscardChangesIfNeeded(action: .displayOrder) { confirmed in
             guard confirmed else { return }
             apply()
         }

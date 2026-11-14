@@ -37,7 +37,7 @@ final class MainContentCommandActions: ObservableObject {
     private let pendingTruncates: Binding<Set<DatabaseTreeTableRef>>
     private let pendingDeletes: Binding<Set<DatabaseTreeTableRef>>
     private let tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
-    private let trailingPaneState: TrailingPaneState
+    let trailingPaneState: TrailingPaneState
 
     weak var window: NSWindow? {
         didSet {
@@ -145,7 +145,7 @@ final class MainContentCommandActions: ObservableObject {
 
     // A close waits on this: started and left, the write could land after the window it reports to closed.
     @discardableResult
-    private func saveInspectorEditsAwaiting() async -> Bool {
+    func saveInspectorEditsAwaiting() async -> Bool {
         let editState = trailingPaneState.inspector.editState
         do {
             try await coordinator?.saveSidebarEdits(editState: editState)
@@ -737,48 +737,6 @@ final class MainContentCommandActions: ObservableObject {
         coordinator.toolbarState.isTableTab = false
     }
 
-    // False while work is still staged after the attempt (review sheet, refused or cancelled DDL, file conflict, Save As cancel).
-    func saveSelectedTabWork() async -> Bool {
-        guard let coordinator = coordinator else { return true }
-
-        if isUsersRolesTab, coordinator.usersRolesActions?.hasChanges() == true {
-            coordinator.usersRolesActions?.reviewAndApply()
-            return false
-        }
-
-        // Keyed on the session, not resultsViewMode, which let a Data-view or background tab close over its staged ALTERs.
-        if let tabId = coordinator.tabManager.selectedTabId,
-           let session = coordinator.structureSessions[tabId],
-           session.changeManager.hasChanges {
-            guard await session.applyStagedChanges(coordinator: coordinator).allowsClose else {
-                return false
-            }
-        }
-        guard await applySelectedDiagramEdits(in: coordinator) else { return false }
-        guard await applySelectedTypeChanges() else { return false }
-
-        // Data grid changes or pending table operations take priority
-        if hasDataWork {
-            return await withCheckedContinuation { continuation in
-                coordinator.saveCompletionContinuation = continuation
-                saveChanges()
-                // Still there when the command went somewhere other than the grid save, which reports nothing back.
-                coordinator.takeSaveCompletion()?.resume(returning: false)
-            }
-        }
-
-        if trailingPaneState.inspector.editState.hasEdits {
-            return await saveInspectorEditsAwaiting()
-        }
-
-        // File save (query editor with source file)
-        if coordinator.tabManager.selectedTab?.content.isFileDirty == true {
-            return await saveSelectedFileAwaiting()
-        }
-
-        return true
-    }
-
     // The prompt asked about every connection in the window, so Save reaches every tab of each; one it cannot save keeps the window.
     private func saveAndClose(asBatchSurvivor: Bool?) async -> Bool {
         let host = window?.contentViewController as? MainSplitViewController
@@ -794,17 +752,16 @@ final class MainContentCommandActions: ObservableObject {
         return true
     }
 
-    // Reaches every tab the window or batch prompt asked about; the selected tab is left to saveSelectedTabWork.
-    func applyStagedStructureEdits(in tabs: [QueryTab]) async -> Bool {
+    // Reaches every tab the window or batch prompt asked about; the one on screen is left to saveWork(onTab:).
+    func applyStagedStructureEdits(in tabs: [QueryTab], besides onScreenId: UUID?) async -> Bool {
         guard let coordinator else { return true }
-        let selectedId = coordinator.tabManager.selectedTabId
         let victims = tabs.filter { tab in
-            tab.id != selectedId && coordinator.hasStagedStructureEdits(in: tab)
+            tab.id != onScreenId && coordinator.hasStagedStructureEdits(in: tab)
         }
         for tab in victims {
             guard await applyStagedSchemaWork(of: tab, in: coordinator) else { return false }
         }
-        return await applyBackgroundTypeChanges(in: tabs)
+        return await applyBackgroundTypeChanges(in: tabs, besides: onScreenId)
     }
 
 
@@ -933,20 +890,20 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func saveFileAs() {
-        guard coordinator?.admitsSheetCommand() == true else { return }
-        Task { await saveFileAsAwaiting() }
+        guard let coordinator, coordinator.admitsSheetCommand() else { return }
+        let tabId = coordinator.tabManager.selectedTab?.id
+        Task { await saveFileAsAwaiting(forTab: tabId) }
     }
 
+    // A failed write passes its own tab: by the time it falls back here another tab can be in front.
     @discardableResult
-    func saveFileAsAwaiting() async -> Bool {
-        if let tabId = coordinator?.tabManager.selectedTabId {
-            coordinator?.flushEditorText(forTab: tabId)
-        }
-        guard let tab = coordinator?.tabManager.selectedTab,
+    func saveFileAsAwaiting(forTab requestedTabId: UUID? = nil) async -> Bool {
+        guard let tabId = requestedTabId ?? coordinator?.tabManager.selectedTab?.id else { return false }
+        coordinator?.flushEditorText(forTab: tabId)
+        guard let tab = coordinator?.tabManager.tabs.first(where: { $0.id == tabId }),
               tab.tabType == .query else { return false }
         let content = tab.content.query
         let suggestedName = tab.content.sourceFileURL?.lastPathComponent ?? "\(tab.title).sql"
-        let tabId = tab.id
         guard let url = await chooseSaveURL(suggestedName) else { return false }
         do {
             try await SQLFileService.writeFile(content: content, to: url, encoding: .utf8)
@@ -973,7 +930,8 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func explainQuery() {
-        coordinator?.runExplain()
+        guard let coordinator, let tabId = coordinator.tabManager.selectedTab?.id else { return }
+        coordinator.runExplain(onTab: tabId)
     }
 
     var aiQueryActionAvailability: AIQueryActionAvailability {
@@ -1117,11 +1075,13 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func runQuery() {
-        if let coordinator, let draft = coordinator.activeCreateTableDraft {
+        guard let coordinator else { return }
+        if let draft = coordinator.activeCreateTableDraft {
             draft.create(coordinator: coordinator)
             return
         }
-        coordinator?.runQuery(viewport: .keepPlace)
+        guard let tabId = coordinator.tabManager.selectedTab?.id else { return }
+        coordinator.runQuery(onTab: tabId, viewport: .keepPlace)
     }
 
     var canCreateDraftTable: Bool {
@@ -1129,11 +1089,13 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func runQueryWithoutLimit() {
-        coordinator?.runQuery(viewport: .keepPlace, bypassRowLimit: true)
+        guard let coordinator, let tabId = coordinator.tabManager.selectedTab?.id else { return }
+        coordinator.runQuery(onTab: tabId, viewport: .keepPlace, bypassRowLimit: true)
     }
 
     func runAllStatements() {
-        coordinator?.runAllStatements()
+        guard let coordinator, let tabId = coordinator.tabManager.selectedTab?.id else { return }
+        coordinator.runAllStatements(onTab: tabId)
     }
 
     func cancelCurrentQuery() {

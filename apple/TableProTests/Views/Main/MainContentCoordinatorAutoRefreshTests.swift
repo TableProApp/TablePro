@@ -31,7 +31,7 @@ struct MainContentCoordinatorAutoRefreshTests {
         let harness = AutoRefreshHarness()
         defer { harness.tearDown() }
 
-        harness.coordinator.executeTableTabQueryDirectly(viewport: .keepPlace)
+        harness.coordinator.executeTableTabQueryDirectly(onTab: harness.coordinator.commandTabId, viewport: .keepPlace)
         await harness.coordinator.queryTasks.task(for: harness.tabId)?.value
         await harness.recordMarker()
 

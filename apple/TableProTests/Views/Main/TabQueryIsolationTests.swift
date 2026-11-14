@@ -35,17 +35,17 @@ struct TabQueryIsolationTests {
     @Test("Running a query in another tab leaves the first tab's batch alone")
     func runQueryLeavesTheOtherTabAlone() async {
         await withTwoTabs { coordinator, _, _ in
-            coordinator.executeQueryInternal("SELECT 1")
+            coordinator.executeQueryInternal("SELECT 1", onTab: coordinator.commandTabId)
         }
     }
 
     @Test("Running a parameterized query in another tab leaves the first tab's batch alone")
     func parameterizedQueryLeavesTheOtherTabAlone() async {
         await withTwoTabs { coordinator, _, _ in
-            coordinator.queryExecutionCoordinator.executeQueryInternalParameterized(
-                "SELECT ?",
-                parameters: ["1"],
-                originalParameters: []
+            coordinator.queryExecutionCoordinator.executeQueryWithParameters(
+                "SELECT :id",
+                parameters: [QueryParameter(name: "id", value: "1")],
+                onTab: coordinator.commandTabId
             )
         }
     }
@@ -55,7 +55,8 @@ struct TabQueryIsolationTests {
         await withTwoTabs { coordinator, _, _ in
             coordinator.queryExecutionCoordinator.executeMultipleStatementsWithParameters(
                 SQLStatementScanner.executableStatements(in: "SELECT 1; SELECT 2"),
-                parameters: []
+                parameters: [],
+                onTab: coordinator.commandTabId
             )
         }
     }
@@ -67,6 +68,7 @@ struct TabQueryIsolationTests {
         await withTwoTabs { coordinator, _, _ in
             coordinator.executionGate = AlwaysAllowGate()
             await coordinator.runExplain(
+                onTab: coordinator.commandTabId,
                 variant: ExplainVariant(id: "plain", label: "Explain", sqlPrefix: "EXPLAIN")
             )?.value
         }

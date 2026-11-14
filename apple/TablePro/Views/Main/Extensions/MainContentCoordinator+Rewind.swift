@@ -159,13 +159,16 @@ extension MainContentCoordinator {
 
     func applyRewind() async {
         guard let plan = rewindPlan else { return }
-        let executor = RewindExecutor(connection: connection, scope: scope(for: plan.record))
+        let restoredScope = scope(for: plan.record)
+        // Read before the write: the tab in front by the time it lands may be another one.
+        let tabId = tabManager.selectedTab?.id
+        let executor = RewindExecutor(connection: connection, scope: restoredScope)
         do {
             let result = try await executor.apply(plan)
             Self.rewindLogger.info("Rewind restored \(result.restoredRows, privacy: .public) rows")
             rewindPlan = nil
-            if tabManager.selectedTab?.tableContext.tableName == plan.record.target.table {
-                reloadActiveResult()
+            if let tabId, tabShows(tabId, table: plan.record.target.table, in: restoredScope) {
+                reloadActiveResult(onTab: tabId)
             }
         } catch {
             let writeError = error as? DataWriteError
@@ -176,6 +179,14 @@ extension MainContentCoordinator {
                 window: contentWindow
             )
         }
+    }
+
+    // Matched on database and schema too: a same-named table elsewhere was not restored.
+    private func tabShows(_ tabId: UUID, table: String, in restoredScope: DatabaseScope) -> Bool {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }),
+              tab.tableContext.tableName == table,
+              let tabScope = scope(for: tab) else { return false }
+        return tabScope.database == restoredScope.database && tabScope.schema == restoredScope.schema
     }
 
     // Shaped by the record, not the live tab: the save's columns and keys matter, and the tab may have moved on.

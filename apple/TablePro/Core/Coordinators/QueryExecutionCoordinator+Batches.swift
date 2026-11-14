@@ -101,90 +101,54 @@ extension QueryExecutionCoordinator {
         )
     }
 
-    /// Runs each batch whole, in order, on one lease, and stops at the first that fails.
-    ///
-    /// The app opens no transaction around the run, as SQL Server's own tools do not: a batch carries on past most
-    /// errors, so an app-owned rollback would take back statements that ran after the failure, and the script's own
-    /// `BEGIN TRAN`, `TRY...CATCH` and procedures are what decide. A transaction the script leaves open is reported.
-    /// Manual Commit is the exception: the run is held, and a failure or a Stop rolls it back.
+    // No app transaction around the run: a batch carries on past most errors, so a rollback would undo later work. Manual Commit holds it.
     func executeBatches(
         _ batches: [ExecutableBatch],
         parameters: [QueryParameter],
-        bypassRowLimit: Bool = false,
-        onTab target: UUID? = nil
+        onTab tabId: UUID,
+        bypassRowLimit: Bool = false
     ) {
-        guard let (selectedTab, index) = parent.executionTab(target),
-              !parent.tabExecution.isExecuting(selectedTab.id) else { return }
+        guard let run = TabRun.begin(onTab: tabId, parameters: parameters, in: parent),
+              let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else { return }
 
-        if let firstMissing = parameters.first(where: {
-            !$0.isNull && $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }) {
-            parent.tabManager.mutate(at: index) {
-                $0.execution.errorMessage = String(
-                    format: String(localized: "Missing value for parameter: %@"),
-                    ":\(firstMissing.name)"
-                )
-            }
-            return
-        }
-
-        guard let scope = parent.scope(for: selectedTab) else {
-            parent.tabManager.mutate(at: index) {
-                $0.execution.errorMessage = String(localized: "Not connected to database")
-            }
-            return
-        }
-
-        parent.tabManager.mutate(at: index) { tab in
-            tab.execution.executionTime = nil
-            tab.execution.errorMessage = nil
-        }
-
-        let conn = parent.connection
-        let tabId = selectedTab.id
-        let (claim, lease) = parent.beginTabExecution(for: tabId)
+        let conn = run.connection
         let prepared = prepareBatches(
             batches,
             parameters: parameters,
-            query: selectedTab.content.query,
+            query: tab.content.query,
             bypassRowLimit: bypassRowLimit
         )
         let statementTexts = batches.flatMap { $0.statements.map(\.sql) }
         let mode = OperationKind.worst(of: statementTexts, databaseType: conn.type).transactionAccessMode
 
-        let batchTask = Task { [weak self, parent] in
+        run.launch { [weak self] run in
             guard let self else { return }
-            let run = await runBatches(prepared, scope: scope, mode: mode, claim: claim, lease: lease)
-            postRanStatements(of: prepared, run: run, scope: scope, connection: conn)
-            let plan = await batchResultPlan(prepared, outputs: Self.outputs(of: run.outcome), tabId: tabId)
+            let ran = await runBatches(prepared, scope: run.scope, mode: mode, claim: run.claim, lease: run.lease)
+            postRanStatements(of: prepared, run: ran, scope: run.scope, connection: conn)
+            let plan = await batchResultPlan(prepared, outputs: Self.outputs(of: ran.outcome), tabId: tabId)
 
-            let sessionNotice = Self.runNotice(outcome: run.outcome, sessionState: run.sessionState)
-            guard parent.tabExecution.settle(claim) || reportsUnknownCommitAfterStop(run.outcome, claim: claim) else {
+            let sessionNotice = Self.runNotice(outcome: ran.outcome, sessionState: ran.sessionState)
+            guard run.settle() || reportsUnknownCommitAfterStop(ran.outcome, claim: run.claim) else {
                 await keepBatchesAfterStop(
-                    prepared, run: run, plan: plan, parameters: parameters, claim: claim, sessionNotice: sessionNotice
+                    prepared, ran: ran, plan: plan, run: run, sessionNotice: sessionNotice
                 )
                 return
             }
-            parent.retireQueryTask(.claim(claim))
 
-            switch run.outcome {
+            switch ran.outcome {
             case .cancelled(let outputs):
                 keepStoppedBatches(
                     prepared,
                     outputs: outputs,
-                    parameters: parameters,
-                    tabId: tabId,
+                    run: run,
                     sessionNotice: sessionNotice,
                     plan: plan,
                     presentsResults: true
                 )
-                parent.reportEndedExecutions([
-                    EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
-                ])
+                run.reportCancelled()
             case .completed(let outputs):
                 applyCompletedBatches(
-                    prepared, outputs: outputs, parameters: parameters,
-                    tabId: tabId, claim: claim, sessionNotice: sessionNotice, plan: plan
+                    prepared, outputs: outputs, run: run, sessionNotice: sessionNotice, plan: plan
                 )
             case .failed(let outputs, let failure, let errorDescription):
                 handleBatchFailure(
@@ -193,21 +157,18 @@ extension QueryExecutionCoordinator {
                         errorDescription: errorDescription,
                         executedCount: outputs.count,
                         totalCount: prepared.count,
-                        plan: run.plan,
-                        sessionState: run.sessionState,
+                        plan: ran.plan,
+                        sessionState: ran.sessionState,
                         unit: .batch
                     ),
                     prepared: prepared,
                     outputs: outputs,
-                    parameters: parameters,
-                    tabId: tabId,
-                    claim: claim,
-                    failureOutput: run.failureOutput,
+                    run: run,
+                    failureOutput: ran.failureOutput,
                     plan: plan
                 )
             }
         }
-        parent.installQueryTask(batchTask, owner: .claim(claim), lease: lease)
     }
 
     // MARK: - Preparation
@@ -414,24 +375,21 @@ extension QueryExecutionCoordinator {
     private func applyCompletedBatches(
         _ prepared: [PreparedBatch],
         outputs: [BatchOutput],
-        parameters: [QueryParameter],
-        tabId: UUID,
-        claim: TabExecutionClaim,
+        run: TabRun,
         sessionNotice: String?,
         plan: BatchResultPlan
     ) {
         let totalRowsAffected = outputs.reduce(0) { $0 + $1.rowsAffected }
-        reportOperation(
-            kind: .queryBatch,
-            claim: claim,
-            outcome: .succeeded(OperationSummary(rowsAffected: totalRowsAffected, statementCount: outputs.count))
+        run.report(
+            .queryBatch,
+            .succeeded(OperationSummary(rowsAffected: totalRowsAffected, statementCount: outputs.count))
         )
-        recordBatchHistory(prepared, outputs: outputs, parameters: parameters, tabId: tabId, failedIndex: nil)
+        recordBatchHistory(prepared, outputs: outputs, run: run, failedIndex: nil)
         presentMultiStatementResults(
-            tabId: tabId,
+            tabId: run.tabId,
             timing: PluginQueryTiming(total: outputs.reduce(0) { $0 + $1.executionTime }),
             totalRowsAffected: totalRowsAffected,
-            newResultSets: batchResultSets(prepared, outputs: outputs, tabId: tabId, plan: plan),
+            newResultSets: batchResultSets(prepared, outputs: outputs, tabId: run.tabId, plan: plan),
             sessionNotice: sessionNotice
         )
     }
@@ -439,51 +397,46 @@ extension QueryExecutionCoordinator {
     // A Stop during a batch reads as one between batches: the completed ones are kept, with no error result.
     private func keepBatchesAfterStop(
         _ prepared: [PreparedBatch],
-        run: BatchRun,
+        ran: BatchRun,
         plan: BatchResultPlan,
-        parameters: [QueryParameter],
-        claim: TabExecutionClaim,
+        run: TabRun,
         sessionNotice: String?
     ) async {
-        let kept = run.outcome.keptAfterStop(plan: run.plan)
+        let kept = ran.outcome.keptAfterStop(plan: ran.plan)
         guard !kept.isEmpty else { return }
         // A failed batch's own results were in the plan, so a run that drops it is planned again.
-        let keptPlan = kept.count == Self.outputs(of: run.outcome).count
+        let keptPlan = kept.count == Self.outputs(of: ran.outcome).count
             ? plan
-            : await batchResultPlan(prepared, outputs: kept, tabId: claim.tabId)
-        let presentsResults = stoppedRunCanReplaceResults(onTab: claim.tabId)
-        guard parent.tabExecution.settleStopped(claim, replacingContent: presentsResults) else { return }
+            : await batchResultPlan(prepared, outputs: kept, tabId: run.tabId)
+        let presentsResults = stoppedRunCanReplaceResults(onTab: run.tabId)
+        guard parent.tabExecution.settleStopped(run.claim, replacingContent: presentsResults) else { return }
         keepStoppedBatches(
             prepared,
             outputs: kept,
-            parameters: parameters,
-            tabId: claim.tabId,
+            run: run,
             sessionNotice: sessionNotice,
             plan: keptPlan,
             presentsResults: presentsResults
         )
-        parent.reportEndedExecutions([
-            EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
-        ])
+        run.reportCancelled()
     }
 
     private func keepStoppedBatches(
         _ prepared: [PreparedBatch],
         outputs: [BatchOutput],
-        parameters: [QueryParameter],
-        tabId: UUID,
+        run: TabRun,
         sessionNotice: String?,
         plan: BatchResultPlan,
         presentsResults: Bool
     ) {
         guard !outputs.isEmpty else { return }
-        recordBatchHistory(prepared, outputs: outputs, parameters: parameters, tabId: tabId, failedIndex: nil)
+        recordBatchHistory(prepared, outputs: outputs, run: run, failedIndex: nil)
         guard presentsResults else { return }
         presentMultiStatementResults(
-            tabId: tabId,
+            tabId: run.tabId,
             timing: PluginQueryTiming(total: outputs.reduce(0) { $0 + $1.executionTime }),
             totalRowsAffected: outputs.reduce(0) { $0 + $1.rowsAffected },
-            newResultSets: batchResultSets(prepared, outputs: outputs, tabId: tabId, plan: plan),
+            newResultSets: batchResultSets(prepared, outputs: outputs, tabId: run.tabId, plan: plan),
             sessionNotice: sessionNotice
         )
     }
@@ -492,9 +445,7 @@ extension QueryExecutionCoordinator {
         _ context: MultiStatementFailureContext,
         prepared: [PreparedBatch],
         outputs: [BatchOutput],
-        parameters: [QueryParameter],
-        tabId: UUID,
-        claim: TabExecutionClaim,
+        run: TabRun,
         failureOutput: PluginServerOutput,
         plan: BatchResultPlan
     ) {
@@ -505,77 +456,50 @@ extension QueryExecutionCoordinator {
         } else {
             printed = failureOutput
         }
-        let message = ServerOutputCapture.failureMessage(report.message, output: printed)
         let failedBatch = report.failedStatementIndex.flatMap { prepared.indices.contains($0) ? prepared[$0] : nil }
 
         let errorResult = ResultSet(label: report.resultLabel)
-        errorResult.errorMessage = message
+        errorResult.errorMessage = ServerOutputCapture.failureMessage(report.message, output: printed)
         errorResult.failedQuery = report.failedSQL
         errorResult.statementAnchor = failedBatch?.batch.anchor
 
-        reportOperation(kind: .queryBatch, claim: claim, outcome: .failed(reason: context.errorDescription))
+        run.report(.queryBatch, .failed(reason: context.errorDescription))
         recordBatchHistory(
             prepared,
             outputs: outputs,
-            parameters: parameters,
-            tabId: tabId,
+            run: run,
             failedIndex: report.failedStatementIndex,
             failureDescription: context.errorDescription
         )
-
-        let timing = PluginQueryTiming(total: outputs.reduce(0) { $0 + $1.executionTime })
-        parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
-        parent.tabManager.mutate(tabId: tabId) { tab in
-            // The Error result carries the failure, so the banner stays on it rather than over every other result.
-            tab.execution.errorMessage = nil
-            tab.execution.errorQuery = nil
-            tab.execution.executionTime = timing.total
-            tab.execution.lastExecutedAt = Date()
-            tab.display.replaceUnpinnedResults(
-                with: batchResultSets(prepared, outputs: outputs, tabId: tabId, plan: plan) + [errorResult]
-            )
-            if tab.display.isResultsCollapsed {
-                tab.display.isResultsCollapsed = false
-            }
-        }
-        parent.seedBufferFromActiveResult(tabId: tabId)
-        parent.dropEdits(ofReplacedResultIn: tabId)
-        if parent.tabManager.selectedTabId == tabId {
-            parent.toolbarState.isResultsCollapsed = false
-            parent.toolbarState.recordQueryTiming(timing, for: tabId)
-            parent.announceQueryError(report.message)
-        }
+        presentFailedRun(
+            tabId: run.tabId,
+            resultSets: batchResultSets(prepared, outputs: outputs, tabId: run.tabId, plan: plan),
+            error: errorResult,
+            timing: PluginQueryTiming(total: outputs.reduce(0) { $0 + $1.executionTime }),
+            announcing: report.message
+        )
     }
 
-    /// One history entry per batch, because the batch is what ran. A failed batch is recorded as failed, with the
-    /// error it raised.
+    // One history entry per batch, because the batch is what ran; a failed batch is recorded as failed.
     private func recordBatchHistory(
         _ prepared: [PreparedBatch],
         outputs: [BatchOutput],
-        parameters: [QueryParameter],
-        tabId: UUID,
+        run: TabRun,
         failedIndex: Int?,
         failureDescription: String? = nil
     ) {
-        let connection = parent.connection
         for (index, entry) in prepared.enumerated() {
             let failed = index == failedIndex
             guard failed || index < outputs.count else { continue }
             let summary = index < outputs.count ? outputs[index].summary : BatchSummary(rowCount: 0, executionTime: 0)
-            recordHistory(
-                QueryHistoryRecordRequest(
-                    query: entry.batch.sql.hasSuffix(";") ? entry.batch.sql : entry.batch.sql + ";",
-                    connectionId: connection.id,
-                    databaseName: historyDatabaseName(tabId: tabId),
-                    databaseType: connection.type,
-                    schemaName: historySchemaName(tabId: tabId),
-                    source: .editor,
-                    executionTime: summary.executionTime,
-                    rowCount: failed ? -1 : summary.rowCount,
-                    wasSuccessful: !failed,
-                    errorMessage: failed ? failureDescription : nil
-                )
-            )
+            run.recordHistory(RunHistoryEntry(
+                query: entry.batch.sql,
+                terminates: true,
+                source: .editor,
+                executionTime: summary.executionTime,
+                rowCount: failed ? -1 : summary.rowCount,
+                failure: failed ? (failureDescription ?? "") : nil
+            ))
         }
     }
 

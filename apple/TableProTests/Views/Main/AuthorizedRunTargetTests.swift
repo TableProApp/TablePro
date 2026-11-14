@@ -19,7 +19,7 @@ struct AuthorizedRunTargetTests {
         let asking = fixture.addTab(QueryTab(title: "A", query: "DELETE FROM orders", tabType: .query))
         let other = fixture.addTab(QueryTab(title: "B", query: "SELECT 1", tabType: .query), select: false)
 
-        #expect(fixture.coordinator.runStatement("DELETE FROM orders"))
+        #expect(fixture.coordinator.runStatement("DELETE FROM orders", onTab: fixture.coordinator.commandTabId))
         try await waitUntil { gate.askedCount == 1 }
         fixture.tabManager.selectedTabId = other.id
         await gate.answer(allowing: true)
@@ -41,7 +41,7 @@ struct AuthorizedRunTargetTests {
         let asking = fixture.addTab(QueryTab(title: "A", query: "DELETE FROM orders", tabType: .query))
         fixture.tabManager.mutate(tabId: asking.id) { $0.tableContext.databaseName = "staging" }
 
-        #expect(fixture.coordinator.runStatement("DELETE FROM orders"))
+        #expect(fixture.coordinator.runStatement("DELETE FROM orders", onTab: fixture.coordinator.commandTabId))
         try await waitUntil { gate.askedCount == 1 }
         fixture.tabManager.mutate(tabId: asking.id) { $0.tableContext.databaseName = "production" }
         await gate.answer(allowing: true)
@@ -60,7 +60,7 @@ struct AuthorizedRunTargetTests {
         let asking = fixture.addTab(QueryTab(title: "A", query: "DELETE FROM orders", tabType: .query))
         let other = fixture.addTab(QueryTab(title: "B", query: "SELECT 1", tabType: .query), select: false)
 
-        #expect(fixture.coordinator.runStatement("DELETE FROM orders"))
+        #expect(fixture.coordinator.runStatement("DELETE FROM orders", onTab: fixture.coordinator.commandTabId))
         try await waitUntil { gate.askedCount == 1 }
         fixture.tabManager.selectedTabId = other.id
         fixture.tabManager.tabs.swapAt(0, 1)

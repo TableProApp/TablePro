@@ -21,14 +21,14 @@ struct MainContentView: View {
     @Binding var windowTitle: String
     @Binding var windowSubtitle: String
     @Binding var windowRepresentedURL: URL?
-    @ObservedObject var schemaService = SchemaService.shared
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     @Binding var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
     @ObservedObject var trailingPaneState: TrailingPaneState
+    @ObservedObject var catalogSnapshot: ConnectionCatalogSnapshot
 
     var tables: [TableInfo] {
-        schemaService.tables(for: connection.id)
+        catalogSnapshot.tables
     }
 
     // MARK: - State Objects
@@ -77,6 +77,7 @@ struct MainContentView: View {
         self._pendingDeletes = pendingDeletes
         self._tableOperationOptions = tableOperationOptions
         self.trailingPaneState = trailingPaneState
+        self.catalogSnapshot = coordinator.catalogSnapshot
         self.tabManager = tabManager
         self.selectedEdits = coordinator.selectedTabEdits
         self.toolbarState = toolbarState
@@ -532,6 +533,7 @@ struct MainContentView: View {
             coordinator: coordinator,
             historyState: HistoryPanelState.forConnection(connection.id),
             selectedEdits: selectedEdits,
+            catalogSnapshot: catalogSnapshot,
             connection: connection,
             windowId: windowId,
             connectionId: connection.id,

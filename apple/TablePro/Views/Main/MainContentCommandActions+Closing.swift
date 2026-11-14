@@ -67,7 +67,8 @@ extension MainContentCommandActions {
             closeAnchorWindow
         ) {
         case .save:
-            guard await saveSelectedTabWork() else { return }
+            // A tab picked during the prompt refuses the save, and with it the close: its editors are not this tab's.
+            guard await saveWork(onTab: id) else { return }
             stop(work)
             closeRevealedTab(id, returningTo: previousSelection)
         case .dontSave:
@@ -101,5 +102,55 @@ extension MainContentCommandActions {
               coordinator.tabManager.selectedTabId != id,
               coordinator.tabManager.tabs.contains(where: { $0.id == id }) else { return }
         coordinator.tabManager.selectedTabId = id
+    }
+
+    // False while work is still staged after the attempt (review sheet, refused or cancelled DDL, file conflict, Save As cancel).
+    func saveSelectedTabWork() async -> Bool {
+        await saveWork(onTab: coordinator?.tabManager.selectedTabId)
+    }
+
+    // False once another tab is in front or the tab is gone: the mounted editors, grid and inspector it saves are the front tab's.
+    func saveWork(onTab tabId: UUID?) async -> Bool {
+        guard let coordinator = coordinator else { return true }
+        let manager = coordinator.tabManager
+        let stillOnTab = { manager.selectedTabId == tabId && (tabId == nil || manager.selectedTabIndex != nil) }
+        guard stillOnTab() else { return false }
+
+        if isUsersRolesTab, coordinator.usersRolesActions?.hasChanges() == true {
+            coordinator.usersRolesActions?.reviewAndApply()
+            return false
+        }
+
+        // Keyed on the session, not resultsViewMode, which let a Data-view or background tab close over its staged ALTERs.
+        if let tabId,
+           let session = coordinator.structureSessions[tabId],
+           session.changeManager.hasChanges {
+            guard await session.applyStagedChanges(coordinator: coordinator).allowsClose, stillOnTab() else {
+                return false
+            }
+        }
+        guard await applyDiagramEdits(ofTab: tabId, in: coordinator), stillOnTab() else { return false }
+        guard await applyTypeChanges(ofTab: tabId), stillOnTab() else { return false }
+
+        // Data grid changes or pending table operations take priority
+        if hasDataWork {
+            return await withCheckedContinuation { continuation in
+                coordinator.saveCompletionContinuation = continuation
+                saveChanges()
+                // Still there when the command went somewhere other than the grid save, which reports nothing back.
+                coordinator.takeSaveCompletion()?.resume(returning: false)
+            }
+        }
+
+        if trailingPaneState.inspector.editState.hasEdits {
+            return await saveInspectorEditsAwaiting()
+        }
+
+        // File save (query editor with source file)
+        if coordinator.tabManager.selectedTab?.content.isFileDirty == true {
+            return await saveSelectedFileAwaiting()
+        }
+
+        return true
     }
 }

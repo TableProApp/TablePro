@@ -19,6 +19,7 @@ extension MainContentCoordinator {
         } else {
             refreshPendingTrailing = true
         }
+        let requestedTabId = tabManager.selectedTabId
         refreshCoalesceTask?.cancel()
         refreshCoalesceTask = Task { [weak self] in
             try? await Task.sleep(for: Self.refreshCoalesceInterval)
@@ -26,6 +27,8 @@ extension MainContentCoordinator {
             self.refreshCoalesceTask = nil
             if self.refreshPendingTrailing {
                 self.refreshPendingTrailing = false
+                // A tab selected since the request is not the one it asked to refresh.
+                guard self.tabManager.selectedTabId == requestedTabId else { return }
                 self.fireRefresh(hasPendingTableOps: hasPendingTableOps, onDiscard: onDiscard)
             }
         }
@@ -72,35 +75,39 @@ extension MainContentCoordinator {
         hasPendingTableOps: Bool,
         onDiscard: @escaping () -> Void
     ) {
-        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
+        guard let (tab, _) = tabManager.selectedTabAndIndex,
               tab.tabType == .table,
               tab.display.resultsViewMode != .structure else { return }
 
+        let tabId = tab.id
         commitActiveGridEdit()
-        guard changeManager.hasChanges || hasPendingTableOps else {
-            reloadTableTab(at: tabIndex)
+        let manager = changeManager(forTab: tabId)
+        guard manager.hasChanges || hasPendingTableOps else {
+            reloadTableTab(tabId)
             return
         }
 
         Task {
             let confirmed = await confirmDiscardChanges(action: .refresh, window: contentWindow)
-            guard confirmed else { return }
+            guard confirmed, tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
             onDiscard()
-            rowEditingCoordinator.restoreRowBufferToOriginals()
-            changeManager.clearChangesAndUndoHistory()
-            guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
-                  tab.tabType == .table else { return }
-            reloadTableTab(at: tabIndex)
+            rowEditingCoordinator.restoreRowBufferToOriginals(forTab: tabId)
+            manager.clearChangesAndUndoHistory()
+            guard tabManager.tabs.first(where: { $0.id == tabId })?.tabType == .table else { return }
+            reloadTableTab(tabId)
         }
     }
 
-    func reloadTableTab(at tabIndex: Int) {
-        stopExecution(for: tabManager.tabs[tabIndex].id)
+    func reloadTableTab(_ tabId: UUID) {
+        guard tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
+        stopExecution(for: tabId)
         // A refresh retires the earlier exact count, else the automatic count refuses to re-derive rather than downgrade it to an estimate.
-        tabManager.mutate(at: tabIndex) { $0.pagination.retireDerivedRowCount() }
-        rebuildTableQuery(at: tabIndex)
-        runQuery(viewport: .keepPlace)
+        tabManager.mutate(tabId: tabId) { $0.pagination.retireDerivedRowCount() }
+        rebuildTableQuery(forTab: tabId)
+        runQuery(onTab: tabId, viewport: .keepPlace)
         // The next tick counts from this load settling, not from the last one.
-        restartAutoRefresh()
+        if tabManager.selectedTabId == tabId {
+            restartAutoRefresh()
+        }
     }
 }

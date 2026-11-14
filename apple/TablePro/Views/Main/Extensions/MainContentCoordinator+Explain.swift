@@ -14,21 +14,21 @@ import TableProSQLGrammar
 
 extension MainContentCoordinator {
     @discardableResult
-    func runExplain(variant: ExplainVariant? = nil) -> Task<Void, Never>? {
-        guard let tabId = tabManager.selectedTabId else { return nil }
+    func runExplain(onTab tabId: UUID, variant: ExplainVariant? = nil) -> Task<Void, Never>? {
+        guard tabManager.selectedTab?.id == tabId else { return nil }
         // Nil when the discard prompt has to ask first: the plan follows the answer.
         var started: Task<Void, Never>?
         confirmRunDiscard(onTab: tabId) { [weak self] in
-            started = self?.startExplain(variant: variant)
+            started = self?.startExplain(variant: variant, onTab: tabId)
         }
         return started
     }
 
-    private func startExplain(variant: ExplainVariant?) -> Task<Void, Never>? {
-        if let tabId = tabManager.selectedTabId { flushEditorText(forTab: tabId) }
-        guard let (tab, index) = tabManager.selectedTabAndIndex else { return nil }
-        guard !tabExecution.isExecuting(tab.id) else {
-            traceExecutionBlocked(tabId: tab.id, site: "runExplain")
+    private func startExplain(variant: ExplainVariant?, onTab tabId: UUID) -> Task<Void, Never>? {
+        flushEditorText(forTab: tabId)
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return nil }
+        guard !tabExecution.isExecuting(tabId) else {
+            traceExecutionBlocked(tabId: tabId, site: "runExplain")
             return nil
         }
         guard !isShowingSafeModePrompt else { return nil }
@@ -40,22 +40,23 @@ extension MainContentCoordinator {
             databaseType: connection.type,
             statement: statement.sql
         ) else {
-            tabManager.mutate(at: index) {
+            tabManager.mutate(tabId: tabId) {
                 $0.execution.errorMessage = String(
                     localized: "EXPLAIN is not supported for this database type."
                 )
             }
             return nil
         }
+        guard let target = queryExecutionCoordinator.runTarget(onTab: tabId) else { return nil }
 
         isShowingSafeModePrompt = true
-        let tabId = tab.id
         let authorization = authorizationRequest(for: request, runsIn: scope(for: tab))
         return Task {
             defer { isShowingSafeModePrompt = false }
             switch await executionGate.authorize(authorization) {
             case .authorized:
-                executeExplain(request, anchor: anchor, tabId: tabId)
+                guard queryExecutionCoordinator.stillHolds(target) else { return }
+                queryExecutionCoordinator.executeExplain(request, anchor: anchor, onTab: tabId)
             case .denied(let reason, .policy):
                 tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = reason }
             case .denied(_, .cancelledByUser):
@@ -102,191 +103,5 @@ extension MainContentCoordinator {
             .executableStatements(in: sql, model: statementModel, grammar: lexicalGrammar)
             .first?
             .offset(by: sourceOffset)
-    }
-
-    // MARK: - Execution
-
-    private func executeExplain(_ request: ExplainRequest, anchor: StatementAnchor?, tabId: UUID) {
-        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
-        guard let scope = scope(for: tab) else {
-            tabManager.mutate(tabId: tabId) {
-                $0.execution.errorMessage = String(localized: "Not connected to database")
-            }
-            return
-        }
-
-        let (claim, lease) = beginTabExecution(for: tabId)
-        let conn = connection
-        let safeModeIsReadOnly = runsAtReadOnly
-
-        tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = nil }
-
-        // EXPLAIN ANALYZE and an actual plan run the statement, and a CREATE TABLE AS among them changes the catalog.
-        // Under Manual Commit such a run is held, as the write itself would be.
-        let ranWrite = request.operationKind(databaseType: conn.type).declaresWrite
-        let failureOutput = ServerOutputBox()
-        let explainTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let fetchResult = try await services.databaseManager.withScopedDriver(
-                    scope: scope,
-                    route: services.databaseManager.executionRoute(for: scope),
-                    cancellation: .cancellableRead(lease), sessionWork: .statements
-                ) { [queryExecutor, held = manualCommitRun(skipped: !ranWrite)] driver in
-                    try await held.running([request.gatedSQL(databaseType: conn.type)], on: driver) {
-                        try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) { () async throws -> QueryFetchResult in
-                            if let step = request.driverStep {
-                                return try await QueryExecutor.fetchExplainPlan(
-                                    driver: driver, statement: request.subjectSQL, variantId: step.variantId
-                                )
-                            }
-                            return try await queryExecutor.executeQuery(
-                                driver: driver, sql: request.sql, parameters: nil, rowCap: nil, safeModeIsReadOnly: safeModeIsReadOnly
-                            )
-                        }
-                    }
-                }
-                if ranWrite { Self.postStatementRan(request.subjectSQL, on: conn) }
-                let rawText = ExplainPlanTextFlattener.flatten(rows: fetchResult.rows)
-                let plan = ExplainPlanParserRegistry.plan(from: rawText, format: request.format)
-
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-
-                    // Every write below belongs to whoever owns the tab now. A superseded plan
-                    // that cleared the spinner or nilled the task handle would be reporting on a
-                    // query that is still running, so the gate comes before all of them.
-                    guard tabExecution.settle(claim) else { return }
-                    retireQueryTask(.claim(claim))
-                    guard !Task.isCancelled else {
-                        reportEndedExecutions([
-                            EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
-                        ])
-                        return
-                    }
-
-                    reportOperation(
-                        kind: .query,
-                        claim: claim,
-                        databaseName: operationDatabaseName(tabId: tabId),
-                        outcome: .succeeded(OperationSummary())
-                    )
-                    /// The same builder and the same database and schema the history row uses, so a
-                    /// plan captured here and one captured from a hand-typed EXPLAIN land in one
-                    /// chain instead of two that never compare.
-                    let historyId = UUID()
-                    let captured = QueryPlanCaptureBuilder.make(
-                        subjectSQL: request.subjectSQL,
-                        rawPlan: rawText,
-                        format: request.format,
-                        variantKey: request.variantKey,
-                        scope: QueryPlanScope(
-                            connectionId: conn.id,
-                            databaseType: conn.type,
-                            databaseName: queryExecutionCoordinator.historyDatabaseName(tabId: tabId),
-                            schemaName: queryExecutionCoordinator.historySchemaName(tabId: tabId)
-                        ),
-                        executionTime: fetchResult.executionTime,
-                        capturedAt: Date(),
-                        historyId: historyId,
-                        queryParameters: nil
-                    )
-                    flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
-                    tabManager.mutate(tabId: tabId) { tab in
-                        tab.execution.executionTime = fetchResult.executionTime
-                        tab.execution.rowsAffected = 0
-                        tab.execution.statusMessage = nil
-                        tab.execution.lastExecutedAt = Date()
-                        tab.pagination.resetLoadMore()
-                        tab.display.replaceUnpinnedResults(
-                            with: [ExplainResultSetFactory.make(
-                                rawText: rawText,
-                                plan: plan,
-                                sql: request.replayableSQL,
-                                executionTime: fetchResult.executionTime,
-                                anchor: anchor,
-                                planContext: captured.context,
-                                serverOutput: fetchResult.serverOutput
-                            )]
-                        )
-                        if tab.display.isResultsCollapsed {
-                            tab.display.isResultsCollapsed = false
-                        }
-                    }
-                    seedBufferFromActiveResult(tabId: tabId)
-                    dropEdits(ofReplacedResultIn: tabId)
-                    toolbarState.isResultsCollapsed = false
-
-                    recordHistory(
-                        QueryHistoryRecordRequest(
-                            id: historyId,
-                            query: request.sql,
-                            connectionId: conn.id,
-                            databaseName: captured.context.identity.scope.databaseName,
-                            databaseType: conn.type,
-                            schemaName: captured.context.identity.scope.schemaName,
-                            source: .explain,
-                            executionTime: fetchResult.executionTime,
-                            rowCount: fetchResult.rows.count,
-                            wasSuccessful: true,
-                            planCapture: captured.capture
-                        )
-                    )
-                }
-            } catch {
-                if ranWrite { Self.postStatementRan(request.subjectSQL, on: conn) }
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    guard tabExecution.settle(claim) else { return }
-                    retireQueryTask(.claim(claim))
-
-                    // A cancelled EXPLAIN is not a failure the user needs told about, and it does
-                    // not belong in history either.
-                    if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
-                        reportEndedExecutions([
-                            EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
-                        ])
-                        return
-                    }
-
-                    reportOperation(
-                        kind: .query,
-                        claim: claim,
-                        databaseName: operationDatabaseName(tabId: tabId),
-                        outcome: .failed(reason: error.localizedDescription)
-                    )
-
-                    tabManager.mutate(tabId: tabId) { tab in
-                        tab.execution.errorMessage = ServerOutputCapture.failureMessage(
-                            error.localizedDescription, output: failureOutput.output
-                        )
-                        tab.execution.lastExecutedAt = Date()
-                        if tab.display.isResultsCollapsed {
-                            tab.display.isResultsCollapsed = false
-                        }
-                    }
-                    if tabManager.selectedTabId == tabId {
-                        toolbarState.isResultsCollapsed = false
-                        announceQueryError(error.localizedDescription)
-                    }
-
-                    recordHistory(
-                        QueryHistoryRecordRequest(
-                            query: request.sql,
-                            connectionId: conn.id,
-                            databaseName: queryExecutionCoordinator.historyDatabaseName(tabId: tabId),
-                            databaseType: conn.type,
-                            schemaName: queryExecutionCoordinator.historySchemaName(tabId: tabId),
-                            source: .explain,
-                            executionTime: 0,
-                            rowCount: -1,
-                            wasSuccessful: false,
-                            errorMessage: error.localizedDescription
-                        )
-                    )
-                }
-            }
-        }
-        installQueryTask(explainTask, owner: .claim(claim), lease: lease)
     }
 }
