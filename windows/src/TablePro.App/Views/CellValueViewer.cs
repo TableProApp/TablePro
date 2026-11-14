@@ -94,9 +94,20 @@ internal static class CellValueViewer
         AutomationProperties.SetAutomationId(image, "ValueViewerImage");
         var copy = new Button { Content = Strings.Get("ValueViewerCopy"), IsEnabled = value.CanCopy };
         AutomationProperties.SetAutomationId(copy, "ValueViewerCopy");
-        // Copy takes what the chosen view shows, so the clipboard matches its layout and what it says was cut.
+        // Copy takes what the chosen view shows, so the clipboard matches its layout and what it says was cut; a
+        // picture copies as one.
         string? copied = null;
-        copy.Click += (_, _) => Copy(copied ?? value.CopyText() ?? string.Empty, notice);
+        copy.Click += async (_, _) =>
+        {
+            if (copied is null && value.IsWholeBinary && value.Bytes is { } picked)
+            {
+                await CopyPictureAsync(picked.ToArray(), notice).ConfigureAwait(true);
+            }
+            else
+            {
+                Copy(copied ?? value.CopyText() ?? string.Empty, notice);
+            }
+        };
 
         void Show(Mode mode)
         {
@@ -157,6 +168,28 @@ internal static class CellValueViewer
     {
         var package = new DataPackage();
         package.SetText(text);
+        Put(package, notice);
+    }
+
+    private static async Task CopyPictureAsync(byte[] bytes, InfoBar notice)
+    {
+        using var stream = new InMemoryRandomAccessStream();
+        using (var writer = new DataWriter(stream))
+        {
+            writer.WriteBytes(bytes);
+            await writer.StoreAsync();
+            writer.DetachStream();
+        }
+
+        stream.Seek(0);
+        var package = new DataPackage();
+        package.SetBitmap(RandomAccessStreamReference.CreateFromStream(stream));
+        // Flush hands the clipboard the bitmap now, while the stream is still open.
+        Put(package, notice);
+    }
+
+    private static void Put(DataPackage package, InfoBar notice)
+    {
         try
         {
             Clipboard.SetContent(package);
