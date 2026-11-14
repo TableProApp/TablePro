@@ -63,7 +63,7 @@ final class Neo4jPlugin: NSObject, TableProPlugin, DriverPlugin {
     static var statementCompletions: [CompletionEntry] { neo4jCompletions }
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
-        Neo4jPluginDriver(config: config)
+        Neo4jPluginDriver(config: config, userAgent: "TablePro/\(Self.pluginVersion)")
     }
 }
 
