@@ -304,12 +304,13 @@ public sealed class TableTab : IWorkspaceTab
         string.Equals(Table.Name, table, StringComparison.Ordinal)
         && string.Equals(Table.Schema, schema, StringComparison.Ordinal);
 
-    // A tab on the table a reference leads to whose rows were read with exactly its filter. One still reading may end
-    // on the rows it showed before, so it does not count.
+    // A tab on the table a reference leads to that shows rows read with exactly its filter, or will on its first
+    // show. One still reading may end on the rows it showed before, and one whose read failed shows none.
     public bool ShowsReference(FollowedReference.Rows reference)
     {
         ArgumentNullException.ThrowIfNull(reference);
-        return !IsRunning && Table == reference.Table && TableFilters.Same(_shownFilter, reference.Filter);
+        return !IsRunning && Table == reference.Table && TableFilters.Same(_shownFilter, reference.Filter)
+            && (!_shown || _results.Outcome is QueryOutcome.Completed);
     }
 
     // A new table tab on the rows a reference leads to, its filter kept with the tab as one the user set.

@@ -164,6 +164,20 @@ public sealed class TableTabReferenceTests
     }
 
     [Fact]
+    public async Task ATabWhoseReadFailedShowsNoReference()
+    {
+        var view = new FakeTableView();
+        var target = new TableTab(
+            _session, view, new FakeResults(), Artist, ObjectKind.Table, () => new AppSettings(), TableTab.TabFor(ArtistRows));
+        view.Tab = target;
+        _session.FilteredReadEnds = new QueryOutcome.Failed(Errors.Of("driver.query_failed"));
+
+        await target.RunAsync();
+
+        Assert.False(target.ShowsReference(ArtistRows));
+    }
+
+    [Fact]
     public void FiltersCompareByTheirRulesNotTheListsHoldingThem()
     {
         var copy = new TableFilter(FilterCombinator.And, [.. ToArtist.Rules], null);
