@@ -65,7 +65,7 @@ const TABLES_SQL: &str = "SELECT schema_name, table_name, sql FROM duckdb_tables
 /// DuckDB keeps a foreign key's parent in the child's schema. One row
 /// per child, not per key, which would repeat the child's name.
 const FOREIGN_KEYS_SQL: &str = "SELECT schema_name, table_name, \
-            string_agg(referenced_table, chr(31) ORDER BY constraint_index) \
+            list(referenced_table ORDER BY constraint_index) \
      FROM duckdb_constraints() \
      WHERE database_name = ? AND (? IS NULL OR schema_name = ?) AND constraint_type = 'FOREIGN KEY' \
      GROUP BY schema_name, table_name ORDER BY schema_name, table_name";
@@ -326,9 +326,7 @@ fn add_tables(reader: &Reader<'_>, dump: &mut DumpCatalog) -> Result<(), DriverE
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
-            row.get::<_, Option<String>>(2)?
-                .map(|parents| parents.split('\u{1f}').map(str::to_owned).collect())
-                .unwrap_or_default(),
+            texts(row.get(2)?).into_iter().flatten().collect(),
         ))
     })?;
     let listed: Vec<&Named> = tables.iter().filter(|table| table.text().is_some()).collect();
