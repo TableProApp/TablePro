@@ -12,6 +12,7 @@ import TableProUtilities
 /// A file the import refuses before it sends the statement that needs what it cannot give.
 enum SQLFileParseError: LocalizedError, Equatable {
     case copyFromStandardInput(line: Int)
+    case spanTooLong(line: Int)
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,11 @@ enum SQLFileParseError: LocalizedError, Equatable {
                 format: String(
                     localized: "Line %lld runs COPY FROM STDIN, and this connection cannot load its rows. Run the file with psql, or dump it again with --inserts."
                 ),
+                line
+            )
+        case .spanTooLong(let line):
+            return String(
+                format: String(localized: "The string or comment that starts on line %lld is longer than the import reads."),
                 line
             )
         }
@@ -38,12 +44,21 @@ final class SQLFileParser: Sendable {
 
     private let limits: ReadLimits
 
+    // As much as the core's script reader holds of one statement: a string or comment longer is not one a server takes.
+    static let defaultSpanLimit = 134_217_728
+
     init(
         batchCutLength: Int = SQLFileParser.defaultBatchCutLength,
         chunkSize: Int = SQLFileParser.defaultChunkSize,
-        copyPieceLength: Int = SQLFileParser.defaultCopyPieceLength
+        copyPieceLength: Int = SQLFileParser.defaultCopyPieceLength,
+        spanLimit: Int = SQLFileParser.defaultSpanLimit
     ) {
-        limits = ReadLimits(batchCutLength: batchCutLength, chunkSize: chunkSize, copyPieceLength: copyPieceLength)
+        limits = ReadLimits(
+            batchCutLength: batchCutLength,
+            chunkSize: chunkSize,
+            copyPieceLength: copyPieceLength,
+            spanLimit: spanLimit
+        )
     }
 
     /// One statement the file holds, or on a grammar that cuts scripts into batches, one batch, with how many times
@@ -882,10 +897,13 @@ extension SQLFileParser {
                     closeFile()
                     return
                 }
-                try readChunk()
                 let held = ctx.heldSpanLength
                 ctx.heldSpanLength = 0
-                while held > 0, !ctx.atEndOfInput, nsBuffer.length - readOffset < 2 * held {
+                // A span is held whole until it ends, so one that never ends is refused rather than read into memory.
+                guard held <= limits.spanLimit else { throw SQLFileParseError.spanTooLong(line: ctx.currentLine) }
+                try readChunk()
+                let wanted = min(2 * held, limits.spanLimit + 1)
+                while held > 0, !ctx.atEndOfInput, !Task.isCancelled, nsBuffer.length - readOffset < wanted {
                     try readChunk()
                 }
             }

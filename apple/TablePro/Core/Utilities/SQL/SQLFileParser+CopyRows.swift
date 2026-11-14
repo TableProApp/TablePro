@@ -16,6 +16,7 @@ extension SQLFileParser {
         let batchCutLength: Int
         let chunkSize: Int
         let copyPieceLength: Int
+        let spanLimit: Int
     }
 
     // Reads the rows as psql 17 and 18 do (SQLPsqlScript.copyRows), from a buffer that holds part of the file.

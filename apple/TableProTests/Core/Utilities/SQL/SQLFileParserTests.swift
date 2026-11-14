@@ -411,6 +411,30 @@ struct SQLFileParserTests {
         }
     }
 
+    @Test("A comment or string longer than the import holds is refused at its line, by the count and the import")
+    func spanLongerThanTheLimitIsRefused() async throws {
+        let sql = "SELECT 1;\nSELECT 2 /*" + String(repeating: "x", count: 5_000) + "*/;\nSELECT 3;"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
+        try sql.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let parser = SQLFileParser(chunkSize: 64, spanLimit: 1_000)
+
+        await #expect(throws: SQLFileParseError.spanTooLong(line: 2)) {
+            _ = try await parser.countStatements(url: url, encoding: .utf8, grammar: TestGrammar.postgres)
+        }
+        var read: [String] = []
+        do {
+            for try await (statement, _) in parser.parseFile(url: url, encoding: .utf8, grammar: TestGrammar.postgres) {
+                read.append(statement)
+            }
+            Issue.record("the import read the whole file")
+        } catch let error as SQLFileParseError {
+            #expect(error == .spanTooLong(line: 2))
+        }
+        #expect(read == ["SELECT 1"])
+        #expect(try await Self.parse(sql, grammar: TestGrammar.postgres, chunkSize: 64).count == 3)
+    }
+
     @Test("A literal many chunks long is read whole, wherever the chunks cut it")
     func literalAcrossManyChunks() async throws {
         let body = String(repeating: "x;'' ", count: 40_000)
