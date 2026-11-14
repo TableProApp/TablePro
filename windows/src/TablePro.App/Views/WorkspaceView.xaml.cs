@@ -281,7 +281,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         await LoadTreeAsync().ConfigureAwait(true);
     }
 
-    public SessionConnection Snapshot(SessionConnection origin)
+    // withWork adds each tab's pending work, which only the session file keeps.
+    public SessionConnection Snapshot(SessionConnection origin, bool withWork = false)
     {
         ArgumentNullException.ThrowIfNull(origin);
         // Until it connects, the tabs it was saved with are still to come; once connected, the strip is the truth.
@@ -293,7 +294,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         var tabs = Tabs.TabItems.OfType<TabViewItem>()
             .Select(item => item.Content)
             .OfType<ITabContent>()
-            .Select(SnapshotOf)
+            .Select(content => withWork ? content.WithPendingWork(SnapshotOf(content)) : SnapshotOf(content))
             .ToList();
         return origin with
         {
@@ -375,15 +376,24 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     public void NewQueryTab(string? sql = null, string? title = null) =>
         AddQuery(sql, title ?? NextQueryTitle(), null, _defaultDatabase);
 
-    // A definition read from another database than the connection's runs there.
-    private void AddQuery(string? sql, string title, int? index, string? database = null, string? filePath = null)
+    // A definition read from another database runs there; rolledBack says the app ended in the tab's transaction.
+    private void AddQuery(
+        string? sql,
+        string title,
+        int? index,
+        string? database = null,
+        string? filePath = null,
+        bool rolledBack = false)
     {
         if (_share is null)
         {
             return;
         }
 
-        AddTab(new QueryTabView(_workbench, _share, title, sql, database, filePath), Symbol.Document, index);
+        AddTab(
+            new QueryTabView(_workbench, _share, title, sql, database, filePath, rolledBack),
+            Symbol.Document,
+            index);
     }
 
     // The tab that has the file already comes forward; false when the workspace has no connection to open it on.
@@ -526,7 +536,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 AddKey(key, index);
                 break;
             default:
-                AddQuery(tab.Sql, tab.Title, index, tab.Database, tab.FilePath);
+                AddQuery(tab.Sql, tab.Title, index, tab.Database, tab.FilePath, tab.HeldTransaction);
                 break;
         }
     }
@@ -868,6 +878,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             source.ShareRequested += OnShareRequested;
         }
 
+        if (item.Content is TableTabView tableTab)
+        {
+            tableTab.DraftChanged += OnEditorTextChanged;
+            tableTab.SessionWriteRequested += OnSessionWriteRequested;
+        }
+
         if (item.Content is QueryTabView query)
         {
             query.DialogOwner = this;
@@ -914,6 +930,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         if (item.Content is IShareSource source)
         {
             source.ShareRequested -= OnShareRequested;
+        }
+
+        if (item.Content is TableTabView tableTab)
+        {
+            tableTab.DraftChanged -= OnEditorTextChanged;
+            tableTab.SessionWriteRequested -= OnSessionWriteRequested;
         }
 
         if (item.Content is QueryTabView query)
@@ -1011,6 +1033,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     }
 
     private void OnEditorTextChanged(object? sender, EventArgs e) => SessionChanged?.Invoke(this, EventArgs.Empty);
+
+    private void OnSessionWriteRequested(object? sender, EventArgs e) => Host?.WriteSessionNow();
 
     // Built when asked for, since a menu keeps the window it first opened in and a tab can move to another.
     private void OnTabContextRequested(UIElement sender, ContextRequestedEventArgs args)

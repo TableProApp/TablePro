@@ -83,6 +83,9 @@ public interface ITableEditor : IDisposable
 
     EditStart GetEditStart(ResultSet? rows, long row, int column);
 
+    // One column's stored values with their kinds, for rowCount rows from firstRow, as a key names a row in the file.
+    IReadOnlyList<StoredValue> GetStoredValues(ResultSet? rows, int column, long firstRow, int rowCount);
+
     CoreError? Check(int column, CellEdit edit, bool newRow);
 
     IRowSave Plan(ResultSet? rows, IReadOnlyList<RowEdit> edits);
@@ -212,6 +215,9 @@ public sealed class CoreTabSession : ITabSession
 
 internal sealed class CoreTableEditor(TableEditor editor) : ITableEditor
 {
+    // Rows read at a time for their kinds, so a page of any size takes a bounded window.
+    private const int KindWindow = 4096;
+
     // The rows the edits name are gone, as when the page went before its save was planned.
     private static readonly CoreError RowsGone = new(
         "edit.out_of_range", ["edit.out_of_range"], "The page's rows are no longer held.", null, null);
@@ -225,6 +231,45 @@ internal sealed class CoreTableEditor(TableEditor editor) : ITableEditor
 
     public EditStart GetEditStart(ResultSet? rows, long row, int column) =>
         rows is null ? EditStart.Locked.Instance : editor.GetEditStart(rows, row, column);
+
+    // A window holds the kinds; the text is the whole value, which a window cuts.
+    public IReadOnlyList<StoredValue> GetStoredValues(ResultSet? rows, int column, long firstRow, int rowCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(rowCount);
+        if (rows is null)
+        {
+            throw new TableProException(RowsGone);
+        }
+
+        var values = new StoredValue[rowCount];
+        try
+        {
+            using var cursor = rows.OpenCursor();
+            for (var start = 0; start < rowCount; start += KindWindow)
+            {
+                var count = Math.Min(KindWindow, rowCount - start);
+                var window = cursor.Fetch(firstRow + start, count, column, 1, maxCharacters: 1);
+                if (window.RowCount < count || window.ColumnCount < 1)
+                {
+                    throw new TableProException(RowsGone);
+                }
+
+                for (var row = 0; row < count; row++)
+                {
+                    var kind = window.GetKind(row, 0);
+                    values[start + row] = window.IsNull(row, 0)
+                        ? new StoredValue(kind, null)
+                        : new StoredValue(kind, rows.GetCellText(firstRow + start + row, column));
+                }
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            throw new TableProException(RowsGone);
+        }
+
+        return values;
+    }
 
     public CoreError? Check(int column, CellEdit edit, bool newRow) => editor.Check(column, edit, newRow);
 

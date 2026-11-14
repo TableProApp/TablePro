@@ -42,6 +42,7 @@ extension MainContentCoordinator {
                 scope: scope,
                 route: services.databaseManager.executionRoute(for: scope),
                 cancellation: .cancellableRead(lease),
+                sessionWork: .statements,
                 body
             )
         }
@@ -94,13 +95,10 @@ extension MainContentCoordinator {
         )
     }
 
-    /// The change manager is one per window and holds whichever tab is selected, so a result that
-    /// still owns its own tab may not own the edits on screen. Clearing without the selection check
-    /// throws away another tab's uncommitted cells and its undo history.
+    // Only a result that still owns its tab replaces it, and only that tab's edits go.
     func clearChangesIfCurrent(claim: TabExecutionClaim) {
         guard tabExecution.ownsContent(claim), !Task.isCancelled else { return }
-        guard tabManager.selectedTabId == claim.tabId else { return }
-        changeManager.clearChangesAndUndoHistory()
+        dropEdits(ofReplacedResultIn: claim.tabId)
     }
 
     func resolveRowCap(sql: String, tabType: TabType, bypassLimit: Bool = false) -> Int? {

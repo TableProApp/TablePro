@@ -13,7 +13,6 @@ struct MainContentCoordinatorSortTests {
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(type: type),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         var tab = QueryTab(title: "Q1", query: "SELECT id, name, email FROM users", tabType: .query)
@@ -565,7 +564,6 @@ struct MainContentCoordinatorSortTests {
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(type: type),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         var tab = QueryTab(title: tableName, query: "SELECT * FROM \(tableName)", tabType: .table)
@@ -637,7 +635,6 @@ struct MainContentCoordinatorSortTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer {
@@ -780,7 +777,6 @@ private struct ParameterizedRunHarness {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         var tab = QueryTab(title: "Query", query: query, tabType: .query)

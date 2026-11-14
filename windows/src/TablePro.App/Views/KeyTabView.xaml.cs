@@ -78,6 +78,8 @@ public sealed partial class KeyTabView : UserControl, ITabContent, IKeyTabView
 
     public SessionTab Snapshot() => _model.Snapshot();
 
+    public SessionTab WithPendingWork(SessionTab snapshot) => _model.WithPendingWork(snapshot);
+
     public Task<bool> ConfirmCloseAsync(bool offerSave) => _model.ConfirmCloseAsync(offerSave);
 
     public Task CloseAsync() => _model.CloseAsync();

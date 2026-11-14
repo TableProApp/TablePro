@@ -40,6 +40,13 @@ public sealed partial class DataGridView
 
     public bool IsEditing => _edit is not null;
 
+    // What a commit would send now, without one: null with no editor open or its text as it opened.
+    public (int Row, int Column, string Text)? PendingEdit =>
+        _editor is not null && _edit is { } edit && EditorText(_editor) is var text
+        && !string.Equals(text, _editText, StringComparison.Ordinal)
+            ? (edit.Row, edit.Column, text)
+            : null;
+
     public string DefaultText
     {
         get => _defaultText;
@@ -70,6 +77,9 @@ public sealed partial class DataGridView
     public event EventHandler<GridEditCommittingEventArgs>? CellEditCommitting;
 
     public event EventHandler? DeleteRequested;
+
+    // The open editor's text changed, so what PendingEdit reads did too.
+    public event EventHandler? PendingEditChanged;
 
     internal TextBox? Editor => _editor;
 
@@ -432,6 +442,13 @@ public sealed partial class DataGridView
         editor.KeyDown += (_, e) => e.Handled |= e.Key is VirtualKey.Up or VirtualKey.Down or VirtualKey.Left
             or VirtualKey.Right or VirtualKey.PageUp or VirtualKey.PageDown or VirtualKey.Home or VirtualKey.End;
         editor.LostFocus += OnEditorLostFocus;
+        editor.TextChanged += (_, _) =>
+        {
+            if (IsEditing)
+            {
+                PendingEditChanged?.Invoke(this, EventArgs.Empty);
+            }
+        };
         // The grid has put the cell in view; for an editor in the frozen header the ScrollViewer would move too.
         editor.BringIntoViewRequested += (_, e) => e.Handled = true;
         return editor;

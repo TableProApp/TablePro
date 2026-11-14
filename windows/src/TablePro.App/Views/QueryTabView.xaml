@@ -59,6 +59,16 @@
                 </InfoBar.ActionButton>
             </InfoBar>
 
+            <!-- The app ended without a close while this tab held a transaction, which the server then rolled back. -->
+            <InfoBar
+                x:Name="RolledBackBar"
+                Margin="8,8,8,0"
+                AutomationProperties.AutomationId="RolledBackBar"
+                Closed="OnRolledBackBarClosed"
+                IsOpen="False"
+                Severity="Warning"
+                Visibility="Collapsed" />
+
             <!-- The transaction lives on this tab's own connection, so its bar and its end are here. -->
             <InfoBar
                 x:Name="TransactionBar"

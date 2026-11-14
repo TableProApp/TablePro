@@ -106,6 +106,9 @@ public sealed class KeyTab : IWorkspaceTab
 
     public Task<bool> ConfirmCloseAsync(bool offerSave) => Task.FromResult(true);
 
+    // A key tab holds nothing an end without a close would lose.
+    public SessionTab WithPendingWork(SessionTab snapshot) => snapshot;
+
     public SessionTab Snapshot() => new() { Kind = TabKind.Key, Title = Key, Table = Key };
 
     // Also Refresh, from a new reader; the rows shown stay until it lands, and a read in flight is shared.

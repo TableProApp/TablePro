@@ -159,9 +159,12 @@ struct MainContentCoordinatorDisplayStateTests {
         seedRows(coordinator, for: first.id)
         seedRows(coordinator, for: second.id)
 
-        let before = coordinator.changeManager.reloadVersion
+        let incoming = coordinator.changeManager(forTab: first.id)
+        let outgoing = coordinator.changeManager(forTab: second.id)
+        let before = (incoming: incoming.reloadVersion, outgoing: outgoing.reloadVersion)
         tabManager.selectedTabId = first.id
         coordinator.handleTabChange(from: second.id, to: first.id, tabs: tabManager.tabs)
-        #expect(coordinator.changeManager.reloadVersion == before)
+        #expect(incoming.reloadVersion == before.incoming)
+        #expect(outgoing.reloadVersion == before.outgoing)
     }
 }

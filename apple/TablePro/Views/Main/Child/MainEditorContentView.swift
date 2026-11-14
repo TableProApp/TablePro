@@ -36,7 +36,8 @@ struct MainEditorContentView: View {
 
     // Handed in, not resolved in `body` where nothing would observe it: the drawer state is a per-connection singleton.
     @ObservedObject var historyState: HistoryPanelState
-    @ObservedObject var changeManager: DataChangeManager
+    @ObservedObject var selectedEdits: SelectedTabEdits
+    private var changeManager: DataChangeManager { selectedEdits.manager }
     let connection: DatabaseConnection
     let windowId: UUID
     let connectionId: UUID

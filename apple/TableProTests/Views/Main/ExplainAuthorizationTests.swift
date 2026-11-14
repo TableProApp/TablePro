@@ -198,7 +198,6 @@ struct ExplainAuthorizationTests {
             let coordinator = MainContentCoordinator(
                 connection: connection,
                 tabManager: tabManager,
-                changeManager: DataChangeManager(),
                 toolbarState: toolbarState
             )
             let authenticating = StubAuthenticating(answer: true)

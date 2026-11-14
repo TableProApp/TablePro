@@ -62,7 +62,6 @@ private struct QueryTabHarness {
         coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(type: type),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         let tab = QueryTab(title: "Query", query: query, tabType: .query)

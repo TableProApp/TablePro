@@ -119,7 +119,9 @@ extension DatabaseManager {
         }
         let heldId = ObjectIdentifier(held)
         let scope = DatabaseScope(connectionId: hold.connectionId, database: hold.key.lane ?? "", schema: nil)
-        try await withScopedDriver(scope: scope, route: .sessionDriver, cancellation: .protectedWrite) { driver in
+        try await withScopedDriver(
+            scope: scope, route: .sessionDriver, cancellation: .protectedWrite, sessionWork: .statements
+        ) { driver in
             let unchanged = await MainActor.run {
                 DatabaseManager.shared.sessionTransactions.isCurrent(hold)
             }

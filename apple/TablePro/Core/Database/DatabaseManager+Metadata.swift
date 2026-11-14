@@ -70,7 +70,7 @@ extension DatabaseManager {
             route: metadataRoute(for: scope),
             workload: workload,
             cancellation: .untracked,
-            ownsSessionState: false,
+            sessionWork: .independent,
             body
         )
     }
@@ -86,7 +86,7 @@ extension DatabaseManager {
             route: metadataRoute(for: scope),
             workload: workload,
             cancellation: .untracked,
-            ownsSessionState: false,
+            sessionWork: .independent,
             readsOnly: true,
             body
         )

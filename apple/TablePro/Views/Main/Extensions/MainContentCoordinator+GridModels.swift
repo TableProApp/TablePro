@@ -132,11 +132,6 @@ extension MainContentCoordinator {
 
     // MARK: - Editing
 
-    // The tab whose edits the shared change manager holds. A switch repoints it after it starts.
-    var changeManagerTabId: UUID? {
-        tabSwitchOutgoingTabId ?? tabManager.selectedTabId
-    }
-
     @discardableResult
     func commitActiveGridEdit() -> Bool {
         guard let selectedTabId = tabManager.selectedTabId else { return true }
@@ -156,14 +151,6 @@ extension MainContentCoordinator {
         guard let tab = tabManager.selectedTab else { return false }
         return existingGridModel(forTab: tab.id)?.isEditing == true
             || activeGridModelProvider(for: tab)?.activeGridModel?.isEditing == true
-    }
-
-    func observeChangeManagerForGridRepaint() -> AnyCancellable {
-        changeManager.$reloadVersion
-            .removeDuplicates()
-            .dropFirst()
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.selectedTabGridModel?.repaintAllRows() }
     }
 
     // MARK: - Sort
@@ -192,8 +179,8 @@ extension MainContentCoordinator {
             immutableColumns: Set(services.pluginManager.immutableColumns(for: connection.type)),
             usesTrueFalseBooleans: services.pluginManager.usesTrueFalseBooleans(for: connection.type),
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(connection.type),
-            cellWriterSupport: changeManager.cellWriterSupport,
-            supportsFieldRemoval: changeManager.supportsFieldRemoval,
+            cellWriterSupport: changeManager(forTab: tab.id).cellWriterSupport,
+            supportsFieldRemoval: changeManager(forTab: tab.id).supportsFieldRemoval,
             connectionScope: scope(for: tab)
         )
         configuration.commands = gridCommands(for: tab, isSelected: isSelected, isEditable: isEditable)

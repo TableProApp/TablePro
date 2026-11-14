@@ -96,12 +96,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         Rail.SelectedItem = HomeItem;
         Closed += (_, _) => _home.WindowClosed();
         UpdateRail();
-        if (workbench.Settings.ReopenSession)
-        {
-            Restore(session);
-            _restoreWindows = session.TabWindows;
-            _ = RefreshMarksAsync();
-        }
+        // What the app ended holding without a close comes back even with Reopen at startup off.
+        var reopened = workbench.Settings.ReopenSession ? session : session.Recovered();
+        Restore(reopened);
+        _restoreWindows = reopened.TabWindows;
+        _ = RefreshMarksAsync();
     }
 
     private MainWindow(
@@ -398,6 +397,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     void IWorkspaceHost.TearOut(TabViewItem tab, WindowId window) => _primary.Receive(tab, window);
 
     void IWorkspaceHost.MoveToNewWindow(TabViewItem tab) => _primary.MoveOut(tab);
+
+    void IWorkspaceHost.WriteSessionNow() => _primary.WriteSessionBeforeSave();
 
     internal void OpenFile(string path)
     {
@@ -1228,8 +1229,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             form.Close();
         }
 
-        // Before any tab closes, since a closed tab is no longer in what the session lists.
-        _ = _saves?.Save(SessionSnapshot(), last: true);
+        // Before any tab closes, since a closed tab is no longer in what the session lists; its work was asked about.
+        _ = _saves?.Save(SessionSnapshot(withWork: false), last: true);
         _workbench.SaveUnsavedSettings();
         SessionSaved?.Invoke(this, EventArgs.Empty);
         DropSpare();
@@ -1317,7 +1318,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
-        var saved = await _saves.SaveInBackgroundAsync(SessionSnapshot());
+        var saved = await _saves.SaveInBackgroundAsync(SessionSnapshot(withWork: true));
         if (saved == SessionSave.Written)
         {
             _nextRetry = SaveDelay;
@@ -1346,7 +1347,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         try
         {
             _saveTimer?.Stop();
-            _ = _saves.Save(SessionSnapshot(), last: true);
+            _ = _saves.Save(SessionSnapshot(withWork: true), last: true);
         }
         catch (Exception exception)
         {
@@ -1363,7 +1364,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         _saveTimer?.Stop();
-        _ = _saves.Save(SessionSnapshot(), last: true);
+        _ = _saves.Save(SessionSnapshot(withWork: true), last: true);
         _workbench.SaveUnsavedSettings();
         // Restart Manager asks the app to end itself; at a sign-out the process may be gone before this runs.
         DispatcherQueue.TryEnqueue(async () =>
@@ -1371,6 +1372,28 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             await ShutDownAsync();
             CloseForGood();
         });
+    }
+
+    // The saving tab's edits go in uncertain, so an end before its answer leaves Save blocked; a failure is logged.
+    private void WriteSessionBeforeSave()
+    {
+        if (_closing || _saves is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_saves.Save(SessionSnapshot(withWork: true)) == SessionSave.Refused)
+            {
+                CrashLog.Write(new IOException("The session file refused the write made before a table save."));
+                SessionChanged();
+            }
+        }
+        catch (Exception exception)
+        {
+            CrashLog.Write(exception);
+        }
     }
 
     // A forced Restart Manager close ends the app with no WM_ENDSESSION after a FALSE, so the session is written first.
@@ -1381,7 +1404,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
-        _ = _saves.Save(SessionSnapshot());
+        _ = _saves.Save(SessionSnapshot(withWork: true));
         _workbench.SaveUnsavedSettings();
     }
 
@@ -1405,15 +1428,16 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         };
     }
 
-    private SessionState SessionSnapshot()
+    // withWork keeps the pending edits and held transactions a forced end would lose, for the relaunch to bring back.
+    private SessionState SessionSnapshot(bool withWork)
     {
-        var connections = _open.Select(open => Persisted(open.Snapshot())).ToList();
+        var connections = _open.Select(open => Persisted(open.Snapshot(withWork))).ToList();
         var front = _front is null ? (connections.Count > 0 ? 0 : -1) : _open.IndexOf(_front);
         var windows = _tabWindows
             .Where(window => window._front is not null)
             .Select(window => new TabWindowState
             {
-                Connection = Persisted(window._front!.Snapshot()),
+                Connection = Persisted(window._front!.Snapshot(withWork)),
                 Placement = WindowInterop.Placement(window),
             })
             .Where(window => window.Connection.Tabs.Count > 0)

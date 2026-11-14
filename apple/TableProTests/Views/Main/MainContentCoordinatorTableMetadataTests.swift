@@ -21,7 +21,6 @@ struct MainContentCoordinatorTableMetadataTests {
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         return (coordinator, tabManager)
@@ -469,7 +468,6 @@ private struct LiveSession {
         coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         coordinator.trailingPaneState = paneState

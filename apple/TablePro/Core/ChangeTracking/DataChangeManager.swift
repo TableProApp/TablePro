@@ -143,6 +143,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
 
     // MARK: - Undo/Redo Properties
 
+    var undoManager: UndoManager? { undoManagerProvider?() }
     var canUndo: Bool { undoManagerProvider?()?.canUndo ?? false }
     var canRedo: Bool { undoManagerProvider?()?.canRedo ?? false }
 
@@ -188,14 +189,16 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         columnTypeNames: [String: String] = [:],
         triggerReload: Bool = true
     ) {
-        self.tableName = tableName
-        self.schemaName = schemaName
-        self.columns = columns
-        self.primaryKeyColumns = primaryKeyColumns
-        self.databaseType = databaseType
-        self.generatedColumns = generatedColumns
-        self.rowMatchPolicy = rowMatchPolicy
-        self.columnTypeNames = columnTypeNames
+        describeTable(
+            tableName: tableName,
+            schemaName: schemaName,
+            columns: columns,
+            primaryKeyColumns: primaryKeyColumns,
+            databaseType: databaseType,
+            generatedColumns: generatedColumns,
+            rowMatchPolicy: rowMatchPolicy,
+            columnTypeNames: columnTypeNames
+        )
 
         discardUndoHistory()
         objectWillChange.send()
@@ -205,6 +208,27 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         if triggerReload {
             reloadVersion += 1
         }
+    }
+
+    // What the staged edits are written against, set without touching them or the undo history.
+    func describeTable(
+        tableName: String,
+        schemaName: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        databaseType: DatabaseType,
+        generatedColumns: Set<String>,
+        rowMatchPolicy: RowMatchPolicy,
+        columnTypeNames: [String: String]
+    ) {
+        if self.tableName != tableName { self.tableName = tableName }
+        if self.schemaName != schemaName { self.schemaName = schemaName }
+        if self.columns != columns { self.columns = columns }
+        if self.primaryKeyColumns != primaryKeyColumns { self.primaryKeyColumns = primaryKeyColumns }
+        if self.databaseType != databaseType { self.databaseType = databaseType }
+        if self.generatedColumns != generatedColumns { self.generatedColumns = generatedColumns }
+        if self.rowMatchPolicy != rowMatchPolicy { self.rowMatchPolicy = rowMatchPolicy }
+        self.columnTypeNames = columnTypeNames
     }
 
     func setPrimaryKeyColumns(_ primaryKeyColumns: [String]) {
@@ -977,35 +1001,6 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         pending.clear()
         hasChanges = false
         reloadVersion += 1
-    }
-
-    // MARK: - Per-Tab State Management
-
-    func saveState() -> TabChangeSnapshot {
-        pending.snapshot(primaryKeyColumns: primaryKeyColumns, columns: columns)
-    }
-
-    func restoreState(
-        from state: TabChangeSnapshot,
-        tableName: String,
-        schemaName: String? = nil,
-        databaseType: DatabaseType,
-        generatedColumns: Set<String>,
-        rowMatchPolicy: RowMatchPolicy = .none,
-        columnTypeNames: [String: String] = [:]
-    ) {
-        self.tableName = tableName
-        self.schemaName = schemaName
-        self.columns = state.columns
-        self.primaryKeyColumns = state.primaryKeyColumns
-        self.databaseType = databaseType
-        self.generatedColumns = generatedColumns
-        self.rowMatchPolicy = rowMatchPolicy
-        self.columnTypeNames = columnTypeNames
-        discardUndoHistory()
-        objectWillChange.send()
-        pending.restore(from: state)
-        self.hasChanges = !pending.isEmpty
     }
 
     // MARK: - O(1) Lookups

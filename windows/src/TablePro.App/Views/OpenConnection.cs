@@ -120,7 +120,7 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
 
     public Task DisconnectAsync(bool keepTabs = false) => _life.DisconnectAsync(keepTabs);
 
-    public SessionConnection Snapshot() => _life.Snapshot();
+    public SessionConnection Snapshot(bool withWork = false) => _life.Snapshot(withWork);
 
     void IConnectionView<DatabaseSession>.ShowState(ConnectionState state)
     {
@@ -185,7 +185,8 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
 
     Task IConnectionView<DatabaseSession>.CloseTabsAsync(bool keepClosed) => View.CloseTabsAsync(keepClosed);
 
-    SessionConnection IConnectionView<DatabaseSession>.Snapshot(SessionConnection origin) => View.Snapshot(origin);
+    SessionConnection IConnectionView<DatabaseSession>.Snapshot(SessionConnection origin, bool withWork) =>
+        View.Snapshot(origin, withWork);
 
     private static Style Badge(string key) => (Style)Application.Current.Resources[key];
 

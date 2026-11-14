@@ -274,7 +274,8 @@ extension QueryExecutionCoordinator {
             var run = try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
                 route: DatabaseManager.shared.executionRoute(for: scope),
-                cancellation: .cancellableRead(lease)
+                cancellation: .cancellableRead(lease),
+                sessionWork: .statements
             ) { driver in
                 let startState = await driver.heldSessionTransactionState()
                 let manual = ManualCommit.decision(
@@ -538,7 +539,7 @@ extension QueryExecutionCoordinator {
             }
         }
         parent.seedBufferFromActiveResult(tabId: tabId)
-        parent.dropParkedEdits(ofBackgroundTab: tabId)
+        parent.dropEdits(ofReplacedResultIn: tabId)
         if parent.tabManager.selectedTabId == tabId {
             parent.toolbarState.isResultsCollapsed = false
             parent.toolbarState.recordQueryTiming(timing, for: tabId)

@@ -79,7 +79,6 @@ struct QueryTabConnectionMoveTests {
             source: .user
         )
         tab.selectionSnapshot = GridSelectionSnapshot(rowIDs: [.existing(2)], rectangles: [], activeCell: nil, anchor: nil)
-        tab.pendingChanges.deletedRowIDs = [.existing(0)]
 
         let moved = move(tab)
 
@@ -90,7 +89,6 @@ struct QueryTabConnectionMoveTests {
         #expect(moved.pendingRestoredSort == nil)
         #expect(moved.restoredSortSource == .unset)
         #expect(moved.selectionSnapshot.isEmpty)
-        #expect(!moved.pendingChanges.hasChanges)
         #expect(moved.display.resultSets.isEmpty)
     }
 

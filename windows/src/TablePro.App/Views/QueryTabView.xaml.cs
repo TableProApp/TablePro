@@ -31,7 +31,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         string title,
         string? sql,
         string? database = null,
-        string? filePath = null)
+        string? filePath = null,
+        bool rolledBack = false)
     {
         var engineId = share.Session.EngineId;
         var onDisk = filePath is null ? null : sql is null ? SqlFile.Read(filePath) : TryRead(filePath);
@@ -65,6 +66,13 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         SqlText.ContextMenuOpening += OnEditorMenuOpening;
         SqlText.TextChanged += OnTextChanged;
         SqlText.FilesDropped += (_, paths) => OpenFilesRequested?.Invoke(this, paths);
+        if (rolledBack)
+        {
+            RolledBackBar.Title = Strings.Get("RolledBackTitle");
+            RolledBackBar.Message = Strings.Get("RolledBackMessage");
+            RolledBackBar.Visibility = Visibility.Visible;
+            RolledBackBar.IsOpen = true;
+        }
     }
 
     public event EventHandler? StateChanged;
@@ -138,6 +146,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     public void FocusContent() => SqlText.Focus(FocusState.Programmatic);
 
     public SessionTab Snapshot() => _model.Snapshot();
+
+    public SessionTab WithPendingWork(SessionTab snapshot) => _model.WithPendingWork(snapshot);
 
     public Task<bool> ConfirmCloseAsync(bool offerSave) => _model.ConfirmCloseAsync(offerSave);
 
@@ -536,6 +546,9 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     }
 
     private void OnRun(object sender, RoutedEventArgs e) => Run();
+
+    private void OnRolledBackBarClosed(InfoBar sender, InfoBarClosedEventArgs args) =>
+        RolledBackBar.Visibility = Visibility.Collapsed;
 
     private void OnStop(object sender, RoutedEventArgs e) => Stop();
 

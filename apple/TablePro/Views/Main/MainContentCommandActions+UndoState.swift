@@ -20,11 +20,30 @@ extension StructureEditingSession: StructureUndoHistory {}
 
 extension CreateTableDraft: StructureUndoHistory {}
 
-// Users & Roles, the diagram and the structure editor keep their own histories; everything else uses the browse one.
+// Users & Roles, the diagram, the structure editor and each data tab keep their own histories.
 extension MainContentCommandActions {
     private var windowUndoManager: UndoManager? {
         coordinator?.browseUndoManager
     }
+
+    // Typing in a field and the sidebar's folder edits register on the window's history, which they undo first.
+    private var focusRegistersOnWindow: Bool {
+        guard let windowHistory = windowUndoManager,
+              let responder = coordinator?.contentWindow?.firstResponder,
+              responder is NSText || responder is NSOutlineView else { return false }
+        return responder.undoManager === windowHistory
+    }
+
+    private func history(using canAct: (UndoManager) -> Bool) -> UndoManager? {
+        if focusRegistersOnWindow, let windowHistory = windowUndoManager, canAct(windowHistory) {
+            return windowHistory
+        }
+        return coordinator?.changeManager.undoManager
+    }
+
+    private var undoHistory: UndoManager? { history { $0.canUndo } }
+
+    private var redoHistory: UndoManager? { history { $0.canRedo } }
 
     // A Create Table tab keeps its view mode at Data, so it is asked for by tab type.
     private var showsStructureEditor: Bool {
@@ -56,7 +75,7 @@ extension MainContentCommandActions {
         if showsStructureEditor { return structureHistory?.canUndo ?? false }
         if coordinator?.isSavingSelectedTab == true { return false }
         if coordinator?.changeManager.hasCoalescedUndoRun == true { return true }
-        return windowUndoManager?.canUndo ?? false
+        return undoHistory?.canUndo ?? false
     }
 
     var canRedo: Bool {
@@ -64,7 +83,7 @@ extension MainContentCommandActions {
         if isDiagramTab { return selectedDiagram?.canRedoStagedEdit ?? false }
         if showsStructureEditor { return structureHistory?.canRedo ?? false }
         if coordinator?.isSavingSelectedTab == true { return false }
-        return windowUndoManager?.canRedo ?? false
+        return redoHistory?.canRedo ?? false
     }
 
     var resolvedUndoTitle: String {
@@ -77,7 +96,7 @@ extension MainContentCommandActions {
         if coordinator?.changeManager.hasCoalescedUndoRun == true {
             return String(localized: "Undo Edit Cell")
         }
-        guard let manager = windowUndoManager, manager.canUndo else { return String(localized: "Undo") }
+        guard let manager = undoHistory, manager.canUndo else { return String(localized: "Undo") }
         return manager.undoMenuItemTitle
     }
 
@@ -88,7 +107,7 @@ extension MainContentCommandActions {
             guard let history = structureHistory, history.canRedo else { return String(localized: "Redo") }
             return history.redoMenuItemTitle
         }
-        guard let manager = windowUndoManager, manager.canRedo else { return String(localized: "Redo") }
+        guard let manager = redoHistory, manager.canRedo else { return String(localized: "Redo") }
         return manager.redoMenuItemTitle
     }
 
@@ -109,7 +128,7 @@ extension MainContentCommandActions {
             return
         }
         guard coordinator?.isSavingSelectedTab != true else { return }
-        windowUndoManager?.undo()
+        undoHistory?.undo()
     }
 
     func redoChange() {
@@ -127,6 +146,6 @@ extension MainContentCommandActions {
             return
         }
         guard coordinator?.isSavingSelectedTab != true else { return }
-        windowUndoManager?.redo()
+        redoHistory?.redo()
     }
 }

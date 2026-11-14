@@ -44,7 +44,9 @@ extension RowEditingCoordinator {
         endInspectorEditRun()
         // Taken now: the slot is a handoff, and a save still in flight keeps its own waiter when a second one starts.
         let waiter = parent.takeSaveCompletion()
-        let hasEditedCells = parent.changeManager.hasChanges
+        // The tab's own edits: they stay its own while another tab is shown, so the save follows them, not the selection.
+        let savingManager = parent.changeManager
+        let hasEditedCells = savingManager.hasChanges
         let hasPendingTableOps = !pendingTruncates.isEmpty || !pendingDeletes.isEmpty
 
         guard hasEditedCells || hasPendingTableOps else {
@@ -53,9 +55,8 @@ extension RowEditingCoordinator {
         }
 
         let savingTabId = parent.tabManager.selectedTabId
-        /// One change manager serves the whole window, so a second save cannot start while one is
-        /// in flight. Say so: over the slow link this guard exists for, a Save that silently does
-        /// nothing is indistinguishable from a Save that is broken.
+        // A second save in the window waits for the first. Say so: over a slow link a Save that silently
+        // does nothing is indistinguishable from a broken one.
         guard beginSaveInFlight(tabId: savingTabId) else {
             saveChangesLogger.debug("Save already in flight, refusing the repeat")
             if let index = parent.tabManager.selectedTabIndex {
@@ -110,10 +111,10 @@ extension RowEditingCoordinator {
         let connId = parent.connection.id
         let kind: OperationKind = hasPendingTableOps ? .destructiveQuery : .writeQuery
         let deleteConfirmation = BulkDeleteConfirmation(
-            deletedRowCount: parent.changeManager.deletedRowIDs.count,
+            deletedRowCount: savingManager.deletedRowIDs.count,
             tableName: plan.rowOperations.first(where: { $0.kind == .delete })?.target.table
         )
-        let confirmingChanges = PlannedEdits(parent.changeManager.pending)
+        let confirmingChanges = PlannedEdits(savingManager.pending)
         Task { [weak self, parent] in
             guard let self else {
                 waiter?.resume(returning: false)
@@ -122,10 +123,8 @@ extension RowEditingCoordinator {
 
             if deleteConfirmation.isRequired {
                 let preview = await previewCascade(of: plan)
-                // The window stays live while counting. A tab switched to holds the change manager this
-                // save would clear, and an edit made meanwhile is not in the plan, so either ends the save.
-                let planIsCurrent = parent.tabManager.selectedTabId == savingTabId
-                    && PlannedEdits(parent.changeManager.pending) == confirmingChanges
+                // The window stays live while counting, and an edit made meanwhile is not in the plan.
+                let planIsCurrent = PlannedEdits(savingManager.pending) == confirmingChanges
                 var choice = BulkDeleteAlert.Choice.cancel
                 if planIsCurrent {
                     choice = await BulkDeleteAlert.present(deleteConfirmation.with(preview), window: parent.contentWindow)
@@ -171,11 +170,8 @@ extension RowEditingCoordinator {
             )
             switch decision {
             case .authorized:
-                // The approval prompt is not window-modal. A tab switched to holds the change manager this save
-                // would clear, and an edit made meanwhile is not in the plan, so either ends the save.
-                let editsAreCurrent = !hasEditedCells
-                    || (parent.tabManager.selectedTabId == savingTabId
-                        && PlannedEdits(parent.changeManager.pending) == confirmingChanges)
+                // The approval prompt is not window-modal, and an edit made meanwhile is not in the plan.
+                let editsAreCurrent = !hasEditedCells || PlannedEdits(savingManager.pending) == confirmingChanges
                 guard editsAreCurrent else {
                     if hasPendingTableOps {
                         restorePendingTableOperations(
@@ -187,7 +183,7 @@ extension RowEditingCoordinator {
                     }
                     failSave(
                         message: String(
-                            localized: "The tab or its edits changed while the save waited for approval. Nothing was saved."
+                            localized: "The edits changed while the save waited for approval. Nothing was saved."
                         ),
                         tabId: savingTabId,
                         waiter: waiter
@@ -262,7 +258,7 @@ extension RowEditingCoordinator {
         let route = DatabaseManager.shared.executionRoute(for: scope)
         let commitMode = DatabaseManager.shared.commitMode(for: conn.id)
         let serverOwned = serverOwnedColumns(of: savingTabId)
-        let columnTypeNames = parent.changeManager.columnTypeNames
+        let columnTypeNames = savingTabId.flatMap(parent.existingChangeManager(forTab:))?.columnTypeNames ?? [:]
 
         Task { [weak self, parent] in
             guard let self else {
@@ -379,11 +375,7 @@ extension RowEditingCoordinator {
         }
     }
 
-    /// The tab that started the save owns the outcome of it.
-    ///
-    /// One `changeManager` serves the whole window and swaps contents on every tab switch, so
-    /// writing the completion into whichever tab is selected when the write lands clears the edits
-    /// of a tab that had nothing to do with it, and re-runs that tab's query.
+    // The tab that started the save owns its outcome, whichever tab is selected when the write lands.
     private func finishSuccessfulSave(
         plan: DataWritePlan,
         savingTabId: UUID?,
@@ -392,14 +384,11 @@ extension RowEditingCoordinator {
         truncatedTables: Set<DatabaseTreeTableRef>
     ) {
         let savingTabIsSelected = savingTabId != nil && parent.tabManager.selectedTabId == savingTabId
-        if savingTabIsSelected {
-            parent.changeManager.clearChangesAndUndoHistory()
+        if let savingTabId {
+            parent.existingChangeManager(forTab: savingTabId)?.clearChangesAndUndoHistory()
         }
         if let savingTabId, let index = parent.tabManager.tabs.firstIndex(where: { $0.id == savingTabId }) {
-            parent.tabManager.mutate(at: index) {
-                $0.pendingChanges = TabChangeSnapshot()
-                $0.execution.errorMessage = nil
-            }
+            parent.tabManager.mutate(at: index) { $0.execution.errorMessage = nil }
         }
 
         if clearTableOps, !deletedTables.isEmpty {
@@ -611,7 +600,7 @@ extension RowEditingCoordinator {
     /// Read before the save is sent, because by the time it commits the user may be on another tab, and the record
     /// has to describe the table the save wrote.
     private func serverOwnedColumns(of tabId: UUID?) -> (generated: [String], identity: [String]) {
-        let generated = Array(parent.changeManager.generatedColumns)
+        let generated = Array(tabId.flatMap(parent.existingChangeManager(forTab:))?.generatedColumns ?? [])
         guard let tabId else { return (generated, []) }
         let identity = parent.tabSessionRegistry.tableRows(for: tabId).columnIdentity
             .filter { $0.value == .always }

@@ -38,12 +38,11 @@ struct CellFilterApplyTests {
         }
     }
 
-    private func makeHarness(tabType: TabType = .table, changeManager: DataChangeManager = DataChangeManager()) -> Harness {
+    private func makeHarness(tabType: TabType = .table, editsFirstRowStatus: Bool = false) -> Harness {
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
-            changeManager: changeManager,
             toolbarState: ConnectionToolbarState()
         )
         var tab = QueryTab(
@@ -57,11 +56,11 @@ struct CellFilterApplyTests {
         tabManager.tabs.append(tab)
         tabManager.selectedTabId = tab.id
         coordinator.setActiveTableRows(rows, for: tab.id)
+        if editsFirstRowStatus { editStatusOfFirstRow(coordinator.changeManager(forTab: tab.id)) }
         return Harness(coordinator: coordinator, tabManager: tabManager, tabId: tab.id)
     }
 
-    private func editedStatusOfFirstRow() -> DataChangeManager {
-        let changes = DataChangeManager()
+    private func editStatusOfFirstRow(_ changes: DataChangeManager) {
         changes.configureForTable(
             tableName: "orders",
             columns: ["id", "status"],
@@ -78,7 +77,6 @@ struct CellFilterApplyTests {
             newValue: .text("void"),
             originalRow: [.text("1"), .text("paid")]
         )
-        return changes
     }
 
     private func clearSavedFilters(_ harness: Harness) {
@@ -142,7 +140,7 @@ struct CellFilterApplyTests {
     // Pretends an alert is already up, which `confirmDiscardChangesIfNeeded` answers false to once there are edits.
     @Test("Nothing changes while the discard alert is unanswered")
     func declinedDiscardChangesNothing() throws {
-        let harness = makeHarness(changeManager: editedStatusOfFirstRow())
+        let harness = makeHarness(editsFirstRowStatus: true)
         defer { harness.coordinator.teardown() }
         #expect(harness.coordinator.changeManager.hasChanges)
         let item = try #require(harness.filterMenuItem(row: 1, dataColumn: 1))
@@ -166,7 +164,7 @@ struct CellFilterApplyTests {
 
     @Test("An edited cell has no Filter item, because the server does not hold its value")
     func editedCellHasNoItem() {
-        let harness = makeHarness(changeManager: editedStatusOfFirstRow())
+        let harness = makeHarness(editsFirstRowStatus: true)
         defer { harness.coordinator.teardown() }
 
         #expect(harness.filterMenuItem(row: 0, dataColumn: 1) == nil)

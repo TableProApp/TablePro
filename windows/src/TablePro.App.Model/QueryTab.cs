@@ -220,6 +220,13 @@ public sealed class QueryTab : IWorkspaceTab
         FilePath = FilePath,
     };
 
+    // The server rolls the transaction back once the app ends, so a relaunch can say so.
+    public SessionTab WithPendingWork(SessionTab snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return WorkspaceNotices.Holds(Transaction) ? snapshot with { HeldTransaction = true } : snapshot;
+    }
+
     public async Task RunAsync()
     {
         if (IsRunning || _confirming || _switching || _work.IsClosed)
