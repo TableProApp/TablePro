@@ -305,7 +305,9 @@ public sealed partial class ShellTests
 
             app.Click(app.Find("PageSizeButton"), () => app.TryFindMenuItem("100 rows") is not null);
             app.Screenshot("29-page-size-menu");
-            app.Click(app.FindMenuItem("100 rows"), () => status.Name.StartsWith("1-100 ", StringComparison.Ordinal));
+            app.Click(
+                app.FindMenuItem("100 rows"),
+                () => AppSession.TextOf(status).StartsWith("1-100 ", StringComparison.Ordinal));
             Assert.Matches(PagedStatus("1-100"), status.Name);
             Assert.Equal("100 rows", app.Find("PageSizeButton").Name);
             var goTo = app.Find("GoToPageButton");
