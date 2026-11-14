@@ -204,4 +204,11 @@ struct QueryScriptTests {
         #expect(QueryScript.trimmed(" \n ; ", databaseType: .redis).isEmpty)
         #expect(QueryScript.trimmed(" \nSELECT 1; \n", databaseType: .sqlite) == "SELECT 1;")
     }
+
+    @Test("A script hands out the grammar it was split by, and standard SQL when it knows no engine")
+    func lexicalGrammarIsTheSplittingGrammar() {
+        #expect(plan("SELECT 1", .mysql).lexicalGrammar.contains(.hashLineComments))
+        #expect(plan("SELECT 1", .postgresql).lexicalGrammar.contains(.nestedBlockComments))
+        #expect(QueryScript(units: [.init(sql: "SELECT 1")], unitKind: .statement).lexicalGrammar == .ansi)
+    }
 }

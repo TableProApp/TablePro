@@ -161,6 +161,7 @@ extension QueryHistoryStorage {
     ) -> [QueryPlanSnapshotSummary] {
         let boundedLimit = min(max(limit, 0), Self.maximumPlanSnapshotListLength)
         guard db != nil, boundedLimit > 0 else { return [] }
+        ensureFingerprintsBackfilled()
 
         var clause = QueryHistorySqlClause()
         clause.append("""

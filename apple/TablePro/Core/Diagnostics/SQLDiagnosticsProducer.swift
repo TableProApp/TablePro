@@ -1,13 +1,16 @@
 import Foundation
+import TableProSQLGrammar
 
 /// Reports only structural problems more typing cannot fix. TablePro has no SQL grammar, and a
 /// half-written statement must never be flagged, so an unclosed bracket is deliberately silent.
 struct SQLDiagnosticsProducer: QueryDiagnosticsProducing {
+    let grammar: SQLLexicalGrammar
+
     func diagnostics(for text: String) -> [QueryDiagnostic] {
         let source = text as NSString
         guard source.length > 0, source.length <= QueryDiagnosticsLimits.maximumDocumentLength else { return [] }
 
-        let structure = QueryBracketScanner.scan(source, comments: .sql)
+        let structure = QueryBracketScanner.scan(source, language: .sql(grammar))
         var results: [QueryDiagnostic] = []
 
         if let range = structure.unmatchedClose {

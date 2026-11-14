@@ -162,4 +162,30 @@ struct QueryHistoryFingerprintMigrationTests {
         #expect(snapshot.totals.distinctShapeCount == 1)
         #expect(snapshot.mostRun.first?.callCount == 2)
     }
+
+    @Test("Opening a v5 database hashes every row again with the engine's grammar")
+    func versionSixRehashesWithTheGrammar() async {
+        let connectionId = UUID()
+        let url = makeVersion3Database(
+            queries: ["SELECT 'C:\\' AS p, a FROM t", "SELECT 'D:\\' AS p, a FROM t"],
+            connectionId: connectionId
+        )
+        let migrated = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: false)
+        #expect(await migrated.count(scope: .all) == 2)
+
+        // A v5 store hashed each row without the grammar, and a backslash kept PostgreSQL's literal open.
+        var db: OpaquePointer?
+        if sqlite3_open(url.path(percentEncoded: false), &db) == SQLITE_OK {
+            sqlite3_exec(db, "UPDATE history SET fingerprint_hash = rowid; PRAGMA user_version = 5;", nil, nil, nil)
+        }
+        sqlite3_close_v2(db)
+
+        let reopened = QueryHistoryStorage(databaseURL: url, removeDatabaseOnDeinit: true)
+        let snapshot = await reopened.insights(
+            QueryInsightsRequest(scope: .connection(connectionId)),
+            slowestRanking: .totalTime
+        )
+        #expect(snapshot.totals.distinctShapeCount == 1)
+        #expect(snapshot.mostRun.first?.normalizedQuery == "SELECT ? AS p, a FROM t")
+    }
 }

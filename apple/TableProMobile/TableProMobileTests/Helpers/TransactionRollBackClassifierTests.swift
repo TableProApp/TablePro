@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLGrammar
 @testable import TableProMobile
 import Testing
 
@@ -20,7 +21,7 @@ struct TransactionRollBackClassifierTests {
         ]
     )
     func wholeTransactionRollBacks(_ sql: String) {
-        #expect(TransactionRollBackClassifier.rollsBackTransaction(sql))
+        #expect(TransactionRollBackClassifier.rollsBackTransaction(sql, grammar: .ansi))
     }
 
     @Test(
@@ -39,15 +40,25 @@ struct TransactionRollBackClassifierTests {
         ]
     )
     func otherStatements(_ sql: String) {
-        #expect(!TransactionRollBackClassifier.rollsBackTransaction(sql))
+        #expect(!TransactionRollBackClassifier.rollsBackTransaction(sql, grammar: .ansi))
     }
 
     @Test("A PostgreSQL COMMIT the server answered by rolling back counts as a Roll Back")
     func commitRolledBackByPostgreSQL() {
         #expect(TransactionRollBackClassifier.rollsBackTransaction(
             "COMMIT",
+            grammar: .ansi,
             statusMessage: PostgreSQLSessionTransaction.failedTransactionRolledBackMessage
         ))
-        #expect(!TransactionRollBackClassifier.rollsBackTransaction("COMMIT", statusMessage: "COMMIT"))
+        #expect(!TransactionRollBackClassifier.rollsBackTransaction("COMMIT", grammar: .ansi, statusMessage: "COMMIT"))
+    }
+
+    @Test("A comment ends where the engine ends it before the ROLLBACK")
+    func commentsFollowTheGrammar() throws {
+        let mysql = try #require(SQLLexicalProfile.curated(forDatabaseTypeId: "MySQL")).grammar
+        let postgreSQL = try #require(SQLLexicalProfile.curated(forDatabaseTypeId: "PostgreSQL")).grammar
+        #expect(TransactionRollBackClassifier.rollsBackTransaction("# undo\nROLLBACK", grammar: mysql))
+        #expect(TransactionRollBackClassifier.rollsBackTransaction("/* a /* b */ c */ ROLLBACK", grammar: postgreSQL))
+        #expect(!TransactionRollBackClassifier.rollsBackTransaction("--x\nROLLBACK", grammar: mysql))
     }
 }

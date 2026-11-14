@@ -26,6 +26,17 @@ struct SQLFileParserTests {
         return statements
     }
 
+    private static func parse(_ sql: String, grammar: SQLLexicalGrammar, chunkSize: Int) async throws -> [String] {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
+        try sql.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var statements: [String] = []
+        for try await (statement, _) in SQLFileParser(chunkSize: chunkSize).parseFile(url: url, encoding: .utf8, grammar: grammar) {
+            statements.append(statement)
+        }
+        return statements
+    }
+
     @Test("Postgres: trailing backslash in value does not desync parser")
     func postgres_trailing_backslash_value() async throws {
         let sql = """
@@ -348,6 +359,89 @@ struct SQLFileParserTests {
             let padding = "-- " + String(repeating: "x", count: chunkSize - boundary - 4) + "\n"
             let statements = try await Self.parse(padding + script, grammar: TestGrammar.mysql)
             #expect(statements == ["/*M!100301 SET NAMES utf8mb4 */", "SELECT 1"], "boundary at \(boundary)")
+        }
+    }
+
+    @Test("A dropped comment leaves a blank, so the words around it stay apart")
+    func droppedCommentKeepsWordsApart() async throws {
+        let sql = "SELECT a/* note */FROM t;\nSELECT b-- note\nFROM t;"
+        #expect(try await Self.parse(sql, grammar: TestGrammar.postgres) == ["SELECT a FROM t", "SELECT b\nFROM t"])
+    }
+
+    @Test("A string after a line break carries on an E string, as PostgreSQL reads it")
+    func escapeStringContinuation() async throws {
+        let sql = "SELECT E'x'\n'\\'; SELECT 2; --';\nSELECT 3;"
+        #expect(try await Self.parse(sql, grammar: TestGrammar.postgres) == ["SELECT E'x'\n'\\'; SELECT 2; --'", "SELECT 3"])
+    }
+
+    @Test("A SQLite Tcl parameter runs to its closing parenthesis, quotes and semicolons included")
+    func sqliteTclParameter() async throws {
+        let sql = "SELECT $a('); DROP TABLE t; --')\nSELECT 3;"
+        #expect(try await Self.parse(sql, grammar: TestGrammar.sqlite) == ["SELECT $a(')", "DROP TABLE t", "SELECT 3"])
+    }
+
+    @Test("A client delimiter a chunk cuts is still read whole")
+    func longDelimiterAcrossChunks() async throws {
+        let sql = "DELIMITER $$$\nSELECT 1$$$\nDELIMITER ;\nSELECT 2;"
+        for chunkSize in 1...7 {
+            let statements = try await Self.parse(sql, grammar: TestGrammar.mysql, chunkSize: chunkSize)
+            #expect(statements == ["SELECT 1", "SELECT 2"], "chunks of \(chunkSize)")
+        }
+    }
+
+    @Test("A dollar tag longer than any fixed lookahead still opens its body when a chunk cuts the tag")
+    func longDollarTagAcrossChunks() async throws {
+        let tag = "$" + String(repeating: "t", count: 300) + "$"
+        let sql = "SELECT \(tag) a; b \(tag);\nSELECT 2;"
+        for chunkSize in [64, 100, 257, 305] {
+            let statements = try await Self.parse(sql, grammar: TestGrammar.postgres, chunkSize: chunkSize)
+            #expect(statements == ["SELECT \(tag) a; b \(tag)", "SELECT 2"], "chunks of \(chunkSize)")
+        }
+    }
+
+    @Test("An E string waits for the line after a comment a chunk cuts after its first dash")
+    func escapeStringContinuationAcrossASplitComment() async throws {
+        let head = "SELECT E'x'" + String(repeating: " ", count: 300)
+        let sql = head + "-- c\n'\\'; SELECT 2; --';\nSELECT 3;"
+        let first = (head as NSString).length + 1
+        for chunkSize in [first, first - 1, first + 1, 64] {
+            let statements = try await Self.parse(sql, grammar: TestGrammar.postgres, chunkSize: chunkSize)
+            #expect(statements.count == 2, "chunks of \(chunkSize)")
+            #expect(statements.last == "SELECT 3", "chunks of \(chunkSize)")
+        }
+    }
+
+    @Test("A comment or string longer than the import holds is refused at its line, by the count and the import")
+    func spanLongerThanTheLimitIsRefused() async throws {
+        let sql = "SELECT 1;\nSELECT 2 /*" + String(repeating: "x", count: 5_000) + "*/;\nSELECT 3;"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
+        try sql.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let parser = SQLFileParser(chunkSize: 64, spanLimit: 1_000)
+
+        await #expect(throws: SQLFileParseError.spanTooLong(line: 2)) {
+            _ = try await parser.countStatements(url: url, encoding: .utf8, grammar: TestGrammar.postgres)
+        }
+        var read: [String] = []
+        do {
+            for try await (statement, _) in parser.parseFile(url: url, encoding: .utf8, grammar: TestGrammar.postgres) {
+                read.append(statement)
+            }
+            Issue.record("the import read the whole file")
+        } catch let error as SQLFileParseError {
+            #expect(error == .spanTooLong(line: 2))
+        }
+        #expect(read == ["SELECT 1"])
+        #expect(try await Self.parse(sql, grammar: TestGrammar.postgres, chunkSize: 64).count == 3)
+    }
+
+    @Test("A literal many chunks long is read whole, wherever the chunks cut it")
+    func literalAcrossManyChunks() async throws {
+        let body = String(repeating: "x;'' ", count: 40_000)
+        let sql = "SELECT '\(body)';\nSELECT 2;"
+        for chunkSize in [64, 4_099] {
+            let statements = try await Self.parse(sql, grammar: TestGrammar.postgres, chunkSize: chunkSize)
+            #expect(statements == ["SELECT '\(body)'", "SELECT 2"], "chunks of \(chunkSize)")
         }
     }
 

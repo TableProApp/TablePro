@@ -58,6 +58,8 @@ public enum SQLNonCodeSpan {
     private static let capitalE = UInt16(UnicodeScalar("E").value)
     private static let smallE = UInt16(UnicodeScalar("e").value)
     private static let smallB = UInt16(UnicodeScalar("b").value)
+    private static let at = UInt16(UnicodeScalar("@").value)
+    private static let colon = UInt16(UnicodeScalar(":").value)
 
     /// The comment, literal or quoted identifier starting at `index`, or nil when `index` starts code.
     public static func span(at index: Int, in text: NSString, grammar: SQLLexicalGrammar) -> Span? {
@@ -117,6 +119,57 @@ public enum SQLNonCodeSpan {
             return nil
         }
         return span.end
+    }
+
+    // A reader that walks every unit asks this first, and `span(at:)` only where the answer can be a span.
+    public static func mayStart(_ unit: UInt16) -> Bool {
+        switch unit {
+        case SqlLexer.dash, SqlLexer.hash, SqlLexer.slash, SqlLexer.singleQuote, SqlLexer.doubleQuote, SqlLexer.backtick,
+             openBracket, SqlLexer.openAngleQuote, SqlDollarQuote.dollar, at, colon, capitalE, smallE, smallB,
+             SqlLexer.smallQ, SqlLexer.capitalQ, SqlLexer.smallN, SqlLexer.capitalN:
+            return true
+        default:
+            return false
+        }
+    }
+
+    // Units past a span's start that decide its kind (`nq'` and a delimiter outside the BMP), and past its end that
+    // decide where it ends (a doubled quote or `]]` after the closer).
+    private static let openerLookahead = 8
+    private static let closerLookahead = 1
+
+    // Whether text appended after `text` could change what `span(at: index)` answered, which a chunked reader waits on.
+    public static func needsMoreText(_ span: Span?, at index: Int, in text: NSString, grammar: SQLLexicalGrammar) -> Bool {
+        let length = text.length
+        guard length - index > openerLookahead else { return true }
+        guard let span else { return opensPastTheEnd(at: index, in: text, grammar: grammar) }
+        if !span.isTerminated || span.end + closerLookahead > length {
+            return true
+        }
+        guard grammar.contains(.escapeStringContinuations), span.kind == .quoted,
+              [capitalE, smallE, smallB].contains(text.character(at: span.start)),
+              case .runsOut = continuation(after: span.end, in: text, length: length, grammar: grammar)
+        else {
+            return false
+        }
+        return true
+    }
+
+    // A dollar tag or a Tcl-style parameter name can run past any fixed lookahead before it shows what it opens.
+    private static func opensPastTheEnd(at index: Int, in text: NSString, grammar: SQLLexicalGrammar) -> Bool {
+        let length = text.length
+        if let style = grammar.dollarQuoteStyle, text.character(at: index) == SqlDollarQuote.dollar,
+           case .needsMoreData = SqlDollarQuote.scanOpener(
+               at: index,
+               in: text,
+               bufLen: length,
+               style: style,
+               continuesName: { SQLNonCodeSpan.continuesName(beforeDollar: $0, grammar: grammar) }
+           ) {
+            return true
+        }
+        guard grammar.contains(.parenthesizedParameterNames) else { return false }
+        return SqlLexer.parameterNameEnd(text, at: index, length: length) == length
     }
 
     public static func isWordUnit(_ unit: UInt16) -> Bool {
@@ -320,7 +373,7 @@ public enum SQLNonCodeSpan {
             if grammar.contains(.escapeStringContinuations) {
                 var newlines = span.newlines
                 while span.isClosed,
-                      let continued = continuingQuote(after: span.next, in: text, length: length, grammar: grammar) {
+                      case .quote(let continued) = continuation(after: span.next, in: text, length: length, grammar: grammar) {
                     span = SqlLexer.skipQuotedString(
                         text,
                         from: continued.quote,
@@ -360,12 +413,19 @@ public enum SQLNonCodeSpan {
     /// blanks and `--` comments between, a line break among them. PostgreSQL 16 and later take a vertical tab for a
     /// blank; an older server refuses the text. A non-ASCII space is a blank only where DuckDB 1.5 has blanked it
     /// first: PostgreSQL 17.11 reads `E'a'` + U+00A0 + line break + `'b'` as a name between two strings.
-    private static func continuingQuote(
+    private enum Continuation {
+        case quote((quote: Int, newlines: Int))
+        case none
+        // Only blanks and comments up to the end of the text, so more text could still carry the string on.
+        case runsOut
+    }
+
+    private static func continuation(
         after index: Int,
         in text: NSString,
         length: Int,
         grammar: SQLLexicalGrammar
-    ) -> (quote: Int, newlines: Int)? {
+    ) -> Continuation {
         var cursor = index
         var lineBroke = false
         var newlines = 0
@@ -390,13 +450,15 @@ public enum SQLNonCodeSpan {
                     carriageReturnEnds: true,
                     formFeedEnds: false
                 )
+            case SqlLexer.dash where cursor + 1 == length:
+                return .runsOut
             case SqlLexer.singleQuote where lineBroke:
-                return (cursor, newlines)
+                return .quote((cursor, newlines))
             default:
-                return nil
+                return .none
             }
         }
-        return nil
+        return .runsOut
     }
 
     private static func dollarQuotedSpan(at index: Int, in text: NSString, grammar: SQLLexicalGrammar) -> Span? {

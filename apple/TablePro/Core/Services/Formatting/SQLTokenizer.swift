@@ -35,9 +35,6 @@ struct SQLToken: Equatable {
 
 // Comments, literals, quoted identifiers and batch lines end where the engine's grammar says (`SQLNonCodeSpan`), so a
 // formatted query keeps every one of them byte for byte. Only code between them is split into words and operators.
-//
-// Without a grammar the text is read exactly as before the formatter read grammars, because the query fingerprint is
-// the one caller and its hashes are stored: a different reading would split or merge history groups after an upgrade.
 struct SQLTokenizer {
     private static let standardKeywords: Set<String> = [
         // DML
@@ -103,10 +100,6 @@ struct SQLTokenizer {
         self.operatorsByFirstUnit = byFirst.mapValues { $0.sorted { $0.utf16.count > $1.utf16.count } }
     }
 
-    func tokenize(_ sql: String) -> [SQLToken] {
-        readsWithoutGrammar(sql)
-    }
-
     func tokenize(_ sql: String, grammar: SQLLexicalGrammar) -> [SQLToken] {
         var lexer = Lexer(text: sql as NSString, grammar: grammar, tokenizer: self)
         return lexer.run()
@@ -129,168 +122,6 @@ struct SQLTokenizer {
 
     fileprivate func operatorCandidates(startingWith unit: UInt16) -> [String] {
         operatorsByFirstUnit[unit] ?? []
-    }
-
-    private func readsWithoutGrammar(_ sql: String) -> [SQLToken] {
-        var tokens: [SQLToken] = []
-        let chars = Array(sql)
-        let count = chars.count
-        var i = 0
-
-        while i < count {
-            let ch = chars[i]
-
-            // Line comment: -- ...
-            if ch == "-" && i + 1 < count && chars[i + 1] == "-" {
-                let start = i
-                i += 2
-                while i < count && chars[i] != "\n" {
-                    i += 1
-                }
-                tokens.append(SQLToken(type: .comment, value: String(chars[start..<i])))
-                continue
-            }
-
-            // Block comment: /* ... */
-            if ch == "/" && i + 1 < count && chars[i + 1] == "*" {
-                let start = i
-                i += 2
-                while i + 1 < count && !(chars[i] == "*" && chars[i + 1] == "/") {
-                    i += 1
-                }
-                if i + 1 < count {
-                    i += 2 // skip */
-                } else {
-                    i = count // unterminated, so the comment runs to the end of the input
-                }
-                tokens.append(SQLToken(type: .comment, value: String(chars[start..<i])))
-                continue
-            }
-
-            // String literals: 'single', "double", `backtick`
-            if ch == "'" || ch == "\"" || ch == "`" {
-                let start = i
-                let quote = ch
-                i += 1
-                while i < count {
-                    if chars[i] == "\\" {
-                        i = min(i + 2, count) // skip escaped char, or stop at a trailing backslash
-                        continue
-                    }
-                    if chars[i] == quote {
-                        // Check for doubled quote escape: '' or ""
-                        if i + 1 < count && chars[i + 1] == quote {
-                            i += 2
-                            continue
-                        }
-                        i += 1
-                        break
-                    }
-                    i += 1
-                }
-                let value = String(chars[start..<i])
-                // Backtick-quoted identifiers are identifiers, not strings
-                let type: SQLTokenType = (quote == "`") ? .identifier : .string
-                tokens.append(SQLToken(type: type, value: value))
-                continue
-            }
-
-            // Whitespace
-            if ch.isWhitespace {
-                let start = i
-                while i < count && chars[i].isWhitespace {
-                    i += 1
-                }
-                tokens.append(SQLToken(type: .whitespace, value: String(chars[start..<i])))
-                continue
-            }
-
-            // Numbers
-            if ch.isNumber || (ch == "." && i + 1 < count && chars[i + 1].isNumber) {
-                let start = i
-                if ch == "." { i += 1 }
-                while i < count && (chars[i].isNumber || chars[i] == ".") {
-                    i += 1
-                }
-                // Scientific notation: 1e10, 1.5E-3
-                if i < count && (chars[i] == "e" || chars[i] == "E") {
-                    i += 1
-                    if i < count && (chars[i] == "+" || chars[i] == "-") {
-                        i += 1
-                    }
-                    while i < count && chars[i].isNumber {
-                        i += 1
-                    }
-                }
-                tokens.append(SQLToken(type: .number, value: String(chars[start..<i])))
-                continue
-            }
-
-            // Placeholders: $1, $name, ?, :name, @name
-            if ch == "?" {
-                tokens.append(SQLToken(type: .placeholder, value: "?"))
-                i += 1
-                continue
-            }
-            if (ch == "$" || ch == ":" || ch == "@") && i + 1 < count && (chars[i + 1].isLetter || chars[i + 1].isNumber || chars[i + 1] == "_") {
-                let start = i
-                i += 1
-                while i < count && (chars[i].isLetter || chars[i].isNumber || chars[i] == "_") {
-                    i += 1
-                }
-                tokens.append(SQLToken(type: .placeholder, value: String(chars[start..<i])))
-                continue
-            }
-
-            // Multi-character operators: >=, <=, <>, !=, ||, ::, ->>, ->
-            if i + 1 < count {
-                let twoChar = String([chars[i], chars[i + 1]])
-                if [">=", "<=", "<>", "!=", "||", "::", "->"].contains(twoChar) {
-                    if twoChar == "->" && i + 2 < count && chars[i + 2] == ">" {
-                        tokens.append(SQLToken(type: .operator, value: "->>"))
-                        i += 3
-                    } else {
-                        tokens.append(SQLToken(type: .operator, value: twoChar))
-                        i += 2
-                    }
-                    continue
-                }
-            }
-
-            // Single-character operators
-            if "=<>+-*/%&|^~!".contains(ch) {
-                tokens.append(SQLToken(type: .operator, value: String(ch)))
-                i += 1
-                continue
-            }
-
-            // Punctuation: ( ) , ; .
-            if "(),;.".contains(ch) {
-                tokens.append(SQLToken(type: .punctuation, value: String(ch)))
-                i += 1
-                continue
-            }
-
-            // Words: keywords or identifiers
-            if ch.isLetter || ch == "_" {
-                let start = i
-                i += 1
-                while i < count && (chars[i].isLetter || chars[i].isNumber || chars[i] == "_") {
-                    i += 1
-                }
-                let word = String(chars[start..<i])
-                let isKW = Self.standardKeywords.contains(word.uppercased())
-                    || dialectKeywords.contains(word.uppercased())
-                tokens.append(SQLToken(type: isKW ? .keyword : .identifier, value: word))
-                continue
-            }
-
-            // Unknown character, treated as an operator
-            tokens.append(SQLToken(type: .operator, value: String(ch)))
-            i += 1
-        }
-
-        return tokens
     }
 }
 

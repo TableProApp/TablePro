@@ -418,6 +418,17 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.assertEqual(self.verdict_after("ios", "core/crates/core/tests/fixtures/other.json"), "false")
         self.assertEqual(self.verdict_after("macos", shared), "false")
 
+    def test_both_apple_suites_and_linux_run_on_the_script_corpus_the_core_shares(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
+        corpus = "core/crates/core/tests/fixtures/sql_script_corpus.json"
+        for suite in ["macos", "ios", "linux", "core"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, corpus), "true")
+        self.assertEqual(self.verdict_after("plugins", corpus), "false")
+
     def test_the_mac_app_runs_on_the_client_catalog_it_bundles(self):
         catalog = "core/crates/mcp/clients.json"
         for suite in ["macos", "release", "shipped", "linux", "core"]:
