@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using TablePro.Editor.Model;
+using TablePro.Graphics;
 using Windows.System;
 using Windows.UI.Core;
 
@@ -48,8 +49,8 @@ internal sealed partial class FindBar : UserControl
         HorizontalAlignment = HorizontalAlignment.Right;
         VerticalAlignment = VerticalAlignment.Top;
         Margin = new Thickness(0, 4, 20, 0);
-        SetResource(Border.BackgroundProperty, "SolidBackgroundFillColorTertiaryBrush");
-        SetResource(Border.BorderBrushProperty, "SurfaceStrokeColorFlyoutBrush");
+        ApplyTheme();
+        ActualThemeChanged += (_, _) => ApplyTheme();
         Visibility = Visibility.Collapsed;
 
         _replaceToggle.Content = _replaceGlyph;
@@ -210,12 +211,18 @@ internal sealed partial class FindBar : UserControl
         }
     }
 
-    private void SetResource(DependencyProperty property, string key)
+    // The app's theme is set on its root, and a lookup from code sees the system's, so the bar asks for its own theme.
+    private void ApplyTheme()
     {
-        if (Application.Current?.Resources.TryGetValue(key, out var value) == true && value is Brush brush)
-        {
-            _frame.SetValue(property, brush);
-        }
+        var dark = ActualTheme == ElementTheme.Dark;
+        _frame.Background = new SolidColorBrush(ThemeColors.Theme(
+            "SolidBackgroundFillColorTertiary",
+            ActualTheme,
+            ThemeColors.FromArgb(dark ? 0xFF282828u : 0xFFF9F9F9u)));
+        _frame.BorderBrush = new SolidColorBrush(ThemeColors.Theme(
+            "SurfaceStrokeColorFlyout",
+            ActualTheme,
+            ThemeColors.FromArgb(dark ? 0x33000000u : 0x0F000000u)));
     }
 
     private static void FocusBox(TextBox box)
