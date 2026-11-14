@@ -114,6 +114,9 @@ public sealed class QueryTab : IWorkspaceTab
     private (DiskChange Change, SqlFileStamp? Stamp)? _shownChange;
     private (DiskChange Change, SqlFileStamp? Stamp)? _dismissedChange;
 
+    // Don't Save was the answer to a close, so the text a close snapshot keeps is not unsaved work.
+    private bool _discarded;
+
     // onDisk is the file as the view read it, null when it could not be; the view's text may differ from it.
     public QueryTab(
         string title,
@@ -126,7 +129,8 @@ public sealed class QueryTab : IWorkspaceTab
         string? database = null,
         IQueryFileView? files = null,
         string? filePath = null,
-        SqlFileRead? onDisk = null)
+        SqlFileRead? onDisk = null,
+        bool baselineUnknown = false)
     {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(session);
@@ -150,7 +154,7 @@ public sealed class QueryTab : IWorkspaceTab
             {
                 _format = onDisk.Format;
                 _stamp = onDisk.Stamp;
-                _savedText = onDisk.Text;
+                _savedText = baselineUnknown ? null : onDisk.Text;
             }
 
             IsDirty = TextDiffers();
@@ -206,11 +210,12 @@ public sealed class QueryTab : IWorkspaceTab
         return answer switch
         {
             SaveBeforeClose.Save when offerSave => await SaveAsync().ConfigureAwait(true),
-            SaveBeforeClose.DontSave => true,
+            SaveBeforeClose.DontSave => _discarded = true,
             _ => false,
         };
     }
 
+    // Text the user chose not to save is not kept for a relaunch, which reads the file instead.
     public SessionTab Snapshot() => new()
     {
         Kind = TabKind.Query,
@@ -218,6 +223,8 @@ public sealed class QueryTab : IWorkspaceTab
         Sql = _view.WholeText,
         Database = Database,
         FilePath = FilePath,
+        FileStamp = FilePath is null ? null : _stamp,
+        FileUnsaved = FilePath is not null && !_discarded && TextDiffers(),
     };
 
     // The server rolls the transaction back once the app ends, so a relaunch can say so.
@@ -361,7 +368,12 @@ public sealed class QueryTab : IWorkspaceTab
     }
 
     // The view reports an edit; a file tab works out whether its text still matches the file.
-    public void TextEdited() => UpdateDirty();
+    // An edit after Don't Save is unsaved text again.
+    public void TextEdited()
+    {
+        _discarded = false;
+        UpdateDirty();
+    }
 
     // To its file; Save As when it has none or the file is gone.
     public Task<bool> SaveAsync() => Saving(saveAs: false);

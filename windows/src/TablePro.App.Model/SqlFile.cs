@@ -24,6 +24,35 @@ public readonly record struct SqlFileStamp(DateTime LastWriteUtc, long Length);
 
 public sealed record SqlFileRead(string Text, SqlFileFormat Format, SqlFileStamp Stamp);
 
+// What a file tab opens with: its text, the file as last read or saved, and whether that read's text is unknown.
+public sealed record SqlFileOpening(string Text, SqlFileRead? Baseline, bool BaselineUnknown)
+{
+    // A tab saved clean shows the file as it is now. One with unsaved text keeps it; a file written while the app was
+    // closed then has a baseline whose text is unknown, so the tab reads as changed on disk and a save asks first.
+    public static SqlFileOpening Restored(
+        string sessionText,
+        SqlFileStamp? savedStamp,
+        bool unsaved,
+        Func<SqlFileRead?> read)
+    {
+        ArgumentNullException.ThrowIfNull(sessionText);
+        ArgumentNullException.ThrowIfNull(read);
+        if (read() is not { } disk)
+        {
+            return new(sessionText, null, false);
+        }
+
+        if (!unsaved)
+        {
+            return new(disk.Text, disk, false);
+        }
+
+        return savedStamp is { } stamp && stamp != disk.Stamp
+            ? new(sessionText, disk with { Stamp = stamp }, true)
+            : new(sessionText, disk, false);
+    }
+}
+
 // The text holds a character the file's encoding cannot store, so the file was left as it was.
 public sealed class SqlFileEncodingException : IOException
 {

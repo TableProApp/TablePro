@@ -94,6 +94,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         {
             _workbench.HistoryCleared -= OnHistoryRecorded;
             _workbench.HistoryCleared += OnHistoryRecorded;
+            // A clear while another page showed reached no handler here, so the pane reads the history again.
+            OnHistoryRecorded(this, EventArgs.Empty);
         };
         Unloaded += (_, _) => _workbench.HistoryCleared -= OnHistoryRecorded;
         Tabs.LayoutUpdated += OnTabsLayoutUpdated;
@@ -383,7 +385,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         int? index,
         string? database = null,
         string? filePath = null,
-        bool rolledBack = false)
+        bool rolledBack = false,
+        SessionTab? restored = null)
     {
         if (_share is null)
         {
@@ -391,7 +394,16 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
 
         AddTab(
-            new QueryTabView(_workbench, _share, title, sql, database, filePath, rolledBack),
+            new QueryTabView(
+                _workbench,
+                _share,
+                title,
+                sql,
+                database,
+                filePath,
+                rolledBack,
+                restored?.FileStamp,
+                restored?.FileUnsaved ?? false),
             Symbol.Document,
             index);
     }
@@ -536,7 +548,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 AddKey(key, index);
                 break;
             default:
-                AddQuery(tab.Sql, tab.Title, index, tab.Database, tab.FilePath, tab.HeldTransaction);
+                AddQuery(tab.Sql, tab.Title, index, tab.Database, tab.FilePath, tab.HeldTransaction, tab);
                 break;
         }
     }
@@ -1025,6 +1037,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         if (Tabs.TabItems.OfType<TabViewItem>().FirstOrDefault(item => ReferenceEquals(item.Content, sender)) is { } changed)
         {
             ShowHeader(changed);
+        }
+
+        // A tab's database, file and saved state change apart from its text, which is all the cached snapshot checks.
+        if (sender is ITabContent content)
+        {
+            _snapshots.Remove(content);
         }
 
         UpdateElsewhereBar();

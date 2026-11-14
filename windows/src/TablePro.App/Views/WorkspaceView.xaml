@@ -72,7 +72,6 @@
 
                 <!-- The database the pane browses; its menu is read from the server each time it opens. -->
                 <DropDownButton
-                    x:Uid="DatabaseButton"
                     x:Name="DatabaseButton"
                     Margin="8,8,8,0"
                     HorizontalAlignment="Stretch"

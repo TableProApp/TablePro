@@ -317,6 +317,76 @@ public sealed class QueryTabFileTests : IDisposable
         Assert.Equal("select * from Artist", tab.Snapshot().Sql);
     }
 
+    [Fact]
+    public void ARelaunchShowsACleanTabsFileAsItIsNowAndKeepsUnsavedText()
+    {
+        var path = Write("report.sql", Encoding.UTF8.GetBytes("select 'written while closed';"));
+        var stamp = SqlFile.Read(path).Stamp;
+        var older = stamp with { LastWriteUtc = stamp.LastWriteUtc.AddMinutes(-5) };
+
+        var clean = SqlFileOpening.Restored("select 1;", older, unsaved: false, () => SqlFile.Read(path));
+        var same = SqlFileOpening.Restored("select 'mine';", stamp, unsaved: true, () => SqlFile.Read(path));
+        var changed = SqlFileOpening.Restored("select 'mine';", older, unsaved: true, () => SqlFile.Read(path));
+        var gone = SqlFileOpening.Restored("select 'mine';", stamp, unsaved: true, () => null);
+
+        Assert.Equal(("select 'written while closed';", false), (clean.Text, clean.BaselineUnknown));
+        Assert.Equal(("select 'mine';", false, stamp), (same.Text, same.BaselineUnknown, same.Baseline?.Stamp));
+        Assert.Equal(("select 'mine';", true, older), (changed.Text, changed.BaselineUnknown, changed.Baseline?.Stamp));
+        Assert.Equal(("select 'mine';", null), (gone.Text, gone.Baseline));
+    }
+
+    [Fact]
+    public async Task UnsavedTextOverAFileWrittenWhileTheAppWasClosedAsksBeforeASave()
+    {
+        var path = Write("report.sql", Encoding.UTF8.GetBytes("select 'theirs';"));
+        var older = SqlFile.Read(path).Stamp;
+        older = older with { LastWriteUtc = older.LastWriteUtc.AddMinutes(-5) };
+        var opening = SqlFileOpening.Restored("select 'mine';", older, unsaved: true, () => SqlFile.Read(path));
+        _view.WholeText = opening.Text;
+        var tab = new QueryTab(
+            "report.sql",
+            _session,
+            _view,
+            _results,
+            DataModel.Relational,
+            () => new AppSettings(),
+            files: _files,
+            filePath: path,
+            onDisk: opening.Baseline,
+            baselineUnknown: opening.BaselineUnknown);
+
+        await tab.CheckDiskAsync();
+        var saved = await tab.SaveAsync();
+
+        Assert.False(saved);
+        Assert.True(tab.IsDirty);
+        Assert.Equal<DiskChange>([DiskChange.Changed], _files.Changes);
+        Assert.Equal(1, _files.OversAsked);
+        Assert.Equal("select 'theirs';", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public async Task ASnapshotMarksUnsavedTextUntilDontSaveLetsItGo()
+    {
+        _files.CloseAnswer = SaveBeforeClose.DontSave;
+        var tab = Open("edit.sql", "select 1;");
+        _view.WholeText = "select 2;";
+        tab.TextEdited();
+
+        var dirty = tab.Snapshot();
+        Assert.True(await tab.ConfirmCloseAsync(offerSave: true));
+        var discarded = tab.Snapshot();
+        tab.TextEdited();
+        var editedAgain = tab.Snapshot();
+
+        Assert.True(dirty.FileUnsaved);
+        Assert.True(dirty.HasRecoveredWork);
+        Assert.NotNull(dirty.FileStamp);
+        Assert.False(discarded.FileUnsaved);
+        Assert.False(discarded.HasRecoveredWork);
+        Assert.True(editedAgain.FileUnsaved);
+    }
+
     private QueryTab Open(string name, string text) =>
         Open(Write(name, Encoding.UTF8.GetBytes(text)));
 

@@ -24,7 +24,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     private bool _closed;
     private DiskChange _diskChange;
 
-    // A file opened with no sql is read here and throws when it cannot be; a restored tab keeps its session text.
+    // A file opened with no sql is read here and throws when it cannot be; a restored tab is opened as
+    // SqlFileOpening.Restored says, from the stamp and the unsaved mark its session kept.
     internal QueryTabView(
         Workbench workbench,
         SessionShare<DatabaseSession> share,
@@ -32,12 +33,28 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         string? sql,
         string? database = null,
         string? filePath = null,
-        bool rolledBack = false)
+        bool rolledBack = false,
+        SqlFileStamp? fileStamp = null,
+        bool fileUnsaved = false)
     {
         var engineId = share.Session.EngineId;
-        var onDisk = filePath is null ? null : sql is null ? SqlFile.Read(filePath) : TryRead(filePath);
+        SqlFileOpening opening;
+        if (filePath is null)
+        {
+            opening = new SqlFileOpening(sql ?? string.Empty, null, false);
+        }
+        else if (sql is null)
+        {
+            var read = SqlFile.Read(filePath);
+            opening = new SqlFileOpening(read.Text, read, false);
+        }
+        else
+        {
+            opening = SqlFileOpening.Restored(sql, fileStamp, fileUnsaved, () => TryRead(filePath));
+        }
+
         InitializeComponent();
-        SqlText.Text = sql ?? onDisk?.Text ?? string.Empty;
+        SqlText.Text = opening.Text;
         SqlText.Lexer = new CoreSqlLexer(Grammars.For(engineId));
         DisplaySettings.Follow(SqlText);
         _model = new QueryTab(
@@ -51,7 +68,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
             database,
             this,
             filePath,
-            onDisk);
+            opening.Baseline,
+            opening.BaselineUnknown);
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", _model.Title));
         ShowDatabase();
         _model.StateChanged += (_, _) => OnModelStateChanged();
