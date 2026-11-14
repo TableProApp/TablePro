@@ -4,24 +4,29 @@ namespace TablePro.Interop;
 
 internal static partial class Mapping
 {
-    public static RowReferenceChoice Reference(Native.RowReferenceChoice choice)
+    public static RowReferenceChoice Reference(Native.RowReferenceChoice choice) => new(
+        checked((int)choice.Key),
+        choice.Referencing,
+        choice.KeyName,
+        new TableName(choice.Table.Schema, choice.Table.Name),
+        choice.Columns);
+
+    public static FollowedReference Followed(Native.FollowedReference followed) => followed switch
     {
-        var (refusal, subject) = choice.Refusal switch
+        Native.FollowedReference.Rows rows =>
+            new FollowedReference.Rows(new TableName(rows.Table.Schema, rows.Table.Name), Filter(rows.Filter)),
+        Native.FollowedReference.Refused { Refusal: var refusal } => refusal switch
         {
-            Native.ReferenceRefusal.UnevenKey uneven => (ReferenceRefusal.UnevenKey, uneven.Key),
-            Native.ReferenceRefusal.UnknownSchema unknown => (ReferenceRefusal.UnknownSchema, unknown.Table),
-            Native.ReferenceRefusal.NoFilterText text => (ReferenceRefusal.NoFilterText, text.Column),
-            Native.ReferenceRefusal.ComparedOtherwise otherwise => (ReferenceRefusal.ComparedOtherwise, otherwise.Table),
-            _ => ((ReferenceRefusal?)null, (string?)null),
-        };
-        return new RowReferenceChoice(
-            choice.KeyName,
-            new TableName(choice.Table.Schema, choice.Table.Name),
-            choice.Columns,
-            choice.Filter is { } filter ? Filter(filter) : null,
-            refusal,
-            subject);
-    }
+            Native.ReferenceRefusal.UnevenKey uneven => new FollowedReference.Refused(ReferenceRefusal.UnevenKey, uneven.Key),
+            Native.ReferenceRefusal.UnknownSchema unknown =>
+                new FollowedReference.Refused(ReferenceRefusal.UnknownSchema, unknown.Table),
+            Native.ReferenceRefusal.NoFilterText text => new FollowedReference.Refused(ReferenceRefusal.NoFilterText, text.Column),
+            Native.ReferenceRefusal.ComparedOtherwise otherwise =>
+                new FollowedReference.Refused(ReferenceRefusal.ComparedOtherwise, otherwise.Table),
+            _ => throw new InvalidOperationException("The core sent a refusal this build does not know."),
+        },
+        _ => throw new InvalidOperationException("The core sent a reference this build does not know."),
+    };
 
     private static TableFilter Filter(Native.TableFilterArg filter) => new(
         filter.Combinator == Native.CombinatorTag.Or ? FilterCombinator.Or : FilterCombinator.And,

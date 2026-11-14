@@ -74,6 +74,8 @@ public interface ITableKeys : IDisposable
 {
     // `rows` is the page the row is in, null when no set is shown.
     RowReferences ReferencesAt(ResultSet? rows, long row, string? column);
+
+    FollowedReference Follow(ResultSet? rows, long row, RowReferenceChoice choice);
 }
 
 // One save, which runs only the statements it was planned with.
@@ -187,6 +189,12 @@ internal sealed class CoreTableKeys(TableKeys keys) : ITableKeys
 {
     public RowReferences ReferencesAt(ResultSet? rows, long row, string? column) =>
         rows is null ? RowReferences.None : keys.GetRowReferences(rows, row, column);
+
+    public FollowedReference Follow(ResultSet? rows, long row, RowReferenceChoice choice)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        return keys.Follow(rows, row, choice);
+    }
 
     public void Dispose() => keys.Dispose();
 }

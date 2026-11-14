@@ -26,23 +26,24 @@ public sealed class RowReferenceTests
         Assert.Empty(references.Referencing);
         Assert.Equal(new TableName(null, "parent"), choice.Table);
         Assert.Equal(["parent_code", "parent_region"], choice.Columns);
-        Assert.Null(choice.Refusal);
-        Assert.NotNull(choice.Filter);
-        Assert.Null(choice.Filter.RawSql);
-        Assert.Equal(FilterCombinator.And, choice.Filter.Combinator);
+        Assert.True(keys.GetRowReferences(children, 0, "id").IsEmpty);
+        var rows = Assert.IsType<FollowedReference.Rows>(keys.Follow(children, 0, choice));
+        Assert.Equal(new TableName(null, "parent"), rows.Table);
+        Assert.Null(rows.Filter.RawSql);
+        Assert.Equal(FilterCombinator.And, rows.Filter.Combinator);
         Assert.Equal([
             new FilterRule("code", FilterOperator.Equal, new FilterValue.One("x' OR 1=1 --")),
             new FilterRule("region", FilterOperator.Equal, new FilterValue.One("7")),
-        ], choice.Filter.Rules);
-        Assert.True(keys.GetRowReferences(children, 0, "id").IsEmpty);
+        ], rows.Filter.Rules);
 
-        using var parent = await ReadAsync(database.Session, choice.Table, choice.Filter, cancel);
+        using var parent = await ReadAsync(database.Session, rows.Table, rows.Filter, cancel);
         Assert.Equal(1, parent.RowCount);
         Assert.Equal("7", parent.GetCellText(0, 1));
-        using var parentKeys = await database.Session.ReadTableKeysAsync(choice.Table, cancel);
+        using var parentKeys = await database.Session.ReadTableKeysAsync(rows.Table, cancel);
         var incoming = Assert.Single(parentKeys.GetRowReferences(parent, 0, null).Referencing);
         Assert.Equal(Child, incoming.Table);
-        using var child = await ReadAsync(database.Session, incoming.Table, incoming.Filter, cancel);
+        var back = Assert.IsType<FollowedReference.Rows>(parentKeys.Follow(parent, 0, incoming));
+        using var child = await ReadAsync(database.Session, back.Table, back.Filter, cancel);
         Assert.Equal(1, child.RowCount);
         Assert.Equal("1", child.GetCellText(0, 0));
     }
@@ -59,16 +60,16 @@ public sealed class RowReferenceTests
         Assert.True(keys.GetRowReferences(children, 2, null).IsEmpty);
         using var sorted = await children.SortedAsync(0, ascending: false);
         var choice = Assert.Single(keys.GetRowReferences(sorted, 0, null).Referenced);
-        Assert.NotNull(choice.Filter);
-        Assert.Equal(new FilterValue.One(string.Empty), choice.Filter.Rules[0].Value);
-        using var parent = await ReadAsync(database.Session, choice.Table, choice.Filter, cancel);
+        var rows = Assert.IsType<FollowedReference.Rows>(keys.Follow(sorted, 0, choice));
+        Assert.Equal(new FilterValue.One(string.Empty), rows.Filter.Rules[0].Value);
+        using var parent = await ReadAsync(database.Session, rows.Table, rows.Filter, cancel);
         Assert.Equal("9", parent.GetCellText(0, 1));
-        var failure = Assert.Throws<TableProException>(() => keys.GetRowReferences(children, 99, null));
-        Assert.Equal("ffi.out_of_range", failure.Code);
+        Assert.Equal("ffi.out_of_range", Assert.Throws<TableProException>(() => keys.GetRowReferences(children, 99, null)).Code);
+        Assert.Equal("ffi.out_of_range", Assert.Throws<TableProException>(() => keys.Follow(children, 2, choice)).Code);
     }
 
     [Fact]
-    public async Task KeysThatCompareOtherwiseStayAsRefusalsNamingTheTable()
+    public async Task AKeyThatComparesOtherwiseIsOfferedAndRefusedNamingTheTable()
     {
         var cancel = TestContext.Current.CancellationToken;
         await using var database = await SqliteDatabase.CreateAsync();
@@ -83,9 +84,10 @@ public sealed class RowReferenceTests
         using var keys = await database.Session.ReadTableKeysAsync(table, cancel);
 
         var choice = Assert.Single(keys.GetRowReferences(parents, 0, null).Referencing);
-        Assert.Equal(ReferenceRefusal.ComparedOtherwise, choice.Refusal);
-        Assert.Equal("child", choice.RefusalSubject);
-        Assert.Null(choice.Filter);
+
+        Assert.Equal(
+            new FollowedReference.Refused(ReferenceRefusal.ComparedOtherwise, "child"),
+            keys.Follow(parents, 0, choice));
     }
 
     [Fact]

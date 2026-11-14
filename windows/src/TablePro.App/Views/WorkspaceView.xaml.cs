@@ -632,16 +632,15 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     }
 
     // A tab already showing the reference's rows comes forward; otherwise a new one opens beside the tab it came from.
-    private void OnReferenceRequested(object? sender, RowReferenceChoice reference)
+    private void OnReferenceRequested(object? sender, FollowedReference.Rows reference)
     {
-        if (_share is null || TableTab.TabFor(reference) is not { } spec)
+        if (_share is null)
         {
             return;
         }
 
         int? index = null;
-        var items = Tabs.TabItems.OfType<TabViewItem>().ToList();
-        foreach (var item in items)
+        foreach (var item in Tabs.TabItems.OfType<TabViewItem>().ToList())
         {
             if (item.Content is TableTabView view && view.Model.ShowsReference(reference))
             {
@@ -655,7 +654,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             }
         }
 
-        AddTable(reference.Table.Schema, reference.Table.Name, ObjectKind.Table, index, spec);
+        AddTable(reference.Table.Schema, reference.Table.Name, ObjectKind.Table, index, TableTab.TabFor(reference));
     }
 
     private async void OnShareRequested(object? sender, ShareKind kind) =>

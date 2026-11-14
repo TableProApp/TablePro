@@ -11,9 +11,9 @@ use std::time::{Duration, Instant};
 use secrecy::SecretString;
 use tablepro_ffi::{
     ColumnSort, CombinatorTag, Core, CoreError, DatabaseSession, FileOpenRequest, FilterOpTag, FilterRuleArg,
-    FilterValueArg, HostConfig, HostSecretError, HostSecrets, ObjectEntry, ObjectKindTag, ObjectScopeArg,
-    ReferenceRefusal, RowEstimate, RunEvent, RunListener, RunOutcome, RunSettings, SecretItemTag, SecretKindTag,
-    TableFilterArg, TableName, TablePageRead, TransactionStateTag, TruncationTag,
+    FilterValueArg, FollowedReference, HostConfig, HostSecretError, HostSecrets, ObjectEntry, ObjectKindTag,
+    ObjectScopeArg, ReferenceRefusal, RowEstimate, RowReferenceChoice, RunEvent, RunListener, RunOutcome, RunSettings,
+    SecretItemTag, SecretKindTag, TableFilterArg, TableName, TablePageRead, TransactionStateTag, TruncationTag,
 };
 
 struct NoSecrets;
@@ -570,6 +570,24 @@ async fn page_rows(
     page.run().result_set(0).unwrap()
 }
 
+fn followed(
+    keys: &tablepro_ffi::TableKeys,
+    rows: Arc<tablepro_ffi::ResultSet>,
+    row: u64,
+    choice: &RowReferenceChoice,
+) -> FollowedReference {
+    keys.follow_reference(rows, row, choice.referencing, choice.key)
+        .unwrap()
+}
+
+// None for a refusal, which the test unwraps.
+fn filter_of(followed: FollowedReference) -> Option<(TableName, TableFilterArg)> {
+    match followed {
+        FollowedReference::Rows { table, filter } => Some((table, filter)),
+        FollowedReference::Refused { .. } => None,
+    }
+}
+
 #[tokio::test]
 async fn a_composite_key_leads_to_its_row_and_back_with_every_value_bound() {
     let dir = tempfile::tempdir().unwrap();
@@ -585,8 +603,17 @@ async fn a_composite_key_leads_to_its_row_and_back_with_every_value_bound() {
     };
     assert_eq!(choice.table, table("parent"));
     assert_eq!(choice.columns, ["parent_code", "parent_region"]);
-    assert_eq!(choice.refusal, None);
-    let filter = choice.filter.clone().unwrap();
+    assert!(!choice.referencing);
+    assert!(from_child.referencing.is_empty());
+    assert!(
+        keys.row_references(children.clone(), 0, Some("id".to_owned()))
+            .unwrap()
+            .referenced
+            .is_empty(),
+        "a column outside the key offers it not"
+    );
+    let (target, filter) = filter_of(followed(&keys, children, 0, choice)).unwrap();
+    assert_eq!(target, table("parent"));
     assert_eq!(filter.combinator, CombinatorTag::And);
     assert_eq!(filter.raw_sql, None);
     assert_eq!(
@@ -596,39 +623,20 @@ async fn a_composite_key_leads_to_its_row_and_back_with_every_value_bound() {
             rule("region", FilterOpTag::Eq, Some("7")),
         ]
     );
-    assert!(from_child.referencing.is_empty());
-    assert!(
-        keys.row_references(children, 0, Some("id".to_owned()))
-            .unwrap()
-            .referenced
-            .is_empty(),
-        "a column outside the key offers it not"
-    );
 
     let parents = page_rows(&session, "parent", Some(filter)).await;
     assert_eq!(parents.row_count(), 1);
-    let back = session
-        .table_keys(table("parent"), None)
-        .await
-        .unwrap()
-        .row_references(parents, 0, None)
-        .unwrap();
+    let parent_keys = session.table_keys(table("parent"), None).await.unwrap();
+    let back = parent_keys.row_references(parents.clone(), 0, None).unwrap();
     assert!(back.referenced.is_empty());
     let [incoming] = back.referencing.as_slice() else {
         panic!("one key points at parent: {back:?}")
     };
     assert_eq!(incoming.table, table("child"));
     assert_eq!(incoming.columns, ["parent_code", "parent_region"]);
+    let (_, filter) = filter_of(followed(&parent_keys, parents, 0, incoming)).unwrap();
     let child = session
-        .read_table_page(
-            table("child"),
-            None,
-            incoming.filter.clone(),
-            100,
-            0,
-            Box::new(Quiet),
-            None,
-        )
+        .read_table_page(table("child"), None, Some(filter), 100, 0, Box::new(Quiet), None)
         .await
         .unwrap();
     assert_eq!(column(&child, 0).await, texts(&["1"]));
@@ -650,18 +658,27 @@ async fn a_null_part_leads_nowhere_an_empty_text_is_a_value_and_a_sorted_set_rea
     );
     // Descending by id, so the sorted set's first row is the last one read.
     let sorted = children.sorted(0, false).unwrap();
-    let first = keys.row_references(sorted, 0, None).unwrap();
+    let first = keys.row_references(sorted.clone(), 0, None).unwrap();
+    let (_, filter) = filter_of(followed(&keys, sorted, 0, &first.referenced[0])).unwrap();
+    assert_eq!(filter.rules[0], rule("code", FilterOpTag::Eq, Some("")));
     assert_eq!(
-        first.referenced[0].filter.as_ref().unwrap().rules[0],
-        rule("code", FilterOpTag::Eq, Some(""))
+        keys.row_references(children.clone(), 99, None).unwrap_err().code(),
+        "ffi.out_of_range"
     );
-    let failure = keys.row_references(children, 99, None).unwrap_err();
-    assert_eq!(failure.code(), "ffi.out_of_range");
+    assert_eq!(
+        keys.follow_reference(children.clone(), 2, false, 0).unwrap_err().code(),
+        "ffi.out_of_range",
+        "a key the row holds NULL in was never offered"
+    );
+    assert_eq!(
+        keys.follow_reference(children, 0, true, 5).unwrap_err().code(),
+        "ffi.out_of_range"
+    );
     session.close().await.unwrap();
 }
 
 #[tokio::test]
-async fn keys_that_compare_otherwise_or_hold_an_inexact_value_stay_as_refusals() {
+async fn keys_that_compare_otherwise_or_hold_an_inexact_or_long_value_are_offered_and_refused() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, session) = fixture(
         dir.path(),
@@ -669,60 +686,74 @@ async fn keys_that_compare_otherwise_or_hold_an_inexact_value_stay_as_refusals()
          CREATE TABLE child (code TEXT REFERENCES parent(code)); \
          CREATE TABLE scale (weight REAL PRIMARY KEY); \
          CREATE TABLE measured (id INTEGER PRIMARY KEY, weight REAL REFERENCES scale(weight)); \
+         CREATE TABLE big (code TEXT PRIMARY KEY); CREATE TABLE small (code TEXT REFERENCES big(code)); \
          INSERT INTO parent VALUES ('ABC'); INSERT INTO child VALUES ('abc'); \
-         INSERT INTO scale VALUES (0.5); INSERT INTO measured VALUES (1, 0.5)",
+         INSERT INTO scale VALUES (0.5); INSERT INTO measured VALUES (1, 0.5); \
+         INSERT INTO big VALUES (printf('%.9000c', 'x')); INSERT INTO small SELECT code FROM big",
+    )
+    .await;
+    let refusal = |table_name: &'static str, column: Option<&'static str>| {
+        let session = session.clone();
+        async move {
+            let rows = page_rows(&session, table_name, None).await;
+            let keys = session.table_keys(table(table_name), None).await.unwrap();
+            let references = keys.row_references(rows.clone(), 0, column.map(str::to_owned)).unwrap();
+            let choice = references
+                .referenced
+                .first()
+                .or(references.referencing.first())
+                .unwrap()
+                .clone();
+            match followed(&keys, rows, 0, &choice) {
+                FollowedReference::Refused { refusal } => refusal,
+                rows => panic!("followed: {rows:?}"),
+            }
+        }
+    };
+
+    assert_eq!(
+        refusal("parent", None).await,
+        ReferenceRefusal::ComparedOtherwise {
+            table: "child".to_owned()
+        }
+    );
+    assert_eq!(
+        refusal("measured", Some("weight")).await,
+        ReferenceRefusal::NoFilterText {
+            column: "weight".to_owned()
+        }
+    );
+    assert_eq!(
+        refusal("big", None).await,
+        ReferenceRefusal::NoFilterText {
+            column: "code".to_owned()
+        },
+        "a key too long to filter on is refused before it is copied"
+    );
+    session.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_menu_lists_at_most_64_keys_each_way() {
+    let dir = tempfile::tempdir().unwrap();
+    let children: String = (0..70)
+        .map(|index| format!("CREATE TABLE child_{index} (code TEXT REFERENCES parent(code)); "))
+        .collect();
+    let (_core, session) = fixture(
+        dir.path(),
+        &format!("CREATE TABLE parent (code TEXT PRIMARY KEY); {children} INSERT INTO parent VALUES ('a')"),
     )
     .await;
     let parents = page_rows(&session, "parent", None).await;
-    let collated = session
+
+    let references = session
         .table_keys(table("parent"), None)
         .await
         .unwrap()
         .row_references(parents, 0, None)
         .unwrap();
-    assert_eq!(collated.referencing.len(), 1);
-    assert_eq!(
-        collated.referencing[0].refusal,
-        Some(ReferenceRefusal::ComparedOtherwise {
-            table: "child".to_owned()
-        })
-    );
-    assert_eq!(collated.referencing[0].filter, None);
 
-    execute(
-        &session,
-        "CREATE TABLE big (code TEXT PRIMARY KEY); CREATE TABLE small (code TEXT REFERENCES big(code)); \
-         INSERT INTO big VALUES (printf('%.9000c', 'x')); INSERT INTO small SELECT code FROM big",
-    )
-    .await;
-    let big = page_rows(&session, "big", None).await;
-    let large = session
-        .table_keys(table("big"), None)
-        .await
-        .unwrap()
-        .row_references(big, 0, None)
-        .unwrap();
-    assert_eq!(
-        large.referencing[0].refusal,
-        Some(ReferenceRefusal::NoFilterText {
-            column: "code".to_owned()
-        }),
-        "a key too long to filter on is refused before it is copied"
-    );
-
-    let measured = page_rows(&session, "measured", None).await;
-    let inexact = session
-        .table_keys(table("measured"), None)
-        .await
-        .unwrap()
-        .row_references(measured, 0, Some("weight".to_owned()))
-        .unwrap();
-    assert_eq!(
-        inexact.referenced[0].refusal,
-        Some(ReferenceRefusal::NoFilterText {
-            column: "weight".to_owned()
-        })
-    );
+    assert_eq!(references.referencing.len(), 64);
     session.close().await.unwrap();
 }
 

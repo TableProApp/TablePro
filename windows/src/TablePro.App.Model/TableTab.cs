@@ -306,60 +306,80 @@ public sealed class TableTab : IWorkspaceTab
 
     // A tab on the table a reference leads to whose rows were read with exactly its filter. One still reading may end
     // on the rows it showed before, so it does not count.
-    public bool ShowsReference(RowReferenceChoice reference)
+    public bool ShowsReference(FollowedReference.Rows reference)
     {
         ArgumentNullException.ThrowIfNull(reference);
-        return reference.Filter is { } filter && !IsRunning && Table == reference.Table
-            && TableFilters.Same(_shownFilter, filter);
+        return !IsRunning && Table == reference.Table && TableFilters.Same(_shownFilter, reference.Filter);
     }
 
     // A new table tab on the rows a reference leads to, its filter kept with the tab as one the user set.
-    public static SessionTab? TabFor(RowReferenceChoice reference)
+    public static SessionTab TabFor(FollowedReference.Rows reference)
     {
         ArgumentNullException.ThrowIfNull(reference);
-        return reference.Filter is { } filter
-            ? new SessionTab
-            {
-                Kind = TabKind.Table,
-                Title = reference.Table.Name,
-                Schema = reference.Table.Schema,
-                Table = reference.Table.Name,
-                ObjectKind = nameof(Interop.ObjectKind.Table),
-                Filter = SavedFilter.From(filter),
-            }
-            : null;
+        return new SessionTab
+        {
+            Kind = TabKind.Table,
+            Title = reference.Table.Name,
+            Schema = reference.Table.Schema,
+            Table = reference.Table.Name,
+            ObjectKind = nameof(Interop.ObjectKind.Table),
+            Filter = SavedFilter.From(reference.Filter),
+        };
     }
 
     // What a cell's row leads to as the server holds the row: nothing while the page is read or saved, or on a new
     // or deleted row; and of the row's own keys, none whose cells hold a pending change, which the server has not.
-    public RowReferences ReferencesAt(int row, int column)
+    public ReferenceMenu ReferencesAt(int row, int column)
     {
         if (_keys is not { } keys || IsRunning || IsSaving || _work.IsClosed
             || column < 0 || column >= _results.Columns.Count || row < 0 || row >= _results.ShownRowCount
             || (Edits is { } shown && (shown.IsAdded(row) || shown.IsDeleted(row))))
         {
-            return RowReferences.None;
+            return ReferenceMenu.None;
         }
 
+        var rows = _results.ShownSet;
         RowReferences references;
         try
         {
-            references = keys.ReferencesAt(_results.ShownSet, row, _results.Columns[column].Name);
+            references = keys.ReferencesAt(rows, row, _results.Columns[column].Name);
         }
         catch (TableProException)
         {
-            return RowReferences.None;
+            return ReferenceMenu.None;
         }
 
-        if (Edits is not { } edits)
+        if (Edits is { } edits)
         {
-            return references;
+            references = references with
+            {
+                Referenced = [.. references.Referenced.Where(reference =>
+                    !reference.Columns.Any(name => IsChanged(edits, row, name)))],
+            };
         }
 
-        return references with
+        return new ReferenceMenu(references, keys, rows, row);
+    }
+
+    // Built once a key is chosen. Null when the menu's page or keys are no longer the tab's, as after a reload.
+    public FollowedReference? Follow(ReferenceMenu menu, RowReferenceChoice choice)
+    {
+        ArgumentNullException.ThrowIfNull(menu);
+        ArgumentNullException.ThrowIfNull(choice);
+        if (menu.Keys is not { } keys || !ReferenceEquals(keys, _keys) || !ReferenceEquals(menu.Rows, _results.ShownSet)
+            || IsRunning || IsSaving || _work.IsClosed)
         {
-            Referenced = [.. references.Referenced.Where(reference => !reference.Columns.Any(name => IsChanged(edits, row, name)))],
-        };
+            return null;
+        }
+
+        try
+        {
+            return keys.Follow(menu.Rows, menu.Row, choice);
+        }
+        catch (TableProException)
+        {
+            return null;
+        }
     }
 
     public SessionTab Snapshot() => new()
@@ -1492,4 +1512,11 @@ internal sealed class KeptRead<T>(TabWork work, Func<CancellationToken, Task<T>>
         }).ConfigureAwait(true);
         return work.IsClosed ? null : value;
     }
+}
+
+// What a grid menu offers from one row, and the page and keys it was worked out from, so a choice made later
+// follows that row or nothing.
+public sealed record ReferenceMenu(RowReferences References, ITableKeys? Keys, ResultSet? Rows, int Row)
+{
+    public static ReferenceMenu None { get; } = new(RowReferences.None, null, null, -1);
 }

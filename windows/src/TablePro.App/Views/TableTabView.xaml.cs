@@ -78,7 +78,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     public event EventHandler? ExportRequested;
 
     // A foreign key's rows to open, in a tab of the workspace that holds this one.
-    public event EventHandler<RowReferenceChoice>? ReferenceRequested;
+    public event EventHandler<FollowedReference.Rows>? ReferenceRequested;
 
     public string Title => _model.Title;
 
@@ -606,44 +606,44 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     // One key the cell's column is in opens from the menu itself; several, and every key pointing at the row, are
     // listed by the other table and the key's columns, which tell two keys into one table apart.
-    private void AddReferences(MenuFlyout menu, RowReferences references)
+    private void AddReferences(MenuFlyout menu, ReferenceMenu references)
     {
-        if (references.IsEmpty)
+        if (references.References.IsEmpty)
         {
             return;
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
-        var open = Labels(references.Referenced);
+        var open = Labels(references.References.Referenced);
         if (open.Count == 1)
         {
-            menu.Items.Add(ReferenceItem(Strings.Get("GridMenuOpenReferenced"), open[0].Reference, "OpenReferencedRow"));
+            menu.Items.Add(ReferenceItem(Strings.Get("GridMenuOpenReferenced"), references, open[0].Choice, "OpenReferencedRow"));
         }
         else if (open.Count > 1)
         {
             var choose = new MenuFlyoutSubItem { Text = Strings.Get("GridMenuOpenReferenced") };
-            foreach (var (label, reference) in open)
+            foreach (var (label, choice) in open)
             {
-                choose.Items.Add(ReferenceItem(label, reference, null));
+                choose.Items.Add(ReferenceItem(label, references, choice, null));
             }
 
             menu.Items.Add(choose);
         }
 
-        var pointing = Labels(references.Referencing);
+        var pointing = Labels(references.References.Referencing);
         if (pointing.Count > 0)
         {
             var show = new MenuFlyoutSubItem { Text = Strings.Get("GridMenuShowReferencing") };
-            foreach (var (label, reference) in pointing)
+            foreach (var (label, choice) in pointing)
             {
-                show.Items.Add(ReferenceItem(label, reference, null));
+                show.Items.Add(ReferenceItem(label, references, choice, null));
             }
 
             menu.Items.Add(show);
         }
     }
 
-    private MenuFlyoutItem ReferenceItem(string label, RowReferenceChoice reference, string? automationId)
+    private MenuFlyoutItem ReferenceItem(string label, ReferenceMenu references, RowReferenceChoice choice, string? automationId)
     {
         var item = new MenuFlyoutItem { Text = label };
         if (automationId is not null)
@@ -651,35 +651,38 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             AutomationProperties.SetAutomationId(item, automationId);
         }
 
-        item.Click += (_, _) => FollowReference(reference);
+        item.Click += (_, _) => FollowReference(references, choice);
         return item;
     }
 
     // A key that cannot be followed is still offered, so choosing it says why.
-    private void FollowReference(RowReferenceChoice reference)
+    private void FollowReference(ReferenceMenu references, RowReferenceChoice choice)
     {
-        if (reference.Refusal is { } refusal)
+        switch (_model.Follow(references, choice))
         {
-            Results.ShowNotice(Strings.Format("Reference" + refusal, reference.RefusalSubject ?? string.Empty));
-            return;
+            case FollowedReference.Refused refused:
+                Results.ShowNotice(Strings.Format("Reference" + refused.Refusal, refused.Subject));
+                break;
+            case FollowedReference.Rows rows:
+                ReferenceRequested?.Invoke(this, rows);
+                break;
+            default:
+                break;
         }
-
-        ReferenceRequested?.Invoke(this, reference);
     }
 
-    private List<(string Label, RowReferenceChoice Reference)> Labels(IReadOnlyList<RowReferenceChoice> references)
+    private List<(string Label, RowReferenceChoice Choice)> Labels(IReadOnlyList<RowReferenceChoice> choices)
     {
-        var shorts = references.Select(reference =>
+        var shorts = choices.Select(choice =>
         {
-            var table = reference.Table.Schema is { } schema && !string.Equals(schema, _model.Table.Schema, StringComparison.Ordinal)
-                ? $"{schema}.{reference.Table.Name}"
-                : reference.Table.Name;
-            return Strings.Format("ReferenceKey", table, string.Join(", ", reference.Columns));
+            var table = choice.Table.Schema is { } schema && !string.Equals(schema, _model.Table.Schema, StringComparison.Ordinal)
+                ? $"{schema}.{choice.Table.Name}"
+                : choice.Table.Name;
+            return Strings.Format("ReferenceKey", table, string.Join(", ", choice.Columns));
         }).ToList();
-        return [.. references.Select((reference, index) =>
-            (shorts.Count(label => label == shorts[index]) > 1
-                ? Strings.Format("ReferenceKeyThrough", shorts[index], reference.KeyName)
-                : shorts[index], reference))];
+        var counts = shorts.CountBy(label => label).ToDictionary(StringComparer.Ordinal);
+        return [.. choices.Select((choice, index) =>
+            (counts[shorts[index]] > 1 ? Strings.Format("ReferenceKeyThrough", shorts[index], choice.KeyName) : shorts[index], choice))];
     }
 
     private MenuFlyoutItem ValueItem(string text, int row, int column, CellValueKind kind) =>

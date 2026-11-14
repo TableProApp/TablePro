@@ -131,6 +131,8 @@ internal sealed class FakeSession : ITabSession
     // What every key read gives; each read makes a new one, so a test tells a kept read from a new one.
     public RowReferences References { get; set; } = RowReferences.None;
 
+    public FollowedReference Followed { get; set; } = new FollowedReference.Refused(ReferenceRefusal.UnevenKey, "fk");
+
     public CoreError? KeysFailure { get; set; }
 
     public List<FakeKeys> KeyReads { get; } = [];
@@ -326,10 +328,18 @@ internal sealed class FakeKeys(FakeSession session) : ITableKeys
 
     public bool IsDisposed { get; private set; }
 
+    public List<(long Row, RowReferenceChoice Choice)> Follows { get; } = [];
+
     public RowReferences ReferencesAt(ResultSet? rows, long row, string? column)
     {
         Asked.Add((row, column));
         return session.References;
+    }
+
+    public FollowedReference Follow(ResultSet? rows, long row, RowReferenceChoice choice)
+    {
+        Follows.Add((row, choice));
+        return session.Followed;
     }
 
     public void Dispose() => IsDisposed = true;

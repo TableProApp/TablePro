@@ -9,12 +9,19 @@ public sealed class TableTabReferenceTests
     private static readonly TableFilter ToArtist = new(
         FilterCombinator.And, [new FilterRule("ArtistId", FilterOperator.Equal, new FilterValue.One("1"))], null);
 
-    private static readonly RowReferenceChoice Referenced = new("fk_artist", Artist, ["name"], ToArtist, null, null);
+    private static readonly FollowedReference.Rows ArtistRows = new(Artist, ToArtist);
 
-    private static readonly RowReferenceChoice Referencing =
-        new("fk_album", new TableName(null, "Album"), ["ArtistId"], ToArtist, null, null);
+    private static readonly RowReferenceChoice Referenced = new(0, false, "fk_artist", Artist, ["name"]);
 
-    private readonly FakeSession _session = new() { TableRows = 3, References = new([Referenced], [Referencing]) };
+    private static readonly RowReferenceChoice Referencing = new(0, true, "fk_album", new TableName(null, "Album"), ["ArtistId"]);
+
+    private readonly FakeSession _session = new()
+    {
+        TableRows = 3,
+        References = new([Referenced], [Referencing]),
+        Followed = ArtistRows,
+    };
+
     private readonly FakeTableView _view = new();
     private readonly FakeResults _results = new();
     private readonly TableTab _tab;
@@ -28,14 +35,14 @@ public sealed class TableTabReferenceTests
     [Fact]
     public async Task TheKeysAreReadOnceThePageShowsAndAgainAfterARefreshAndGoWithTheTab()
     {
-        Assert.True(_tab.ReferencesAt(0, 1).IsEmpty);
+        Assert.True(_tab.ReferencesAt(0, 1).References.IsEmpty);
 
         await _tab.RunAsync();
-        var references = _tab.ReferencesAt(0, 1);
+        var menu = _tab.ReferencesAt(0, 1);
         await _tab.RunAsync();
 
-        Assert.Same(Referenced, Assert.Single(references.Referenced));
-        Assert.Same(Referencing, Assert.Single(references.Referencing));
+        Assert.Same(Referenced, Assert.Single(menu.References.Referenced));
+        Assert.Same(Referencing, Assert.Single(menu.References.Referencing));
         var first = Assert.Single(_session.KeyReads);
         Assert.Equal((0L, "name"), Assert.Single(first.Asked));
 
@@ -45,7 +52,23 @@ public sealed class TableTabReferenceTests
 
         await _tab.CloseAsync();
         Assert.True(_session.KeyReads[1].IsDisposed);
-        Assert.True(_tab.ReferencesAt(0, 1).IsEmpty);
+        Assert.True(_tab.ReferencesAt(0, 1).References.IsEmpty);
+    }
+
+    [Fact]
+    public async Task AChosenKeyIsFollowedFromTheRowItsMenuOpenedOnUntilThePageChanges()
+    {
+        await _tab.RunAsync();
+        var menu = _tab.ReferencesAt(2, 1);
+
+        var followed = _tab.Follow(menu, Referencing);
+        await _tab.RefreshAsync();
+        var stale = _tab.Follow(menu, Referencing);
+
+        Assert.Same(ArtistRows, followed);
+        Assert.Equal((2L, Referencing), Assert.Single(_session.KeyReads[0].Follows));
+        Assert.Null(stale);
+        Assert.Null(_tab.Follow(ReferenceMenu.None, Referencing));
     }
 
     [Fact]
@@ -54,29 +77,29 @@ public sealed class TableTabReferenceTests
         await _tab.RunAsync();
 
         Assert.Null(_tab.CommitEdit(0, 1, "renamed"));
-        var changed = _tab.ReferencesAt(0, 1);
+        var changed = _tab.ReferencesAt(0, 1).References;
         Assert.Null(_tab.AddRow(out var added));
         Assert.Null(_tab.DeleteRows([2]));
 
         Assert.Empty(changed.Referenced);
         Assert.Single(changed.Referencing);
-        Assert.False(_tab.ReferencesAt(1, 1).IsEmpty);
-        Assert.True(_tab.ReferencesAt(added, 1).IsEmpty);
-        Assert.True(_tab.ReferencesAt(2, 1).IsEmpty);
-        Assert.True(_tab.ReferencesAt(0, 5).IsEmpty);
+        Assert.False(_tab.ReferencesAt(1, 1).References.IsEmpty);
+        Assert.True(_tab.ReferencesAt(added, 1).References.IsEmpty);
+        Assert.True(_tab.ReferencesAt(2, 1).References.IsEmpty);
+        Assert.True(_tab.ReferencesAt(0, 5).References.IsEmpty);
     }
 
     [Fact]
     public async Task ARefreshWhoseKeyReadFailsOffersNoneOfTheKeysReadBefore()
     {
         await _tab.RunAsync();
-        Assert.False(_tab.ReferencesAt(0, 1).IsEmpty);
+        Assert.False(_tab.ReferencesAt(0, 1).References.IsEmpty);
 
         _session.KeysFailure = Errors.Of("driver.connection_lost");
         await _tab.RefreshAsync();
 
         Assert.True(Assert.Single(_session.KeyReads).IsDisposed);
-        Assert.True(_tab.ReferencesAt(0, 1).IsEmpty);
+        Assert.True(_tab.ReferencesAt(0, 1).References.IsEmpty);
     }
 
     [Fact]
@@ -87,15 +110,14 @@ public sealed class TableTabReferenceTests
         await _tab.RunAsync();
 
         Assert.Equal(3, _results.RowCount);
-        Assert.True(_tab.ReferencesAt(0, 1).IsEmpty);
+        Assert.True(_tab.ReferencesAt(0, 1).References.IsEmpty);
         Assert.DoesNotContain("error driver.unsupported", _results.Shown);
     }
 
     [Fact]
     public void AReferenceOpensAsATableTabOnItsFilterWhichATabReadWithTheSameFilterShows()
     {
-        var spec = TableTab.TabFor(Referenced)!;
-        var refused = Referenced with { Filter = null, Refusal = ReferenceRefusal.ComparedOtherwise, RefusalSubject = "Artist" };
+        var spec = TableTab.TabFor(ArtistRows);
         var shown = new TableTab(_session, _view, _results, Artist, ObjectKind.Table, () => new AppSettings(), spec);
         var other = new TableTab(
             _session,
@@ -104,18 +126,13 @@ public sealed class TableTabReferenceTests
             Artist,
             ObjectKind.Table,
             () => new AppSettings(),
-            TableTab.TabFor(Referenced with
-            {
-                Filter = ToArtist with { Rules = [new FilterRule("ArtistId", FilterOperator.Equal, new FilterValue.One("2"))] },
-            }));
+            TableTab.TabFor(ArtistRows with { Filter = SecondArtist }));
 
         Assert.Equal((TabKind.Table, "Artist", (string?)null, "Artist"), (spec.Kind, spec.Table, spec.Schema, spec.Title));
         Assert.True(TableFilters.Same(ToArtist, spec.Filter!.ToFilter()));
-        Assert.True(shown.ShowsReference(Referenced));
-        Assert.False(other.ShowsReference(Referenced));
-        Assert.False(shown.ShowsReference(refused));
-        Assert.Null(TableTab.TabFor(refused));
-        Assert.False(_tab.ShowsReference(Referenced));
+        Assert.True(shown.ShowsReference(ArtistRows));
+        Assert.False(other.ShowsReference(ArtistRows));
+        Assert.False(_tab.ShowsReference(ArtistRows));
     }
 
     [Fact]
@@ -124,26 +141,23 @@ public sealed class TableTabReferenceTests
         var view = new FakeTableView();
         var results = new FakeResults();
         var target = new TableTab(
-            _session, view, results, Artist, ObjectKind.Table, () => new AppSettings(), TableTab.TabFor(Referenced));
+            _session, view, results, Artist, ObjectKind.Table, () => new AppSettings(), TableTab.TabFor(ArtistRows));
         view.Tab = target;
         await target.RunAsync();
-        var second = Referenced with
-        {
-            Filter = ToArtist with { Rules = [new FilterRule("ArtistId", FilterOperator.Equal, new FilterValue.One("2"))] },
-        };
+        var second = ArtistRows with { Filter = SecondArtist };
         var querying = new Gate();
         _session.Querying = querying;
         _session.RefusesFilter = true;
 
         var applying = target.ApplyFilterAsync(second.Filter);
         await querying.Reached;
-        var whileReading = (target.ShowsReference(second), target.ShowsReference(Referenced));
+        var whileReading = (target.ShowsReference(second), target.ShowsReference(ArtistRows));
         querying.Open();
         await applying;
 
         Assert.Equal((false, false), whileReading);
         Assert.False(target.ShowsReference(second));
-        Assert.True(target.ShowsReference(Referenced));
+        Assert.True(target.ShowsReference(ArtistRows));
     }
 
     [Fact]
@@ -159,4 +173,7 @@ public sealed class TableTabReferenceTests
         Assert.False(TableFilters.Same(ToArtist, null));
         Assert.True(TableFilters.Same(null, null));
     }
+
+    private static TableFilter SecondArtist =>
+        ToArtist with { Rules = [new FilterRule("ArtistId", FilterOperator.Equal, new FilterValue.One("2"))] };
 }

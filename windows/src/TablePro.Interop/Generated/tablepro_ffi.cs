@@ -1173,6 +1173,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -1942,6 +1944,17 @@ static class _UniFFILib {
     public static extern
 #endif
      void uniffi_tablepro_ffi_fn_free_tablekeys(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_tablekeys_follow_reference(ulong @ptr,ulong @rows,ulong @row,sbyte @referencing,uint @key,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -4042,6 +4055,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_tablekeys_follow_reference(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_tablekeys_row_references(
     );
 
@@ -5208,6 +5232,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_update_tag();
             if (checksum != 62856) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_update_tag` checksum `62856`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tablekeys_follow_reference();
+            if (checksum != 56096) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tablekeys_follow_reference` checksum `56096`, library returned `{checksum}`");
             }
         }
         {
@@ -9167,6 +9197,8 @@ class FfiConverterTypeTableEditor: FfiConverter<TableEditor, ulong> {
 
 internal interface ITableKeys {
     /// <exception cref="CoreException"></exception>
+    FollowedReference FollowReference(ResultSet @rows, ulong @row, bool @referencing, uint @key);
+    /// <exception cref="CoreException"></exception>
     RowReferences RowReferences(ResultSet @rows, ulong @row, string? @column);
 }
 internal class TableKeys : ITableKeys, IDisposable {
@@ -9257,6 +9289,15 @@ internal class TableKeys : ITableKeys, IDisposable {
         }
     }
 
+    
+    /// <exception cref="CoreException"></exception>
+    public FollowedReference FollowReference(ResultSet @rows, ulong @row, bool @referencing, uint @key) {
+        return CallWithPointer(thisPtr => FfiConverterTypeFollowedReference.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_tablekeys_follow_reference(thisPtr, FfiConverterTypeResultSet.INSTANCE.Lower(@rows), FfiConverterUInt64.INSTANCE.Lower(@row), FfiConverterBoolean.INSTANCE.Lower(@referencing), FfiConverterUInt32.INSTANCE.Lower(@key), ref _status)
+)));
+    }
+    
     
     /// <exception cref="CoreException"></exception>
     public RowReferences RowReferences(ResultSet @rows, ulong @row, string? @column) {
@@ -11306,11 +11347,11 @@ class FfiConverterTypeResultColumnInfo: FfiConverterRustBuffer<ResultColumnInfo>
 
 
 internal record RowReferenceChoice (
+    uint Key, 
+    bool Referencing, 
     string KeyName, 
     TableName Table, 
-    string[] Columns, 
-    TableFilterArg? Filter, 
-    ReferenceRefusal? Refusal
+    string[] Columns
 ) {
 }
 
@@ -11319,29 +11360,29 @@ class FfiConverterTypeRowReferenceChoice: FfiConverterRustBuffer<RowReferenceCho
 
     public override RowReferenceChoice Read(BigEndianStream stream) {
         return new RowReferenceChoice(
+            Key: FfiConverterUInt32.INSTANCE.Read(stream),
+            Referencing: FfiConverterBoolean.INSTANCE.Read(stream),
             KeyName: FfiConverterString.INSTANCE.Read(stream),
             Table: FfiConverterTypeTableName.INSTANCE.Read(stream),
-            Columns: FfiConverterSequenceString.INSTANCE.Read(stream),
-            Filter: FfiConverterOptionalTypeTableFilterArg.INSTANCE.Read(stream),
-            Refusal: FfiConverterOptionalTypeReferenceRefusal.INSTANCE.Read(stream)
+            Columns: FfiConverterSequenceString.INSTANCE.Read(stream)
         );
     }
 
     public override int AllocationSize(RowReferenceChoice value) {
         return 0
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Key)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Referencing)
             + FfiConverterString.INSTANCE.AllocationSize(value.KeyName)
             + FfiConverterTypeTableName.INSTANCE.AllocationSize(value.Table)
-            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Columns)
-            + FfiConverterOptionalTypeTableFilterArg.INSTANCE.AllocationSize(value.Filter)
-            + FfiConverterOptionalTypeReferenceRefusal.INSTANCE.AllocationSize(value.Refusal);
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Columns);
     }
 
     public override void Write(RowReferenceChoice value, BigEndianStream stream) {
+            FfiConverterUInt32.INSTANCE.Write(value.Key, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Referencing, stream);
             FfiConverterString.INSTANCE.Write(value.KeyName, stream);
             FfiConverterTypeTableName.INSTANCE.Write(value.Table, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.Columns, stream);
-            FfiConverterOptionalTypeTableFilterArg.INSTANCE.Write(value.Filter, stream);
-            FfiConverterOptionalTypeReferenceRefusal.INSTANCE.Write(value.Refusal, stream);
     }
 }
 
@@ -13376,6 +13417,78 @@ class FfiConverterTypeFilterValueArg : FfiConverterRustBuffer<FilterValueArg>{
                 break;
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeFilterValueArg.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal record FollowedReference {
+    
+    public record Rows (
+        TableName Table,
+        TableFilterArg Filter
+    ) : FollowedReference {}
+    
+    public record Refused (
+        ReferenceRefusal Refusal
+    ) : FollowedReference {}
+    
+
+    
+}
+
+class FfiConverterTypeFollowedReference : FfiConverterRustBuffer<FollowedReference>{
+    public static FfiConverterRustBuffer<FollowedReference> INSTANCE = new FfiConverterTypeFollowedReference();
+
+    public override FollowedReference Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new FollowedReference.Rows(
+                    FfiConverterTypeTableName.INSTANCE.Read(stream),
+                    FfiConverterTypeTableFilterArg.INSTANCE.Read(stream)
+                );
+            case 2:
+                return new FollowedReference.Refused(
+                    FfiConverterTypeReferenceRefusal.INSTANCE.Read(stream)
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeFollowedReference.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(FollowedReference value) {
+        switch (value) {
+            case FollowedReference.Rows variant_value:
+                return 4
+                    + FfiConverterTypeTableName.INSTANCE.AllocationSize(variant_value.Table)
+                    + FfiConverterTypeTableFilterArg.INSTANCE.AllocationSize(variant_value.Filter);
+            case FollowedReference.Refused variant_value:
+                return 4
+                    + FfiConverterTypeReferenceRefusal.INSTANCE.AllocationSize(variant_value.Refusal);
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeFollowedReference.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(FollowedReference value, BigEndianStream stream) {
+        switch (value) {
+            case FollowedReference.Rows variant_value:
+                stream.WriteInt(1);
+                FfiConverterTypeTableName.INSTANCE.Write(variant_value.Table, stream);
+                FfiConverterTypeTableFilterArg.INSTANCE.Write(variant_value.Filter, stream);
+                break;
+            case FollowedReference.Refused variant_value:
+                stream.WriteInt(2);
+                FfiConverterTypeReferenceRefusal.INSTANCE.Write(variant_value.Refusal, stream);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeFollowedReference.Write()", value));
         }
     }
 }
@@ -17537,37 +17650,6 @@ class FfiConverterOptionalTypeFilterValueArg: FfiConverterRustBuffer<FilterValue
         } else {
             stream.WriteByte(1);
             FfiConverterTypeFilterValueArg.INSTANCE.Write((FilterValueArg)value, stream);
-        }
-    }
-}
-
-
-
-
-class FfiConverterOptionalTypeReferenceRefusal: FfiConverterRustBuffer<ReferenceRefusal?> {
-    public static FfiConverterOptionalTypeReferenceRefusal INSTANCE = new FfiConverterOptionalTypeReferenceRefusal();
-
-    public override ReferenceRefusal? Read(BigEndianStream stream) {
-        if (stream.ReadByte() == 0) {
-            return null;
-        }
-        return FfiConverterTypeReferenceRefusal.INSTANCE.Read(stream);
-    }
-
-    public override int AllocationSize(ReferenceRefusal? value) {
-        if (value == null) {
-            return 1;
-        } else {
-            return 1 + FfiConverterTypeReferenceRefusal.INSTANCE.AllocationSize((ReferenceRefusal)value);
-        }
-    }
-
-    public override void Write(ReferenceRefusal? value, BigEndianStream stream) {
-        if (value == null) {
-            stream.WriteByte(0);
-        } else {
-            stream.WriteByte(1);
-            FfiConverterTypeReferenceRefusal.INSTANCE.Write((ReferenceRefusal)value, stream);
         }
     }
 }

@@ -12,7 +12,8 @@ public sealed class TableKeys : IDisposable
         _keys = keys;
     }
 
-    // From a row of a page of this table as the server holds it; column narrows the row's keys to those holding it.
+    // From a row of a page of this table; column narrows the row's own keys to those holding it. Reads only
+    // whether each key's cells hold a value, so a menu copies none.
     public RowReferences GetRowReferences(ResultSet rows, long row, string? column)
     {
         ArgumentNullException.ThrowIfNull(rows);
@@ -21,6 +22,16 @@ public sealed class TableKeys : IDisposable
         return new RowReferences(
             [.. references.Referenced.Select(Mapping.Reference)],
             [.. references.Referencing.Select(Mapping.Reference)]);
+    }
+
+    // The filter of a key GetRowReferences offered for the same row, built from the row as the server holds it.
+    public FollowedReference Follow(ResultSet rows, long row, RowReferenceChoice choice)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentNullException.ThrowIfNull(choice);
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        return Mapping.Followed(CoreCall.Run(() =>
+            _keys.FollowReference(rows.Handle, checked((ulong)row), choice.Referencing, checked((uint)choice.Key))));
     }
 
     public void Dispose() => _keys.Dispose();
