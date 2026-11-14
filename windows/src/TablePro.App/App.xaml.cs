@@ -1,4 +1,6 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppLifecycle;
 using TablePro.App.Services;
 using TablePro.DataGrid;
 using TablePro.Interop;
@@ -29,15 +31,25 @@ public partial class App : Application
         var folder = AppStorage.DataFolder;
         Directory.CreateDirectory(folder);
         var core = TableProCore.CreateWithSystemSecrets(new HostConfiguration(AppStorage.Version, folder));
-        _window = new MainWindow(new Workbench(core, folder));
+        var workbench = new Workbench(core, folder);
+        workbench.StartAccount(
+            AccountSetup.Configuration(folder),
+            new SystemBrowser(DispatcherQueue.GetForCurrentThread()),
+            AccountSetup.Portal());
+        _window = new MainWindow(workbench);
         _window.SessionSaved += (_, _) => ReleaseFolder();
         _window.Closed += (_, _) => ReleaseFolder();
         _window.ActivateRestored();
         // Off the first grid's path: the fallback fonts for non-Latin cells load in the background.
         DataGridView.WarmUpFonts();
+        if (LaunchLink() is { } link)
+        {
+            _window.OpenSharedLink(link);
+        }
     }
 
-    internal void BringToFront()
+    // Another launch handed over, with the tablepro:// link it was started for, if any.
+    internal void Activate(string? link)
     {
         if (_window is null || _closed)
         {
@@ -51,6 +63,24 @@ public partial class App : Application
         catch (Exception exception)
         {
             CrashLog.Write(exception);
+        }
+
+        if (link is not null)
+        {
+            _window.OpenSharedLink(link);
+        }
+    }
+
+    private static string? LaunchLink()
+    {
+        try
+        {
+            return ActivationLink.OfLaunch(AppInstance.GetCurrent().GetActivatedEventArgs());
+        }
+        catch (Exception exception)
+        {
+            CrashLog.Write(exception);
+            return null;
         }
     }
 

@@ -85,6 +85,7 @@ use crate::application::AppServices;
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
 use crate::services::session_context::SessionContext;
+use crate::services::share_subject::ShareSubject;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 use crate::workspace::{ApplicationInhibit, CloseBlocker, CloseGuards, WindowInhibitor, WorkspaceHandle};
 
@@ -190,6 +191,8 @@ pub(crate) struct WorkspaceModel {
     saved_queries_dialog: Option<super::saved_queries_dialog::SavedQueriesDialog>,
     import_dialog: Option<super::import_dialog::ImportCsvDialog>,
     driver_id: String,
+    account: crate::services::account_service::AccountHandle,
+    telemetry: crate::services::telemetry::Telemetry,
     /// The driver as the user knows it, for the header's subtitle.
     driver_name: String,
     /// Writes the tab list a moment after the last change.
@@ -590,6 +593,11 @@ pub(crate) enum WorkspaceInput {
         tab: Uuid,
         offer: Box<ExportOffer>,
     },
+    // The tab it came from names a share that has no name of its own.
+    Share {
+        tab: Option<Uuid>,
+        subject: Box<ShareSubject>,
+    },
     /// An export a tab offered ended.
     ExportEnded {
         tab: Uuid,
@@ -861,6 +869,8 @@ impl Workspace {
             assistant,
             driver_name: driver_display_name(&context, &session.metadata().driver_id),
             driver_id: session.metadata().driver_id.clone(),
+            account: services.account(),
+            telemetry: services.telemetry(),
             context,
             key,
             input,
@@ -1368,6 +1378,28 @@ impl WorkspaceModel {
         }
     }
 
+    fn on_share(&self, tab: Option<Uuid>, mut subject: ShareSubject) {
+        let Some(window) = self.window() else {
+            return;
+        };
+        // The tab's own title, without the connection a shared tab bar adds to it.
+        if subject.title.trim().is_empty()
+            && let Some(title) = tab.and_then(|tab| self.tab_title(tab))
+        {
+            subject.title = title.label;
+        }
+        if subject.dialect.is_none() {
+            subject.dialect = Some(self.driver_id.clone());
+        }
+        super::share_dialog::ShareDialog::new(super::share_dialog::ShareDialogInit {
+            subject,
+            account: self.account.clone(),
+            tasks: self.tasks.clone(),
+            telemetry: self.telemetry.clone(),
+        })
+        .present(Some(&window));
+    }
+
     fn update(&mut self, msg: WorkspaceInput) {
         match msg {
             WorkspaceInput::HealthChanged(health) => self.refresh_health_banner(&health),
@@ -1456,6 +1488,7 @@ impl WorkspaceModel {
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
             WorkspaceInput::RefreshPage(tab) => self.on_refresh_page(tab),
             WorkspaceInput::ExportResults { tab, offer } => self.on_export_results(tab, *offer),
+            WorkspaceInput::Share { tab, subject } => self.on_share(tab, *subject),
             WorkspaceInput::ExportEnded { tab, outcome } => self.on_export_ended(tab, outcome),
             WorkspaceInput::ReopenClosedTab(tab) => self.on_reopen_closed_tab(tab),
             WorkspaceInput::RefreshTab(id) => self.on_refresh_tab(id),

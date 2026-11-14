@@ -85,9 +85,10 @@ struct TableQueryBuilder {
         selectColumns: [String]? = nil,
         unloadedValues: UnloadedValuePlan? = nil,
         limit: Int = 200,
-        offset: Int = 0
+        offset: Int = 0,
+        window: Bool = true
     ) -> String {
-        if let pluginDriver {
+        if window, let pluginDriver {
             let targetColumns = selectColumns ?? columns
             let sortCols = SortColumnResolver.resolvedIndices(
                 for: sortState, displayColumns: columns, targetColumns: targetColumns
@@ -102,13 +103,13 @@ struct TableQueryBuilder {
 
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
         var query = "SELECT \(selectClause(selectColumns, unloadedValues: unloadedValues)) FROM \(quotedTable)"
-
-        if let orderBy = orderByOrOffsetFetchDefault(sortState: sortState, columns: columns) {
-            query += " \(orderBy)"
-        }
-
-        query += " \(buildPaginationClause(limit: limit, offset: offset))"
+        appendOrderAndWindow(to: &query, sortState: sortState, columns: columns, limit: limit, offset: offset, window: window)
         return query
+    }
+
+    // A dialect is what lets the host write the statement itself, the only kind that can leave its window off.
+    var writesSQL: Bool {
+        dialect != nil
     }
 
     func buildFilteredQuery(
@@ -122,7 +123,8 @@ struct TableQueryBuilder {
         selectColumns: [String]? = nil,
         unloadedValues: UnloadedValuePlan? = nil,
         limit: Int = 200,
-        offset: Int = 0
+        offset: Int = 0,
+        window: Bool = true
     ) -> String? {
         // A driver that writes its own SQL takes a raw condition as given, so the boundary check the
         // host's generator applies has to run before the driver is asked.
@@ -134,7 +136,7 @@ struct TableQueryBuilder {
         // A driver reads a column named like the raw row as a raw condition, so a comparison on such a
         // column is written by the host's generator, or by no one.
         let reachesDriver = !filters.contains { $0.isEnabled && $0.namesRawConditionColumn }
-        if let pluginDriver, reachesDriver {
+        if window, let pluginDriver, reachesDriver {
             let targetColumns = selectColumns ?? columns
             let sortCols = SortColumnResolver.resolvedIndices(
                 for: sortState, displayColumns: columns, targetColumns: targetColumns
@@ -169,12 +171,7 @@ struct TableQueryBuilder {
         if !whereClause.isEmpty {
             query += " \(whereClause)"
         }
-
-        if let orderBy = orderByOrOffsetFetchDefault(sortState: sortState, columns: columns) {
-            query += " \(orderBy)"
-        }
-
-        query += " \(buildPaginationClause(limit: limit, offset: offset))"
+        appendOrderAndWindow(to: &query, sortState: sortState, columns: columns, limit: limit, offset: offset, window: window)
         return query
     }
 
@@ -252,6 +249,26 @@ struct TableQueryBuilder {
             return unloadedValues.selectList(for: selectColumns, quote: quote)
         }
         return selectColumns.map { quote($0) }.joined(separator: ", ")
+    }
+
+    // Without a window only the person's own sort goes in: the default ORDER BY exists for OFFSET ... FETCH.
+    private func appendOrderAndWindow(
+        to query: inout String,
+        sortState: SortState?,
+        columns: [String],
+        limit: Int,
+        offset: Int,
+        window: Bool
+    ) {
+        let orderBy = window
+            ? orderByOrOffsetFetchDefault(sortState: sortState, columns: columns)
+            : buildOrderByClause(sortState: sortState, columns: columns)
+        if let orderBy {
+            query += " \(orderBy)"
+        }
+        if window {
+            query += " \(buildPaginationClause(limit: limit, offset: offset))"
+        }
     }
 
     private func buildPaginationClause(limit: Int, offset: Int) -> String {

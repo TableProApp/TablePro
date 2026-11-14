@@ -37,6 +37,9 @@ public enum SecretItem
     AnthropicKey,
     OpenAIKey,
     OpenAICompatibleKey,
+
+    // The TablePro account's refresh token, which only the account asks for.
+    AccountRefreshToken,
 }
 
 public enum SecretStoreFailure

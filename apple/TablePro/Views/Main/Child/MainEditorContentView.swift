@@ -1248,6 +1248,9 @@ extension MainEditorContentView {
             onSaveAsFavorite: { text in
                 guard !text.isEmpty else { return }
                 coordinator.favoriteDialogQuery = FavoriteDialogQuery(query: text)
+            },
+            onShareQuery: { text in
+                coordinator.presentShareQuery(text, title: tab.title)
             }
         )
         return QueryTabInput(

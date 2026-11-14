@@ -118,6 +118,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         && ActiveTab is { IsRunning: false } tab
         && ResultsOf(tab)?.ShownSet is { IsFinished: true };
 
+    // A result still arriving would be shared as if it were all of it.
+    public bool CanShareResult => _session is not null && ShareSubjectOf(ActiveTab, ShareKind.Result) is not null;
+
+    // Read on every command update, so the editor's text is read only when the share starts.
+    public bool CanShareQuery => _session is not null && ActiveTab is QueryTabView;
+
     internal ITabContent? ActiveTab => (Tabs.SelectedItem as TabViewItem)?.Content as ITabContent;
 
     // Every workspace shares the width the last one was given.
@@ -604,6 +610,40 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
     private void OnCancelExport(object sender, RoutedEventArgs e) => _exporting?.Cancel();
 
+    public Task ShareAsync(ShareKind kind) => ShareAsync(ActiveTab, kind);
+
+    private async Task ShareAsync(ITabContent? tab, ShareKind kind)
+    {
+        if (_session is null || ShareSubjectOf(tab, kind) is not { } subject)
+        {
+            return;
+        }
+
+        await ShareSheet.ShowAsync(this, _workbench, subject).ConfigureAwait(true);
+    }
+
+    private async void OnShareRequested(object? sender, ShareKind kind) =>
+        await ShareAsync(sender as ITabContent, kind).ConfigureAwait(true);
+
+    // A query's text, the finished rows a query tab shows, or a table's whole view, read from its first row.
+    private ShareSubject? ShareSubjectOf(ITabContent? tab, ShareKind kind)
+    {
+        var dialect = _session?.EngineId;
+        return (tab, kind) switch
+        {
+            (QueryTabView query, ShareKind.Query) => query.QueryToShare is var sql && !string.IsNullOrWhiteSpace(sql)
+                ? ShareSubject.Query(sql, query.Title, dialect)
+                : null,
+            (QueryTabView { IsRunning: false } query, ShareKind.Result)
+                when query.ResultsView.ShownSet is { IsFinished: true } rows =>
+                ShareSubject.Result(query.LastStatement ?? string.Empty, query.Title, dialect, rows, query.ResultsView.Columns),
+            (TableTabView { IsRunning: false, HasUnsavedChanges: false } table, ShareKind.Result)
+                when table.ResultsView.ShownSet is { IsFinished: true } =>
+                ShareSubject.Table(table.Title, dialect, table.Model.ReadForShareAsync),
+            _ => null,
+        };
+    }
+
     private static ResultsPane? ResultsOf(ITabContent? tab) => tab switch
     {
         QueryTabView query => query.ResultsView,
@@ -702,6 +742,11 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
 
         // A tab asks the workspace that holds it now, which a move to another window changes.
+        if (item.Content is IShareSource source)
+        {
+            source.ShareRequested += OnShareRequested;
+        }
+
         if (item.Content is QueryTabView query)
         {
             query.HistoryRecorded += OnHistoryRecorded;
@@ -739,6 +784,11 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             }
 
             _snapshots.Remove(content);
+        }
+
+        if (item.Content is IShareSource source)
+        {
+            source.ShareRequested -= OnShareRequested;
         }
 
         if (item.Content is QueryTabView query)

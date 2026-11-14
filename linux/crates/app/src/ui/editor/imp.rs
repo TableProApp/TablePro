@@ -146,6 +146,9 @@ impl ObjectImpl for SqlEditor {
                 Signal::builder("export-results")
                     .param_types([glib::BoxedAnyObject::static_type()])
                     .build(),
+                Signal::builder("share-requested")
+                    .param_types([glib::BoxedAnyObject::static_type()])
+                    .build(),
                 Signal::builder("transaction-changed")
                     .param_types([bool::static_type()])
                     .build(),

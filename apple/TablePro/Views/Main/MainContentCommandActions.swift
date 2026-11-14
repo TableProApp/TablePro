@@ -1006,6 +1006,14 @@ final class MainContentCommandActions: ObservableObject {
         coordinator.openExportQueryResultsDialog()
     }
 
+    func shareQuery() {
+        coordinator?.shareEditorQuery()
+    }
+
+    func shareQueryResult() {
+        coordinator?.shareActiveResult()
+    }
+
     func importData() {
         guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.openImportPanel()

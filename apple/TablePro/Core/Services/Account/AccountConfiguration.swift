@@ -81,6 +81,10 @@ extension AccountConfiguration {
         accountURL.appendingPathComponent("devices")
     }
 
+    var portalSharedLinks: URL {
+        accountURL.appendingPathComponent("shared-links")
+    }
+
     func portalTeam(_ teamID: String) -> URL {
         accountURL.appendingPathComponent("teams").appendingPathComponent(teamID)
     }

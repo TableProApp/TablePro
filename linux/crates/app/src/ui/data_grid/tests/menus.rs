@@ -403,3 +403,44 @@ fn the_grid_takes_its_menus_with_it() {
         "a menu outlived its grid"
     );
 }
+
+#[gtk4::test]
+fn a_grid_whose_host_shares_offers_share_result_with_the_columns_on_screen_in_their_order() {
+    let table = two_text_rows();
+    let shown = Grid::build(GridSpec::results(two_text_columns()), results(&two_text_values()));
+    shown.grid.set_column_visible(0, false);
+    drain_main_context();
+
+    assert!(!action_names(&cell_menu(&table)).contains(&"grid.share".to_owned()));
+    let actions = action_names(&cell_menu(&shown));
+    let export = actions.iter().position(|action| action == "grid.export");
+    let share = actions.iter().position(|action| action == "grid.share");
+    assert_eq!(
+        share,
+        export.map(|export| export + 1),
+        "Share Result follows Export: {actions:?}"
+    );
+    assert_access_keys(&cell_menu(&shown));
+    assert!(shown.is_enabled("share"));
+
+    shown.activate("share");
+
+    let shared = shown.take_requests().into_iter().find_map(|request| match request {
+        crate::ui::data_grid::GridRequest::Share(rows) => Some(rows),
+        _ => None,
+    });
+    let shared = shared.expect("the grid asked its host to share");
+    assert_eq!(
+        shared
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
+        ["name"]
+    );
+    assert_eq!(shared.total(), 2);
+    assert_eq!(
+        shared.rows.iter().map(|row| row.to_values()).collect::<Vec<_>>(),
+        [vec![Value::Text("A".into())], vec![Value::Text("B".into())]]
+    );
+}

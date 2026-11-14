@@ -72,7 +72,8 @@ struct AIEditorContextMenuTests {
             contextClickWord: nil
         ),
         onFormat: @escaping (NSRange) -> Void = { _ in },
-        onFavorite: @escaping (String) -> Void = { _ in }
+        onFavorite: @escaping (String) -> Void = { _ in },
+        onShare: @escaping (String) -> Void = { _ in }
     ) -> AIEditorContextMenu {
         let menu = AIEditorContextMenu(title: "")
         menu.fullText = { text }
@@ -81,6 +82,7 @@ struct AIEditorContextMenuTests {
         menu.onAIAction = { _ in }
         menu.onFormatSQL = onFormat
         menu.onSaveAsFavorite = onFavorite
+        menu.onShareQuery = onShare
         menu.foldStateAtCursor = { foldState }
         menu.onToggleFold = {}
         menu.menuNeedsUpdate(menu)
@@ -99,10 +101,13 @@ struct AIEditorContextMenuTests {
         return !zip(separators, separators.dropFirst()).contains { $0 && $1 }
     }
 
-    @Test("With every item available the groups are Edit, Select All, Format and Fold, Favorite, and AI")
+    @Test("With every item available the groups are Edit, Select All, Format and Fold, Favorite and Share, and AI")
     func fullMenuLayout() {
         let titles = editorMenu(ai: available()).items.map { $0.isSeparatorItem ? "-" : $0.title }
-        let expected = ["Cut", "Copy", "Paste", "-", "Select All", "-", "Format SQL", "Fold", "-", "Save as Favorite…", "-"]
+        let expected = [
+            "Cut", "Copy", "Paste", "-", "Select All", "-", "Format SQL", "Fold", "-",
+            "Save as Favorite…", "Share Query…", "-"
+        ]
         #expect(titles == expected + aiTitles)
     }
 
@@ -112,6 +117,7 @@ struct AIEditorContextMenuTests {
         let titles = menu.items.map { $0.title }
         #expect(!titles.contains("Format SQL"))
         #expect(!titles.contains("Save as Favorite…"))
+        #expect(!titles.contains("Share Query…"))
         #expect(menu.items.allSatisfy { $0.action != nil || $0.isSeparatorItem })
     }
 
@@ -195,5 +201,32 @@ struct AIEditorContextMenuTests {
         try perform("Save as Favorite…", in: menu)
 
         #expect(saved == ["SELECT id"])
+    }
+
+    @Test("Share Query after a right-click on a word shares the whole query, not the word")
+    func shareIgnoresTheClickedWord() throws {
+        let word = NSRange(location: 10, length: 4)
+        var shared: [String] = []
+        let menu = editorMenu(
+            selection: EditorContextSelection(selectedRange: word, contextClickWord: word),
+            onShare: { shared.append($0) }
+        )
+
+        try perform("Share Query…", in: menu)
+
+        #expect(shared == ["SELECT id FROM users"])
+    }
+
+    @Test("Share Query shares a selection the user made")
+    func shareKeepsAUserSelection() throws {
+        var shared: [String] = []
+        let menu = editorMenu(
+            selection: EditorContextSelection(selectedRange: NSRange(location: 0, length: 9), contextClickWord: nil),
+            onShare: { shared.append($0) }
+        )
+
+        try perform("Share Query…", in: menu)
+
+        #expect(shared == ["SELECT id"])
     }
 }

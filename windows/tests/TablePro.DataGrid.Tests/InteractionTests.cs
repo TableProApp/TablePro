@@ -250,6 +250,22 @@ public sealed class InteractionTests
         var content = Clipboard.GetContent();
         return content.Contains(StandardDataFormats.Text) ? await content.GetTextAsync() : "";
     }
+
+    // Shift+F10 and the Menu key give no pointer, so the cell menu opens under the focused cell instead.
+    [Fact]
+    public Task AMenuFromTheKeyboardOpensUnderTheFocusedCell() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData());
+        grid.SelectCell(2, 1, extend: false);
+        grid.UpdateLayout();
+
+        var point = grid.FocusedCellMenuPoint();
+        var (left, top) = grid.Insets;
+
+        Assert.NotNull(point);
+        Assert.InRange(point.Value.X, left + grid.ColumnX(1) - 1, left + grid.ColumnX(1) + 1);
+        Assert.InRange(point.Value.Y, top + (3 * grid.RowHeight) - 1, top + (3 * grid.RowHeight) + 1);
+    });
 }
 
 // Another program with the clipboard open, as a clipboard manager or a remote desktop session has it for a moment.

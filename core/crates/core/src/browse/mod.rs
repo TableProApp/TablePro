@@ -25,7 +25,7 @@ mod tests;
 pub use browse_page::BrowsePage;
 pub use browse_sql_error::BrowseSqlError;
 pub use build_count::build_count;
-pub use build_export::build_export;
+pub use build_export::{build_export, build_view_sql};
 pub use build_page::build_page;
 pub use declared_precision::DeclaredPrecisionSink;
 pub use export_request::{ExportFields, ExportRequest};

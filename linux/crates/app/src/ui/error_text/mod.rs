@@ -26,7 +26,9 @@ mod tls_remedy;
 mod transfer;
 mod unsupported;
 
-pub use account::{account_error_message, offline_file_message};
+pub use account::{
+    account_error_message, account_unavailable_message, offline_file_message, share_error_message, shared_link_message,
+};
 pub use connection_url::connection_url_message;
 pub use ddl::{build_error_text, refusal_text, save_blocker_text};
 pub use driver::{config_message, driver_message};

@@ -26,6 +26,7 @@ engines = [
 ]
 
 [dependencies]
+tablepro-account.workspace = true
 tablepro-core.workspace = true
 tablepro-driver-cassandra = { workspace = true, optional = true }
 tablepro-driver-clickhouse = { workspace = true, optional = true }
@@ -43,6 +44,7 @@ async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
 secrecy.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tokio-util.workspace = true
@@ -54,6 +56,7 @@ uuid.workspace = true
 windows-sys.workspace = true
 
 [dev-dependencies]
+tablepro-account = { workspace = true, features = ["fakes"] }
 csbindgen.workspace = true
 russh.workspace = true
 tempfile.workspace = true

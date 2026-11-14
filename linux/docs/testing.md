@@ -345,7 +345,15 @@ It prints the tablepro-cloud commit, for the commit message. Then build and run 
 - `remove-device`: removes the machine from the portal's Devices page.
 - `offline-file`: makes an offline file for `TABLEPRO_CLOUD_MACHINE_ID` through the portal's API, as its Devices page does, into `TABLEPRO_CLOUD_OUTPUT`.
 
+The share cases also change the stack's database through `core/crates/account/tests/browser/seed.cjs`, which needs no browser and writes what tablepro-cloud's `web/e2e` seed writes. Each step takes `TABLEPRO_CLOUD_EMAIL`, which the test sets:
+
+- `unverify`: clears the account's email verification.
+- `team`: makes a team the account owns, with the account and `TABLEPRO_CLOUD_MEMBER_EMAIL` seated on a Team license of 5 seats.
+- `team-links-off`: turns public links off for the team the account owns, as `PUT /api/teams/{team_id}/sharing` does.
+
 The cases cover a licensed sign-in with a restart, a refresh and a sign-out whose token the server then refuses; a free account without a keyring; a fourth machine told `device_limit_reached` with the three that hold the license; a machine over the limit that removes a holder in place and gets the license, while the holder with an offline file, which `device_limit_reached` names with its `offline_until`, is refused with `offline_file_active`; a second sign-in, which revokes the first one's token; a device removed in the portal, which signs the account out at its next refresh; and the profile and devices of an account, with an offline file the portal made unlocking a machine that never signed in, without opening its keyring.
+
+The share link cases cover a Free account that holds five links and is refused a sixth and every Pro option; an account whose email is not verified, which is told so and shares nothing; a Pro link behind a password, which opens with it, keeps every digit of its numbers and takes a report, while a report without a Turnstile token is refused; and a seated team member's team link, which counts outside the member's own limit until the team turns public links off.
 
 They read the stack from the environment:
 
@@ -355,7 +363,8 @@ They read the stack from the environment:
 | `TABLEPRO_CLOUD_ENTITLEMENT_KEY` | The `x` of the stack's entitlement signing key, base64url |
 | `TABLEPRO_CLOUD_EMAIL_DOMAIN` | The domain of the accounts the tests make, so runs never share one |
 | `TABLEPRO_CLOUD_MAIL_URL` | The fake Resend that keeps the sign-in emails |
-| `TABLEPRO_CLOUD_DATABASE_URL` | The stack's database, for the license grant and the seeded devices |
+| `TABLEPRO_CLOUD_DATABASE_URL` | The stack's database, for the license grant, the seeded devices and `seed.cjs` |
+| `TABLEPRO_CLOUD_REPORT_TOKEN` | A Turnstile token the stack's siteverify passes for the `share_report` action, for the report case |
 | `TABLEPRO_CLOUD_CHROME` | A Chrome or chrome-headless-shell binary |
 | `NODE_PATH` | Where `puppeteer` and `pg` are installed |
 

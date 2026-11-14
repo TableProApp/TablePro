@@ -91,6 +91,9 @@ public sealed partial class SqlEditor : UserControl, IDisposable
 
     public event EventHandler? TextChanged;
 
+    // The host's own commands for the context menu, added after the editor's each time the menu opens.
+    public event EventHandler<IList<MenuFlyoutItemBase>>? ContextMenuOpening;
+
     public EditorModel Model => _model;
 
     public TextDocument Document => _model.Document;

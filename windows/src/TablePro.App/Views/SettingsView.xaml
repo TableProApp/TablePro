@@ -18,7 +18,33 @@
                 AutomationProperties.HeadingLevel="Level1"
                 Style="{StaticResource TitleTextBlockStyle}" />
 
-            <TextBlock x:Uid="AppearanceHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" Margin="1,0,0,4" />
+            <TextBlock x:Uid="AccountHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" Margin="1,0,0,4" />
+            <InfoBar x:Name="AccountBar" AutomationProperties.AutomationId="AccountBar" IsClosable="False" IsOpen="False" Visibility="Collapsed" />
+            <toolkit:SettingsCard x:Name="AccountCard" AutomationProperties.AutomationId="AccountCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Contact" /></toolkit:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <ProgressRing x:Name="AccountProgress" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
+                    <Button x:Name="AccountButton" AutomationProperties.AutomationId="AccountButton" Click="OnAccountButton" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsExpander x:Uid="AccountDetails" x:Name="AccountDetails" AutomationProperties.AutomationId="AccountDetails" Visibility="Collapsed">
+                <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="Refresh" /></toolkit:SettingsExpander.HeaderIcon>
+                <Button x:Uid="AccountRefreshButton" x:Name="AccountRefreshButton" AutomationProperties.AutomationId="AccountRefreshButton" Click="OnAccountRefresh" />
+                <toolkit:SettingsExpander.Items>
+                    <toolkit:SettingsCard x:Uid="ManageAccountCard" IsClickEnabled="True" Click="OnManageAccount">
+                        <toolkit:SettingsCard.ActionIcon><SymbolIcon Symbol="Globe" /></toolkit:SettingsCard.ActionIcon>
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Uid="ManageSharedLinksCard" IsClickEnabled="True" Click="OnManageSharedLinks">
+                        <toolkit:SettingsCard.ActionIcon><SymbolIcon Symbol="Globe" /></toolkit:SettingsCard.ActionIcon>
+                    </toolkit:SettingsCard>
+                </toolkit:SettingsExpander.Items>
+            </toolkit:SettingsExpander>
+            <toolkit:SettingsExpander x:Uid="DevicesExpander" x:Name="DevicesExpander" AutomationProperties.AutomationId="DevicesExpander" Visibility="Collapsed" Expanded="OnDevicesExpanded">
+                <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE7F4;" /></toolkit:SettingsExpander.HeaderIcon>
+                <ProgressRing x:Name="DevicesProgress" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
+            </toolkit:SettingsExpander>
+
+            <TextBlock x:Uid="AppearanceHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsCard x:Uid="ThemeCard" x:Name="ThemeCard">
                 <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="FontColor" /></toolkit:SettingsCard.HeaderIcon>
                 <ComboBox x:Name="ThemeBox" x:Uid="ThemeBox" AutomationProperties.AutomationId="ThemeBox" MinWidth="200" SelectionChanged="OnThemeChanged">

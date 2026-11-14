@@ -39,6 +39,27 @@ public sealed class BrowseTests
     }
 
     [Fact]
+    public async Task APagesViewSqlSelectsEveryRowItsFilterPicksWithNoPageWindow()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var database = await SqliteDatabase.CreateAsync();
+        var withNote = Rules(new FilterRule("note", FilterOperator.IsNotNull, null));
+
+        var page = await database.Session.ReadTablePageAsync(
+            People, new ColumnSort(1, Ascending: false), withNote, 1, cancellationToken: cancellationToken);
+        page.Run.Dispose();
+        using var view = database.Editor.Run(page.ViewSql!, cancellationToken: cancellationToken);
+        var outcome = await view.Completion;
+        using var every = view.GetResultSet(0);
+
+        Assert.NotNull(page.ViewSql);
+        Assert.DoesNotContain("LIMIT", page.ViewSql, StringComparison.OrdinalIgnoreCase);
+        Assert.IsType<QueryOutcome.Completed>(outcome);
+        Assert.NotNull(every);
+        Assert.Equal(["Zoë 👋", "Grace"], Texts(every, 1));
+    }
+
+    [Fact]
     public async Task ValuesBindAsTheColumnsTypeAndRawSqlJoinsTheRules()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

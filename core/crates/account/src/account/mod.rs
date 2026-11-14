@@ -9,7 +9,7 @@ use secrecy::{ExposeSecret as _, SecretString};
 use tokio::sync::{Mutex, watch};
 use tokio::time::Instant;
 
-use crate::account_error::AccountError;
+use crate::account_error::{AccountError, http_text};
 use crate::account_file::{self, AccountFile};
 use crate::account_settings::AccountSettings;
 use crate::account_status::{AccountStatus, EntitlementProblem, SignedIn};
@@ -21,6 +21,8 @@ use crate::machine_id::MachineId;
 use crate::oauth::{OAuth, Tokens};
 use crate::profile::{Device, Profile};
 use crate::token_vault::RefreshTokenVault;
+
+mod share_calls;
 
 // The server forgets an unanswered sign-in after 10 minutes.
 const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
@@ -77,6 +79,9 @@ enum Call {
     Profile,
     Devices,
     RemoveDevice,
+    Share,
+    // Rate limited apart from the other share calls on the server, so its 429 holds only further creates.
+    ShareCreate,
 }
 
 impl Session {
@@ -128,7 +133,7 @@ impl Account {
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(REQUEST_TIMEOUT)
             .build()
-            .map_err(|error| AccountError::Protocol(error.to_string()))?;
+            .map_err(|error| AccountError::Protocol(http_text(error)))?;
         let oauth = OAuth::new(settings.client, &settings.endpoints, http.clone())?;
         Ok(Self {
             inner: Arc::new(Inner {
@@ -517,7 +522,7 @@ impl Account {
             && let Some((access, until)) = &session.access
             && *until > Utc::now() + ACCESS_TOKEN_MARGIN
         {
-            return Ok(Bearer(access.clone()));
+            return Ok(Bearer::token(access.clone()));
         }
         let refresh = session.refresh.clone().ok_or(AccountError::SignedOut)?;
         session.waited(Call::Token)?;
@@ -525,7 +530,7 @@ impl Account {
         let tokens = session.answered(Call::Token, tokens)?;
         let access = tokens.access.clone();
         self.adopt(session, tokens).await;
-        Ok(Bearer(access))
+        Ok(Bearer::token(access))
     }
 
     async fn adopt(&self, session: &mut Session, tokens: Tokens) {

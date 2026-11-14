@@ -13,6 +13,8 @@ internal enum DisplayedResultReader {
         internal let columnTypes: [ColumnType]
         internal let rows: [[PluginCellValue]]
         internal let skippedDeletedCount: Int
+        // How the values in each projected column were masked.
+        internal var masks: ColumnMasks = .none
     }
 
     // Empty selectedDisplayIndices means every displayed row. A cell in defaultedCells has no value until the server
@@ -47,7 +49,8 @@ internal enum DisplayedResultReader {
             columns: projection.columns(tableRows.columns),
             columnTypes: projection.columnTypes(tableRows.columnTypes),
             rows: rows,
-            skippedDeletedCount: skippedDeleted
+            skippedDeletedCount: skippedDeleted,
+            masks: projection.masks(tableRows.masks)
         )
     }
 

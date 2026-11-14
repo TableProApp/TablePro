@@ -211,6 +211,11 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.isQueryTab
         case #selector(exportQueryResults(_:)):
             return context.isConnected && (context.hasResultRows || context.hasTableHealthFindings)
+        // A share reads the loaded rows and the editor text, so neither waits on the connection.
+        case #selector(shareQueryResult(_:)):
+            return context.hasResultRows
+        case #selector(shareQuery(_:)):
+            return context.isQueryTab && context.hasQueryText
 
         case #selector(exportDataDictionary(_:)):
             return context.isConnected && context.canExportDataDictionary
@@ -546,6 +551,8 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(discardChanges(_:)),
         #selector(exportTables(_:)),
         #selector(exportQueryResults(_:)),
+        #selector(shareQuery(_:)),
+        #selector(shareQueryResult(_:)),
         #selector(exportDataDictionary(_:)),
         #selector(importData(_:)),
         #selector(importDataFormat(_:)),

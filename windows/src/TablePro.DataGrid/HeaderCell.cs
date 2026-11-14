@@ -16,9 +16,13 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
     private const string AscendingGlyph = "";
     private const string DescendingGlyph = "";
 
+    // Segoe Fluent Icons' Hide, the eye with a slash the macOS sheet marks a masked column with.
+    private const string MaskedGlyph = "\uED1A";
+
     private readonly DataGridView _grid;
     private readonly TextBlock _title;
     private readonly FontIcon _sort;
+    private readonly FontIcon _masked;
     private readonly ResizeGrip _grip;
     private bool _hover;
     private bool _pressed;
@@ -31,6 +35,7 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
         _grid = grid;
         ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         BorderThickness = new Thickness(0, 0, 1, 1);
         _title = new TextBlock
         {
@@ -40,14 +45,24 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
             TextTrimming = TextTrimming.CharacterEllipsis,
             FontWeight = FontWeights.SemiBold,
         };
+        _masked = new FontIcon
+        {
+            Glyph = MaskedGlyph,
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 8, 0),
+            Visibility = Visibility.Collapsed,
+        };
+        SetColumn(_masked, 1);
         _sort = new FontIcon { FontSize = 10, Margin = new Thickness(0, 0, 10, 0), Visibility = Visibility.Collapsed };
-        SetColumn(_sort, 1);
+        SetColumn(_sort, 2);
         _grip = new ResizeGrip { Width = 8, HorizontalAlignment = HorizontalAlignment.Right };
-        SetColumnSpan(_grip, 2);
+        SetColumnSpan(_grip, 3);
         AutomationProperties.SetAccessibilityView(_title, AccessibilityView.Raw);
         AutomationProperties.SetAccessibilityView(_sort, AccessibilityView.Raw);
+        AutomationProperties.SetAccessibilityView(_masked, AccessibilityView.Raw);
         AutomationProperties.SetAccessibilityView(_grip, AccessibilityView.Raw);
         Children.Add(_title);
+        Children.Add(_masked);
         Children.Add(_sort);
         Children.Add(_grip);
 
@@ -93,7 +108,11 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
         _sort.Visibility = direction == SortDirection.None ? Visibility.Collapsed : Visibility.Visible;
         _sort.Glyph = direction == SortDirection.Descending ? DescendingGlyph : AscendingGlyph;
         _grip.Visibility = column < 0 ? Visibility.Collapsed : Visibility.Visible;
+        var masked = _grid.MaskNote(column);
+        _masked.Visibility = masked is null ? Visibility.Collapsed : Visibility.Visible;
+        ToolTipService.SetToolTip(_masked, masked);
         AutomationProperties.SetName(this, title);
+        AutomationProperties.SetHelpText(this, masked ?? string.Empty);
         ApplyBrushes();
     }
 
@@ -104,6 +123,7 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
         BorderBrush = brushes.Divider;
         _title.Foreground = brushes.HeaderText;
         _sort.Foreground = brushes.HeaderText;
+        _masked.Foreground = brushes.HeaderText;
     }
 
     protected override AutomationPeer OnCreateAutomationPeer() => new HeaderAutomationPeer(this, _grid);

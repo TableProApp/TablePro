@@ -379,6 +379,10 @@ impl DataGrid {
         copy::export_source(self)
     }
 
+    pub(crate) fn shared_rows(&self) -> crate::services::share_subject::SharedRows {
+        copy::shared_rows(self)
+    }
+
     /// Put the sort on the headers without asking for the rows again, as
     /// a restored tab does.
     pub fn set_sort(&self, sort: Option<(usize, bool)>) {

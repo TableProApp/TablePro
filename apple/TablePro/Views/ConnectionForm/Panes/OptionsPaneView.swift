@@ -496,7 +496,7 @@ private struct MaskingRulesSection: View {
             Text(String(localized: "Masking"))
         } footer: {
             Text(String(localized: """
-                Hides matching values in the grid, copies, exports, the AI assistant and MCP. \
+                Hides matching values in the grid, copies, exports, shared links, the AI assistant and MCP. \
                 A pattern is table.column or column, with * as a wildcard, such as *.email. \
                 Filters and sorts still run on the stored values, so masking does not replace database permissions.
                 """))

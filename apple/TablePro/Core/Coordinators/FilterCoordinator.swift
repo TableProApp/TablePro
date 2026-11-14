@@ -284,6 +284,66 @@ final class FilterCoordinator: ObservableObject {
         normalizeLogicModeIfNeeded(at: tabIndex)
 
         let tab = parent.tabManager.tabs[tabIndex]
+        let built = tableQuery(
+            for: tab,
+            tableName: tableName,
+            limit: tab.pagination.pageSize,
+            offset: tab.pagination.currentOffset
+        )
+
+        parent.tabManager.mutate(at: tabIndex) {
+            $0.content.query = built.query
+            if built.isRefused {
+                $0.filterState.commit = nil
+            }
+            $0.filterState.executedFilters = built.executed
+            $0.filterState.executedLogicMode = $0.filterState.commit == nil ? nil : built.logicMode
+        }
+    }
+
+    // The table tab's view, its filters, search and sort, read from the first row: what Share Result reads.
+    func viewQuery(for tab: QueryTab, limit: Int) -> String? {
+        guard let tableName = tab.tableContext.tableName else { return nil }
+        return tableQuery(for: tab, tableName: tableName, limit: limit, offset: 0).query
+    }
+
+    // The same view with no LIMIT or OFFSET, as a shared link shows it; nil when the host cannot write it as SQL.
+    func viewSQL(for tab: QueryTab) -> String? {
+        guard parent.queryBuilder.writesSQL,
+              let tableName = tab.tableContext.tableName,
+              activeBrowseSearch(for: tab.filterState) == nil
+        else { return nil }
+        let rerun = tab.filterState.rerunFilters
+        let (columns, columnTypes) = parent.queryColumns(for: tab)
+        guard !rerun.filters.isEmpty else {
+            return parent.queryBuilder.buildBaseQuery(
+                tableName: tableName,
+                schemaName: tab.tableContext.schemaName,
+                sortState: querySortState(for: tab),
+                columns: columns,
+                selectColumns: parent.selectColumns(for: tab),
+                window: false
+            )
+        }
+        return parent.queryBuilder.buildFilteredQuery(
+            tableName: tableName,
+            schemaName: tab.tableContext.schemaName,
+            filters: rerun.filters,
+            logicMode: parent.supportsMatchAnyFilters ? rerun.logicMode : .and,
+            sortState: querySortState(for: tab),
+            columns: columns,
+            columnTypes: columnTypes,
+            selectColumns: parent.selectColumns(for: tab),
+            window: false
+        )
+    }
+
+    private func tableQuery(
+        for tab: QueryTab,
+        tableName: String,
+        limit: Int,
+        offset: Int
+    ) -> (query: String, executed: [TableFilter], isRefused: Bool, logicMode: FilterLogicMode) {
         let rerun = tab.filterState.rerunFilters
         let logicMode = parent.supportsMatchAnyFilters ? rerun.logicMode : .and
         let (columns, columnTypes) = parent.queryColumns(for: tab)
@@ -300,8 +360,8 @@ final class FilterCoordinator: ObservableObject {
                 columns: columns,
                 selectColumns: parent.selectColumns(for: tab),
                 unloadedValues: parent.unloadedValuePlan(for: tab),
-                limit: tab.pagination.pageSize,
-                offset: tab.pagination.currentOffset
+                limit: limit,
+                offset: offset
             )
         } else if rerun.filters.isEmpty {
             filteredQuery = nil
@@ -316,33 +376,25 @@ final class FilterCoordinator: ObservableObject {
                 columnTypes: columnTypes,
                 selectColumns: parent.selectColumns(for: tab),
                 unloadedValues: parent.unloadedValuePlan(for: tab),
-                limit: tab.pagination.pageSize,
-                offset: tab.pagination.currentOffset
+                limit: limit,
+                offset: offset
             )
         }
         let isRefused = filteredQuery == nil && !rerun.filters.isEmpty
         if isRefused {
             executed = []
         }
-        let newQuery = filteredQuery ?? parent.queryBuilder.buildBaseQuery(
+        let query = filteredQuery ?? parent.queryBuilder.buildBaseQuery(
             tableName: tableName,
             schemaName: tab.tableContext.schemaName,
             sortState: querySortState(for: tab),
             columns: columns,
             selectColumns: parent.selectColumns(for: tab),
             unloadedValues: parent.unloadedValuePlan(for: tab),
-            limit: tab.pagination.pageSize,
-            offset: tab.pagination.currentOffset
+            limit: limit,
+            offset: offset
         )
-
-        parent.tabManager.mutate(at: tabIndex) {
-            $0.content.query = newQuery
-            if isRefused {
-                $0.filterState.commit = nil
-            }
-            $0.filterState.executedFilters = executed
-            $0.filterState.executedLogicMode = $0.filterState.commit == nil ? nil : logicMode
-        }
+        return (query, executed, isRefused, logicMode)
     }
 
     // MARK: - Filter State

@@ -12,17 +12,23 @@ comfy-table.workspace = true
 csv.workspace = true
 flate2.workspace = true
 futures.workspace = true
+# The per-process key of a masked value's Stable Hash.
+getrandom = "0.3"
+hmac.workspace = true
 num-bigint.workspace = true
 percent-encoding.workspace = true
+regex.workspace = true
 rust_xlsxwriter.workspace = true
 rustls-pki-types.workspace = true
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sqlparser.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "rt"] }
 tokio-util.workspace = true
+unicode-segmentation.workspace = true
 unicode-width.workspace = true
 uuid.workspace = true
 

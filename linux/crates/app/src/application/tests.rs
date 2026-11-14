@@ -378,7 +378,14 @@ fn a_file_without_a_hint_opens_in_the_idle_picker() {
 fn startup_installs_the_app_actions_and_their_accels() {
     let test = TestApp::started("Actions");
 
-    for action in ["new-window", "quit", "preferences", "about", "buy-license"] {
+    for action in [
+        "new-window",
+        "quit",
+        "preferences",
+        "about",
+        "buy-license",
+        "manage-shared-links",
+    ] {
         assert!(test.app.lookup_action(action).is_some(), "app.{action} is missing");
     }
 }
@@ -1669,6 +1676,52 @@ mod links {
         crate::test_support::drain_main_context();
         let _ = wait_until(Duration::from_millis(300), || window.connect_dialog().is_some());
         assert!(window.connect_dialog().is_none());
+        assert_eq!(test.app.windows().len(), 1);
+        assert_eq!(window.page_name(), "picker");
+    }
+}
+
+mod share_links {
+    use super::*;
+    use crate::services::share_link::share_link_text;
+    use crate::ui::SessionWindow;
+
+    const TOKEN: &str = "Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb7dEf0hIjK";
+
+    fn link(text: &str) -> gio::File {
+        crate::services::connection_link::register_link_schemes().expect("register the links");
+        gio::File::for_uri(text)
+    }
+
+    #[gtk4::test]
+    fn a_share_link_keeps_its_text_through_gio() {
+        let text = format!("tablepro://share?token={TOKEN}");
+
+        let file = link(&text);
+
+        assert_eq!(file.uri(), text);
+        assert_eq!(share_link_text(&file).as_deref(), Some(text.as_str()));
+    }
+
+    #[gtk4::test]
+    fn a_share_link_without_a_token_says_it_is_gone_and_opens_nothing() {
+        let test = TestApp::started("ShareLinkMalformed");
+        test.app.activate();
+        wait_until(WAIT, || test.app.windows().len() == 1).expect("the picker");
+        let window = test
+            .app
+            .active_window()
+            .and_downcast::<SessionWindow>()
+            .expect("the picker");
+
+        test.app.open(&[link("tablepro://share?token=short")], "");
+
+        wait_until(WAIT, || {
+            window
+                .toast_titles()
+                .contains(&"This shared link is no longer available.".to_owned())
+        })
+        .expect("the toast saying why");
         assert_eq!(test.app.windows().len(), 1);
         assert_eq!(window.page_name(), "picker");
     }

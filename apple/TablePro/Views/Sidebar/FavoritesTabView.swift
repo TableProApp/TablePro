@@ -635,6 +635,10 @@ internal struct FavoritesTabView: View {
             viewModel.deleteFavorite(favorite)
         case .showFavoriteHistory(let favorite):
             coordinator?.showVersionHistory(of: favorite)
+        case .shareFavorite(let favorite):
+            coordinator?.shareFavorite(favorite)
+        case .shareLinkedFavorite(let favorite):
+            coordinator?.shareLinkedFavorite(favorite)
         case .openLinkedFavorite(let favorite):
             coordinator?.openLinkedFavorite(favorite)
         case .editLinkedMetadata(let favorite):

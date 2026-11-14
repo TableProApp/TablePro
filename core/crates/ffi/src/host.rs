@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use secrecy::SecretString;
+use tablepro_account::RefreshTokenVault;
 use tablepro_core::AiProvider;
 use tablepro_core::credentials::{SecretError, SecretItem, SecretItems, SecretKind, SecretLookup, SecretVault};
 use tablepro_session::runtime::Tasks;
@@ -58,6 +59,8 @@ pub enum SecretItemTag {
     AnthropicKey,
     OpenAiKey,
     OpenAiCompatibleKey,
+    // The TablePro account's refresh token, which only the account asks for (core ADR 0016).
+    AccountRefreshToken,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
@@ -192,6 +195,25 @@ impl SecretItems for HostSecretStore {
     }
 }
 
+#[async_trait]
+impl RefreshTokenVault for HostSecretStore {
+    async fn load_refresh_token(&self) -> Result<Option<SecretString>, SecretError> {
+        self.call(|host| host.load_item(SecretItemTag::AccountRefreshToken))
+            .await
+    }
+
+    async fn store_refresh_token(&self, token: &SecretString) -> Result<(), SecretError> {
+        let token = token.clone();
+        self.call(move |host| host.store_item(SecretItemTag::AccountRefreshToken, token))
+            .await
+    }
+
+    async fn delete_refresh_token(&self) -> Result<(), SecretError> {
+        self.call(|host| host.delete_item(SecretItemTag::AccountRefreshToken))
+            .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -300,6 +322,29 @@ mod tests {
 
         assert_eq!(
             found.map(|secret| secret.expose_secret().to_owned()),
+            Some("sk-test".to_owned())
+        );
+    }
+
+    #[tokio::test]
+    async fn the_account_s_refresh_token_is_an_item_of_its_own() {
+        let store = store(MemorySecrets::default());
+        let ai = SecretItem::AiKey(AiProvider::Anthropic);
+        store.store_item(ai, &SecretString::from("sk-test")).await.unwrap();
+
+        store.store_refresh_token(&SecretString::from("refresh")).await.unwrap();
+        let found = store.load_refresh_token().await.unwrap();
+        store.delete_refresh_token().await.unwrap();
+        let gone = store.load_refresh_token().await.unwrap();
+        let kept = store.load_item(ai).await.unwrap();
+
+        assert_eq!(
+            found.map(|token| token.expose_secret().to_owned()),
+            Some("refresh".to_owned())
+        );
+        assert!(gone.is_none());
+        assert_eq!(
+            kept.map(|secret| secret.expose_secret().to_owned()),
             Some("sk-test".to_owned())
         );
     }
