@@ -490,10 +490,12 @@ public sealed class QueryTab : IWorkspaceTab
             return false;
         }
 
+        var shown = _view.WholeText;
         try
         {
             var read = await Task.Run(() => SqlFile.Read(path)).ConfigureAwait(true);
-            if (path != FilePath || _work.IsClosed)
+            // Text typed while the file was read is not thrown away for it.
+            if (path != FilePath || _work.IsClosed || _view.WholeText != shown)
             {
                 return false;
             }
@@ -757,14 +759,19 @@ public sealed class QueryTab : IWorkspaceTab
     private string? Kept(string? database) =>
         string.IsNullOrEmpty(database) || database == _session.Database ? null : database;
 
-    private void SetDatabase(string? database)
+    // A switch the user picked leaves the rows shown from the database before, so a sort orders them where they are;
+    // a database a run itself moved to is where its own rows came from.
+    private void SetDatabase(string? database, bool switched = false)
     {
         var kept = Kept(database);
         if (kept != Database)
         {
             Database = kept;
-            // The rows shown came from the database before, so a sort orders them where they are, never runs again.
-            _statement = null;
+            if (switched)
+            {
+                _statement = null;
+            }
+
             StateChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -773,21 +780,21 @@ public sealed class QueryTab : IWorkspaceTab
     {
         if (await ReleaseLostEditorAsync().ConfigureAwait(true) || _editor is not { } editor)
         {
-            SetDatabase(database);
+            SetDatabase(database, switched: true);
             return;
         }
 
         try
         {
             await editor.UseDatabaseAsync(database, cancellationToken).ConfigureAwait(true);
-            SetDatabase(editor.Database ?? database);
+            SetDatabase(editor.Database ?? database, switched: true);
         }
         catch (TableProException exception) when (IsUnsupported(exception.Error))
         {
             // The engine binds a connection to its database, so the next run opens one there.
             _editor = null;
             await editor.DisposeAsync().ConfigureAwait(true);
-            SetDatabase(database);
+            SetDatabase(database, switched: true);
         }
         catch (TableProException exception)
         {

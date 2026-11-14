@@ -251,6 +251,7 @@ public sealed class QueryTabDatabaseTests
         Assert.Equal("inventory", tab.ShownDatabase);
         Assert.Equal("inventory", tab.Snapshot().Database);
         Assert.True(changes >= 3);
+        Assert.Equal("use inventory", tab.LastStatement);
     }
 
     [Fact]
