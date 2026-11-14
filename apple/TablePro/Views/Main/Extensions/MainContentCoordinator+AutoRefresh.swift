@@ -138,7 +138,7 @@ extension MainContentCoordinator {
             recordAutoRefreshPause(nil, forTab: tabId)
         }
         // Not runQuery, which commits an open edit, nor reloadTableTab, which retires the count.
-        if let load = executeTableTabQueryDirectly(trigger: .autoRefresh, viewport: .keepPlace)
+        if let load = executeTableTabQueryDirectly(onTab: tabId, trigger: .autoRefresh, viewport: .keepPlace)
             ?? queryTasks.task(for: tabId) {
             await load.value
         }

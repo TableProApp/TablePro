@@ -29,7 +29,7 @@ struct CopyFromStandardInputRunTests {
         let statements = SQLStatementScanner.executableStatements(
             in: script, grammar: fixture.coordinator.lexicalGrammar
         )
-        fixture.coordinator.queryExecutionCoordinator.executeMultipleStatements(statements)
+        fixture.coordinator.queryExecutionCoordinator.executeMultipleStatements(statements, onTab: fixture.coordinator.commandTabId)
         let handle = try #require(fixture.coordinator.queryTasks.task(for: tab.id))
         await handle.value
         return try #require(fixture.tabManager.tabs.first { $0.id == tab.id })
