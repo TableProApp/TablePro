@@ -17,7 +17,7 @@ public sealed partial class ShellTests
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", TwoSelects);
         app.Chord(
-            () => app.Find("QueryStatus").Name.StartsWith("Rows: 1", StringComparison.Ordinal),
+            () => AppSession.TextOf(app.Find("QueryStatus")).StartsWith("Rows: 1", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL,
             VirtualKeyShort.SHIFT,
             VirtualKeyShort.ENTER);
@@ -66,7 +66,8 @@ public sealed partial class ShellTests
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "SELECT 1 AS a; SELECT 2 AS b; SELECT 3 AS c; SELECT 4 AS d");
         app.Chord(
-            () => app.Find("QueryStatus").Name.EndsWith("2 earlier results were dropped.", StringComparison.Ordinal),
+            () => AppSession.TextOf(app.Find("QueryStatus"))
+                .EndsWith("2 earlier results were dropped.", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL,
             VirtualKeyShort.ENTER);
 

@@ -472,14 +472,16 @@ internal sealed class AppSession : IDisposable
         return new InvalidOperationException(message + exited + log);
     }
 
+    // A status has no UIA Name while its text is empty, and FlaUI's Name throws for it then.
+    public static string TextOf(AutomationElement element) => element.Properties.Name.ValueOrDefault ?? string.Empty;
+
     public static string WaitForText(AutomationElement element, Func<string, bool> done)
     {
         var text = string.Empty;
         Retry.WhileFalse(
             () =>
             {
-                // A status may have no UIA Name until its asynchronous result arrives.
-                text = element.Properties.Name.ValueOrDefault ?? string.Empty;
+                text = TextOf(element);
                 return done(text);
             },
             Wait,
