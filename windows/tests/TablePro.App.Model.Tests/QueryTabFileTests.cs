@@ -366,25 +366,22 @@ public sealed class QueryTabFileTests : IDisposable
     }
 
     [Fact]
-    public async Task ASnapshotMarksUnsavedTextUntilDontSaveLetsItGo()
+    public async Task UnsavedTextStaysWithTheTabWhicheverTheCloseAnswerAndTheFileStaysAsItWas()
     {
         _files.CloseAnswer = SaveBeforeClose.DontSave;
         var tab = Open("edit.sql", "select 1;");
         _view.WholeText = "select 2;";
         tab.TextEdited();
 
-        var dirty = tab.Snapshot();
+        var before = tab.Snapshot();
         Assert.True(await tab.ConfirmCloseAsync(offerSave: true));
-        var discarded = tab.Snapshot();
-        tab.TextEdited();
-        var editedAgain = tab.Snapshot();
+        var after = tab.Snapshot();
 
-        Assert.True(dirty.FileUnsaved);
-        Assert.True(dirty.HasRecoveredWork);
-        Assert.NotNull(dirty.FileStamp);
-        Assert.False(discarded.FileUnsaved);
-        Assert.False(discarded.HasRecoveredWork);
-        Assert.True(editedAgain.FileUnsaved);
+        Assert.True(before.FileUnsaved);
+        Assert.True(before.HasRecoveredWork);
+        Assert.NotNull(before.FileStamp);
+        Assert.Equal(before, after);
+        Assert.Equal("select 1;", File.ReadAllText(Path.Combine(_directory, "edit.sql")));
     }
 
     private QueryTab Open(string name, string text) =>

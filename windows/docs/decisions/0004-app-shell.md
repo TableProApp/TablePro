@@ -68,7 +68,8 @@ On 2026-11-14 the roadmap's Phase 2 added a production cue (W-08), a database sw
 
 | Keys | Command |
 |---|---|
-| Ctrl+N, Ctrl+O | New connection, open a database file |
+| Ctrl+N, Ctrl+O | New connection, open a database or .sql file |
+| Ctrl+S, Ctrl+Shift+S | Save a table tab's changes or a query tab's file, save the file as |
 | Ctrl+T, Ctrl+W, Ctrl+Shift+T | New query tab, close the tab, reopen the last closed tab; File also has Move tab to new window |
 | Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+F4 | TabView's own |
 | Ctrl+1 to Ctrl+8, Ctrl+9 | That tab, the last tab ([Tab view](https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/tab-view)) |
@@ -142,8 +143,14 @@ On 2026-11-14 the roadmap's Phase 2 added a production cue (W-08), a database sw
 
 - On an engine with more than one database (`DatabaseSession::database_layout` not `Single`), the object pane's first row is a button naming the database the workspace browses, Ctrl+K or Database, Switch database. Its menu is read from the server each time it opens (`databases`): the user's databases, a separator, then the engine's own, the current one checked.
 - Where the server's databases are the catalog's schemas (MySQL, MariaDB, ClickHouse, Cassandra, MongoDB) the tree already lists each one, so a pick makes it the database new query tabs run in, kept in `session.json` with the connection, and opens and brings its row into view, as macOS's switch moves where the sidebar and new tabs look.
-- Where each database holds schemas of its own (PostgreSQL, SQL Server) a connection's catalog describes only the one it opened, so a pick opens the saved connection in that database as a rail item of its own (`connect_saved` with a database), or brings an open one forward, as the Linux app opens another database beside its connection (Linux ADR 0030). Its tabs, tree, health and transactions are its own; it closes on its own, and comes back with the session.
+- Where each database holds schemas of its own (PostgreSQL, SQL Server) a connection's catalog describes only the one it opened, so a pick opens the saved connection in that database as a rail item of its own (`connect_saved` with a database), or brings an open one forward, as the Linux app opens another database beside its connection (Linux ADR 0030). Its tabs, tree, health and transactions are its own; it closes on its own, and comes back with the session. Editing the connection and connecting reconnects each of them too, after asking about their held work.
 - A query tab names its database in its command bar, with the same menu. A pick waits while the tab runs or holds a transaction, so a move never rolls one back, as on Linux; with its editor open, the editor moves (`use_database`), keeping its temporary tables and settings, and on an engine that binds the database at connect the editor is let go and the next run opens one there (`open_editor` with a database). A `USE` typed in the tab moves the button with it (`QueryEditor::database`). The session keeps a tab's database where it is not the connection's own.
+
+### SQL files
+
+- File, Open file (Ctrl+O) takes `.sql`, `.psql` and `.pgsql` beside the database files, as macOS's Open File sends each file where its type belongs: a SQL file opens in a query tab of the front connection, or the one already open comes forward; with no connection connected it waits and opens in the next one to connect. Files dropped on an editor open the same way, and File, Open recent lists the last 10 opened or saved, kept in `session.json`.
+- The tab is named for the file, with a dot while its text differs from the file. Ctrl+S saves it (Save as when it has none or the file is gone) and Ctrl+Shift+S saves as. The encoding is the file's: its byte order mark, else UTF-8, else Latin-1, as the macOS app reads a file without the Mac-only steps; a save writes it back the same way, through a file beside it then a move, and stops with the file untouched when the text holds a character the encoding cannot store. Save as writes UTF-8.
+- Closing a tab with unsaved text asks Save, Don't Save or Cancel; Don't Save leaves the file as it was, and the text stays with the tab in the session either way, as macOS keeps a closed tab's SQL. A file another program changed shows a bar with Reload when the tab shows or the window is activated, a deleted one a bar with Save as, and a save over a change asks Overwrite, Reload or Cancel. A file tab's session keeps its text, the file's time and length as last read or saved, and whether the text was unsaved: a relaunch reads a clean tab's file as it is now, and keeps unsaved text, treating a file written while the app was closed as changed on disk. Unsaved text comes back after a forced end even with Reopen at startup off.
 
 ### Key tab
 

@@ -883,7 +883,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private async Task OnFormCompletedAsync(FormResult result)
     {
-        // Each database the connection is open in takes the new name; the connection's own database reconnects.
+        // Each database the connection is open in takes the new name, and with Connect each connects again.
         foreach (var each in _open.Where(item => item.Matches(result.Saved.Id, null)))
         {
             each.Rename(result.Saved.Name);
@@ -919,6 +919,36 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         Connect(result.Saved);
+        await ReconnectDatabasesAsync(result.Saved);
+    }
+
+    // The connection's other databases connect again with what was saved too, each keeping its database and its tabs.
+    private async Task ReconnectDatabasesAsync(SavedConnection saved)
+    {
+        var databases = _open
+            .Where(item => item.Matches(saved.Id, null)
+                && item.Database is not null
+                && item.State is ConnectionState.Connected or ConnectionState.Failed)
+            .ToList();
+        foreach (var each in databases)
+        {
+            if (!await ConfirmDisconnectAsync(each, offerSave: saved.SafeMode != SafeMode.ReadOnly))
+            {
+                ShowChangesOnConnect(each, saved);
+                continue;
+            }
+
+            DropSpare();
+            await each.DisconnectAsync(keepTabs: true);
+            await each.ConnectAsync();
+        }
+
+        // A question above brought a database forward; the connection the user connected comes back to the front.
+        if (databases.Count > 0
+            && _open.FirstOrDefault(item => item.Matches(saved.Id, null) && item.Database is null) is { } own)
+        {
+            Select(own);
+        }
     }
 
     // The core read the saved connection as each connect under way began, in every window.
