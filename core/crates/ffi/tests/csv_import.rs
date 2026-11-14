@@ -431,3 +431,29 @@ async fn a_plan_made_later_replaces_the_one_before_it() {
     );
     session.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn one_wide_record_after_many_narrow_rows_plans_with_only_the_mapped_fields() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path());
+    let session = seeded(&core, &dir.path().join("people.sqlite")).await;
+    let mut text = String::from("id,name\n");
+    for id in 1..=20_000 {
+        text.push_str(&format!("{id},n{id}\n"));
+    }
+    text.push_str("20001,wide");
+    text.push_str(&",".repeat(4_094));
+    text.push('\n');
+    let csv = write(dir.path(), "wide.csv", &text);
+    let import = session.open_csv_import(people(), None).await.unwrap();
+
+    let check = import
+        .plan(csv, comma(), vec![Some(0), Some(1), None, None, None])
+        .await
+        .unwrap();
+    let outcome = import.run(plan_of(&check), false, None).await.unwrap();
+
+    assert!(matches!(check, CsvImportCheck::Ready { rows: 20_001, .. }), "{check:?}");
+    assert_eq!(outcome, CsvImportOutcome::Imported { rows: 20_001 });
+    session.close().await.unwrap();
+}

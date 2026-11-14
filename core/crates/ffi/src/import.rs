@@ -8,8 +8,8 @@ use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::CellInput;
 use tablepro_core::export::CsvDelimiter;
 use tablepro_core::import::{
-    CsvImportOptions, CsvRowError, ImportColumn, ImportError, MAX_CSV_FILE_BYTES, MAX_PREVIEW_ROWS, plan_import,
-    read_csv, row_to_cells, suggest_mapping,
+    CsvImportOptions, CsvRowError, ImportColumn, ImportError, MAX_CSV_FILE_BYTES, MAX_PREVIEW_ROWS, padded_row,
+    plan_import, read_csv, read_csv_records, row_to_cells, suggest_mapping,
 };
 use tablepro_core::meta::TableRef;
 use tablepro_core::{CallOptions, DriverError, ErrorCategory, WriteBatch, WriteKind};
@@ -371,9 +371,9 @@ fn plan_file(
     gate: SaveGate,
 ) -> Result<Result<Option<Planned>, CsvRowFault>, CoreError> {
     let bytes = read_file(path)?;
-    let sheet = read_csv(&bytes, options, None).map_err(read_error)?;
+    let records = read_csv_records(&bytes, options, None).map_err(read_error)?;
     drop(bytes);
-    let width = sheet.headers.len();
+    let width = records.width;
     let mapping: Vec<Option<usize>> = mapping
         .iter()
         .map(|field| field.and_then(|field| usize::try_from(field).ok()))
@@ -384,18 +384,19 @@ fn plan_file(
             format!("field {field} is past the file's {width} fields"),
         ));
     }
-    if sheet.rows.is_empty() {
+    if records.rows.is_empty() {
         return Ok(Ok(None));
     }
     let first_line = if options.has_header { 2 } else { 1 };
-    let mut rows: Vec<Vec<CellInput>> = Vec::with_capacity(sheet.rows.len());
-    for (index, row) in sheet.rows.iter().enumerate() {
-        match row_to_cells(row, &mapping, columns, options, first_line + index) {
+    let mut rows: Vec<Vec<CellInput>> = Vec::with_capacity(records.rows.len());
+    // One row padded at a time, as read_csv pads them all, so a wide record cannot multiply every other row.
+    for (index, row) in records.rows.into_iter().enumerate() {
+        let row = padded_row(row, width);
+        match row_to_cells(&row, &mapping, columns, options, first_line + index) {
             Ok(cells) => rows.push(cells),
             Err(error) => return Ok(Err(CsvRowFault::from(error))),
         }
     }
-    drop(sheet);
     let count = rows.len();
     let plan = plan_import(dialect, table, columns, rows)
         .map_err(|error| CoreError::failed(error.code(), error.to_string()))?;
