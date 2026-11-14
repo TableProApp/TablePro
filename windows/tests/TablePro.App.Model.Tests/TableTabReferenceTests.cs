@@ -102,10 +102,13 @@ public sealed class TableTabReferenceTests
         Assert.True(_tab.ReferencesAt(0, 1).References.IsEmpty);
     }
 
-    [Fact]
-    public async Task AKeyReadThatFailsLeavesTheRowsWithoutReferences()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AKeyReadThatFailsOrIsStoppedLeavesTheRowsWithoutReferences(bool stopped)
     {
-        _session.KeysFailure = Errors.Of("driver.unsupported");
+        _session.KeysFailure = stopped ? null : Errors.Of("driver.unsupported");
+        _session.KeysStopped = stopped;
 
         await _tab.RunAsync();
 

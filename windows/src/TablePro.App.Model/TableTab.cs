@@ -1298,9 +1298,10 @@ public sealed class TableTab : IWorkspaceTab
                 {
                     keys = await _session.ReadTableKeysAsync(Table, token).ConfigureAwait(true);
                 }
-                catch (TableProException)
+                catch (Exception exception) when (exception is TableProException or OperationCanceledException)
                 {
-                    // An engine without foreign keys, or a read that failed; a refresh reads them again.
+                    // An engine without foreign keys, a read that failed or one the server stopped; a refresh reads
+                    // them again.
                     return;
                 }
 

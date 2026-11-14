@@ -135,6 +135,9 @@ internal sealed class FakeSession : ITabSession
 
     public CoreError? KeysFailure { get; set; }
 
+    // The read ends as one the server stopped does.
+    public bool KeysStopped { get; set; }
+
     public List<FakeKeys> KeyReads { get; } = [];
 
     // Every open gives this one, so a test sets it up before the page loads.
@@ -306,6 +309,11 @@ internal sealed class FakeSession : ITabSession
         if (KeysFailure is { } failure)
         {
             return Task.FromException<ITableKeys>(new TableProException(failure));
+        }
+
+        if (KeysStopped)
+        {
+            return Task.FromException<ITableKeys>(new OperationCanceledException());
         }
 
         var keys = new FakeKeys(this);

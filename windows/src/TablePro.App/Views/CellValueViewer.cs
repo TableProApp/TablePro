@@ -94,7 +94,9 @@ internal static class CellValueViewer
         AutomationProperties.SetAutomationId(image, "ValueViewerImage");
         var copy = new Button { Content = Strings.Get("ValueViewerCopy"), IsEnabled = value.CanCopy };
         AutomationProperties.SetAutomationId(copy, "ValueViewerCopy");
-        copy.Click += (_, _) => Copy(value, notice);
+        // Copy takes what the chosen view shows, so the clipboard matches its layout and what it says was cut.
+        string? copied = null;
+        copy.Click += (_, _) => Copy(copied ?? value.CopyText() ?? string.Empty, notice);
 
         void Show(Mode mode)
         {
@@ -108,6 +110,7 @@ internal static class CellValueViewer
             image.Visibility = mode == Mode.Image ? Visibility.Visible : Visibility.Collapsed;
             text.Visibility = mode == Mode.Image ? Visibility.Collapsed : Visibility.Visible;
             text.Text = shown;
+            copied = mode == Mode.Image ? null : shown;
             notice.Severity = InfoBarSeverity.Informational;
             notice.Message = Strings.Get("ValueViewerCut");
             notice.IsOpen = cut;
@@ -150,10 +153,10 @@ internal static class CellValueViewer
         await WindowDialogs.ShowAsync(dialog, owner).ConfigureAwait(true);
     }
 
-    private static void Copy(CellValue value, InfoBar notice)
+    private static void Copy(string text, InfoBar notice)
     {
         var package = new DataPackage();
-        package.SetText(value.CopyText() ?? string.Empty);
+        package.SetText(text);
         try
         {
             Clipboard.SetContent(package);
