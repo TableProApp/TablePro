@@ -971,12 +971,6 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             source.ShareRequested += OnShareRequested;
         }
 
-        if (item.Content is QueryTabView query)
-        {
-            query.CanSaveQuery = CanShowSavedQueries;
-            query.SaveQueryRequested += OnSaveQueryRequested;
-        }
-
         if (item.Content is TableTabView tableTab)
         {
             tableTab.DraftChanged += OnEditorTextChanged;
@@ -986,6 +980,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         if (item.Content is QueryTabView query)
         {
             query.HistoryRecorded += OnHistoryRecorded;
+            query.CanSaveQuery = CanShowSavedQueries;
+            query.SaveQueryRequested += OnSaveQueryRequested;
         }
         else if (item.Content is DefinitionTabView definition)
         {
@@ -1028,11 +1024,6 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             source.ShareRequested -= OnShareRequested;
         }
 
-        if (item.Content is QueryTabView query)
-        {
-            query.SaveQueryRequested -= OnSaveQueryRequested;
-        }
-
         if (item.Content is TableTabView tableTab)
         {
             tableTab.DraftChanged -= OnEditorTextChanged;
@@ -1042,6 +1033,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         if (item.Content is QueryTabView query)
         {
             query.HistoryRecorded -= OnHistoryRecorded;
+            query.SaveQueryRequested -= OnSaveQueryRequested;
         }
         else if (item.Content is DefinitionTabView definition)
         {

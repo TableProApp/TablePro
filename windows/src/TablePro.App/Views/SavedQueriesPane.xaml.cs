@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -141,7 +140,7 @@ public sealed partial class SavedQueriesPane : UserControl
     // The tree sets each new row's state in a later pass, which can fold a row opened here (seen on Arm64).
     private void Settle(int rebuild, int passes)
     {
-        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             if (rebuild != _rebuild)
             {
