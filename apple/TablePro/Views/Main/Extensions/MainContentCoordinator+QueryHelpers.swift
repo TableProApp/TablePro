@@ -62,7 +62,8 @@ extension MainContentCoordinator {
         isAutoLoad: Bool,
         trigger: TableLoadTrigger,
         traceToken: TableLoadTraceToken?,
-        serverOutput: PluginServerOutput = .none
+        serverOutput: PluginServerOutput = .none,
+        historySource: QueryHistorySource? = nil
     ) {
         guard tabExecution.settle(claim) else {
             reportStopRollback(error, tabId: tabId)
@@ -89,7 +90,10 @@ extension MainContentCoordinator {
             parkedTableLoad = ParkedTableLoad(tabId: tabId, trigger: trigger)
             return
         }
-        handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput, trigger: trigger)
+        handleQueryExecutionError(
+            error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput, trigger: trigger,
+            historySource: historySource
+        )
         reportQueryOperation(
             claim: claim, trigger: trigger, outcome: .failed(reason: error.localizedDescription)
         )
@@ -270,7 +274,8 @@ extension MainContentCoordinator {
         tabId: UUID,
         connection conn: DatabaseConnection,
         serverOutput: PluginServerOutput = .none,
-        trigger: TableLoadTrigger = .userInitiated
+        trigger: TableLoadTrigger = .userInitiated,
+        historySource: QueryHistorySource? = nil
     ) {
         queryExecutionCoordinator.handleQueryExecutionError(
             error,
@@ -278,7 +283,8 @@ extension MainContentCoordinator {
             tabId: tabId,
             connection: conn,
             serverOutput: serverOutput,
-            trigger: trigger
+            trigger: trigger,
+            historySource: historySource
         )
     }
 }

@@ -20,10 +20,8 @@ extension MainContentCommandActions {
         return true
     }
 
-    func applySelectedDiagramEdits(in coordinator: MainContentCoordinator) async -> Bool {
-        guard let diagram = diagramHoldingWork(in: coordinator.tabManager.selectedTabId, of: coordinator) else {
-            return true
-        }
+    func applyDiagramEdits(ofTab tabId: UUID?, in coordinator: MainContentCoordinator) async -> Bool {
+        guard let diagram = diagramHoldingWork(in: tabId, of: coordinator) else { return true }
         return await diagram.applyStagedEdits(coordinator: coordinator).allowsClose
     }
 

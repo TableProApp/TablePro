@@ -68,15 +68,23 @@ extension RowEditingCoordinator {
 
     // Edits are written into the loaded rows too; a discard that does not re-query must undo them here or they stay untracked.
     func restoreRowBufferToOriginals() {
-        guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
-              let tableRows = parent.tabSessionRegistry.existingTableRows(for: tab.id) else {
+        guard let tabId = parent.tabManager.selectedTabId else {
             parent.gridDisplayRevision &+= 1
             return
         }
-        let tabId = tab.id
-        let insertedIDs = parent.changeManager.insertedRowIDs
+        restoreRowBufferToOriginals(forTab: tabId)
+    }
+
+    func restoreRowBufferToOriginals(forTab tabId: UUID) {
+        guard parent.tabManager.tabs.contains(where: { $0.id == tabId }),
+              let tableRows = parent.tabSessionRegistry.existingTableRows(for: tabId) else {
+            parent.gridDisplayRevision &+= 1
+            return
+        }
+        let changeManager = parent.changeManager(forTab: tabId)
+        let insertedIDs = changeManager.insertedRowIDs
         var absentCells: Set<CellPosition> = []
-        let edits = parent.changeManager.getOriginalValues().compactMap { original in
+        let edits = changeManager.getOriginalValues().compactMap { original in
             tableRows.index(of: original.rowID).map { storageRow -> (row: Int, column: Int, value: PluginCellValue) in
                 if original.isAbsent {
                     absentCells.insert(CellPosition(row: storageRow, column: original.columnIndex))

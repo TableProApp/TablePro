@@ -128,8 +128,8 @@ struct ExplainAuthorizationTests {
         let harness = Harness(level: .alert, query: "SELECT 1", confirming: StubConfirming(answer: true))
         defer { harness.tearDown() }
 
-        let first = harness.coordinator.runExplain(variant: Self.plan)
-        let second = harness.coordinator.runExplain(variant: Self.plan)
+        let first = harness.coordinator.runExplain(onTab: harness.coordinator.commandTabId, variant: Self.plan)
+        let second = harness.coordinator.runExplain(onTab: harness.coordinator.commandTabId, variant: Self.plan)
         await first?.value
         await harness.coordinator.queryTasks.task(for: harness.tabId)?.value
 
@@ -230,7 +230,7 @@ struct ExplainAuthorizationTests {
         }
 
         func explain(_ variant: ExplainVariant) async {
-            await coordinator.runExplain(variant: variant)?.value
+            await coordinator.runExplain(onTab: coordinator.commandTabId, variant: variant)?.value
             await coordinator.queryTasks.task(for: tabId)?.value
         }
 

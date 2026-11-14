@@ -64,8 +64,8 @@ extension MainContentCoordinator {
     }
 
     // Only in-place retargets record; a jump that opens its own tab leaves the source open and starts with an empty history.
-    func commitNavigationEntry(_ entry: TabNavigationEntry?) {
-        guard let entry, let tabId = tabManager.selectedTabId else { return }
+    func commitNavigationEntry(_ entry: TabNavigationEntry?, inTab tabId: UUID) {
+        guard let entry, tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
         navigationHistories[tabId, default: TabNavigationHistory()].record(entry)
     }
 
@@ -101,16 +101,18 @@ extension MainContentCoordinator {
 
     // Captures before the discard guard: discarding keeps edited values in `TableRows`, so a later capture anchors on dropped keys.
     private func step(back: Bool) {
+        guard let tabId = tabManager.selectedTabId else { return }
         let departing = captureNavigationEntry()
-        confirmDiscardChangesIfNeeded(action: .navigation) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .navigation) { [weak self] confirmed in
             guard confirmed else { return }
-            self?.commitStep(back: back, from: departing)
+            self?.commitStep(back: back, from: departing, inTab: tabId)
         }
     }
 
     // Stacks change on a copy, written back only once the restore lands, so a failed retarget leaves the history untouched.
-    private func commitStep(back: Bool, from departing: TabNavigationEntry?) {
-        guard let tabId = navigableTabId,
+    private func commitStep(back: Bool, from departing: TabNavigationEntry?, inTab tabId: UUID) {
+        // The restore retargets the selected tab, so a step whose tab lost the selection behind the alert stops.
+        guard navigableTabId == tabId,
               var history = navigationHistories[tabId],
               let current = departing else { return }
         guard let entry = back ? history.stepBack(from: current) : history.stepForward(from: current) else {
@@ -144,11 +146,10 @@ extension MainContentCoordinator {
             return false
         }
 
-        discardRowsForRetarget(resultsViewMode: entry.resultsViewMode)
-        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex, tab.id == tabId else { return false }
+        discardRowsForRetarget(ofTab: tabId, resultsViewMode: entry.resultsViewMode)
 
         // Always carry the page: `replaceTabContent` resets to the default page size, so a recorded page would come back resized.
-        tabManager.mutate(at: tabIndex) { tab in
+        guard tabManager.mutate(tabId: tabId, { tab in
             tab.filterState = entry.filterState
             tab.pendingRestoredSort = entry.sortColumns.isEmpty ? nil : entry.sortColumns
             tab.restoredSortSource = entry.sortSource
@@ -158,10 +159,10 @@ extension MainContentCoordinator {
             tab.restoredPage = max(1, entry.page)
             tab.restoredPageSize = entry.pageSize
             tab.restoredRowAnchor = entry.anchorRowKey
-        }
+        }) else { return false }
 
         restoreLastHiddenColumnsForTable()
-        filterCoordinator.rebuildTableQuery(at: tabIndex)
+        filterCoordinator.rebuildTableQuery(forTab: tabId)
         cancelTableLoad(for: tabId)
         lazyLoadCurrentTabIfNeeded()
         return true

@@ -42,7 +42,8 @@ extension MainContentCoordinator {
         }
 
         await switchContainers(database: activeDatabase, schema: activeSchema)
-        if isTableTab {
+        // A tab picked while the switch ran loads as a selection, not as this restore.
+        if isTableTab, tabManager.selectedTab?.id == selected.id {
             lazyLoadCurrentTabIfNeeded(trigger: .restore)
         }
     }

@@ -153,12 +153,14 @@ extension MainContentCommandActions {
     // A victim it cannot save keeps its tab, a file conflict too: the conflict sheet is one window-level slot with no queue.
     private func saveVictims(_ victims: [QueryTab]) async -> Set<UUID> {
         guard let coordinator else { return Set(victims.map(\.id)) }
-        guard await applyStagedStructureEdits(in: victims) else { return [] }
-        guard await saveWorkOnScreen(among: victims) else { return [] }
+        let onScreenId = coordinator.tabManager.selectedTabId
+        guard await applyStagedStructureEdits(in: victims, besides: onScreenId) else { return [] }
+        guard await saveWorkOnScreen(onScreenId, among: victims) else { return [] }
 
         var closable: Set<UUID> = []
         var files: [(tab: QueryTab, url: URL)] = []
-        for victim in victims where !coordinator.isSelectedTab(victim) {
+        // A victim picked while the save waited stays open: its mounted work was never saved.
+        for victim in victims where victim.id != onScreenId && !coordinator.isSelectedTab(victim) {
             switch coordinator.savability(of: victim) {
             case .nothingAtRisk:
                 closable.insert(victim.id)
@@ -173,19 +175,17 @@ extension MainContentCommandActions {
             }
         }
         closable.formUnion(await saveFiles(files))
-        if let selected = coordinator.tabManager.selectedTab, victims.contains(where: { $0.id == selected.id }) {
-            closable.insert(selected.id)
+        if let onScreenId, victims.contains(where: { $0.id == onScreenId }) {
+            closable.insert(onScreenId)
         }
         return closable
     }
 
-    // Always runs: a staged TRUNCATE and inspector edits belong to the connection, and only saveSelectedTabWork applies them.
-    private func saveWorkOnScreen(among victims: [QueryTab]) async -> Bool {
-        guard let coordinator else { return true }
-        let selected = coordinator.tabManager.selectedTab
-        let onScreenIsAVictim = victims.isEmpty || victims.contains { $0.id == selected?.id }
+    // Always runs: a staged TRUNCATE and inspector edits belong to the connection, and only saveWork(onTab:) applies them.
+    private func saveWorkOnScreen(_ onScreenId: UUID?, among victims: [QueryTab]) async -> Bool {
+        let onScreenIsAVictim = victims.isEmpty || victims.contains { $0.id == onScreenId }
         guard onScreenIsAVictim else { return true }
-        return await saveSelectedTabWork()
+        return await saveWork(onTab: onScreenId)
     }
 
     // Victims only (empty means the whole connection); connection-wide flags count only when the on-screen tab is a victim.

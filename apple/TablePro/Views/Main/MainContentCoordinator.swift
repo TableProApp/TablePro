@@ -171,6 +171,8 @@ final class MainContentCoordinator: ObservableObject {
     }
     let selectionSummary = SelectionSummaryState()
     let tabManager: QueryTabManager
+    // This connection's catalog facts the main views read, so another connection's schema load wakes none of them.
+    let catalogSnapshot: ConnectionCatalogSnapshot
     // Each tab stages its edits in its own manager; this one answers while no tab is selected.
     let idleChangeManager = DataChangeManager()
     var tabEdits: [UUID: TabEdits] = [:]
@@ -598,6 +600,11 @@ final class MainContentCoordinator: ObservableObject {
         self.connection = connection
         self.windowSidebarState = WindowSidebarState(connectionId: connection.id)
         self.tabManager = tabManager
+        self.catalogSnapshot = ConnectionCatalogSnapshot(
+            connectionId: connection.id,
+            schemaService: services.schemaService,
+            treeService: DatabaseTreeMetadataService.shared
+        )
         idleChangeManager.databaseType = connection.type
         self.selectedTabEdits = SelectedTabEdits(idleChangeManager)
         self.toolbarState = toolbarState
@@ -961,31 +968,33 @@ final class MainContentCoordinator: ObservableObject {
 
     // MARK: - Query Execution
 
+    // A query tab runs only while it is the selected tab: the statement comes from the editor's caret.
     func runQuery(
+        onTab tabId: UUID,
         viewport: GridReloadIntent, trigger: TableLoadTrigger = .userInitiated,
         bypassRowLimit: Bool = false, extraCapabilities: CallerCapabilities = []
     ) {
-        guard let tab = tabManager.selectedTabAndIndex?.tab else { return }
-        guard !tabExecution.isExecuting(tab.id) else {
-            traceExecutionBlocked(tabId: tab.id, site: "runQuery")
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
+        guard !tabExecution.isExecuting(tabId) else {
+            traceExecutionBlocked(tabId: tabId, site: "runQuery")
             return
         }
 
         if tab.tabType == .table {
-            commitActiveGridEdit()
-            executeTableTabQueryDirectly(trigger: trigger, viewport: viewport)
+            if tabManager.selectedTab?.id == tabId { commitActiveGridEdit() }
+            executeTableTabQueryDirectly(onTab: tabId, trigger: trigger, viewport: viewport)
             return
         }
 
-        let tabId = tab.id
+        guard tabManager.selectedTab?.id == tabId else { return }
         confirmRunDiscard(onTab: tabId) { [weak self] in
             guard let self else { return }
             flushEditorText(forTab: tabId)
-            guard let (tab, index) = executionTab(tabId) else { return }
+            guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
             // The offset lets each result point back at its statement. Both paths pass untrimmed text and let the scanner trim.
             let target = selectionOrStatementAtCursor(in: tab.content.query)
             executeResolvedSQL(
-                target.sql, tabIndex: index, bypassRowLimit: bypassRowLimit,
+                target.sql, onTab: tabId, bypassRowLimit: bypassRowLimit,
                 sourceOffset: target.offset, extraCapabilities: extraCapabilities
             )
         }
@@ -993,81 +1002,91 @@ final class MainContentCoordinator: ObservableObject {
 
     // Takes SQL, not a range: the editor text and the tab binding can briefly differ, and a range on the wrong one truncates silently.
     @discardableResult
-    func runStatement(_ sql: String, sourceOffset: Int? = nil) -> Bool {
-        guard let tab = tabManager.selectedTabAndIndex?.tab, tab.tabType == .query else { return false }
-        guard !tabExecution.isExecuting(tab.id) else {
-            traceExecutionBlocked(tabId: tab.id, site: "runStatement")
+    func runStatement(_ sql: String, sourceOffset: Int? = nil, onTab tabId: UUID) -> Bool {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }), tab.tabType == .query,
+              tabManager.selectedTab?.id == tabId else { return false }
+        guard !tabExecution.isExecuting(tabId) else {
+            traceExecutionBlocked(tabId: tabId, site: "runStatement")
             return false
         }
 
         // False when the discard prompt has to ask first: the run follows the answer, the caret stays.
         var started = false
-        confirmRunDiscard(onTab: tab.id) { [weak self] in
-            guard let self, let (_, index) = executionTab(tab.id) else { return }
-            started = executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: false, sourceOffset: sourceOffset)
+        confirmRunDiscard(onTab: tabId) { [weak self] in
+            guard let self else { return }
+            started = executeResolvedSQL(sql, onTab: tabId, bypassRowLimit: false, sourceOffset: sourceOffset)
         }
         return started
+    }
+
+    func runAllStatements(onTab tabId: UUID, extraCapabilities: CallerCapabilities = []) {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }), tab.tabType == .query,
+              tabManager.selectedTab?.id == tabId, !tabExecution.isExecuting(tabId) else { return }
+        confirmRunDiscard(onTab: tabId) { [weak self] in
+            guard let self else { return }
+            flushEditorText(forTab: tabId)
+            guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
+            executeResolvedSQL(
+                tab.content.query, onTab: tabId, bypassRowLimit: false, extraCapabilities: extraCapabilities
+            )
+        }
     }
 
     // Returns false when a parameter panel opens instead, so callers don't advance the caret on a run that didn't happen.
     @discardableResult
     private func executeResolvedSQL(
         _ sql: String,
-        tabIndex index: Int,
+        onTab tabId: UUID,
         bypassRowLimit: Bool,
         sourceOffset: Int? = nil,
         extraCapabilities: CallerCapabilities = []
     ) -> Bool {
         let batches = queryExecutionCoordinator.executionBatches(in: sql, sourceOffset: sourceOffset ?? 0)
         let statements = batches.flatMap(\.statements)
-        guard !statements.isEmpty else { return false }
-        tabVersions.record(tabManager.tabs[index], connectionId: connectionId, reason: .run)
+        guard !statements.isEmpty, let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return false }
+        tabVersions.record(tab, connectionId: connectionId, reason: .run)
 
+        var parameters: [QueryParameter]?
         if services.appSettings.editor.queryParametersEnabled, bindsNamedParameters {
             let combinedSQL = SQLParameterExtractor.parameterSource(of: statements)
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL, grammar: lexicalGrammar)
 
             if !detectedNames.isEmpty {
-                let reconciled = detectAndReconcileParameters(
-                    sql: combinedSQL,
-                    existing: tabManager.tabs[index].content.queryParameters
-                )
-                tabManager.mutate(at: index) { $0.content.queryParameters = reconciled }
+                let reconciled = detectAndReconcileParameters(sql: combinedSQL, existing: tab.content.queryParameters)
+                tabManager.mutate(tabId: tabId) { $0.content.queryParameters = reconciled }
 
-                if !tabManager.tabs[index].content.isParameterPanelVisible {
-                    tabManager.mutate(at: index) { $0.content.isParameterPanelVisible = true }
+                guard tab.content.isParameterPanelVisible else {
+                    tabManager.mutate(tabId: tabId) { $0.content.isParameterPanelVisible = true }
                     return false
                 }
-
-                tabManager.tabStructureVersion += 1
-                dispatchParameterizedBatches(
-                    batches,
-                    parameters: reconciled,
-                    tabIndex: index,
-                    bypassRowLimit: bypassRowLimit,
-                    extraCapabilities: extraCapabilities
-                )
-                return true
+                parameters = reconciled
             }
         }
 
         tabManager.tabStructureVersion += 1
-        dispatchBatches(batches, tabIndex: index, bypassRowLimit: bypassRowLimit, extraCapabilities: extraCapabilities)
+        queryExecutionCoordinator.dispatchBatches(
+            batches,
+            parameters: parameters,
+            onTab: tabId,
+            bypassRowLimit: bypassRowLimit,
+            extraCapabilities: extraCapabilities
+        )
         return true
     }
 
     // App-built SELECTs skip dangerous-query checks but keep safe mode. Returns the confirmation task when Safe Mode asks first.
     @discardableResult
     func executeTableTabQueryDirectly(
+        onTab tabId: UUID,
         trigger: TableLoadTrigger = .userInitiated,
         viewport: GridReloadIntent
     ) -> Task<Void, Never>? {
-        guard let tab = tabManager.selectedTab else { return nil }
-        TableLoadTracer.shared.stage(.executeRequested, tabId: tab.id)
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return nil }
+        TableLoadTracer.shared.stage(.executeRequested, tabId: tabId)
 
         let sql = tab.content.query
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            traceNavigationAbandoned(tabId: tab.id, outcome: .emptyQuery)
+            traceNavigationAbandoned(tabId: tabId, outcome: .emptyQuery)
             return nil
         }
 
@@ -1075,252 +1094,78 @@ final class MainContentCoordinator: ObservableObject {
         let asksBeforeFirstLoad = level.appliesToAllQueries && level.requiresConfirmation
             && tab.execution.lastExecutedAt == nil
         let gatesRawFilter = rawFilterNeedsReadOnlyGate(Self.browseFilters(tab.filterState))
-        if asksBeforeFirstLoad || gatesRawFilter {
-            guard !isShowingSafeModePrompt else {
-                turnAwayTableLoad(tabId: tab.id, trigger: trigger)
-                return nil
-            }
-            isShowingSafeModePrompt = true
-            let tabId = tab.id
-            let askedContext = tab.tableContext
-            let askedScope = scope(for: tab)
-            return Task {
-                let decision = await executionGate.authorize(
-                    OperationRequest(
-                        connectionId: connectionId,
-                        databaseType: connection.type,
-                        sql: sql,
-                        kind: .readQuery,
-                        caller: .userInterface,
-                        capabilities: .interactiveUser,
-                        operationDescription: String(localized: "Execute Query"),
-                        runsIn: askedScope
-                    )
+        guard asksBeforeFirstLoad || gatesRawFilter else {
+            executeQueryInternal(sql, onTab: tabId, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource)
+            return nil
+        }
+        guard !isShowingSafeModePrompt else {
+            turnAwayTableLoad(tabId: tabId, trigger: trigger)
+            return nil
+        }
+        isShowingSafeModePrompt = true
+        let askedContext = tab.tableContext
+        let askedScope = scope(for: tab)
+        return Task {
+            let decision = await executionGate.authorize(
+                OperationRequest(
+                    connectionId: connectionId,
+                    databaseType: connection.type,
+                    sql: sql,
+                    kind: .readQuery,
+                    caller: .userInterface,
+                    capabilities: .interactiveUser,
+                    operationDescription: String(localized: "Execute Query"),
+                    runsIn: askedScope
                 )
-                isShowingSafeModePrompt = false
-                // Only on the tab and table the sheet showed: elsewhere it put these rows under another name; SQL alone misses a Redis db switch.
-                let asked = tabManager.tabs.first(where: { $0.id == tabId })
-                guard tabManager.selectedTabId == tabId,
-                      let asked,
-                      asked.content.query == sql,
-                      asked.tableContext.tableName == askedContext.tableName,
-                      asked.tableContext.databaseName == askedContext.databaseName else {
-                    traceNavigationAbandoned(tabId: tabId, outcome: .superseded)
-                    if tabManager.selectedTabId != tabId {
-                        declineTableLoad(for: tabId)
-                    }
-                    lazyLoadCurrentTabIfNeeded(trigger: trigger)
-                    return
+            )
+            isShowingSafeModePrompt = false
+            // Only on the tab and table the sheet showed: elsewhere it put these rows under another name; SQL alone misses a Redis db switch.
+            let asked = tabManager.tabs.first(where: { $0.id == tabId })
+            guard tabManager.selectedTabId == tabId,
+                  let asked,
+                  asked.content.query == sql,
+                  asked.tableContext.tableName == askedContext.tableName,
+                  asked.tableContext.databaseName == askedContext.databaseName else {
+                traceNavigationAbandoned(tabId: tabId, outcome: .superseded)
+                if tabManager.selectedTabId != tabId {
+                    declineTableLoad(for: tabId)
                 }
-                switch decision {
-                case .authorized:
-                    executeQueryInternal(
-                        sql, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource, onTab: tabId
-                    )
-                case .denied(let reason, _):
-                    traceNavigationAbandoned(tabId: tabId, outcome: .safeModeDenied)
-                    queryExecutionCoordinator.presentTabFailure(reason, announcing: reason, onTab: tabId)
-                }
+                lazyLoadCurrentTabIfNeeded(trigger: trigger)
+                return
+            }
+            switch decision {
+            case .authorized:
+                executeQueryInternal(
+                    sql, onTab: tabId, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource
+                )
+            case .denied(let reason, _):
+                traceNavigationAbandoned(tabId: tabId, outcome: .safeModeDenied)
+                queryExecutionCoordinator.presentTabFailure(reason, announcing: reason, onTab: tabId)
             }
         }
-        executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource)
-        return nil
     }
 
     internal func executeQueryInternal(
         _ sql: String,
+        onTab tabId: UUID,
         isAutoLoad: Bool = false,
         trigger: TableLoadTrigger = .userInitiated,
         bypassRowLimit: Bool = false,
         anchor: StatementAnchor? = nil,
         viewport: GridReloadIntent = .firstRow,
-        source: ResultSourceChange = .newSource,
-        onTab target: UUID? = nil
+        source: ResultSourceChange = .newSource
     ) {
-        guard let (selectedTab, index) = executionTab(target) else { return }
-
-        let (claim, lease) = beginTabExecution(for: selectedTab.id)
-
-        tabManager.mutate(at: index) { tab in
-            tab.execution.executionTime = nil
-            tab.execution.errorMessage = nil
-        }
-        let tab = tabManager.tabs[index]
-
-        let conn = connection
-        let tabId = tabManager.tabs[index].id
-
-        let traceToken = trigger.tracesLoad ? adoptOrBeginExecutionTrace(tabId: tabId) : nil
-        traceExecutionStarted(traceToken, epoch: claim.epoch, isAutoLoad: isAutoLoad)
-
-        let statement = resolveStatement(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
-        let rowCap = statement.rowCap
-        let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: sql)
-
-        let needsDefinition = tabSessionRegistry.needsDefinition(tabId)
-        let needsMetadataFetch = tableName.map { isEditable && !isMetadataCached(tabId: tabId, tableName: $0) } ?? false
-        // Captured now, while the result this decision was made against is still the active one.
-        let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
-            rows: tabSessionRegistry.tableRows(for: tabId),
-            context: tabManager.tabs[index].tableContext
+        queryExecutionCoordinator.startSingleRun(
+            SingleRunRequest(
+                sql: sql,
+                isAutoLoad: isAutoLoad,
+                trigger: trigger,
+                bypassRowLimit: bypassRowLimit,
+                anchor: anchor,
+                install: ResultInstall(viewport: viewport, source: source)
+            ),
+            onTab: tabId
         )
-        if let tableName {
-            Self.logger.info(
-                "[fk] metadata decision table=\(tableName, privacy: .private(mask: .hash)) isEditable=\(isEditable) needsFetch=\(needsMetadataFetch)"
-            )
-        }
-        guard let scope = scope(for: tab) else {
-            guard tabExecution.settle(claim) else { return }
-            tabManager.mutate(at: index) { tab in
-                tab.execution.errorMessage = String(localized: "Not connected to database")
-                tab.pagination.isLoading = false
-            }
-            return
-        }
-        let isTableTab = tab.tabType == .table
-        let readsView = tab.tableContext.knowsView(named: tableName)
-        let (grammar, lengthColumns) = (lexicalGrammar, unloadedValueLengthColumns(for: tab))
-        let safeModeIsReadOnly = runsAtReadOnly
-        let held = manualCommitRun(skipped: isTableTab || isAutoLoad)
-
-        let failureOutput = ServerOutputBox()
-        let queryTask = Task { [weak self] in
-            guard let self else { return }
-
-            if isAutoLoad, await !connectBeforeAutoLoad(conn, claim: claim, trigger: trigger, traceToken: traceToken) {
-                return
-            }
-
-            let schemaTask = startSchemaFetch(tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope)
-
-            let fetchBeganAt = ContinuousClock.now
-            do {
-                let (fetchResult, tableEdits) = try await withExecutionDriver(
-                    scope: scope,
-                    isTableTab: isTableTab,
-                    lease: lease
-                ) { [queryExecutor, manager = services.databaseManager] driver in
-                    let fetched = try await held.running([statement.sql], on: driver) {
-                        // Before it runs, so a statement that fails or a connection lost under it is still noted.
-                        if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
-                        return try await queryExecutor.executeQuery(
-                            driver: driver,
-                            sql: statement.sql,
-                            parameters: nil,
-                            rowCap: rowCap,
-                            safeModeIsReadOnly: safeModeIsReadOnly,
-                            capturingOutputInto: isTableTab ? nil : failureOutput
-                        )
-                    }
-                    let edits = isAutoLoad ? nil : await SucceededStatements.single(
-                        statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
-                    )
-                    return (fetched.foldingUnloadedValues(lengthColumns: lengthColumns), edits)
-                }
-                let fetchEndedAt = ContinuousClock.now
-                if !isAutoLoad { Self.postStatementRan(statement.sql, on: conn, succeeded: tableEdits) }
-
-                guard !Task.isCancelled else {
-                    schemaTask?.cancel()
-                    traceFetchCancelled(traceToken, began: fetchBeganAt, ended: fetchEndedAt)
-                    await resetExecutionState(claim: claim, executionTime: fetchResult.executionTime)
-                    return
-                }
-
-                let inlineMeta = needsMetadataFetch
-                    ? QueryExecutor.inlineMetadata(from: fetchResult.resultColumnMeta, columns: fetchResult.columns)
-                    : nil
-                // Rows and definition commit together after a definition change, so new columns never sit under old keys or defaults.
-                let definition = needsDefinition ? try? await schemaTask?.value : nil
-                let prepared = await preparedPhase1Rows(fetchResult, tabId: tabId, tableName: tableName, isTableTab: isTableTab)
-
-                let applied = await MainActor.run { [weak self] () -> Bool in
-                    guard let self else { return false }
-                    traceFetchCompleted(traceToken, began: fetchBeganAt, ended: fetchEndedAt, result: fetchResult)
-
-                    // Settle first: it gates every write below, and sharing a guard with the cancel check would leave the tab claimed forever.
-                    guard tabExecution.settle(claim) else {
-                        traceStaleResultDropped(traceToken)
-                        return false
-                    }
-                    retireQueryTask(.claim(claim))
-                    guard !Task.isCancelled, rereadStillApplies(source) else {
-                        traceStaleResultDropped(traceToken)
-                        return false
-                    }
-                    // A menu or value window opened during the read names rows by position, so a tick's rows wait for the next one.
-                    guard trigger != .autoRefresh || !autoRefreshHeldByTransientUI(tabId) else { return false }
-                    toolbarState.recordQueryTiming(fetchResult.resolvedTiming, for: tabId)
-
-                    traceApplyingResult(traceToken, tabId: tabId)
-
-                    let definitionMetadata = adoptLoadedDefinition(definition, of: tableName, in: scope, readBy: claim)
-                    applyPhase1Result(
-                        tabId: tabId,
-                        columns: fetchResult.columns,
-                        columnTypes: fetchResult.columnTypes,
-                        rows: fetchResult.rows,
-                        executionTime: fetchResult.executionTime,
-                        rowsAffected: fetchResult.rowsAffected,
-                        statusMessage: fetchResult.statusMessage,
-                        tableName: tableName,
-                        isEditable: isEditable,
-                        metadata: definitionMetadata ?? inlineMeta ?? cachedMetadata,
-                        hasSchema: definitionMetadata != nil,
-                        read: TableFreshness.Read(startedAt: claim.startedAt, includesDefinition: definitionMetadata != nil),
-                        sql: sql,
-                        connection: conn,
-                        isTruncated: fetchResult.isTruncated,
-                        anchor: anchor,
-                        timing: fetchResult.resolvedTiming,
-                        viewport: viewport,
-                        source: source,
-                        serverOutput: fetchResult.serverOutput,
-                        rowLocators: isTableTab ? fetchResult.rowLocators : nil,
-                        exportDocuments: fetchResult.exportDocuments,
-                        absentCells: fetchResult.absentCells,
-                        unloadedCells: fetchResult.unloadedCells,
-                        columnOrigins: fetchResult.columnOrigins,
-                        prepared: prepared,
-                        trigger: trigger
-                    )
-
-                    scheduleTraceCompletion(traceToken, outcome: .completed)
-                    reportFetchedQuery(claim: claim, trigger: trigger, result: fetchResult)
-                    return true
-                }
-                // Phase 2 writes onto whatever the tab holds, so only the execution that applied its rows may start it.
-                guard applied else {
-                    schemaTask?.cancel()
-                    return
-                }
-
-                launchPhase2AfterApply(
-                    tableName: tableName,
-                    isEditable: isEditable,
-                    tabId: tabId,
-                    trigger: trigger,
-                    needsMetadataFetch: needsMetadataFetch,
-                    schemaTask: schemaTask,
-                    claim: claim
-                )
-            } catch {
-                schemaTask?.cancel()
-                if !isAutoLoad { Self.postStatementRan(statement.sql, on: conn) }
-                finishFailedQuery(
-                    error,
-                    tabId: tabId,
-                    sql: sql,
-                    connection: conn,
-                    claim: claim,
-                    isAutoLoad: isAutoLoad,
-                    trigger: trigger,
-                    traceToken: traceToken,
-                    serverOutput: failureOutput.output
-                )
-            }
-        }
-        installQueryTask(queryTask, owner: .claim(claim), lease: lease)
     }
 
     internal func resolveTableEditability(tab: QueryTab, sql: String) -> (tableName: String?, isEditable: Bool) {
@@ -1349,7 +1194,8 @@ final class MainContentCoordinator: ObservableObject {
     func fetchEnumValues(
         columnInfo: [ColumnInfo],
         tableName: String,
-        connectionType: DatabaseType
+        connectionType: DatabaseType,
+        scope: DatabaseScope?
     ) async -> [String: [String]] {
         var result: [String: [String]] = [:]
 
@@ -1360,7 +1206,7 @@ final class MainContentCoordinator: ObservableObject {
         }
 
         if result.isEmpty,
-           let scope = selectedTabScope,
+           let scope,
            let createSQL = try? await services.databaseManager.withMetadataDriver(scope: scope, { driver in
                try await driver.fetchTableDDL(table: tableName, schema: scope.schema)
            }) {
@@ -1390,7 +1236,7 @@ final class MainContentCoordinator: ObservableObject {
         guard supportsColumnSort else { return }
         let tabId = tab.id
         let capturedSort = newState
-        confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .sort) { [weak self] confirmed in
             guard let self, confirmed else { return }
             guard self.tabManager.mutate(tabId: tabId, { tab in
                 tab.sortState = capturedSort
@@ -1399,7 +1245,7 @@ final class MainContentCoordinator: ObservableObject {
             }) else { return }
             guard let tabIndex = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
             self.rebuildTableQuery(at: tabIndex)
-            self.runQuery(viewport: .firstRow)
+            self.runQuery(onTab: tabId, viewport: .firstRow)
         }
     }
 }

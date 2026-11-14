@@ -56,7 +56,7 @@ final class FindCoordinator {
         guard parent.tabManager.selectedTabId == tabID else { return }
         let columns = serverSearchableColumns(in: parent.tabSessionRegistry.tableRows(for: tabID))
         guard !columns.isEmpty else { return }
-        parent.filterCoordinator.applyCrossColumnSearch(term: term, columns: columns)
+        parent.filterCoordinator.applyCrossColumnSearch(term: term, columns: columns, forTab: tabID)
     }
 
     func serverSearchableColumns(in rows: TableRows) -> [String] {

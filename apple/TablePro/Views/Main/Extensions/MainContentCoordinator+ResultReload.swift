@@ -7,26 +7,25 @@ import Foundation
 import TableProSQLGrammar
 
 extension MainContentCoordinator {
-    /// Reads the tab's rows again after a write, keeping its place, value filter and selection.
-    /// A query tab re-reads its active result, never the statement at the editor's caret.
-    func reloadActiveResult() {
-        guard let tab = tabManager.selectedTab else { return }
+    // Reads the tab's rows again after a write, keeping its place; a query tab re-reads its active result, not the caret's statement.
+    func reloadActiveResult(onTab tabId: UUID) {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
         guard tab.tabType == .query else {
-            runQuery(viewport: .keepPlace)
+            runQuery(onTab: tabId, viewport: .keepPlace)
             return
         }
         guard tab.display.activeResultSet != nil, let rerun = tab.sortRerun else { return }
-        rerunActiveResult(rerun, viewport: .keepPlace)
+        rerunActiveResult(rerun, viewport: .keepPlace, onTab: tabId)
     }
 
     @discardableResult
-    func rerunActiveResult(_ rerun: ResultRerun, viewport: GridReloadIntent) -> Bool {
-        guard let (tab, index) = tabManager.selectedTabAndIndex,
-              !tabExecution.isExecuting(tab.id),
+    func rerunActiveResult(_ rerun: ResultRerun, viewport: GridReloadIntent, onTab tabId: UUID) -> Bool {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }),
+              !tabExecution.isExecuting(tabId),
               let batches = rerunBatches(for: rerun, of: tab) else { return false }
 
         let target = RereadTarget(
-            tabId: tab.id,
+            tabId: tabId,
             resultId: tab.display.activeResultSetId,
             databaseName: tab.tableContext.databaseName,
             schemaName: tab.tableContext.schemaName
@@ -37,16 +36,12 @@ extension MainContentCoordinator {
             anchor: tab.display.activeResultSet?.statementAnchor
         )
         tabManager.tabStructureVersion += 1
-        if let parameters = rerun.boundParameters {
-            queryExecutionCoordinator.dispatchParameterizedBatches(
-                batches,
-                parameters: parameters,
-                tabIndex: index,
-                install: install
-            )
-        } else {
-            queryExecutionCoordinator.dispatchBatches(batches, tabIndex: index, install: install)
-        }
+        queryExecutionCoordinator.dispatchBatches(
+            batches,
+            parameters: rerun.boundParameters,
+            onTab: tabId,
+            install: install
+        )
         return true
     }
 
@@ -63,7 +58,7 @@ extension MainContentCoordinator {
             return
         }
         let capturedColumns = tabSessionRegistry.tableRows(for: tabId).columns
-        confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .sort) { [weak self] confirmed in
             guard let self, confirmed, self.tabManager.selectedTabId == tabId,
                   !self.tabExecution.isExecuting(tabId) else { return }
             let orderClause = newState.columns.compactMap { sortCol -> String? in
@@ -75,7 +70,7 @@ extension MainContentCoordinator {
             let orderQuery = rerun.transformingSQL {
                 QuerySqlParser.applyingOrderBy(orderClause, to: $0, grammar: self.lexicalGrammar)
             }
-            guard let current = self.tabManager.selectedTab,
+            guard let current = self.tabManager.tabs.first(where: { $0.id == tabId }),
                   self.rerunBatches(for: orderQuery, of: current) != nil,
                   self.tabManager.mutate(tabId: tabId, { tab in
                       tab.sortState = newState
@@ -83,7 +78,7 @@ extension MainContentCoordinator {
                       tab.pagination.reset()
                       tab.pagination.resetLoadMore()
                   }) else { return }
-            self.rerunActiveResult(orderQuery, viewport: .firstRow)
+            self.rerunActiveResult(orderQuery, viewport: .firstRow, onTab: tabId)
         }
     }
 
@@ -97,7 +92,7 @@ extension MainContentCoordinator {
             && tab.tableContext.schemaName == target.schemaName
     }
 
-    /// A run executes on the selected tab, so a re-read authorized after a tab switch would run there.
+    // A re-read approved after the reader moved to another tab is dropped rather than run behind their back.
     func rereadCanStart(_ source: ResultSourceChange) -> Bool {
         guard case .reread(let target) = source else { return true }
         return tabManager.selectedTabId == target.tabId && rereadStillApplies(source)

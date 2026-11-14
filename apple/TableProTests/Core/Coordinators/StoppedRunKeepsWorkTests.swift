@@ -135,7 +135,7 @@ struct StoppedRunKeepsWorkTests {
         let statements = SQLStatementScanner.executableStatements(
             in: Self.script, grammar: fixture.coordinator.lexicalGrammar
         )
-        fixture.coordinator.queryExecutionCoordinator.executeMultipleStatements(statements)
+        fixture.coordinator.queryExecutionCoordinator.executeMultipleStatements(statements, onTab: fixture.coordinator.commandTabId)
         let handle = try #require(fixture.coordinator.queryTasks.task(for: tab.id))
         return (tab.id, handle)
     }
@@ -276,44 +276,4 @@ private final class HeldStatementDriver: DatabaseDriver, @unchecked Sendable {
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}
-}
-
-@MainActor
-private extension AppServices {
-    func recordingHistory(in queryHistoryManager: QueryHistoryManager) -> AppServices {
-        AppServices(
-            appEvents: appEvents,
-            appSettings: appSettings,
-            appSettingsStorage: appSettingsStorage,
-            connectionStorage: connectionStorage,
-            databaseManager: databaseManager,
-            pluginManager: pluginManager,
-            schemaService: schemaService,
-            schemaRefreshService: schemaRefreshService,
-            schemaProviderRegistry: schemaProviderRegistry,
-            catalogChangeService: catalogChangeService,
-            sqlFavoriteManager: sqlFavoriteManager,
-            favoriteTablesStorage: favoriteTablesStorage,
-            favoriteDatabasesStorage: favoriteDatabasesStorage,
-            tableFolderStorage: tableFolderStorage,
-            aiChatStorage: aiChatStorage,
-            aiKeyStorage: aiKeyStorage,
-            aiAccessApprovals: aiAccessApprovals,
-            groupStorage: groupStorage,
-            tagStorage: tagStorage,
-            sshProfileStorage: sshProfileStorage,
-            credentialProfileStorage: credentialProfileStorage,
-            featureAccess: featureAccess,
-            syncMetadataStorage: syncMetadataStorage,
-            favoritesExpansionState: favoritesExpansionState,
-            linkedFolderWatcher: linkedFolderWatcher,
-            queryHistoryManager: queryHistoryManager,
-            dateFormattingService: dateFormattingService,
-            copilotService: copilotService,
-            mcpServerManager: mcpServerManager,
-            syncTracker: syncTracker,
-            welcomeRouter: welcomeRouter,
-            telemetry: telemetry
-        )
-    }
 }

@@ -51,7 +51,7 @@ struct QueryTabVersionTriggerTests {
     func runRecordsTheText() async throws {
         let (fixture, tab, _) = makeFixture(query: "SELECT 1")
 
-        fixture.coordinator.runQuery(viewport: .firstRow)
+        fixture.coordinator.runQuery(onTab: fixture.coordinator.commandTabId, viewport: .firstRow)
 
         try await waitUntil { !storage.summaries(tabId: tab.id).isEmpty }
         let recorded = versions(of: tab.id)
@@ -63,7 +63,7 @@ struct QueryTabVersionTriggerTests {
     func runAllRecordsTheText() async throws {
         let (fixture, tab, _) = makeFixture(query: "SELECT 1; SELECT 2")
 
-        fixture.coordinator.runAllStatements()
+        fixture.coordinator.runAllStatements(onTab: fixture.coordinator.commandTabId)
 
         try await waitUntil { !storage.summaries(tabId: tab.id).isEmpty }
         #expect(versions(of: tab.id).first?.text == "SELECT 1; SELECT 2")
@@ -128,7 +128,7 @@ struct QueryTabVersionTriggerTests {
         let (fixture, tab, clock) = makeFixture(query: "SELECT secret")
         capture.isPaused = true
 
-        fixture.coordinator.runQuery(viewport: .firstRow)
+        fixture.coordinator.runQuery(onTab: fixture.coordinator.commandTabId, viewport: .firstRow)
         fixture.coordinator.loadQueryIntoEditor("SELECT other")
         #expect(fixture.coordinator.tabVersions.record(tab, connectionId: fixture.connection.id, reason: .run) == nil)
 

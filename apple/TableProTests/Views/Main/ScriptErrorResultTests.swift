@@ -34,7 +34,7 @@ struct ScriptErrorResultTests {
         tabManager.tabs.append(tab)
         tabManager.selectedTabId = tab.id
 
-        coordinator.runAllStatements()
+        coordinator.runAllStatements(onTab: coordinator.commandTabId)
         try await waitUntil {
             !coordinator.tabExecution.isExecuting(tab.id)
                 && tabManager.tabs.first?.display.resultSets.last?.errorMessage != nil
