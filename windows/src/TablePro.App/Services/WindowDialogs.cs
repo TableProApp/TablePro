@@ -8,11 +8,12 @@ namespace TablePro.App.Services;
 internal static class WindowDialogs
 {
     private static readonly HashSet<XamlRoot> OpenRoots = [];
+    // Answered dialogs still playing their closing transition, and questions asked during one.
     private static int _closing;
-    private static TaskCompletionSource? _free;
-    private static TaskCompletionSource? _closed;
+    private static int _waiting;
+    private static TaskCompletionSource? _changed;
 
-    // An answered dialog still plays its closing transition, but no longer counts as open.
+    // An answered dialog no longer counts as open, though it still plays its closing transition.
     public static bool IsOpen(XamlRoot? root) => root is not null && OpenRoots.Contains(root);
 
     // A dialog nobody asked for just then, as a link from another launch, waits for the window and any open dialog.
@@ -26,14 +27,9 @@ internal static class WindowDialogs
             {
                 await LoadedAsync(owner).ConfigureAwait(true);
             }
-            else if (OpenRoots.Count > 0)
+            else if (OpenRoots.Count > 0 || _closing > 0 || _waiting > 0)
             {
-                await (_free ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task
-                    .ConfigureAwait(true);
-            }
-            else if (_closing > 0)
-            {
-                await ClosedAsync().ConfigureAwait(true);
+                await ChangedAsync().ConfigureAwait(true);
             }
             else
             {
@@ -55,26 +51,34 @@ internal static class WindowDialogs
         return loaded.Task;
     }
 
-    private static Task ClosedAsync() =>
-        (_closed ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
-
-    // A question asked during the last answer's closing transition, as a click right after Cancel, waits for it.
+    // A question asked during the last answer's closing transition, as a click right after Cancel, waits its turn.
     public static async Task<ContentDialogResult> ShowAsync(
         ContentDialog dialog, FrameworkElement owner, CancellationToken cancellationToken = default)
     {
-        while (OpenRoots.Count == 0 && _closing > 0)
+        if (OpenRoots.Count == 0 && _closing > 0)
         {
+            _waiting++;
             try
             {
-                await ClosedAsync().WaitAsync(cancellationToken).ConfigureAwait(true);
+                while (OpenRoots.Count > 0 || _closing > 0)
+                {
+                    await ChangedAsync().WaitAsync(cancellationToken).ConfigureAwait(true);
+                }
             }
             catch (OperationCanceledException)
             {
                 return ContentDialogResult.None;
             }
+            finally
+            {
+                _waiting--;
+                Changed();
+            }
         }
 
-        return await ShowNowAsync(dialog, owner).ConfigureAwait(true);
+        return cancellationToken.IsCancellationRequested
+            ? ContentDialogResult.None
+            : await ShowNowAsync(dialog, owner).ConfigureAwait(true);
     }
 
     private static async Task<ContentDialogResult> ShowNowAsync(ContentDialog dialog, FrameworkElement owner)
@@ -92,7 +96,8 @@ internal static class WindowDialogs
             {
                 answered = true;
                 _closing++;
-                Release(root);
+                OpenRoots.Remove(root);
+                Changed();
             }
         }
 
@@ -114,25 +119,28 @@ internal static class WindowDialogs
         {
             dialog.Closing -= OnClosing;
             owner.Unloaded -= OnUnloaded;
-            if (!answered)
+            if (answered)
             {
-                Release(root);
+                _closing--;
             }
-            else if (--_closing == 0 && _closed is { } closed)
+            else
             {
-                _closed = null;
-                closed.TrySetResult();
+                OpenRoots.Remove(root);
             }
+
+            Changed();
         }
     }
 
-    private static void Release(XamlRoot root)
+    private static Task ChangedAsync() =>
+        (_changed ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+
+    private static void Changed()
     {
-        OpenRoots.Remove(root);
-        if (OpenRoots.Count == 0 && _free is { } free)
+        if (_changed is { } changed)
         {
-            _free = null;
-            free.TrySetResult();
+            _changed = null;
+            changed.TrySetResult();
         }
     }
 }
