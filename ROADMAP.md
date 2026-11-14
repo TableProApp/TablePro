@@ -29,7 +29,7 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 
 | Section | Boxes | Done |
 |---|---|---|
-| Phase 0: Release blockers | 16 | 2 |
+| Phase 0: Release blockers | 16 | 3 |
 | Phase 1: Core enablers | 23 | 2 |
 | Phase 2: Windows daily use | 62 | 2 |
 | Phase 3: Standard features both apps lack | 118 | 0 |
@@ -38,7 +38,7 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 | Phase 6: Quality bars | 8 | 0 |
 | Phase 7: Sync and teams | 15 | 0 |
 | Phase 8: Beyond the market | 40 | 0 |
-| Total | 366 | 6 |
+| Total | 366 | 7 |
 
 ## Where each app stands
 
@@ -84,7 +84,7 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 
 - [ ] **R-10** [Release criterion](linux/docs/releasing.md#release-criteria) 8: the manual pass with Orca, the keyboard alone, High Contrast, 1.5x text and a right-to-left locale
 - [ ] **R-11** Release criterion 10: a dated week of daily use
-- [ ] **R-12** Bring [linux/docs/features.md](linux/docs/features.md) up to date: about 40 features from #4108 to #4159, #4145 and #4147 are missing, and the Saved queries, Sidebar, Preferences, Connections import, MCP Tools and Copy rows are stale
+- [x] **R-12** Bring [linux/docs/features.md](linux/docs/features.md) up to date: about 40 features from #4108 to #4159, #4145 and #4147 are missing, and the Saved queries, Sidebar, Preferences, Connections import, MCP Tools and Copy rows are stale: #4281
 - [ ] **R-13** The display-scale pass on a real GPU and a HiDPI screen, and a hand install on Ubuntu 26.04
 - [ ] **R-14** Not a 0.1.0 blocker: #4099 (KDE Wallet prompt opens behind the window) and #4101 (`flatpak list` shows "Usage data") are fixed upstream in [xdg-desktop-portal#2203](https://github.com/flatpak/xdg-desktop-portal/pull/2203) and [flatpak#6965](https://github.com/flatpak/flatpak/pull/6965), in no release yet, and are known issues in 0.1.0's notes. Once an xdg-desktop-portal release has #2203, pass `parent_window` and `activation_token` to RetrieveSecret; ksecretd's side is [KDE bug 528518](https://bugs.kde.org/show_bug.cgi?id=528518)
 - [ ] **R-15** After 0.1.0: the Flathub manifest and exception request, by the maintainer, under [Flathub's requirements](linux/docs/decisions/0041-beta-repositories-and-release-packages.md#context) (#3640)
