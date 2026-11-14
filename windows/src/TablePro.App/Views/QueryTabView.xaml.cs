@@ -217,7 +217,11 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
 
     private async void OnCommit(object sender, RoutedEventArgs e) => await _model.CommitAsync().ConfigureAwait(true);
 
-    private async void OnRollBack(object sender, RoutedEventArgs e) => await _model.RollBackAsync().ConfigureAwait(true);
+    private async void OnRollBack(object sender, RoutedEventArgs e)
+    {
+        WindowDialogs.Probe($"rollback clicked {WindowDialogs.Describe(this)} bar={TransactionBar.IsOpen}");
+        await _model.RollBackAsync().ConfigureAwait(true);
+    }
 
     // Built when asked for, since a menu keeps the window it first opened in and a tab can move to another.
     private void OnGridContextRequested(UIElement sender, ContextRequestedEventArgs args)

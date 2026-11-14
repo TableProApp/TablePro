@@ -48,24 +48,51 @@ internal static class WindowDialogs
         return loaded.Task;
     }
 
+    internal static void Probe(string line)
+    {
+        try
+        {
+            File.AppendAllText(Path.Combine(Path.GetTempPath(), "tablepro-probe-app.log"),
+                DateTime.Now.ToString("HH:mm:ss.ffffff", System.Globalization.CultureInfo.InvariantCulture) + " APP " + line + "\n");
+        }
+        catch (IOException)
+        {
+        }
+    }
+
+    internal static string Describe(FrameworkElement element) =>
+        $"{element.GetType().Name}#{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(element)} root={element.XamlRoot is not null} loaded={element.IsLoaded} parent={element.Parent is not null} vparent={Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element) is not null}";
+
     public static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, FrameworkElement owner)
     {
+        Probe($"show '{dialog.Title}' owner={Describe(owner)} open={OpenRoots.Count}");
         if (owner.XamlRoot is not { } root || OpenRoots.Count > 0)
         {
+            Probe("  declined");
             return ContentDialogResult.None;
         }
 
         OpenRoots.Add(root);
         // Closing or moving the owner must dismiss its prompt before that root is gone.
-        void OnUnloaded(object sender, RoutedEventArgs args) => dialog.Hide();
+        void OnUnloaded(object sender, RoutedEventArgs args)
+        {
+            Probe($"  owner unloaded: {Describe(owner)} sameRoot={ReferenceEquals(owner.XamlRoot, root)}");
+            dialog.Hide();
+        }
+        dialog.Opened += (_, _) => Probe("  opened");
+        dialog.Closing += (_, e) => Probe($"  closing {e.Result}");
+        dialog.Closed += (_, e) => Probe($"  closed {e.Result}");
         owner.Unloaded += OnUnloaded;
         try
         {
             dialog.XamlRoot = root;
-            return await dialog.ShowAsync();
+            var result = await dialog.ShowAsync();
+            Probe($"  returned {result}");
+            return result;
         }
-        catch (COMException)
+        catch (COMException e)
         {
+            Probe($"  COMException {e.HResult:X8} {e.Message}");
             // A dialog this class did not open holds the thread.
             return ContentDialogResult.None;
         }

@@ -551,6 +551,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void SetContent(UIElement page)
     {
+        WindowDialogs.Probe($"set content {page.GetType().Name}#{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(page)}");
         if (Rail.Content is WorkspaceView shown && !ReferenceEquals(shown, page))
         {
             shown.Leave();
