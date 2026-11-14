@@ -381,6 +381,54 @@ final class AlertHelper {
         }
     }
 
+    // MARK: - Ending a Transaction
+
+    enum TransactionEndAnswer: Equatable, Sendable {
+        case commit, rollBack, cancel
+    }
+
+    // The Save alert's order: Commit keeps Return, Cancel takes Escape, Roll Back takes no key. Without Commit, the roll-back alert.
+    static func makeTransactionEndAlert(_ prompt: TransactionEndPrompt) -> NSAlert {
+        let alert = NSAlert()
+        alert.messageText = prompt.title
+        alert.informativeText = prompt.message
+        alert.alertStyle = .warning
+        guard prompt.offersCommit else {
+            addConfirmAndCancel(to: alert, confirmButton: prompt.confirmButton, cancelButton: String(localized: "Cancel"))
+            return alert
+        }
+        let commit = alert.addButton(withTitle: String(localized: "Commit"))
+        commit.keyEquivalent = "\r"
+        addCancelButton(to: alert, title: String(localized: "Cancel"))
+        let rollBack = alert.addButton(withTitle: String(localized: "Roll Back"))
+        rollBack.hasDestructiveAction = true
+        rollBack.keyEquivalent = ""
+        return alert
+    }
+
+    static func transactionEndAnswer(to response: NSApplication.ModalResponse, offersCommit: Bool) -> TransactionEndAnswer {
+        switch response {
+        case .alertFirstButtonReturn:
+            return offersCommit ? .commit : .rollBack
+        case .alertThirdButtonReturn where offersCommit:
+            return .rollBack
+        default:
+            return .cancel
+        }
+    }
+
+    // On the window's frontmost sheet: work still running can hold a progress sheet there.
+    static func answerTransactionEnd(_ prompt: TransactionEndPrompt, window: NSWindow?) async -> TransactionEndAnswer {
+        let parent = resolveWindow(window).map(AlertOperationConfirming.frontmostSheet(of:))
+        let clicked = await response(to: makeTransactionEndAlert(prompt), in: parent)
+        return transactionEndAnswer(to: clicked, offersCommit: prompt.offersCommit)
+    }
+
+    // Quit and relaunch need the answer before they return.
+    static func answerTransactionEndModally(_ prompt: TransactionEndPrompt) -> TransactionEndAnswer {
+        transactionEndAnswer(to: makeTransactionEndAlert(prompt).runModal(), offersCommit: prompt.offersCommit)
+    }
+
     // MARK: - Three-Way Confirmations
 
     // `detail` is the text the answer is given against, so it goes whole into a scrolling box that reveals invisible

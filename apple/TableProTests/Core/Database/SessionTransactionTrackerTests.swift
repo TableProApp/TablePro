@@ -433,7 +433,7 @@ struct SessionTransactionTrackerTests {
             kind: .writeQuery
         )
 
-        _ = try await DatabaseAccessBridge().runInserts(operation)
+        let inserted = try await DatabaseAccessBridge().runInserts(operation)
 
         let begin = try #require(driver.statements.firstIndex(of: "BEGIN"))
         let first = try #require(driver.statements.firstIndex(of: rows[0]))
@@ -441,6 +441,22 @@ struct SessionTransactionTrackerTests {
         #expect(driver.statements.contains(rows[1]))
         #expect(!driver.statements.contains("COMMIT"))
         #expect(Self.states(connection.id) == [.open])
+        #expect(inserted.notice == ManualCommit.pendingNotice)
+    }
+
+    @Test("An insert_rows that leaves a Teradata ANSI transaction open says so")
+    func mcpInsertRowsThatOpenATransactionSaySo() async throws {
+        let (connection, driver) = Self.seed(type: .teradata)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        driver.writesOpenATransaction = true
+        let operation = try await ApprovedOperationFixture.approve(
+            [OperationStatement(sql: "INSERT INTO t VALUES (1)")], scope: Self.scope(connection.id), databaseType: .teradata,
+            kind: .writeQuery
+        )
+
+        let inserted = try await DatabaseAccessBridge().runInserts(operation)
+
+        #expect(inserted.notice == ManualCommit.statementOpenedNotice)
     }
 
     @Test("An insert_rows of several rows joining an open SQLite transaction is taken back whole when a row fails")
@@ -608,9 +624,10 @@ struct SessionTransactionTrackerTests {
         ])
     }
 
-    @Test("An agent statement over an open DuckDB transaction is refused, since a failure would abort it")
-    func agentStatementRefusedWithoutSavepoints() async throws {
-        let (connection, driver) = Self.seed(type: .duckdb)
+    @Test("An agent statement over an open transaction with no savepoint is refused, since a failure would abort it",
+          arguments: [DatabaseType.duckdb, .teradata])
+    func agentStatementRefusedWithoutSavepoints(type: DatabaseType) async throws {
+        let (connection, driver) = Self.seed(type: type)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         try await Self.run("BEGIN", on: connection.id)
         let sent = driver.statements.count
@@ -622,6 +639,37 @@ struct SessionTransactionTrackerTests {
         }
         #expect(error?.localizedDescription == AbortingTransactionRefusal().errorDescription)
         #expect(driver.statements.count == sent)
+    }
+
+    @Test("An agent's write that leaves a Teradata ANSI transaction open says so, and the next statement is refused")
+    func agentWriteThatOpensATransactionSaysSo() async throws {
+        let (connection, driver) = Self.seed(type: .teradata)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        driver.writesOpenATransaction = true
+
+        let outcome = try await DatabaseAccessBridge().runStatement(
+            scope: Self.scope(connection.id), query: "UPDATE t SET a = 1", maxRows: 10, timeoutSeconds: 30, cancellation: nil
+        )
+        #expect(outcome.result.statusMessage?.contains(ManualCommit.statementOpenedNotice) == true)
+
+        let error = await #expect(throws: (any Error).self) {
+            _ = try await DatabaseAccessBridge().runStatement(
+                scope: Self.scope(connection.id), query: "SELECT 1", maxRows: 10, timeoutSeconds: 30, cancellation: nil
+            )
+        }
+        #expect(error?.localizedDescription == AbortingTransactionRefusal().errorDescription)
+    }
+
+    @Test("An agent's own BEGIN on PostgreSQL gets no notice that later statements are refused")
+    func agentBeginIsNotTakenForAHeldWrite() async throws {
+        let (connection, _) = Self.seed(type: .postgresql)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let outcome = try await DatabaseAccessBridge().runStatement(
+            scope: Self.scope(connection.id), query: "BEGIN", maxRows: 10, timeoutSeconds: 30, cancellation: nil
+        )
+
+        #expect(outcome.result.statusMessage?.contains(ManualCommit.statementOpenedNotice) != true)
     }
 
     @Test("Turning Manual Commit on writes the session and the connection it was opened from")
@@ -658,7 +706,7 @@ struct SessionTransactionTrackerTests {
             isAborted: false,
             connectionName: "Prod",
             database: "sales",
-            safeModeLevel: .silent
+            effectiveSafeModeLevel: .silent
         )
         #expect(open.title == "Transaction Open")
         #expect(open.subtitle == "sales")
@@ -669,7 +717,7 @@ struct SessionTransactionTrackerTests {
             isAborted: false,
             connectionName: "Prod",
             database: nil,
-            safeModeLevel: .readOnly
+            effectiveSafeModeLevel: .readOnly
         )
         #expect(!readOnly.offersCommit)
         #expect(readOnly.subtitle == "Prod")
@@ -678,7 +726,7 @@ struct SessionTransactionTrackerTests {
             isAborted: true,
             connectionName: "Prod",
             database: "",
-            safeModeLevel: .silent
+            effectiveSafeModeLevel: .silent
         )
         #expect(!aborted.offersCommit)
         #expect(aborted.title == "Transaction Failed")
@@ -693,6 +741,13 @@ private final class TransactionScriptedDriver: PluginDriverStub, @unchecked Send
     private var current: PluginSessionTransactionState = .idle
     private var sent: [String] = []
     private var abortsNext = false
+    private var opensOnWrite = false
+
+    // As a Teradata ANSI session does: a change opens a transaction only COMMIT ends.
+    var writesOpenATransaction: Bool {
+        get { lock.withLock { opensOnWrite } }
+        set { lock.withLock { opensOnWrite = newValue } }
+    }
 
     var state: PluginSessionTransactionState {
         get { lock.withLock { current } }
@@ -725,6 +780,8 @@ private final class TransactionScriptedDriver: PluginDriverStub, @unchecked Send
             switch query.uppercased() {
             case "BEGIN": current = .inTransaction
             case "COMMIT", "ROLLBACK": current = .idle
+            case let write where opensOnWrite && (write.hasPrefix("UPDATE") || write.hasPrefix("INSERT")):
+                current = .inTransaction
             default: break
             }
             return false

@@ -77,7 +77,9 @@ public enum SQLStatementScanner {
             guard !isAllContent else { return range }
             let text = sql as NSString
             let content = StatementBlank.contentRange(of: text.substring(to: max(0, text.length - delimiterLength)))
-            return NSRange(location: offset + content.location, length: content.length)
+            // A COPY's rows run to their end as written: a last row's trailing tab is a column.
+            let end = copyRows.map { max(NSMaxRange(content), NSMaxRange($0) - offset) } ?? NSMaxRange(content)
+            return NSRange(location: offset + content.location, length: end - content.location)
         }
     }
 
@@ -103,18 +105,23 @@ public enum SQLStatementScanner {
         public let segmentEnd: Int
         public let clientDelimiter: SQLClientDelimiter?
 
+        // A `COPY ... FROM STDIN`'s rows as psql sends them, empty for a block with none; nil for any other statement.
+        public let copyData: String?
+
         public init(
             sql: String,
             range: NSRange,
             acceptsBindParameters: Bool = true,
             segmentEnd: Int? = nil,
-            clientDelimiter: SQLClientDelimiter? = nil
+            clientDelimiter: SQLClientDelimiter? = nil,
+            copyData: String? = nil
         ) {
             self.sql = sql
             self.range = range
             self.acceptsBindParameters = acceptsBindParameters
             self.segmentEnd = segmentEnd ?? NSMaxRange(range)
             self.clientDelimiter = clientDelimiter
+            self.copyData = copyData
         }
 
         public func offset(by delta: Int) -> ExecutableStatement {
@@ -124,7 +131,8 @@ public enum SQLStatementScanner {
                 range: NSRange(location: range.location + delta, length: range.length),
                 acceptsBindParameters: acceptsBindParameters,
                 segmentEnd: segmentEnd + delta,
-                clientDelimiter: clientDelimiter
+                clientDelimiter: clientDelimiter,
+                copyData: copyData
             )
         }
     }
@@ -271,7 +279,8 @@ public enum SQLStatementScanner {
     /// A `;` that belongs to the statement stays, but only when there is something before it: a unit reduced to its
     /// terminator is as empty as any other.
     ///
-    /// A client delimiter never reaches the server, and a `COPY ... FROM STDIN` is sent without its rows.
+    /// A client delimiter never reaches the server, and a `COPY ... FROM STDIN` carries its rows apart from its text,
+    /// in ``ExecutableStatement/copyData``.
     public static func executableStatement(from located: LocatedStatement) -> ExecutableStatement? {
         guard !located.isClientLine else { return nil }
         let rawSQL = located.sql
@@ -291,8 +300,16 @@ public enum SQLStatementScanner {
             range: NSRange(location: located.offset + range.location, length: range.length),
             acceptsBindParameters: located.acceptsBindParameters,
             segmentEnd: NSMaxRange(located.range),
-            clientDelimiter: located.clientDelimiter
+            clientDelimiter: located.clientDelimiter,
+            copyData: copyData(of: located)
         )
+    }
+
+    private static func copyData(of located: LocatedStatement) -> String? {
+        guard let rows = located.copyRows else { return nil }
+        let text = located.sql as NSString
+        let local = NSRange(location: rows.location - located.offset, length: rows.length)
+        return text.substring(with: SQLPsqlScript.copyData(inRows: local, of: text))
     }
 
     /// The statements after `ran`, one of those `sql` was split into, split again under `grammar`, up to `end`: once

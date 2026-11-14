@@ -51,7 +51,7 @@ extension MainContentCoordinator {
 
         isShowingSafeModePrompt = true
         let tabId = tab.id
-        let authorization = authorizationRequest(for: request)
+        let authorization = authorizationRequest(for: request, runsIn: scope(for: tab))
         return Task {
             defer { isShowingSafeModePrompt = false }
             switch await executionGate.authorize(authorization) {
@@ -67,7 +67,8 @@ extension MainContentCoordinator {
 
     // MARK: - Request
 
-    private func authorizationRequest(for request: ExplainRequest) -> OperationRequest {
+    // An Oracle actual plan runs its statement in the tab's schema, where a bare name resolves.
+    private func authorizationRequest(for request: ExplainRequest, runsIn: DatabaseScope?) -> OperationRequest {
         OperationRequest(
             connectionId: connectionId,
             databaseType: connection.type,
@@ -75,7 +76,8 @@ extension MainContentCoordinator {
             kind: request.operationKind(databaseType: connection.type),
             caller: .userInterface,
             capabilities: .interactiveUser,
-            operationDescription: String(localized: "Execute Query")
+            operationDescription: String(localized: "Execute Query"),
+            runsIn: runsIn
         )
     }
 

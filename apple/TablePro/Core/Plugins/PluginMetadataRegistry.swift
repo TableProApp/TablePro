@@ -179,6 +179,12 @@ struct PluginMetadataSnapshot: Sendable {
         // cannot read its language in full. A loaded driver without `.statementPolicy` runs no external write.
         var statementPolicyInDriver: Bool = false
 
+        // What the assistant's Edit mode runs besides reads on an engine with a query language of its own: the commands
+        // that change data, from the engine's command reference, named as `QueryClassifier.dataCommands(of:)` names
+        // them. Edit refuses every other command. Nil on an engine whose language is SQL, which the SQL reading decides,
+        // and on an engine nobody curated, where Edit runs reads only.
+        var dataCommands: Set<String>?
+
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
             supportsImport: true,
@@ -829,7 +835,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true,
                 binaryLengthFunction: existingSnapshot?.capabilities.binaryLengthFunction,
                 readOnlyEnforcement: existingSnapshot?.capabilities.readOnlyEnforcement ?? .loginPrivileges,
-                statementPolicyInDriver: existingSnapshot?.capabilities.statementPolicyInDriver ?? false
+                statementPolicyInDriver: existingSnapshot?.capabilities.statementPolicyInDriver ?? false,
+                dataCommands: existingSnapshot?.capabilities.dataCommands
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

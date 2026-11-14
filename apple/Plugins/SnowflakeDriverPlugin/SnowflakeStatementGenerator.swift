@@ -18,7 +18,7 @@ struct SnowflakeStatementGenerator {
     let primaryKeyColumns: [String]
 
     // Snowflake does not enforce a primary key, so a key match can reach several rows too: every update and delete
-    // first has to find exactly one.
+    // first has to find exactly one, and is then held to it by the rows-updated or rows-deleted count it reports.
     func rowWrites(
         from changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
@@ -51,7 +51,8 @@ struct SnowflakeStatementGenerator {
                     statement: "UPDATE \(qualifiedTable) SET \(setClauses.joined(separator: ", ")) WHERE \(condition.sql)",
                     parameters: parameters + condition.parameters,
                     rowIndices: [change.rowIndex],
-                    lookup: lookup(condition)
+                    lookup: lookup(condition),
+                    expectedRowCount: 1
                 ))
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex) else { continue }
@@ -60,7 +61,8 @@ struct SnowflakeStatementGenerator {
                     statement: "DELETE FROM \(qualifiedTable) WHERE \(condition.sql)",
                     parameters: condition.parameters,
                     rowIndices: [change.rowIndex],
-                    lookup: lookup(condition)
+                    lookup: lookup(condition),
+                    expectedRowCount: 1
                 ))
             @unknown default:
                 continue

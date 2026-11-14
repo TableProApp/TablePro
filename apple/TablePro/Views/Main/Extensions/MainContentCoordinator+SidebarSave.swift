@@ -13,9 +13,12 @@ extension MainContentCoordinator {
         let changes = sidebarEditChanges(editedFields: editState.getEditedFields())
         guard !changes.isEmpty else { return }
         // Held to its row counts as a grid save is, so a write that found no row fails instead of saving nothing.
-        let steps = try changeManager.writeSteps(for: changes, factory: sidebarStatementFactory())
+        let viewTarget = activeViewWriteTarget
+        var factory = try sidebarStatementFactory()
+        factory.holdsKeyedWritesToOneRow = viewTarget != nil
+        let steps = try changeManager.writeSteps(for: changes, factory: factory)
         guard !steps.isEmpty else { return }
-        try await executeSidebarChanges(steps: steps)
+        try await executeSidebarChanges(steps: steps, viewTarget: viewTarget)
 
         reloadActiveResult()
     }

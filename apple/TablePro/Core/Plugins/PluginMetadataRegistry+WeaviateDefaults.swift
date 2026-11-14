@@ -33,7 +33,8 @@ extension PluginMetadataRegistry {
                     supportsModifyPrimaryKey: false,
                     supportsOpportunisticTLS: false,
                     supportsRawFilter: false,
-                    supportsPrincipalConnectionLimit: false
+                    supportsPrincipalConnectionLimit: false,
+                    dataCommands: weaviateDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -64,6 +65,21 @@ extension PluginMetadataRegistry {
         ]
     }
 }
+
+// The object and batch operations of the Weaviate OpenAPI, v1.25.0 to v1.40.5.
+private let weaviateDataCommands: Set<String> = [
+    "POST /v1/objects",
+    "PUT /v1/objects/{className}/{id}", "PATCH /v1/objects/{className}/{id}", "DELETE /v1/objects/{className}/{id}",
+    "PUT /v1/objects/{id}", "PATCH /v1/objects/{id}", "DELETE /v1/objects/{id}",
+    "POST /v1/objects/{className}/{id}/references/{propertyName}",
+    "PUT /v1/objects/{className}/{id}/references/{propertyName}",
+    "DELETE /v1/objects/{className}/{id}/references/{propertyName}",
+    "POST /v1/objects/{id}/references/{propertyName}",
+    "PUT /v1/objects/{id}/references/{propertyName}",
+    "DELETE /v1/objects/{id}/references/{propertyName}",
+    "POST /v1/batch/objects", "DELETE /v1/batch/objects",
+    "POST /v1/batch/references"
+]
 
 private let weaviateCompletions: [CompletionEntry] = [
     CompletionEntry(

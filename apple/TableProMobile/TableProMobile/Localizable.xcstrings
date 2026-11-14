@@ -6630,6 +6630,10 @@
         }
       }
     },
+    "COPY FROM STDIN takes its rows from the lines after the line its ; ends, so no rows were sent." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Copy Key" : {
 
     },
@@ -18210,6 +18214,9 @@
         }
       }
     },
+    "Query Blocked" : {
+
+    },
     "Query Error" : {
       "localizations" : {
         "ko" : {
@@ -19995,6 +20002,9 @@
           }
         }
       }
+    },
+    "Safe Mode is set to Read-Only for this connection, and it has a transaction open. Roll it back, then try again." : {
+
     },
     "Safe Mode is set to Read-Only for this connection, and the database refused the statement." : {
 
@@ -22959,6 +22969,9 @@
     "This pipeline is not something MongoDB can read: %@" : {
 
     },
+    "This query calls a function that can change data, which Read-Only does not run. Switch Safe Mode to %@ to run it." : {
+
+    },
     "This row has no _id, so TablePro cannot tell which document to change." : {
 
     },
@@ -23514,6 +23527,9 @@
     "TablePro on iPhone and iPad can't connect to %1$@ with the SSL mode %2$@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "TablePro is reading or writing rows on this connection with settings of its own." : {
+
     },
     "TablePro on iPhone and iPad can't open %@ connections." : {
       "extractionState" : "manual",
@@ -26840,6 +26856,13 @@
         }
       }
     },
+    "This connection called a stored routine, so TablePro cannot tell what the session is holding." : {
+
+    },
+    "This connection cannot load the rows of COPY FROM STDIN." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This connection goes through an SSH jump host, which TablePro on iPhone and iPad cannot dial. Open it in TablePro on the Mac." : {
       "localizations" : {
         "ko" : {
@@ -26924,6 +26947,33 @@
         }
       }
     },
+    "This connection has a transaction open. Commit or roll it back in TablePro, then try again." : {
+
+    },
+    "This connection has an open transaction. Commit or roll it back first." : {
+
+    },
+    "This connection has open HANDLER cursors, which reconnecting would close." : {
+
+    },
+    "This connection has prepared statements, which reconnecting would discard." : {
+
+    },
+    "This connection has session settings changed, which reconnecting would reset." : {
+
+    },
+    "This connection has session variables set, which reconnecting would clear." : {
+
+    },
+    "This connection has temporary tables, which reconnecting would delete." : {
+
+    },
+    "This connection holds advisory locks, which reconnecting would release." : {
+
+    },
+    "This connection holds table locks, which reconnecting would release." : {
+
+    },
     "This connection is in read-only mode. Write queries are not allowed." : {
       "localizations" : {
         "ko" : {
@@ -26951,6 +27001,9 @@
           }
         }
       }
+    },
+    "This connection is read only for external clients, and the database refused the statement." : {
+
     },
     "This connection no longer exists. It may have been removed from another device." : {
       "localizations" : {
@@ -27000,6 +27053,9 @@
 
     },
     "This connection signs in with the gcloud credentials on the Mac." : {
+
+    },
+    "This connection switched database with USE, which reconnecting would undo." : {
 
     },
     "This connection uses a socket on a Mac and cannot be opened on iPhone or iPad." : {
@@ -27325,6 +27381,10 @@
       "generatesSymbol" : false
     },
     "This driver cannot restore an exported folder. Update it in Settings > Extensions." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This driver cannot send rows to COPY FROM STDIN." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },

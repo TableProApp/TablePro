@@ -290,6 +290,10 @@ internal actor DatabaseAccessBridge {
             )
         case .batches:
             return PlannedText(statement: OperationStatement(sql: query), unit: .script)
+        case .statements(let statements) where statements.contains(where: { $0.copyData != nil }):
+            throw DatabaseAccessError.invalidArgument(
+                String(localized: "COPY FROM STDIN takes its rows from the lines after it, which only the query editor and SQL import send. Run it there.")
+            )
         case .statements:
             throw DatabaseAccessError.invalidArgument(
                 String(localized: "Update the database driver in Settings > Extensions to run several statements in one call.")
@@ -557,8 +561,9 @@ internal actor DatabaseAccessBridge {
         )
     }
 
-    // One approved INSERT per row, on one write lease, each with the values it was approved with.
-    internal func runInserts(_ operation: ApprovedOperation) async throws -> Int {
+    // One approved INSERT per row, on one write lease, each with the values it was approved with. The notice says the
+    // rows are pending in a transaction.
+    internal func runInserts(_ operation: ApprovedOperation) async throws -> (affected: Int, notice: String?) {
         let reach = DriverReach()
         do {
             return try await runApprovedInserts(operation, reach: reach)
@@ -567,7 +572,10 @@ internal actor DatabaseAccessBridge {
         }
     }
 
-    private func runApprovedInserts(_ operation: ApprovedOperation, reach: DriverReach) async throws -> Int {
+    private func runApprovedInserts(
+        _ operation: ApprovedOperation,
+        reach: DriverReach
+    ) async throws -> (affected: Int, notice: String?) {
         guard operation.kind == .writeQuery, operation.unit == .statement, !operation.statements.isEmpty
         else { throw Self.notApproved }
         let scope = operation.scope
@@ -590,7 +598,7 @@ internal actor DatabaseAccessBridge {
             scope: scope,
             route: route,
             cancellation: .protectedWrite
-        ) { driver -> Int in
+        ) { driver -> (affected: Int, notice: String?) in
             reach.mark()
             // The hold and savepoint execute_query gets, so a Manual Commit insert waits for Commit too.
             let ran = try await agentGuard.running(
@@ -607,7 +615,7 @@ internal actor DatabaseAccessBridge {
                 }
                 return affected
             }
-            return ran.value
+            return (ran.value, ran.notice)
         }
     }
 

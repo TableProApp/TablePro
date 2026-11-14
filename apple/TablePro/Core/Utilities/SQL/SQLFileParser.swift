@@ -18,7 +18,7 @@ enum SQLFileParseError: LocalizedError, Equatable {
         case .copyFromStandardInput(let line):
             return String(
                 format: String(
-                    localized: "Line %lld runs COPY FROM STDIN, whose rows TablePro cannot send. Run the file with psql, or dump it again with --inserts."
+                    localized: "Line %lld runs COPY FROM STDIN, and this connection cannot load its rows. Run the file with psql, or dump it again with --inserts."
                 ),
                 line
             )
@@ -36,10 +36,14 @@ final class SQLFileParser: Sendable {
     /// and held one piece at a time rather than whole.
     static let defaultBatchCutLength = 67_108_864
 
-    private let batchCutLength: Int
+    private let limits: ReadLimits
 
-    init(batchCutLength: Int = SQLFileParser.defaultBatchCutLength) {
-        self.batchCutLength = batchCutLength
+    init(
+        batchCutLength: Int = SQLFileParser.defaultBatchCutLength,
+        chunkSize: Int = SQLFileParser.defaultChunkSize,
+        copyPieceLength: Int = SQLFileParser.defaultCopyPieceLength
+    ) {
+        limits = ReadLimits(batchCutLength: batchCutLength, chunkSize: chunkSize, copyPieceLength: copyPieceLength)
     }
 
     /// One statement the file holds, or on a grammar that cuts scripts into batches, one batch, with how many times
@@ -48,6 +52,7 @@ final class SQLFileParser: Sendable {
         let statement: String
         let lineNumber: Int
         let repeatCount: Int
+        var readsCopyRows = false
     }
 
     enum ParserState {
@@ -250,8 +255,6 @@ final class SQLFileParser: Sendable {
         var lineHasCode = false
         /// Whether the statement's first unit was the first code on its line, where a `DELIMITER` can stand.
         var statementOpensLine = false
-        /// The line of a `COPY ... FROM STDIN` the file holds, which no driver here can send rows to.
-        var copyFromStandardInputLine: Int?
         var pendingSlashLine = false
         var pendingSlashTrailing: [unichar] = []
 
@@ -330,7 +333,7 @@ final class SQLFileParser: Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    private static func resetStatement(_ ctx: inout ParserContext) {
+    static func resetStatement(_ ctx: inout ParserContext) {
         ctx.currentStatement?.setString("")
         ctx.hasStatementContent = false
         ctx.insideConditionalComment = false
@@ -781,7 +784,10 @@ final class SQLFileParser: Sendable {
             return
         }
         if ctx.boundaries?.copiesFromStandardInput == true {
-            ctx.copyFromStandardInputLine = ctx.statementStartLine
+            ctx.collected.append(ParsedStatement(
+                statement: trimmedStatement(ctx), lineNumber: ctx.statementStartLine, repeatCount: 1, readsCopyRows: true
+            ))
+            resetStatement(&ctx)
             return
         }
         if ctx.boundaries?.awaitsContinuation == true, ctx.hasStatementContent {
@@ -961,25 +967,43 @@ final class SQLFileParser: Sendable {
     func parseFile(
         url: URL,
         encoding: String.Encoding,
-        grammar: @escaping @Sendable () -> SQLLexicalGrammar
+        grammar: @escaping @Sendable () -> SQLLexicalGrammar,
+        onRead: (@Sendable (_ bytesRead: Int64, _ fileSize: Int64) -> Void)? = nil
     ) -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
-        let session = ParseSession(
-            url: url, encoding: encoding, grammar: grammar, countOnly: false, batchCutLength: batchCutLength
-        )
+        let session = ParseSession(url: url, encoding: encoding, grammar: grammar, countOnly: false, limits: limits, onRead: onRead)
         return AsyncThrowingStream(unfolding: {
             try await session.nextRun()
         })
     }
 
-    // Runs are added up rather than walked: a `GO n` count can reach `Int32.max`.
+    func parseElements(
+        url: URL,
+        encoding: String.Encoding,
+        grammar: SQLLexicalGrammar
+    ) -> AsyncThrowingStream<PluginImportElement, Error> {
+        parseElements(url: url, encoding: encoding, grammar: { grammar })
+    }
+
+    // The statements as parseFile yields them, and each `COPY ... FROM STDIN` with a reader over its rows.
+    func parseElements(
+        url: URL,
+        encoding: String.Encoding,
+        grammar: @escaping @Sendable () -> SQLLexicalGrammar,
+        onRead: (@Sendable (_ bytesRead: Int64, _ fileSize: Int64) -> Void)? = nil
+    ) -> AsyncThrowingStream<PluginImportElement, Error> {
+        let session = ParseSession(url: url, encoding: encoding, grammar: grammar, countOnly: false, limits: limits, onRead: onRead)
+        return AsyncThrowingStream(unfolding: {
+            try await session.nextElement()
+        })
+    }
+
+    // Runs are added up rather than walked: a `GO n` count can reach `Int32.max`. A COPY counts as one.
     func countStatements(
         url: URL,
         encoding: String.Encoding,
         grammar: SQLLexicalGrammar
     ) async throws -> Int {
-        let session = ParseSession(
-            url: url, encoding: encoding, grammar: { grammar }, countOnly: true, batchCutLength: batchCutLength
-        )
+        let session = ParseSession(url: url, encoding: encoding, grammar: { grammar }, countOnly: true, limits: limits)
         var count = 0
 
         while let statement = try await session.nextStatement() {
@@ -1005,10 +1029,12 @@ extension SQLFileParser {
         private let url: URL
         private let encoding: String.Encoding
         private let grammar: @Sendable () -> SQLLexicalGrammar
-        private let batchCutLength: Int
-        private let chunkSize = 65_536
+        private let limits: ReadLimits
+        private let onRead: (@Sendable (Int64, Int64) -> Void)?
 
         private var fileHandle: FileHandle?
+        private var fileSize: Int64 = 0
+        private var bytesRead: Int64 = 0
         private var ctx: ParserContext
         private let nsBuffer = NSMutableString()
         // Text before it is lexed; it is deleted when the next chunk is read, not once per statement.
@@ -1020,18 +1046,26 @@ extension SQLFileParser {
         private var repeating: ParsedStatement?
         private var remainingRuns = 0
 
+        // The rows of the COPY last yielded while any are unread, and which COPY that is, so a reader handed out
+        // for an earlier one answers nil.
+        private var copyRows: CopyRowsScanner?
+        private var copyGeneration = 0
+        private var rowsFailure: Error?
+
         init(
             url: URL,
             encoding: String.Encoding,
             grammar: @escaping @Sendable () -> SQLLexicalGrammar,
             countOnly: Bool,
-            batchCutLength: Int,
-            reading: Reading = .fromFile
+            limits: ReadLimits,
+            reading: Reading = .fromFile,
+            onRead: (@Sendable (Int64, Int64) -> Void)? = nil
         ) {
             self.url = url
             self.encoding = encoding
             self.grammar = grammar
-            self.batchCutLength = batchCutLength
+            self.limits = limits
+            self.onRead = onRead
             self.decoder = SQLChunkDecoder(encoding: encoding)
             self.readingSettled = reading == .batches
             let initialGrammar = grammar()
@@ -1040,7 +1074,7 @@ extension SQLFileParser {
             self.ctx = ParserContext(
                 grammar: initialGrammar,
                 currentStatement: keepsText ? NSMutableString() : nil,
-                batchCutLength: batchCutLength,
+                batchCutLength: limits.batchCutLength,
                 readsBatches: reading == .batches
             )
         }
@@ -1050,21 +1084,48 @@ extension SQLFileParser {
         }
 
         func nextRun() async throws -> (statement: String, lineNumber: Int)? {
+            let element = try await nextElement()
+            // The rows after the `COPY` would otherwise reach the server as statements.
+            if case let .copyFromStandardInput(_, line, _)? = element {
+                finished = true
+                closeFile()
+                throw SQLFileParseError.copyFromStandardInput(line: line)
+            }
+            guard case let .statement(statement, lineNumber)? = element else { return nil }
+            return (statement, lineNumber)
+        }
+
+        func nextElement() async throws -> PluginImportElement? {
             if let repeating, remainingRuns > 0 {
                 remainingRuns -= 1
-                return (repeating.statement, repeating.lineNumber)
+                return .statement(repeating.statement, lineNumber: repeating.lineNumber)
             }
             guard let next = try await nextStatement() else { return nil }
-            repeating = next
-            remainingRuns = next.repeatCount - 1
-            return (next.statement, next.lineNumber)
+            guard next.readsCopyRows else {
+                repeating = next
+                remainingRuns = next.repeatCount - 1
+                return .statement(next.statement, lineNumber: next.lineNumber)
+            }
+            let generation = copyGeneration
+            // The driver reads pieces on its own queue while the import awaits the copy, and the import asks for the
+            // next element only once the copy returns, so the session is never used from two places at once.
+            let rows = PluginCopyData { [self] in try nextRowsPiece(generation: generation) }
+            return .copyFromStandardInput(statement: next.statement, lineNumber: next.lineNumber, rows: rows)
         }
 
         func nextStatement() async throws -> ParsedStatement? {
+            if let failure = rowsFailure {
+                rowsFailure = nil
+                throw failure
+            }
             while true {
                 if emitIndex < ctx.collected.count {
                     let item = ctx.collected[emitIndex]
                     emitIndex += 1
+                    if item.readsCopyRows {
+                        copyGeneration += 1
+                        copyRows = CopyRowsScanner(pieceLength: limits.copyPieceLength)
+                    }
                     return item
                 }
                 ctx.collected.removeAll(keepingCapacity: true)
@@ -1075,6 +1136,7 @@ extension SQLFileParser {
                 }
 
                 do {
+                    try passUnreadRows()
                     try settleReading()
                     guard !Task.isCancelled else {
                         finished = true
@@ -1103,14 +1165,14 @@ extension SQLFileParser {
                 encoding: encoding,
                 grammar: { grammar },
                 countOnly: true,
-                batchCutLength: batchCutLength,
+                limits: limits,
                 reading: .batches
             )
             guard try scan.findsBatchSeparator() else { return }
             ctx = ParserContext(
                 grammar: grammar,
                 currentStatement: ctx.currentStatement,
-                batchCutLength: batchCutLength,
+                batchCutLength: limits.batchCutLength,
                 readsBatches: true
             )
         }
@@ -1125,18 +1187,24 @@ extension SQLFileParser {
         }
 
         private func readNextStatement() throws {
-            try refuseCopyFromStandardInput()
             processBuffer()
             guard ctx.collected.isEmpty else { return }
-            try refuseCopyFromStandardInput()
             guard !ctx.atEndOfInput else {
                 emitTrailingStatement()
                 finished = true
                 closeFile()
                 return
             }
+            try readChunk()
+        }
+
+        private func readChunk() throws {
             let handle = try openFileIfNeeded()
-            let rawData = handle.readData(ofLength: chunkSize)
+            let rawData = handle.readData(ofLength: limits.chunkSize)
+            if !rawData.isEmpty, let onRead {
+                bytesRead += Int64(rawData.count)
+                onRead(bytesRead, fileSize)
+            }
 
             if rawData.isEmpty && !decoder.hasPendingBytes {
                 ctx.atEndOfInput = true
@@ -1261,16 +1329,50 @@ extension SQLFileParser {
                         nsBuffer, from: stepStart, to: min(i, bufLen), before: ctx.lineHoldsOnlyBlanks
                     )
                 }
-                if !ctx.collected.isEmpty || ctx.copyFromStandardInputLine != nil { break }
+                if !ctx.collected.isEmpty { break }
             }
 
             readOffset = min(i, bufLen)
         }
 
-        // The rows after the `COPY` would otherwise reach the server as statements.
-        private func refuseCopyFromStandardInput() throws {
-            guard let line = ctx.copyFromStandardInputLine else { return }
-            throw SQLFileParseError.copyFromStandardInput(line: line)
+        private func nextRowsPiece(generation: Int) throws -> Data? {
+            do {
+                guard let piece = try nextRowsRange(generation: generation) else { return nil }
+                return Data(nsBuffer.substring(with: piece).utf8)
+            } catch {
+                rowsFailure = error
+                copyRows = nil
+                finished = true
+                closeFile()
+                SQLFileParser.logger.error("SQL file parsing failed: \(error.localizedDescription)")
+                throw error
+            }
+        }
+
+        private func passUnreadRows() throws {
+            while copyRows != nil, !finished, !Task.isCancelled {
+                _ = try nextRowsRange(generation: copyGeneration)
+            }
+        }
+
+        // The next piece's range in the buffer, valid until the next chunk is read.
+        private func nextRowsRange(generation: Int) throws -> NSRange? {
+            while !finished, generation == copyGeneration,
+                  let step = copyRows?.scan(nsBuffer, from: readOffset, atEndOfInput: ctx.atEndOfInput) {
+                guard case let .advance(length, skipped, lineFeeds, endsRows) = step else {
+                    try readChunk()
+                    continue
+                }
+                let piece = NSRange(location: readOffset, length: length)
+                readOffset += length + skipped
+                ctx.currentLine += lineFeeds
+                if endsRows {
+                    copyRows = nil
+                    ctx.resumeAfterCopyRows()
+                }
+                if length > 0 { return piece }
+            }
+            return nil
         }
 
         private func emitTrailingStatement() {
@@ -1297,6 +1399,11 @@ extension SQLFileParser {
             }
             let handle = try FileHandle(forReadingFrom: url)
             fileHandle = handle
+            // Taken from the open handle; a size of 0 leaves the import's bar on statements.
+            if onRead != nil {
+                var info = stat()
+                fileSize = fstat(handle.fileDescriptor, &info) == 0 ? Int64(info.st_size) : 0
+            }
             return handle
         }
 

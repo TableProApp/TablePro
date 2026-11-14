@@ -30,9 +30,10 @@ struct SQLLexicalFeatureMappingTests {
             .backslashEscapesInAngleQuotes, .escapeBytesPrefix, .exponentSignsNeedNoDigits, .formFeedEndsLineComments,
             .atomicRoutineBodies, .triggerBodies, .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains,
             .withoutDashComments, .escapeStringContinuations, .databendTokens, .psqlScripts, .nonASCIISpacesEndNames,
+            .transactionShortForms, .compoundStatementBodies,
         ]
         #expect(grammarBits.isDisjoint(with: curatedOnly))
-        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 43) - 1)
+        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 45) - 1)
     }
 
     @Test("SAP HANA's SQLScript blocks stay in the app's curated grammar and never reach the kit")
@@ -97,11 +98,13 @@ struct SQLLexicalFeatureMappingTests {
         let curatedOnly: SQLLexicalGrammar = [.atomicRoutineBodies, .escapeStringContinuations, .psqlScripts]
         #expect(grammar.isSuperset(of: curatedOnly))
         #expect(SQLLexicalGrammar(pluginFeatures: grammar.pluginFeatures) == grammar.subtracting(curatedOnly))
-        #expect(SQLLexicalGrammar(pluginFeatures: DatabaseType.mysql.lexicalGrammar.pluginFeatures) == DatabaseType.mysql.lexicalGrammar)
+        let mySQL = DatabaseType.mysql.lexicalGrammar
+        #expect(mySQL.contains(.compoundStatementBodies))
+        #expect(SQLLexicalGrammar(pluginFeatures: mySQL.pluginFeatures) == mySQL.subtracting(.compoundStatementBodies))
     }
 
     /// MySQLDriverTests' MySQLLexicalFeatureListTests pins MySQLLexicalFeatures to these same sets.
-    @Test("The grammars the MySQL plugin keeps are the curated ones")
+    @Test("The grammars the MySQL plugin keeps are the curated ones, less the routine body only the app reads")
     func pluginGrammarsMatchTheCuratedTable() {
         let mySQL: SQLLexicalFeatures = [
             .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .hashLineComments,
@@ -110,7 +113,10 @@ struct SQLLexicalFeatureMappingTests {
         let databend: SQLLexicalFeatures = [
             .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .untaggedDollarQuotes,
         ]
-        #expect(SQLLexicalGrammar(pluginFeatures: mySQL) == DatabaseType.mysql.lexicalGrammar)
+        #expect(
+            SQLLexicalGrammar(pluginFeatures: mySQL)
+                == DatabaseType.mysql.lexicalGrammar.subtracting(.compoundStatementBodies)
+        )
         let curatedDatabend = DatabaseType.databend.lexicalGrammar.subtracting([.formFeedEndsLineComments, .databendTokens])
         #expect(SQLLexicalGrammar(pluginFeatures: databend) == curatedDatabend)
     }

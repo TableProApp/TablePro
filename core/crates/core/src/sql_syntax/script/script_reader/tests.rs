@@ -1,7 +1,9 @@
+use crate::sql_syntax::script::copy_rows::COPY_PIECE_BYTES;
+
 use super::*;
 
 fn read_in_pieces(grammar: SqlGrammar, text: &str, piece: usize) -> Vec<ScriptUnit> {
-    let mut reader = ScriptReader::new(grammar).with_copy_overriding(Some("OVERRIDING SYSTEM VALUE"));
+    let mut reader = ScriptReader::new(grammar);
     let mut units = Vec::new();
     let mut start = 0;
     while start < text.len() {
@@ -27,6 +29,19 @@ fn read_every_way(grammar: SqlGrammar, text: &str) -> Vec<ScriptUnit> {
 
 fn texts(units: &[ScriptUnit]) -> Vec<&str> {
     units.iter().map(|unit| unit.text.as_str()).collect()
+}
+
+fn kinds(units: &[ScriptUnit]) -> Vec<&ScriptUnitKind> {
+    units.iter().map(|unit| &unit.kind).collect()
+}
+
+/// Every piece of COPY rows joined, as the session receives them.
+fn copy_data(units: &[ScriptUnit]) -> String {
+    units
+        .iter()
+        .filter(|unit| unit.kind == ScriptUnitKind::CopyData)
+        .map(|unit| unit.text.as_str())
+        .collect()
 }
 
 #[test]
@@ -96,41 +111,241 @@ fn a_sql_server_batch_ends_at_go_and_keeps_its_count() {
 }
 
 #[test]
-fn pg_dump_copy_rows_become_inserts_and_restrict_lines_are_passed_over() {
+fn pg_dump_copy_rows_follow_their_copy_and_restrict_lines_are_passed_over() {
     let dump = "--\n-- PostgreSQL database dump\n--\n\n\\restrict abc123\n\nSET client_encoding = 'UTF8';\n\nCOPY app.child (id, note) FROM stdin;\n1\tit's\n2\t\\N\n\\.\n\nSELECT pg_catalog.setval('app.child_id_seq', 5, true);\n\n\\unrestrict abc123\n";
 
     let units = read_every_way(SqlGrammar::PostgreSql, dump);
 
-    let kinds: Vec<&ScriptUnitKind> = units.iter().map(|unit| &unit.kind).collect();
     assert_eq!(
-        kinds,
+        kinds(&units),
         [
             &ScriptUnitKind::ClientOnly,
             &ScriptUnitKind::Run,
-            &ScriptUnitKind::Run,
+            &ScriptUnitKind::CopyFromStdin,
+            &ScriptUnitKind::CopyData,
+            &ScriptUnitKind::CopyEnd,
             &ScriptUnitKind::Run,
             &ScriptUnitKind::ClientOnly
         ],
         "{units:?}"
     );
+    assert_eq!(units[2].text, "COPY app.child (id, note) FROM stdin");
+    assert_eq!(units[3].text, "1\tit's\n2\t\\N\n");
     assert_eq!(
-        units[2].text,
-        "INSERT INTO app.child (id, note) OVERRIDING SYSTEM VALUE VALUES\n(E'1', E'it''s'),\n(E'2', NULL)"
+        [units[2].line, units[3].line, units[4].line, units[5].line],
+        [9, 10, 12, 14]
     );
-    assert_eq!(units[2].line, 10);
-    assert_eq!(units[3].line, 14);
 }
 
 #[test]
-fn a_copy_with_options_is_refused_and_its_rows_skipped() {
+fn crlf_rows_pass_byte_exact_and_a_crlf_end_marker_is_not_sent() {
     let units = read_every_way(
         SqlGrammar::PostgreSql,
-        "COPY t FROM stdin WITH (FORMAT csv);\n1,2\n\\.\nSELECT 1;\n",
+        "COPY t FROM stdin;\r\n1\tx\r\n\\.x\r\n2\t\\\\.\r\n\\.\r\nSELECT 1;\r\n",
     );
 
-    assert_eq!(units.len(), 2, "{units:?}");
-    assert_eq!(units[0].kind, ScriptUnitKind::Refused(RefusedUnit::CopyFormat));
-    assert_eq!(units[1].text, "SELECT 1");
+    assert_eq!(
+        kinds(&units),
+        [
+            &ScriptUnitKind::CopyFromStdin,
+            &ScriptUnitKind::CopyData,
+            &ScriptUnitKind::CopyEnd,
+            &ScriptUnitKind::Run
+        ],
+        "{units:?}"
+    );
+    assert_eq!(copy_data(&units), "1\tx\r\n\\.x\r\n2\t\\\\.\r\n");
+    assert_eq!(units[3].text, "SELECT 1");
+}
+
+#[test]
+fn rows_without_an_end_marker_run_to_the_end_of_the_file() {
+    let units = read_every_way(SqlGrammar::PostgreSql, "COPY t FROM stdin;\n1\n2");
+
+    assert_eq!(
+        kinds(&units),
+        [
+            &ScriptUnitKind::CopyFromStdin,
+            &ScriptUnitKind::CopyData,
+            &ScriptUnitKind::CopyEnd
+        ],
+        "{units:?}"
+    );
+    assert_eq!(copy_data(&units), "1\n2");
+}
+
+#[test]
+fn an_end_marker_on_the_last_line_without_a_line_break_is_not_sent() {
+    for file in ["COPY t FROM stdin;\n1\n\\.", "COPY t FROM stdin;\n1\n\\.\r"] {
+        let units = read_every_way(SqlGrammar::PostgreSql, file);
+
+        assert_eq!(copy_data(&units), "1\n", "{file:?}");
+        assert_eq!(units.last().map(|unit| &unit.kind), Some(&ScriptUnitKind::CopyEnd));
+    }
+}
+
+#[test]
+fn what_follows_a_copy_on_its_line_runs_after_its_rows() {
+    let units = read_every_way(
+        SqlGrammar::PostgreSql,
+        "COPY t FROM stdin; SELECT 1; -- after\n1\n\\.\nSELECT 2;\n",
+    );
+
+    assert_eq!(
+        kinds(&units),
+        [
+            &ScriptUnitKind::CopyFromStdin,
+            &ScriptUnitKind::CopyData,
+            &ScriptUnitKind::CopyEnd,
+            &ScriptUnitKind::Run,
+            &ScriptUnitKind::Run
+        ],
+        "{units:?}"
+    );
+    assert_eq!(copy_data(&units), "1\n");
+    assert_eq!(texts(&units)[3..], ["SELECT 1", "SELECT 2"]);
+    assert_eq!([units[3].line, units[4].line], [1, 4]);
+}
+
+#[test]
+fn a_second_copy_on_the_line_reads_the_rows_after_the_first() {
+    let units = read_every_way(
+        SqlGrammar::PostgreSql,
+        "COPY a FROM stdin; COPY b FROM stdin;\n1\n\\.\n2\n\\.\nSELECT 3;\n",
+    );
+
+    assert_eq!(
+        kinds(&units),
+        [
+            &ScriptUnitKind::CopyFromStdin,
+            &ScriptUnitKind::CopyData,
+            &ScriptUnitKind::CopyEnd,
+            &ScriptUnitKind::CopyFromStdin,
+            &ScriptUnitKind::CopyData,
+            &ScriptUnitKind::CopyEnd,
+            &ScriptUnitKind::Run
+        ],
+        "{units:?}"
+    );
+    assert_eq!(texts(&units)[3], "COPY b FROM stdin");
+    assert_eq!(units[4].text, "2\n");
+    let lines: Vec<u64> = units.iter().map(|unit| unit.line).collect();
+    assert_eq!(lines, [1, 2, 3, 1, 4, 5, 6]);
+}
+
+#[test]
+fn a_copy_on_a_long_line_waits_for_the_rest_of_its_line() {
+    // The line reaches the length the reader plans a long line at just
+    // after the COPY's `;`, partway through the statement after it.
+    let inserts = "INSERT INTO t VALUES (1);".repeat(2_620);
+    let file = format!("{inserts} COPY t FROM stdin; DELETE FROM t WHERE a = 'tmp';\nkeep me\n\\.\n");
+    assert!((inserts.len() + 19..inserts.len() + 50).contains(&PLAN_STEP));
+
+    let units = read_every_way(SqlGrammar::PostgreSql, &file);
+
+    assert_eq!(units.len(), 2_624, "{:?}", &units[2_615..]);
+    assert_eq!(
+        kinds(&units)[2_620..],
+        [
+            &ScriptUnitKind::CopyFromStdin,
+            &ScriptUnitKind::CopyData,
+            &ScriptUnitKind::CopyEnd,
+            &ScriptUnitKind::Run
+        ]
+    );
+    assert_eq!(copy_data(&units), "keep me\n");
+    assert_eq!(units[2_623].text, "DELETE FROM t WHERE a = 'tmp'");
+    assert_eq!(units[2_623].line, 1);
+}
+
+#[test]
+fn the_rows_start_on_the_line_after_the_copys_terminator() {
+    let units = read_every_way(SqlGrammar::PostgreSql, "COPY t FROM stdin\n;\n1\n\\.\nSELECT 1;\n");
+
+    assert_eq!(texts(&units)[0], "COPY t FROM stdin");
+    assert_eq!(copy_data(&units), "1\n");
+    assert_eq!([units[1].line, units[3].line], [3, 5]);
+}
+
+#[test]
+fn a_copy_with_no_rows_still_ends() {
+    let units = read_every_way(SqlGrammar::PostgreSql, "COPY t FROM stdin;\n\\.\nSELECT 1;\n");
+
+    assert_eq!(
+        kinds(&units),
+        [
+            &ScriptUnitKind::CopyFromStdin,
+            &ScriptUnitKind::CopyEnd,
+            &ScriptUnitKind::Run
+        ],
+        "{units:?}"
+    );
+}
+
+#[test]
+fn a_csv_copy_with_options_passes_its_rows_as_written() {
+    let rows = "id;note\n1;\"two\nlines\"\n2;x\n";
+    let units = read_every_way(
+        SqlGrammar::PostgreSql,
+        &format!("COPY t FROM stdin WITH (FORMAT csv, HEADER true, DELIMITER ';', NULL 'x');\n{rows}\\.\nSELECT 1;\n"),
+    );
+
+    assert_eq!(
+        units[0].text,
+        "COPY t FROM stdin WITH (FORMAT csv, HEADER true, DELIMITER ';', NULL 'x')"
+    );
+    assert_eq!(units[0].kind, ScriptUnitKind::CopyFromStdin);
+    assert_eq!(copy_data(&units), rows);
+    assert_eq!(units.last().map(|unit| unit.text.as_str()), Some("SELECT 1"));
+}
+
+#[test]
+fn a_binary_copy_is_refused_and_its_rows_passed_over() {
+    for copy in [
+        "COPY t FROM stdin (FORMAT binary);",
+        "COPY t FROM STDIN WITH (format 'binary');",
+        "COPY BINARY t FROM stdin;",
+        "COPY t FROM stdin WITH BINARY;",
+    ] {
+        let units = read_every_way(
+            SqlGrammar::PostgreSql,
+            &format!("{copy}\nPGCOPY\n\u{1}\u{2}\n\\.\nSELECT 1;\n"),
+        );
+
+        assert_eq!(
+            kinds(&units),
+            [&ScriptUnitKind::Refused(RefusedUnit::CopyBinary), &ScriptUnitKind::Run],
+            "{copy}: {units:?}"
+        );
+        assert_eq!(units[1].text, "SELECT 1");
+    }
+}
+
+#[test]
+fn long_rows_come_in_pieces_cut_by_size_whatever_the_reads() {
+    let rows: String = (0..60_000).map(|n| format!("{n}\tr\u{e9}sum\u{e9} {n}\n")).collect();
+    let file = format!("COPY t (a, b) FROM stdin;\n{rows}\\.\nSELECT 1;\n");
+
+    let whole = read_in_pieces(SqlGrammar::PostgreSql, &file, file.len());
+    for piece in [4_096, 100_003] {
+        assert_eq!(
+            read_in_pieces(SqlGrammar::PostgreSql, &file, piece),
+            whole,
+            "reads of {piece}"
+        );
+    }
+
+    let pieces: Vec<&ScriptUnit> = whole
+        .iter()
+        .filter(|unit| unit.kind == ScriptUnitKind::CopyData)
+        .collect();
+    assert!(pieces.len() >= 3, "{} pieces", pieces.len());
+    assert!(pieces.iter().all(|piece| piece.text.len() <= COPY_PIECE_BYTES));
+    assert_eq!(copy_data(&whole), rows);
+    assert_eq!(pieces[0].line, 2);
+    let second_starts = 2 + pieces[0].text.matches('\n').count() as u64;
+    assert_eq!(pieces[1].line, second_starts);
+    assert_eq!(whole.last().map(|unit| unit.line), Some(60_003));
 }
 
 #[test]

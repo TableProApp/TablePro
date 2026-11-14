@@ -23,19 +23,24 @@ public struct StreamOptions: Sendable {
     public let lazyContext: LazyContext?
     // Long text with no ref stays whole while this admits it; nil cuts every long value.
     public var textBudget: TextBudget?
+    // Safe Mode is Read-Only. A driver whose `enforcesReadOnlyMode` is true runs the statement in the engine's
+    // read-only mode or refuses it; any other driver runs it as it is.
+    public var enforcesReadOnly: Bool
 
     public init(
         textTruncationBytes: Int = Cell.previewByteLimit,
         inlineBinary: Bool = false,
         maxRows: Int = 100_000,
         lazyContext: LazyContext? = nil,
-        textBudget: TextBudget? = nil
+        textBudget: TextBudget? = nil,
+        enforcesReadOnly: Bool = false
     ) {
         self.textTruncationBytes = textTruncationBytes
         self.inlineBinary = inlineBinary
         self.maxRows = maxRows
         self.lazyContext = lazyContext
         self.textBudget = textBudget
+        self.enforcesReadOnly = enforcesReadOnly
     }
 
     public static let `default` = StreamOptions()

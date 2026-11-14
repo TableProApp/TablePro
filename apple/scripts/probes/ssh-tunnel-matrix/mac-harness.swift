@@ -60,9 +60,7 @@ nonisolated final class PromptKeyboardInteractiveProvider: KeyboardInteractivePr
 nonisolated extension LibSSH2Tunnel: HarnessTunnel {}
 
 nonisolated enum MacTunnelOpener {
-    private static let portAttempts = 5
-
-    // What SSHTunnelManager.createTunnel does, with a free port in place of its random one.
+    // What SSHTunnelManager.createTunnel does, with its default port candidates.
     static func open(_ options: HarnessOptions) async throws -> LibSSH2Tunnel {
         let config = try configuration(options)
         let target = try HarnessOptions.endpoint(options.target)
@@ -74,28 +72,20 @@ nonisolated enum MacTunnelOpener {
             keyboardInteractivePromptProvider: nil
         )
         let deadline = ConnectionDeadline(configuredSeconds: nil)
-        var attempt = 1
-        while true {
-            let localPort = try LocalClient.freePort()
-            do {
-                let tunnel = try await Task.detached {
-                    try await LibSSH2TunnelFactory.createTunnel(
-                        connectionId: UUID(),
-                        config: config,
-                        credentials: credentials,
-                        destination: destination,
-                        localPort: localPort,
-                        deadline: deadline
-                    )
-                }.value
-                tunnel.startForwarding(destination: destination)
-                tunnel.startKeepAlive()
-                return tunnel
-            } catch SSHTunnelError.tunnelCreationFailed(let message)
-                where message.contains("already in use") && attempt < portAttempts {
-                attempt += 1
-            }
-        }
+        let listener = try LibSSH2TunnelFactory.bindLocalListener(candidates: Array(60_000...65_000).shuffled())
+        let tunnel = try await Task.detached {
+            try await LibSSH2TunnelFactory.createTunnel(
+                connectionId: UUID(),
+                config: config,
+                credentials: credentials,
+                destination: destination,
+                listener: listener,
+                deadline: deadline
+            )
+        }.value
+        tunnel.startForwarding(destination: destination)
+        tunnel.startKeepAlive()
+        return tunnel
     }
 
     private static func configuration(_ options: HarnessOptions) throws -> SSHConfiguration {

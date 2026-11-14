@@ -21,12 +21,14 @@ struct DashboardTileBoardTests {
         let changes = PassthroughSubject<UUID?, Never>()
         var catalog: DashboardSavedQueryCatalog
         var executed: [String] = []
+        var executedIn: [DatabaseScope?] = []
         var answer: (String) throws -> QueryResult = { _ in Fixture.result(columns: ["count"], rows: [["12"]]) }
         var clock = Date(timeIntervalSince1970: 1_000_000)
         var gate: any ExecutionGate = AlwaysAllowGate()
         var holdExecution: AsyncGate?
         var loads = 0
         var safeModeLevel = SafeModeLevel.silent
+        var runsIn: DatabaseScope?
 
         init(favorites: [SQLFavorite]) throws {
             suite = try EphemeralDefaults()
@@ -51,14 +53,16 @@ struct DashboardTileBoardTests {
                 chartsAvailable: { chartsAvailable },
                 nullDisplay: { "NULL" },
                 storage: storage,
-                now: { self.clock }
+                now: { self.clock },
+                runsIn: { _ in self.runsIn }
             )
             return DashboardTileBoard(
                 connectionId: connectionId,
                 databaseType: databaseType,
                 environment: environment
-            ) { sql in
+            ) { sql, scope in
                 self.executed.append(sql)
+                self.executedIn.append(scope)
                 if let hold = self.holdExecution {
                     await hold.wait()
                 }
@@ -173,6 +177,34 @@ struct DashboardTileBoardTests {
         #expect(await gate.requests.count == 2)
 
         fixture.safeModeLevel = .alertFull
+        await board.refresh(force: false)
+        #expect(await gate.requests.count == 3)
+    }
+
+    @Test("On Oracle a tile is asked again when the session's schema moves, and once its catalog read is a minute old")
+    func oracleTileAsksAgainForItsSchema() async throws {
+        let saved = favorite()
+        let fixture = try Fixture(favorites: [saved])
+        let gate = CountingGate()
+        fixture.gate = gate
+        fixture.runsIn = DatabaseScope(connectionId: fixture.connectionId, database: "FREEPDB1", schema: "HR")
+        let board = fixture.makeBoard(databaseType: .oracle)
+        board.add(favoriteId: saved.id)
+        let tile = try #require(board.tiles.first)
+        try await waitUntil { board.state(for: tile.id).display != nil }
+
+        await board.refresh(force: false)
+        #expect(await gate.requests.count == 1)
+        #expect(await gate.requests.first?.runsIn?.schema == "HR")
+        #expect(fixture.executedIn.last == fixture.runsIn)
+
+        fixture.runsIn = DatabaseScope(connectionId: fixture.connectionId, database: "FREEPDB1", schema: "APP")
+        await board.refresh(force: false)
+        #expect(await gate.requests.count == 2)
+        #expect(await gate.requests.last?.runsIn?.schema == "APP")
+        #expect(fixture.executedIn.last == fixture.runsIn)
+
+        fixture.clock.addTimeInterval(61)
         await board.refresh(force: false)
         #expect(await gate.requests.count == 3)
     }

@@ -29,7 +29,8 @@ internal struct MultiLineEditorView: View {
                     font: themeEngine.valueFont,
                     movesFocusOnTab: true,
                     style: .code,
-                    marksInvisibleCharacters: settingsManager.dataGrid.showInvisibleCharacters
+                    marksInvisibleCharacters: settingsManager.dataGrid.showInvisibleCharacters,
+                    documentID: context.documentID.map { AnyHashable($0) }
                 )
                 .valueWell(clipsContent: true)
                 .overlay(alignment: .topLeading) { placeholder }

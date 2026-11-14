@@ -417,6 +417,45 @@ struct RowWriteRoutingTests {
         #expect(plugin.generatedInserts[0] == [.text(PluginRowWritingDriver.defaultSentinel), "x"])
     }
 
+    @Test("A SQL Server row save names the database the row was read in, in front of its schema")
+    func sqlServerSaveNamesTheDatabase() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [.success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0))]
+        let details = [
+            ColumnInfo(name: "id", typeName: "int", isPrimaryKey: true, isNullable: false, ordinalPosition: 0),
+            ColumnInfo(name: "note", typeName: "nvarchar", ordinalPosition: 1)
+        ]
+        let vm = RowDetailViewModel(
+            columns: details,
+            rows: [Row(cells: [.text("1"), .text("old")])],
+            initialIndex: 0,
+            table: TableInfo(name: "orders"),
+            session: ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "staging"),
+            columnDetails: details,
+            databaseType: .mssql,
+            schema: "dbo",
+            database: "shop"
+        )
+        vm.startEditing()
+        vm.setEditedValue("new", at: 1)
+
+        let saved = await vm.saveChanges()
+
+        #expect(saved)
+        #expect(driver.executedQueries == ["UPDATE [shop].[dbo].[orders] SET [note] = N'new' WHERE [id] = 1"])
+    }
+
+    @Test("A SQL Server delete batch names the database in front of the schema")
+    func sqlServerDeleteBatchNamesTheDatabase() throws {
+        let details = [ColumnInfo(name: "id", typeName: "int", isPrimaryKey: true, isNullable: false, ordinalPosition: 0)]
+        let batch = try RowWriteBatch.delete(
+            table: "orders", schema: "dbo", database: "shop", type: .mssql, driver: MockDatabaseDriver(),
+            columns: ["id"], columnDetails: details, locator: RowLocator(row: ["1"], keyValues: [(column: "id", value: "1")])
+        )
+
+        #expect(batch?.statements == ["DELETE FROM [shop].[dbo].[orders] WHERE [id] = 1"])
+    }
+
     // D1's plugin generates no row writes; behind a row writer every edit failed with "cannot write this change".
     @Test("A D1 edit, delete and insert become SQLite statements keyed on the primary key")
     func cloudflareD1WritesAreSQL() throws {

@@ -218,11 +218,15 @@ public actor MCPConnectionBridge {
 
     func insertRows(_ operation: ApprovedOperation, table: String) async throws -> JsonValue {
         let inserted = try await access.runInserts(operation)
-        return .object([
+        var reply: [String: JsonValue] = [
             "table": .string(table),
             "rows_submitted": .int(operation.statements.count),
-            "rows_affected": .int(inserted)
-        ])
+            "rows_affected": .int(inserted.affected)
+        ]
+        if let notice = inserted.notice {
+            reply["status_message"] = .string(notice)
+        }
+        return .object(reply)
     }
 
     func transactionControl(_ operation: ApprovedOperation, action: String) async throws -> JsonValue {

@@ -107,6 +107,21 @@ public sealed class QueryTabTests
         Assert.Equal("clear", _results.Shown[^1]);
     }
 
+    // Read as each run starts, so a change in Settings applies from the next run on.
+    [Fact]
+    public async Task EachRunKeepsTheResultsSettingsHeldWhenItStarted()
+    {
+        var settings = new AppSettings();
+        var tab = new QueryTab("Query 2", _session, _view, _results, DataModel.Relational, () => settings);
+
+        await tab.RunAsync();
+        Assert.Equal(0, _results.KeptSets);
+
+        settings = settings with { ResultSetsKeptPerRun = 50 };
+        await tab.RunAsync();
+        Assert.Equal(50, _results.KeptSets);
+    }
+
     [Fact]
     public async Task ATabClosedAfterItsRunLetsGoOfEachPieceOnce()
     {

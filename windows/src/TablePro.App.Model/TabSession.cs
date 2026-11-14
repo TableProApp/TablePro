@@ -97,6 +97,9 @@ public interface ITabRun : IDisposable
 
     ResultSet? GetResultSet(int index);
 
+    // The tab shows the set no more, so the core lets go of its rows.
+    void ReleaseSet(int index);
+
     void Cancel();
 }
 
@@ -225,6 +228,8 @@ internal sealed class CoreTabRun(QueryRun run) : ITabRun
         run.ReadEventsAsync(cancellationToken);
 
     public ResultSet? GetResultSet(int index) => run.GetResultSet(index);
+
+    public void ReleaseSet(int index) => run.ReleaseSet(index);
 
     public void Cancel() => run.Cancel();
 

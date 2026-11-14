@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 extension MainContentCoordinator {
     // The gate's own answer, read as a run starts, so every read the app sends for the user carries the level its
@@ -21,34 +22,22 @@ extension MainContentCoordinator {
         filters.filter { $0.isEnabled && $0.isRawSQL }.map(\.value)
     }
 
-    private static func rawFilterKey(_ filters: [TableFilter]) -> String {
-        Set(rawFilterExpressions(filters)).sorted().joined(separator: "\n")
-    }
-
-    // A raw filter is text the user typed, inside a query no gate reads below the Full levels. At Read-Only one that
-    // calls a function goes to the gate before the browse or a count sends it, and the gate asks where the driver cannot
-    // hold the engine to read-only. Once per filter text and tab: its page turns, sorts and counts run what was approved,
-    // until a profile or a floor holds the level, after which every run goes to the gate, which refuses.
-    func rawFilterNeedsReadOnlyGate(_ filters: [TableFilter], tabId: UUID) -> Bool {
+    // A raw filter is text the user typed, inside a query no gate reads below the Full levels. At Read-Only, where the
+    // driver cannot hold the engine to read-only, one that calls a function goes to the gate, which refuses it, before
+    // a browse, page turn, sort or count sends it. On Oracle and Dameng a bare name can call one too, and only the
+    // catalog the gate reads against the whole query can tell it from a column, so every raw filter goes there.
+    func rawFilterNeedsReadOnlyGate(_ filters: [TableFilter]) -> Bool {
         let expressions = Self.rawFilterExpressions(filters)
-        guard !expressions.isEmpty, runsAtReadOnly else { return false }
-        let approved = approvedReadOnlyRawFilters[tabId] == Self.rawFilterKey(filters) && !readOnlyLevelIsHeld
-        guard !approved else { return false }
+        guard !expressions.isEmpty, runsAtReadOnly,
+              ExecutionGateProvider.readOnlyFunctionPolicy(
+                  connectionId: connectionId, databaseType: connection.type, in: services.databaseManager
+              ).functionsCanWrite
+        else { return false }
+        if SQLBareNameCalls.engines.contains(connection.type.rawValue) { return true }
         return expressions.contains { ReadOnlyFunctionCalls.callsUnlistedFunction($0, databaseType: connection.type) }
     }
 
-    func approveReadOnlyRawFilter(_ filters: [TableFilter], tabId: UUID) {
-        guard !readOnlyLevelIsHeld else { return }
-        approvedReadOnlyRawFilters[tabId] = Self.rawFilterKey(filters)
-    }
-
-    private var readOnlyLevelIsHeld: Bool {
-        ExecutionGateProvider.readOnlyFunctionPolicy(
-            connectionId: connectionId, databaseType: connection.type, in: services.databaseManager
-        ).levelIsHeld
-    }
-
-    func rawFilterRequest(sql: String, canPrompt: Bool) -> OperationRequest {
+    func rawFilterRequest(sql: String, canPrompt: Bool, scope: DatabaseScope?) -> OperationRequest {
         OperationRequest(
             connectionId: connectionId,
             databaseType: connection.type,
@@ -56,7 +45,8 @@ extension MainContentCoordinator {
             kind: .readQuery,
             caller: .userInterface,
             capabilities: canPrompt ? .interactiveUser : CallerCapabilities.interactiveUser.union(.cannotPrompt),
-            operationDescription: String(localized: "Execute Query")
+            operationDescription: String(localized: "Execute Query"),
+            runsIn: scope
         )
     }
 }

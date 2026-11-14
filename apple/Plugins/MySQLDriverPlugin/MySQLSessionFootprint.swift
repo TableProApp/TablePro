@@ -29,7 +29,7 @@ import TableProPluginKit
 /// Every ambiguity resolves toward "the session is holding something". The cost of that is only
 /// that a connection keeps its slot, which is what happens today; the cost of the opposite is
 /// destroying a user's transaction or temporary table without telling them.
-struct MySQLSessionFootprint: Equatable {
+nonisolated struct MySQLSessionFootprint: Equatable {
     private(set) var hasOpenTransaction = false
     private(set) var hasTemporaryTables = false
     private(set) var hasUserVariables = false

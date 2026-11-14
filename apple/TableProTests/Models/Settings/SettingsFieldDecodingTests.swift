@@ -169,6 +169,20 @@ struct SettingsFieldDecodingTests {
         #expect(decoded.titleShowsLocation == true)
     }
 
+    @Test("Data Grid settings saved before results kept per run keep every result, and a choice round-trips")
+    func resultSetsKeptPerRunDefaultsToNoLimit() throws {
+        let legacy = try decode(DataGridSettings.self, #"{"showRowNumbers":false}"#)
+        #expect(legacy.resultSetsKeptPerRun == 0)
+        #expect(legacy.resultSetLimitPerRun == nil)
+
+        var chosen = DataGridSettings.default
+        chosen.resultSetsKeptPerRun = 50
+        let decoded = try decode(DataGridSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.resultSetLimitPerRun == 50)
+
+        #expect(try decode(DataGridSettings.self, #"{"resultSetsKeptPerRun":-3}"#).resultSetLimitPerRun == nil)
+    }
+
     @Test("Color values by type is off by default and in stored value colors without it, and a choice round-trips")
     func valueColorsDefaultOff() throws {
         #expect(ValueColorSettings.default.colorsValuesByType == false)

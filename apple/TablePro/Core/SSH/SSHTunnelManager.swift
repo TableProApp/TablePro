@@ -23,10 +23,6 @@ actor SSHTunnelManager: TunnelManaging {
     /// Static registry for synchronous termination during app shutdown
     private static let tunnelRegistry = OSAllocatedUnfairLock(initialState: [UUID: LibSSH2Tunnel]())
 
-    /// Prevents App Nap from throttling SSH keepalive timers while tunnels are active.
-    /// Held as long as at least one tunnel exists; released when the last tunnel closes.
-    private var appNapActivity: NSObjectProtocol?
-
     init(localPortCandidates: @escaping @Sendable () -> [Int] = { Array(60_000...65_000).shuffled() }) {
         self.localPortCandidates = localPortCandidates
     }
@@ -122,7 +118,6 @@ actor SSHTunnelManager: TunnelManaging {
         tunnel.startForwarding(destination: destination)
         tunnel.startKeepAlive()
 
-        updateAppNapState()
         Self.logger.info("Tunnel created for \(connectionId) on local port \(listener.port)")
         return listener.port
     }
@@ -136,7 +131,6 @@ actor SSHTunnelManager: TunnelManaging {
     private func discardTunnel(connectionId: UUID) async throws {
         guard let tunnel = tunnels.removeValue(forKey: connectionId) else { return }
         Self.tunnelRegistry.withLock { $0[connectionId] = nil }
-        updateAppNapState()
         tunnel.close()
     }
 
@@ -145,7 +139,6 @@ actor SSHTunnelManager: TunnelManaging {
         let currentTunnels = tunnels
         tunnels.removeAll()
         Self.tunnelRegistry.withLock { $0.removeAll(); return }
-        updateAppNapState()
 
         for (_, tunnel) in currentTunnels {
             tunnel.close()
@@ -215,25 +208,7 @@ actor SSHTunnelManager: TunnelManaging {
     private func handleTunnelDeath(connectionId: UUID) async {
         guard tunnels.removeValue(forKey: connectionId) != nil else { return }
         Self.tunnelRegistry.withLock { $0[connectionId] = nil }
-        updateAppNapState()
         Self.logger.warning("Tunnel died for connection \(connectionId)")
         await DatabaseManager.shared.handleSSHTunnelDied(connectionId: connectionId)
-    }
-
-    // MARK: - App Nap Prevention
-
-    /// Acquires or releases an App Nap activity token based on whether tunnels exist.
-    private func updateAppNapState() {
-        if !tunnels.isEmpty && appNapActivity == nil {
-            appNapActivity = ProcessInfo.processInfo.beginActivity(
-                options: .userInitiatedAllowingIdleSystemSleep,
-                reason: "SSH tunnel keepalive requires timely execution"
-            )
-            Self.logger.debug("App Nap prevention acquired")
-        } else if tunnels.isEmpty, let activity = appNapActivity {
-            ProcessInfo.processInfo.endActivity(activity)
-            appNapActivity = nil
-            Self.logger.debug("App Nap prevention released")
-        }
     }
 }

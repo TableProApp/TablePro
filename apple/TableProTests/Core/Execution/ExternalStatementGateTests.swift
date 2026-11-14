@@ -20,7 +20,8 @@ struct ExternalStatementGateTests {
         loadsExtensions: Bool = false,
         allowsDestructive: Bool = true,
         allowsMultiStatement: Bool = false,
-        destructiveAlternative: String? = nil
+        destructiveAlternative: String? = nil,
+        allowsOnlyDataStatements: Bool = false
     ) -> ExternalStatementGate.Statement {
         ExternalStatementGate.Statement(
             sql: sql,
@@ -30,7 +31,8 @@ struct ExternalStatementGateTests {
             loadsExtensions: loadsExtensions,
             allowsDestructive: allowsDestructive,
             allowsMultiStatement: allowsMultiStatement,
-            destructiveAlternative: destructiveAlternative
+            destructiveAlternative: destructiveAlternative,
+            allowsOnlyDataStatements: allowsOnlyDataStatements
         )
     }
 
@@ -49,6 +51,55 @@ struct ExternalStatementGateTests {
     func readsPass() throws {
         let classification = try ExternalStatementGate.classify(statement("SELECT 1"))
         #expect(classification.tier == .safe)
+    }
+
+    @Test("A caller held to data statements is refused a grant, a role change or a SET, and only that caller", arguments: [
+        "GRANT ALL ON orders TO app", "ALTER ROLE app WITH SUPERUSER", "SET search_path = evil", "SELECT set_config('role', 'admin', false)",
+    ])
+    func dataStatementsOnlyRefusesTheRest(sql: String) {
+        #expect(refusal(statement(sql, allowsOnlyDataStatements: true)) == .denied(ExternalStatementGate.dataStatementRefusal))
+        #expect(refusal(statement(sql)) == nil)
+    }
+
+    @Test("A caller held to data statements runs reads and row changes")
+    func dataStatementsOnlyRunsRowWork() {
+        for sql in ["SELECT * FROM orders", "UPDATE orders SET paid = true WHERE id = 1", "INSERT INTO orders (id) VALUES (1)"] {
+            #expect(refusal(statement(sql, allowsOnlyDataStatements: true)) == nil)
+        }
+    }
+
+    // An engine with a query language of its own is read by its own reader against its curated list.
+    @Test("A caller held to data statements runs data and refuses a definition on an engine with its own language", arguments: [
+        (DatabaseType.mongodb, "db.orders.insertOne({a: 1})", true),
+        (.kafka, "PRODUCE INTO \"orders\" KEY \"k\" VALUE \"v\"", true),
+        (.surrealdb, "CREATE person:one SET name = 'a'", true),
+        (.surrealdb, "DEFINE TABLE person SCHEMAFULL", false),
+        (.surrealdb, "SELECT fn::mk() FROM ONLY person:one", false),
+    ])
+    func dataStatementsOnlyReadsOtherLanguages(type: DatabaseType, sql: String, runs: Bool) {
+        #expect(QueryClassifier.isSQLDataStatement(sql, databaseType: type) == nil)
+        let refused = refusal(statement(sql, databaseType: type, allowsOnlyDataStatements: true))
+        #expect(refused == (runs ? nil : .denied(ExternalStatementGate.dataStatementRefusal)))
+    }
+
+    @Test("Edit runs a SurrealQL DELETE of one record by id, and refuses one of a table or a range as destructive", arguments: [
+        ("DELETE person:three", false),
+        ("DELETE person", true),
+        ("DELETE person:1..3", true),
+    ])
+    func surrealRecordDeleteInEdit(sql: String, refused: Bool) {
+        let edit = statement(sql, databaseType: .surrealdb, allowsDestructive: false, allowsOnlyDataStatements: true)
+        #expect(refusal(edit) == (refused ? .denied(ExternalStatementGate.destructiveRefusal) : nil))
+    }
+
+    @Test("A write into a keyspace or database the engine keeps its own state in is a system scope")
+    func systemScopesOfOtherLanguages() {
+        #expect(QueryClassifier.writesSystemScope(database: "system_auth", schema: nil, databaseType: .cassandra))
+        #expect(QueryClassifier.writesSystemScope(database: "audit", schema: nil, databaseType: .scylladb))
+        #expect(!QueryClassifier.writesSystemScope(database: "audit", schema: nil, databaseType: .cassandra))
+        #expect(QueryClassifier.writesSystemScope(database: "admin", schema: nil, databaseType: .mongodb))
+        #expect(!QueryClassifier.writesSystemScope(database: "shop", schema: nil, databaseType: .mongodb))
+        #expect(!QueryClassifier.writesSystemScope(database: "admin", schema: nil, databaseType: .postgresql))
     }
 
     @Test("A MongoDB read passes a connection that is read only for external clients", arguments: [

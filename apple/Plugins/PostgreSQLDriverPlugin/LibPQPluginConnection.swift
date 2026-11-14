@@ -76,6 +76,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _lastTransactionState: LibPQTransactionState = .idle
     private var _hasLostConnection = false
     private var _interruptsBlockedCallOnDisconnect = false
+    // A copy-in sends its own cancel request (LibPQCopyIn), so none outlives it.
+    private var copyInRunning = false
     private var serverMessages: Unmanaged<LibPQServerMessageSink>?
     private var _standardConformingStrings = true
     // Queue-confined. Non-nil until every schema/flavor/catalog bootstrap probe has completed.
@@ -711,7 +713,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // MARK: - Query Cancellation
 
     func cancelCurrentQuery() {
-        guard cancellationGate.cancel() != nil else { return }
+        guard cancellationGate.cancel() != nil, !stateLock.withLock({ copyInRunning }) else { return }
         requestServerCancelOnCurrentConnection()
     }
 
@@ -951,6 +953,28 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
+    // One dispatch holds the connection from the COPY to its last result: a PQexec sent in between would end the copy.
+    func copyFromStandardInput(
+        _ statement: String,
+        rows: PluginCopyData,
+        readOnly: LibPQReadOnlyTransaction.Reason?
+    ) async throws -> LibPQPluginQueryResult {
+        let statementToRun = String(statement)
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
+            guard let readOnly else { return try copyFromStandardInputSync(statementToRun, rows: rows, conn: conn) }
+            if let ended = sessionEndedBeforeSending(conn) { throw ended }
+            return try LibPQReadOnlyTransaction.run(
+                state: transactionStateOnQueue().sessionTransactionState,
+                reason: readOnly,
+                send: { try runReadOnlyControl($0, on: conn) }
+            ) {
+                try copyFromStandardInputSync(statementToRun, rows: rows, conn: conn)
+            }
+        }
+    }
+
     // MARK: - Server Information
 
     func serverVersion() -> String? {
@@ -1056,6 +1080,78 @@ final class LibPQPluginConnection: @unchecked Sendable {
             generation: generation,
             cancelsOutput: cancelsOutput,
             allowsSideQueries: true
+        )
+    }
+
+    // A statement that is not a copy-in, the server's refusal of the COPY among them, reads as any other result.
+    private func copyFromStandardInputSync(
+        _ statement: String,
+        rows: PluginCopyData,
+        conn: OpaquePointer
+    ) throws -> LibPQPluginQueryResult {
+        // Set around the whole generation, so no Stop finds it running without the flag.
+        stateLock.withLock { copyInRunning = true }
+        let generation = cancellationGate.beginQuery()
+        defer {
+            cancellationGate.endQuery(generation)
+            stateLock.withLock { copyInRunning = false }
+        }
+        defer { refreshStandardConformingStrings(from: conn) }
+
+        // PQexec drained them itself; PQsendQuery refuses while any are left.
+        let cancelsOutput = cancelsAbandonedOutput(conn)
+        finishAbandonedResults(conn, cancellingOutput: cancelsOutput)
+        if let ended = sessionEndedBeforeSending(conn) { throw ended }
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+        let stop = LibPQCopyIn.Stop(
+            requested: { [cancellationGate] in cancellationGate.isCancelled(generation) },
+            closing: { [self] in isShuttingDown },
+            sendCancelRequest: { [self] in sendServerCancelAndWait(on: conn) }
+        )
+        guard let start = LibPQCopyIn.begin(statement, conn: conn, stop: stop) else {
+            throw lostConnection(getError(from: conn), on: conn, sent: true)
+        }
+        recordTransactionState(of: conn)
+        guard let copy = LibPQCopyState.copy(of: start), copy.direction == .copyIn else {
+            return try queryResult(
+                from: start,
+                connection: conn,
+                generation: generation,
+                cancelsOutput: cancelsOutput,
+                allowsSideQueries: true
+            )
+        }
+        PQclear(start)
+
+        let sent = LibPQCopyIn.send(rows, format: copy.format, conn: conn, stop: stop)
+        recordTransactionState(of: conn)
+        guard let result = sent.result else {
+            throw lostConnection(getError(from: conn), on: conn, sent: true)
+        }
+        defer { PQclear(result) }
+        switch sent.interruption {
+        case .cancelled:
+            throw CancellationError()
+        case .source(let error):
+            throw error
+        case .binaryFormat:
+            throw LibPQPluginError(message: LibPQCopyIn.binaryRefusal, sqlState: nil, detail: nil)
+        case .connection, nil:
+            break
+        }
+        guard PQresultStatus(result) == PGRES_COMMAND_OK else {
+            let error = getResultError(from: result)
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
+            throw lostConnection(error, on: conn, sent: true)
+        }
+        return LibPQPluginQueryResult(
+            columns: [],
+            columnOids: [],
+            columnTypeNames: [],
+            rows: [],
+            affectedRows: getAffectedRows(from: result),
+            commandTag: getCommandTag(from: result),
+            isTruncated: false
         )
     }
 
@@ -1894,6 +1990,23 @@ extension LibPQPluginConnection {
 
 // Outside the class body, which is at its length limit. An extension in this file still reaches its private members.
 extension LibPQPluginConnection {
+    // The call waits for it, unlike the queued requests: PQcancel returns once the server has the request, so it
+    // cannot reach a statement the call sends later. PQcancel has no timeout of its own, so the wait ends at the
+    // connect timeout or a disconnect.
+    fileprivate func sendServerCancelAndWait(on connection: OpaquePointer) {
+        guard !suppressServerSideCancel, let cancelObject = PQgetCancel(connection) else { return }
+        let request = LibPQCancelRequest(cancelObject)
+        let delivered = DispatchSemaphore(value: 0)
+        Self.cancellationQueue.async {
+            request.perform()
+            delivered.signal()
+        }
+        let deadline = DispatchTime.now() + .milliseconds(connectTimeout.milliseconds)
+        while delivered.wait(timeout: .now() + .milliseconds(100)) == .timedOut {
+            guard !isShuttingDown, DispatchTime.now() < deadline else { return }
+        }
+    }
+
     // `executeReadOnlyStatement` bounded at the source: the statement stops at `bound`, so no more than that is ever
     // held. Stopping ends only the read-only transaction this opened. Unknown column types are looked up after its
     // ROLLBACK, since a cancel can leave it aborted.

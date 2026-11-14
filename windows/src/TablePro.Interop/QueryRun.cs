@@ -68,6 +68,19 @@ public sealed class QueryRun : IDisposable
         }
     }
 
+    // The run lets go of the set's rows, which go once no ResultSet holds them; GetResultSet gives null for it after.
+    public void ReleaseSet(int index)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        lock (_gate)
+        {
+            if (!_disposed)
+            {
+                _run.ReleaseSet(checked((uint)index));
+            }
+        }
+    }
+
     public void Cancel()
     {
         lock (_gate)

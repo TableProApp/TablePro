@@ -389,8 +389,12 @@ internal sealed class FakeRun(IReadOnlyList<QueryEvent> events) : ITabRun
         }
     }
 
+    public List<int> Released { get; } = [];
+
     // A fake run's sets live in no core.
     public ResultSet? GetResultSet(int index) => null;
+
+    public void ReleaseSet(int index) => Released.Add(index);
 
     public void Cancel() => Cancels++;
 
@@ -426,10 +430,14 @@ internal sealed class FakeResults : IResultsView
 
     public event EventHandler? ShownSetChanged;
 
-    public async Task ShowRunAsync(ITabRun run, GridSort sort, int visibleColumns, CancellationToken cancellationToken)
+    public int KeptSets { get; private set; }
+
+    public async Task ShowRunAsync(ITabRun run, GridSort sort, int visibleColumns, int keptSets,
+        CancellationToken cancellationToken)
     {
         Shown.Add("run");
         RunSort = sort;
+        KeptSets = keptSets;
         ResultSetCount = 0;
         Outcome = null;
         RowsAffected = null;

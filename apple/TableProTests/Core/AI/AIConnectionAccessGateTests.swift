@@ -300,7 +300,8 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
         return ChatToolContext(
             connectionId: connectionId,
             bridge: MCPConnectionBridge(),
-            authPolicy: MCPAuthPolicy()
+            authPolicy: MCPAuthPolicy(),
+            chatMode: .agent
         ) { id in
             await MainActor.run {
                 AIConnectionAccessGate.policy(

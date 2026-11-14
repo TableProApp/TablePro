@@ -53,6 +53,8 @@ struct DriverWrittenStatement {
     var lookup: RowLookup?
     // A keyed write through a view, held to its one row: the key is the view's answer, not the table's own.
     var keyedRowCount: Int?
+    // The driver's own count of the rows the statement matches.
+    var matchedRowCount: Int?
 }
 
 @MainActor
@@ -597,7 +599,8 @@ struct RowChangeStatementFactory {
                 lookup: write.lookup.map(RowLookup.init),
                 keyedRowCount: write.lookup == nil && holdsKeyedWritesToOneRow
                     ? oneRowCount(of: write, keyed: keyed)
-                    : nil
+                    : nil,
+                matchedRowCount: write.expectedRowCount
             )
         }
     }
@@ -666,7 +669,7 @@ struct RowChangeStatementFactory {
     }
 
     private func oneRowCount(of write: PluginRowWrite, keyed: PluginKeyedChanges) -> Int? {
-        guard DataWriteRowCounts.areMeaningful(for: databaseType),
+        guard DataWriteRowCounts.countsMatchedRows(for: databaseType),
               write.rowIndices.count == 1,
               let row = write.rowIndices.first
         else { return nil }

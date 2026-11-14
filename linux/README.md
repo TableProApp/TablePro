@@ -474,8 +474,9 @@ connection, on a session of its own so what the file sets stays there.
 The file is read as it runs, so its size does not matter. It is split
 as the engine's client splits it: at `;`, at a MySQL `DELIMITER`, and at
 SQL Server `GO` lines, a `GO 3` batch running three times. Files from
-`pg_dump` load too: their `COPY ... FROM stdin` rows run as INSERTs, and
-the `\restrict` and `\unrestrict` lines that only psql reads are passed
+`pg_dump` load too: their `COPY ... FROM stdin` rows go through
+PostgreSQL's copy protocol as psql sends them, text or CSV, and the
+`\restrict` and `\unrestrict` lines that only psql reads are passed
 over. Any other psql command, such as `\connect`, is refused with its
 line.
 

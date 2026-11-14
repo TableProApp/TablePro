@@ -139,6 +139,18 @@ extension SQLStatementTiering {
         }
     }
 
+    // SurrealQL's fn:: and api:: calls run a body the database stores, which can define, grant or write, and file::
+    // reads and writes a bucket. Measured on 2.7.0 and 3.3.5: `SELECT fn::mk()` ran the DEFINE TABLE in its body.
+    func callsSurrealStoredCode(_ code: StatementCode) -> Bool {
+        guard databaseTypeId == Self.surrealDB else { return false }
+        return code.tokens.indices.contains { index in
+            code.tokens[index].word.map(Self.surrealStoredCodeNamespaces.contains) == true
+                && code.isSymbol(Self.colon, at: index + 1) && code.isSymbol(Self.colon, at: index + 2)
+        }
+    }
+
+    private static let surrealStoredCodeNamespaces: Set<String> = ["FN", "API", "FILE"]
+
     // KingbaseES has it in Oracle mode only, and its type id cannot say which mode a server runs.
     static let enginesWithSequencePseudoColumns: Set<String> = [
         "Oracle", "SAP HANA", "Snowflake", "Dameng", "MariaDB", "KingbaseES",

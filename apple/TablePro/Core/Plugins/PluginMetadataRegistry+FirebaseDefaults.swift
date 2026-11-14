@@ -75,7 +75,8 @@ extension PluginMetadataRegistry {
             exactRowCountIsFullScan: realtimeDatabase,
             supportsMatchAnyFilters: !realtimeDatabase,
             columnsAreSampled: true,
-            supportsPrincipalConnectionLimit: false
+            supportsPrincipalConnectionLimit: false,
+            dataCommands: realtimeDatabase ? realtimeDatabaseDataCommands : firestoreDataCommands
         )
     }
 
@@ -103,6 +104,12 @@ extension PluginMetadataRegistry {
         )
     }
 }
+
+// Firestore REST v1 as the driver sends it: createDocument on a collection, patch and delete on a document.
+private let firestoreDataCommands: Set<String> = ["POST /{collection}", "PATCH /{document}", "DELETE /{document}"]
+
+// Realtime Database REST reference: PUT, PATCH, POST and DELETE on a node.
+private let realtimeDatabaseDataCommands: Set<String> = ["PUT /{path}", "PATCH /{path}", "POST /{path}", "DELETE /{path}"]
 
 private let firebaseCompletions: [CompletionEntry] = [
     CompletionEntry(label: "GET collection", insertText: "GET users?pageSize=20"),

@@ -347,7 +347,7 @@ internal enum LibSSH2TunnelFactory {
                                 )
                             }
                         } catch {
-                            // Clean up nextSession and fds[1]; relay task owns fds[0]
+                            // Clean up nextSession and fds[1]; the hop's pump owns fds[0]
                             tablepro_libssh2_session_disconnect(nextSession, "Error")
                             libssh2_session_free(nextSession)
                             Darwin.close(fds[1])
@@ -610,8 +610,8 @@ internal enum LibSSH2TunnelFactory {
         libssh2_session_free(chain.session)
         Darwin.close(chain.socketFD)
 
-        // Wake every relay before waiting. A relay may be blocked in `poll` or a serialized
-        // libssh2 call, and neither a Swift Task cancellation nor freeing the handle is safe.
+        // Stop every hop before waiting. A hop's pump may be inside a libssh2 call, and freeing a
+        // handle under it is not safe.
         for hop in chain.jumpHops.reversed() {
             hop.relay.stop()
             shutdown(hop.socket, SHUT_RDWR)
@@ -619,8 +619,8 @@ internal enum LibSSH2TunnelFactory {
         for hop in chain.jumpHops.reversed() {
             hop.relay.wait()
         }
-        // Only after the fence has drained can cleanup free the handles. The relay owns and closes
-        // its socketpair endpoint; this side owns the hop transport socket.
+        // Only after the fence has drained can cleanup free the handles. The hop's pump closes its
+        // socketpair endpoint; this side owns the hop transport socket.
         for hop in chain.jumpHops.reversed() {
             libssh2_channel_free(hop.channel)
             tablepro_libssh2_session_disconnect(hop.session, reason)
@@ -1090,12 +1090,15 @@ internal enum LibSSH2TunnelFactory {
         probeQueue.sync { libssh2_session_set_blocking(session, 0) }
         defer { probeQueue.sync { libssh2_session_set_blocking(session, 1) } }
 
+        let probePump = SSHSessionPump(transportFD: socketFD, queue: probeQueue)
+        defer { probePump.stop() }
         let pump = SSHForwardChannelOpenPump(
             opener: LibSSH2ForwardChannelOpener(
                 session: session,
                 destination: destination,
                 originPort: 0,
-                sessionQueue: probeQueue
+                pump: probePump,
+                turn: SSHSendTurn(pump: probePump)
             ),
             isActive: { !deadline.isExpired && !Task.isCancelled },
             deadline: .distantFuture,

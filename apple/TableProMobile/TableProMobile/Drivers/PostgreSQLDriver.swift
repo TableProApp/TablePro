@@ -24,6 +24,8 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, SessionSchemaReporting
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
+    // As on the Mac, where the PostgreSQL plugin driver declares the mode and Redshift's does not.
+    var enforcesReadOnlyMode: Bool { databaseType == .postgresql }
 
     private let settledFacts = OSAllocatedUnfairLock<SQLSessionLexicalFacts?>(initialState: nil)
 
@@ -186,10 +188,13 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, SessionSchemaReporting
         let cancelHandle = actor.cancelHandle
         let id = cancelHandle.reserveQuery()
         let readsOnly = !SQLWriteClassifier.isWriteQuery(query, databaseType: databaseType)
+        let inReadOnlyTransaction = options.enforcesReadOnly && enforcesReadOnlyMode
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    switch try await actor.beginStream(query: query, id: id, readsOnly: readsOnly) {
+                    switch try await actor.beginStream(
+                        query: query, id: id, readsOnly: readsOnly, inReadOnlyTransaction: inReadOnlyTransaction
+                    ) {
                     case .commandOk(let affectedRows, let statusMessage):
                         if affectedRows != 0 {
                             continuation.yield(.rowsAffected(affectedRows))
@@ -643,18 +648,33 @@ private actor PostgreSQLActor {
     /// of a stream that a later query replaced can neither read nor end the later one.
     private var stream: PostgreSQLStreamState?
 
-    func beginStream(query: String, id: UInt64, readsOnly: Bool) throws -> PGBeginStreamResult {
+    // With `inReadOnlyTransaction` the state check, the transaction and the statement go out in this one actor call, so
+    // nothing else on the session runs between them.
+    func beginStream(
+        query: String,
+        id: UInt64,
+        readsOnly: Bool,
+        inReadOnlyTransaction: Bool = false
+    ) throws -> PGBeginStreamResult {
         endLeftoverStream()
         guard let conn else { throw PostgreSQLError.notConnected }
 
         let cancelsOutput = cancelsAbandonedOutput(conn)
+        let statusAtSend = PQtransactionStatus(conn)
+        if inReadOnlyTransaction { try beginReadOnlyTransaction(from: statusAtSend) }
         let state = PostgreSQLStreamState(
             id: id,
             cancelsAbandonedOutput: cancelsOutput,
             cancelsUnreadRows: cancelsOutput && readsOnly,
-            transactionStatusAtSend: PQtransactionStatus(conn)
+            transactionStatusAtSend: statusAtSend,
+            runsReadOnly: inReadOnlyTransaction
         )
-        try send(query, id: id, on: conn)
+        do {
+            try send(query, id: id, on: conn, singleStatement: inReadOnlyTransaction)
+        } catch {
+            _ = endReadOnlyTransaction(of: state)
+            throw error
+        }
         guard PQsetSingleRowMode(conn) == 1 else {
             _ = drain(state)
             throw PostgreSQLError.queryFailed("Failed to enter single-row streaming mode")
@@ -672,14 +692,14 @@ private actor PostgreSQLActor {
         case PGRES_TUPLES_OK:
             let columns = parseColumns(firstResult)
             PQclear(firstResult)
-            if let error = drain(state).error { throw error }
+            if let error = drainFailure(state) { throw error }
             stream = state
             return .tuples(columns)
         case PGRES_COMMAND_OK:
             let affected = Int(String(cString: PQcmdTuples(firstResult))) ?? 0
             let commandTag = String(cString: PQcmdStatus(firstResult))
             PQclear(firstResult)
-            if let error = drain(state).error { throw error }
+            if let error = drainFailure(state) { throw error }
             return .commandOk(
                 affectedRows: affected,
                 statusMessage: PostgreSQLSessionTransaction.statusMessage(
@@ -690,18 +710,55 @@ private actor PostgreSQLActor {
             )
         default:
             state.pendingResult = firstResult
-            if let error = drain(state).error { throw error }
+            if let error = drainFailure(state) { throw error }
             return .commandOk(affectedRows: 0, statusMessage: nil)
         }
+    }
+
+    // Inside an open transaction the wrap would make the user's own transaction read-only.
+    private func beginReadOnlyTransaction(from status: PGTransactionStatusType) throws {
+        guard status == PQTRANS_IDLE else {
+            throw ReadOnlyModeRefusal.sessionNotIdle(message: LibPQReadOnlyTransaction.notIdleMessage(.safeMode))
+        }
+        do {
+            _ = try execute(LibPQReadOnlyTransaction.begin)
+        } catch {
+            _ = rollBackReadOnlyTransaction()
+            throw error
+        }
+    }
+
+    // Once per stream, after its last result. Nil when the ROLLBACK went through or there was none to send.
+    private func endReadOnlyTransaction(of state: PostgreSQLStreamState) -> String? {
+        guard state.holdsReadOnlyTransaction else { return nil }
+        state.holdsReadOnlyTransaction = false
+        return rollBackReadOnlyTransaction()
+    }
+
+    // Registered with no query id, so Stop cannot cancel it and leave the read-only transaction open. A connection the
+    // drain dropped has nothing to roll back.
+    private func rollBackReadOnlyTransaction() -> String? {
+        guard let conn else { return nil }
+        cancelHandle.waitForPendingCancels()
+        guard let result = PQexec(conn, LibPQReadOnlyTransaction.end) else { return Self.message(from: conn) }
+        defer { PQclear(result) }
+        guard PQresultStatus(result) == PGRES_COMMAND_OK else { return String(cString: PQresultErrorMessage(result)) }
+        return nil
+    }
+
+    private func drainFailure(_ state: PostgreSQLStreamState) -> (any Error)? {
+        drain(state).error(inReadOnlyTransaction: state.runsReadOnly)
     }
 
     /// A cancel still on its way could reach the server after this query and stop it instead, so the
     /// query waits for it. A consumer that leaves as the query goes out finds nothing in flight to
     /// cancel, so its cancel is sent here once the query is registered.
-    private func send(_ query: String, id: UInt64, on conn: OpaquePointer) throws {
+    private func send(_ query: String, id: UInt64, on conn: OpaquePointer, singleStatement: Bool) throws {
         cancelHandle.waitForPendingCancels()
         try Task.checkCancellation()
-        guard PQsendQuery(conn, query) == 1 else {
+        // The extended protocol takes one statement, so no `COMMIT; DELETE ...` can follow a read-only read.
+        let sent = singleStatement ? PQsendQueryParams(conn, query, 0, nil, nil, nil, nil, 0) : PQsendQuery(conn, query)
+        guard sent == 1 else {
             throw PostgreSQLError.queryFailed(String(cString: PQerrorMessage(conn)))
         }
         cancelHandle.querySent(id)
@@ -726,7 +783,7 @@ private actor PostgreSQLActor {
         }
         guard PQresultStatus(result) == PGRES_SINGLE_TUPLE else {
             state.pendingResult = result
-            if let error = drain(state).error { throw error }
+            if let error = drainFailure(state) { throw error }
             return nil
         }
         defer { PQclear(result) }
@@ -738,7 +795,7 @@ private actor PostgreSQLActor {
         guard let state = stream, state.id == id else { return }
         stream = nil
         let end = drain(state)
-        guard end != .cancelled, let error = end.error else { return }
+        guard end != .cancelled, let error = end.error(inReadOnlyTransaction: state.runsReadOnly) else { return }
         throw error
     }
 
@@ -786,22 +843,36 @@ private actor PostgreSQLActor {
         _ = drain(leftover)
     }
 
+    // The connection closes next, which ends a read-only transaction on the server.
     private func discardStream() {
         guard let state = stream else { return }
         stream = nil
         if let readAhead = state.pendingResult { PQclear(readAhead) }
         state.pendingResult = nil
+        state.holdsReadOnlyTransaction = false
         markDrained(state)
     }
 
     private func markDrained(_ state: PostgreSQLStreamState) {
         state.isDrained = true
         cancelHandle.queryFinished(state.id)
+        if let failure = endReadOnlyTransaction(of: state) {
+            Self.logger.warning("The read-only transaction did not roll back: \(failure, privacy: .private)")
+        }
     }
 
-    /// Reads every result the stream's query still has in flight, ending any COPY among them.
+    // The ROLLBACK goes out once the results are read and the query is no longer in flight. Its failure is the stream's
+    // when the statement itself ended cleanly.
     private func drain(_ state: PostgreSQLStreamState) -> PostgreSQLStreamEnd {
         guard !state.isDrained else { return .completed }
+        let end = drainResults(state)
+        let rollbackFailure = endReadOnlyTransaction(of: state)
+        guard end == .completed, let rollbackFailure else { return end }
+        return .failed(rollbackFailure)
+    }
+
+    // Reads every result the stream's query still has in flight, ending any COPY among them.
+    private func drainResults(_ state: PostgreSQLStreamState) -> PostgreSQLStreamEnd {
         state.isDrained = true
         defer { cancelHandle.queryFinished(state.id) }
         var readAhead = state.pendingResult
@@ -828,8 +899,14 @@ private actor PostgreSQLActor {
     private static func pendingResult(of result: OpaquePointer) -> PostgreSQLPendingResult {
         if let copy = LibPQCopyState.copy(of: result) { return .copy(copy) }
         guard PostgreSQLStreamDrain.isFailure(PQresultStatus(result)) else { return .completed }
-        return .failed(String(cString: PQresultErrorMessage(result)))
+        return .failed(
+            String(cString: PQresultErrorMessage(result)),
+            sqlState: PQresultErrorField(result, sqlStateField).map { String(cString: $0) }
+        )
     }
+
+    // PG_DIAG_SQLSTATE, a character macro Swift does not import.
+    private static let sqlStateField = Int32(UInt8(ascii: "C"))
 
     private func cells(of result: OpaquePointer, options: StreamOptions, columns: [ColumnInfo]) -> [Cell] {
         var cells: [Cell] = []
@@ -924,20 +1001,27 @@ nonisolated private final class PostgreSQLStreamState {
     /// `UPDATE ... RETURNING` past the row cap has to finish, or its write is undone.
     let cancelsUnreadRows: Bool
     let transactionStatusAtSend: PGTransactionStatusType
+    // The statement ran in Read-Only's read-only transaction, so a refusal state is Read-Only's refusal.
+    let runsReadOnly: Bool
     /// A result read before its turn: the first row, or what the row-cap check took off the wire.
     var pendingResult: OpaquePointer?
     var isDrained = false
+    // Until the ROLLBACK goes out.
+    var holdsReadOnlyTransaction: Bool
 
     init(
         id: UInt64,
         cancelsAbandonedOutput: Bool,
         cancelsUnreadRows: Bool,
-        transactionStatusAtSend: PGTransactionStatusType
+        transactionStatusAtSend: PGTransactionStatusType,
+        runsReadOnly: Bool = false
     ) {
         self.id = id
         self.cancelsAbandonedOutput = cancelsAbandonedOutput
         self.cancelsUnreadRows = cancelsUnreadRows
         self.transactionStatusAtSend = transactionStatusAtSend
+        self.runsReadOnly = runsReadOnly
+        holdsReadOnlyTransaction = runsReadOnly
     }
 }
 
@@ -1085,7 +1169,7 @@ nonisolated private final class PostgreSQLCancelHandle: @unchecked Sendable {
 /// A result read while a stream ends, reduced to what decides how the stream ends.
 nonisolated enum PostgreSQLPendingResult: Equatable, Sendable {
     case copy(LibPQCopy)
-    case failed(String)
+    case failed(String, sqlState: String? = nil)
     case completed
 }
 
@@ -1093,9 +1177,14 @@ nonisolated enum PostgreSQLStreamEnd: Equatable, Sendable {
     case completed
     case cancelled
     case abandonedCopy(LibPQCopyDirection)
-    case failed(String)
+    case failed(String, sqlState: String? = nil)
 
     var error: (any Error)? {
+        error(inReadOnlyTransaction: false)
+    }
+
+    // In Read-Only's read-only transaction a refusal state is the engine holding Read-Only, not a failed query.
+    func error(inReadOnlyTransaction: Bool) -> (any Error)? {
         switch self {
         case .completed:
             return nil
@@ -1103,8 +1192,13 @@ nonisolated enum PostgreSQLStreamEnd: Equatable, Sendable {
             return CancellationError()
         case .abandonedCopy(let direction):
             return PostgreSQLError.unsupported(direction.mobileUnsupportedMessage)
-        case .failed(let message):
-            return PostgreSQLError.queryFailed(message)
+        case .failed(let message, let sqlState):
+            guard inReadOnlyTransaction, LibPQReadOnlyTransaction.isRefusal(sqlState: sqlState) else {
+                return PostgreSQLError.queryFailed(message)
+            }
+            return ReadOnlyModeRefusal.refused(
+                message: LibPQReadOnlyTransaction.refusalMessage(.safeMode), serverMessage: message
+            )
         }
     }
 }
@@ -1124,14 +1218,14 @@ nonisolated enum PostgreSQLStreamDrain {
         endCopy: (LibPQCopy) -> Void,
         afterCancel: @autoclosure () -> Bool
     ) -> (end: PostgreSQLStreamEnd, outcome: LibPQDrainOutcome) {
-        var firstFailure: String?
+        var firstFailure: (message: String, sqlState: String?)?
         let outcome = LibPQPendingResultDrain.drain(
             nextResult: {
                 switch nextResult() {
                 case .copy(let copy):
                     return .copy(copy)
-                case .failed(let message):
-                    if firstFailure == nil { firstFailure = message }
+                case .failed(let message, let sqlState):
+                    if firstFailure == nil { firstFailure = (message, sqlState) }
                     return .completed
                 case .completed:
                     return .completed
@@ -1145,7 +1239,7 @@ nonisolated enum PostgreSQLStreamDrain {
         if let copy = outcome.abandonedCopy {
             end = .abandonedCopy(copy.direction)
         } else if let firstFailure {
-            end = afterCancel() ? .cancelled : .failed(firstFailure)
+            end = afterCancel() ? .cancelled : .failed(firstFailure.message, sqlState: firstFailure.sqlState)
         } else {
             end = .completed
         }

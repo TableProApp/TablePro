@@ -31,6 +31,7 @@ internal struct ImageFieldView: View {
                     columnName: context.columnName
                 )
             },
+            documentID: context.documentID.map { AnyHashable($0) },
             source: { source }
         )
         .frame(height: 220)
@@ -55,7 +56,8 @@ internal struct ImageFieldView: View {
                 text: context.value,
                 isEditable: !context.isReadOnly,
                 font: themeEngine.valueFont,
-                style: .code
+                style: .code,
+                documentID: context.documentID.map { AnyHashable($0) }
             )
         case .hex:
             BlobHexEditorView(context: context, drawsWell: false)

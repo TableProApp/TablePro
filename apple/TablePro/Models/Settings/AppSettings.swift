@@ -153,6 +153,8 @@ struct DataGridSettings: Codable, Equatable {
     var showsSortInFilterPanel: Bool
     /// A table tab opens with its filter panel showing.
     var opensFilterPanelForTables: Bool
+    // 0 keeps every result a run returns.
+    var resultSetsKeptPerRun: Int
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -173,7 +175,8 @@ struct DataGridSettings: Codable, Equatable {
         showsColumnTypesInHeader: false,
         resultBarAtTop: false,
         showsSortInFilterPanel: false,
-        opensFilterPanelForTables: false
+        opensFilterPanelForTables: false,
+        resultSetsKeptPerRun: 0
     )
 
     init(
@@ -195,7 +198,8 @@ struct DataGridSettings: Codable, Equatable {
         showsColumnTypesInHeader: Bool = false,
         resultBarAtTop: Bool = false,
         showsSortInFilterPanel: Bool = false,
-        opensFilterPanelForTables: Bool = false
+        opensFilterPanelForTables: Bool = false,
+        resultSetsKeptPerRun: Int = 0
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -216,6 +220,7 @@ struct DataGridSettings: Codable, Equatable {
         self.resultBarAtTop = resultBarAtTop
         self.showsSortInFilterPanel = showsSortInFilterPanel
         self.opensFilterPanelForTables = opensFilterPanelForTables
+        self.resultSetsKeptPerRun = resultSetsKeptPerRun
     }
 
     init(from decoder: Decoder) throws {
@@ -253,6 +258,7 @@ struct DataGridSettings: Codable, Equatable {
         opensFilterPanelForTables = container.decodeSetting(
             .opensFilterPanelForTables, default: fallback.opensFilterPanelForTables
         )
+        resultSetsKeptPerRun = container.decodeSetting(.resultSetsKeptPerRun, default: fallback.resultSetsKeptPerRun)
     }
 
     // MARK: - Validated Properties
@@ -293,6 +299,11 @@ struct DataGridSettings: Codable, Equatable {
             return String(format: String(localized: "Page size must be between %@ and %@"), range.lowerBound.formatted(), range.upperBound.formatted())
         }
         return nil
+    }
+
+    // Nil keeps every result.
+    var resultSetLimitPerRun: Int? {
+        resultSetsKeptPerRun > 0 ? resultSetsKeptPerRun : nil
     }
 
     var validatedQueryResultRowCap: Int {

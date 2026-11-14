@@ -103,6 +103,90 @@ struct SQLPsqlScriptTests {
         #expect(SQLStatementScanner.executableStatements(in: rows, grammar: unknown.execution).count == 2)
     }
 
+    private func copyData(_ sql: String) -> String {
+        let text = sql as NSString
+        let semicolon = text.range(of: ";").location
+        let rows = SQLPsqlScript.copyRows(afterSemicolonAt: semicolon, in: text, length: text.length)
+        return text.substring(with: SQLPsqlScript.copyData(inRows: rows, of: text))
+    }
+
+    @Test("A COPY's data is the lines after its ; line, up to the \\. line, which is never sent", arguments: [
+        ("COPY t FROM stdin;\n1\tone\n2\ttwo\n\\.\nSELECT 2;", "1\tone\n2\ttwo\n"),
+        ("COPY t FROM stdin;\r\n1\tone\r\n2\ttwo\r\n\\.\r\nSELECT 2;", "1\tone\r\n2\ttwo\r\n"),
+        ("COPY t FROM stdin;\n1\tone\n2\ttwo\n", "1\tone\n2\ttwo\n"),
+        ("COPY t FROM stdin;\n1\tone\n2\ttwo", "1\tone\n2\ttwo"),
+        ("COPY t FROM stdin;\n1\tone\n\\.", "1\tone\n"),
+        ("COPY t FROM stdin;\n1\tone\n\\.\r", "1\tone\n"),
+        ("COPY t FROM stdin;\n\\. \n\\.\n", "\\. \n"),
+        ("COPY t FROM stdin;", ""),
+        ("COPY t FROM stdin;\n\\.\nSELECT 2;", ""),
+        ("COPY t FROM stdin; SELECT 8;\n1\ta\n\\.\nSELECT 7;", "1\ta\n"),
+        ("COPY t FROM stdin; DROP TABLE users;", ""),
+        ("COPY t FROM stdin; DROP TABLE users;\n", ""),
+    ])
+    func copyDataSpan(sql: String, expected: String) {
+        #expect(copyData(sql) == expected)
+    }
+
+    @Test("A scanned COPY carries its data, which offset(by:) keeps, and no other statement carries any")
+    func executableStatementCarriesCopyData() throws {
+        let sql = "SELECT 1;\nCOPY t (a, b) FROM stdin;\n1\tone\n2\ttwo\n\\.\nSELECT 2;"
+        let statements = SQLStatementScanner.executableStatements(in: sql, grammar: Self.postgreSQL.execution)
+        #expect(statements.map { $0.sql } == ["SELECT 1", "COPY t (a, b) FROM stdin", "SELECT 2"])
+        #expect(statements.map { $0.copyData } == [nil, "1\tone\n2\ttwo\n", nil])
+
+        let copy = try #require(statements.dropFirst().first)
+        let moved = copy.offset(by: 40)
+        #expect(moved.copyData == "1\tone\n2\ttwo\n")
+        #expect(moved.range.location == copy.range.location + 40)
+        #expect(moved.segmentEnd == copy.segmentEnd + 40)
+    }
+
+    @Test("A COPY with no rows carries empty data and still runs as a COPY", arguments: [
+        "COPY t FROM stdin;", "COPY t FROM stdin;\n\\.\n", "COPY t FROM stdin; DROP TABLE users;\n",
+    ])
+    func copyWithoutRows(sql: String) {
+        let statements = SQLStatementScanner.executableStatements(in: sql, grammar: Self.postgreSQL.execution)
+        #expect(statements.map { $0.sql } == ["COPY t FROM stdin"])
+        #expect(statements.map { $0.copyData } == [""])
+    }
+
+    @Test("Run Current's text and a split resumed after a statement give the COPY the same data")
+    func copyDataInFragmentsAndResumedSplits() throws {
+        let sql = "SET search_path = public;\r\nCOPY t FROM stdin;\r\n1\tone\r\n2\t\\N\r\n\\.\r\nSELECT 2;"
+        let grammar = Self.postgreSQL.execution
+        let statements = SQLStatementScanner.executableStatements(in: sql, grammar: grammar)
+        let set = try #require(statements.first)
+
+        let resumed = SQLStatementScanner.executableStatements(
+            in: sql, after: set, through: (sql as NSString).length, grammar: grammar
+        )
+        #expect(resumed.map { $0.copyData } == ["1\tone\r\n2\t\\N\r\n", nil])
+
+        let navigable = SQLStatementScanner.navigableStatements(in: sql, grammar: grammar)
+        let fragment = (sql as NSString).substring(with: navigable[1].contentRange)
+        let rerun = SQLStatementScanner.executableStatements(in: fragment, grammar: grammar)
+        #expect(rerun.map { $0.copyData } == ["1\tone\r\n2\t\\N\r\n"])
+    }
+
+    @Test("Run Current's text keeps a last row's trailing tab when no \\. line ends the rows")
+    func copyContentKeepsTheLastRowAsWritten() throws {
+        let sql = "SELECT 1;\nCOPY t (a, b) FROM stdin;\n1\tone\n2\t\n"
+        let grammar = Self.postgreSQL.execution
+        let navigable = SQLStatementScanner.navigableStatements(in: sql, grammar: grammar)
+        let fragment = (sql as NSString).substring(with: navigable[1].contentRange)
+        let rerun = SQLStatementScanner.executableStatements(in: fragment, grammar: grammar)
+        #expect(rerun.map { $0.copyData } == ["1\tone\n2\t\n"])
+    }
+
+    @Test("An engine that does not read psql scripts carries no copy data")
+    func noCopyDataOutsidePsqlScripts() {
+        let mysql = SQLLexicalReadings.resolve(databaseTypeId: "MySQL", declared: nil, session: nil).execution
+        let statements = SQLStatementScanner.executableStatements(in: "COPY t FROM stdin;\n1\n", grammar: mysql)
+        #expect(statements.count == 2)
+        #expect(statements.allSatisfy { $0.copyData == nil })
+    }
+
     @Test("The text psql holds as no SQL is reported for the formatter")
     func scriptText() {
         let sql = "\\restrict k\nCOPY t FROM stdin;\n1\ta\n\\.\nSELECT 1;"

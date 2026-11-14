@@ -112,6 +112,7 @@ An editor tab runs SQL the way psql does:
 - No session-level `SET` is ever sent. The run's deadline and the session's statement timeout are enforced with cancel requests, and nothing new goes to the server until an outstanding cancel request has finished. A statement that has not ended by the end of the cancel grace ends the session.
 - Notices (`RAISE NOTICE`, warnings) arrive as `ResultEvent::Notice` with the statement that raised them, those of the cursor's `DECLARE` and its closing `COMMIT` or `RELEASE` included. Those of the driver's own statements, such as its `BEGIN`, `ROLLBACK` and the transaction probe, are dropped. A run keeps 10,000; past that the connection drops the rest and the run sends `NoticeLimitReached` once.
 - `COPY FROM STDIN` and `COPY TO STDOUT` are refused with `Unsupported`.
+- `copy_in` runs an imported `COPY ... FROM STDIN` with its rows through tokio-postgres's copy-in, in the session's transaction, or in one of its own when none is open so a transaction pooler keeps the prepared statement and its Bind on one server connection. A read-only session starts its own transaction READ ONLY, so the server refuses the COPY. A COPY the server refuses before the copy starts fails like any statement; the driver relies on the patched tokio-postgres for that (`core/docs/decisions/0024-copy-rows-through-copy-in.md`).
 - Result columns are text: the simple protocol gives a column no type, so every value arrives as `Value::Text`. Typed columns wait on rust-postgres #1358.
 
 ### The row limit
