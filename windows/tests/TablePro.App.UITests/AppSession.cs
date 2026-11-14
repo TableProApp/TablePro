@@ -268,11 +268,13 @@ internal sealed class AppSession : IDisposable
         row.Click();
     }
 
-    // The ContentDialog template names its primary button PrimaryButton.
-    public void PressDialogButton()
+    // The ContentDialog template names its primary button PrimaryButton; a name tells it from a dialog still closing.
+    public void PressDialogButton(string? name = null)
     {
         var button = Retry.WhileNull(
-                () => Window.FindFirstDescendant(condition => condition.ByAutomationId("PrimaryButton")),
+                () => Window.FindFirstDescendant(condition => name is null
+                    ? condition.ByAutomationId("PrimaryButton")
+                    : condition.ByAutomationId("PrimaryButton").And(condition.ByName(name))),
                 Wait,
                 throwOnTimeout: false).Result
             ?? throw Failure("No dialog opened.", screen: true);
