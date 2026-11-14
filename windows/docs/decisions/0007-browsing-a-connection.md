@@ -24,6 +24,13 @@ Each one works as the macOS app's does, with its words in Windows sentence case,
 - The tree's context menu offers Open, Show structure and Copy name for objects with rows, and Show DDL and Copy name for the others.
 - Definition tabs are not kept in session.json: an older build reads an unknown tab kind as a damaged file and starts empty, and the tree brings one back in a click.
 
+### Grid menus, values and foreign keys
+
+- A results grid's menu, in a query tab and a table tab, holds Copy, View value..., Export results... and Share; a table tab's adds its row and cell edits and the foreign keys below. Export and Share wait for the rows to finish.
+- View value... shows the focused cell whole in a dialog, read only, with Copy: an image where a system codec decodes the bytes (`ResultSet.GetCellBytes`, `BitmapDecoder`), at its own size up to the dialog's and decoded at 2,048 pixels on its longer side at most, a picture past 64 megapixels as hex instead, JSON laid out one member per line where the text is one object or array, otherwise the text, and a binary value as its 0x hex. The JSON layout keeps each string's escapes and each number's digits as stored, which a serializer would not. The text and the JSON layout show their first 1,000,000 characters and the hex its first 256 KiB, saying so; Copy takes the whole value. A pending edit shows as typed; NULL and DEFAULT show as the grid words them.
+- A table tab reads its table's foreign keys both ways once its first page shows, and again on Refresh (`ReadTableKeysAsync`, in one operation, as the Linux app reads them). The menu on a cell offers Open referenced row for the keys its column is in, a submenu when there are several, and Show referencing rows for the other tables' keys pointing at the row, each named by the other table and the key's columns, with the constraint where two read alike. The core builds each filter from the row as the server holds it (`TableKeys.GetRowReferences`, `browse::RowReference`), so a key whose cells hold a pending edit, a new row and a row marked for delete offer none. A key with a NULL leads nowhere and is left out; one the core refuses, such as columns that compare under another collation, is offered and says why when chosen.
+- A chosen key opens the other table in a new tab beside this one, its filter the key's columns equal to the row's values, kept with the tab as a filter the user set; a tab whose rows were read under exactly that filter, and is not reading others, comes forward instead.
+
 ### Export
 
 - File > Export results (Ctrl+Shift+E) asks for a format, CSV, JSON, Excel, Markdown, HTML, XML, or SQL INSERT from a table, and on a table tab for Current page or Entire table, then for a file with the system save picker. The core writes the file (`ExportRowsAsync`, `ExportTableAsync`): the rows held, or every row the tab's filter and sort select, streamed. A file appears only once complete.
@@ -48,3 +55,5 @@ Each one works as the macOS app's does, with its words in Windows sentence case,
 - A page is read whole before it shows, under the core's page deadline of 60 seconds, as the Linux app reads one; the editor path streamed it with no deadline. Show all rows on a large table shows nothing until the last row is in.
 - A restored filter runs on the first read, Raw SQL included, as the rules do: one expression, read on a pooled connection. Text an engine that is not SQL would read as its own query language is refused by the core.
 - An export the app is killed in leaves its `.part` file beside the target.
+- A query result offers no foreign key: which table its rows come from is not known (roadmap C-21).
+- A binary value's hex has no offset or character columns until the core has the Linux app's hex dump (roadmap C-11).

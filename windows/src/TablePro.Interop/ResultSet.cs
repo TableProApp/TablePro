@@ -31,6 +31,14 @@ public sealed class ResultSet : IDisposable
         return CoreCall.Run(() => _set.CellText(checked((ulong)row), checked((uint)column)));
     }
 
+    // Every byte of a binary value, for an image or a hex view. Null for SQL NULL or a value that is not binary.
+    public byte[]? GetCellBytes(long row, int column)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        return CoreCall.Run(() => _set.CellBytes(checked((ulong)row), checked((uint)column)));
+    }
+
     // Each thread that reads windows opens its own.
     public ResultCursor OpenCursor() => new(_set.OpenCursor());
 

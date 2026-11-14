@@ -13,6 +13,8 @@ internal sealed partial class DataGridAutomationPeer(DataGridView owner) : Frame
     public const int MaxSelectionPeers = 10_000;
 
     private readonly Dictionary<long, CellAutomationPeer> _cells = [];
+    private readonly Dictionary<int, RowHeaderAutomationPeer> _rowHeaders = [];
+    private readonly Dictionary<int, ColumnHeaderAutomationPeer> _columnHeaders = [];
 
     public int RowCount => owner.RowCount;
 
@@ -42,7 +44,37 @@ internal sealed partial class DataGridAutomationPeer(DataGridView owner) : Frame
         return peer;
     }
 
+    // One per row in use, as for cells, so the tree and a cell's TableItem hand a client the same provider.
+    public RowHeaderAutomationPeer RowHeader(int row)
+    {
+        if (!_rowHeaders.TryGetValue(row, out var peer))
+        {
+            if (_rowHeaders.Count >= 8192)
+            {
+                Prune();
+            }
+            peer = new RowHeaderAutomationPeer(owner, row);
+            peer.SetParent(this);
+            _rowHeaders[row] = peer;
+        }
+        return peer;
+    }
+
+    // One per column, not the header element: ItemsRepeater hands an element to another column as it scrolls.
+    public ColumnHeaderAutomationPeer ColumnHeader(int column)
+    {
+        if (!_columnHeaders.TryGetValue(column, out var peer))
+        {
+            peer = new ColumnHeaderAutomationPeer(owner, column);
+            peer.SetParent(this);
+            _columnHeaders[column] = peer;
+        }
+        return peer;
+    }
+
     public IRawElementProviderSimple Provider(AutomationPeer peer) => ProviderFromPeer(peer);
+
+    public AutomationPeer? Peer(IRawElementProviderSimple provider) => PeerFromProvider(provider);
 
     // After the edits or the data changed; each held cell whose ItemStatus moved raises the change.
     public void RefreshStatuses(bool raise)
@@ -57,21 +89,21 @@ internal sealed partial class DataGridAutomationPeer(DataGridView owner) : Frame
     public IRawElementProviderSimple? GetItem(int row, int column) =>
         row < 0 || row >= RowCount || column < 0 || column >= ColumnCount ? null : ProviderFromPeer(Cell(row, column));
 
-    // Clients read none back on Windows App SDK 2.6.4, a WinUI bug fixed after it (microsoft-ui-xaml#11820).
+    // Clients read none back on Windows App SDK 2.6.4, a WinUI bug fixed after it (microsoft-ui-xaml#11820); each
+    // cell's TableItem gives its column header, on screen or not.
     public IRawElementProviderSimple[] GetColumnHeaders()
     {
-        var headers = new List<IRawElementProviderSimple>();
-        foreach (var header in owner.HeaderCells())
+        var headers = new IRawElementProviderSimple[ColumnCount];
+        for (var column = 0; column < headers.Length; column++)
         {
-            if (header.Column >= 0 && CreatePeerForElement(header) is { } peer)
-            {
-                headers.Add(ProviderFromPeer(peer));
-            }
+            headers[column] = ProviderFromPeer(ColumnHeader(column));
         }
-        return [.. headers];
+        return headers;
     }
 
-    public IRawElementProviderSimple[] GetRowHeaders() => [];
+    // The rows in view: a million row headers would not fit one call. A cell's TableItem reaches any row's.
+    public IRawElementProviderSimple[] GetRowHeaders() =>
+        [.. owner.VisibleRowNumbers().Select(row => ProviderFromPeer(RowHeader(row)))];
 
     public IRawElementProviderSimple[] GetSelection()
     {
@@ -109,13 +141,23 @@ internal sealed partial class DataGridAutomationPeer(DataGridView owner) : Frame
         _ => base.GetPatternCore(patternInterface),
     };
 
-    // The headers come from the elements; the drawn cells on screen join as peers of their own, row by row.
+    // The column headers in view, then each row in view as its row header and its cells.
     protected override IList<AutomationPeer> GetChildrenCore()
     {
         var children = new List<AutomationPeer>(base.GetChildrenCore() ?? []);
-        foreach (var (row, column) in owner.VisibleCells())
+        foreach (var column in owner.VisibleColumns())
         {
-            children.Add(Cell(row, column));
+            children.Add(ColumnHeader(column));
+        }
+        var row = -1;
+        foreach (var (cellRow, column) in owner.VisibleCells())
+        {
+            if (cellRow != row)
+            {
+                row = cellRow;
+                children.Add(RowHeader(row));
+            }
+            children.Add(Cell(cellRow, column));
         }
         return children;
     }
@@ -133,6 +175,10 @@ internal sealed partial class DataGridAutomationPeer(DataGridView owner) : Frame
         foreach (var key in gone ?? [])
         {
             _cells.Remove(key);
+        }
+        foreach (var row in _rowHeaders.Keys.Where(row => !owner.IsRowNumberVisible(row)).ToList())
+        {
+            _rowHeaders.Remove(row);
         }
     }
 }
@@ -157,13 +203,10 @@ internal sealed partial class CellAutomationPeer(DataGridView grid, DataGridAuto
     public IRawElementProviderSimple SelectionContainer => ContainingGrid;
 
     public IRawElementProviderSimple[] GetColumnHeaderItems() =>
-        grid.Contains(row, column)
-            && grid.HeaderCell(column) is { } header
-            && FrameworkElementAutomationPeer.CreatePeerForElement(header) is { } peer
-            ? [gridPeer.Provider(peer)]
-            : [];
+        grid.Contains(row, column) ? [gridPeer.Provider(gridPeer.ColumnHeader(column))] : [];
 
-    public IRawElementProviderSimple[] GetRowHeaderItems() => [];
+    public IRawElementProviderSimple[] GetRowHeaderItems() =>
+        grid.Contains(row, column) ? [gridPeer.Provider(gridPeer.RowHeader(row))] : [];
 
     // A cell the data no longer holds takes no selection, which the grid would clamp onto another cell.
     public void Select()
@@ -299,6 +342,14 @@ internal sealed partial class HeaderAutomationPeer(HeaderCell owner, DataGridVie
 
     protected override string GetItemStatusCore() => grid.SortStatus(owner.SortDirection);
 
+    // A column's header is its column peer in the control view; the element serves whichever column is in view.
+    protected override bool IsControlElementCore() => owner.Column < 0;
+
+    protected override bool IsContentElementCore() => false;
+
+    protected override object? GetElementFromPointCore(Windows.Foundation.Point pointInWindowCoordinates) =>
+        owner.Column >= 0 && CreatePeerForElement(grid) is DataGridAutomationPeer peer ? peer.ColumnHeader(owner.Column) : this;
+
     protected override object? GetPatternCore(PatternInterface patternInterface) => patternInterface switch
     {
         PatternInterface.Invoke or PatternInterface.Transform => this,
@@ -325,5 +376,5 @@ internal sealed partial class PaneAutomationPeer(PaneContent owner, DataGridView
 
     // XAML passes physical pixels from the window's client area here (ElementProviderFromPointImpl, UIAWindow.cpp).
     protected override object? GetElementFromPointCore(Windows.Foundation.Point pointInWindowCoordinates) =>
-        grid.CellPeerAt(pointInWindowCoordinates) ?? base.GetElementFromPointCore(pointInWindowCoordinates);
+        grid.ItemPeerAt(pointInWindowCoordinates) ?? base.GetElementFromPointCore(pointInWindowCoordinates);
 }

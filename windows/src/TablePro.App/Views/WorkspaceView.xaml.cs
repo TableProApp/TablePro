@@ -622,6 +622,42 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         await ShareSheet.ShowAsync(this, _workbench, subject).ConfigureAwait(true);
     }
 
+    // The menu opened on the tab shown, which is the one ExportAsync reads.
+    private async void OnExportRequested(object? sender, EventArgs e)
+    {
+        if (ReferenceEquals(sender, ActiveTab))
+        {
+            await ExportAsync().ConfigureAwait(true);
+        }
+    }
+
+    // A tab already showing the reference's rows comes forward; otherwise a new one opens beside the tab it came from.
+    private void OnReferenceRequested(object? sender, RowReferenceChoice reference)
+    {
+        if (_share is null || TableTab.TabFor(reference) is not { } spec)
+        {
+            return;
+        }
+
+        int? index = null;
+        var items = Tabs.TabItems.OfType<TabViewItem>().ToList();
+        foreach (var item in items)
+        {
+            if (item.Content is TableTabView view && view.Model.ShowsReference(reference))
+            {
+                Tabs.SelectedItem = item;
+                return;
+            }
+
+            if (ReferenceEquals(item.Content, sender))
+            {
+                index = Tabs.TabItems.IndexOf(item) + 1;
+            }
+        }
+
+        AddTable(reference.Table.Schema, reference.Table.Name, ObjectKind.Table, index, spec);
+    }
+
     private async void OnShareRequested(object? sender, ShareKind kind) =>
         await ShareAsync(sender as ITabContent, kind).ConfigureAwait(true);
 
@@ -747,6 +783,16 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             source.ShareRequested += OnShareRequested;
         }
 
+        if (item.Content is IExportSource exports)
+        {
+            exports.ExportRequested += OnExportRequested;
+        }
+
+        if (item.Content is TableTabView referencing)
+        {
+            referencing.ReferenceRequested += OnReferenceRequested;
+        }
+
         if (item.Content is QueryTabView query)
         {
             query.HistoryRecorded += OnHistoryRecorded;
@@ -789,6 +835,16 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         if (item.Content is IShareSource source)
         {
             source.ShareRequested -= OnShareRequested;
+        }
+
+        if (item.Content is IExportSource exports)
+        {
+            exports.ExportRequested -= OnExportRequested;
+        }
+
+        if (item.Content is TableTabView referencing)
+        {
+            referencing.ReferenceRequested -= OnReferenceRequested;
         }
 
         if (item.Content is QueryTabView query)

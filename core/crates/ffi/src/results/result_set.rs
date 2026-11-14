@@ -84,6 +84,14 @@ impl ResultSet {
             .ok_or_else(|| CoreError::failed("ffi.out_of_range", format!("no cell at row {row}, column {column}")))
     }
 
+    // The bytes of a binary value, for an image or a hex view; `None` for null or a value that is not binary.
+    pub fn cell_bytes(&self, row: u64, column: u32) -> Result<Option<Vec<u8>>, CoreError> {
+        usize::try_from(column)
+            .ok()
+            .and_then(|column| self.store.binary(self.stored_row(row), column))
+            .ok_or_else(|| CoreError::failed("ffi.out_of_range", format!("no cell at row {row}, column {column}")))
+    }
+
     // An address the caller frees with `tablepro_cursor_free`.
     pub fn open_cursor(&self) -> u64 {
         let cursor = Box::into_raw(Box::new(TpCursor::new(Cursor::new(

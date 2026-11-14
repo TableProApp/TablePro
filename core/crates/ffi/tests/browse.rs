@@ -11,9 +11,9 @@ use std::time::{Duration, Instant};
 use secrecy::SecretString;
 use tablepro_ffi::{
     ColumnSort, CombinatorTag, Core, CoreError, DatabaseSession, FileOpenRequest, FilterOpTag, FilterRuleArg,
-    FilterValueArg, HostConfig, HostSecretError, HostSecrets, ObjectEntry, ObjectKindTag, ObjectScopeArg, RowEstimate,
-    RunEvent, RunListener, RunOutcome, RunSettings, SecretItemTag, SecretKindTag, TableFilterArg, TableName,
-    TablePageRead, TransactionStateTag, TruncationTag,
+    FilterValueArg, HostConfig, HostSecretError, HostSecrets, ObjectEntry, ObjectKindTag, ObjectScopeArg,
+    ReferenceRefusal, RowEstimate, RunEvent, RunListener, RunOutcome, RunSettings, SecretItemTag, SecretKindTag,
+    TableFilterArg, TableName, TablePageRead, TransactionStateTag, TruncationTag,
 };
 
 struct NoSecrets;
@@ -547,4 +547,179 @@ async fn an_editor_moves_to_a_database_only_where_the_engine_switches_one() {
     session.close().await.unwrap();
 
     assert_eq!(refused.code(), "driver.unsupported");
+}
+
+const REFERENCES: &str = "CREATE TABLE parent (code TEXT NOT NULL, region INTEGER NOT NULL, \
+    PRIMARY KEY (code, region)); \
+    CREATE TABLE child (id INTEGER PRIMARY KEY, parent_code TEXT, parent_region INTEGER, \
+    FOREIGN KEY (parent_code, parent_region) REFERENCES parent(code, region)); \
+    INSERT INTO parent VALUES ('x'' OR 1=1 --', 7), ('x'' OR 1=1 --', 8), ('', 9); \
+    INSERT INTO child VALUES (1, 'x'' OR 1=1 --', 7), (2, 'x'' OR 1=1 --', 8), (3, NULL, 7), (4, '', 9)";
+
+async fn page_rows(
+    session: &DatabaseSession,
+    name: &str,
+    filter: Option<TableFilterArg>,
+) -> Arc<tablepro_ffi::ResultSet> {
+    let page = session
+        .read_table_page(table(name), None, filter, 100, 0, Box::new(Quiet), None)
+        .await
+        .unwrap();
+    let outcome = page.run().outcome().await.unwrap();
+    assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
+    page.run().result_set(0).unwrap()
+}
+
+#[tokio::test]
+async fn a_composite_key_leads_to_its_row_and_back_with_every_value_bound() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session) = fixture(dir.path(), REFERENCES).await;
+    let children = page_rows(&session, "child", None).await;
+    let keys = session.table_keys(table("child"), None).await.unwrap();
+
+    let from_child = keys
+        .row_references(children.clone(), 0, Some("parent_region".to_owned()))
+        .unwrap();
+    let [choice] = from_child.referenced.as_slice() else {
+        panic!("one composite key: {from_child:?}")
+    };
+    assert_eq!(choice.table, table("parent"));
+    assert_eq!(choice.columns, ["parent_code", "parent_region"]);
+    assert_eq!(choice.refusal, None);
+    let filter = choice.filter.clone().unwrap();
+    assert_eq!(filter.combinator, CombinatorTag::And);
+    assert_eq!(filter.raw_sql, None);
+    assert_eq!(
+        filter.rules,
+        [
+            rule("code", FilterOpTag::Eq, Some("x' OR 1=1 --")),
+            rule("region", FilterOpTag::Eq, Some("7")),
+        ]
+    );
+    assert!(from_child.referencing.is_empty());
+    assert!(
+        keys.row_references(children, 0, Some("id".to_owned()))
+            .unwrap()
+            .referenced
+            .is_empty(),
+        "a column outside the key offers it not"
+    );
+
+    let parents = page_rows(&session, "parent", Some(filter)).await;
+    assert_eq!(parents.row_count(), 1);
+    let back = session
+        .table_keys(table("parent"), None)
+        .await
+        .unwrap()
+        .row_references(parents, 0, None)
+        .unwrap();
+    assert!(back.referenced.is_empty());
+    let [incoming] = back.referencing.as_slice() else {
+        panic!("one key points at parent: {back:?}")
+    };
+    assert_eq!(incoming.table, table("child"));
+    assert_eq!(incoming.columns, ["parent_code", "parent_region"]);
+    let child = session
+        .read_table_page(
+            table("child"),
+            None,
+            incoming.filter.clone(),
+            100,
+            0,
+            Box::new(Quiet),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(column(&child, 0).await, texts(&["1"]));
+    session.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_null_part_leads_nowhere_an_empty_text_is_a_value_and_a_sorted_set_reads_its_own_row() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session) = fixture(dir.path(), REFERENCES).await;
+    let children = page_rows(&session, "child", None).await;
+    let keys = session.table_keys(table("child"), None).await.unwrap();
+
+    assert!(
+        keys.row_references(children.clone(), 2, None)
+            .unwrap()
+            .referenced
+            .is_empty()
+    );
+    // Descending by id, so the sorted set's first row is the last one read.
+    let sorted = children.sorted(0, false).unwrap();
+    let first = keys.row_references(sorted, 0, None).unwrap();
+    assert_eq!(
+        first.referenced[0].filter.as_ref().unwrap().rules[0],
+        rule("code", FilterOpTag::Eq, Some(""))
+    );
+    let failure = keys.row_references(children, 99, None).unwrap_err();
+    assert_eq!(failure.code(), "ffi.out_of_range");
+    session.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn keys_that_compare_otherwise_or_hold_an_inexact_value_stay_as_refusals() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session) = fixture(
+        dir.path(),
+        "CREATE TABLE parent (code TEXT COLLATE NOCASE PRIMARY KEY); \
+         CREATE TABLE child (code TEXT REFERENCES parent(code)); \
+         CREATE TABLE scale (weight REAL PRIMARY KEY); \
+         CREATE TABLE measured (id INTEGER PRIMARY KEY, weight REAL REFERENCES scale(weight)); \
+         INSERT INTO parent VALUES ('ABC'); INSERT INTO child VALUES ('abc'); \
+         INSERT INTO scale VALUES (0.5); INSERT INTO measured VALUES (1, 0.5)",
+    )
+    .await;
+    let parents = page_rows(&session, "parent", None).await;
+    let collated = session
+        .table_keys(table("parent"), None)
+        .await
+        .unwrap()
+        .row_references(parents, 0, None)
+        .unwrap();
+    assert_eq!(collated.referencing.len(), 1);
+    assert_eq!(
+        collated.referencing[0].refusal,
+        Some(ReferenceRefusal::ComparedOtherwise {
+            table: "child".to_owned()
+        })
+    );
+    assert_eq!(collated.referencing[0].filter, None);
+
+    let measured = page_rows(&session, "measured", None).await;
+    let inexact = session
+        .table_keys(table("measured"), None)
+        .await
+        .unwrap()
+        .row_references(measured, 0, Some("weight".to_owned()))
+        .unwrap();
+    assert_eq!(
+        inexact.referenced[0].refusal,
+        Some(ReferenceRefusal::NoFilterText {
+            column: "weight".to_owned()
+        })
+    );
+    session.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_binary_cell_gives_its_bytes_and_other_cells_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session) = fixture(
+        dir.path(),
+        "CREATE TABLE files (id INTEGER PRIMARY KEY, body BLOB, note TEXT); \
+         INSERT INTO files VALUES (1, X'89504E47', 'png'), (2, NULL, NULL)",
+    )
+    .await;
+    let rows = page_rows(&session, "files", None).await;
+
+    assert_eq!(rows.cell_bytes(0, 1).unwrap(), Some(vec![0x89, 0x50, 0x4e, 0x47]));
+    assert_eq!(rows.cell_text(0, 1).unwrap().as_deref(), Some("0x89504e47"));
+    assert_eq!(rows.cell_bytes(0, 2).unwrap(), None);
+    assert_eq!(rows.cell_bytes(1, 1).unwrap(), None);
+    assert_eq!(rows.cell_bytes(5, 1).unwrap_err().code(), "ffi.out_of_range");
+    session.close().await.unwrap();
 }

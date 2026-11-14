@@ -1,7 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using TablePro.App.Model;
@@ -13,7 +12,7 @@ using TablePro.Interop;
 namespace TablePro.App.Views;
 
 // The editor over the run's results; the run, the close and the transaction are QueryTab's.
-public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabView, IShareSource
+public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabView, IShareSource, IExportSource
 {
     private readonly QueryTab _model;
     private EditTarget _target;
@@ -59,6 +58,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
 
     // Share result... on the grid's menu and Share query... on the editor's; the workspace opens the sheet.
     public event EventHandler<ShareKind>? ShareRequested;
+
+    public event EventHandler? ExportRequested;
 
     // The history kept a run of this tab, so a history pane reads it again.
     public event EventHandler? HistoryRecorded;
@@ -214,37 +215,16 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     {
         args.Handled = true;
         var grid = Results.GridView;
+        // Rows still arriving would be exported or shared as if they were all of them.
+        var finished = !IsRunning && Results.ShownSet is { IsFinished: true };
         var menu = new MenuFlyout();
-        var copy = new MenuFlyoutItem
-        {
-            Text = Strings.Get("GridMenuCopy"),
-            Icon = new SymbolIcon(Symbol.Copy),
-            IsEnabled = grid.RowCount > 0,
-        };
-        copy.Click += async (_, _) => await grid.CopySelectionAsync().ConfigureAwait(true);
-        menu.Items.Add(copy);
+        menu.Items.Add(GridMenus.Copy(grid));
+        menu.Items.Add(GridMenus.ViewValue(Results));
         menu.Items.Add(new MenuFlyoutSeparator());
-        var share = new MenuFlyoutItem
-        {
-            Text = Strings.Get("ShareResultCommand"),
-            Icon = new SymbolIcon(Symbol.Share),
-            IsEnabled = !IsRunning && Results.ShownSet is { IsFinished: true },
-        };
-        share.Click += (_, _) => ShareRequested?.Invoke(this, ShareKind.Result);
-        menu.Items.Add(share);
-        if (args.TryGetPosition(grid, out var point))
-        {
-            menu.ShowAt(grid, new FlyoutShowOptions { Position = point });
-        }
-        else if (grid.FocusedCellMenuPoint() is { } cell)
-        {
-            // From the keyboard, the menu opens at the cell it acts on, not over the editor.
-            menu.ShowAt(grid, new FlyoutShowOptions { Position = cell });
-        }
-        else
-        {
-            menu.ShowAt(grid);
-        }
+        menu.Items.Add(GridMenus.Item("GridMenuExport", finished, () => ExportRequested?.Invoke(this, EventArgs.Empty)));
+        menu.Items.Add(GridMenus.Item(
+            "ShareResultCommand", finished, () => ShareRequested?.Invoke(this, ShareKind.Result), Symbol.Share));
+        GridMenus.Show(menu, grid, args);
     }
 
     private void OnEditorMenuOpening(object? sender, IList<MenuFlyoutItemBase> items)

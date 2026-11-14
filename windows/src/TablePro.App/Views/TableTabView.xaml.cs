@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -12,7 +13,7 @@ using TablePro.Interop;
 namespace TablePro.App.Views;
 
 // Data and Structure over one table; the page, its count and filter, every reload and every save are TableTab's.
-public sealed partial class TableTabView : UserControl, ITabContent, ITableTabView, IShareSource
+public sealed partial class TableTabView : UserControl, ITabContent, ITableTabView, IShareSource, IExportSource
 {
     private readonly TableTab _model;
     private bool _messagesIsTarget;
@@ -73,6 +74,11 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     // Share... on the grid's menu shares the page shown; the workspace opens the sheet.
     public event EventHandler<ShareKind>? ShareRequested;
+
+    public event EventHandler? ExportRequested;
+
+    // A foreign key's rows to open, in a tab of the workspace that holds this one.
+    public event EventHandler<RowReferenceChoice>? ReferenceRequested;
 
     public string Title => _model.Title;
 
@@ -584,31 +590,96 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
-        var copy = new MenuFlyoutItem { Text = Strings.Get("GridMenuCopy"), IsEnabled = grid.RowCount > 0 };
-        copy.Click += async (_, _) => await grid.CopySelectionAsync().ConfigureAwait(true);
-        menu.Items.Add(copy);
+        menu.Items.Add(GridMenus.Copy(grid));
+        menu.Items.Add(GridMenus.ViewValue(Results));
+        AddReferences(menu, _model.ReferencesAt(row, column));
         menu.Items.Add(new MenuFlyoutSeparator());
-        var share = new MenuFlyoutItem
+        var finished = !IsRunning && Results.ShownSet is { IsFinished: true };
+        menu.Items.Add(GridMenus.Item("GridMenuExport", finished, () => ExportRequested?.Invoke(this, EventArgs.Empty)));
+        menu.Items.Add(GridMenus.Item(
+            "ShareCommand",
+            finished && !_model.HasUnsavedChanges,
+            () => ShareRequested?.Invoke(this, ShareKind.Result),
+            Symbol.Share));
+        GridMenus.Show(menu, grid, args);
+    }
+
+    // One key the cell's column is in opens from the menu itself; several, and every key pointing at the row, are
+    // listed by the other table and the key's columns, which tell two keys into one table apart.
+    private void AddReferences(MenuFlyout menu, RowReferences references)
+    {
+        if (references.IsEmpty)
         {
-            Text = Strings.Get("ShareCommand"),
-            Icon = new SymbolIcon(Symbol.Share),
-            IsEnabled = !IsRunning && !_model.HasUnsavedChanges && Results.ShownSet is { IsFinished: true },
-        };
-        share.Click += (_, _) => ShareRequested?.Invoke(this, ShareKind.Result);
-        menu.Items.Add(share);
-        if (args.TryGetPosition(grid, out var point))
-        {
-            menu.ShowAt(grid, new FlyoutShowOptions { Position = point });
+            return;
         }
-        else if (grid.FocusedCellMenuPoint() is { } cell)
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var open = Labels(references.Referenced);
+        if (open.Count == 1)
         {
-            // From the keyboard, the menu opens at the cell it acts on, not over the editor.
-            menu.ShowAt(grid, new FlyoutShowOptions { Position = cell });
+            menu.Items.Add(ReferenceItem(Strings.Get("GridMenuOpenReferenced"), open[0].Reference, "OpenReferencedRow"));
         }
-        else
+        else if (open.Count > 1)
         {
-            menu.ShowAt(grid);
+            var choose = new MenuFlyoutSubItem { Text = Strings.Get("GridMenuOpenReferenced") };
+            foreach (var (label, reference) in open)
+            {
+                choose.Items.Add(ReferenceItem(label, reference, null));
+            }
+
+            menu.Items.Add(choose);
         }
+
+        var pointing = Labels(references.Referencing);
+        if (pointing.Count > 0)
+        {
+            var show = new MenuFlyoutSubItem { Text = Strings.Get("GridMenuShowReferencing") };
+            foreach (var (label, reference) in pointing)
+            {
+                show.Items.Add(ReferenceItem(label, reference, null));
+            }
+
+            menu.Items.Add(show);
+        }
+    }
+
+    private MenuFlyoutItem ReferenceItem(string label, RowReferenceChoice reference, string? automationId)
+    {
+        var item = new MenuFlyoutItem { Text = label };
+        if (automationId is not null)
+        {
+            AutomationProperties.SetAutomationId(item, automationId);
+        }
+
+        item.Click += (_, _) => FollowReference(reference);
+        return item;
+    }
+
+    // A key that cannot be followed is still offered, so choosing it says why.
+    private void FollowReference(RowReferenceChoice reference)
+    {
+        if (reference.Refusal is { } refusal)
+        {
+            Results.ShowNotice(Strings.Format("Reference" + refusal, reference.RefusalSubject ?? string.Empty));
+            return;
+        }
+
+        ReferenceRequested?.Invoke(this, reference);
+    }
+
+    private List<(string Label, RowReferenceChoice Reference)> Labels(IReadOnlyList<RowReferenceChoice> references)
+    {
+        var shorts = references.Select(reference =>
+        {
+            var table = reference.Table.Schema is { } schema && !string.Equals(schema, _model.Table.Schema, StringComparison.Ordinal)
+                ? $"{schema}.{reference.Table.Name}"
+                : reference.Table.Name;
+            return Strings.Format("ReferenceKey", table, string.Join(", ", reference.Columns));
+        }).ToList();
+        return [.. references.Select((reference, index) =>
+            (shorts.Count(label => label == shorts[index]) > 1
+                ? Strings.Format("ReferenceKeyThrough", shorts[index], reference.KeyName)
+                : shorts[index], reference))];
     }
 
     private MenuFlyoutItem ValueItem(string text, int row, int column, CellValueKind kind) =>

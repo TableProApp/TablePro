@@ -31,6 +31,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         InitializeComponent();
         Placeholder.Text = Strings.Get("ResultsEmpty");
         ResultGrid.SizeColumnsToContent = true;
+        ResultGrid.ShowsCellTips = true;
         ResultGrid.SortedAscendingStatus = Strings.Get("GridSortedAscending");
         ResultGrid.SortedDescendingStatus = Strings.Get("GridSortedDescending");
         ResultGrid.SortRequested += (_, sort) => SortRequested?.Invoke(this, sort);
@@ -80,6 +81,44 @@ public sealed partial class ResultsPane : UserControl, IResultsView
 
     public long ShownRowCount => ShownSet?.RowCount ?? 0;
 
+    internal bool CanViewValue =>
+        ResultGrid.Data is { RowCount: > 0, ColumnCount: > 0 } data
+        && ResultGrid.FocusedRow < data.RowCount && ResultGrid.FocusedColumn < data.ColumnCount;
+
+    // The focused cell's whole value, with its pending edit where a table tab holds one.
+    internal async Task ViewValueAsync()
+    {
+        if (!CanViewValue || ResultGrid.Data is not { } data)
+        {
+            return;
+        }
+
+        CellValue? value;
+        try
+        {
+            value = CellValue.Read(data, ShownSet, ResultGrid.FocusedRow, ResultGrid.FocusedColumn);
+        }
+        catch (TableProException exception)
+        {
+            ShowError(exception.Error);
+            return;
+        }
+
+        if (value is not null)
+        {
+            await CellValueViewer.ShowAsync(this, value).ConfigureAwait(true);
+        }
+    }
+
+    // About the rows, not a failure of the run, so the status keeps what the run said.
+    internal void ShowNotice(string message)
+    {
+        ErrorBar.Severity = InfoBarSeverity.Informational;
+        ErrorBar.Message = message;
+        ErrorBar.IsOpen = false;
+        ErrorBar.IsOpen = true;
+    }
+
     public async Task<bool> SortHeldRowsAsync(GridSort sort)
     {
         var picked = _picked;
@@ -109,6 +148,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
 
     public void ShowError(string message)
     {
+        ErrorBar.Severity = InfoBarSeverity.Error;
         ErrorBar.Message = message;
         ErrorBar.IsOpen = false;
         ErrorBar.IsOpen = true;

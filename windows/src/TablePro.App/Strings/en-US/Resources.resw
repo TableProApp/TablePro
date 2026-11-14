@@ -1773,6 +1773,66 @@ New fingerprint: {2}</value>
   <data name="GridMenuCopy" xml:space="preserve">
     <value>Copy</value>
   </data>
+  <data name="GridMenuViewValue" xml:space="preserve">
+    <value>View value...</value>
+  </data>
+  <data name="GridMenuExport" xml:space="preserve">
+    <value>Export results...</value>
+  </data>
+  <data name="GridMenuOpenReferenced" xml:space="preserve">
+    <value>Open referenced row</value>
+  </data>
+  <data name="GridMenuShowReferencing" xml:space="preserve">
+    <value>Show referencing rows</value>
+  </data>
+  <data name="ReferenceKey" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="ReferenceKeyThrough" xml:space="preserve">
+    <value>{0} through {1}</value>
+  </data>
+  <data name="ReferenceUnevenKey" xml:space="preserve">
+    <value>Can't read the columns of the key {0}.</value>
+  </data>
+  <data name="ReferenceUnknownSchema" xml:space="preserve">
+    <value>Can't tell which schema {0} is in.</value>
+  </data>
+  <data name="ReferenceNoFilterText" xml:space="preserve">
+    <value>Can't filter {0} on this value.</value>
+  </data>
+  <data name="ReferenceComparedOtherwise" xml:space="preserve">
+    <value>Can't filter {0} on this key: its columns differ in type or collation.</value>
+  </data>
+  <data name="ValueViewerTitle" xml:space="preserve">
+    <value>Value of {0}</value>
+  </data>
+  <data name="ValueViewerModes" xml:space="preserve">
+    <value>View as</value>
+  </data>
+  <data name="ValueViewerText" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ValueViewerJson" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="ValueViewerHex" xml:space="preserve">
+    <value>Hex</value>
+  </data>
+  <data name="ValueViewerImage" xml:space="preserve">
+    <value>Image</value>
+  </data>
+  <data name="ValueViewerCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ValueViewerClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="ValueViewerCut" xml:space="preserve">
+    <value>Only the start of this value shows here. Copy takes all of it.</value>
+  </data>
+  <data name="ValueViewerCopyFailed" xml:space="preserve">
+    <value>The value could not be put on the clipboard.</value>
+  </data>
   <data name="GridDefaultText" xml:space="preserve">
     <value>DEFAULT</value>
   </data>

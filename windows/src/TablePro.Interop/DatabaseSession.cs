@@ -227,6 +227,15 @@ public sealed partial class DatabaseSession : IAsyncDisposable
         return new TableEditor(editor);
     }
 
+    // The table's foreign keys and the other tables' keys that point at it, read in one operation.
+    public async Task<TableKeys> ReadTableKeysAsync(TableName table, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        var keys = await CoreCall.RunAsync(token => _session.TableKeys(Mapping.Table(table), token), cancellationToken)
+            .ConfigureAwait(false);
+        return new TableKeys(keys);
+    }
+
     // An editor tab's own connection, which keeps its transaction from one run to the next.
     public async Task<QueryEditor> OpenEditorAsync(CancellationToken cancellationToken = default)
     {

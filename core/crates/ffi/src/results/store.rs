@@ -167,6 +167,13 @@ impl ResultStore {
         let cell = state.cell(row, column)?;
         Some(cell.kind.map(|kind| cell_text::full(kind, cell.bytes)))
     }
+
+    // `Some(None)` for null or a value that is not binary.
+    pub(crate) fn binary(&self, row: u64, column: usize) -> Option<Option<Vec<u8>>> {
+        let state = self.read();
+        let cell = state.cell(row, column)?;
+        Some((cell.kind == Some(ValueKind::Bytes)).then(|| cell.bytes.to_vec()))
+    }
 }
 
 impl ResultStore {

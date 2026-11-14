@@ -162,6 +162,12 @@ public sealed class TableTab : IWorkspaceTab
 
     // The set the edits name rows of, which the core reads each key and stored value from.
     private ResultSet? _editsRows;
+
+    // Read once a page shows and again after a refresh; a read that fails leaves the grid's menu without references.
+    private ITableKeys? _keys;
+    private bool _keysStale = true;
+    private bool _readingKeys;
+    private int _keysVersion;
     private EditLock? _pageLock;
     private bool _saveBlocked;
     private Task<bool> _save = Task.FromResult(true);
@@ -298,6 +304,64 @@ public sealed class TableTab : IWorkspaceTab
         string.Equals(Table.Name, table, StringComparison.Ordinal)
         && string.Equals(Table.Schema, schema, StringComparison.Ordinal);
 
+    // A tab on the table a reference leads to whose rows were read with exactly its filter. One still reading may end
+    // on the rows it showed before, so it does not count.
+    public bool ShowsReference(RowReferenceChoice reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+        return reference.Filter is { } filter && !IsRunning && Table == reference.Table
+            && TableFilters.Same(_shownFilter, filter);
+    }
+
+    // A new table tab on the rows a reference leads to, its filter kept with the tab as one the user set.
+    public static SessionTab? TabFor(RowReferenceChoice reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+        return reference.Filter is { } filter
+            ? new SessionTab
+            {
+                Kind = TabKind.Table,
+                Title = reference.Table.Name,
+                Schema = reference.Table.Schema,
+                Table = reference.Table.Name,
+                ObjectKind = nameof(Interop.ObjectKind.Table),
+                Filter = SavedFilter.From(filter),
+            }
+            : null;
+    }
+
+    // What a cell's row leads to as the server holds the row: nothing while the page is read or saved, or on a new
+    // or deleted row; and of the row's own keys, none whose cells hold a pending change, which the server has not.
+    public RowReferences ReferencesAt(int row, int column)
+    {
+        if (_keys is not { } keys || IsRunning || IsSaving || _work.IsClosed
+            || column < 0 || column >= _results.Columns.Count || row < 0 || row >= _results.ShownRowCount
+            || (Edits is { } shown && (shown.IsAdded(row) || shown.IsDeleted(row))))
+        {
+            return RowReferences.None;
+        }
+
+        RowReferences references;
+        try
+        {
+            references = keys.ReferencesAt(_results.ShownSet, row, _results.Columns[column].Name);
+        }
+        catch (TableProException)
+        {
+            return RowReferences.None;
+        }
+
+        if (Edits is not { } edits)
+        {
+            return references;
+        }
+
+        return references with
+        {
+            Referenced = [.. references.Referenced.Where(reference => !reference.Columns.Any(name => IsChanged(edits, row, name)))],
+        };
+    }
+
     public SessionTab Snapshot() => new()
     {
         Kind = TabKind.Table,
@@ -362,6 +426,11 @@ public sealed class TableTab : IWorkspaceTab
         {
             _page = _page with { Total = null, Estimate = null };
             _reopenTableEditor = true;
+            // A key another client dropped or changed would lead to the wrong rows, so none is offered until read again.
+            _keysVersion++;
+            _keysStale = true;
+            _keys?.Dispose();
+            _keys = null;
             _structure.MarkStale();
             _choices.MarkStale();
             await LoadAsync(_page.Offset, recount: true).ConfigureAwait(true);
@@ -696,6 +765,8 @@ public sealed class TableTab : IWorkspaceTab
         SetEdits(null, null);
         _tableEditor?.Dispose();
         _tableEditor = null;
+        _keys?.Dispose();
+        _keys = null;
         await _session.ReleaseAsync().ConfigureAwait(true);
     }
 
@@ -822,6 +893,7 @@ public sealed class TableTab : IWorkspaceTab
             _saveBlocked = false;
             BindEdits();
             CountIfNeeded();
+            ReadKeysIfNeeded();
         }
         catch (TableProException exception)
         {
@@ -1172,6 +1244,67 @@ public sealed class TableTab : IWorkspaceTab
         _view.ShowSaving(saving);
         _view.ShowEdits();
         StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private bool IsChanged(TableEdits edits, int row, string name)
+    {
+        for (var column = 0; column < _results.Columns.Count && column < edits.Columns.Count; column++)
+        {
+            if (string.Equals(_results.Columns[column].Name, name, StringComparison.Ordinal))
+            {
+                return edits.GetCell(row, column) is not null;
+            }
+        }
+
+        return false;
+    }
+
+    private async void ReadKeysIfNeeded()
+    {
+        if (!_keysStale || _readingKeys || _work.IsClosed)
+        {
+            return;
+        }
+
+        _keysStale = false;
+        _readingKeys = true;
+        var version = _keysVersion;
+        try
+        {
+            await _work.RunAsync(async token =>
+            {
+                ITableKeys keys;
+                try
+                {
+                    keys = await _session.ReadTableKeysAsync(Table, token).ConfigureAwait(true);
+                }
+                catch (TableProException)
+                {
+                    // An engine without foreign keys, or a read that failed; a refresh reads them again.
+                    return;
+                }
+
+                // Read before a refresh or as the tab closed, the keys may no longer be the table's.
+                if (_work.IsClosed || version != _keysVersion)
+                {
+                    keys.Dispose();
+                    return;
+                }
+
+                _keys?.Dispose();
+                _keys = keys;
+            }).ConfigureAwait(true);
+        }
+        finally
+        {
+            _readingKeys = false;
+        }
+
+        // A refresh while this read ran wants its own, which its page could not start while this one ran.
+        if (version != _keysVersion && !IsRunning)
+        {
+            ReadKeysIfNeeded();
+        }
     }
 
     private async void CountIfNeeded() =>

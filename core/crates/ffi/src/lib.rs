@@ -22,6 +22,7 @@ mod host_key;
 mod library;
 mod masking;
 mod prompter;
+mod references;
 mod results;
 mod row_edits;
 mod run;
@@ -66,6 +67,7 @@ pub use masking::{
     ShareColumnMasking, ShareRefusal, ShareSummary,
 };
 pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag, PromptReasonTag, PromptRequest};
+pub use references::{ReferenceRefusal, RowReferenceChoice, RowReferences, TableKeys};
 pub use results::{ResultColumnInfo, ResultSet, ValueKind};
 pub use row_edits::{
     CellChange, CellEdit, EditColumnInfo, EditLock, EditStart, PlannedStatement, RowEdit, RowSave, RowSaveOutcome,
