@@ -10,16 +10,23 @@ import TableProUtilities
 
 @MainActor
 final class QueryTabManager: ObservableObject {
-    @Published var tabs: [QueryTab] = [] {
-        didSet {
+    private var _tabs: [QueryTab] = []
+
+    // Not @Published so the editor's keystrokes can skip the publish (`setEditorText`); every other write still sends it.
+    var tabs: [QueryTab] {
+        get { _tabs }
+        set {
+            objectWillChange.send()
+            let oldValue = _tabs
+            _tabs = newValue
             _tabIndexMapDirty = true
             _visibleTabs = nil
-            if oldValue.map(\.id) != tabs.map(\.id) {
+            if oldValue.map(\.id) != _tabs.map(\.id) {
                 tabStructureVersion += 1
-                pruneActivations(keeping: tabs)
+                pruneActivations(keeping: _tabs)
             }
-            publishAnchorChange(oldTabs: oldValue, newTabs: tabs)
-            syncTabSessionRegistry(oldTabs: oldValue, newTabs: tabs)
+            publishAnchorChange(oldTabs: oldValue, newTabs: _tabs)
+            syncTabSessionRegistry(oldTabs: oldValue, newTabs: _tabs)
             reconcileVisibleContainer()
         }
     }
@@ -743,6 +750,25 @@ final class QueryTabManager: ObservableObject {
         return true
     }
 
+    // In place and silent unless a fact drawn from the text flips: a keystroke moves no id, anchor or container.
+    @discardableResult
+    func setEditorText(_ text: String, ofTab tabId: UUID) -> Bool {
+        rebuildTabIndexMapIfNeeded()
+        guard let index = _tabIndexMap[tabId], _tabs.indices.contains(index) else { return false }
+        var edited = _tabs[index]
+        let before = EditorTextFacts(edited)
+        edited.content.query = text
+        guard EditorTextFacts(edited) == before else {
+            tabs[index] = edited
+            return true
+        }
+        _tabs[index].content = edited.content
+        if let visibleIndex = _visibleTabs?.firstIndex(where: { $0.id == tabId }) {
+            _visibleTabs?[visibleIndex].content = edited.content
+        }
+        return true
+    }
+
     func markTabRenamed(_ tabId: UUID) {
         guard tabs.contains(where: { $0.id == tabId }) else { return }
         tabStructureVersion += 1
@@ -753,6 +779,17 @@ final class QueryTabManager: ObservableObject {
         Logger(subsystem: "com.TablePro", category: "QueryTabManager")
             .debug("QueryTabManager deallocated")
         #endif
+    }
+}
+
+// Run, Explain, Format, the AI actions, the unsaved dot, the pending-change badge and Tear Off read these from the text.
+private struct EditorTextFacts: Equatable {
+    let hasQueryText: Bool
+    let isFileDirty: Bool
+
+    init(_ tab: QueryTab) {
+        hasQueryText = tab.hasQueryText
+        isFileDirty = tab.content.isFileDirty
     }
 }
 

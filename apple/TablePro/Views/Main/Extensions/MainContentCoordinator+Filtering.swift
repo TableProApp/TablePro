@@ -46,4 +46,8 @@ extension MainContentCoordinator {
     func rebuildTableQuery(at tabIndex: Int) {
         filterCoordinator.rebuildTableQuery(at: tabIndex)
     }
+
+    func rebuildTableQuery(forTab tabId: UUID) {
+        filterCoordinator.rebuildTableQuery(forTab: tabId)
+    }
 }

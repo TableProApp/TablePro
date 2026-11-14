@@ -144,9 +144,9 @@ extension MainContentCoordinator {
                     databaseName: currentDatabase,
                     schemaName: resolvedSchema
                 )
-                if replaced {
+                if replaced, let tabId = tabManager.selectedTabId {
                     clearFilterState()
-                    discardRowsForRetarget()
+                    discardRowsForRetarget(ofTab: tabId)
                     restoreLastHiddenColumnsForTable()
                     restoreFiltersForSelectedTab()
                     if let dbIndex = Int(currentDatabase) {
@@ -357,9 +357,11 @@ extension MainContentCoordinator {
             return false
         }
         if let token { TableLoadTracer.shared.stage(.replaceTabContent, token: token) }
-        commitNavigationEntry(departing)
-        clearFilterState()
-        discardRowsForRetarget(resultsViewMode: showStructure ? .structure : .data)
+        if let tabId = tabManager.selectedTabId {
+            commitNavigationEntry(departing, inTab: tabId)
+            clearFilterState()
+            discardRowsForRetarget(ofTab: tabId, resultsViewMode: showStructure ? .structure : .data)
+        }
         restoreLastHiddenColumnsForTable()
         restoreFiltersForSelectedTab()
         if let tabId = tabManager.selectedTab?.id {
@@ -375,17 +377,11 @@ extension MainContentCoordinator {
         return true
     }
 
-    /// Drops the outgoing table's rows and says, in the same step, that a load is running.
-    ///
-    /// The two belong together. A cleared buffer that nothing has called a load is what the status
-    /// bar reads as "this tab has no result", and it removes every control that depends on one, so
-    /// the bar collapses and then refills as the fetch lands. The execution claim cannot stand in
-    /// for the flag: retargeting only schedules the load, so the claim arrives a main-actor turn
-    /// later and leaves a renderable frame in between.
-    func discardRowsForRetarget(resultsViewMode: ResultsViewMode? = nil) {
-        guard let (tab, tabIndex) = tabManager.selectedTabAndIndex else { return }
-        setActiveTableRows(TableRows(), for: tab.id)
-        tabManager.mutate(at: tabIndex) { tab in
+    // Marks the load in the same step: a cleared buffer with no load is "no result" to the status bar, which collapses until the fetch lands.
+    func discardRowsForRetarget(ofTab tabId: UUID, resultsViewMode: ResultsViewMode? = nil) {
+        guard tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
+        setActiveTableRows(TableRows(), for: tabId)
+        tabManager.mutate(tabId: tabId) { tab in
             if let resultsViewMode {
                 tab.display.resultsViewMode = resultsViewMode
             }
@@ -770,10 +766,12 @@ extension MainContentCoordinator {
             }
             guard !Task.isCancelled else { return }
             toolbarState.currentDatabase = database
-            if let tabId, tabManager.selectedTabId != tabId {
-                declineTableLoad(for: tabId)
-            } else {
-                executeTableTabQueryDirectly(viewport: .firstRow)
+            if let tabId {
+                if tabManager.selectedTabId != tabId {
+                    declineTableLoad(for: tabId)
+                } else {
+                    executeTableTabQueryDirectly(onTab: tabId, viewport: .firstRow)
+                }
             }
 
             loadRedisKeyTree(databaseIndex: dbIndex)
@@ -827,6 +825,7 @@ extension MainContentCoordinator {
             initialQuery: RedisKeyTreeCommand.openKey(keyName, keyType: keyType, inDatabase: databaseIndex),
             title: keyName
         )
-        runQuery(viewport: .firstRow)
+        guard let tabId = tabManager.selectedTabId else { return }
+        runQuery(onTab: tabId, viewport: .firstRow)
     }
 }

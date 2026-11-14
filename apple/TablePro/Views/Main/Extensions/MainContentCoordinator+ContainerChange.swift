@@ -18,7 +18,7 @@ extension MainContentCoordinator {
     internal func changeQueryContainer(of tabId: UUID, to name: String, target: ContainerSwitchTarget?) {
         guard canChangeContainer(of: tabId, to: name) else { return }
         // Asked before the tab moves, so Cancel leaves the staged edits with the database their rows came from.
-        confirmDiscardRestoringRowsIfNeeded(action: .containerChange) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .containerChange) { [weak self] confirmed in
             guard confirmed, let self, canChangeContainer(of: tabId, to: name) else { return }
             retargetTab(tabId)
             guard tabManager.mutate(tabId: tabId, { tab in
@@ -28,9 +28,10 @@ extension MainContentCoordinator {
             }) else { return }
             tabManager.markTabRenamed(tabId)
             SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
-            guard ContainerChangeRerunPolicy.reruns(showing: tabManager.selectedTab?.display.activeResultSet) else { return }
+            let rebound = tabManager.tabs.first { $0.id == tabId }
+            guard ContainerChangeRerunPolicy.reruns(showing: rebound?.display.activeResultSet) else { return }
             // The statement at the caret may not be the one that produced the rows, so a write asks first.
-            runQuery(viewport: .firstRow, extraCapabilities: .confirmsWrites)
+            runQuery(onTab: tabId, viewport: .firstRow, extraCapabilities: .confirmsWrites)
         }
     }
 

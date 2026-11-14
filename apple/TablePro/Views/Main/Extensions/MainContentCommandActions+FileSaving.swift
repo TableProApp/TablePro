@@ -34,7 +34,7 @@ extension MainContentCommandActions {
         switch change {
         case .missing:
             Self.fileLogger.info("Save of a file no longer on disk went to Save As: \(url.lastPathComponent, privacy: .private(mask: .hash))")
-            return await saveFileAsAwaiting()
+            return await saveFileAsAwaiting(forTab: tab.id)
         case .modified:
             requestConflictResolution(tab: tab, url: url)
             return false
@@ -58,7 +58,7 @@ extension MainContentCommandActions {
             return false
         } catch {
             Self.fileLogger.error("Failed to save file: \(error.publicLogShape, privacy: .public)")
-            return await saveFileAsAwaiting()
+            return await saveFileAsAwaiting(forTab: tabId)
         }
     }
 

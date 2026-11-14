@@ -29,7 +29,7 @@ extension GlobalStateSuites {
             let harness = QueryTabHarness(type: .elasticsearch, query: query)
             defer { harness.tearDown() }
 
-            #expect(harness.coordinator.runStatement(query, sourceOffset: 0))
+            #expect(harness.coordinator.runStatement(query, sourceOffset: 0, onTab: harness.coordinator.commandTabId))
 
             let tab = try #require(harness.tabManager.tabs.first)
             #expect(tab.content.queryParameters.isEmpty)
@@ -42,7 +42,7 @@ extension GlobalStateSuites {
             let harness = QueryTabHarness(type: .mysql, query: query)
             defer { harness.tearDown() }
 
-            #expect(!harness.coordinator.runStatement(query, sourceOffset: 0))
+            #expect(!harness.coordinator.runStatement(query, sourceOffset: 0, onTab: harness.coordinator.commandTabId))
 
             let tab = try #require(harness.tabManager.tabs.first)
             #expect(tab.content.queryParameters.map(\.name) == ["name"])

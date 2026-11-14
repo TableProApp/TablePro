@@ -94,8 +94,8 @@ extension MainContentCoordinator {
         case .noReload:
             break
         case .reloadNow:
-            guard let index = tabManager.selectedTabIndex else { return }
-            reloadTableTab(at: index)
+            guard let selectedId = tabManager.selectedTabId else { return }
+            reloadTableTab(selectedId)
         case .reloadBehindStructure:
             guard let selectedId = selectedState?.id else { return }
             if case .running = selectedState?.load {
