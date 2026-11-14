@@ -79,15 +79,18 @@ const CONSTRAINT_COUNT: &str = "CAST((strlen(lower(t.sql)) - strlen(replace(lowe
 const ROW_BYTES: &str = "(512 + coalesce((SELECT max(strlen(c.column_name)) FROM duckdb_columns() c \
        WHERE c.table_oid = t.table_oid), 0))";
 
-// DuckDB builds every table's constraint rows, a chunk of 2,048 at a time, before a query filters them, and holds the
-// whole result before its first row; it names each constraint after its table. A read runs only once the result,
-// with its table names `names` times a row and four copies of the text, and the largest chunk fit.
+// DuckDB builds every table's constraint rows, 2,048 to a chunk across tables, before a query filters them, and holds
+// the whole result before its first row; it names each constraint after its table. A read runs only once the result,
+// its table's name `names` times a row and four copies of the text, and the costliest 2,048 rows of any tables fit.
 fn constraint_bounds(names: &str, tables: &str) -> String {
     format!(
         "SELECT \
            (SELECT sum({CONSTRAINT_COUNT} * ({names} * strlen(t.table_name) + {ROW_BYTES}) + 4 * strlen(t.sql)) \
             FROM duckdb_tables() t WHERE {tables}), \
-           (SELECT max(least({CONSTRAINT_COUNT}, 2048) * (2 * strlen(t.table_name) + {ROW_BYTES})) FROM duckdb_tables() t) \
+           (SELECT coalesce(sum(bytes * greatest(0, least(rows, 2048 - (upto - rows)))), 0) FROM \
+             (SELECT rows, bytes, sum(rows) OVER (ORDER BY bytes DESC ROWS UNBOUNDED PRECEDING) AS upto FROM \
+               (SELECT least({CONSTRAINT_COUNT}, 2048) AS rows, 2 * strlen(t.table_name) + {ROW_BYTES} AS bytes \
+                FROM duckdb_tables() t))) \
            + 3 * coalesce((SELECT sum(b) FROM (SELECT CAST(strlen(sql) AS DOUBLE) AS b FROM duckdb_tables() \
              ORDER BY b DESC LIMIT 2048)), 0)"
     )

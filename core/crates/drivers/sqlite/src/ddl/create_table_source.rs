@@ -356,9 +356,11 @@ fn comparison(source: &CreateTableSource<'_>, declared: &SourceColumn) -> crate:
 // for each key column, so a column carrying REFERENCES thousands of times costs its name as often.
 pub(crate) fn foreign_key_list_bytes(sql: &str) -> usize {
     const ROW: usize = 512;
+    // Text this reader cannot follow, SQLite may: no more key columns than REFERENCES and commas, each with three names
+    // no longer than the text.
     let Ok(source) = CreateTableSource::read(sql) else {
-        let references = sql.to_ascii_lowercase().matches("references").count();
-        return references.saturating_mul(sql.len().saturating_add(ROW));
+        let columns = sql.to_ascii_lowercase().matches("references").count() + sql.matches(',').count() + 1;
+        return columns.saturating_mul(sql.len().saturating_mul(3).saturating_add(ROW));
     };
     source
         .foreign_keys()
@@ -997,10 +999,11 @@ mod tests {
             (512 + 2 + 1 + 1) + (512 + 2 + 1 + 2)
         );
         assert_eq!(foreign_key_list_bytes(&repeated), 100 * (512 + 1 + 1_000));
+        let unread = "CREATE TABLE t (a, b, FOREIGN KEY (a, b) REFERENCES p (x, y)) /*";
         assert_eq!(
-            foreign_key_list_bytes("CREATE TABLE t (a REFERENCES p, b 'unclosed)"),
-            "CREATE TABLE t (a REFERENCES p, b 'unclosed)".len() + 512,
-            "text that does not read"
+            foreign_key_list_bytes(unread),
+            (1 + 4 + 1) * (3 * unread.len() + 512),
+            "text that does not read, a key column per REFERENCES and comma"
         );
     }
 

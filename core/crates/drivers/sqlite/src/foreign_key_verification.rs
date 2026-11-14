@@ -177,6 +177,7 @@ pub(crate) fn introduced(before: &Violations, after: &Violations) -> Vec<Introdu
     let mut found = Introduced::default();
     for checked in &after.tables {
         let (table, keys) = ids.of(checked);
+        let mut groups: Vec<Option<usize>> = vec![None; checked.keys.len()];
         for (key, rowid) in &checked.rows {
             let Some(id) = keys.get(*key) else {
                 continue;
@@ -187,13 +188,17 @@ pub(crate) fn introduced(before: &Violations, after: &Violations) -> Vec<Introdu
                 *left -= 1;
                 continue;
             }
-            found.add(table, checked, *key);
+            if let Some(group) = groups.get_mut(*key) {
+                let group = *group.get_or_insert_with(|| found.group_of(table, checked, *key));
+                found.add(group);
+            }
         }
     }
     found.groups
 }
 
-// The groups by child and parent, in the order their first row came.
+// The groups by child and parent, in the order their first row came. Each key's group is looked up once, not on
+// each of millions of rows, since a parent's name can be long.
 #[derive(Default)]
 struct Introduced {
     groups: Vec<IntroducedViolations>,
@@ -201,21 +206,28 @@ struct Introduced {
 }
 
 impl Introduced {
-    fn add(&mut self, table: usize, checked: &TableViolations, key: usize) {
+    fn group_of(&mut self, table: usize, checked: &TableViolations, key: usize) -> usize {
         let Some(broken) = checked.keys.get(key) else {
-            return;
+            return usize::MAX;
         };
-        let group = (table, broken.parent.to_lowercase());
-        match self.positions.get(&group).and_then(|index| self.groups.get_mut(*index)) {
-            Some(found) => found.count += 1,
-            None => {
-                self.positions.insert(group, self.groups.len());
-                self.groups.push(IntroducedViolations {
-                    table: checked.table.clone(),
-                    parent: broken.parent.clone(),
-                    count: 1,
-                });
-            }
+        let next = self.groups.len();
+        let group = *self
+            .positions
+            .entry((table, broken.parent.to_lowercase()))
+            .or_insert(next);
+        if group == next {
+            self.groups.push(IntroducedViolations {
+                table: checked.table.clone(),
+                parent: broken.parent.clone(),
+                count: 0,
+            });
+        }
+        group
+    }
+
+    fn add(&mut self, group: usize) {
+        if let Some(found) = self.groups.get_mut(group) {
+            found.count += 1;
         }
     }
 }
