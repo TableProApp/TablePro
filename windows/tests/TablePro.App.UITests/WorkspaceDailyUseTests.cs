@@ -24,7 +24,7 @@ public sealed partial class ShellTests
         app.Find("HistoryRetentionBox").AsComboBox().Select("30 days");
         app.Find("GridFontBox").Focus();
         app.Screenshot("90-settings-fonts");
-        app.Find("ClearHistoryButton").Focus();
+        app.Find("ClearHistorySettingsButton").Focus();
         app.Screenshot("91-settings-history");
 
         var saved = Retry.WhileFalse(

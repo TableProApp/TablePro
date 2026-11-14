@@ -150,7 +150,7 @@
             </toolkit:SettingsCard>
             <toolkit:SettingsCard x:Uid="ClearHistoryCard" x:Name="ClearHistoryCard">
                 <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Delete" /></toolkit:SettingsCard.HeaderIcon>
-                <Button x:Uid="ClearHistoryButton" x:Name="ClearHistoryButton" AutomationProperties.AutomationId="ClearHistoryButton" Click="OnClearHistory" />
+                <Button x:Uid="ClearHistorySettingsButton" x:Name="ClearHistoryButton" AutomationProperties.AutomationId="ClearHistorySettingsButton" Click="OnClearHistory" />
             </toolkit:SettingsCard>
 
             <TextBlock x:Uid="AboutHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />

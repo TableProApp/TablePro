@@ -3501,7 +3501,7 @@ New fingerprint: {2}</value>
   <data name="ClearHistoryCard.Description" xml:space="preserve">
     <value>Removes every connection's runs, pinned ones too</value>
   </data>
-  <data name="ClearHistoryButton.Content" xml:space="preserve">
+  <data name="ClearHistorySettingsButton.Content" xml:space="preserve">
     <value>Clear history...</value>
   </data>
   <data name="ClearHistoryConfirm" xml:space="preserve">
