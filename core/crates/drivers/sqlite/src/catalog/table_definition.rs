@@ -14,8 +14,6 @@ use crate::ddl::declared_foreign_key_names;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InboundKeyRow {
     pub child: String,
-    /// The child's CREATE TABLE, where the key's declared name is.
-    pub child_sql: Option<String>,
     /// How many foreign keys the child has, here or elsewhere.
     pub child_keys: usize,
     pub id: i64,
@@ -26,11 +24,14 @@ pub(crate) struct InboundKeyRow {
 }
 
 /// Group key columns into keys, in the order the query returned them.
-/// A key that names no parent columns points at `primary_key`.
+/// A key that names no parent columns points at `primary_key`. A key's
+/// declared name is in its child's CREATE TABLE, `child_sql`, read once
+/// per child rather than once per key column.
 pub(crate) fn inbound_foreign_keys(
     schema: Option<&str>,
     rows: Vec<InboundKeyRow>,
     primary_key: &[String],
+    child_sql: &HashMap<String, Option<String>>,
 ) -> Vec<InboundForeignKey> {
     let mut keys: Vec<InboundForeignKey> = Vec::new();
     let mut positions: HashMap<(String, i64), usize> = HashMap::new();
@@ -38,7 +39,10 @@ pub(crate) fn inbound_foreign_keys(
     let mut names: HashMap<String, Vec<String>> = HashMap::new();
     for row in rows {
         let child_names = names.entry(row.child.clone()).or_insert_with(|| {
-            let declared = row.child_sql.as_deref().and_then(declared_foreign_key_names);
+            let declared = child_sql
+                .get(&row.child)
+                .and_then(Option::as_deref)
+                .and_then(declared_foreign_key_names);
             foreign_key_names(&row.child, declared, row.child_keys)
         });
         let name = usize::try_from(row.id)
@@ -138,7 +142,6 @@ mod tests {
     fn key_row(child: &str, id: i64, from: &str, to: Option<&str>) -> InboundKeyRow {
         InboundKeyRow {
             child: child.to_owned(),
-            child_sql: None,
             child_keys: 3,
             id,
             from: from.to_owned(),
@@ -154,7 +157,7 @@ mod tests {
             key_row("notes", 0, "order_b", Some("b")),
         ];
 
-        let keys = inbound_foreign_keys(None, rows, &["id".to_owned()]);
+        let keys = inbound_foreign_keys(None, rows, &["id".to_owned()], &HashMap::new());
 
         assert_eq!(keys.len(), 2);
         assert_eq!(keys[0].name, "fk_lines_0");
@@ -168,12 +171,10 @@ mod tests {
     fn a_declared_constraint_name_is_the_key_name() {
         let child_sql = "CREATE TABLE lines (a INTEGER CONSTRAINT to_orders REFERENCES orders, b INTEGER REFERENCES \
                          orders, CONSTRAINT to_orders FOREIGN KEY (a) REFERENCES orders)";
-        let rows = [(0, "a"), (1, "b"), (2, "a")].map(|(id, from)| InboundKeyRow {
-            child_sql: Some(child_sql.to_owned()),
-            ..key_row("lines", id, from, None)
-        });
+        let rows = [(0, "a"), (1, "b"), (2, "a")].map(|(id, from)| key_row("lines", id, from, None));
+        let sql = HashMap::from([("lines".to_owned(), Some(child_sql.to_owned()))]);
 
-        let keys = inbound_foreign_keys(None, rows.to_vec(), &["id".to_owned()]);
+        let keys = inbound_foreign_keys(None, rows.to_vec(), &["id".to_owned()], &sql);
 
         let names: Vec<&str> = keys.iter().map(|key| key.name.as_str()).collect();
         assert_eq!(names, ["to_orders", "fk_lines_1", "fk_lines_2"]);
@@ -184,7 +185,7 @@ mod tests {
                 ..row.clone()
             })
             .collect();
-        let unsure: Vec<String> = inbound_foreign_keys(None, miscounted, &["id".to_owned()])
+        let unsure: Vec<String> = inbound_foreign_keys(None, miscounted, &["id".to_owned()], &sql)
             .into_iter()
             .map(|key| key.name)
             .collect();
