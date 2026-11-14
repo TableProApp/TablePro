@@ -66,18 +66,36 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
+
+                <!-- The database the pane browses; its menu is read from the server each time it opens. -->
+                <DropDownButton
+                    x:Uid="DatabaseButton"
+                    x:Name="DatabaseButton"
+                    Margin="8,8,8,0"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left"
+                    AutomationProperties.AutomationId="DatabaseButton"
+                    Click="OnDatabaseButtonClick"
+                    Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontSize="14" Glyph="&#xE1D3;" />
+                        <TextBlock x:Name="DatabaseButtonText" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </DropDownButton>
 
                 <AutoSuggestBox
                     x:Uid="ObjectFilter"
                     x:Name="ObjectFilter"
+                    Grid.Row="1"
                     Margin="8,8,8,4"
                     AutomationProperties.AutomationId="ObjectFilter"
                     QueryIcon="Find"
                     TextChanged="OnFilterChanged" />
 
-                <Grid x:Name="ListHeader" Grid.Row="1" Margin="8,0,8,4" Visibility="Collapsed">
+                <Grid x:Name="ListHeader" Grid.Row="2" Margin="8,0,8,4" Visibility="Collapsed">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -97,7 +115,7 @@
                 <TreeView
                     x:Name="ObjectTree"
                     x:Uid="ObjectTree"
-                    Grid.Row="2"
+                    Grid.Row="3"
                     AutomationProperties.AutomationId="ObjectTree"
                     CanDragItems="False"
                     CanReorderItems="False"
@@ -131,7 +149,7 @@
                 <ListView
                     x:Name="ObjectList"
                     x:Uid="ObjectList"
-                    Grid.Row="2"
+                    Grid.Row="3"
                     AutomationProperties.AutomationId="ObjectList"
                     ContextRequested="OnObjectListContextRequested"
                     IsItemClickEnabled="True"
@@ -156,7 +174,7 @@
 
                 <TextBlock
                     x:Name="NoMatchesText"
-                    Grid.Row="2"
+                    Grid.Row="3"
                     Margin="16"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     TextWrapping="Wrap"

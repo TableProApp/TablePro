@@ -1,9 +1,11 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.Windows.Storage.Pickers;
 using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.DataGrid;
@@ -13,24 +15,30 @@ using TablePro.Interop;
 namespace TablePro.App.Views;
 
 // The editor over the run's results; the run, the close and the transaction are QueryTab's.
-public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabView, IShareSource
+public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabView, IQueryFileView, IShareSource
 {
     private readonly QueryTab _model;
     private EditTarget _target;
+    private bool _listingDatabases;
+    private bool _editQueued;
+    private bool _closed;
+    private DiskChange _diskChange;
 
+    // A file opened with no sql is read here and throws when it cannot be; a restored tab keeps its session text.
     internal QueryTabView(
         Workbench workbench,
         SessionShare<DatabaseSession> share,
         string title,
         string? sql,
-        string? database = null)
+        string? database = null,
+        string? filePath = null)
     {
         var engineId = share.Session.EngineId;
+        var onDisk = filePath is null ? null : sql is null ? SqlFile.Read(filePath) : TryRead(filePath);
         InitializeComponent();
-        SqlText.Text = sql ?? string.Empty;
+        SqlText.Text = sql ?? onDisk?.Text ?? string.Empty;
         SqlText.Lexer = new CoreSqlLexer(Grammars.For(engineId));
-        SqlText.EditorFontSize = (float)workbench.Settings.EditorFontSize;
-        AutomationProperties.SetName(SqlText, Strings.Format("EditorName", title));
+        DisplaySettings.Follow(SqlText);
         _model = new QueryTab(
             title,
             new CoreTabSession(share),
@@ -39,13 +47,15 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
             workbench.Engine(engineId)?.DataModel ?? DataModel.Relational,
             () => workbench.Settings,
             new SharedHistoryRecorder(workbench, share.Session, () => HistoryRecorded?.Invoke(this, EventArgs.Empty)),
-            database);
-        _model.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
+            database,
+            this,
+            filePath,
+            onDisk);
+        AutomationProperties.SetName(SqlText, Strings.Format("EditorName", _model.Title));
+        ShowDatabase();
+        _model.StateChanged += (_, _) => OnModelStateChanged();
+        _model.FileSaved += (_, path) => FileSaved?.Invoke(this, path);
         Results.StatusChanged += (_, status) => StatusText.Text = status;
-        if (_model.Database is { } runsIn)
-        {
-            StatusText.Text = Strings.Format("StatusRunsIn", runsIn);
-        }
         Results.SortRequested += async (_, sort) => await _model.SortAsync(sort).ConfigureAwait(true);
         Results.ResultPicked += (_, _) => _model.ResultPicked();
         SqlText.GotFocus += (_, _) => _target = EditTarget.Editor;
@@ -53,9 +63,17 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         Results.MessagesBox.GotFocus += (_, _) => _target = EditTarget.Messages;
         Results.GridView.ContextRequested += OnGridContextRequested;
         SqlText.ContextMenuOpening += OnEditorMenuOpening;
+        SqlText.TextChanged += OnTextChanged;
+        SqlText.FilesDropped += (_, paths) => OpenFilesRequested?.Invoke(this, paths);
     }
 
     public event EventHandler? StateChanged;
+
+    // .sql files dropped on the editor; the workspace opens each in a tab of its own.
+    public event EventHandler<IReadOnlyList<string>>? OpenFilesRequested;
+
+    // The tab wrote its file, for File > Open Recent.
+    public event EventHandler<string>? FileSaved;
 
     // Share result... on the grid's menu and Share query... on the editor's; the workspace opens the sheet.
     public event EventHandler<ShareKind>? ShareRequested;
@@ -72,6 +90,14 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     public TransactionState Transaction => _model.Transaction;
 
     public bool HasUnsavedChanges => _model.HasUnsavedChanges;
+
+    public string? FilePath => _model.FilePath;
+
+    // The header's mark: the text differs from the tab's file.
+    public bool IsDirty => _model.IsDirty;
+
+    // The workspace that holds the tab, in the tree while its window shows it, so a close can ask from it.
+    internal FrameworkElement? DialogOwner { get; set; }
 
     public SqlEditor? Editor => SqlText;
 
@@ -116,6 +142,14 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     public Task<bool> ConfirmCloseAsync(bool offerSave) => _model.ConfirmCloseAsync(offerSave);
 
     public Task CloseAsync() => _model.CloseAsync();
+
+    // Ctrl+S: to its file, Save As when it has none or the file is gone.
+    public Task<bool> SaveAsync() => _model.SaveAsync();
+
+    public Task<bool> SaveAsAsync() => _model.SaveAsAsync();
+
+    // As the tab shows or its window activates.
+    public Task CheckDiskAsync() => _model.CheckDiskAsync();
 
     void IQueryTabView.SelectStatement(int start, int length)
     {
@@ -203,7 +237,249 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         return await WindowDialogs.ShowAsync(dialog, this).ConfigureAwait(true) == ContentDialogResult.Primary;
     }
 
-    void IQueryTabView.CloseEditor() => SqlText.Dispose();
+    void IQueryTabView.CloseEditor()
+    {
+        _closed = true;
+        SqlText.Dispose();
+    }
+
+    void IQueryFileView.ReplaceText(string text) => SqlText.Text = text;
+
+    // The picker belongs to the window the tab is in, which a tab window has its own of.
+    async Task<string?> IQueryFileView.PickSavePathAsync(string suggestedName, string? folder)
+    {
+        if (Owner.XamlRoot is not { } root)
+        {
+            return null;
+        }
+
+        var picker = new FileSavePicker(root.ContentIslandEnvironment.AppWindowId)
+        {
+            SuggestedFileName = suggestedName,
+            DefaultFileExtension = ".sql",
+        };
+        if (folder is not null && Directory.Exists(folder))
+        {
+            picker.SuggestedFolder = folder;
+        }
+        else
+        {
+            picker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
+        }
+
+        picker.FileTypeChoices.Add(Strings.Get("SqlFileType"), [".sql", ".psql", ".pgsql"]);
+        var result = await picker.PickSaveFileAsync();
+        return result?.Path;
+    }
+
+    Task<SaveBeforeClose> IQueryFileView.AskSaveBeforeCloseAsync(string tab, bool offerSave) =>
+        RowEditDialogs.AskSaveBeforeCloseAsync(Owner, tab, offerSave);
+
+    // Cancel is the answer Enter gives, since both others drop one side's text.
+    async Task<SaveOverChange> IQueryFileView.AskSaveOverChangeAsync(string path)
+    {
+        var dialog = new ContentDialog
+        {
+            RequestedTheme = Owner.ActualTheme,
+            Title = Strings.Format("FileChangedSaveTitle", Path.GetFileName(path)),
+            Content = new TextBlock { Text = Strings.Get("FileChangedSaveMessage"), TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = Strings.Get("FileChangedSaveOverwrite"),
+            SecondaryButtonText = Strings.Get("FileChangedSaveReload"),
+            CloseButtonText = Strings.Get("Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        return await WindowDialogs.ShowAsync(dialog, Owner).ConfigureAwait(true) switch
+        {
+            ContentDialogResult.Primary => SaveOverChange.Overwrite,
+            ContentDialogResult.Secondary => SaveOverChange.Reload,
+            _ => SaveOverChange.Cancel,
+        };
+    }
+
+    void IQueryFileView.ShowDiskChange(DiskChange change)
+    {
+        if (change == DiskChange.None)
+        {
+            FileBar.IsOpen = false;
+            return;
+        }
+
+        var gone = change == DiskChange.Gone;
+        var reopen = change != _diskChange || !FileBar.IsOpen;
+        _diskChange = change;
+        FileBar.Title = Strings.Get(gone ? "FileGoneTitle" : "FileChangedTitle");
+        FileBar.Message = Strings.Format(
+            gone ? "FileGoneMessage" : "FileChangedMessage",
+            Path.GetFileName(_model.FilePath));
+        FileBarButton.Content = Strings.Get(gone ? "FileGoneSaveAs" : "FileChangedReload");
+        if (reopen)
+        {
+            // Narrator reads an InfoBar when it opens, not when its text changes.
+            FileBar.IsOpen = false;
+            FileBar.IsOpen = true;
+        }
+    }
+
+    Task IQueryFileView.ShowSaveFailedAsync(string path, Exception failure) => ShowFileFailedAsync(
+        Strings.Format("FileSaveFailedTitle", Path.GetFileName(path)),
+        failure is SqlFileEncodingException encoding
+            ? Strings.Format("FileEncodingFailedMessage", encoding.Character, EncodingName(encoding.FileEncoding))
+            : failure.Message);
+
+    Task IQueryFileView.ShowReloadFailedAsync(string path, Exception failure) =>
+        ShowFileFailedAsync(Strings.Format("FileReloadFailedTitle", Path.GetFileName(path)), failure.Message);
+
+    // Null when the file is gone or locked, so a restored tab keeps its text and the check says what happened.
+    private static SqlFileRead? TryRead(string path)
+    {
+        try
+        {
+            return SqlFile.Read(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static string EncodingName(SqlFileEncoding encoding) => Strings.Get(encoding switch
+    {
+        SqlFileEncoding.Utf16LittleEndian => "SqlFileEncodingUtf16LittleEndian",
+        SqlFileEncoding.Utf16BigEndian => "SqlFileEncodingUtf16BigEndian",
+        SqlFileEncoding.Utf32LittleEndian => "SqlFileEncodingUtf32LittleEndian",
+        SqlFileEncoding.Utf32BigEndian => "SqlFileEncodingUtf32BigEndian",
+        SqlFileEncoding.Latin1 => "SqlFileEncodingLatin1",
+        _ => "SqlFileEncodingUtf8",
+    });
+
+    private FrameworkElement Owner => DialogOwner ?? this;
+
+    private async Task ShowFileFailedAsync(string title, string message)
+    {
+        var dialog = new ContentDialog
+        {
+            RequestedTheme = Owner.ActualTheme,
+            Title = title,
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true },
+            CloseButtonText = Strings.Get("Close"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        await WindowDialogs.ShowAsync(dialog, Owner).ConfigureAwait(true);
+    }
+
+    private void OnModelStateChanged()
+    {
+        AutomationProperties.SetName(SqlText, Strings.Format("EditorName", _model.Title));
+        ShowDatabase();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // Once per burst of typing, since a file tab tells its unsaved state by comparing its whole text.
+    private void OnTextChanged(object? sender, EventArgs e)
+    {
+        if (_editQueued || _closed || _model.FilePath is null)
+        {
+            return;
+        }
+
+        _editQueued = DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            _editQueued = false;
+            if (!_closed)
+            {
+                _model.TextEdited();
+            }
+        });
+    }
+
+    private void ShowDatabase()
+    {
+        if (!_model.ShowsDatabases)
+        {
+            DatabaseButton.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var name = _model.ShownDatabase ?? Strings.Get("QueryDatabaseNone");
+        DatabaseButton.Label = name;
+        AutomationProperties.SetName(DatabaseButton, Strings.Format("QueryDatabaseButtonName", name));
+        DatabaseButton.IsEnabled = _model.CanPickDatabase;
+        DatabaseButton.Visibility = Visibility.Visible;
+    }
+
+    // Built each time it opens, since a menu keeps the window it first opened in and a tab can move to another.
+    private async void OnDatabase(object sender, RoutedEventArgs e)
+    {
+        if (_listingDatabases)
+        {
+            return;
+        }
+
+        _listingDatabases = true;
+        DatabaseChoices? choices;
+        try
+        {
+            choices = await _model.GetDatabaseChoicesAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            _listingDatabases = false;
+        }
+
+        if (choices is null || !_model.CanPickDatabase || XamlRoot is null)
+        {
+            return;
+        }
+
+        var menu = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
+        AddDatabases(menu, choices.UserDatabases, choices.Current);
+        if (choices.SystemDatabases.Count > 0)
+        {
+            if (menu.Items.Count > 0)
+            {
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
+
+            AddDatabases(menu, choices.SystemDatabases, choices.Current);
+        }
+
+        if (menu.Items.Count == 0)
+        {
+            menu.Items.Add(new MenuFlyoutItem { Text = Strings.Get("QueryDatabaseEmpty"), IsEnabled = false });
+        }
+
+        // A command in the bar's overflow has no place of its own on screen, so its menu opens at the bar.
+        menu.ShowAt(DatabaseButton.IsInOverflow ? Commands : DatabaseButton);
+    }
+
+    private void AddDatabases(MenuFlyout menu, IReadOnlyList<string> names, string? current)
+    {
+        foreach (var name in names)
+        {
+            var item = new RadioMenuFlyoutItem
+            {
+                Text = name,
+                GroupName = "QueryDatabase",
+                IsChecked = name == current,
+            };
+            item.Click += async (_, _) => await _model.PickDatabaseAsync(name).ConfigureAwait(true);
+            menu.Items.Add(item);
+        }
+    }
+
+    private void OnFileBarClosed(InfoBar sender, object args) => _model.DiskChangeDismissed();
+
+    private async void OnFileBarAction(object sender, RoutedEventArgs e)
+    {
+        if (_diskChange == DiskChange.Gone)
+        {
+            await _model.SaveAsAsync().ConfigureAwait(true);
+        }
+        else
+        {
+            await _model.ReloadAsync().ConfigureAwait(true);
+        }
+    }
 
     private async void OnCommit(object sender, RoutedEventArgs e) => await _model.CommitAsync().ConfigureAwait(true);
 

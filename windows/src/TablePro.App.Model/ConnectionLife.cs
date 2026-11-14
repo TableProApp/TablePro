@@ -24,8 +24,13 @@ public sealed record SecretAnswer(string Secret, bool Save)
 public interface IConnector<TSession>
 {
     // The core stores keep once it logs in, against the record it connected with, so an edit saved meanwhile wins.
+    // Database, in place of the saved one, opens the connection in another of the server's databases.
     Task<TSession> ConnectSavedAsync(
-        Guid id, ConnectionSecrets secrets, ConnectionSecrets keep, CancellationToken cancellationToken);
+        Guid id,
+        string? database,
+        ConnectionSecrets secrets,
+        ConnectionSecrets keep,
+        CancellationToken cancellationToken);
 
     Task<TSession> OpenFileAsync(string path, string? engineId, CancellationToken cancellationToken);
 }
@@ -92,10 +97,19 @@ public sealed class ConnectionLife<TSession>
 
     public TSession? Session => Share?.Session;
 
+    // The saved connection or the file, in whichever of its databases it is open.
     public bool Matches(Guid? connectionId, string? filePath) =>
         connectionId is not null
             ? connectionId == Origin.ConnectionId
             : filePath is not null && string.Equals(filePath, Origin.FilePath, StringComparison.OrdinalIgnoreCase);
+
+    // The same connection open in the same database, so a tab of one runs on the other's session.
+    public bool IsSame(SessionConnection other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        return Matches(other.ConnectionId, other.FilePath)
+            && string.Equals(other.Database, Origin.Database, StringComparison.Ordinal);
+    }
 
     public void Rename(string name) => Origin = Origin with { Name = name };
 
@@ -237,7 +251,7 @@ public sealed class ConnectionLife<TSession>
         {
             try
             {
-                return await _connector.ConnectSavedAsync(id, secrets, remembered, cancellationToken)
+                return await _connector.ConnectSavedAsync(id, Origin.Database, secrets, remembered, cancellationToken)
                     .ConfigureAwait(true);
             }
             catch (TableProException exception)
@@ -310,10 +324,11 @@ public sealed class CoreConnector : IConnector<DatabaseSession>
 
     public Task<DatabaseSession> ConnectSavedAsync(
         Guid id,
+        string? database,
         ConnectionSecrets secrets,
         ConnectionSecrets keep,
         CancellationToken cancellationToken) =>
-        _core.ConnectAsync(id, secrets, _prompter, keep, cancellationToken);
+        _core.ConnectAsync(id, secrets, _prompter, keep, database, cancellationToken);
 
     public Task<DatabaseSession> OpenFileAsync(string path, string? engineId, CancellationToken cancellationToken) =>
         _core.OpenFileAsync(new FileOpenOptions(path, engineId), cancellationToken);

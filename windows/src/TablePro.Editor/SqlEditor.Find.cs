@@ -9,20 +9,11 @@ public sealed partial class SqlEditor
 
     public bool IsFindOpen => _findBar?.IsOpen == true;
 
-    public void OpenFind()
-    {
-        if (_findBar is null)
-        {
-            _findBar = new FindBar();
-            _findBar.QueryChanged += (_, _) => FindFrom(_model.Primary.Start, backward: false);
-            _findBar.NextRequested += (_, backward) => FindNext(backward);
-            _findBar.CloseRequested += (_, _) => CloseFind();
-            _root.Children.Add(_findBar);
-        }
-        var selection = _model.Primary;
-        _findBar.Open(selection.IsEmpty ? null : Document.GetText(selection.Start, selection.Length));
-        Invalidate();
-    }
+    internal bool IsReplaceOpen => _findBar is { IsOpen: true, IsReplaceShown: true };
+
+    public void OpenFind() => ShowFindBar(replace: false);
+
+    public void OpenReplace() => ShowFindBar(replace: true);
 
     public void CloseFind()
     {
@@ -40,6 +31,57 @@ public sealed partial class SqlEditor
         }
         var selection = _model.Primary;
         FindFrom(backward ? selection.Start : selection.End, backward);
+    }
+
+    // Replaces the selection only when it is exactly a match, as the find widgets of VS Code and Visual Studio do.
+    internal void ReplaceNext()
+    {
+        if (_findBar is null || string.IsNullOrEmpty(_findBar.Query.Text))
+        {
+            return;
+        }
+        var selection = _model.Primary;
+        var replacement = TextSearch.ReplacementAt(Document, _findBar.Query, selection.Start, selection.Length,
+            _findBar.ReplaceText);
+        if (replacement is null)
+        {
+            FindFrom(selection.Start, backward: false);
+            return;
+        }
+        Edit(() => _model.ReplaceRange(selection.Start, selection.End, replacement));
+        FindFrom(_model.Primary.End, backward: false);
+    }
+
+    internal void ReplaceAll()
+    {
+        if (_findBar is null)
+        {
+            return;
+        }
+        var replacements = TextSearch.Replacements(Document, _findBar.Query, _findBar.ReplaceText);
+        if (replacements.Count > 0)
+        {
+            Edit(() => _model.ReplaceRanges(replacements));
+        }
+        _findBar.ShowReplaced(replacements.Count);
+        Invalidate();
+    }
+
+    private void ShowFindBar(bool replace)
+    {
+        if (_findBar is null)
+        {
+            _findBar = new FindBar();
+            _findBar.QueryChanged += (_, _) => FindFrom(_model.Primary.Start, backward: false);
+            _findBar.NextRequested += (_, backward) => FindNext(backward);
+            _findBar.ReplaceRequested += (_, _) => ReplaceNext();
+            _findBar.ReplaceAllRequested += (_, _) => ReplaceAll();
+            _findBar.CloseRequested += (_, _) => CloseFind();
+            _root.Children.Add(_findBar);
+        }
+        var selection = _model.Primary;
+        _findBar.Open(selection.IsEmpty ? null : Document.GetText(selection.Start, selection.Length), replace);
+        Invalidate();
     }
 
     private void FindFrom(int from, bool backward)

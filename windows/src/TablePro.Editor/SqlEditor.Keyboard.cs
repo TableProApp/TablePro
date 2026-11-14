@@ -148,6 +148,10 @@ public sealed partial class SqlEditor
             case VirtualKey.F:
                 OpenFind();
                 return true;
+            // Ctrl+Shift+H is the app's Show Connections.
+            case VirtualKey.H when !shift:
+                OpenReplace();
+                return true;
             case VirtualKey.K when shift:
                 Edit(_model.DeleteLines);
                 return true;

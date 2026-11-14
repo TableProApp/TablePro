@@ -421,14 +421,12 @@ public sealed partial class DataGridView
     {
         var editor = new TextBox
         {
-            FontFamily = new FontFamily(Painter.FamilyName),
-            // TextBox scales its text with the text scale factor, as the painter's size already is.
-            FontSize = BaseFontSize,
             MinWidth = 0,
             MinHeight = 0,
             TextWrapping = TextWrapping.NoWrap,
             Visibility = Visibility.Collapsed,
         };
+        ApplyEditorFont(editor);
         editor.PreviewKeyDown += OnEditorKeyDown;
         // Arrows and paging the TextBox leaves would reach the ScrollViewer around it and scroll the grid.
         editor.KeyDown += (_, e) => e.Handled |= e.Key is VirtualKey.Up or VirtualKey.Down or VirtualKey.Left
@@ -437,6 +435,13 @@ public sealed partial class DataGridView
         // The grid has put the cell in view; for an editor in the frozen header the ScrollViewer would move too.
         editor.BringIntoViewRequested += (_, e) => e.Handled = true;
         return editor;
+    }
+
+    // TextBox scales its text with the text scale factor, as the painter's size already is.
+    private void ApplyEditorFont(TextBox editor)
+    {
+        editor.FontFamily = new FontFamily(Painter.FamilyName);
+        editor.FontSize = _cellFontSize;
     }
 
     private void OnEditorKeyDown(object sender, KeyRoutedEventArgs e)

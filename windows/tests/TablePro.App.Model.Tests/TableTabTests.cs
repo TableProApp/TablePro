@@ -268,7 +268,7 @@ public sealed class TableTabTests
     {
         await _tab.RunAsync();
 
-        // An engine that pages on the server reads only the first page, and says when more rows follow it.
+        // An engine that pages on the server says when more rows follow a page.
         _tab.PageRead(1_000, 12, truncated: true);
 
         Assert.True(_tab.Finished?.Truncated);

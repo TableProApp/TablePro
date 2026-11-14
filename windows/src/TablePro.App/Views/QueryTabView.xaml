@@ -31,32 +31,54 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource CaptionTextBlockStyle}" />
             </CommandBar.Content>
+            <!-- Shown where the server has more than one database; its label and its menu are set in code. -->
+            <AppBarButton
+                x:Uid="QueryDatabaseButton"
+                x:Name="DatabaseButton"
+                AutomationProperties.AutomationId="QueryDatabaseButton"
+                Click="OnDatabase"
+                Visibility="Collapsed">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE1D3;" /></AppBarButton.Icon>
+            </AppBarButton>
             <AppBarButton x:Uid="RunButton" x:Name="RunButton" AutomationProperties.AutomationId="RunButton" Icon="Play" Click="OnRun" />
             <AppBarButton x:Uid="StopButton" x:Name="StopButton" AutomationProperties.AutomationId="StopButton" Icon="Stop" IsEnabled="False" Click="OnStop" />
         </CommandBar>
 
         <editor:SqlEditor x:Name="SqlText" Grid.Row="1" AutomationProperties.AutomationId="SqlEditor" />
 
-        <!-- The transaction lives on this tab's own connection, so its bar and its end are here. -->
-        <InfoBar
-            x:Name="TransactionBar"
-            Grid.Row="2"
-            Margin="8,8,8,0"
-            AutomationProperties.AutomationId="TransactionBar"
-            IsClosable="False"
-            IsOpen="False">
-            <InfoBar.Content>
-                <StackPanel Margin="0,0,0,12" Orientation="Horizontal" Spacing="8">
-                    <Button
-                        x:Uid="CommitButton"
-                        x:Name="CommitButton"
-                        AutomationProperties.AutomationId="CommitButton"
-                        Click="OnCommit"
-                        Style="{StaticResource AccentButtonStyle}" />
-                    <Button x:Uid="RollBackButton" x:Name="RollBackButton" AutomationProperties.AutomationId="RollBackButton" Click="OnRollBack" />
-                </StackPanel>
-            </InfoBar.Content>
-        </InfoBar>
+        <StackPanel Grid.Row="2">
+            <InfoBar
+                x:Name="FileBar"
+                Margin="8,8,8,0"
+                AutomationProperties.AutomationId="FileChangedBar"
+                CloseButtonClick="OnFileBarClosed"
+                IsOpen="False"
+                Severity="Warning">
+                <InfoBar.ActionButton>
+                    <Button x:Name="FileBarButton" AutomationProperties.AutomationId="FileBarButton" Click="OnFileBarAction" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+
+            <!-- The transaction lives on this tab's own connection, so its bar and its end are here. -->
+            <InfoBar
+                x:Name="TransactionBar"
+                Margin="8,8,8,0"
+                AutomationProperties.AutomationId="TransactionBar"
+                IsClosable="False"
+                IsOpen="False">
+                <InfoBar.Content>
+                    <StackPanel Margin="0,0,0,12" Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Uid="CommitButton"
+                            x:Name="CommitButton"
+                            AutomationProperties.AutomationId="CommitButton"
+                            Click="OnCommit"
+                            Style="{StaticResource AccentButtonStyle}" />
+                        <Button x:Uid="RollBackButton" x:Name="RollBackButton" AutomationProperties.AutomationId="RollBackButton" Click="OnRollBack" />
+                    </StackPanel>
+                </InfoBar.Content>
+            </InfoBar>
+        </StackPanel>
 
         <local:ResultsPane x:Name="Results" Grid.Row="3" />
     </Grid>

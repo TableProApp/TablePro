@@ -364,6 +364,13 @@ impl QueryHistory {
         self.prune_with_cap(retention_days, MAX_UNPINNED_ENTRIES).await
     }
 
+    /// `prune`, keeping at most `max_entries` unpinned entries, a user's
+    /// setting under the store's own cap.
+    pub async fn prune_keeping(&self, retention_days: u32, max_entries: u32) -> Result<PruneReport, StorageError> {
+        self.prune_with_cap(retention_days, i64::from(max_entries).min(MAX_UNPINNED_ENTRIES))
+            .await
+    }
+
     pub(crate) async fn prune_with_cap(&self, retention_days: u32, cap: i64) -> Result<PruneReport, StorageError> {
         let mut report = PruneReport::default();
 

@@ -50,6 +50,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
     private bool _renderQueued;
     private bool _loaded;
     private float _fontSize = DefaultFontSize;
+    private string? _fontFamily;
     private float _zoom = 1;
     private string _composition = string.Empty;
     private int _compositionCaret;
@@ -90,6 +91,9 @@ public sealed partial class SqlEditor : UserControl, IDisposable
     public event EventHandler<EditorFrame>? FramePresented;
 
     public event EventHandler? TextChanged;
+
+    // Paths of the files dropped on the editor; the host decides what to open.
+    public event EventHandler<IReadOnlyList<string>>? FilesDropped;
 
     // The host's own commands for the context menu, added after the editor's each time the menu opens.
     public event EventHandler<IList<MenuFlyoutItemBase>>? ContextMenuOpening;
@@ -143,6 +147,22 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         }
     }
 
+    // Null, or a family that is not installed, draws with Cascadia Mono, Consolas or Courier New.
+    public string? EditorFontFamily
+    {
+        get => _fontFamily;
+        set
+        {
+            _fontFamily = string.IsNullOrWhiteSpace(value) ? null : value;
+            ConfigureLayouts();
+            UpdateScrollBars();
+            Invalidate();
+        }
+    }
+
+    internal string FontFamilyInUse =>
+        _layouts?.FamilyName ?? FontFamilies.Pick(_fontFamily, FontFamilies.EditorFallbacks);
+
     public float Zoom
     {
         get => _zoom;
@@ -162,6 +182,10 @@ public sealed partial class SqlEditor : UserControl, IDisposable
     public int VisibleLineCount => _layouts is null ? 0 : Math.Max(1, (int)(ViewHeight / _layouts.LineHeight));
 
     public SyntaxHighlighter? Highlighter => _highlighter;
+
+    // Sorted, with names in the user's language where the font has them.
+    public static IReadOnlyList<string> InstalledFontFamilies(bool monospacedOnly) =>
+        FontFamilies.Installed(monospacedOnly);
 
     // Calls before the next frame give one frame.
     public void Invalidate()
@@ -268,7 +292,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         if (_device is null)
         {
             _device = new GraphicsDevice(PreferSoftwareRendering);
-            _layouts = new TextLayouts(_device.DWrite, EditorFontSize * _zoom, _model.Options.TabSize);
+            _layouts = new TextLayouts(_device.DWrite, _fontFamily, EditorFontSize * _zoom, _model.Options.TabSize);
             RebuildBrushes();
             UpdateScrollBars();
         }

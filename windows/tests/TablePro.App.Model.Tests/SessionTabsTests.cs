@@ -24,6 +24,17 @@ public sealed class SessionTabsTests
     }
 
     [Fact]
+    public void KeyTabsAreLeftOutAsDefinitionTabsAre()
+    {
+        var key = new SessionTab { Kind = TabKind.Key, Title = "session:42", Table = "session:42" };
+
+        var (tabs, selected) = SessionTabs.Persisted([Query, key, Table], 2);
+
+        Assert.Equal<SessionTab>([Query, Table], tabs);
+        Assert.Equal(1, selected);
+    }
+
+    [Fact]
     public void ASelectedDefinitionTabHandsTheSelectionToTheNearestKeptTabBeforeIt()
     {
         var (tabs, selected) = SessionTabs.Persisted([Query, Table, Definition, Definition], 3);

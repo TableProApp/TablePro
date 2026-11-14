@@ -25,6 +25,12 @@ public sealed partial class DatabaseSession : IAsyncDisposable
 
     public bool IsReadOnly => _session.ReadOnly();
 
+    // OneDatabase while the session has no connection to ask.
+    public DatabaseLayout Layout => Mapping.Layout(_session.DatabaseLayout());
+
+    // The database the connection was asked to open; null for a file or a login that named none.
+    public string? Database => _session.Database();
+
     internal Native.DatabaseSession Handle => _session;
 
     public async Task<IReadOnlyList<SchemaEntry>> GetSchemasAsync(CancellationToken cancellationToken = default)
@@ -81,12 +87,14 @@ public sealed partial class DatabaseSession : IAsyncDisposable
     }
 
     // Returns once the read starts, so a bad filter throws here unsent; the token also stops the read, as Run's does.
+    // Resume, from the page before, is where a server-paged table's next page starts; offset is read through otherwise.
     public async Task<TablePageRun> ReadTablePageAsync(
         TableName table,
         ColumnSort? sort,
         TableFilter? filter,
         long limit,
         long offset = 0,
+        PageResume? resume = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(table);
@@ -94,22 +102,19 @@ public sealed partial class DatabaseSession : IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
         var nativeFilter = filter is null ? null : Mapping.Filter(filter);
         var wake = new RunWake();
-        using var page = await CoreCall.RunAsync(
+        var page = await CoreCall.RunAsync(
                 token => _session.ReadTablePage(
                     Mapping.Table(table),
                     Mapping.Sort(sort),
                     nativeFilter,
                     checked((ulong)limit),
                     checked((ulong)offset),
+                    resume?.Handle,
                     wake,
                     token),
                 cancellationToken)
             .ConfigureAwait(false);
-        return new TablePageRun(
-            new QueryRun(page.Run(), wake, cancellationToken),
-            checked((int)page.VisibleColumns()),
-            page.CanSeek(),
-            page.ViewSql());
+        return new TablePageRun(page, new QueryRun(page.Run(), wake, cancellationToken));
     }
 
     // Every row the filter selects, counted by the server.
@@ -228,11 +233,30 @@ public sealed partial class DatabaseSession : IAsyncDisposable
     }
 
     // An editor tab's own connection, which keeps its transaction from one run to the next.
-    public async Task<QueryEditor> OpenEditorAsync(CancellationToken cancellationToken = default)
+    public Task<QueryEditor> OpenEditorAsync(CancellationToken cancellationToken = default) =>
+        OpenEditorAsync(null, cancellationToken);
+
+    // Opened in database, or moved there before it returns; one that cannot reach it is closed and the call throws.
+    public async Task<QueryEditor> OpenEditorAsync(string? database, CancellationToken cancellationToken = default)
     {
-        var editor = await CoreCall.RunAsync(token => _session.OpenEditor(token), cancellationToken)
+        var editor = await CoreCall.RunAsync(token => _session.OpenEditor(database, token), cancellationToken)
             .ConfigureAwait(false);
         return new QueryEditor(editor);
+    }
+
+    // The server's databases the login sees: the connection's own marked default, the engine's own marked system.
+    public async Task<IReadOnlyList<SchemaEntry>> GetDatabasesAsync(CancellationToken cancellationToken = default)
+    {
+        var databases = await CoreCall.RunAsync(token => _session.Databases(token), cancellationToken)
+            .ConfigureAwait(false);
+        return [.. databases.Select(Mapping.Schema)];
+    }
+
+    // A key-value engine's key; nothing is read until ReadMoreAsync.
+    public KeyReader OpenKey(string key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return new KeyReader(_session.OpenKey(key));
     }
 
     public async ValueTask DisposeAsync()

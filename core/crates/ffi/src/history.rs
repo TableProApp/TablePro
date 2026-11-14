@@ -136,6 +136,20 @@ impl QueryHistoryStore {
         .await
     }
 
+    // Drops unpinned entries older than `retention_days` (0 keeps every age), then the oldest past `max_entries`
+    // (0 keeps the store's own cap). Returns how many went.
+    pub async fn prune(&self, retention_days: u32, max_entries: u32) -> Result<u64, CoreError> {
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move {
+            let report = match max_entries {
+                0 => history.prune(retention_days).await?,
+                kept => history.prune_keeping(retention_days, kept).await?,
+            };
+            Ok(report.total())
+        })
+        .await
+    }
+
     pub async fn clear(&self) -> Result<(), CoreError> {
         let history = self.history.clone();
         on_runtime(&self.tasks, async move {

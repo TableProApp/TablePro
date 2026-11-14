@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using TablePro.App.Model;
 using TablePro.App.Services;
+using TablePro.Editor;
 using TablePro.Interop;
 using Windows.System;
 
@@ -88,8 +89,61 @@ public sealed partial class SettingsView : UserControl
         CountThresholdBox.SelectedItem = CountThresholdBox.Items
             .OfType<ComboBoxItem>()
             .First(item => item.Tag is long threshold && threshold == settings.CountRowsIfEstimateLessThan);
+        FillFamilies(FontFamilyBox, SqlEditor.InstalledFontFamilies(monospacedOnly: true), settings.EditorFontFamily, "FontFamilyDefault");
+        FillFamilies(GridFontBox, SqlEditor.InstalledFontFamilies(monospacedOnly: false), settings.GridFontFamily, "GridFontDefault");
+        GridFontSizeBox.Value = settings.GridFontSize;
+        NullDisplayBox.Text = settings.NullDisplay;
+        FillChoices(HistoryRetentionBox, AppSettings.HistoryRetentionChoices, settings.HistoryRetentionDays, RetentionLabel);
+        FillChoices(HistoryMaxBox, AppSettings.HistoryMaxEntriesChoices, settings.HistoryMaxEntries, MaxEntriesLabel);
         _loading = false;
     }
+
+    // The app's own choice first, then each installed family; a saved family no longer installed still shows.
+    private static void FillFamilies(ComboBox box, IReadOnlyList<string> installed, string? saved, string defaultKey)
+    {
+        box.Items.Clear();
+        box.Items.Add(new ComboBoxItem { Content = Strings.Get(defaultKey), Tag = string.Empty });
+        var families = saved is null || installed.Contains(saved, StringComparer.OrdinalIgnoreCase)
+            ? installed
+            : [saved, .. installed];
+        foreach (var family in families)
+        {
+            box.Items.Add(new ComboBoxItem
+            {
+                Content = family,
+                Tag = family,
+                FontFamily = new Microsoft.UI.Xaml.Media.FontFamily(family),
+            });
+        }
+
+        box.SelectedItem = box.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => string.Equals(item.Tag as string, saved ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+            ?? box.Items[0];
+    }
+
+    private static void FillChoices(ComboBox box, IReadOnlyList<int> choices, int saved, Func<int, string> label)
+    {
+        box.Items.Clear();
+        // A value the file holds that the list does not offer shows too, so the box never reads empty.
+        foreach (var choice in choices.Append(saved).Distinct().OrderBy(choice => choice == 0 ? int.MaxValue : choice))
+        {
+            box.Items.Add(new ComboBoxItem { Content = label(choice), Tag = choice });
+        }
+
+        box.SelectedItem = box.Items.OfType<ComboBoxItem>().First(item => item.Tag is int value && value == saved);
+    }
+
+    private static string RetentionLabel(int days) => days switch
+    {
+        0 => Strings.Get("HistoryRetentionForever"),
+        365 => Strings.Get("HistoryRetentionYear"),
+        _ => Strings.Format("HistoryRetentionDays", days),
+    };
+
+    private static string MaxEntriesLabel(int entries) => entries == 0
+        ? Strings.Get("HistoryMaxUnlimited")
+        : Strings.Format("HistoryMaxOption", entries);
 
     private static string ResultsKeptLabel(int kept) => kept == 0
         ? Strings.Get("ResultsKeptNoLimit")
@@ -124,6 +178,90 @@ public sealed partial class SettingsView : UserControl
         if (!_loading && !double.IsNaN(args.NewValue))
         {
             _workbench.UpdateSettings(settings => settings with { EditorFontSize = args.NewValue });
+        }
+    }
+
+    private void OnFontFamilyChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && FontFamilyBox.SelectedItem is ComboBoxItem { Tag: string family })
+        {
+            _workbench.UpdateSettings(settings => settings with { EditorFontFamily = family.Length == 0 ? null : family });
+        }
+    }
+
+    private void OnGridFontChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && GridFontBox.SelectedItem is ComboBoxItem { Tag: string family })
+        {
+            _workbench.UpdateSettings(settings => settings with { GridFontFamily = family.Length == 0 ? null : family });
+        }
+    }
+
+    private void OnGridFontSizeChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (!_loading && !double.IsNaN(args.NewValue))
+        {
+            _workbench.UpdateSettings(settings => settings with { GridFontSize = args.NewValue });
+        }
+    }
+
+    // An empty box shows NULL in the grid without writing NULL into the box while it is being typed in.
+    private void OnNullDisplayChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_loading)
+        {
+            var text = NullDisplayBox.Text;
+            _workbench.UpdateSettings(settings => settings with { NullDisplay = text });
+        }
+    }
+
+    private void OnHistoryRetentionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && HistoryRetentionBox.SelectedItem is ComboBoxItem { Tag: int days })
+        {
+            _workbench.UpdateSettings(settings => settings with { HistoryRetentionDays = days });
+        }
+    }
+
+    private void OnHistoryMaxChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && HistoryMaxBox.SelectedItem is ComboBoxItem { Tag: int entries })
+        {
+            _workbench.UpdateSettings(settings => settings with { HistoryMaxEntries = entries });
+        }
+    }
+
+    // Every connection's runs go, pinned ones included, so it asks first and Cancel is the default.
+    private async void OnClearHistory(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
+            Title = Strings.Get("ClearHistoryTitle"),
+            Content = Strings.Get("ClearHistoryMessage"),
+            PrimaryButtonText = Strings.Get("ClearHistoryConfirm"),
+            CloseButtonText = Strings.Get("Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await WindowDialogs.ShowAsync(dialog, this).ConfigureAwait(true) != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        ClearHistoryButton.IsEnabled = false;
+        try
+        {
+            await _workbench.ClearHistoryAsync().ConfigureAwait(true);
+            ClearHistoryCard.Description = Strings.Get("ClearHistoryDone");
+        }
+        catch (TableProException exception)
+        {
+            ClearHistoryCard.Description = Strings.Error(exception.Error);
+        }
+        finally
+        {
+            ClearHistoryButton.IsEnabled = true;
         }
     }
 

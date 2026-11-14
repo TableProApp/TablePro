@@ -204,7 +204,7 @@ async fn sqlite_file(core: &Core, path: &Path) {
         )
         .await
         .unwrap();
-    let editor = session.open_editor(None).await.unwrap();
+    let editor = session.open_editor(None, None).await.unwrap();
     struct Quiet;
     impl tablepro_ffi::RunListener for Quiet {
         fn events_pending(&self) {}
@@ -545,6 +545,7 @@ async fn a_saved_sqlite_file_connects_lists_its_tables_and_becomes_recent() {
     let session = core
         .connect_saved(
             saved.id.clone(),
+            None,
             ConnectionSecrets::default(),
             ConnectionSecrets::default(),
             None,
@@ -567,6 +568,7 @@ async fn a_saved_sqlite_file_connects_lists_its_tables_and_becomes_recent() {
             None,
             100,
             0,
+            None,
             Box::new(Quiet),
             None,
         )
@@ -637,10 +639,10 @@ async fn a_typed_secret_is_kept_once_its_connect_logs_in_and_not_when_it_fails()
         ..ConnectionSecrets::default()
     };
 
-    core.connect_saved(people.id.clone(), typed(), typed(), None, None)
+    core.connect_saved(people.id.clone(), None, typed(), typed(), None, None)
         .await
         .unwrap();
-    core.connect_saved(shop.id.clone(), typed(), typed(), None, None)
+    core.connect_saved(shop.id.clone(), None, typed(), typed(), None, None)
         .await
         .unwrap_err();
 
@@ -666,6 +668,7 @@ async fn a_network_login_with_no_saved_password_says_so() {
     let error = core
         .connect_saved(
             saved.id,
+            None,
             ConnectionSecrets::default(),
             ConnectionSecrets::default(),
             None,
@@ -694,6 +697,7 @@ async fn a_password_typed_at_connect_is_used_when_none_is_saved() {
     let error = core
         .connect_saved(
             saved.id,
+            None,
             ConnectionSecrets {
                 database_password: Some(SecretString::from("typed")),
                 ..ConnectionSecrets::default()
@@ -826,6 +830,7 @@ async fn an_empty_database_password_survives_a_separately_stored_ssh_password() 
         let error = core
             .connect_saved(
                 saved.id,
+                None,
                 ConnectionSecrets {
                     database_password: Some(SecretString::from("")),
                     ..ConnectionSecrets::default()

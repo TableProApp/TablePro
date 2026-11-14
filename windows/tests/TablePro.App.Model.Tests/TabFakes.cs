@@ -157,17 +157,42 @@ internal sealed class FakeSession : ITabSession
 
     public bool IsReadOnly { get; set; }
 
-    public async Task<ITabEditor> OpenEditorAsync(CancellationToken cancellationToken)
+    public DatabaseLayout Layout { get; set; } = DatabaseLayout.OneDatabase;
+
+    public string? Database { get; set; }
+
+    // What GetDatabasesAsync lists.
+    public List<SchemaEntry> ServerDatabases { get; } = [];
+
+    // The database each editor was opened for, null for the connection's own.
+    public List<string?> EditorDatabases { get; } = [];
+
+    // The resume each page read was given.
+    public List<IPageResume?> Resumes { get; } = [];
+
+    // Set, each page read hands back a resume for the page after it, as a server-paged engine does.
+    public bool PagesOnServer { get; set; }
+
+    public async Task<ITabEditor> OpenEditorAsync(string? database, CancellationToken cancellationToken)
     {
         if (Opening is { } opening)
         {
             await opening.PassAsync(cancellationToken);
         }
 
-        var editor = new FakeEditor(this) { DatabaseRefusal = DatabaseRefusal };
+        EditorDatabases.Add(database);
+        if (database is not null && DatabaseRefusal is { } refusal)
+        {
+            throw new TableProException(refusal);
+        }
+
+        var editor = new FakeEditor(this) { Database = database ?? Database };
         Editors.Add(editor);
         return editor;
     }
+
+    public Task<IReadOnlyList<SchemaEntry>> GetDatabasesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<SchemaEntry>>([.. ServerDatabases]);
 
     public async Task<TablePageRead> ReadTablePageAsync(
         TableName table,
@@ -175,9 +200,11 @@ internal sealed class FakeSession : ITabSession
         TableFilter? filter,
         long limit,
         long offset,
+        IPageResume? continuation,
         CancellationToken cancellationToken)
     {
         Queries.Add((sort, limit, offset));
+        Resumes.Add(continuation);
         PageFilters.Add(filter);
         if (Querying is { } querying)
         {
@@ -209,6 +236,12 @@ internal sealed class FakeSession : ITabSession
         var page = FakeRun.Rows(Math.Clamp(RowsPicked(filter) - offset, 0, limit));
         page.Reading = PageReading;
         Pages.Add(page);
+        if (PagesOnServer)
+        {
+            var next = offset + limit < RowsPicked(filter) ? new FakeResume(offset + limit) : null;
+            return new TablePageRead(page, 2, CanSeek: false, ViewSql, () => next);
+        }
+
         return new TablePageRead(page, 2, CanSeek: true, ViewSql);
     }
 
@@ -301,6 +334,16 @@ internal sealed class FakeSession : ITabSession
     private long RowsPicked(TableFilter? filter) => filter is null ? TableRows : FilteredRows;
 }
 
+// The page a server-paged read resumes at, by the offset it stands for.
+internal sealed class FakeResume(long offset) : IPageResume
+{
+    public long Offset => offset;
+
+    public bool Disposed { get; private set; }
+
+    public void Dispose() => Disposed = true;
+}
+
 internal sealed class FakeEditor(FakeSession session) : ITabEditor
 {
     public List<string> Runs { get; } = [];
@@ -313,10 +356,13 @@ internal sealed class FakeEditor(FakeSession session) : ITabEditor
 
     public int Disposals { get; private set; }
 
+    // Each database UseDatabaseAsync moved the editor to.
     public List<string> Databases { get; } = [];
 
     // Set, the move to a database fails with it.
     public CoreError? DatabaseRefusal { get; set; }
+
+    public string? Database { get; set; }
 
     public ITabRun Run(string sql, QueryOptions options, CancellationToken cancellationToken)
     {
@@ -329,7 +375,13 @@ internal sealed class FakeEditor(FakeSession session) : ITabEditor
     public Task UseDatabaseAsync(string database, CancellationToken cancellationToken)
     {
         Databases.Add(database);
-        return DatabaseRefusal is { } refusal ? Task.FromException(new TableProException(refusal)) : Task.CompletedTask;
+        if (DatabaseRefusal is { } refusal)
+        {
+            return Task.FromException(new TableProException(refusal));
+        }
+
+        Database = database;
+        return Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()

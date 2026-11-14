@@ -9,6 +9,9 @@ public enum TabKind
 
     // A function, procedure, trigger or sequence, shown as its definition.
     Definition,
+
+    // A key-value engine's key, named in Table.
+    Key,
 }
 
 public sealed record SessionTab
@@ -36,8 +39,11 @@ public sealed record SessionTab
 
     public SavedFilter? Filter { get; set; }
 
-    // The database a query tab opened from a definition runs in, where the definition names none.
+    // The database a query tab runs in, where it is not the connection's own.
     public string? Database { get; set; }
+
+    // The .sql file a query tab was opened from or saved to; Sql holds its text as the tab last had it.
+    public string? FilePath { get; set; }
 
     // A name this build does not define, as from a later build, reads as the fallback.
     public ObjectKind ObjectKindOr(ObjectKind fallback) =>
@@ -153,6 +159,12 @@ public sealed record SessionConnection
 
     public string EngineId { get; set; } = string.Empty;
 
+    // Another of the server's databases the saved connection was opened in, in place of its own.
+    public string? Database { get; set; }
+
+    // Where the server's databases are the catalog's schemas: the one new query tabs run in.
+    public string? DefaultDatabase { get; set; }
+
     public IReadOnlyList<SessionTab> Tabs { get; set; } = [];
 
     public int SelectedTab { get; set; }
@@ -199,6 +211,9 @@ public sealed record SessionState
 
     public IReadOnlyList<TabWindowState> TabWindows { get; set; } = [];
 
+    // The .sql files opened or saved last, newest first (RecentFiles).
+    public IReadOnlyList<string> RecentFiles { get; set; } = [];
+
     public static SessionState Empty { get; } = new();
 
     private static WindowPlacement? Usable(WindowPlacement? placement) => placement is { IsUsable: true } ? placement : null;
@@ -217,6 +232,7 @@ public sealed record SessionState
             TabWindows = [.. TabWindows
                 .Where(window => window.Connection is { IsRestorable: true, Tabs.Count: > 0 })
                 .Select(window => window with { Placement = Usable(window.Placement) })],
+            RecentFiles = [.. (RecentFiles ?? []).Where(path => !string.IsNullOrWhiteSpace(path))],
         };
     }
 }

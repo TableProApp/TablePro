@@ -46,7 +46,7 @@
     <value>N</value>
   </data>
   <data name="MenuOpenFile.Text" xml:space="preserve">
-    <value>Open database file...</value>
+    <value>Open file...</value>
   </data>
   <data name="MenuOpenFile.AccessKey" xml:space="preserve">
     <value>O</value>
@@ -1260,9 +1260,6 @@
   <data name="Error_library_tag_not_found" xml:space="preserve">
     <value>That tag is gone. The list shows the tags there are now.</value>
   </data>
-  <data name="Error_ffi_page_unsupported" xml:space="preserve">
-    <value>This engine reads a table only from its start, so it has no later pages.</value>
-  </data>
   <data name="Secret_DatabasePassword" xml:space="preserve">
     <value>Password</value>
   </data>
@@ -1339,13 +1336,13 @@
     <value>Close and roll back</value>
   </data>
   <data name="ShutdownBlockedUnsaved" xml:space="preserve">
-    <value>Table changes are not saved.</value>
+    <value>Changes are not saved.</value>
   </data>
   <data name="ShutdownBlockedTransaction" xml:space="preserve">
     <value>A transaction is open.</value>
   </data>
   <data name="ShutdownBlockedBoth" xml:space="preserve">
-    <value>Table changes are not saved, and a transaction is open.</value>
+    <value>Changes are not saved, and a transaction is open.</value>
   </data>
   <data name="ConfirmRunTitleOne" xml:space="preserve">
     <value>Run this statement?</value>
@@ -2601,9 +2598,6 @@ New fingerprint: {2}</value>
   <data name="Error_filter_raw_unsupported" xml:space="preserve">
     <value>This engine takes no Raw SQL filter. Clear the filter and add rules instead.</value>
   </data>
-  <data name="StatusRunsIn" xml:space="preserve">
-    <value>Runs in {0}</value>
-  </data>
   <data name="HistoryListEvery" xml:space="preserve">
     <value>Queries run on every connection</value>
   </data>
@@ -3191,5 +3185,359 @@ New fingerprint: {2}</value>
   </data>
   <data name="Error_ffi_share_unfinished" xml:space="preserve">
     <value>The rows are still arriving. Share them once the query finishes.</value>
+  </data>
+  <data name="KeyTabCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Key commands</value>
+  </data>
+  <data name="KeyLoadMoreButton.Label" xml:space="preserve">
+    <value>Load more</value>
+  </data>
+  <data name="KeyLoadMoreButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Read the next entries</value>
+  </data>
+  <data name="KeyRefreshButton.Label" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="KeyRefreshButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Read the key again from the start</value>
+  </data>
+  <data name="KeyErrorBar.Title" xml:space="preserve">
+    <value>Could not read the key</value>
+  </data>
+  <data name="KeyGrid.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="KeyLoadingRing.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Reading the key</value>
+  </data>
+  <data name="KeyMissingTitle.Text" xml:space="preserve">
+    <value>This key does not exist</value>
+  </data>
+  <data name="KeyMissingText.Text" xml:space="preserve">
+    <value>It may have expired or been deleted. Refresh reads it again.</value>
+  </data>
+  <data name="KeyOtherTitle.Text" xml:space="preserve">
+    <value>No viewer for this type</value>
+  </data>
+  <data name="KeyOtherMessage" xml:space="preserve">
+    <value>TablePro cannot show a value of type {0} here. Read it with the module's own commands in a query tab.</value>
+  </data>
+  <data name="KeyStatusReading" xml:space="preserve">
+    <value>Reading...</value>
+  </data>
+  <data name="KeyStatusShown" xml:space="preserve">
+    <value>{0:N0} shown</value>
+  </data>
+  <data name="KeyStatusShownOf" xml:space="preserve">
+    <value>{0:N0} of {1:N0} shown</value>
+  </data>
+  <data name="KeyStatusMissing" xml:space="preserve">
+    <value>Key not found</value>
+  </data>
+  <data name="KeyStatusFailed" xml:space="preserve">
+    <value>Read failed</value>
+  </data>
+  <data name="KeyStatusStopped" xml:space="preserve">
+    <value>Stopped</value>
+  </data>
+  <data name="KeyType_Text" xml:space="preserve">
+    <value>String</value>
+  </data>
+  <data name="KeyType_Hash" xml:space="preserve">
+    <value>Hash</value>
+  </data>
+  <data name="KeyType_List" xml:space="preserve">
+    <value>List</value>
+  </data>
+  <data name="KeyType_Set" xml:space="preserve">
+    <value>Set</value>
+  </data>
+  <data name="KeyType_SortedSet" xml:space="preserve">
+    <value>Sorted set</value>
+  </data>
+  <data name="KeyType_Stream" xml:space="preserve">
+    <value>Stream</value>
+  </data>
+  <data name="KeyLengthBytesOne" xml:space="preserve">
+    <value>1 byte</value>
+  </data>
+  <data name="KeyLengthBytesMany" xml:space="preserve">
+    <value>{0:N0} bytes</value>
+  </data>
+  <data name="KeyLengthFieldsOne" xml:space="preserve">
+    <value>1 field</value>
+  </data>
+  <data name="KeyLengthFieldsMany" xml:space="preserve">
+    <value>{0:N0} fields</value>
+  </data>
+  <data name="KeyLengthElementsOne" xml:space="preserve">
+    <value>1 element</value>
+  </data>
+  <data name="KeyLengthElementsMany" xml:space="preserve">
+    <value>{0:N0} elements</value>
+  </data>
+  <data name="KeyLengthMembersOne" xml:space="preserve">
+    <value>1 member</value>
+  </data>
+  <data name="KeyLengthMembersMany" xml:space="preserve">
+    <value>{0:N0} members</value>
+  </data>
+  <data name="KeyLengthEntriesOne" xml:space="preserve">
+    <value>1 entry</value>
+  </data>
+  <data name="KeyLengthEntriesMany" xml:space="preserve">
+    <value>{0:N0} entries</value>
+  </data>
+  <data name="KeyTtlNone" xml:space="preserve">
+    <value>No expiry</value>
+  </data>
+  <data name="KeyTtlUnknown" xml:space="preserve">
+    <value>Expiry unknown</value>
+  </data>
+  <data name="KeyTtlSeconds" xml:space="preserve">
+    <value>Expires in {0} s</value>
+  </data>
+  <data name="KeyTtlMinutes" xml:space="preserve">
+    <value>Expires in {0} min</value>
+  </data>
+  <data name="KeyTtlMinutesAnd" xml:space="preserve">
+    <value>Expires in {0} min {1} s</value>
+  </data>
+  <data name="KeyTtlHours" xml:space="preserve">
+    <value>Expires in {0} h</value>
+  </data>
+  <data name="KeyTtlHoursAnd" xml:space="preserve">
+    <value>Expires in {0} h {1} min</value>
+  </data>
+  <data name="KeyTtlDays" xml:space="preserve">
+    <value>Expires in {0:N0} d</value>
+  </data>
+  <data name="KeyTtlDaysAnd" xml:space="preserve">
+    <value>Expires in {0:N0} d {1} h</value>
+  </data>
+  <data name="KeyCut" xml:space="preserve">
+    <value>Showing the first {0:N0} bytes of {1:N0}.</value>
+  </data>
+  <data name="QueryDatabaseButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>The database this tab runs in</value>
+  </data>
+  <data name="QueryDatabaseButtonName" xml:space="preserve">
+    <value>Database: {0}</value>
+  </data>
+  <data name="QueryDatabaseNone" xml:space="preserve">
+    <value>No database</value>
+  </data>
+  <data name="QueryDatabaseEmpty" xml:space="preserve">
+    <value>No databases</value>
+  </data>
+  <data name="SqlFileType" xml:space="preserve">
+    <value>SQL file</value>
+  </data>
+  <data name="FileChangedTitle" xml:space="preserve">
+    <value>Changed on disk</value>
+  </data>
+  <data name="FileChangedMessage" xml:space="preserve">
+    <value>Another program changed {0}.</value>
+  </data>
+  <data name="FileChangedReload" xml:space="preserve">
+    <value>Reload</value>
+  </data>
+  <data name="FileGoneTitle" xml:space="preserve">
+    <value>File deleted or moved</value>
+  </data>
+  <data name="FileGoneMessage" xml:space="preserve">
+    <value>{0} is no longer where it was. Save as... keeps your text in a new file.</value>
+  </data>
+  <data name="FileGoneSaveAs" xml:space="preserve">
+    <value>Save as...</value>
+  </data>
+  <data name="FileChangedSaveTitle" xml:space="preserve">
+    <value>{0} changed on disk</value>
+  </data>
+  <data name="FileChangedSaveMessage" xml:space="preserve">
+    <value>Another program changed the file since it was opened or saved here. Overwrite it with your text, or reload it and lose your changes.</value>
+  </data>
+  <data name="FileChangedSaveOverwrite" xml:space="preserve">
+    <value>Overwrite</value>
+  </data>
+  <data name="FileChangedSaveReload" xml:space="preserve">
+    <value>Reload from disk</value>
+  </data>
+  <data name="FileSaveFailedTitle" xml:space="preserve">
+    <value>Couldn't save {0}</value>
+  </data>
+  <data name="FileEncodingFailedMessage" xml:space="preserve">
+    <value>The text holds {0}, which {1} can't store, so the file was left as it was. Save as... writes UTF-8.</value>
+  </data>
+  <data name="FileReloadFailedTitle" xml:space="preserve">
+    <value>Couldn't reload {0}</value>
+  </data>
+  <data name="SqlFileEncodingUtf8" xml:space="preserve">
+    <value>UTF-8</value>
+  </data>
+  <data name="SqlFileEncodingUtf16LittleEndian" xml:space="preserve">
+    <value>UTF-16 LE</value>
+  </data>
+  <data name="SqlFileEncodingUtf16BigEndian" xml:space="preserve">
+    <value>UTF-16 BE</value>
+  </data>
+  <data name="SqlFileEncodingUtf32LittleEndian" xml:space="preserve">
+    <value>UTF-32 LE</value>
+  </data>
+  <data name="SqlFileEncodingUtf32BigEndian" xml:space="preserve">
+    <value>UTF-32 BE</value>
+  </data>
+  <data name="SqlFileEncodingLatin1" xml:space="preserve">
+    <value>Western (ISO Latin 1)</value>
+  </data>
+  <data name="FontFamilyCard.Header" xml:space="preserve">
+    <value>Font</value>
+  </data>
+  <data name="FontFamilyCard.Description" xml:space="preserve">
+    <value>The monospaced font of the SQL editor</value>
+  </data>
+  <data name="FontFamilyBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Editor font</value>
+  </data>
+  <data name="FontFamilyDefault" xml:space="preserve">
+    <value>Default (Cascadia Mono)</value>
+  </data>
+  <data name="GridHeader.Text" xml:space="preserve">
+    <value>Data grid</value>
+  </data>
+  <data name="GridFontCard.Header" xml:space="preserve">
+    <value>Font</value>
+  </data>
+  <data name="GridFontCard.Description" xml:space="preserve">
+    <value>The font of the cells in every result and table grid</value>
+  </data>
+  <data name="GridFontBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Grid font</value>
+  </data>
+  <data name="GridFontDefault" xml:space="preserve">
+    <value>Default (Segoe UI)</value>
+  </data>
+  <data name="GridFontSizeCard.Header" xml:space="preserve">
+    <value>Font size</value>
+  </data>
+  <data name="GridFontSizeCard.Description" xml:space="preserve">
+    <value>The size of the text in the grid's cells</value>
+  </data>
+  <data name="GridFontSizeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Grid font size</value>
+  </data>
+  <data name="NullDisplayCard.Header" xml:space="preserve">
+    <value>NULL display</value>
+  </data>
+  <data name="NullDisplayCard.Description" xml:space="preserve">
+    <value>What a grid shows in a cell that holds NULL, up to 20 characters</value>
+  </data>
+  <data name="NullDisplayBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>NULL display</value>
+  </data>
+  <data name="HistoryRetentionCard.Header" xml:space="preserve">
+    <value>Keep runs for</value>
+  </data>
+  <data name="HistoryRetentionCard.Description" xml:space="preserve">
+    <value>Older runs are removed, except pinned ones</value>
+  </data>
+  <data name="HistoryRetentionBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Keep runs for</value>
+  </data>
+  <data name="HistoryRetentionDays" xml:space="preserve">
+    <value>{0:N0} days</value>
+  </data>
+  <data name="HistoryRetentionYear" xml:space="preserve">
+    <value>1 year</value>
+  </data>
+  <data name="HistoryRetentionForever" xml:space="preserve">
+    <value>Forever</value>
+  </data>
+  <data name="HistoryMaxCard.Header" xml:space="preserve">
+    <value>Maximum runs</value>
+  </data>
+  <data name="HistoryMaxCard.Description" xml:space="preserve">
+    <value>The oldest runs past this number are removed, except pinned ones</value>
+  </data>
+  <data name="HistoryMaxBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Maximum runs</value>
+  </data>
+  <data name="HistoryMaxOption" xml:space="preserve">
+    <value>{0:N0}</value>
+  </data>
+  <data name="HistoryMaxUnlimited" xml:space="preserve">
+    <value>Unlimited</value>
+  </data>
+  <data name="ClearHistoryCard.Header" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="ClearHistoryCard.Description" xml:space="preserve">
+    <value>Removes every connection's runs, pinned ones too</value>
+  </data>
+  <data name="ClearHistoryButton.Content" xml:space="preserve">
+    <value>Clear history...</value>
+  </data>
+  <data name="ClearHistoryConfirm" xml:space="preserve">
+    <value>Clear history</value>
+  </data>
+  <data name="ClearHistoryDone" xml:space="preserve">
+    <value>The history is empty.</value>
+  </data>
+  <data name="EnvironmentLabel" xml:space="preserve">
+    <value>Environment: {0}</value>
+  </data>
+  <data name="ConnectionInDatabase" xml:space="preserve">
+    <value>{0} · {1}</value>
+  </data>
+  <data name="DatabaseNone" xml:space="preserve">
+    <value>No database</value>
+  </data>
+  <data name="DatabaseButtonName" xml:space="preserve">
+    <value>Database: {0}</value>
+  </data>
+  <data name="DatabaseButtonTip" xml:space="preserve">
+    <value>Switch database (Ctrl+K)</value>
+  </data>
+  <data name="DatabaseNoneListed" xml:space="preserve">
+    <value>No databases to switch to</value>
+  </data>
+  <data name="MenuReplace.Text" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="MenuReplace.AccessKey" xml:space="preserve">
+    <value>E</value>
+  </data>
+  <data name="MenuSwitchDatabase.Text" xml:space="preserve">
+    <value>Switch database...</value>
+  </data>
+  <data name="MenuSwitchDatabase.AccessKey" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="MenuOpenRecent.Text" xml:space="preserve">
+    <value>Open recent</value>
+  </data>
+  <data name="MenuOpenRecent.AccessKey" xml:space="preserve">
+    <value>F</value>
+  </data>
+  <data name="MenuSaveAs.Text" xml:space="preserve">
+    <value>Save as...</value>
+  </data>
+  <data name="MenuSaveAs.AccessKey" xml:space="preserve">
+    <value>A</value>
+  </data>
+  <data name="MenuClearRecent" xml:space="preserve">
+    <value>Clear recent files</value>
+  </data>
+  <data name="SqlFileWaits" xml:space="preserve">
+    <value>{0} opens in a query tab once a connection is connected.</value>
+  </data>
+  <data name="FileOpenFailedTitle" xml:space="preserve">
+    <value>Couldn't open {0}</value>
+  </data>
+  <data name="TabTitleUnsaved" xml:space="preserve">
+    <value>{0} •</value>
+  </data>
+  <data name="TabUnsavedStatus" xml:space="preserve">
+    <value>Unsaved changes</value>
   </data>
 </root>

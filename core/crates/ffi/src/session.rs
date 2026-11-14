@@ -1,14 +1,17 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
 use tablepro_core::browse::{
     ExportFields, ExportRequest, PageRequest, PagingMode, SortKey, build_count, build_page, build_view_sql,
     paging_mode, read_page,
 };
+use tablepro_core::dialect::DatabaseLayout;
 use tablepro_core::filter::FilterSet;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, PagePosition, RowCountEstimate, RowIdentity, TableRef};
 use tablepro_core::sql_syntax::{SortReference, sort_reference, with_order_by};
-use tablepro_core::{ByteLimit, ColumnInfo, EditorSessionOptions, QueryResult, ResultEvent, ResultSink, Truncation};
+use tablepro_core::{
+    ByteLimit, CallOptions, ColumnInfo, EditorSessionOptions, QueryResult, ResultEvent, ResultSink, Truncation,
+};
 use tablepro_session::runtime::{Tasks, catch_panic};
 use tablepro_session::{FailureCause, MonitorSignal, OperationError, OperationKind, Session, SessionHealth};
 use tokio_util::sync::CancellationToken;
@@ -19,6 +22,7 @@ use crate::definition::ObjectSource;
 use crate::editor::QueryEditor;
 use crate::error::{BoxedErrorInfo, CoreError};
 use crate::filter::{self, FilterChoices, TableFilterArg};
+use crate::key_read::KeyReader;
 use crate::library::SafeModeTag;
 use crate::row_edits::TableEditor;
 use crate::run::{QueryRun, RunListener, RunOutcome, RunSink, RunState, TransactionStateTag};
@@ -33,13 +37,15 @@ pub struct ColumnSort {
     pub ascending: bool,
 }
 
-// Row-address columns may follow the visible ones. An engine that pages on the server cannot seek past page one.
+// Row-address columns may follow the visible ones. An engine that pages on the server reads a page by an offset only
+// through the rows before it, so it says it cannot seek, and its next page resumes from where this one stopped.
 #[derive(uniffi::Object)]
 pub struct TablePageRead {
     run: Arc<QueryRun>,
     visible_columns: u32,
     can_seek: bool,
     view_sql: Option<String>,
+    next: Arc<Mutex<Option<PagePosition>>>,
 }
 
 #[uniffi::export]
@@ -56,10 +62,51 @@ impl TablePageRead {
         self.can_seek
     }
 
+    // Where the server stopped this page, set before the run finishes. None for an engine that seeks, or at the end.
+    pub fn next_page(&self) -> Option<Arc<PageResume>> {
+        self.next
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+            .map(|position| Arc::new(PageResume { position }))
+    }
+
     // The query the table view stands for: every row its filter and sort select, with no row window and the
     // filter's values written in, for a share link or the editor. None when the engine cannot write it that way.
     pub fn view_sql(&self) -> Option<String> {
         self.view_sql.clone()
+    }
+}
+
+// The paging state a server handed back with a page, which only the same table, sort, filter and size read again.
+#[derive(uniffi::Object)]
+pub struct PageResume {
+    position: PagePosition,
+}
+
+impl std::fmt::Debug for PageResume {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PageResume").field("position", &self.position).finish()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DatabaseLayoutTag {
+    // One database a connection reaches: a file, or numbered databases of keys.
+    Single,
+    // The server's databases are the schemas the catalog lists.
+    AsSchemas,
+    // Each database holds schemas of its own, and a connection's catalog describes the one it opened.
+    WithSchemas,
+}
+
+impl From<DatabaseLayout> for DatabaseLayoutTag {
+    fn from(layout: DatabaseLayout) -> Self {
+        match layout {
+            DatabaseLayout::Single => Self::Single,
+            DatabaseLayout::AsSchemas => Self::AsSchemas,
+            DatabaseLayout::WithSchemas => Self::WithSchemas,
+        }
     }
 }
 
@@ -231,6 +278,7 @@ impl DatabaseSession {
     }
 
     // Returns once the page is built and its read started, so a bad filter fails the call; rows come as run events.
+    // `resume` is a server-paged table's next page, from the page before; `offset` is read through otherwise.
     #[expect(
         clippy::too_many_arguments,
         reason = "the page's table, sort, filter and window, the app's listener and its cancel, as the app passes them"
@@ -242,16 +290,22 @@ impl DatabaseSession {
         filter: Option<TableFilterArg>,
         limit: u64,
         offset: u64,
+        resume: Option<Arc<PageResume>>,
         listener: Box<dyn RunListener>,
         cancel: Option<Arc<CancelToken>>,
     ) -> Result<Arc<TablePageRead>, CoreError> {
         let session = self.session.clone();
         let tasks = self.tasks.clone();
         let cancel = token(cancel);
+        let position = match (resume, offset) {
+            (Some(resume), _) => resume.position.clone(),
+            (None, 0) => PagePosition::First,
+            (None, rows) => PagePosition::Offset(rows),
+        };
         on_runtime(&self.tasks, async move {
             let dialect = session.current_dialect().ok_or_else(not_connected)?;
             let filter = filter::filter_set(filter, &*dialect)?;
-            let plan = plan_page(&session, table, sort_keys(sort), filter, limit, offset, &cancel).await?;
+            let plan = plan_page(&session, table, sort_keys(sort), filter, limit, position, &cancel).await?;
             Ok(Arc::new(start_page(session, &tasks, plan, listener)))
         })
         .await
@@ -454,17 +508,70 @@ impl DatabaseSession {
         TableEditor::open(self.session.clone(), self.tasks.clone(), table, refresh, cancel).await
     }
 
-    pub async fn open_editor(&self, cancel: Option<Arc<CancelToken>>) -> Result<Arc<QueryEditor>, CoreError> {
+    // `database` is where the editor runs: an engine that binds it at connect opens there, another moves there.
+    pub async fn open_editor(
+        &self,
+        database: Option<String>,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<Arc<QueryEditor>, CoreError> {
         let session = self.session.clone();
         let tasks = self.tasks.clone();
         let cancel = token(cancel);
+        let database = database.filter(|name| !name.is_empty());
         on_runtime(&self.tasks, async move {
-            let editor = session
-                .open_editor_session(EditorSessionOptions::default(), &cancel)
-                .await?;
+            let options = EditorSessionOptions {
+                database: database.clone(),
+                ..EditorSessionOptions::default()
+            };
+            let editor = session.open_editor_session(options, &cancel).await?;
+            if let Some(database) = database
+                && editor.database().as_deref() != Some(database.as_str())
+                && let Err(error) = editor
+                    .use_database(&database, CallOptions::new(None, cancel.clone()))
+                    .await
+            {
+                // Run elsewhere, the tab's text would make its objects in the wrong database.
+                editor.close().await;
+                return Err(error.into());
+            }
             Ok(Arc::new(QueryEditor::new(editor, tasks)))
         })
         .await
+    }
+
+    // How the server's databases stand to the catalog; Single while there is no dialect to ask.
+    pub fn database_layout(&self) -> DatabaseLayoutTag {
+        self.session
+            .current_dialect()
+            .map_or(DatabaseLayoutTag::Single, |dialect| dialect.database_layout().into())
+    }
+
+    // The database the connection was asked to open, as the user named it. None for a file or a login that named none.
+    pub fn database(&self) -> Option<String> {
+        self.session
+            .database()
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+    }
+
+    // The server's databases the login sees: the one the connection is in marked default, the engine's own system.
+    pub async fn databases(&self, cancel: Option<Arc<CancelToken>>) -> Result<Vec<SchemaEntry>, CoreError> {
+        let session = self.session.clone();
+        let cancel = token(cancel);
+        on_runtime(&self.tasks, async move {
+            let databases = session
+                .run_cancellable(OperationKind::Metadata, &cancel, |lease, options| async move {
+                    Ok(lease.list_databases(options).await?)
+                })
+                .await?;
+            Ok(databases.iter().map(SchemaEntry::from).collect())
+        })
+        .await
+    }
+
+    // A key-value engine's key, read a window at a time; nothing is read until `read_more`.
+    pub fn open_key(&self, key: String) -> Arc<KeyReader> {
+        Arc::new(KeyReader::new(self.session.clone(), self.tasks.clone(), key))
     }
 
     // Editors opened from it close on their own.
@@ -577,7 +684,7 @@ async fn plan_page(
     sort: Vec<SortKey>,
     filter: FilterSet,
     limit: u64,
-    offset: u64,
+    position: PagePosition,
     cancel: &CancellationToken,
 ) -> Result<PagePlan, CoreError> {
     let table: TableRef = table.into();
@@ -594,16 +701,6 @@ async fn plan_page(
         .await?;
     let dialect = session.current_dialect().ok_or_else(not_connected)?;
     let can_seek = paging_mode(dialect.table_paging(), &identity, &sort) != PagingMode::ServerPaging;
-    if offset > 0 && !can_seek {
-        return Err(CoreError::failed(
-            "ffi.page_unsupported",
-            "the engine reads a table only from its start",
-        ));
-    }
-    let position = match offset {
-        0 => PagePosition::First,
-        rows => PagePosition::Offset(rows),
-    };
     // Built once here, so a filter the engine cannot take fails the call and never reaches the server.
     let spec = build_page(
         &*dialect,
@@ -648,10 +745,12 @@ fn start_page(session: Arc<Session>, tasks: &Tasks, plan: PagePlan, listener: Bo
     let visible_columns = plan.visible_columns;
     let can_seek = plan.can_seek;
     let view_sql = plan.view_sql.clone();
+    let next = Arc::new(Mutex::new(None));
+    let landed = next.clone();
     let run = state.clone();
     drop(tasks.spawn_task(async move {
         let started = Instant::now();
-        let outcome = match catch_panic(read_into(&session, &plan, &run)).await {
+        let outcome = match catch_panic(read_into(&session, &plan, &run, &landed)).await {
             Ok(Ok(())) => RunOutcome::Completed {
                 elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
             },
@@ -669,11 +768,17 @@ fn start_page(session: Arc<Session>, tasks: &Tasks, plan: PagePlan, listener: Bo
         visible_columns,
         can_seek,
         view_sql,
+        next,
     }
 }
 
 // The run's cancel reaches the driver through the operation, so a cancel stops the statement on the server.
-async fn read_into(session: &Session, plan: &PagePlan, state: &Arc<RunState>) -> Result<(), OperationError> {
+async fn read_into(
+    session: &Session,
+    plan: &PagePlan,
+    state: &Arc<RunState>,
+    next: &Mutex<Option<PagePosition>>,
+) -> Result<(), OperationError> {
     let read = session
         .run_cancellable(OperationKind::Page, &state.cancel, move |lease, options| async move {
             let request = PageRequest {
@@ -688,11 +793,14 @@ async fn read_into(session: &Session, plan: &PagePlan, state: &Arc<RunState>) ->
             read_page::<OperationError>(&*lease, &request, &options).await
         })
         .await?;
-    // An engine that pages on the server hands back where more rows start, and only page one can be read here.
+    // An engine that pages on the server hands back where more rows start, which the next page resumes from.
     let truncation = match read.result.truncated || (read.mode == PagingMode::ServerPaging && read.next.is_some()) {
         true => Truncation::ReadPastLimit,
         false => Truncation::Complete,
     };
+    if let Some(position @ PagePosition::Resume(_)) = read.next {
+        *next.lock().unwrap_or_else(PoisonError::into_inner) = Some(position);
+    }
     deliver(
         RunSink::new(state.clone(), ByteLimit::EDITOR_DEFAULT),
         read.result,
@@ -724,5 +832,114 @@ impl std::fmt::Debug for DatabaseSession {
         f.debug_struct("DatabaseSession")
             .field("session", &self.session)
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::meta::SchemaInfo;
+    use tablepro_core::{DriverError, EditorSession, UnsupportedFeature};
+    use tablepro_test_support::{ConnectionScript, FakeEditorSession, FakeReply, Replies};
+
+    use super::*;
+    use crate::test_session::started;
+
+    fn database(name: &str, is_default: bool, is_system: bool) -> SchemaInfo {
+        SchemaInfo {
+            name: name.to_owned(),
+            is_default,
+            is_system,
+        }
+    }
+
+    fn with_editor(editor: &Arc<FakeEditorSession>) -> ConnectionScript {
+        let mut script = ConnectionScript::default();
+        let opened: Arc<dyn EditorSession> = editor.clone();
+        script.open_editor_session.always(FakeReply::ok(opened));
+        script
+    }
+
+    #[tokio::test]
+    async fn the_server_s_databases_come_with_the_one_in_use_and_the_engine_s_own_marked() {
+        let mut script = ConnectionScript::default();
+        script.list_databases.always(FakeReply::ok(vec![
+            database("shop", true, false),
+            database("analytics", false, false),
+            database("mysql", false, true),
+        ]));
+        let (session, tasks) = started(script);
+        let session = DatabaseSession::new(session, tasks);
+
+        let databases = session.databases(None).await.unwrap();
+
+        let listed: Vec<_> = databases
+            .iter()
+            .map(|entry| (entry.name.as_str(), entry.is_default, entry.is_system))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                ("shop", true, false),
+                ("analytics", false, false),
+                ("mysql", false, true)
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_editor_opened_for_another_database_moves_there() {
+        let editor = Arc::new(FakeEditorSession::new(Replies::default()));
+        editor.set_database(Some("shop"));
+        let (session, tasks) = started(with_editor(&editor));
+        let session = DatabaseSession::new(session, tasks);
+
+        let opened = session.open_editor(Some("analytics".to_owned()), None).await.unwrap();
+
+        assert_eq!(editor.moves(), ["analytics"]);
+        assert_eq!(opened.database().as_deref(), Some("analytics"));
+    }
+
+    #[tokio::test]
+    async fn an_editor_the_engine_opened_in_its_database_is_not_moved_again() {
+        let editor = Arc::new(FakeEditorSession::new(Replies::default()));
+        editor.set_database(Some("analytics"));
+        editor.refuse_moves(DriverError::Unsupported {
+            feature: UnsupportedFeature::DatabaseSwitching,
+        });
+        let (session, tasks) = started(with_editor(&editor));
+        let session = DatabaseSession::new(session, tasks);
+
+        let opened = session.open_editor(Some("analytics".to_owned()), None).await.unwrap();
+
+        assert!(editor.moves().is_empty());
+        assert_eq!(opened.database().as_deref(), Some("analytics"));
+    }
+
+    #[tokio::test]
+    async fn an_editor_that_cannot_reach_its_database_is_closed_and_the_open_fails() {
+        let editor = Arc::new(FakeEditorSession::new(Replies::default()));
+        editor.refuse_moves(DriverError::Unsupported {
+            feature: UnsupportedFeature::DatabaseSwitching,
+        });
+        let (session, tasks) = started(with_editor(&editor));
+        let session = DatabaseSession::new(session, tasks);
+
+        let refused = session
+            .open_editor(Some("analytics".to_owned()), None)
+            .await
+            .unwrap_err();
+
+        assert_eq!(refused.code(), "driver.unsupported");
+        assert!(editor.is_closed(), "the editor was left open in the wrong database");
+    }
+
+    #[tokio::test]
+    async fn a_server_with_databases_says_how_they_stand_to_its_schemas() {
+        let (session, tasks) = started(ConnectionScript::default());
+        let session = DatabaseSession::new(session, tasks);
+
+        // The fake dialect, as a file, reaches one database.
+        assert_eq!(session.database_layout(), DatabaseLayoutTag::Single);
+        assert_eq!(session.database(), None);
     }
 }

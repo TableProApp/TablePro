@@ -59,6 +59,7 @@ public sealed partial class StructureView : UserControl
         StructureGrid.SortedDescendingStatus = Strings.Get("GridSortedDescending");
         // The rows are held here, so a header click sorts them here, as the macOS structure grid sorts.
         StructureGrid.SortRequested += (_, sort) => ShowRows(sort);
+        DisplaySettings.Follow(StructureGrid);
     }
 
     private enum Section

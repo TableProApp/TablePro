@@ -108,6 +108,18 @@ public sealed class QueryHistory : IDisposable
         return CoreCall.RunAsync(() => _store.Delete(native));
     }
 
+    // Drops unpinned runs older than retentionDays (0 keeps every age), then the oldest past maxEntries (0 keeps the
+    // store's own cap). Returns how many went.
+    public async Task<long> PruneAsync(int retentionDays, int maxEntries, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(retentionDays);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxEntries);
+        cancellationToken.ThrowIfCancellationRequested();
+        var removed = await CoreCall.RunAsync(() => _store.Prune(checked((uint)retentionDays), checked((uint)maxEntries)))
+            .ConfigureAwait(false);
+        return Mapping.Count(removed);
+    }
+
     public Task ClearAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

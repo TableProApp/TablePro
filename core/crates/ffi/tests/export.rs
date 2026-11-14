@@ -65,7 +65,7 @@ fn table(name: &str) -> TableName {
 }
 
 async fn run(session: &DatabaseSession, sql: &str) -> Option<Arc<ResultSet>> {
-    let editor = session.open_editor(None).await.unwrap();
+    let editor = session.open_editor(None, None).await.unwrap();
     let run = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Quiet));
     let outcome = run.outcome().await.unwrap();
     assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
@@ -186,7 +186,7 @@ async fn a_page_exports_only_its_visible_columns() {
     )
     .await;
     let page = session
-        .read_table_page(table("notes"), None, None, 100, 0, Box::new(Quiet), None)
+        .read_table_page(table("notes"), None, None, 100, 0, None, Box::new(Quiet), None)
         .await
         .unwrap();
     let read = page.run();
@@ -372,7 +372,7 @@ async fn a_failed_export_keeps_the_file_it_would_have_replaced() {
 async fn rows_still_arriving_are_not_exported() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, session) = fixture(dir.path()).await;
-    let editor = session.open_editor(None).await.unwrap();
+    let editor = session.open_editor(None, None).await.unwrap();
     let settings = RunSettings {
         row_limit: Some(u64::MAX),
         timeout_ms: None,

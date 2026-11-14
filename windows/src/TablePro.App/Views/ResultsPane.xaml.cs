@@ -34,6 +34,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         ResultGrid.SortedAscendingStatus = Strings.Get("GridSortedAscending");
         ResultGrid.SortedDescendingStatus = Strings.Get("GridSortedDescending");
         ResultGrid.SortRequested += (_, sort) => SortRequested?.Invoke(this, sort);
+        DisplaySettings.Follow(ResultGrid);
     }
 
     public event EventHandler<string>? StatusChanged;
