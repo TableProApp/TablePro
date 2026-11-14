@@ -32,6 +32,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -88,10 +89,28 @@
                 <AppBarButton x:Uid="PreviewSqlButton" x:Name="PreviewSqlButton" AutomationProperties.AutomationId="PreviewSqlButton" Icon="Preview" IsEnabled="False" Click="OnPreviewSql" />
             </CommandBar>
 
-            <!-- The filter bar and the structure are made the first time they show. -->
-            <Border x:Name="FilterHost" Grid.Row="1" Visibility="Collapsed" />
+            <!-- Changes the app ended holding without a close, put back once the page is read. -->
+            <InfoBar
+                x:Name="RecoveredBar"
+                Grid.Row="1"
+                Margin="8,0,8,8"
+                AutomationProperties.AutomationId="RecoveredEditsBar"
+                Closed="OnRecoveredBarClosed"
+                IsOpen="False"
+                Visibility="Collapsed">
+                <InfoBar.ActionButton>
+                    <Button
+                        x:Uid="DiscardWaitingButton"
+                        x:Name="DiscardWaitingButton"
+                        AutomationProperties.AutomationId="DiscardWaitingButton"
+                        Click="OnDiscardWaiting" />
+                </InfoBar.ActionButton>
+            </InfoBar>
 
-            <local:ResultsPane x:Name="Results" Grid.Row="2" />
+            <!-- The filter bar and the structure are made the first time they show. -->
+            <Border x:Name="FilterHost" Grid.Row="2" Visibility="Collapsed" />
+
+            <local:ResultsPane x:Name="Results" Grid.Row="3" />
         </Grid>
 
         <Border x:Name="StructureHost" Grid.Row="1" Visibility="Collapsed" />

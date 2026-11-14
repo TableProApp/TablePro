@@ -77,6 +77,9 @@ public sealed class DefinitionTab : IWorkspaceTab
         ParentTable = Entry.ParentTable,
     };
 
+    // A definition is read again from the server, so nothing of it waits to be saved.
+    public SessionTab WithPendingWork(SessionTab snapshot) => snapshot;
+
     // Also Reload. A call during a read shares it, since a second read of the same object adds only a server trip.
     public async Task LoadAsync()
     {

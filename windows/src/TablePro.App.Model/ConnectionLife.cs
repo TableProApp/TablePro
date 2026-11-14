@@ -56,7 +56,7 @@ public interface IConnectionView<TSession>
     Task CloseTabsAsync(bool keepClosed);
 
     // Until it connects, the tabs it was saved with are still to come; once connected, the strip is the truth.
-    SessionConnection Snapshot(SessionConnection origin);
+    SessionConnection Snapshot(SessionConnection origin, bool withWork);
 }
 
 // A saved connection is reopened by id, a file opened without saving by its path.
@@ -166,7 +166,8 @@ public sealed class ConnectionLife<TSession>
         SetState(ConnectionState.NotConnected);
     }
 
-    public SessionConnection Snapshot() => _view.Snapshot(_restore ?? Origin);
+    // Tabs still to come keep the work they were saved with, since nothing has asked about it yet.
+    public SessionConnection Snapshot(bool withWork = false) => _view.Snapshot(_restore ?? Origin, withWork);
 
     private async Task RunConnectAsync()
     {

@@ -62,6 +62,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         grid.CellEditStarting += OnCellEditStarting;
         grid.CellEditCommitting += OnCellEditCommitting;
         grid.DeleteRequested += (_, _) => DeleteRows();
+        grid.PendingEditChanged += (_, _) => DraftChanged?.Invoke(this, EventArgs.Empty);
         grid.ContextRequested += OnGridContextRequested;
         // TabView loads only the content it shows, so a restored tab reads nothing until it first shows.
         Loaded += OnFirstLoaded;
@@ -73,6 +74,12 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     // Share... on the grid's menu shares the page shown; the workspace opens the sheet.
     public event EventHandler<ShareKind>? ShareRequested;
+
+    // The open cell editor's text changed, which the session file keeps as a draft.
+    public event EventHandler? DraftChanged;
+
+    // A save is about to send its statements; the window writes the session file first.
+    public event EventHandler? SessionWriteRequested;
 
     public string Title => _model.Title;
 
@@ -131,6 +138,11 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     bool ITableTabView.HasOpenEdit => Results.GridView.IsEditing;
 
+    CellDraft? ITableTabView.OpenDraft =>
+        Results.GridView.PendingEdit is { } open ? new CellDraft(open.Row, open.Column, open.Text) : null;
+
+    void ITableTabView.WriteSessionNow() => SessionWriteRequested?.Invoke(this, EventArgs.Empty);
+
     private FrameworkElement Owner => DialogOwner ?? this;
 
     public bool Shows(string? schema, string table) => _model.Shows(schema, table);
@@ -164,6 +176,8 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     }
 
     public SessionTab Snapshot() => _model.Snapshot();
+
+    public SessionTab WithPendingWork(SessionTab snapshot) => _model.WithPendingWork(snapshot);
 
     public Task<bool> ConfirmCloseAsync(bool offerSave) => _model.ConfirmCloseAsync(offerSave);
 
@@ -318,6 +332,51 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     void ITableTabView.ShowStructureFailed(CoreError failure) => _structure?.ShowFailure(failure);
 
     void ITableTabView.ShowFilterChoicesFailed(CoreError failure) => _filters?.ShowChoicesFailed(failure);
+
+    // While changes wait, the bar stays until a page takes them or Discard drops them.
+    void ITableTabView.ShowRecovered(int restored, int waiting, bool saveBlocked)
+    {
+        if (restored == 0 && waiting == 0 && !saveBlocked)
+        {
+            RecoveredBar.IsOpen = false;
+            RecoveredBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var waits = waiting > 0;
+        List<string> sentences = [];
+        if (saveBlocked)
+        {
+            // The words Save gives when it refuses, as after a save whose outcome is unknown.
+            sentences.Add(Strings.Get("RecoveredUncertainMessage"));
+            sentences.Add(Strings.Get("SaveUnknownBlocked"));
+        }
+        else if (!waits)
+        {
+            sentences.Add(Strings.Get("RecoveredEditsMessage"));
+        }
+
+        if (waits)
+        {
+            sentences.Add(
+                waiting == 1 ? Strings.Get("RecoveredWaitingOne") : Strings.Format("RecoveredWaitingMany", waiting));
+        }
+
+        var message = string.Join(" ", sentences);
+        RecoveredBar.Severity = waits || saveBlocked ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
+        RecoveredBar.Title = Strings.Get(waits ? "RecoveredWaitingTitle" : "RecoveredEditsTitle");
+        RecoveredBar.IsClosable = !waits;
+        DiscardWaitingButton.Visibility = waits ? Visibility.Visible : Visibility.Collapsed;
+        // A closed InfoBar keeps its margin, so the bar is collapsed while it is closed.
+        RecoveredBar.Visibility = Visibility.Visible;
+        // Narrator reads an InfoBar when it opens, not when its text changes, so a new count opens it again.
+        if (!RecoveredBar.IsOpen || !string.Equals(RecoveredBar.Message, message, StringComparison.Ordinal))
+        {
+            RecoveredBar.Message = message;
+            RecoveredBar.IsOpen = false;
+            RecoveredBar.IsOpen = true;
+        }
+    }
 
     // SelectorBar raises SelectionChanged for ShowView's own change too, which finds the view already shown.
     private void ShowView(bool structure)
@@ -705,6 +764,17 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     }
 
     private void OnStop(object sender, RoutedEventArgs e) => Stop();
+
+    // Only the close button hides it for good; a bar opened again for a new count stays.
+    private void OnRecoveredBarClosed(InfoBar sender, InfoBarClosedEventArgs args)
+    {
+        if (args.Reason == InfoBarCloseReason.CloseButton)
+        {
+            RecoveredBar.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void OnDiscardWaiting(object sender, RoutedEventArgs e) => _model.DiscardWaiting();
 
     private void OnViewChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {

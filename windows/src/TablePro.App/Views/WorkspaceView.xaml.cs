@@ -238,7 +238,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         await LoadTreeAsync().ConfigureAwait(true);
     }
 
-    public SessionConnection Snapshot(SessionConnection origin)
+    // withWork adds each tab's pending work, which only the session file keeps.
+    public SessionConnection Snapshot(SessionConnection origin, bool withWork = false)
     {
         ArgumentNullException.ThrowIfNull(origin);
         // Until it connects, the tabs it was saved with are still to come; once connected, the strip is the truth.
@@ -250,7 +251,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         var tabs = Tabs.TabItems.OfType<TabViewItem>()
             .Select(item => item.Content)
             .OfType<ITabContent>()
-            .Select(SnapshotOf)
+            .Select(content => withWork ? content.WithPendingWork(SnapshotOf(content)) : SnapshotOf(content))
             .ToList();
         return origin with { Tabs = tabs, SelectedTab = Math.Max(0, Tabs.SelectedIndex) };
     }
@@ -324,15 +325,15 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     // Also how SQL from elsewhere opens in an editor: a definition's text or a run from the history.
     public void NewQueryTab(string? sql = null, string? title = null) => AddQuery(sql, title ?? NextQueryTitle(), null);
 
-    // A definition read from another database than the connection's runs there.
-    private void AddQuery(string? sql, string title, int? index, string? database = null)
+    // A definition read from another database runs there; rolledBack says the app ended in the tab's transaction.
+    private void AddQuery(string? sql, string title, int? index, string? database = null, bool rolledBack = false)
     {
         if (_share is null)
         {
             return;
         }
 
-        AddTab(new QueryTabView(_workbench, _share, title, sql, database), Symbol.Document, index);
+        AddTab(new QueryTabView(_workbench, _share, title, sql, database, rolledBack), Symbol.Document, index);
     }
 
     // The open tab of the table is brought forward rather than a second one opened.
@@ -405,7 +406,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
                 break;
             default:
-                AddQuery(tab.Sql, tab.Title, index, tab.Database);
+                AddQuery(tab.Sql, tab.Title, index, tab.Database, tab.HeldTransaction);
                 break;
         }
     }
@@ -747,6 +748,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             source.ShareRequested += OnShareRequested;
         }
 
+        if (item.Content is TableTabView tableTab)
+        {
+            tableTab.DraftChanged += OnEditorTextChanged;
+            tableTab.SessionWriteRequested += OnSessionWriteRequested;
+        }
+
         if (item.Content is QueryTabView query)
         {
             query.HistoryRecorded += OnHistoryRecorded;
@@ -789,6 +796,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         if (item.Content is IShareSource source)
         {
             source.ShareRequested -= OnShareRequested;
+        }
+
+        if (item.Content is TableTabView tableTab)
+        {
+            tableTab.DraftChanged -= OnEditorTextChanged;
+            tableTab.SessionWriteRequested -= OnSessionWriteRequested;
         }
 
         if (item.Content is QueryTabView query)
@@ -859,6 +872,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     }
 
     private void OnEditorTextChanged(object? sender, EventArgs e) => SessionChanged?.Invoke(this, EventArgs.Empty);
+
+    private void OnSessionWriteRequested(object? sender, EventArgs e) => Host?.WriteSessionNow();
 
     // Built when asked for, since a menu keeps the window it first opened in and a tab can move to another.
     private void OnTabContextRequested(UIElement sender, ContextRequestedEventArgs args)
