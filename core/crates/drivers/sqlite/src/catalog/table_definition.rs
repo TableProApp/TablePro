@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use sqlparser::ast::{ColumnOption, Statement};
 use sqlparser::dialect::SQLiteDialect;
@@ -6,72 +6,69 @@ use sqlparser::parser::Parser;
 use tablepro_core::column::SqlExpression;
 use tablepro_core::ddl::InboundForeignKey;
 use tablepro_core::meta::TableRef;
+use tablepro_core::{CatalogBudget, DriverError};
 
-use crate::ddl::declared_foreign_key_names;
-
-/// One row of the inbound foreign key query: a key column of another
-/// table that points at this one.
+// A column of another table's key that points at this one. `to` is None for a key naming no columns, which means
+// the parent's primary key.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct InboundKeyRow {
-    pub child: String,
-    /// The child's CREATE TABLE, where the key's declared name is.
-    pub child_sql: Option<String>,
-    /// How many foreign keys the child has, here or elsewhere.
-    pub child_keys: usize,
+pub(crate) struct InboundKeyColumn {
     pub id: i64,
+    pub seq: i64,
     pub from: String,
-    /// `None` when the key names no columns, which means the parent's
-    /// primary key.
     pub to: Option<String>,
 }
 
-/// Group key columns into keys, in the order the query returned them.
-/// A key that names no parent columns points at `primary_key`.
+// One child's keys in pragma id order, each named by its id in `names`. A key naming no parent columns points at
+// `primary_key`.
 pub(crate) fn inbound_foreign_keys(
     schema: Option<&str>,
-    rows: Vec<InboundKeyRow>,
+    child: &str,
+    mut columns: Vec<InboundKeyColumn>,
+    names: &[String],
     primary_key: &[String],
-) -> Vec<InboundForeignKey> {
+    budget: &mut CatalogBudget,
+) -> Result<Vec<InboundForeignKey>, DriverError> {
+    columns.sort_by_key(|column| (column.id, column.seq));
     let mut keys: Vec<InboundForeignKey> = Vec::new();
-    let mut positions: HashMap<(String, i64), usize> = HashMap::new();
     let mut unnamed_targets: Vec<bool> = Vec::new();
-    let mut names: HashMap<String, Vec<String>> = HashMap::new();
-    for row in rows {
-        let child_names = names.entry(row.child.clone()).or_insert_with(|| {
-            let declared = row.child_sql.as_deref().and_then(declared_foreign_key_names);
-            foreign_key_names(&row.child, declared, row.child_keys)
-        });
-        let name = usize::try_from(row.id)
-            .ok()
-            .and_then(|id| child_names.get(id))
-            .cloned()
-            .unwrap_or_else(|| foreign_key_name(&row.child, row.id));
-        let position = *positions.entry((row.child.clone(), row.id)).or_insert_with(|| {
+    let mut last_id = None;
+    for column in columns {
+        if last_id != Some(column.id) {
+            last_id = Some(column.id);
+            let name = usize::try_from(column.id)
+                .ok()
+                .and_then(|id| names.get(id))
+                .cloned()
+                .unwrap_or_else(|| foreign_key_name(child, column.id));
+            // Each key holds its own copy of the child's name, which can be long.
             keys.push(InboundForeignKey {
                 child_compares_alike: true,
-                name,
-                table: TableRef::new(schema.map(str::to_owned), row.child.clone()),
+                name: budget.keep(name)?,
+                table: TableRef::new(
+                    budget.keep_optional(schema.map(str::to_owned))?,
+                    budget.keep(child.to_owned())?,
+                ),
                 columns: Vec::new(),
                 referenced_columns: Vec::new(),
             });
             unnamed_targets.push(false);
-            keys.len() - 1
-        });
-        let (Some(key), Some(unnamed)) = (keys.get_mut(position), unnamed_targets.get_mut(position)) else {
+        }
+        let (Some(key), Some(unnamed)) = (keys.last_mut(), unnamed_targets.last_mut()) else {
             continue;
         };
-        key.columns.push(row.from);
-        match row.to {
+        key.columns.push(column.from);
+        match column.to {
             Some(to) => key.referenced_columns.push(to),
             None => *unnamed = true,
         }
     }
     for (key, unnamed) in keys.iter_mut().zip(unnamed_targets) {
         if unnamed {
+            budget.charge_texts(primary_key)?;
             key.referenced_columns = primary_key.to_vec();
         }
     }
-    keys
+    Ok(keys)
 }
 
 /// The name of a key declared without one, made from the child table
@@ -80,24 +77,37 @@ pub(crate) fn foreign_key_name(table: &str, id: i64) -> String {
     format!("fk_{table}_{id}")
 }
 
-/// A name for each of a table's `count` foreign keys, by pragma id. The
-/// pragmas do not report the name a CONSTRAINT clause gave a key, so it
-/// comes from the table's CREATE TABLE, `declared`. A key without one,
-/// or with a name an earlier key took, gets a made-up one.
-pub(crate) fn foreign_key_names(table: &str, declared: Option<Vec<Option<String>>>, count: usize) -> Vec<String> {
+// The pragmas do not report the name a CONSTRAINT clause gave a key, so it comes from the CREATE TABLE, `declared`;
+// a key without one, or with a name an earlier key took, gets a made-up one.
+pub(crate) fn foreign_key_names(
+    table: &str,
+    declared: Option<Vec<Option<String>>>,
+    count: usize,
+    budget: &mut CatalogBudget,
+) -> Result<Vec<String>, DriverError> {
     let declared = declared.filter(|declared| declared.len() == count).unwrap_or_default();
-    let mut names: Vec<String> = Vec::with_capacity(count);
+    let mut names: Vec<String> = Vec::new();
+    // Folded as SQLite folds names, so a table with thousands of keys is not checked key against key. Only a
+    // declared name can be taken already, so a table that declares none keeps no second copy.
+    let mut taken: HashSet<String> = HashSet::new();
     for id in 0..count {
         let made_up = || foreign_key_name(table, i64::try_from(id).unwrap_or(i64::MAX));
         let name = declared
             .get(id)
             .cloned()
             .flatten()
-            .filter(|name| !names.iter().any(|taken| taken.eq_ignore_ascii_case(name)))
+            .filter(|name| !taken.contains(&name.to_ascii_lowercase()))
             .unwrap_or_else(made_up);
+        let name = budget.keep(name)?;
+        if !declared.is_empty() {
+            taken.insert(budget.keep(name.to_ascii_lowercase())?);
+        }
         names.push(name);
     }
-    names
+    for folded in &taken {
+        budget.release_text(folded);
+    }
+    Ok(names)
 }
 
 /// The expressions of the generated columns, read from the table's own
@@ -135,56 +145,67 @@ pub(crate) fn generated_expressions(create_statement: &str) -> HashMap<String, S
 mod tests {
     use super::*;
 
-    fn key_row(child: &str, id: i64, from: &str, to: Option<&str>) -> InboundKeyRow {
-        InboundKeyRow {
-            child: child.to_owned(),
-            child_sql: None,
-            child_keys: 3,
+    fn column(id: i64, seq: i64, from: &str, to: Option<&str>) -> InboundKeyColumn {
+        InboundKeyColumn {
             id,
+            seq,
             from: from.to_owned(),
             to: to.map(str::to_owned),
         }
     }
 
+    fn keys_of(
+        child: &str,
+        columns: Vec<InboundKeyColumn>,
+        child_sql: Option<&str>,
+        child_keys: usize,
+    ) -> Vec<InboundForeignKey> {
+        let mut budget = CatalogBudget::default();
+        let declared = child_sql.and_then(crate::ddl::declared_foreign_key_names);
+        let names = foreign_key_names(child, declared, child_keys, &mut budget).unwrap();
+        inbound_foreign_keys(None, child, columns, &names, &["id".to_owned()], &mut budget).unwrap()
+    }
+
     #[test]
     fn a_key_without_target_columns_points_at_the_primary_key() {
-        let rows = vec![
-            key_row("lines", 0, "order_id", None),
-            key_row("notes", 0, "order_a", Some("a")),
-            key_row("notes", 0, "order_b", Some("b")),
-        ];
+        let lines = keys_of("lines", vec![column(0, 0, "order_id", None)], None, 3);
+        let notes = keys_of(
+            "notes",
+            vec![column(0, 1, "order_b", Some("b")), column(0, 0, "order_a", Some("a"))],
+            None,
+            3,
+        );
 
-        let keys = inbound_foreign_keys(None, rows, &["id".to_owned()]);
-
-        assert_eq!(keys.len(), 2);
-        assert_eq!(keys[0].name, "fk_lines_0");
-        assert_eq!(keys[0].table, TableRef::unqualified("lines"));
-        assert_eq!(keys[0].referenced_columns, ["id"]);
-        assert_eq!(keys[1].columns, ["order_a", "order_b"]);
-        assert_eq!(keys[1].referenced_columns, ["a", "b"]);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].name, "fk_lines_0");
+        assert_eq!(lines[0].table, TableRef::unqualified("lines"));
+        assert_eq!(lines[0].referenced_columns, ["id"]);
+        assert_eq!(notes.len(), 1);
+        assert_eq!(
+            notes[0].columns,
+            ["order_a", "order_b"],
+            "in key order whatever order they came in"
+        );
+        assert_eq!(notes[0].referenced_columns, ["a", "b"]);
     }
 
     #[test]
     fn a_declared_constraint_name_is_the_key_name() {
         let child_sql = "CREATE TABLE lines (a INTEGER CONSTRAINT to_orders REFERENCES orders, b INTEGER REFERENCES \
                          orders, CONSTRAINT to_orders FOREIGN KEY (a) REFERENCES orders)";
-        let rows = [(0, "a"), (1, "b"), (2, "a")].map(|(id, from)| InboundKeyRow {
-            child_sql: Some(child_sql.to_owned()),
-            ..key_row("lines", id, from, None)
-        });
+        let columns = || {
+            vec![
+                column(2, 0, "a", None),
+                column(0, 0, "a", None),
+                column(1, 0, "b", None),
+            ]
+        };
 
-        let keys = inbound_foreign_keys(None, rows.to_vec(), &["id".to_owned()]);
+        let keys = keys_of("lines", columns(), Some(child_sql), 3);
 
         let names: Vec<&str> = keys.iter().map(|key| key.name.as_str()).collect();
         assert_eq!(names, ["to_orders", "fk_lines_1", "fk_lines_2"]);
-        let miscounted: Vec<InboundKeyRow> = rows
-            .iter()
-            .map(|row| InboundKeyRow {
-                child_keys: 4,
-                ..row.clone()
-            })
-            .collect();
-        let unsure: Vec<String> = inbound_foreign_keys(None, miscounted, &["id".to_owned()])
+        let unsure: Vec<String> = keys_of("lines", columns(), Some(child_sql), 4)
             .into_iter()
             .map(|key| key.name)
             .collect();
@@ -194,10 +215,41 @@ mod tests {
             "names read from text that declares fewer keys than the child has"
         );
         assert_eq!(
-            foreign_key_names("t", Some(vec![Some("x".to_owned())]), 2),
-            ["fk_t_0", "fk_t_1"],
+            foreign_key_names("t", Some(vec![Some("x".to_owned())]), 2, &mut CatalogBudget::default()),
+            Ok(vec!["fk_t_0".to_owned(), "fk_t_1".to_owned()]),
             "a list that does not match the catalogue is not used"
         );
+        assert_eq!(
+            foreign_key_names(
+                "t",
+                Some(vec![Some("Same".to_owned()), Some("SAME".to_owned())]),
+                2,
+                &mut CatalogBudget::default()
+            ),
+            Ok(vec!["Same".to_owned(), "fk_t_1".to_owned()]),
+            "a name an earlier key took, in other case, is not taken again"
+        );
+    }
+
+    #[test]
+    fn copies_of_a_long_primary_key_stop_at_the_budget() {
+        let primary_key: Vec<String> = (0..10).map(|column| format!("{column}{}", "k".repeat(1_000))).collect();
+        let columns: Vec<InboundKeyColumn> = (0..1_000).map(|id| column(id, 0, "a", None)).collect();
+        let mut budget = CatalogBudget::new(tablepro_core::ByteLimit::new(1_000_000).unwrap());
+
+        let names = foreign_key_names("child", None, 1_000, &mut budget).unwrap();
+        let read = inbound_foreign_keys(None, "child", columns, &names, &primary_key, &mut budget);
+
+        assert_eq!(read, Err(DriverError::CatalogTooLarge { limit_bytes: 1_000_000 }));
+    }
+
+    #[test]
+    fn made_up_names_of_a_long_table_stop_at_the_budget() {
+        let mut budget = CatalogBudget::new(tablepro_core::ByteLimit::new(1_000_000).unwrap());
+
+        let names = foreign_key_names(&"t".repeat(10_000), None, 1_000, &mut budget);
+
+        assert_eq!(names, Err(DriverError::CatalogTooLarge { limit_bytes: 1_000_000 }));
     }
 
     #[test]

@@ -20,7 +20,7 @@ use tablepro_core::value::{SqlDecimal, Value};
 pub(crate) use dependents::{SchemaRow, select_dependents};
 pub use runtime_version::{SQLITE_MIN_VERSION, SqliteVersion, check_runtime_version};
 pub(crate) use sqlite_column_row::{SqliteColumnRow, TableFacts};
-pub(crate) use table_definition::{InboundKeyRow, foreign_key_names, generated_expressions, inbound_foreign_keys};
+pub(crate) use table_definition::{InboundKeyColumn, foreign_key_names, generated_expressions, inbound_foreign_keys};
 
 /// The schema unqualified names resolve to.
 pub(crate) const MAIN_SCHEMA: &str = "main";
@@ -45,11 +45,17 @@ pub(crate) const INDEX_LIST_SQL: &str =
 pub(crate) const INDEX_XINFO_SQL: &str =
     "SELECT cid, name, \"desc\" FROM pragma_index_xinfo(?1, ?2) WHERE key = 1 ORDER BY seqno";
 
-pub(crate) const FOREIGN_KEY_LIST_SQL: &str = "SELECT id, \"table\", \"from\", \"to\", on_update, on_delete \
-     FROM pragma_foreign_key_list(?1, ?2) ORDER BY id, seq";
+/// Not sorted: a sort holds every row before the first, and a column
+/// can carry REFERENCES thousands of times, its long name on each row.
+/// The reader orders a key's columns by `seq`.
+pub(crate) const FOREIGN_KEY_LIST_SQL: &str = "SELECT id, seq, \"table\", \"from\", \"to\", on_update, on_delete \
+     FROM pragma_foreign_key_list(?1, ?2)";
 
-pub(crate) const FOREIGN_KEY_CHECK_SQL: &str =
-    "SELECT \"table\", rowid, parent, fkid FROM pragma_foreign_key_check(?1, ?2)";
+// A key column as `FOREIGN_KEY_LIST_SQL` reads it: its `seq`, the child's column and the parent's, if named.
+pub(crate) type ListedKeyColumn = (i64, String, Option<String>);
+
+// Not the table and parent names, which repeat on every row that breaks a key.
+pub(crate) const FOREIGN_KEY_CHECK_SQL: &str = "SELECT rowid, fkid FROM pragma_foreign_key_check(?1, ?2)";
 
 /// `sqlite_schema` of one schema, which has to be named in the FROM.
 pub(crate) fn objects_sql(schema_sql: &str) -> String {
@@ -82,15 +88,27 @@ pub(crate) fn dependents_sql(schema_sql: &str) -> String {
     )
 }
 
-/// `child_keys` counts every key of the child, wherever it points, since
-/// the ids number them all.
+/// Each column of another table's key that points at the table, not
+/// sorted, as `FOREIGN_KEY_LIST_SQL`. The child's CREATE TABLE comes
+/// from `inbound_children_sql`, once per child: it grows with the keys
+/// it declares.
 pub(crate) fn inbound_keys_sql(schema_sql: &str) -> String {
     format!(
-        "SELECT m.name AS child, m.sql AS child_sql, \
-         (SELECT count(DISTINCT k.id) FROM pragma_foreign_key_list(m.name, ?2) k) AS child_keys, \
-         f.id AS id, f.\"from\" AS \"from\", f.\"to\" AS \"to\" \
+        "SELECT m.name AS child, f.id AS id, f.seq AS seq, f.\"from\" AS \"from\", f.\"to\" AS \"to\" \
          FROM {schema_sql}.sqlite_schema m, pragma_foreign_key_list(m.name, ?2) f \
-         WHERE m.type = 'table' AND f.\"table\" = ?1 COLLATE NOCASE ORDER BY m.name, f.id, f.seq"
+         WHERE m.type = 'table' AND f.\"table\" = ?1 COLLATE NOCASE"
+    )
+}
+
+/// The tables with a key pointing at the table, each once. `child_keys`
+/// counts every key of the child, wherever it points, since the ids
+/// number them all.
+pub(crate) fn inbound_children_sql(schema_sql: &str) -> String {
+    format!(
+        "SELECT m.name AS child, m.sql AS sql, \
+         (SELECT count(DISTINCT k.id) FROM pragma_foreign_key_list(m.name, ?2) k) AS child_keys \
+         FROM {schema_sql}.sqlite_schema m WHERE m.type = 'table' AND EXISTS \
+         (SELECT 1 FROM pragma_foreign_key_list(m.name, ?2) f WHERE f.\"table\" = ?1 COLLATE NOCASE)"
     )
 }
 

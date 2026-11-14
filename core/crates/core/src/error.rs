@@ -143,6 +143,10 @@ pub enum DriverError {
 
     #[error("this engine has no {feature}")]
     Unsupported { feature: UnsupportedFeature },
+
+    // A crafted file can repeat a long name across thousands of keys, so a catalog read stops at a byte budget.
+    #[error("the catalog read would hold more than {limit_bytes} bytes")]
+    CatalogTooLarge { limit_bytes: u64 },
 }
 
 impl DriverError {
@@ -176,6 +180,7 @@ impl DriverError {
             Self::Decode { .. } => "driver.decode",
             Self::Protocol(..) => "driver.protocol",
             Self::Unsupported { .. } => "driver.unsupported",
+            Self::CatalogTooLarge { .. } => "driver.catalog_too_large",
         }
     }
 }
@@ -216,7 +221,9 @@ impl DriverError {
             | Self::FileIo { .. } => ErrorCategory::File,
             Self::Busy(_) | Self::EditorSessionBusy => ErrorCategory::Busy,
             Self::Config(_) | Self::Unsupported { .. } | Self::DatabaseNotFound { .. } => ErrorCategory::Configuration,
-            Self::GuardUnsupported { .. } | Self::Decode { .. } | Self::Protocol(_) => ErrorCategory::Internal,
+            Self::GuardUnsupported { .. } | Self::Decode { .. } | Self::Protocol(_) | Self::CatalogTooLarge { .. } => {
+                ErrorCategory::Internal
+            }
         }
     }
 
@@ -366,6 +373,10 @@ mod tests {
             (DriverError::Cancelled.code(), "driver.cancelled"),
             (DriverError::auth(None).code(), "driver.auth"),
             (DriverError::server("no such table").code(), "driver.server"),
+            (
+                DriverError::CatalogTooLarge { limit_bytes: 1 }.code(),
+                "driver.catalog_too_large",
+            ),
             (DriverError::Config(ConfigError::EmptyHost).code(), "driver.config"),
             (ConfigError::EmptyHost.code(), "config.empty_host"),
             (

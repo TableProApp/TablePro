@@ -14,15 +14,39 @@ use tablepro_core::{DriverError, ServerCode, ServerDiagnostics};
 
 use crate::errors::{SQLITE_CONSTRAINT, SQLITE_CONSTRAINT_FOREIGNKEY};
 
-/// One row of `foreign_key_check`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct Violation {
+// The rows of `foreign_key_check`, in its order. A file can hold millions of rows that break one key, so each row
+// is the key's index and its rowid rather than its own copy of the names. A rowid is None for a WITHOUT ROWID child
+// table, which has no rowid to name the row by, and for one whose rows the batch renumbers.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Violations {
+    keys: Vec<BrokenKey>,
+    rows: Vec<(usize, Option<i64>)>,
+}
+
+// A foreign key of one child table that some row breaks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BrokenKey {
     pub table: String,
-    /// `None` for a WITHOUT ROWID child table, which has no rowid to
-    /// name the row by, and for one whose rows the batch renumbers.
-    pub rowid: Option<i64>,
     pub parent: String,
     pub key: ViolatedKey,
+}
+
+impl Violations {
+    pub(crate) fn add_key(&mut self, key: BrokenKey) -> usize {
+        self.keys.push(key);
+        self.keys.len() - 1
+    }
+
+    pub(crate) fn add_row(&mut self, key: usize, rowid: Option<i64>) {
+        self.rows.push((key, rowid));
+    }
+
+    pub(crate) fn extend(&mut self, other: Violations) {
+        let offset = self.keys.len();
+        self.keys.extend(other.keys);
+        self.rows
+            .extend(other.rows.into_iter().map(|(key, rowid)| (key + offset, rowid)));
+    }
 }
 
 /// The foreign key a row breaks, by its columns rather than its number:
@@ -69,19 +93,22 @@ impl Renames {
     /// Name `baseline` rows by the names their tables and key columns
     /// have after the batch, so a renamed table or key compares with
     /// itself.
-    pub(crate) fn apply(&self, baseline: Vec<Violation>) -> Vec<Violation> {
-        baseline
-            .into_iter()
-            .map(|violation| Violation {
-                key: ViolatedKey {
-                    columns: self.column_names(&violation.table, violation.key.columns),
-                    parent_columns: self.column_names(&violation.parent, violation.key.parent_columns),
-                },
-                table: self.table_name(violation.table),
-                rowid: violation.rowid,
-                parent: self.table_name(violation.parent),
-            })
-            .collect()
+    pub(crate) fn apply(&self, baseline: Violations) -> Violations {
+        Violations {
+            keys: baseline
+                .keys
+                .into_iter()
+                .map(|broken| BrokenKey {
+                    key: ViolatedKey {
+                        columns: self.column_names(&broken.table, broken.key.columns),
+                        parent_columns: self.column_names(&broken.parent, broken.key.parent_columns),
+                    },
+                    table: self.table_name(broken.table),
+                    parent: self.table_name(broken.parent),
+                })
+                .collect(),
+            rows: baseline.rows,
+        }
     }
 
     fn table_name(&self, name: String) -> String {
@@ -102,48 +129,59 @@ impl Renames {
 /// The rows of `after` that `before` does not account for, compared as
 /// multisets. Rows without a rowid are all alike, so for them it is the
 /// count per child, parent and key that compares.
-pub(crate) fn introduced(before: &[Violation], after: &[Violation]) -> Vec<IntroducedViolations> {
-    let mut remaining: HashMap<ViolationKey, usize> = HashMap::new();
-    for violation in before {
-        *remaining.entry(key(violation)).or_default() += 1;
+pub(crate) fn introduced(before: &Violations, after: &Violations) -> Vec<IntroducedViolations> {
+    let mut ids: HashMap<ViolationKey, usize> = HashMap::new();
+    let mut id_of = |broken: &BrokenKey| {
+        let next = ids.len();
+        *ids.entry(key(broken)).or_insert(next)
+    };
+    let before_ids: Vec<usize> = before.keys.iter().map(&mut id_of).collect();
+    let after_ids: Vec<usize> = after.keys.iter().map(&mut id_of).collect();
+    let mut remaining: HashMap<(usize, Option<i64>), usize> = HashMap::new();
+    for (key, rowid) in &before.rows {
+        if let Some(id) = before_ids.get(*key) {
+            *remaining.entry((*id, *rowid)).or_default() += 1;
+        }
     }
     let mut introduced: Vec<IntroducedViolations> = Vec::new();
-    for violation in after {
-        if let Some(left) = remaining.get_mut(&key(violation))
+    let mut groups: HashMap<(String, String), usize> = HashMap::new();
+    for (key, rowid) in &after.rows {
+        let (Some(id), Some(broken)) = (after_ids.get(*key), after.keys.get(*key)) else {
+            continue;
+        };
+        if let Some(left) = remaining.get_mut(&(*id, *rowid))
             && *left > 0
         {
             *left -= 1;
             continue;
         }
-        let table = violation.table.to_lowercase();
-        let parent = violation.parent.to_lowercase();
-        match introduced
-            .iter_mut()
-            .find(|group| group.table.to_lowercase() == table && group.parent.to_lowercase() == parent)
-        {
+        let group = (broken.table.to_lowercase(), broken.parent.to_lowercase());
+        match groups.get(&group).and_then(|index| introduced.get_mut(*index)) {
             Some(group) => group.count += 1,
-            None => introduced.push(IntroducedViolations {
-                table: violation.table.clone(),
-                parent: violation.parent.clone(),
-                count: 1,
-            }),
+            None => {
+                groups.insert(group, introduced.len());
+                introduced.push(IntroducedViolations {
+                    table: broken.table.clone(),
+                    parent: broken.parent.clone(),
+                    count: 1,
+                });
+            }
         }
     }
     introduced
 }
 
-type ViolationKey = (String, Option<i64>, String, Vec<String>, Vec<String>);
+type ViolationKey = (String, String, Vec<String>, Vec<String>);
 
 /// SQLite names tables and columns case-insensitively, and so does the
 /// comparison.
-fn key(violation: &Violation) -> ViolationKey {
+fn key(broken: &BrokenKey) -> ViolationKey {
     let folded = |names: &[String]| names.iter().map(|name| name.to_lowercase()).collect();
     (
-        violation.table.to_lowercase(),
-        violation.rowid,
-        violation.parent.to_lowercase(),
-        folded(&violation.key.columns),
-        folded(&violation.key.parent_columns),
+        broken.table.to_lowercase(),
+        broken.parent.to_lowercase(),
+        folded(&broken.key.columns),
+        folded(&broken.key.parent_columns),
     )
 }
 
@@ -172,21 +210,38 @@ pub(crate) fn violation_error(introduced: &[IntroducedViolations]) -> DriverErro
 mod tests {
     use super::*;
 
-    fn violation(table: &str, rowid: Option<i64>, parent: &str) -> Violation {
-        keyed(table, rowid, parent, &["parent"], &["id"])
+    type Row<'a> = (&'a str, Option<i64>, &'a str, &'a [&'a str], &'a [&'a str]);
+
+    fn violation<'a>(table: &'a str, rowid: Option<i64>, parent: &'a str) -> Row<'a> {
+        (table, rowid, parent, &["parent"], &["id"])
     }
 
-    fn keyed(table: &str, rowid: Option<i64>, parent: &str, columns: &[&str], parent_columns: &[&str]) -> Violation {
+    fn keyed<'a>(
+        table: &'a str,
+        rowid: Option<i64>,
+        parent: &'a str,
+        columns: &'a [&'a str],
+        parent_columns: &'a [&'a str],
+    ) -> Row<'a> {
+        (table, rowid, parent, columns, parent_columns)
+    }
+
+    // One key per row, as two keys of the same columns compare alike.
+    fn found(rows: &[Row<'_>]) -> Violations {
         let owned = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect();
-        Violation {
-            table: table.to_owned(),
-            rowid,
-            parent: parent.to_owned(),
-            key: ViolatedKey {
-                columns: owned(columns),
-                parent_columns: owned(parent_columns),
-            },
+        let mut violations = Violations::default();
+        for (table, rowid, parent, columns, parent_columns) in rows {
+            let key = violations.add_key(BrokenKey {
+                table: (*table).to_owned(),
+                parent: (*parent).to_owned(),
+                key: ViolatedKey {
+                    columns: owned(columns),
+                    parent_columns: owned(parent_columns),
+                },
+            });
+            violations.add_row(key, *rowid);
         }
+        violations
     }
 
     fn renames(before: &str, after: &str, columns: &[(&str, &str)]) -> Renames {
@@ -215,7 +270,7 @@ mod tests {
             violation("lines", Some(2), "orders"),
         ];
 
-        let introduced = introduced(&renames.apply(before), &after);
+        let introduced = introduced(&renames.apply(found(&before)), &found(&after));
 
         assert_eq!(
             introduced,
@@ -233,7 +288,7 @@ mod tests {
         let after = vec![keyed("children", Some(1), "parents", &["b"], &["id"])];
 
         assert_eq!(
-            introduced(&before, &after),
+            introduced(&found(&before), &found(&after)),
             [IntroducedViolations {
                 table: "children".to_owned(),
                 parent: "parents".to_owned(),
@@ -254,7 +309,7 @@ mod tests {
             keyed("grandchildren", Some(4), "children", &["child"], &["parent_id"]),
         ];
 
-        assert!(introduced(&renames.apply(before), &after).is_empty());
+        assert!(introduced(&renames.apply(found(&before)), &found(&after)).is_empty());
     }
 
     #[test]
@@ -267,9 +322,47 @@ mod tests {
             violation("tags", None, "posts"),
         ];
 
-        assert!(introduced(&before, &same).is_empty());
-        assert_eq!(introduced(&before, &more).len(), 1);
-        assert_eq!(introduced(&before, &more)[0].count, 1);
+        assert!(introduced(&found(&before), &found(&same)).is_empty());
+        assert_eq!(introduced(&found(&before), &found(&more)).len(), 1);
+        assert_eq!(introduced(&found(&before), &found(&more))[0].count, 1);
+    }
+
+    #[test]
+    fn rows_of_one_key_compare_one_for_one_and_name_their_group_in_order() {
+        let mut before = Violations::default();
+        let broken = |table: &str, parent: &str| BrokenKey {
+            table: table.to_owned(),
+            parent: parent.to_owned(),
+            key: ViolatedKey {
+                columns: vec!["a".to_owned()],
+                parent_columns: Vec::new(),
+            },
+        };
+        let key = before.add_key(broken("t", "p"));
+        for rowid in 0..1_000 {
+            before.add_row(key, Some(rowid));
+        }
+        let mut after = before.clone();
+        let other = after.add_key(broken("t", "q"));
+        after.add_row(other, Some(5));
+        after.add_row(key, Some(1_000));
+        after.add_row(other, Some(6));
+
+        assert_eq!(
+            introduced(&before, &after),
+            [
+                IntroducedViolations {
+                    table: "t".to_owned(),
+                    parent: "q".to_owned(),
+                    count: 2
+                },
+                IntroducedViolations {
+                    table: "t".to_owned(),
+                    parent: "p".to_owned(),
+                    count: 1
+                },
+            ]
+        );
     }
 
     #[test]

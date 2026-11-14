@@ -1,10 +1,12 @@
 //! Column kinds from SQLite's structured catalogue, and table
 //! definitions with their dependents.
 
+use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
+use sqlx::{Connection as _, Executor as _};
 use tablepro_core::Value;
 use tablepro_core::column::{ColumnDefault, ColumnKind, IntegerKind, IntegerWidth};
 use tablepro_core::ddl::{GeneratedStorage, IdentityStyle, SchemaObjectKind};
-use tablepro_core::meta::TableRef;
+use tablepro_core::meta::{ObjectScope, TableRef};
 
 use crate::support::{TestFile, apply, call};
 
@@ -303,6 +305,99 @@ async fn inbound_keys_read_alone_are_the_definitions() {
 
     assert_eq!(inbound, definition.inbound_foreign_keys);
     assert_eq!(inbound[1].referenced_columns, ["code"]);
+    connection.close().await.unwrap();
+}
+
+// A large real schema stays under the catalog budget: every table, and every key into a table thousands of others
+// point at, read whole and in order. SQLite takes time quadratic in the tables to create them, hence not 50,000.
+#[tokio::test]
+async fn a_large_catalog_reads_whole() {
+    const CHILDREN: usize = 5_000;
+    const WIDE_KEYS: usize = 500;
+    let file = TestFile::new().await;
+    let mut script = String::from("BEGIN; CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT UNIQUE);");
+    for child in 0..CHILDREN {
+        script.push_str(&format!(
+            "CREATE TABLE child_{child:05} (id INTEGER PRIMARY KEY, owner INTEGER REFERENCES users, email TEXT, \
+             CONSTRAINT by_email_{child:05} FOREIGN KEY (email) REFERENCES users (email));"
+        ));
+    }
+    let columns: Vec<String> = (0..WIDE_KEYS * 2).map(|column| format!("c{column} INTEGER")).collect();
+    let keys: Vec<String> = (0..WIDE_KEYS)
+        .map(|column| format!("FOREIGN KEY (c{column}) REFERENCES users"))
+        .collect();
+    script.push_str(&format!(
+        "CREATE TABLE wide ({}, {}); COMMIT;",
+        columns.join(", "),
+        keys.join(", ")
+    ));
+    let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
+        .await
+        .unwrap();
+    writer.execute(sqlx::AssertSqlSafe(script)).await.unwrap();
+    writer.close().await.unwrap();
+    let connection = file.open().await;
+    let users = TableRef::unqualified("users");
+    let objects = connection
+        .list_objects(&ObjectScope::DefaultSchema, call())
+        .await
+        .unwrap();
+    let inbound = connection.fetch_inbound_foreign_keys(&users, call()).await.unwrap();
+    let definition = connection.fetch_table_definition(&users, call()).await.unwrap();
+    let wide = connection
+        .fetch_outbound_foreign_keys(&TableRef::unqualified("wide"), call())
+        .await
+        .unwrap();
+
+    assert_eq!(objects.len(), CHILDREN + 2);
+    assert_eq!(inbound.len(), CHILDREN * 2 + WIDE_KEYS);
+    type Key<'a> = (&'a str, &'a str, &'a [String], &'a [String], bool);
+    let first: Vec<Key<'_>> = inbound[..2]
+        .iter()
+        .map(|key| {
+            (
+                key.table.name.as_str(),
+                key.name.as_str(),
+                key.columns.as_slice(),
+                key.referenced_columns.as_slice(),
+                key.child_compares_alike,
+            )
+        })
+        .collect();
+    assert_eq!(
+        first,
+        [
+            (
+                "child_00000",
+                "by_email_00000",
+                &["email".to_owned()][..],
+                &["email".to_owned()][..],
+                true
+            ),
+            (
+                "child_00000",
+                "fk_child_00000_1",
+                &["owner".to_owned()][..],
+                &["id".to_owned()][..],
+                true
+            ),
+        ]
+    );
+    assert!(
+        inbound.windows(2).all(|pair| pair[0].table.name <= pair[1].table.name),
+        "ordered by child"
+    );
+    assert_eq!(inbound.last().map(|key| key.table.name.as_str()), Some("wide"));
+    assert_eq!(definition.inbound_foreign_keys, inbound);
+    assert_eq!(wide.len(), WIDE_KEYS);
+    assert!(
+        wide.iter()
+            .enumerate()
+            .all(|(id, key)| key.key.name == format!("fk_wide_{id}")
+                && key.key.ref_table == "users"
+                && key.key.ref_columns == ["id"]
+                && key.parent_compares_alike)
+    );
     connection.close().await.unwrap();
 }
 

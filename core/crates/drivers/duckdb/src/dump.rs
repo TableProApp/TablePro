@@ -4,6 +4,8 @@
 //! triggers EXPORT leaves out. Names carry their schema and never the
 //! catalog, which is the file's own name.
 
+use std::collections::HashMap;
+
 use duckdb::types::Value as DuckValue;
 use tablepro_core::DriverError;
 use tablepro_core::dialect::SqlDialect;
@@ -60,10 +62,13 @@ const TABLES_SQL: &str = "SELECT schema_name, table_name, sql FROM duckdb_tables
      WHERE database_name = ? AND (? IS NULL OR schema_name = ?) AND NOT internal AND NOT temporary \
      ORDER BY schema_name, table_name";
 
-/// DuckDB keeps a foreign key's parent in the child's schema.
-const FOREIGN_KEYS_SQL: &str = "SELECT schema_name, table_name, referenced_table FROM duckdb_constraints() \
+/// DuckDB keeps a foreign key's parent in the child's schema. One row
+/// per child, not per key, which would repeat the child's name.
+const FOREIGN_KEYS_SQL: &str = "SELECT schema_name, table_name, \
+            string_agg(referenced_table, chr(31) ORDER BY constraint_index) \
+     FROM duckdb_constraints() \
      WHERE database_name = ? AND (? IS NULL OR schema_name = ?) AND constraint_type = 'FOREIGN KEY' \
-     ORDER BY schema_name, table_name, constraint_index";
+     GROUP BY schema_name, table_name ORDER BY schema_name, table_name";
 
 /// The index behind a PRIMARY KEY or UNIQUE has no text: its table's
 /// CREATE makes it.
@@ -321,7 +326,9 @@ fn add_tables(reader: &Reader<'_>, dump: &mut DumpCatalog) -> Result<(), DriverE
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
-            row.get::<_, Option<String>>(2)?,
+            row.get::<_, Option<String>>(2)?
+                .map(|parents| parents.split('\u{1f}').map(str::to_owned).collect())
+                .unwrap_or_default(),
         ))
     })?;
     let listed: Vec<&Named> = tables.iter().filter(|table| table.text().is_some()).collect();
@@ -341,22 +348,31 @@ fn add_tables(reader: &Reader<'_>, dump: &mut DumpCatalog) -> Result<(), DriverE
 /// DuckDB checks a foreign key as each statement ends, and has no way
 /// to add one after the rows, so a table's rows follow its parents', and
 /// a table whose key points at itself takes a row per statement.
-fn dump_tables(tables: &[&Named], keys: &[(String, String, Option<String>)]) -> Vec<DumpTable> {
+fn dump_tables(tables: &[&Named], keys: &[(String, String, Vec<String>)]) -> Vec<DumpTable> {
+    let parents_of: HashMap<(&str, &str), &[String]> = keys
+        .iter()
+        .map(|(schema, child, parents)| ((schema.as_str(), child.as_str()), parents.as_slice()))
+        .collect();
+    // A key keeps its parent as the CREATE spelled it, and DuckDB folds the case of names.
+    let mut declared_names: HashMap<(&str, String), &str> = HashMap::new();
+    for table in tables {
+        declared_names
+            .entry((table.schema.as_str(), table.name.to_ascii_lowercase()))
+            .or_insert(table.name.as_str());
+    }
     tables
         .iter()
         .map(|table| {
             let mut dumped = DumpTable::new(TableRef::new(Some(table.schema.clone()), table.name.clone()));
-            let parents = keys
-                .iter()
-                .filter(|(schema, child, _)| *schema == table.schema && *child == table.name)
-                .filter_map(|(_, _, parent)| parent.as_deref());
+            let parents = parents_of
+                .get(&(table.schema.as_str(), table.name.as_str()))
+                .copied()
+                .unwrap_or_default();
             for parent in parents {
-                // A key keeps its parent as the CREATE spelled it, and
-                // DuckDB folds the case of names.
-                let declared = tables
-                    .iter()
-                    .find(|other| other.schema == table.schema && other.name.eq_ignore_ascii_case(parent))
-                    .map_or(parent, |other| other.name.as_str());
+                let declared = declared_names
+                    .get(&(table.schema.as_str(), parent.to_ascii_lowercase()))
+                    .copied()
+                    .unwrap_or(parent.as_str());
                 if declared == table.name {
                     dumped.one_row_per_insert = true;
                     continue;
@@ -503,8 +519,12 @@ mod tests {
         }
     }
 
-    fn key(schema: &str, child: &str, parent: &str) -> (String, String, Option<String>) {
-        (schema.to_owned(), child.to_owned(), Some(parent.to_owned()))
+    fn key(schema: &str, child: &str, parents: &[&str]) -> (String, String, Vec<String>) {
+        (
+            schema.to_owned(),
+            child.to_owned(),
+            parents.iter().map(|parent| (*parent).to_owned()).collect(),
+        )
     }
 
     #[test]
@@ -544,11 +564,7 @@ mod tests {
     fn a_table_follows_its_parents_and_a_self_reference_loads_a_row_at_a_time() {
         let (parent, child, other) = (named("app", "parent"), named("app", "child"), named("main", "parent"));
         let tables = [&child, &parent, &other];
-        let keys = [
-            key("app", "child", "Parent"),
-            key("app", "child", "parent"),
-            key("app", "child", "child"),
-        ];
+        let keys = [key("app", "child", &["Parent", "parent", "child"])];
 
         let dumped = dump_tables(&tables, &keys);
 
