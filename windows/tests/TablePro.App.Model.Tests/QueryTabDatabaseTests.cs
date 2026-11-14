@@ -1,3 +1,4 @@
+using TablePro.DataGrid.Model;
 using TablePro.Interop;
 
 namespace TablePro.App.Model.Tests;
@@ -134,6 +135,23 @@ public sealed class QueryTabDatabaseTests
         Assert.Equal(2, editor.Runs.Count);
         Assert.Equal("inventory", tab.Database);
         Assert.False(tab.IsRunning);
+    }
+
+    // The rows came from the database before the switch, so running the statement again would read another's.
+    [Fact]
+    public async Task ASortAfterASwitchOrdersTheRowsHeldInsteadOfRunningAgain()
+    {
+        _session.Layout = DatabaseLayout.AsSchemas;
+        _session.Sorted = (sql, columns, column, _) => $"{sql} order by {columns[column]}";
+        var tab = Tab(null);
+        await tab.RunAsync();
+        var editor = Assert.Single(_session.Editors);
+
+        await tab.PickDatabaseAsync("inventory");
+        await tab.SortAsync(new GridSort(0, SortDirection.Ascending));
+
+        Assert.Single(editor.Runs);
+        Assert.Contains("sort held", _results.Shown);
     }
 
     [Fact]

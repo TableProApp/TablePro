@@ -197,14 +197,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         _ = RefreshMarksAsync();
     }
 
+    // A tab window picks too: a .sql file opens on its own connection, a database file in the primary window.
     public async Task OpenFileAsync()
     {
-        if (!IsPrimary)
-        {
-            await _primary.OpenFileAsync();
-            return;
-        }
-
         var picker = new FileOpenPicker(AppWindow.Id) { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
         foreach (var suffix in _workbench.Engines.SelectMany(engine => engine.FileSuffixes).Distinct())
         {
@@ -230,6 +225,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         if (SqlSuffixes.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
         {
             await OpenSqlFileAsync(path);
+        }
+        else if (!IsPrimary)
+        {
+            _primary.Activate();
+            _primary.OpenFile(path);
         }
         else
         {

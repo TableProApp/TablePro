@@ -763,6 +763,8 @@ public sealed class QueryTab : IWorkspaceTab
         if (kept != Database)
         {
             Database = kept;
+            // The rows shown came from the database before, so a sort orders them where they are, never runs again.
+            _statement = null;
             StateChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -799,7 +801,6 @@ public sealed class QueryTab : IWorkspaceTab
     private static bool IsUnsupported(CoreError error) =>
         error.Code == "driver.unsupported" || error.Codes.Contains("driver.unsupported");
 
-    // A second save while one asks or writes joins it.
     // A save already writing ends first, and text typed since is saved after it, so a Save never joins an older one.
     private async Task<bool> Saving(bool saveAs)
     {

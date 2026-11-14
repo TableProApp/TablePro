@@ -48,9 +48,10 @@ public sealed record SqlFileOpening(string Text, SqlFileRead? Baseline, bool Bas
             return new(disk.Text, disk, false);
         }
 
-        return savedStamp is { } stamp && stamp != disk.Stamp
-            ? new(sessionText, disk with { Stamp = stamp }, true)
-            : new(sessionText, disk, false);
+        // With no stamp kept, as when the file was gone at the last launch, what is there now is not what was saved.
+        return savedStamp is { } stamp && stamp == disk.Stamp
+            ? new(sessionText, disk, false)
+            : new(sessionText, disk with { Stamp = savedStamp ?? default }, true);
     }
 }
 

@@ -333,6 +333,9 @@ public sealed class QueryTabFileTests : IDisposable
         Assert.Equal(("select 'mine';", false, stamp), (same.Text, same.BaselineUnknown, same.Baseline?.Stamp));
         Assert.Equal(("select 'mine';", true, older), (changed.Text, changed.BaselineUnknown, changed.Baseline?.Stamp));
         Assert.Equal(("select 'mine';", null), (gone.Text, gone.Baseline));
+        var unknown = SqlFileOpening.Restored("select 'mine';", null, unsaved: true, () => SqlFile.Read(path));
+        Assert.True(unknown.BaselineUnknown, "a file that was gone at the last launch is not what was saved");
+        Assert.NotEqual(stamp, unknown.Baseline?.Stamp);
     }
 
     [Fact]
