@@ -128,6 +128,18 @@ internal sealed class FakeSession : ITabSession
 
     public ObjectSource? Definition { get; set; }
 
+    // What every key read gives; each read makes a new one, so a test tells a kept read from a new one.
+    public RowReferences References { get; set; } = RowReferences.None;
+
+    public FollowedReference Followed { get; set; } = new FollowedReference.Refused(ReferenceRefusal.UnevenKey, "fk");
+
+    public CoreError? KeysFailure { get; set; }
+
+    // The read ends as one the server stopped does.
+    public bool KeysStopped { get; set; }
+
+    public List<FakeKeys> KeyReads { get; } = [];
+
     // Every open gives this one, so a test sets it up before the page loads.
     public FakeTableEditor TableEditor { get; } = new();
 
@@ -292,6 +304,23 @@ internal sealed class FakeSession : ITabSession
         return TableEditorFailure is { } failure ? throw new TableProException(failure) : TableEditor;
     }
 
+    public Task<ITableKeys> ReadTableKeysAsync(TableName table, CancellationToken cancellationToken)
+    {
+        if (KeysFailure is { } failure)
+        {
+            return Task.FromException<ITableKeys>(new TableProException(failure));
+        }
+
+        if (KeysStopped)
+        {
+            return Task.FromException<ITableKeys>(new OperationCanceledException());
+        }
+
+        var keys = new FakeKeys(this);
+        KeyReads.Add(keys);
+        return Task.FromResult<ITableKeys>(keys);
+    }
+
     public ValueTask ReleaseAsync()
     {
         Releases++;
@@ -299,6 +328,29 @@ internal sealed class FakeSession : ITabSession
     }
 
     private long RowsPicked(TableFilter? filter) => filter is null ? TableRows : FilteredRows;
+}
+
+internal sealed class FakeKeys(FakeSession session) : ITableKeys
+{
+    public List<(long Row, string? Column)> Asked { get; } = [];
+
+    public bool IsDisposed { get; private set; }
+
+    public List<(long Row, RowReferenceChoice Choice)> Follows { get; } = [];
+
+    public RowReferences ReferencesAt(ResultSet? rows, long row, string? column)
+    {
+        Asked.Add((row, column));
+        return session.References;
+    }
+
+    public FollowedReference Follow(ResultSet? rows, long row, RowReferenceChoice choice)
+    {
+        Follows.Add((row, choice));
+        return session.Followed;
+    }
+
+    public void Dispose() => IsDisposed = true;
 }
 
 internal sealed class FakeEditor(FakeSession session) : ITabEditor
