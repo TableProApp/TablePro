@@ -27,8 +27,8 @@ public enum CsvImportEnding
     Imported,
     // Refused before anything was sent, or rolled back: the table is as it was.
     NotWritten,
-    PartlyWritten,
-    // Stopped or cut off before the server answered: the table may hold some of the rows.
+
+    // Stopped, cut off, or written in part without a transaction to undo it: the table may hold some of the rows.
     Unknown,
 }
 
@@ -55,7 +55,7 @@ public sealed record CsvPreviewSummary(int Fields, int Rows, bool Truncated);
 // Text is what Safe Mode's review lists; Shown counts the statements in it.
 public sealed record CsvImportReview(string Text, int Shown);
 
-// Rows: imported, or written before the failure. Lines: those the failed statement held. No Error: stopped here.
+// Rows: imported. Lines: those the failed statement held. No Error: stopped here.
 public sealed record CsvImportReport(CsvImportEnding Ending, long Rows, LineSpan? Lines, CoreError? Error)
 {
     public static CsvImportReport Stopped { get; } = new(CsvImportEnding.Unknown, 0, null, null);
@@ -72,9 +72,8 @@ public sealed record CsvImportReport(CsvImportEnding Ending, long Rows, LineSpan
                 CsvImportEnding.Imported, imported.Rows, null, null),
             CsvImportOutcome.RolledBack rolledBack => new CsvImportReport(
                 CsvImportEnding.NotWritten, 0, rolledBack.Lines, rolledBack.Error),
-            CsvImportOutcome.PartlyWritten partly => new CsvImportReport(
-                CsvImportEnding.PartlyWritten, partly.WrittenRows, partly.Lines, partly.Error),
-            CsvImportOutcome.Unknown unknown => new CsvImportReport(CsvImportEnding.Unknown, 0, null, unknown.Error),
+            CsvImportOutcome.Unknown unknown => new CsvImportReport(
+                CsvImportEnding.Unknown, 0, unknown.Lines, unknown.Error),
             _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
         };
     }

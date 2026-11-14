@@ -167,6 +167,14 @@ internal static class SaveQueryDialog
             draft.Id = id = added;
             draft.StoredName = draft.Name;
             draft.StoredSql = draft.Sql;
+            if (replace)
+            {
+                // A replaced query keeps its place unless another folder was picked.
+                var held = (await store.GetAsync(connectionId).ConfigureAwait(true)).Queries
+                    .FirstOrDefault(query => query.Id == added);
+                draft.StoredFolder = held?.FolderId;
+                draft.FolderId ??= draft.StoredFolder;
+            }
         }
         else
         {

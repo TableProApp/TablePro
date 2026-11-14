@@ -66,11 +66,9 @@ public abstract record CsvImportOutcome
     // Nothing was written. Lines are those of the statement that failed, when the engine said which.
     public sealed record RolledBack(CoreError Error, LineSpan? Lines) : CsvImportOutcome;
 
-    // The engine has no transaction to undo it: WrittenRows rows before the failed lines stay in the table.
-    public sealed record PartlyWritten(CoreError Error, long WrittenRows, LineSpan? Lines) : CsvImportOutcome;
-
-    // Stopped, or the connection went before the server answered: the table may hold some rows or none.
-    public sealed record Unknown(CoreError Error) : CsvImportOutcome;
+    // Stopped, cut off, or written in part where the engine has no transaction to undo it: the table may hold some of
+    // the rows or none. Lines are those of the statement that failed, when the engine said which.
+    public sealed record Unknown(CoreError Error, LineSpan? Lines) : CsvImportOutcome;
 }
 
 // A table's columns as a CSV import writes them; RunAsync writes the import planned last, once.
@@ -163,11 +161,9 @@ public sealed class CsvImport : IDisposable
             Native.CsvImportOutcome.RolledBack rolledBack => new CsvImportOutcome.RolledBack(
                 Mapping.Error(rolledBack.Error),
                 Lines(rolledBack.Lines)),
-            Native.CsvImportOutcome.PartlyWritten partly => new CsvImportOutcome.PartlyWritten(
-                Mapping.Error(partly.Error),
-                Mapping.Count(partly.WrittenRows),
-                Lines(partly.Lines)),
-            Native.CsvImportOutcome.Unknown unknown => new CsvImportOutcome.Unknown(Mapping.Error(unknown.Error)),
+            Native.CsvImportOutcome.Unknown unknown => new CsvImportOutcome.Unknown(
+                Mapping.Error(unknown.Error),
+                Lines(unknown.Lines)),
             _ => throw new InvalidOperationException("The core reported an import outcome this build does not know."),
         };
     }

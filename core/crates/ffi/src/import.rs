@@ -101,15 +101,11 @@ pub enum CsvImportOutcome {
         error: BoxedErrorInfo,
         lines: Option<LineSpan>,
     },
-    // The engine has no transaction to undo the import: `written_rows` rows before the failed lines stay.
-    PartlyWritten {
-        error: BoxedErrorInfo,
-        written_rows: u64,
-        lines: Option<LineSpan>,
-    },
-    // Stopped, or the connection went before the server answered: the table may hold some rows or none.
+    // Stopped, cut off, or written in part where the engine has no transaction to undo it: the table may hold some
+    // rows or none. The lines are those of the statement that failed, when the engine said which.
     Unknown {
         error: BoxedErrorInfo,
+        lines: Option<LineSpan>,
     },
 }
 
@@ -477,27 +473,25 @@ fn failed(error: &OperationError, planned: &Planned) -> CsvImportOutcome {
                 error: info(),
                 lines: lines(*statement_index),
             },
-            DriverError::PartiallyApplied { statement_index, .. } => {
-                let written: usize = planned
-                    .step_rows
-                    .iter()
-                    .take(*statement_index)
-                    .map(ExactSizeIterator::len)
-                    .sum();
-                CsvImportOutcome::PartlyWritten {
-                    error: info(),
-                    written_rows: line(written),
-                    lines: lines(*statement_index),
-                }
-            }
+            // As a row save reads it: what landed before the failed statement is not known to have stayed.
+            DriverError::PartiallyApplied { statement_index, .. } => CsvImportOutcome::Unknown {
+                error: info(),
+                lines: lines(*statement_index),
+            },
             DriverError::ReadOnly(_) => CsvImportOutcome::RolledBack {
                 error: info(),
                 lines: None,
             },
-            DriverError::CommitOutcomeUnknown { .. } => CsvImportOutcome::Unknown { error: info() },
+            DriverError::CommitOutcomeUnknown { .. } => CsvImportOutcome::Unknown {
+                error: info(),
+                lines: None,
+            },
             other => match other.category() {
                 ErrorCategory::Interrupted | ErrorCategory::Timeout | ErrorCategory::ConnectionLost => {
-                    CsvImportOutcome::Unknown { error: info() }
+                    CsvImportOutcome::Unknown {
+                        error: info(),
+                        lines: None,
+                    }
                 }
                 _ => CsvImportOutcome::RolledBack {
                     error: info(),
@@ -509,9 +503,10 @@ fn failed(error: &OperationError, planned: &Planned) -> CsvImportOutcome {
             error: info(),
             lines: None,
         },
-        OperationError::Cancelled | OperationError::Panicked(_) | OperationError::Closed => {
-            CsvImportOutcome::Unknown { error: info() }
-        }
+        OperationError::Cancelled | OperationError::Panicked(_) | OperationError::Closed => CsvImportOutcome::Unknown {
+            error: info(),
+            lines: None,
+        },
     }
 }
 

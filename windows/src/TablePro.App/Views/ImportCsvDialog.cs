@@ -128,7 +128,6 @@ internal static class ImportCsvDialog
             { } span when span.First == span.Last => Strings.Format("ImportCsvLine", span.First),
             { } span => Strings.Format("ImportCsvLines", span.First, span.Last),
         };
-        var range = report.Lines is { } held && held.First != held.Last;
         return report.Ending switch
         {
             CsvImportEnding.Imported => report.Rows == 1
@@ -137,16 +136,8 @@ internal static class ImportCsvDialog
             CsvImportEnding.NotWritten when report.Lines is null =>
                 Sentences(Strings.Get("ImportCsvNotWritten"), error),
             CsvImportEnding.NotWritten => Sentences(Strings.Format("ImportCsvRolledBack", lines), error),
-            CsvImportEnding.PartlyWritten => Sentences(
-                report.Rows switch
-                {
-                    0 => Strings.Format("ImportCsvPartlyNone", lines),
-                    1 => Strings.Format("ImportCsvPartlyOne", lines),
-                    _ => Strings.Format("ImportCsvPartlyMany", lines, report.Rows),
-                },
-                range ? Strings.Get("ImportCsvPartlyRange") : null,
-                error),
             _ when report.Error is null => Strings.Get("ImportCsvStopped"),
+            _ when report.Lines is not null => Sentences(Strings.Format("ImportCsvUnknownLines", lines), error),
             _ => Sentences(Strings.Get("ImportCsvUnknown"), error),
         };
     }

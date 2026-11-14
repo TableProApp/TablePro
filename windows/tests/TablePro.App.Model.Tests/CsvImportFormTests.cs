@@ -254,15 +254,14 @@ public sealed class CsvImportFormTests
             new CsvImportReport(CsvImportEnding.NotWritten, 0, lines, error),
             CsvImportReport.From(new CsvImportOutcome.RolledBack(error, lines)));
         Assert.Equal(
-            new CsvImportReport(CsvImportEnding.PartlyWritten, 10, lines, error),
-            CsvImportReport.From(new CsvImportOutcome.PartlyWritten(error, 10, lines)));
+            new CsvImportReport(CsvImportEnding.Unknown, 0, lines, error),
+            CsvImportReport.From(new CsvImportOutcome.Unknown(error, lines)));
         Assert.Equal(
             new CsvImportReport(CsvImportEnding.Unknown, 0, null, error),
-            CsvImportReport.From(new CsvImportOutcome.Unknown(error)));
+            CsvImportReport.From(new CsvImportOutcome.Unknown(error, null)));
 
         Assert.True(CsvImportReport.From(new CsvImportOutcome.Imported(3)).TableChanged);
-        Assert.True(CsvImportReport.From(new CsvImportOutcome.PartlyWritten(error, 0, null)).TableChanged);
-        Assert.True(CsvImportReport.From(new CsvImportOutcome.Unknown(error)).TableChanged);
+        Assert.True(CsvImportReport.From(new CsvImportOutcome.Unknown(error, lines)).TableChanged);
         Assert.True(CsvImportReport.Stopped.TableChanged);
         Assert.False(CsvImportReport.From(new CsvImportOutcome.RolledBack(error, null)).TableChanged);
         Assert.False(CsvImportReport.Refused(error).TableChanged);

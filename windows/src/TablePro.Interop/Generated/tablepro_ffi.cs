@@ -14694,14 +14694,9 @@ internal record CsvImportOutcome {
         LineSpan? Lines
     ) : CsvImportOutcome {}
     
-    public record PartlyWritten (
-        BoxedErrorInfo Error,
-        ulong WrittenRows,
-        LineSpan? Lines
-    ) : CsvImportOutcome {}
-    
     public record Unknown (
-        BoxedErrorInfo Error
+        BoxedErrorInfo Error,
+        LineSpan? Lines
     ) : CsvImportOutcome {}
     
 
@@ -14724,14 +14719,9 @@ class FfiConverterTypeCsvImportOutcome : FfiConverterRustBuffer<CsvImportOutcome
                     FfiConverterOptionalTypeLineSpan.INSTANCE.Read(stream)
                 );
             case 3:
-                return new CsvImportOutcome.PartlyWritten(
-                    FfiConverterTypeBoxedErrorInfo.INSTANCE.Read(stream),
-                    FfiConverterUInt64.INSTANCE.Read(stream),
-                    FfiConverterOptionalTypeLineSpan.INSTANCE.Read(stream)
-                );
-            case 4:
                 return new CsvImportOutcome.Unknown(
-                    FfiConverterTypeBoxedErrorInfo.INSTANCE.Read(stream)
+                    FfiConverterTypeBoxedErrorInfo.INSTANCE.Read(stream),
+                    FfiConverterOptionalTypeLineSpan.INSTANCE.Read(stream)
                 );
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCsvImportOutcome.Read()", value));
@@ -14747,14 +14737,10 @@ class FfiConverterTypeCsvImportOutcome : FfiConverterRustBuffer<CsvImportOutcome
                 return 4
                     + FfiConverterTypeBoxedErrorInfo.INSTANCE.AllocationSize(variant_value.Error)
                     + FfiConverterOptionalTypeLineSpan.INSTANCE.AllocationSize(variant_value.Lines);
-            case CsvImportOutcome.PartlyWritten variant_value:
-                return 4
-                    + FfiConverterTypeBoxedErrorInfo.INSTANCE.AllocationSize(variant_value.Error)
-                    + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.WrittenRows)
-                    + FfiConverterOptionalTypeLineSpan.INSTANCE.AllocationSize(variant_value.Lines);
             case CsvImportOutcome.Unknown variant_value:
                 return 4
-                    + FfiConverterTypeBoxedErrorInfo.INSTANCE.AllocationSize(variant_value.Error);
+                    + FfiConverterTypeBoxedErrorInfo.INSTANCE.AllocationSize(variant_value.Error)
+                    + FfiConverterOptionalTypeLineSpan.INSTANCE.AllocationSize(variant_value.Lines);
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCsvImportOutcome.AllocationSize()", value));
         }
@@ -14771,15 +14757,10 @@ class FfiConverterTypeCsvImportOutcome : FfiConverterRustBuffer<CsvImportOutcome
                 FfiConverterTypeBoxedErrorInfo.INSTANCE.Write(variant_value.Error, stream);
                 FfiConverterOptionalTypeLineSpan.INSTANCE.Write(variant_value.Lines, stream);
                 break;
-            case CsvImportOutcome.PartlyWritten variant_value:
+            case CsvImportOutcome.Unknown variant_value:
                 stream.WriteInt(3);
                 FfiConverterTypeBoxedErrorInfo.INSTANCE.Write(variant_value.Error, stream);
-                FfiConverterUInt64.INSTANCE.Write(variant_value.WrittenRows, stream);
                 FfiConverterOptionalTypeLineSpan.INSTANCE.Write(variant_value.Lines, stream);
-                break;
-            case CsvImportOutcome.Unknown variant_value:
-                stream.WriteInt(4);
-                FfiConverterTypeBoxedErrorInfo.INSTANCE.Write(variant_value.Error, stream);
                 break;
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCsvImportOutcome.Write()", value));

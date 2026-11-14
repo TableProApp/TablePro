@@ -3546,18 +3546,6 @@ New fingerprint: {2}</value>
   <data name="ImportCsvNotWritten" xml:space="preserve">
     <value>No rows were imported.</value>
   </data>
-  <data name="ImportCsvPartlyNone" xml:space="preserve">
-    <value>{0} could not be written. The table has no transaction to undo the import.</value>
-  </data>
-  <data name="ImportCsvPartlyOne" xml:space="preserve">
-    <value>{0} could not be written. The table has no transaction to undo the import, so the row written before stays in it.</value>
-  </data>
-  <data name="ImportCsvPartlyMany" xml:space="preserve">
-    <value>{0} could not be written. The table has no transaction to undo the import, so the {1:N0} rows written before stay in it.</value>
-  </data>
-  <data name="ImportCsvPartlyRange" xml:space="preserve">
-    <value>Some of those lines may be in it too.</value>
-  </data>
   <data name="ImportCsvUnknown" xml:space="preserve">
     <value>The import did not finish, so the table may hold some of the rows. Refresh it to see what is there.</value>
   </data>
@@ -3608,5 +3596,8 @@ New fingerprint: {2}</value>
   </data>
   <data name="SaveQueryCommand" xml:space="preserve">
     <value>Save query...</value>
+  </data>
+  <data name="ImportCsvUnknownLines" xml:space="preserve">
+    <value>{0} could not be written, and the table has no transaction to undo the import, so it may hold some of the rows. Refresh it to see what is there.</value>
   </data>
 </root>
