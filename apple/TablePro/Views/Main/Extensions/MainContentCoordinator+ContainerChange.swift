@@ -18,7 +18,7 @@ extension MainContentCoordinator {
     internal func changeQueryContainer(of tabId: UUID, to name: String, target: ContainerSwitchTarget?) {
         guard canChangeContainer(of: tabId, to: name) else { return }
         // Asked before the tab moves, so Cancel leaves the staged edits with the database their rows came from.
-        confirmDiscardRestoringRowsIfNeeded(forTab: tabId, action: .containerChange) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .containerChange) { [weak self] confirmed in
             guard confirmed, let self, canChangeContainer(of: tabId, to: name) else { return }
             retargetTab(tabId)
             guard tabManager.mutate(tabId: tabId, { tab in

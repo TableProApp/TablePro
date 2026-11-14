@@ -14,7 +14,7 @@ extension MainContentCoordinator {
             run()
             return
         }
-        confirmDiscardRestoringRowsIfNeeded(forTab: tabId, action: .run) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .run) { [weak self] confirmed in
             guard let self, confirmed, tabManager.selectedTabId == tabId, !tabExecution.isExecuting(tabId) else { return }
             run()
         }

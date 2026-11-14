@@ -45,7 +45,7 @@ extension MainContentCoordinator {
     // Confirms like sort, pagination and the WHERE filter: re-running with a new column list drops unsaved edits (#2667).
     private func changeColumnScope(_ mutate: @escaping (inout Set<String>) -> Void) {
         guard let tabId = tabManager.selectedTabId else { return }
-        confirmDiscardRestoringRowsIfNeeded(forTab: tabId, action: .columnVisibility) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .columnVisibility) { [weak self] confirmed in
             guard confirmed, let self else { return }
             self.mutateHiddenColumns(ofTab: tabId, mutate)
             self.requeryWithColumnScope(forTab: tabId, debounced: true)
@@ -98,7 +98,7 @@ extension MainContentCoordinator {
     // Clearing the hidden set re-queries, so reset confirms too; declining keeps the width reset, since widths cannot void edits.
     func resetColumns() {
         guard let tabId = tabManager.selectedTabId else { return }
-        confirmDiscardRestoringRowsIfNeeded(forTab: tabId, action: .columnVisibility) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .columnVisibility) { [weak self] confirmed in
             guard confirmed, let self else { return }
             self.applyColumnReset(toTab: tabId)
         }
