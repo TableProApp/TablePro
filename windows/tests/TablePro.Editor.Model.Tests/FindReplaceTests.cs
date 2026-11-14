@@ -73,6 +73,19 @@ public sealed class FindReplaceTests
         Assert.InRange(watch.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(30));
     }
 
+    // The timeout belongs to the text that ran past it: another document, or this one edited, is searched again.
+    [Fact]
+    public void APatternThatTimedOutFindsMatchesInOtherText()
+    {
+        var runaway = new SearchQuery("(a+)+ac", UseRegex: true);
+        var runs = new TextDocument(new string('a', 64));
+        Assert.Null(TextSearch.Next(runs, runaway, 0, backward: false));
+
+        var other = new TextDocument("xaac");
+
+        Assert.Equal((1, 3), TextSearch.Next(other, runaway, 0, backward: false)!.Value);
+    }
+
     [Fact]
     public void SelectedTextEscapedIntoAPatternFindsItself()
     {

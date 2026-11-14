@@ -378,10 +378,25 @@ public sealed class QueryTabFileTests : IDisposable
         var after = tab.Snapshot();
 
         Assert.True(before.FileUnsaved);
-        Assert.True(before.HasRecoveredWork);
+        Assert.False(before.HasRecoveredWork, "a close that asked follows Reopen at startup");
+        Assert.True(tab.WithPendingWork(before).HasRecoveredWork, "an end without a close brings it back");
         Assert.NotNull(before.FileStamp);
         Assert.Equal(before, after);
         Assert.Equal("select 1;", File.ReadAllText(Path.Combine(_directory, "edit.sql")));
+    }
+
+    // Read only keeps a table's edits from the database; the file is the user's own, so Save is still offered.
+    [Fact]
+    public async Task ClosingForAReadOnlyReconnectStillOffersToSaveTheFile()
+    {
+        var tab = Open("edit.sql", "select 1;");
+        _view.WholeText = "select 2;";
+        tab.TextEdited();
+
+        Assert.True(await tab.ConfirmCloseAsync(offerSave: false));
+
+        Assert.Equal<bool>([true], _files.OfferedSave);
+        Assert.Equal("select 2;", File.ReadAllText(Path.Combine(_directory, "edit.sql")));
     }
 
     private QueryTab Open(string name, string text) =>
@@ -439,9 +454,12 @@ public sealed class QueryTabFileTests : IDisposable
             return Task.FromResult(Picked);
         }
 
+        public List<bool> OfferedSave { get; } = [];
+
         public Task<SaveBeforeClose> AskSaveBeforeCloseAsync(string tab, bool offerSave)
         {
             ClosesAsked++;
+            OfferedSave.Add(offerSave);
             return Task.FromResult(CloseAnswer);
         }
 

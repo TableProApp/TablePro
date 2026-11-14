@@ -203,10 +203,11 @@ public sealed class QueryTab : IWorkspaceTab
             return true;
         }
 
-        var answer = await _files.AskSaveBeforeCloseAsync(Title, offerSave).ConfigureAwait(true);
+        // A read-only connection takes away Save for its table edits; a file is written here, not to the database.
+        var answer = await _files.AskSaveBeforeCloseAsync(Title, offerSave: true).ConfigureAwait(true);
         return answer switch
         {
-            SaveBeforeClose.Save when offerSave => await SaveAsync().ConfigureAwait(true),
+            SaveBeforeClose.Save => await SaveAsync().ConfigureAwait(true),
             SaveBeforeClose.DontSave => true,
             _ => false,
         };
@@ -228,7 +229,11 @@ public sealed class QueryTab : IWorkspaceTab
     public SessionTab WithPendingWork(SessionTab snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        return WorkspaceNotices.Holds(Transaction) ? snapshot with { HeldTransaction = true } : snapshot;
+        return snapshot with
+        {
+            HeldTransaction = snapshot.HeldTransaction || WorkspaceNotices.Holds(Transaction),
+            RecoverFile = snapshot.FileUnsaved,
+        };
     }
 
     public async Task RunAsync()

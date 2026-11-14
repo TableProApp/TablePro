@@ -49,7 +49,9 @@ public static class TextSearch
         from = Math.Clamp(from, 0, text.Length);
         if (query.UseRegex)
         {
-            return Compile(query) is { TimedOut: false } pattern ? NextMatch(pattern, text, from, backward) : null;
+            return Compile(query) is { } pattern && !pattern.TimedOutOn(document)
+                ? NextMatch(pattern, document, text, from, backward)
+                : null;
         }
         var found = backward ? Backward(text, query, from) ?? Backward(text, query, text.Length)
             : Forward(text, query, from) ?? Forward(text, query, 0);
@@ -68,9 +70,9 @@ public static class TextSearch
         var index = Math.Clamp(start, 0, text.Length);
         if (query.UseRegex)
         {
-            if (Compile(query) is { TimedOut: false } pattern)
+            if (Compile(query) is { } pattern && !pattern.TimedOutOn(document))
             {
-                MatchesInRange(pattern, text, index, end, limit, matches);
+                MatchesInRange(pattern, document, text, index, end, limit, matches);
             }
             return matches;
         }
@@ -109,7 +111,7 @@ public static class TextSearch
                 && (!query.WholeWord || IsWholeWord(text, start, length));
             return same ? replacement : null;
         }
-        if (Compile(query) is not { TimedOut: false } pattern)
+        if (Compile(query) is not { } pattern || pattern.TimedOutOn(document))
         {
             return null;
         }
@@ -124,7 +126,7 @@ public static class TextSearch
         }
         catch (RegexMatchTimeoutException)
         {
-            pattern.TimedOut = true;
+            pattern.MarkTimedOut(document);
             return null;
         }
     }
@@ -148,7 +150,7 @@ public static class TextSearch
             }
             return replacements;
         }
-        if (Compile(query) is not { TimedOut: false } pattern)
+        if (Compile(query) is not { } pattern || pattern.TimedOutOn(document))
         {
             return replacements;
         }
@@ -165,13 +167,14 @@ public static class TextSearch
         catch (RegexMatchTimeoutException)
         {
             // Half a replace all is worse than none.
-            pattern.TimedOut = true;
+            pattern.MarkTimedOut(document);
             replacements.Clear();
         }
         return replacements;
     }
 
-    private static (int Start, int Length)? NextMatch(CompiledPattern pattern, string text, int from, bool backward)
+    private static (int Start, int Length)? NextMatch(
+        CompiledPattern pattern, TextDocument document, string text, int from, bool backward)
     {
         try
         {
@@ -180,7 +183,7 @@ public static class TextSearch
         }
         catch (RegexMatchTimeoutException)
         {
-            pattern.TimedOut = true;
+            pattern.MarkTimedOut(document);
             return null;
         }
     }
@@ -211,7 +214,13 @@ public static class TextSearch
         return last;
     }
 
-    private static void MatchesInRange(CompiledPattern pattern, string text, int start, int end, int limit,
+    private static void MatchesInRange(
+        CompiledPattern pattern,
+        TextDocument document,
+        string text,
+        int start,
+        int end,
+        int limit,
         List<(int, int)> matches)
     {
         try
@@ -232,7 +241,7 @@ public static class TextSearch
         }
         catch (RegexMatchTimeoutException)
         {
-            pattern.TimedOut = true;
+            pattern.MarkTimedOut(document);
             matches.Clear();
         }
     }
@@ -311,12 +320,26 @@ public static class TextSearch
         (start == 0 || !TextUnits.IsWordChar(text[start - 1]))
         && (start + length >= text.Length || !TextUnits.IsWordChar(text[start + length]));
 
-    // A pattern that ran past the timeout once finds nothing more, so each frame does not wait it out again.
+    // A pattern that ran past the timeout finds nothing more in that text, so each frame does not wait it out again;
+    // an edit, or another document, searches again.
     private sealed class CompiledPattern(Regex regex)
     {
+        private WeakReference<TextDocument>? _timedOutIn;
+        private long _timedOutVersion;
+
         public Regex Regex { get; } = regex;
 
-        public bool TimedOut { get; set; }
+        public bool TimedOutOn(TextDocument document) =>
+            _timedOutIn is not null
+            && _timedOutIn.TryGetTarget(out var timedOut)
+            && ReferenceEquals(timedOut, document)
+            && _timedOutVersion == document.Version;
+
+        public void MarkTimedOut(TextDocument document)
+        {
+            _timedOutIn = new WeakReference<TextDocument>(document);
+            _timedOutVersion = document.Version;
+        }
     }
 
     private sealed record Cached(SearchQuery Query, CompiledPattern? Pattern);

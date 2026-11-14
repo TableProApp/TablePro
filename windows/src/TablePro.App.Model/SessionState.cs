@@ -54,6 +54,11 @@ public sealed record SessionTab
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool FileUnsaved { get; set; }
 
+    // Set only by the session's own writes, so unsaved file text comes back after an end without a close, but a close
+    // that asked about it follows Reopen at startup.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool RecoverFile { get; set; }
+
     // A table tab's pending changes by key, which the session's writes keep until a close has asked about them.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SavedEdits? Edits { get; set; }
@@ -64,7 +69,7 @@ public sealed record SessionTab
 
     // What the app ended holding without a close, which a launch brings back even with Reopen at startup off.
     [JsonIgnore]
-    public bool HasRecoveredWork => Edits is { Changes: > 0 } || HeldTransaction || FileUnsaved;
+    public bool HasRecoveredWork => Edits is { Changes: > 0 } || HeldTransaction || RecoverFile;
 
     // A name this build does not define, as from a later build, reads as the fallback.
     public ObjectKind ObjectKindOr(ObjectKind fallback) =>
