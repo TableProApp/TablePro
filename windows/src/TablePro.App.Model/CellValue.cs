@@ -5,18 +5,26 @@ using TablePro.Interop;
 
 namespace TablePro.App.Model;
 
-// One cell as the value viewer shows it: the text, or the bytes of a binary value. Neither is set for NULL.
-public sealed record CellValue(string Column, string? Text, byte[]? Bytes, bool IsDefault)
+// One cell as the value viewer shows it, read only as far as the viewer goes, since a cell can hold far more than
+// the app should copy: the text's start, or a binary value's first bytes and its length. Neither is set for NULL.
+public sealed record CellValue(string Column, string? Text, bool TextCut, ReadOnlyMemory<byte>? Bytes, long ByteLength,
+    bool IsDefault)
 {
-    // A TextBox lays out all it holds, so the viewer shows a long value's start; Copy takes the whole.
+    // A TextBox lays out all it holds, so the viewer shows a long value's start.
     public const int MaximumShownCharacters = 1_000_000;
 
     public const int MaximumHexBytes = 256 * 1024;
 
+    // A picture is decoded only when read whole, so this bounds what a binary cell copies into the app.
+    public const int MaximumPictureBytes = 16 * 1024 * 1024;
+
     public bool IsNull => Text is null && Bytes is null && !IsDefault;
 
-    // The grid's text with its pending edit, and a binary value's bytes as the server holds them. A deleted row
-    // still shows what it holds; a new row and a changed cell have no bytes, only the text typed.
+    // A binary value read whole, which a picture needs.
+    public bool IsWholeBinary => Bytes is { } bytes && bytes.Length == ByteLength;
+
+    // The grid's text with its pending edit, and the server's value otherwise. A deleted row still shows what it
+    // holds; a new row and a changed cell show the text typed.
     public static CellValue? Read(IGridData data, ResultSet? rows, int row, int column)
     {
         ArgumentNullException.ThrowIfNull(data);
@@ -37,32 +45,42 @@ public sealed record CellValue(string Column, string? Text, byte[]? Bytes, bool 
         var name = data.GetColumnName(column);
         if ((state & CellState.Default) != 0)
         {
-            return new CellValue(name, null, null, IsDefault: true);
+            return new CellValue(name, null, false, null, 0, IsDefault: true);
         }
 
         var pending = (state & (CellState.Modified | CellState.Inserted)) != 0;
-        if (!pending && rows is not null && row < rows.RowCount && rows.GetCellBytes(row, column) is { } bytes)
+        if (pending || rows is null || row >= rows.RowCount)
         {
-            return new CellValue(name, null, bytes, IsDefault: false);
+            // Text the user typed, or text the app holds itself, is in memory already.
+            return Of(name, reader.ReadWhole(row, column));
         }
 
-        return new CellValue(name, reader.ReadWhole(row, column), null, IsDefault: false);
+        if (rows.GetCellBytes(row, column, MaximumPictureBytes) is { } binary)
+        {
+            return new CellValue(name, null, false, binary.Bytes, binary.Length, IsDefault: false);
+        }
+
+        return rows.GetCellTextHead(row, column, MaximumShownCharacters) is { } head
+            ? new CellValue(name, head.Text, head.Cut, null, 0, IsDefault: false)
+            : new CellValue(name, null, false, null, 0, IsDefault: false);
     }
 
-    // What Copy puts on the clipboard: the text, or a binary value in the 0x form the grid shows. Built only when
-    // asked, since a large value's hex is twice its size.
-    public string? CopyText() => Bytes is { } bytes ? "0x" + Convert.ToHexStringLower(bytes) : Text;
-
-    public (string Text, bool Cut) ShownText()
+    public static CellValue Of(string column, string? text)
     {
-        if (Text is not { Length: > MaximumShownCharacters } text)
+        ArgumentNullException.ThrowIfNull(column);
+        if (text is not { Length: > MaximumShownCharacters })
         {
-            return (Text ?? string.Empty, false);
+            return new CellValue(column, text, false, null, 0, IsDefault: false);
         }
 
         var end = char.IsHighSurrogate(text[MaximumShownCharacters - 1]) ? MaximumShownCharacters - 1 : MaximumShownCharacters;
-        return (text[..end], true);
+        return new CellValue(column, text[..end], true, null, 0, IsDefault: false);
     }
+
+    public bool CanCopy => Text is not null || Bytes is not null;
+
+    // The viewer shows only a start of a long value, so that start is what Copy takes, never more than was read.
+    public string? CopyText() => Bytes is not null ? Hex().Text : Text;
 
     // The 0x form of the first MaximumHexBytes, the way the grid shows a binary value.
     public (string Text, bool Cut) Hex()
@@ -72,13 +90,12 @@ public sealed record CellValue(string Column, string? Text, byte[]? Bytes, bool 
             return (string.Empty, false);
         }
 
-        var shown = bytes.AsSpan(0, Math.Min(bytes.Length, MaximumHexBytes));
-        return ("0x" + Convert.ToHexStringLower(shown), shown.Length < bytes.Length);
+        var shown = bytes.Span[..Math.Min(bytes.Length, MaximumHexBytes)];
+        return ("0x" + Convert.ToHexStringLower(shown), shown.Length < ByteLength);
     }
 
-    public (string Text, bool Cut)? Json() => Text is { } text ? JsonText.Indent(text, MaximumShownCharacters) : null;
-
-    public bool CanCopy => Text is not null || Bytes is not null;
+    // A text cut short is not one JSON value, so only a whole text has a JSON layout.
+    public (string Text, bool Cut)? Json() => Text is { } text && !TextCut ? JsonText.Indent(text, MaximumShownCharacters) : null;
 }
 
 // JSON laid out one member per line, token by token from the reader's raw spans, so each string keeps the escapes

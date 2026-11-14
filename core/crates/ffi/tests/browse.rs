@@ -706,20 +706,30 @@ async fn keys_that_compare_otherwise_or_hold_an_inexact_value_stay_as_refusals()
 }
 
 #[tokio::test]
-async fn a_binary_cell_gives_its_bytes_and_other_cells_none() {
+async fn a_cell_reads_its_start_and_a_binary_cell_its_first_bytes_with_its_length() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, session) = fixture(
         dir.path(),
         "CREATE TABLE files (id INTEGER PRIMARY KEY, body BLOB, note TEXT); \
-         INSERT INTO files VALUES (1, X'89504E47', 'png'), (2, NULL, NULL)",
+         INSERT INTO files VALUES (1, X'89504E47', 'line one' || char(10) || 'line two'), (2, NULL, NULL)",
     )
     .await;
     let rows = page_rows(&session, "files", None).await;
 
-    assert_eq!(rows.cell_bytes(0, 1).unwrap(), Some(vec![0x89, 0x50, 0x4e, 0x47]));
-    assert_eq!(rows.cell_text(0, 1).unwrap().as_deref(), Some("0x89504e47"));
-    assert_eq!(rows.cell_bytes(0, 2).unwrap(), None);
-    assert_eq!(rows.cell_bytes(1, 1).unwrap(), None);
-    assert_eq!(rows.cell_bytes(5, 1).unwrap_err().code(), "ffi.out_of_range");
+    let whole = rows.cell_bytes(0, 1, 100).unwrap().unwrap();
+    assert_eq!((whole.bytes, whole.length), (vec![0x89, 0x50, 0x4e, 0x47], 4));
+    let first = rows.cell_bytes(0, 1, 2).unwrap().unwrap();
+    assert_eq!((first.bytes, first.length), (vec![0x89, 0x50], 4));
+    assert_eq!(rows.cell_bytes(0, 2, 100).unwrap(), None);
+    assert_eq!(rows.cell_bytes(1, 1, 100).unwrap(), None);
+    assert_eq!(rows.cell_bytes(5, 1, 100).unwrap_err().code(), "ffi.out_of_range");
+
+    let note = rows.cell_text_head(0, 2, 100).unwrap().unwrap();
+    assert_eq!((note.text.as_str(), note.cut), ("line one\nline two", false));
+    let cut = rows.cell_text_head(0, 2, 4).unwrap().unwrap();
+    assert_eq!((cut.text.as_str(), cut.cut), ("line", true));
+    let hex = rows.cell_text_head(0, 1, 6).unwrap().unwrap();
+    assert_eq!((hex.text.as_str(), hex.cut), ("0x8950", true));
+    assert_eq!(rows.cell_text_head(1, 2, 100).unwrap(), None);
     session.close().await.unwrap();
 }

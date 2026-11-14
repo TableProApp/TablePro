@@ -54,45 +54,48 @@ public sealed class CellValueTests
     public void TextThatIsNotOneObjectOrArrayHasNoJsonView(string text) => Assert.Null(JsonText.Indent(text));
 
     [Fact]
-    public void BinaryShowsAsHexUpToItsLimitAndCopiesWhole()
+    public void BinaryShowsAndCopiesItsHexUpToItsLimitAndOnlyAWholeValueIsAPicture()
     {
-        var small = new CellValue("body", null, [0xde, 0xad], IsDefault: false);
-        var large = new CellValue("body", null, new byte[CellValue.MaximumHexBytes + 1], IsDefault: false);
+        var small = new CellValue("body", null, false, new byte[] { 0xde, 0xad }, 2, IsDefault: false);
+        var large = new CellValue("body", null, false, new byte[CellValue.MaximumHexBytes + 1], 40_000_000, IsDefault: false);
 
         Assert.Equal(("0xdead", false), small.Hex());
         Assert.Equal("0xdead", small.CopyText());
+        Assert.True(small.IsWholeBinary);
         var (hex, cut) = large.Hex();
         Assert.True(cut);
         Assert.Equal(2 + (CellValue.MaximumHexBytes * 2), hex.Length);
-        Assert.Equal(2 + ((CellValue.MaximumHexBytes + 1) * 2), large.CopyText()!.Length);
+        Assert.Equal(hex, large.CopyText());
+        Assert.False(large.IsWholeBinary);
         Assert.False(small.IsNull);
         Assert.Null(small.Json());
     }
 
     [Fact]
-    public void LongTextShowsItsStartWithoutSplittingACharacterAndCopiesWhole()
+    public void LongTextKeepsItsStartWithoutSplittingACharacterAndHasNoJsonLayout()
     {
-        var text = new string('a', CellValue.MaximumShownCharacters - 1) + "👋" + "tail";
-        var value = new CellValue("note", text, null, IsDefault: false);
+        var text = "[" + new string('1', CellValue.MaximumShownCharacters - 2) + "👋" + "]";
 
-        var (shown, cut) = value.ShownText();
+        var value = CellValue.Of("note", text);
 
-        Assert.True(cut);
-        Assert.Equal(CellValue.MaximumShownCharacters - 1, shown.Length);
-        Assert.Equal(text, value.CopyText());
-        Assert.Equal((string.Empty, false), new CellValue("note", null, null, IsDefault: false).ShownText());
-        Assert.True(new CellValue("note", null, null, IsDefault: false).IsNull);
-        Assert.False(new CellValue("note", null, null, IsDefault: true).IsNull);
+        Assert.True(value.TextCut);
+        Assert.Equal(CellValue.MaximumShownCharacters - 1, value.Text!.Length);
+        Assert.Equal(value.Text, value.CopyText());
+        Assert.Null(value.Json());
+        Assert.False(CellValue.Of("note", "[1]").TextCut);
+        Assert.True(CellValue.Of("note", null).IsNull);
+        Assert.False(new CellValue("note", null, false, null, 0, IsDefault: true).IsNull);
+        Assert.False(new CellValue("note", null, false, null, 0, IsDefault: true).CanCopy);
     }
 
     [Fact]
-    public void ACellReadsWholeThroughTheGridsData()
+    public void ACellTheAppHoldsReadsThroughTheGridsData()
     {
         var data = new TextGridData(["doc", "note"], [["{\"a\":1}", null]]);
 
         var doc = CellValue.Read(data, null, 0, 0)!;
 
-        Assert.Equal(new CellValue("doc", "{\"a\":1}", null, IsDefault: false), doc);
+        Assert.Equal(CellValue.Of("doc", "{\"a\":1}"), doc);
         Assert.Equal(("{\n  \"a\": 1\n}", false), doc.Json());
         Assert.True(CellValue.Read(data, null, 0, 1)!.IsNull);
         Assert.Null(CellValue.Read(data, null, 1, 0));

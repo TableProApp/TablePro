@@ -1828,7 +1828,7 @@ New fingerprint: {2}</value>
     <value>Close</value>
   </data>
   <data name="ValueViewerCut" xml:space="preserve">
-    <value>Only the start of this value shows here. Copy takes all of it.</value>
+    <value>Only the start of this value shows here, and Copy takes that part.</value>
   </data>
   <data name="ValueViewerCopyFailed" xml:space="preserve">
     <value>The value could not be put on the clipboard.</value>

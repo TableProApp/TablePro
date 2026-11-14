@@ -38,7 +38,9 @@ internal static class CellValueViewer
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(value);
-        var picture = value.Bytes is { Length: > 0 } bytes ? await DecodeAsync(bytes).ConfigureAwait(true) : null;
+        var picture = value.IsWholeBinary && value.Bytes is { Length: > 0 } bytes
+            ? await DecodeAsync(bytes.ToArray()).ConfigureAwait(true)
+            : null;
         var json = value.Json();
         var modes = new List<Mode>();
         if (picture is not null)
@@ -100,7 +102,7 @@ internal static class CellValueViewer
             {
                 Mode.Json => json!.Value,
                 Mode.Hex => value.Hex(),
-                Mode.Text => value.ShownText(),
+                Mode.Text => (value.Text ?? string.Empty, value.TextCut),
                 _ => (string.Empty, false),
             };
             image.Visibility = mode == Mode.Image ? Visibility.Visible : Visibility.Collapsed;

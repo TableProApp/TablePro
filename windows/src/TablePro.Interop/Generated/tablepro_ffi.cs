@@ -1171,6 +1171,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -2016,7 +2018,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     RustBuffer uniffi_tablepro_ffi_fn_method_resultset_cell_bytes(ulong @ptr,ulong @row,uint @column,ref UniffiRustCallStatus _uniffi_out_err
+     RustBuffer uniffi_tablepro_ffi_fn_method_resultset_cell_bytes(ulong @ptr,ulong @row,uint @column,ulong @maxBytes,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -2028,6 +2030,17 @@ static class _UniFFILib {
     public static extern
 #endif
      RustBuffer uniffi_tablepro_ffi_fn_method_resultset_cell_text(ulong @ptr,ulong @row,uint @column,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_resultset_cell_text_head(ulong @ptr,ulong @row,uint @column,uint @maxChars,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -4095,6 +4108,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_resultset_cell_text_head(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_resultset_columns(
     );
 
@@ -5212,14 +5236,20 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_cell_bytes();
-            if (checksum != 39609) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_cell_bytes` checksum `39609`, library returned `{checksum}`");
+            if (checksum != 40157) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_cell_bytes` checksum `40157`, library returned `{checksum}`");
             }
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_cell_text();
             if (checksum != 54600) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_cell_text` checksum `54600`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_cell_text_head();
+            if (checksum != 5341) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_cell_text_head` checksum `5341`, library returned `{checksum}`");
             }
         }
         {
@@ -8495,9 +8525,11 @@ internal interface IResultSet {
     /// <exception cref="CoreException"></exception>
     Task<ShareSummary> ShareSummary(uint @visibleColumns, uint @maxRows, ShareColumnChoice[] @columns);
     /// <exception cref="CoreException"></exception>
-    byte[]? CellBytes(ulong @row, uint @column);
+    CellBytes? CellBytes(ulong @row, uint @column, ulong @maxBytes);
     /// <exception cref="CoreException"></exception>
     string? CellText(ulong @row, uint @column);
+    /// <exception cref="CoreException"></exception>
+    CellTextHead? CellTextHead(ulong @row, uint @column, uint @maxChars);
     ResultColumnInfo[] Columns();
     /// <summary>
     /// Its place among the run's result sets, from 0.
@@ -8668,10 +8700,10 @@ internal class ResultSet : IResultSet, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public byte[]? CellBytes(ulong @row, uint @column) {
-        return CallWithPointer(thisPtr => FfiConverterOptionalByteArray.INSTANCE.Lift(
+    public CellBytes? CellBytes(ulong @row, uint @column, ulong @maxBytes) {
+        return CallWithPointer(thisPtr => FfiConverterOptionalTypeCellBytes.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
-    _UniFFILib.uniffi_tablepro_ffi_fn_method_resultset_cell_bytes(thisPtr, FfiConverterUInt64.INSTANCE.Lower(@row), FfiConverterUInt32.INSTANCE.Lower(@column), ref _status)
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_resultset_cell_bytes(thisPtr, FfiConverterUInt64.INSTANCE.Lower(@row), FfiConverterUInt32.INSTANCE.Lower(@column), FfiConverterUInt64.INSTANCE.Lower(@maxBytes), ref _status)
 )));
     }
     
@@ -8681,6 +8713,15 @@ internal class ResultSet : IResultSet, IDisposable {
         return CallWithPointer(thisPtr => FfiConverterOptionalString.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_method_resultset_cell_text(thisPtr, FfiConverterUInt64.INSTANCE.Lower(@row), FfiConverterUInt32.INSTANCE.Lower(@column), ref _status)
+)));
+    }
+    
+    
+    /// <exception cref="CoreException"></exception>
+    public CellTextHead? CellTextHead(ulong @row, uint @column, uint @maxChars) {
+        return CallWithPointer(thisPtr => FfiConverterOptionalTypeCellTextHead.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_resultset_cell_text_head(thisPtr, FfiConverterUInt64.INSTANCE.Lower(@row), FfiConverterUInt32.INSTANCE.Lower(@column), FfiConverterUInt32.INSTANCE.Lower(@maxChars), ref _status)
 )));
     }
     
@@ -9533,6 +9574,36 @@ class FfiConverterTypeAccountStatusInfo: FfiConverterRustBuffer<AccountStatusInf
 
 
 
+internal record CellBytes (
+    byte[] Bytes, 
+    ulong Length
+) {
+}
+
+class FfiConverterTypeCellBytes: FfiConverterRustBuffer<CellBytes> {
+    public static FfiConverterTypeCellBytes INSTANCE = new FfiConverterTypeCellBytes();
+
+    public override CellBytes Read(BigEndianStream stream) {
+        return new CellBytes(
+            Bytes: FfiConverterByteArray.INSTANCE.Read(stream),
+            Length: FfiConverterUInt64.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CellBytes value) {
+        return 0
+            + FfiConverterByteArray.INSTANCE.AllocationSize(value.Bytes)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.Length);
+    }
+
+    public override void Write(CellBytes value, BigEndianStream stream) {
+            FfiConverterByteArray.INSTANCE.Write(value.Bytes, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.Length, stream);
+    }
+}
+
+
+
 internal record CellChange (
     uint Column, 
     CellEdit Edit
@@ -9558,6 +9629,36 @@ class FfiConverterTypeCellChange: FfiConverterRustBuffer<CellChange> {
     public override void Write(CellChange value, BigEndianStream stream) {
             FfiConverterUInt32.INSTANCE.Write(value.Column, stream);
             FfiConverterTypeCellEdit.INSTANCE.Write(value.Edit, stream);
+    }
+}
+
+
+
+internal record CellTextHead (
+    string Text, 
+    bool Cut
+) {
+}
+
+class FfiConverterTypeCellTextHead: FfiConverterRustBuffer<CellTextHead> {
+    public static FfiConverterTypeCellTextHead INSTANCE = new FfiConverterTypeCellTextHead();
+
+    public override CellTextHead Read(BigEndianStream stream) {
+        return new CellTextHead(
+            Text: FfiConverterString.INSTANCE.Read(stream),
+            Cut: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CellTextHead value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Text)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Cut);
+    }
+
+    public override void Write(CellTextHead value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Text, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Cut, stream);
     }
 }
 
@@ -16885,37 +16986,6 @@ class FfiConverterOptionalString: FfiConverterRustBuffer<string?> {
 
 
 
-class FfiConverterOptionalByteArray: FfiConverterRustBuffer<byte[]?> {
-    public static FfiConverterOptionalByteArray INSTANCE = new FfiConverterOptionalByteArray();
-
-    public override byte[]? Read(BigEndianStream stream) {
-        if (stream.ReadByte() == 0) {
-            return null;
-        }
-        return FfiConverterByteArray.INSTANCE.Read(stream);
-    }
-
-    public override int AllocationSize(byte[]? value) {
-        if (value == null) {
-            return 1;
-        } else {
-            return 1 + FfiConverterByteArray.INSTANCE.AllocationSize((byte[])value);
-        }
-    }
-
-    public override void Write(byte[]? value, BigEndianStream stream) {
-        if (value == null) {
-            stream.WriteByte(0);
-        } else {
-            stream.WriteByte(1);
-            FfiConverterByteArray.INSTANCE.Write((byte[])value, stream);
-        }
-    }
-}
-
-
-
-
 class FfiConverterOptionalTypeCancelToken: FfiConverterRustBuffer<CancelToken?> {
     public static FfiConverterOptionalTypeCancelToken INSTANCE = new FfiConverterOptionalTypeCancelToken();
 
@@ -16971,6 +17041,68 @@ class FfiConverterOptionalTypeResultSet: FfiConverterRustBuffer<ResultSet?> {
         } else {
             stream.WriteByte(1);
             FfiConverterTypeResultSet.INSTANCE.Write((ResultSet)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeCellBytes: FfiConverterRustBuffer<CellBytes?> {
+    public static FfiConverterOptionalTypeCellBytes INSTANCE = new FfiConverterOptionalTypeCellBytes();
+
+    public override CellBytes? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeCellBytes.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(CellBytes? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeCellBytes.INSTANCE.AllocationSize((CellBytes)value);
+        }
+    }
+
+    public override void Write(CellBytes? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeCellBytes.INSTANCE.Write((CellBytes)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeCellTextHead: FfiConverterRustBuffer<CellTextHead?> {
+    public static FfiConverterOptionalTypeCellTextHead INSTANCE = new FfiConverterOptionalTypeCellTextHead();
+
+    public override CellTextHead? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeCellTextHead.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(CellTextHead? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeCellTextHead.INSTANCE.AllocationSize((CellTextHead)value);
+        }
+    }
+
+    public override void Write(CellTextHead? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeCellTextHead.INSTANCE.Write((CellTextHead)value, stream);
         }
     }
 }

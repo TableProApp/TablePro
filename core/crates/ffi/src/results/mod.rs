@@ -8,6 +8,6 @@ mod store;
 mod value_kind;
 
 pub(crate) use cursor::Cursor;
-pub use result_set::{ResultColumnInfo, ResultSet};
+pub use result_set::{CellBytes, CellTextHead, ResultColumnInfo, ResultSet};
 pub(crate) use store::ResultStore;
 pub use value_kind::ValueKind;

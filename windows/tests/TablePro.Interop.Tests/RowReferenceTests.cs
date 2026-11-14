@@ -89,20 +89,25 @@ public sealed class RowReferenceTests
     }
 
     [Fact]
-    public async Task ABinaryCellGivesItsBytesAndOtherCellsNone()
+    public async Task ACellReadsOnlyItsStartAndABinaryCellItsFirstBytesWithItsLength()
     {
         var cancel = TestContext.Current.CancellationToken;
         await using var database = await SqliteDatabase.CreateAsync();
         await database.ExecuteAsync("""
             CREATE TABLE files (id INTEGER PRIMARY KEY, body BLOB, note TEXT);
-            INSERT INTO files VALUES (1, X'89504E47', 'png'), (2, NULL, NULL);
+            INSERT INTO files VALUES (1, X'89504E47', 'line one' || char(10) || 'line two'), (2, NULL, NULL);
             """);
         using var files = await ReadAsync(database.Session, new TableName(null, "files"), null, cancel);
 
-        Assert.Equal([0x89, 0x50, 0x4e, 0x47], files.GetCellBytes(0, 1));
-        Assert.Null(files.GetCellBytes(0, 2));
-        Assert.Null(files.GetCellBytes(1, 1));
-        Assert.Equal("ffi.out_of_range", Assert.Throws<TableProException>(() => files.GetCellBytes(5, 1)).Code);
+        var first = files.GetCellBytes(0, 1, 2)!;
+        Assert.Equal([0x89, 0x50], first.Bytes.ToArray());
+        Assert.Equal(4, first.Length);
+        Assert.Null(files.GetCellBytes(0, 2, 100));
+        Assert.Null(files.GetCellBytes(1, 1, 100));
+        Assert.Equal(new CellTextHead("line one\nline two", false), files.GetCellTextHead(0, 2, 100));
+        Assert.Equal(new CellTextHead("line", true), files.GetCellTextHead(0, 2, 4));
+        Assert.Null(files.GetCellTextHead(1, 2, 100));
+        Assert.Equal("ffi.out_of_range", Assert.Throws<TableProException>(() => files.GetCellBytes(5, 1, 100)).Code);
     }
 
     private static async Task<ResultSet> ReadAsync(
