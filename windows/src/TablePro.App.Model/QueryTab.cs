@@ -383,7 +383,10 @@ public sealed class QueryTab : IWorkspaceTab
     public Task<bool> SaveAsAsync() => Saving(saveAs: true);
 
     // A bar the user closed stays closed until the file changes again.
-    public async Task CheckDiskAsync()
+    // Every file operation is tab work, so a close waits for it and nothing it finds reaches a closed tab.
+    public Task CheckDiskAsync() => _work.RunAsync(_ => CheckDiskOnceAsync());
+
+    private async Task CheckDiskOnceAsync()
     {
         if (_files is null || FilePath is not { } path || _checking || _awaitingFile || _work.IsClosed)
         {
@@ -428,7 +431,10 @@ public sealed class QueryTab : IWorkspaceTab
 
     // A restored file tab reads its file once it is in the strip, off the UI thread: a clean one takes the file's text
     // unless it was edited meanwhile, and the file becomes what a check and a save compare with.
-    public async Task LoadRestoredFileAsync(SqlFileStamp? savedStamp, bool unsaved)
+    public Task LoadRestoredFileAsync(SqlFileStamp? savedStamp, bool unsaved) =>
+        _work.RunAsync(_ => LoadRestoredFileOnceAsync(savedStamp, unsaved));
+
+    private async Task LoadRestoredFileOnceAsync(SqlFileStamp? savedStamp, bool unsaved)
     {
         if (_files is null || FilePath is not { } path || !_awaitingFile)
         {
@@ -472,6 +478,13 @@ public sealed class QueryTab : IWorkspaceTab
     // The tab's text becomes the file's, dropping what was typed since.
     public async Task<bool> ReloadAsync()
     {
+        var reloaded = false;
+        await _work.RunAsync(async _ => reloaded = await ReloadOnceAsync().ConfigureAwait(true)).ConfigureAwait(true);
+        return reloaded;
+    }
+
+    private async Task<bool> ReloadOnceAsync()
+    {
         if (_files is null || FilePath is not { } path)
         {
             return false;
@@ -480,7 +493,7 @@ public sealed class QueryTab : IWorkspaceTab
         try
         {
             var read = await Task.Run(() => SqlFile.Read(path)).ConfigureAwait(true);
-            if (path != FilePath)
+            if (path != FilePath || _work.IsClosed)
             {
                 return false;
             }
@@ -491,6 +504,11 @@ public sealed class QueryTab : IWorkspaceTab
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
+            if (_work.IsClosed)
+            {
+                return false;
+            }
+
             if (SqlFile.Stamp(path) is null)
             {
                 _shownChange = (DiskChange.Gone, null);

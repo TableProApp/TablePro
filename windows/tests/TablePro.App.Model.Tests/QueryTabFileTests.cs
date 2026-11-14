@@ -470,6 +470,22 @@ public sealed class QueryTabFileTests : IDisposable
         Assert.Equal("select 1;", File.ReadAllText(Path.Combine(_directory, "late.sql")));
     }
 
+    [Fact]
+    public async Task AClosedTabNeitherChecksNorReloadsItsFile()
+    {
+        var path = Write("closed.sql", Encoding.UTF8.GetBytes("select 1;"));
+        var tab = Open(path);
+        File.WriteAllText(path, "select 'theirs';");
+
+        await tab.CloseAsync();
+        await tab.CheckDiskAsync();
+        var reloaded = await tab.ReloadAsync();
+
+        Assert.False(reloaded);
+        Assert.Empty(_files.Changes);
+        Assert.Equal("select 1;", _view.WholeText);
+    }
+
     private QueryTab Restoring(string path) => new(
         "report.sql",
         _session,

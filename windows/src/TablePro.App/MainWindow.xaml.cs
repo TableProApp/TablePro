@@ -1514,7 +1514,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         // A definition tab reads its text with Reload, not Run, and has nothing to stop.
         MenuRun.IsEnabled = tab is QueryTabView { IsRunning: false } or TableTabView { IsRunning: false };
         MenuRunStatement.IsEnabled = tab is QueryTabView { IsRunning: false };
-        MenuStop.IsEnabled = tab is QueryTabView { IsRunning: true } or TableTabView { IsRunning: true };
+        MenuStop.IsEnabled = tab is QueryTabView { IsRunning: true } or TableTabView { IsRunning: true }
+            or KeyTabView { IsRunning: true };
         var editor = tab?.Editor is not null;
         MenuSwitchDatabase.IsEnabled = workspace?.CanSwitchDatabase ?? false;
         foreach (var item in new[] { MenuUndo, MenuRedo, MenuCut, MenuPaste, MenuFind, MenuReplace })
