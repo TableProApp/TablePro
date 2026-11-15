@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use tablepro_core::ddl::{SchemaObjectKind, SchemaObjectSource};
 use tablepro_core::sql_syntax::SqlGrammar;
@@ -13,31 +13,39 @@ pub(crate) struct SchemaRow {
     pub sql: String,
 }
 
-/// The objects a rebuild of `table` has to recreate, in schema order.
-///
-/// Dropping a table drops its own indexes and triggers. A view, or a
-/// trigger on another table, only names it in its SQL, and breaks when
-/// the table is gone for a moment, so those are found by the name in
-/// their token stream. A view that names a kept view is kept too.
+// The objects a rebuild of `table` has to recreate, in schema order. Dropping a table drops its own indexes and
+// triggers. A view, or a trigger on another table, only names it in its SQL and breaks while the table is gone, so those
+// are found by the name in their tokens, and a view naming a kept view is kept too. Each kept name is looked up once
+// among the rows that mention it, so a file's views in any order cost one pass over their words.
 pub(crate) fn select_dependents(table: &str, rows: Vec<SchemaRow>) -> Vec<SchemaObjectSource> {
-    let mut names: Vec<String> = vec![table.to_owned()];
     let mut kept = vec![false; rows.len()];
-    let mentions: Vec<HashSet<String>> = rows.iter().map(|row| words(&row.sql)).collect();
-
-    loop {
-        let mut grew = false;
-        for (index, row) in rows.iter().enumerate() {
-            if kept[index] || !keeps(row, &mentions[index], table, &names) {
+    let mut mentioned_by: HashMap<String, Vec<usize>> = HashMap::new();
+    for (index, row) in rows.iter().enumerate() {
+        match row.kind {
+            SchemaObjectKind::Index | SchemaObjectKind::Trigger if row.table.eq_ignore_ascii_case(table) => {
+                kept[index] = true;
+            }
+            SchemaObjectKind::Index => {}
+            SchemaObjectKind::Trigger | SchemaObjectKind::View => {
+                for word in words(&row.sql) {
+                    mentioned_by.entry(word).or_default().push(index);
+                }
+            }
+        }
+    }
+    let mut pending = vec![table.to_lowercase()];
+    let mut named: HashSet<String> = pending.iter().cloned().collect();
+    while let Some(name) = pending.pop() {
+        for &index in mentioned_by.get(&name).map_or(&[][..], Vec::as_slice) {
+            if kept[index] {
                 continue;
             }
             kept[index] = true;
-            if row.kind == SchemaObjectKind::View {
-                names.push(row.name.clone());
-                grew = true;
+            let row = &rows[index];
+            let folded = row.name.to_lowercase();
+            if row.kind == SchemaObjectKind::View && named.insert(folded.clone()) {
+                pending.push(folded);
             }
-        }
-        if !grew {
-            break;
         }
     }
 
@@ -51,17 +59,6 @@ pub(crate) fn select_dependents(table: &str, rows: Vec<SchemaRow>) -> Vec<Schema
             sql: row.sql,
         })
         .collect()
-}
-
-fn keeps(row: &SchemaRow, mentions: &HashSet<String>, table: &str, names: &[String]) -> bool {
-    let owned_by_table = row.table.eq_ignore_ascii_case(table);
-    match row.kind {
-        SchemaObjectKind::Index | SchemaObjectKind::Trigger if owned_by_table => true,
-        SchemaObjectKind::Index => false,
-        SchemaObjectKind::Trigger | SchemaObjectKind::View => {
-            names.iter().any(|name| mentions.contains(&name.to_lowercase()))
-        }
-    }
 }
 
 /// Every identifier the SQL names, lowercased and unquoted. A name
@@ -194,6 +191,39 @@ mod tests {
         ];
 
         assert!(select_dependents("orders", rows).is_empty());
+    }
+
+    #[test]
+    fn views_stored_before_the_views_they_name_are_kept() {
+        let mut rows: Vec<SchemaRow> = (1..2_000)
+            .rev()
+            .map(|index| {
+                row(
+                    SchemaObjectKind::View,
+                    &format!("v{index}"),
+                    &format!("v{index}"),
+                    &format!("CREATE VIEW v{index} AS SELECT * FROM v{}", index - 1),
+                )
+            })
+            .collect();
+        rows.push(row(
+            SchemaObjectKind::View,
+            "v0",
+            "v0",
+            "CREATE VIEW v0 AS SELECT * FROM Orders",
+        ));
+        rows.push(row(
+            SchemaObjectKind::View,
+            "other",
+            "other",
+            "CREATE VIEW other AS SELECT 1",
+        ));
+
+        let selected = select_dependents("orders", rows);
+
+        assert_eq!(selected.len(), 2_000);
+        assert_eq!(selected.first().map(|object| object.name.as_str()), Some("v1999"));
+        assert_eq!(selected.last().map(|object| object.name.as_str()), Some("v0"));
     }
 
     #[test]
