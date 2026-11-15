@@ -68,9 +68,9 @@ extension MSSQLPluginDriver {
 
         // Rename column first so subsequent statements reference the correct name
         if oldColumn.name != newColumn.name {
-            let path = MSSQLStringLiteral.quoted("\(effectiveSchema(schema)).\(table).\(oldColumn.name)")
-            let renamed = MSSQLStringLiteral.quoted(newColumn.name)
-            stmts.append("EXEC sp_rename \(path), \(renamed), 'COLUMN'")
+            stmts.append(MSSQLSchemaQueries.renameColumnStatement(
+                schema: effectiveSchema(schema), table: table, column: oldColumn.name, to: newColumn.name
+            ))
         }
 
         let colName = quoteIdentifier(newColumn.name)
