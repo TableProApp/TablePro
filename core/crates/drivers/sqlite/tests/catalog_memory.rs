@@ -212,7 +212,7 @@ fn tailed_schema() -> Vec<String> {
         "CREATE TABLE tailed (a INTEGER)".to_owned(),
         "CREATE TABLE short_tail (a INTEGER REFERENCES neighbour)".to_owned(),
         "PRAGMA writable_schema = ON".to_owned(),
-        "UPDATE sqlite_schema SET sql = sql || '; ' || replace(hex(zeroblob(12500000)), '00', 'x ') \
+        "UPDATE sqlite_schema SET sql = sql || '; ' || replace(hex(zeroblob(5500000)), '00', 'x ') \
          WHERE name = 'tailed'"
             .to_owned(),
         "UPDATE sqlite_schema SET sql = sql || '; SELECT ' || replace(hex(zeroblob(2000000)), '00', '0,') || '0' \
