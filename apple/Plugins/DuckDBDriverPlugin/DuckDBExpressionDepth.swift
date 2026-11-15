@@ -38,7 +38,7 @@ nonisolated enum DuckDBExpressionDepth {
         database = nil
     }
 
-    private static func onStack<Value>(_ body: @escaping @Sendable () -> Value) -> Value? {
+    static func onStack<Value>(_ body: @escaping @Sendable () -> Value) -> Value? {
         nonisolated(unsafe) var value: Value?
         let finished = DispatchSemaphore(value: 0)
         let thread = Thread {

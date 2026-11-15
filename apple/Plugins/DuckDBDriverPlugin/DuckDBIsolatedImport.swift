@@ -68,14 +68,22 @@ enum DuckDBIsolatedImport {
         }
         if Task.isCancelled { throw CancellationError() }
 
-        // IMPORT DATABASE expands into the folder's statements, which duckdb_prepare refuses.
-        for statement in lockdownStatements(allowing: folder) + [importStatement(folder: folder)] {
-            var result = duckdb_result()
-            defer { duckdb_destroy_result(&result) }
-            guard duckdb_query(connection, statement, &result) != DuckDBError else {
-                let message = duckdb_result_error(&result).map { String(cString: $0) } ?? "Unknown DuckDB error"
-                throw DuckDBPluginError.queryFailed(message)
+        // IMPORT DATABASE expands into the folder's statements, which duckdb_prepare refuses. An ATTACH among them
+        // reads that file's expressions too.
+        nonisolated(unsafe) let importing = connection
+        let statements = lockdownStatements(allowing: folder) + [importStatement(folder: folder)]
+        let failure = DuckDBExpressionDepth.onStack { () -> String? in
+            for statement in statements {
+                var result = duckdb_result()
+                defer { duckdb_destroy_result(&result) }
+                guard duckdb_query(importing, statement, &result) != DuckDBError else {
+                    return duckdb_result_error(&result).map { String(cString: $0) } ?? "Unknown DuckDB error"
+                }
             }
+            return nil
+        } ?? "DuckDB did not run the import"
+        if let failure {
+            throw DuckDBPluginError.queryFailed(failure)
         }
     }
 }
