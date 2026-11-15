@@ -91,6 +91,15 @@ fn every_category_has_a_message() {
 }
 
 #[test]
+fn a_catalog_past_the_budget_names_the_limit() {
+    let message = driver_message(&DriverError::CatalogTooLarge {
+        limit_bytes: 64_000_000,
+    });
+
+    assert!(message.contains("64.0"), "{message}");
+}
+
+#[test]
 fn server_message_includes_code_detail_hint() {
     let diagnostics = ServerDiagnostics {
         detail: Some("Key (email)=(a@b.c) already exists.".to_owned()),
