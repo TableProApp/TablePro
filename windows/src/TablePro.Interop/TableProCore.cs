@@ -81,11 +81,13 @@ public sealed class TableProCore : IDisposable
     }
 
     // Logs in with secrets where set, else Credential Manager's; the core stores keep once it has logged in.
+    // Database, in place of the saved one, opens the connection in another of the server's databases.
     public async Task<DatabaseSession> ConnectAsync(
         Guid connectionId,
         ConnectionSecrets? secrets = null,
         ICredentialPrompter? prompter = null,
         ConnectionSecrets? keep = null,
+        string? database = null,
         CancellationToken cancellationToken = default)
     {
         var typed = Mapping.Secrets(secrets ?? ConnectionSecrets.None);
@@ -95,7 +97,7 @@ public sealed class TableProCore : IDisposable
         try
         {
             var session = await CoreCall.RunAsync(
-                    token => _core.ConnectSaved(connectionId.ToString(), typed, kept, adapter, token),
+                    token => _core.ConnectSaved(connectionId.ToString(), database, typed, kept, adapter, token),
                     cancellationToken)
                 .ConfigureAwait(false);
             return new DatabaseSession(session, adapter);

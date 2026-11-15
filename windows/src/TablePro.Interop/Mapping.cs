@@ -80,6 +80,13 @@ internal static partial class Mapping
     public static SchemaEntry Schema(Native.SchemaEntry schema) =>
         new(schema.Name, schema.IsDefault, schema.IsSystem);
 
+    public static DatabaseLayout Layout(Native.DatabaseLayoutTag layout) => layout switch
+    {
+        Native.DatabaseLayoutTag.AsSchemas => DatabaseLayout.AsSchemas,
+        Native.DatabaseLayoutTag.WithSchemas => DatabaseLayout.WithSchemas,
+        _ => DatabaseLayout.OneDatabase,
+    };
+
     public static ObjectEntry Object(Native.ObjectEntry entry) =>
         new(entry.Schema, entry.Name, ObjectKind(entry.Kind), entry.ParentTable);
 

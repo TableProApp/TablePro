@@ -96,7 +96,7 @@ async fn fixture(dir: &Path) -> (Arc<Core>, Arc<DatabaseSession>, Arc<QueryEdito
         .open_file(request(&dir.join("app.sqlite"), true), None)
         .await
         .unwrap();
-    let editor = session.open_editor(None).await.unwrap();
+    let editor = session.open_editor(None, None).await.unwrap();
     for sql in [
         "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT NOT NULL, note TEXT)",
         "INSERT INTO people (name, note) VALUES ('Ada', NULL), ('Grace', 'line one\nline two'), ('Zoë 👋', '中文')",
@@ -377,7 +377,7 @@ async fn page_texts(
     column: u32,
 ) -> (u32, bool, u32, Vec<Option<String>>) {
     let page = session
-        .read_table_page(table, sort, None, limit, offset, Box::new(Wakes::default()), None)
+        .read_table_page(table, sort, None, limit, offset, None, Box::new(Wakes::default()), None)
         .await
         .unwrap();
     let run = page.run();

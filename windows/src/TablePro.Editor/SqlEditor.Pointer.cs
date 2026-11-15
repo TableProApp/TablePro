@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Input;
 using TablePro.Editor.Model;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
+using Windows.Storage;
 using Windows.System;
 using static TerraFX.Interop.Windows.SM;
 using static TerraFX.Interop.Windows.SPI;
@@ -250,6 +251,12 @@ public sealed partial class SqlEditor
 
     private void OnDragOver(object sender, DragEventArgs e)
     {
+        if (TakesFiles(e.DataView))
+        {
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.Handled = true;
+            return;
+        }
         if (!e.DataView.Contains(StandardDataFormats.Text))
         {
             return;
@@ -261,6 +268,11 @@ public sealed partial class SqlEditor
 
     private async void OnDrop(object sender, DragEventArgs e)
     {
+        if (TakesFiles(e.DataView))
+        {
+            await DropFilesAsync(e);
+            return;
+        }
         if (!e.DataView.Contains(StandardDataFormats.Text))
         {
             return;
@@ -290,6 +302,37 @@ public sealed partial class SqlEditor
         finally
         {
             deferral.Complete();
+        }
+    }
+
+    // Only when the host listens, so a drop it would ignore is refused instead.
+    private bool TakesFiles(DataPackageView data) =>
+        FilesDropped is not null && !_draggingTextOut && data.Contains(StandardDataFormats.StorageItems);
+
+    private async Task DropFilesAsync(DragEventArgs e)
+    {
+        e.Handled = true;
+        var deferral = e.GetDeferral();
+        List<string> paths;
+        try
+        {
+            var items = await e.DataView.GetStorageItemsAsync();
+            paths = items.Where(item => item.IsOfType(StorageItemTypes.File) && !string.IsNullOrEmpty(item.Path))
+                .Select(item => item.Path)
+                .ToList();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // The program the files were dragged from no longer answers, so nothing is dropped.
+            return;
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+        if (paths.Count > 0)
+        {
+            FilesDropped?.Invoke(this, paths);
         }
     }
 

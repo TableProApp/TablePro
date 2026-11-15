@@ -36,6 +36,7 @@
                         <KeyboardAccelerator Modifiers="Control" Key="O" />
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
+                <MenuFlyoutSubItem x:Uid="MenuOpenRecent" x:Name="MenuOpenRecent" />
                 <MenuFlyoutItem x:Uid="MenuImport" x:Name="MenuImport" Click="OnImport">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Import" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
@@ -59,11 +60,16 @@
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="NewWindow" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
                 <MenuFlyoutSeparator />
-                <!-- A table tab's pending changes; the keys live here only, so one press never runs twice. -->
+                <!-- A table tab's pending changes or a query tab's file; the keys live here only, so one press never runs twice. -->
                 <MenuFlyoutItem x:Uid="MenuSaveChanges" x:Name="MenuSaveChanges" Click="OnSaveChanges" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Save" /></MenuFlyoutItem.Icon>
                     <MenuFlyoutItem.KeyboardAccelerators>
                         <KeyboardAccelerator Modifiers="Control" Key="S" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuSaveAs" x:Name="MenuSaveAs" Click="OnSaveAs" IsEnabled="False">
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control,Shift" Key="S" />
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="MenuDiscardChanges" x:Name="MenuDiscardChanges" Click="OnDiscardChanges" IsEnabled="False" />
@@ -112,6 +118,7 @@
                 <MenuFlyoutItem x:Uid="MenuFind" x:Name="MenuFind" Click="OnFind" KeyboardAcceleratorTextOverride="Ctrl+F">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Find" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuReplace" x:Name="MenuReplace" Click="OnReplace" KeyboardAcceleratorTextOverride="Ctrl+H" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuAddRow" x:Name="MenuAddRow" Click="OnAddRow" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Add" /></MenuFlyoutItem.Icon>
@@ -156,6 +163,12 @@
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Refresh" /></MenuFlyoutItem.Icon>
                     <MenuFlyoutItem.KeyboardAccelerators>
                         <KeyboardAccelerator Key="F5" />
+                    </MenuFlyoutItem.KeyboardAccelerators>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuSwitchDatabase" x:Name="MenuSwitchDatabase" Click="OnSwitchDatabase" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE1D3;" /></MenuFlyoutItem.Icon>
+                    <MenuFlyoutItem.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="K" />
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="MenuEditConnection" x:Name="MenuEditConnection" Click="OnEditConnection" IsEnabled="False">

@@ -57,6 +57,8 @@ windows-sys.workspace = true
 
 [dev-dependencies]
 tablepro-account = { workspace = true, features = ["fakes"] }
+tablepro-session = { workspace = true, features = ["fakes", "in-process-ssh"] }
+tablepro-test-support.workspace = true
 csbindgen.workspace = true
 russh.workspace = true
 tempfile.workspace = true

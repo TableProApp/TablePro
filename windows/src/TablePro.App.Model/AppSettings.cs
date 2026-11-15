@@ -30,11 +30,45 @@ public sealed record AppSettings
     // As macOS offers them; 0 keeps every result.
     public static IReadOnlyList<int> ResultsKeptChoices { get; } = [0, 10, 20, 50, 100, 200, 500, 1_000];
 
+    public const string DefaultNullDisplay = "NULL";
+
+    // macOS caps the NULL text at 20 characters.
+    public const int NullDisplayMaxLength = 20;
+
+    public const double DefaultGridFontSize = 14;
+
+    public const int DefaultHistoryRetentionDays = 90;
+
+    public const int DefaultHistoryMaxEntries = 10_000;
+
+    // As macOS offers them; 0 keeps every age.
+    public static IReadOnlyList<int> HistoryRetentionChoices { get; } = [7, 30, 90, 180, 365, 0];
+
+    // As macOS offers them; 0 keeps as many as the store holds.
+    public static IReadOnlyList<int> HistoryMaxEntriesChoices { get; } = [100, 500, 1_000, 5_000, 10_000, 0];
+
     public AppTheme Theme { get; set; } = AppTheme.System;
 
     public bool ReopenSession { get; set; } = true;
 
     public double EditorFontSize { get; set; } = 14;
+
+    // Null keeps the editor's own monospaced family.
+    public string? EditorFontFamily { get; set; }
+
+    // Null keeps the grid's own family.
+    public string? GridFontFamily { get; set; }
+
+    public double GridFontSize { get; set; } = DefaultGridFontSize;
+
+    // What a grid shows in a NULL cell.
+    public string NullDisplay { get; set; } = DefaultNullDisplay;
+
+    // Unpinned history older than this is dropped; 0 keeps every age.
+    public int HistoryRetentionDays { get; set; } = DefaultHistoryRetentionDays;
+
+    // The newest unpinned runs the history keeps; 0 keeps as many as the store holds.
+    public int HistoryMaxEntries { get; set; } = DefaultHistoryMaxEntries;
 
     public int RowLimit { get; set; } = DefaultRowLimit;
 
@@ -54,6 +88,14 @@ public sealed record AppSettings
     {
         Theme = Enum.IsDefined(Theme) ? Theme : AppTheme.System,
         EditorFontSize = Math.Clamp(EditorFontSize, 8, 36),
+        EditorFontFamily = string.IsNullOrWhiteSpace(EditorFontFamily) ? null : EditorFontFamily.Trim(),
+        GridFontFamily = string.IsNullOrWhiteSpace(GridFontFamily) ? null : GridFontFamily.Trim(),
+        GridFontSize = double.IsFinite(GridFontSize) ? Math.Clamp(GridFontSize, 8, 36) : DefaultGridFontSize,
+        NullDisplay = string.IsNullOrEmpty(NullDisplay)
+            ? DefaultNullDisplay
+            : NullDisplay[..Math.Min(NullDisplay.Length, NullDisplayMaxLength)],
+        HistoryRetentionDays = Math.Max(0, HistoryRetentionDays),
+        HistoryMaxEntries = Math.Max(0, HistoryMaxEntries),
         RowLimit = Math.Clamp(RowLimit, 1, 1_000_000),
         PageSize = Math.Clamp(PageSize, 10, 100_000),
         QueryTimeoutSeconds = Math.Clamp(QueryTimeoutSeconds, 0, 86_400),

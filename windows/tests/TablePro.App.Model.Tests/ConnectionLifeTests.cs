@@ -30,6 +30,22 @@ public sealed class ConnectionLifeTests
     }
 
     [Fact]
+    public async Task AConnectionOpenedInAnotherDatabaseConnectsThereEveryTime()
+    {
+        var origin = new SessionConnection { ConnectionId = SavedId, Name = "Shop", Database = "analytics" };
+        var life = New(origin);
+
+        await life.ConnectAsync();
+        await life.DisconnectAsync(keepTabs: true);
+        await life.ConnectAsync();
+
+        Assert.Equal<string?>(["analytics", "analytics"], _connector.Databases);
+        Assert.True(life.IsSame(origin with { Name = "Renamed" }));
+        Assert.False(life.IsSame(origin with { Database = null }));
+        Assert.True(life.Matches(SavedId, null), "a database of the connection is still that connection");
+    }
+
+    [Fact]
     public async Task AReconnectKeepsTheTabsAndShowsThemOnTheNextSession()
     {
         var life = New();

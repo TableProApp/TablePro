@@ -31,6 +31,42 @@ public sealed class DrawingTests
         Assert.Equal(14, grid.Painter.FontSize);
     });
 
+    // The host's size, as Settings sets it, takes the text scale's path: 21 px is 48 px rows, as 150% is.
+    [Fact]
+    public Task ALargerCellFontSizeGrowsTheTextAndTheRows() => WinUiHost.RunAsync(async () =>
+    {
+        var data = new SyntheticData();
+        var grid = await WinUiHost.ShowAsync(data);
+        grid.ApplyTextScale(1);
+        grid.CellFontSize = 21;
+        grid.UpdateLayout();
+        await WinUiHost.NextFrameAsync();
+        Assert.Equal(48, grid.RowHeight);
+        Assert.Equal(48, grid.HeaderHeight);
+        Assert.Equal(21, grid.Painter.FontSize);
+        var problems = GridChecks.Check(grid, data);
+        Assert.True(problems.None, problems.ToString());
+        grid.CellFontSize = 100;
+        Assert.Equal(36, grid.CellFontSize);
+        grid.CellFontSize = 14;
+        grid.UpdateLayout();
+        Assert.Equal(32, grid.RowHeight);
+        Assert.Equal(14, grid.Painter.FontSize);
+    });
+
+    [Fact]
+    public Task ACellFontFamilyThatIsNotInstalledKeepsTheGridsOwn() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData());
+        var own = grid.Painter.FamilyName;
+        grid.CellFontFamily = "Consolas";
+        Assert.Equal("Consolas", grid.Painter.FamilyName);
+        grid.CellFontFamily = "No Such Family 7F3A";
+        Assert.Equal(own, grid.Painter.FamilyName);
+        grid.CellFontFamily = null;
+        Assert.Equal(own, grid.Painter.FamilyName);
+    });
+
     // A move to a monitor of another scale arrives as XamlRoot.Changed; the rows draw again at the new pixel size.
     [Fact]
     public Task ANewRasterizationScaleRedrawsAtThatScale() => WinUiHost.RunAsync(async () =>

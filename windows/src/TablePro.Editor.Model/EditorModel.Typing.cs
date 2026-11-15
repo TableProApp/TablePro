@@ -224,6 +224,47 @@ public sealed partial class EditorModel
         Apply(EditKind.Other, [Edit.Insert(Clamp(start), Clamp(end), text)], 0);
     }
 
+    // One undo step for all of them; the primary selection moves with the text and the other carets go.
+    public void ReplaceRanges(IReadOnlyList<(int Start, int Length, string Text)> ranges)
+    {
+        ArgumentNullException.ThrowIfNull(ranges);
+        if (ranges.Count == 0)
+        {
+            return;
+        }
+        var sorted = ranges.OrderBy(r => r.Start).ToList();
+        for (var i = 0; i < sorted.Count; i++)
+        {
+            var (start, length, text) = sorted[i];
+            ArgumentNullException.ThrowIfNull(text, nameof(ranges));
+            var overlaps = i > 0 && start < sorted[i - 1].Start + sorted[i - 1].Length;
+            if (start < 0 || length < 0 || start + length > Document.Length || overlaps)
+            {
+                throw new ArgumentOutOfRangeException(nameof(ranges));
+            }
+        }
+        Document.Undo.Begin(EditKind.Other, _selections.ToList());
+        _applying++;
+        try
+        {
+            var primary = Primary;
+            for (var i = sorted.Count - 1; i >= 0; i--)
+            {
+                var (start, length, text) = sorted[i];
+                if (length > 0 || text.Length > 0)
+                {
+                    primary = primary.Map(Document.Replace(start, length, text));
+                }
+            }
+            SetSelections([primary]);
+        }
+        finally
+        {
+            _applying--;
+            Document.Undo.End(_selections.ToList());
+        }
+    }
+
     public void DropText(string text, int target, bool move)
     {
         ArgumentNullException.ThrowIfNull(text);

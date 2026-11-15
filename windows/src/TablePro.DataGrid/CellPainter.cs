@@ -30,12 +30,12 @@ internal enum CellInk : byte
     Deleted,
 }
 
-// Matches a TextBlock cell: XAML's font and content size times the text scale, one line cut with an ellipsis.
+// Matches a TextBlock cell: XAML's font or the host's, its size times the text scale, one line cut with an ellipsis.
 internal sealed unsafe class CellPainter : IDisposable
 {
     public const float Padding = 12;
     public const float RowNumberPadding = 8;
-    public const string NullText = "NULL";
+    public const string NullWord = "NULL";
 
     private static readonly string[] Families = ["Segoe UI Variable Text", "Segoe UI"];
 
@@ -64,16 +64,17 @@ internal sealed unsafe class CellPainter : IDisposable
     private int _brushGeneration = -1;
     private GridColors _colors;
     private string _defaultText = "DEFAULT";
+    private string _nullText = NullWord;
 
-    public CellPainter(SurfaceDevice device, float fontSize, GridColors colors)
+    public CellPainter(SurfaceDevice device, string? family, float fontSize, GridColors colors)
     {
         _device = device;
         _colors = colors;
-        FamilyName = PickFamily(device.DWrite);
+        FamilyName = PickFamily(device.DWrite, family);
         Configure(fontSize, colors);
     }
 
-    public string FamilyName { get; }
+    public string FamilyName { get; private set; }
 
     public float FontSize { get; private set; }
 
@@ -91,6 +92,20 @@ internal sealed unsafe class CellPainter : IDisposable
         }
     }
 
+    // What a NULL cell shows.
+    public string NullText
+    {
+        get => _nullText;
+        set
+        {
+            if (!string.Equals(_nullText, value, StringComparison.Ordinal))
+            {
+                _nullText = value;
+                Version++;
+            }
+        }
+    }
+
     // Bumped by every change that makes drawn rows stale: fonts, colors, the device.
     public int Version { get; private set; }
 
@@ -102,6 +117,12 @@ internal sealed unsafe class CellPainter : IDisposable
 
     // What WarmAsync drew, for the gate: samples drawn and the milliseconds it took.
     public static string Warmed { get; private set; } = "";
+
+    public void Configure(string? family, float fontSize, GridColors colors)
+    {
+        FamilyName = PickFamily(_device.DWrite, family);
+        Configure(fontSize, colors);
+    }
 
     public void Configure(float fontSize, GridColors colors)
     {
@@ -198,8 +219,8 @@ internal sealed unsafe class CellPainter : IDisposable
         if ((state & CellState.Null) != 0)
         {
             ink = deleted ? CellInk.Deleted : CellInk.Placeholder;
-            layout = Create(NullText, _null, width, height);
-            length = NullText.Length;
+            layout = Create(_nullText, _null, width, height);
+            length = _nullText.Length;
         }
         else if ((state & CellState.Default) != 0)
         {
@@ -271,6 +292,7 @@ internal sealed unsafe class CellPainter : IDisposable
     {
         var text = (nint)_text;
         var placeholder = (nint)_null;
+        var nullText = _nullText;
         var device = (nint)_device.Direct2D;
         var factory = (nint)_device.DWrite;
         _text->AddRef();
@@ -282,7 +304,7 @@ internal sealed unsafe class CellPainter : IDisposable
             try
             {
                 DrawSamples((IDWriteFactory*)factory, (ID2D1Device*)device, (IDWriteTextFormat*)text,
-                    (IDWriteTextFormat*)placeholder, width, height);
+                    (IDWriteTextFormat*)placeholder, nullText, width, height);
             }
             finally
             {
@@ -301,7 +323,7 @@ internal sealed unsafe class CellPainter : IDisposable
     }
 
     private static void DrawSamples(IDWriteFactory* factory, ID2D1Device* device, IDWriteTextFormat* text,
-        IDWriteTextFormat* placeholder, float width, float height)
+        IDWriteTextFormat* placeholder, string nullText, float width, float height)
     {
         ID2D1DeviceContext* context = null;
         ID2D1Bitmap1* target = null;
@@ -337,7 +359,7 @@ internal sealed unsafe class CellPainter : IDisposable
             var samples = FontWarmup.Scripts.Split(' ').Concat(FontWarmup.Glyphs.Chunk(48).Select(chunk => new string(chunk))).ToArray();
             for (var i = -1; i <= samples.Length; i++)
             {
-                var sample = i < 0 ? FontWarmup.Scripts : i == samples.Length ? NullText : samples[i];
+                var sample = i < 0 ? FontWarmup.Scripts : i == samples.Length ? nullText : samples[i];
                 var format = i == samples.Length ? placeholder : text;
                 IDWriteTextLayout* layout;
                 fixed (char* chars = sample)
@@ -425,22 +447,22 @@ internal sealed unsafe class CellPainter : IDisposable
         return brush;
     }
 
-    internal static string PickFamily(IDWriteFactory* factory)
+    // The family asked for when it is installed, else the first of ours that is.
+    internal static string PickFamily(IDWriteFactory* factory, string? preferred = null)
     {
         IDWriteFontCollection* fonts;
         NativeCom.Check(factory->GetSystemFontCollection(&fonts, BOOL.FALSE));
         try
         {
+            if (!string.IsNullOrWhiteSpace(preferred) && IsInstalled(fonts, preferred))
+            {
+                return preferred;
+            }
             foreach (var name in Families)
             {
-                uint index;
-                BOOL exists;
-                fixed (char* chars = name)
+                if (IsInstalled(fonts, name))
                 {
-                    if (fonts->FindFamilyName(chars, &index, &exists).SUCCEEDED && exists)
-                    {
-                        return name;
-                    }
+                    return name;
                 }
             }
         }
@@ -449,6 +471,16 @@ internal sealed unsafe class CellPainter : IDisposable
             fonts->Release();
         }
         return Families[^1];
+    }
+
+    private static bool IsInstalled(IDWriteFontCollection* fonts, string name)
+    {
+        uint index;
+        BOOL exists;
+        fixed (char* chars = name)
+        {
+            return fonts->FindFamilyName(chars, &index, &exists).SUCCEEDED && exists;
+        }
     }
 
     private void ReleaseBrushes()

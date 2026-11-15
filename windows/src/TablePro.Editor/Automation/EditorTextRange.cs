@@ -53,7 +53,7 @@ internal sealed partial class EditorTextRange(SqlEditorAutomationPeer peer, int 
     public object? GetAttributeValue(int attributeId) => attributeId switch
     {
         IsReadOnlyAttribute => false,
-        FontNameAttribute => "Cascadia Mono",
+        FontNameAttribute => peer.Editor.FontFamilyInUse,
         _ => null,
     };
 
