@@ -17,7 +17,7 @@ Every connection to the file opens with the same options:
 - sqlx's statement logging is off.
 - A file DuckDB has open in the app is `Busy(FileLocked)`, and an `ATTACH` of one is refused by an authorizer every connection installs: SQLite would close the file again on finding no database in it, which drops the POSIX locks DuckDB holds on it (`tablepro_core::claimed_by_another`). The authorizer sees a file name the `ATTACH` spells as a string.
 
-The connect reads `sqlite_version()` and counts `sqlite_schema` once, so a file that is not a database fails the connect (`NotADatabase`) rather than the first page. Either statement can be the one that finds out: SQLite 3.51 reads the schema before it compiles a connection's first SELECT, while 3.46 waits for a statement that names a table. SQLite only says it could not open a file; the driver tells a moved file (`FileNotFound`) from one the user may not read (`FileAccessDenied`) by looking at the path.
+The connect reads `sqlite_version()` and counts `sqlite_schema` once, so a file that is not a database fails the connect (`NotADatabase`) rather than the first page. Either statement can be the one that finds out: SQLite 3.51 reads the schema before it compiles a connection's first SELECT, while 3.46 waits for a statement that names a table. SQLite only says it could not open a file; the driver tells a moved file (`FileNotFound`) from one the user may not read (`FileAccessDenied`) by looking at the path. Each workspace connection caps a statement at 10,000,000 bytes (`SQLITE_LIMIT_SQL_LENGTH`), and SQLite applies it to the schema it reads, so a file with a longer CREATE statement fails the connect as a malformed schema (core ADR 0029).
 
 ### New databases
 

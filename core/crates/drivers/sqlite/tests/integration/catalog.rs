@@ -3,12 +3,12 @@
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use sqlx::{Connection as _, Executor as _};
-use tablepro_core::Value;
 use tablepro_core::column::{ColumnDefault, ColumnKind, IntegerKind, IntegerWidth};
 use tablepro_core::ddl::{GeneratedStorage, IdentityStyle, SchemaObjectKind};
 use tablepro_core::meta::{ObjectScope, TableRef};
+use tablepro_core::{DriverError, ServerCode, Value};
 
-use crate::support::{TestFile, apply, call};
+use crate::support::{TestFile, apply, call, connect, writable};
 
 #[tokio::test]
 async fn strict_table_is_not_dynamic() {
@@ -480,4 +480,40 @@ async fn dependents_and_source_are_read() {
     assert_eq!(generated.storage, GeneratedStorage::Stored);
     assert_eq!(generated.expression.as_sql(), "total * 2");
     connection.close().await.unwrap();
+}
+
+async fn create(file: &TestFile, sql: String) {
+    let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
+        .await
+        .unwrap();
+    writer.execute(sqlx::AssertSqlSafe(sql)).await.unwrap();
+    writer.close().await.unwrap();
+}
+
+// Past ten million bytes SQLite calls the schema malformed, so a crafted statement cannot reach the catalog reads.
+#[tokio::test]
+async fn a_create_statement_past_ten_million_bytes_does_not_open() {
+    let file = TestFile::new().await;
+    create(
+        &file,
+        format!("CREATE TABLE fits (a INTEGER /* {} */)", "x".repeat(9_000_000)),
+    )
+    .await;
+    let connection = file.open().await;
+    let columns = connection.fetch_columns(&TableRef::unqualified("fits"), call()).await;
+    assert_eq!(columns.map(|columns| columns.len()), Ok(1));
+    connection.close().await.unwrap();
+
+    create(
+        &file,
+        format!("CREATE TABLE past (a INTEGER /* {} */)", "x".repeat(10_000_000)),
+    )
+    .await;
+    let opened = connect(file.endpoint(), writable()).await.map(|_| ());
+
+    assert!(
+        matches!(&opened, Err(DriverError::Server(diagnostics))
+            if matches!(diagnostics.code, Some(ServerCode::Sqlite { primary: 11, .. }))),
+        "{opened:?}"
+    );
 }
