@@ -7,10 +7,10 @@ import Foundation
 
 @MainActor
 struct TableOperationSQLBuilder {
-    let adapterProvider: () -> PluginDriverAdapter?
+    let driverProvider: () -> DatabaseDriver?
 
-    init(adapterProvider: @escaping () -> PluginDriverAdapter?) {
-        self.adapterProvider = adapterProvider
+    init(driverProvider: @escaping () -> DatabaseDriver?) {
+        self.driverProvider = driverProvider
     }
 
     /// Every statement is built from the queued reference alone.
@@ -66,18 +66,18 @@ struct TableOperationSQLBuilder {
     }
 
     func foreignKeyDisableStatements() -> [String] {
-        adapterProvider()?.foreignKeyDisableStatements() ?? []
+        driverProvider()?.foreignKeyDisableStatements() ?? []
     }
 
     func foreignKeyEnableStatements() -> [String] {
-        adapterProvider()?.foreignKeyEnableStatements() ?? []
+        driverProvider()?.foreignKeyEnableStatements() ?? []
     }
 
     private func truncateStatements(
         _ ref: DatabaseTreeTableRef, options: TableOperationOptions
     ) -> [String]? {
-        guard let adapter = adapterProvider() else { return nil }
-        return adapter.truncateTableStatements(
+        guard let driver = driverProvider() else { return nil }
+        return driver.truncateTableStatements(
             table: ref.table.name, schema: ref.qualifyingSchema, cascade: options.cascade
         )
     }
@@ -85,8 +85,8 @@ struct TableOperationSQLBuilder {
     private func dropObjectStatement(
         _ ref: DatabaseTreeTableRef, options: TableOperationOptions
     ) -> String? {
-        guard let adapter = adapterProvider() else { return nil }
-        return adapter.dropObjectStatement(
+        guard let driver = driverProvider() else { return nil }
+        return driver.dropObjectStatement(
             name: ref.table.name,
             objectType: TableObjectKeyword.forDDL(ref.table.type),
             schema: ref.qualifyingSchema,

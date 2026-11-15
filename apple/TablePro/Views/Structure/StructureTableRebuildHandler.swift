@@ -125,15 +125,14 @@ enum StructureTableRebuildHandler {
             route: DatabaseManager.shared.executionRoute(for: scope),
             cancellation: .untracked
         ) { driver in
-            guard let adapter = driver as? PluginDriverAdapter else { throw RebuildError.planFailed }
-            guard let plan = try await adapter.generateTableRebuildPlan(
+            guard let pluginDriver = driver.plugin else { throw RebuildError.planFailed }
+            guard let plan = try await pluginDriver.generateTableRebuildPlan(
                 table: tableName,
                 schema: schema,
                 respecification: respecification
             ) else {
                 throw RebuildError.notRebuildable(tableName)
             }
-            let pluginDriver = adapter.schemaPluginDriver
 
             /// An index or a check constraint is its own object, created after the table exists, so
             /// it rides at the end of the same transaction rather than forcing a second one. A drop
@@ -143,7 +142,7 @@ enum StructureTableRebuildHandler {
                 .generate(changes: partitionTrailing)
                 .map(\.sql)
 
-            let fingerprint = try? await adapter.columnReorderSchemaFingerprint(
+            let fingerprint = try? await pluginDriver.columnReorderSchemaFingerprint(
                 table: tableName, schema: schema
             )
             return (plan.appending(statements: trailing), fingerprint)

@@ -11,12 +11,8 @@ import TableProPluginKit
 extension MSSQLPluginDriver {
     // MARK: - Create Table DDL
 
-    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        MSSQLTableDefinitionSQL.createTable(definition, schema: currentSchemaName)
-    }
-
-    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
-        MSSQLTableDefinitionSQL.createTableStatements(definition, schema: currentSchemaName)
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]? {
+        MSSQLTableDefinitionSQL.createTableStatements(definition, schema: effectiveSchema(schema))
     }
 
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
@@ -27,8 +23,8 @@ extension MSSQLPluginDriver {
 
     // MARK: - ALTER TABLE DDL
 
-    private func mssqlQualifiedTable(_ table: String) -> String {
-        MSSQLTableDefinitionSQL.qualifiedTable(table, schema: currentSchemaName)
+    private func mssqlQualifiedTable(_ table: String, schema: String?) -> String {
+        MSSQLTableDefinitionSQL.qualifiedTable(table, schema: effectiveSchema(schema))
     }
 
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
@@ -48,18 +44,23 @@ extension MSSQLPluginDriver {
         }
     }
 
-    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+    func generateAddColumnSQL(table: String, schema: String?, column: PluginColumnDefinition) -> String? {
         guard let columnSQL = MSSQLTableDefinitionSQL.columnDefinition(column, inlinePrimaryKey: nil) else { return nil }
-        let addColumn = "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(columnSQL)"
+        let addColumn = "ALTER TABLE \(mssqlQualifiedTable(table, schema: schema)) ADD \(columnSQL)"
         guard let comment = column.comment, !comment.isEmpty else { return addColumn }
         let description = MSSQLTableDefinitionSQL.columnDescriptionStatement(
-            schema: currentSchemaName, table: table, column: column.name, comment: comment
+            schema: effectiveSchema(schema), table: table, column: column.name, comment: comment
         )
         return addColumn + ";\n" + description
     }
 
-    func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
-        let qt = mssqlQualifiedTable(table)
+    func generateModifyColumnSQL(
+        table: String,
+        schema: String?,
+        oldColumn: PluginColumnDefinition,
+        newColumn: PluginColumnDefinition
+    ) -> String? {
+        let qt = mssqlQualifiedTable(table, schema: schema)
         var stmts: [String] = []
         let alteration = Self.columnAlteration(from: oldColumn, to: newColumn)
         let needsTypeChange = alteration.writesType
@@ -67,7 +68,7 @@ extension MSSQLPluginDriver {
 
         // Rename column first so subsequent statements reference the correct name
         if oldColumn.name != newColumn.name {
-            let path = MSSQLStringLiteral.quoted("\(currentSchemaName).\(table).\(oldColumn.name)")
+            let path = MSSQLStringLiteral.quoted("\(effectiveSchema(schema)).\(table).\(oldColumn.name)")
             let renamed = MSSQLStringLiteral.quoted(newColumn.name)
             stmts.append("EXEC sp_rename \(path), \(renamed), 'COLUMN'")
         }
@@ -123,47 +124,51 @@ extension MSSQLPluginDriver {
         return (old.dataType != new.dataType || old.isNullable != new.isNullable || changesCollation, collation)
     }
 
-    func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    func generateDropColumnSQL(table: String, schema: String?, columnName: String) -> String? {
+        "ALTER TABLE \(mssqlQualifiedTable(table, schema: schema)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
-    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        MSSQLTableDefinitionSQL.indexDefinition(index, qualifiedTable: mssqlQualifiedTable(table))
+    func generateAddIndexSQL(table: String, schema: String?, index: PluginIndexDefinition) -> String? {
+        MSSQLTableDefinitionSQL.indexDefinition(index, qualifiedTable: mssqlQualifiedTable(table, schema: schema))
     }
 
-    func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "DROP INDEX \(quoteIdentifier(indexName)) ON \(mssqlQualifiedTable(table))"
+    func generateDropIndexSQL(table: String, schema: String?, indexName: String) -> String? {
+        "DROP INDEX \(quoteIdentifier(indexName)) ON \(mssqlQualifiedTable(table, schema: schema))"
     }
 
-    func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        MSSQLTableDefinitionSQL.foreignKeyDefinition(fk, defaultSchema: currentSchemaName).map {
-            "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \($0)"
+    func generateAddForeignKeySQL(table: String, schema: String?, fk: PluginForeignKeyDefinition) -> String? {
+        MSSQLTableDefinitionSQL.foreignKeyDefinition(fk, defaultSchema: effectiveSchema(schema)).map {
+            "ALTER TABLE \(mssqlQualifiedTable(table, schema: schema)) ADD \($0)"
         }
     }
 
-    func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    func generateDropForeignKeySQL(table: String, schema: String?, constraintName: String) -> String? {
+        "ALTER TABLE \(mssqlQualifiedTable(table, schema: schema)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
     }
 
-    func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
+    func generateAddCheckConstraintSQL(
+        table: String,
+        schema: String?,
+        constraint: PluginCheckConstraintDefinition
+    ) -> String? {
         let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
         let check = "(" + expression + ")"
         guard !expression.isEmpty, !constraint.name.isEmpty, MSSQLDefinitionText.isParenthesizedExpression(check) else {
             return nil
         }
-        return "ALTER TABLE \(mssqlQualifiedTable(table)) ADD CONSTRAINT "
+        return "ALTER TABLE \(mssqlQualifiedTable(table, schema: schema)) ADD CONSTRAINT "
             + "\(quoteIdentifier(constraint.name)) CHECK \(check)"
     }
 
-    func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String? {
+    func generateDropCheckConstraintSQL(table: String, schema: String?, constraintName: String) -> String? {
         guard !constraintName.isEmpty else { return nil }
-        return "ALTER TABLE \(mssqlQualifiedTable(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+        return "ALTER TABLE \(mssqlQualifiedTable(table, schema: schema)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
     }
 
     /// `sys.check_constraints.parent_column_id` is 0 for a multi-column check, so the columns come
     /// from `sys.sql_expression_dependencies`, which lists them for both shapes.
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
-        let targetLiteral = MSSQLStringLiteral.quoted(mssqlQualifiedTable(table))
+        let targetLiteral = MSSQLStringLiteral.quoted(mssqlQualifiedTable(table, schema: schema))
         let query = """
             SELECT cc.name, cc.definition, cc.is_not_trusted,
                    COL_NAME(d.referenced_id, d.referenced_minor_id)
@@ -195,8 +200,14 @@ extension MSSQLPluginDriver {
         return ordered.compactMap { byName[$0] }
     }
 
-    func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
-        let qt = mssqlQualifiedTable(table)
+    func generateModifyPrimaryKeySQL(
+        table: String,
+        schema: String?,
+        oldColumns: [String],
+        newColumns: [String],
+        constraintName: String?
+    ) -> [String]? {
+        let qt = mssqlQualifiedTable(table, schema: schema)
         var stmts: [String] = []
         if !oldColumns.isEmpty {
             let name = constraintName.map { quoteIdentifier($0) } ?? "/* unknown constraint */"

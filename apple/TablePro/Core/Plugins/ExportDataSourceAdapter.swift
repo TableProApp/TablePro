@@ -59,7 +59,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     }
 
     private var pluginDriver: (any PluginDatabaseDriver)? {
-        (driver as? PluginDriverAdapter)?.schemaPluginDriver
+        driver.plugin
     }
 
     // One line per table whose rows stopped at a ceiling, so a partial copy is never reported as the whole table.
@@ -130,10 +130,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         query: String,
         table: String
     ) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
-        guard let adapter = driver as? PluginDriverAdapter else {
-            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
-        }
-        let rows = adapter.streamExportRows(query: query, safeModeIsReadOnly: safeModeIsReadOnly)
+        let rows = driver.streamExportRows(query: query, safeModeIsReadOnly: safeModeIsReadOnly)
         return reportingCut(of: rows, table: table, engineCeiling: pagination.maximumRows)
     }
 

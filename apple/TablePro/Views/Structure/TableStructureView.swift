@@ -102,7 +102,7 @@ struct TableStructureView: View {
                 onRetry: { session.retry(.ddl) }
             )
         case .parts:
-            ClickHousePartsView(
+            StoragePartsView(
                 tableName: session.tableName,
                 scope: session.scope,
                 connection: session.connection,

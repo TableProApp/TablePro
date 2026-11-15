@@ -120,11 +120,11 @@ extension RoutineDebugSessionSource {
             await RoutineDebugSessions.shared.admits(connectionId, generation: generation)
         }) {
             let driver = try await open(scope, Self.queryTimeoutSeconds)
-            guard let adapter = driver as? PluginDriverAdapter else {
+            guard let plugin = driver.plugin else {
                 driver.disconnect()
                 throw RoutineDebugError.unsupported
             }
-            return RoutineDebugDriverHandle(driver: adapter.schemaPluginDriver) { adapter.disconnect() }
+            return RoutineDebugDriverHandle(driver: plugin) { driver.disconnect() }
         }
     }
 

@@ -370,9 +370,9 @@ extension DatabaseManager {
     ) async -> String? {
         var warnings: [String?] = []
         // The schema lives inside the database, and a database switch can leave the driver on none.
-        if let savedDatabase, let adapter = driver as? PluginDriverAdapter {
+        if let savedDatabase, let plugin = driver.plugin {
             do {
-                try await adapter.switchDatabase(to: savedDatabase)
+                try await plugin.switchDatabase(to: savedDatabase)
             } catch {
                 Self.logger.warning("Failed to restore database '\(savedDatabase)' on reconnect: \(error.localizedDescription)")
                 warnings.append(String(

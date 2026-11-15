@@ -14,7 +14,7 @@ extension DatabaseManager {
         _ body: @Sendable @escaping (DatabaseDriver, any PluginDatabaseDriver) async throws -> T
     ) async throws -> T {
         try await withScopedDriver(scope: scope, route: route, cancellation: .untracked) { driver in
-            guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
+            guard let pluginDriver = driver.plugin else {
                 throw DatabaseError.unsupportedOperation
             }
             return try await body(driver, pluginDriver)
@@ -89,8 +89,9 @@ extension DatabaseManager {
         scope: DatabaseScope,
         route: ScopedDriverRoute
     ) async throws -> [String] {
-        try await withSchemaComposer(scope: scope, route: route) { _, pluginDriver in
-            (pluginDriver.generateCreateTableStatements(definition: definition) ?? [])
+        let schema = scope.schema
+        return try await withSchemaComposer(scope: scope, route: route) { _, pluginDriver in
+            (pluginDriver.generateCreateTableStatements(definition: definition, schema: schema) ?? [])
                 .map { StatementBlank.trimming($0) }
                 .filter { !$0.isEmpty }
         }

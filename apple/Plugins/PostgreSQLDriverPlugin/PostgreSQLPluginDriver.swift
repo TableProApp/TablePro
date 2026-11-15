@@ -842,17 +842,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     // MARK: - Create Table DDL
 
-    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        guard let parts = createTableParts(definition) else { return nil }
-        var sql = parts.createTable + ";"
-        if !parts.indexStatements.isEmpty {
-            sql += "\n\n" + parts.indexStatements.joined(separator: ";\n") + ";"
-        }
-        return sql
-    }
-
-    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
-        guard let parts = createTableParts(definition) else { return nil }
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]? {
+        guard let parts = createTableParts(definition, schema: schema) else { return nil }
         let columnComments = PostgreSQLRelationSQL.columnCommentStatements(
             qualifiedTable: parts.qualifiedTable,
             columns: definition.columns
@@ -861,14 +852,14 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     private func createTableParts(
-        _ definition: PluginCreateTableDefinition
+        _ definition: PluginCreateTableDefinition,
+        schema: String?
     ) -> (qualifiedTable: String, createTable: String, indexStatements: [String])? {
         guard !definition.columns.isEmpty,
               PostgreSQLVersionedStatements.refusal(for: definition, capabilities: versionedCapabilities) == nil
         else { return nil }
 
-        let schema = core.currentSchema
-        let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(definition.tableName))"
+        let qualifiedTable = qualifiedTableName(definition.tableName, schema: schema)
         let pkColumns = definition.columns.filter { $0.isPrimaryKey }
         let inlinePK = pkColumns.count == 1
         var parts: [String] = definition.columns.map { pgColumnDefinition($0, inlinePK: inlinePK) }
@@ -988,13 +979,13 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     // MARK: - ALTER TABLE DDL
 
-    private func qualifiedTableName(_ table: String) -> String {
-        "\(quoteIdentifier(core.currentSchema)).\(quoteIdentifier(table))"
+    private func qualifiedTableName(_ table: String, schema: String?) -> String {
+        "\(quoteIdentifier(schema ?? core.currentSchema)).\(quoteIdentifier(table))"
     }
 
-    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+    func generateAddColumnSQL(table: String, schema: String?, column: PluginColumnDefinition) -> String? {
         guard schemaOperationRefusal(.addColumn(column)) == nil else { return nil }
-        let qt = qualifiedTableName(table)
+        let qt = qualifiedTableName(table, schema: schema)
         let colDef = pgColumnDefinition(column, inlinePK: false)
         let add = "ALTER TABLE \(qt) ADD COLUMN \(colDef)"
         guard let comment = column.comment, !comment.isEmpty else { return add }
@@ -1006,8 +997,13 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return add + ";\n" + commentStatement
     }
 
-    func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
-        let qt = qualifiedTableName(table)
+    func generateModifyColumnSQL(
+        table: String,
+        schema: String?,
+        oldColumn: PluginColumnDefinition,
+        newColumn: PluginColumnDefinition
+    ) -> String? {
+        let qt = qualifiedTableName(table, schema: schema)
         var stmts: [String] = []
 
         if oldColumn.name != newColumn.name {
@@ -1050,50 +1046,60 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
     }
 
-    func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        "ALTER TABLE \(qualifiedTableName(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    func generateDropColumnSQL(table: String, schema: String?, columnName: String) -> String? {
+        "ALTER TABLE \(qualifiedTableName(table, schema: schema)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
-    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
+    func generateAddIndexSQL(table: String, schema: String?, index: PluginIndexDefinition) -> String? {
         guard schemaOperationRefusal(.addIndex(index)) == nil else { return nil }
-        return PostgreSQLIndexClauses.createStatement(for: index, qualifiedTable: qualifiedTableName(table))
+        return PostgreSQLIndexClauses.createStatement(for: index, qualifiedTable: qualifiedTableName(table, schema: schema))
     }
 
-    func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "DROP INDEX \(quoteIdentifier(core.currentSchema)).\(quoteIdentifier(indexName))"
+    func generateDropIndexSQL(table: String, schema: String?, indexName: String) -> String? {
+        "DROP INDEX \(quoteIdentifier(schema ?? core.currentSchema)).\(quoteIdentifier(indexName))"
     }
 
-    func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        "ALTER TABLE \(qualifiedTableName(table)) ADD \(pgForeignKeyDefinition(fk))"
+    func generateAddForeignKeySQL(table: String, schema: String?, fk: PluginForeignKeyDefinition) -> String? {
+        "ALTER TABLE \(qualifiedTableName(table, schema: schema)) ADD \(pgForeignKeyDefinition(fk))"
     }
 
-    func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
-        "ALTER TABLE \(qualifiedTableName(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    func generateDropForeignKeySQL(table: String, schema: String?, constraintName: String) -> String? {
+        "ALTER TABLE \(qualifiedTableName(table, schema: schema)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
     }
 
-    func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
+    func generateAddCheckConstraintSQL(
+        table: String,
+        schema: String?,
+        constraint: PluginCheckConstraintDefinition
+    ) -> String? {
         let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
-        return "ALTER TABLE \(qualifiedTableName(table)) ADD CONSTRAINT "
+        return "ALTER TABLE \(qualifiedTableName(table, schema: schema)) ADD CONSTRAINT "
             + "\(quoteIdentifier(constraint.name)) CHECK (\(expression))"
     }
 
-    func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String? {
+    func generateDropCheckConstraintSQL(table: String, schema: String?, constraintName: String) -> String? {
         guard !constraintName.isEmpty else { return nil }
-        return "ALTER TABLE \(qualifiedTableName(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+        return "ALTER TABLE \(qualifiedTableName(table, schema: schema)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
     }
 
-    func generateRenameCheckConstraintSQL(table: String, from oldName: String, to newName: String) -> String? {
+    func generateRenameCheckConstraintSQL(table: String, schema: String?, from oldName: String, to newName: String) -> String? {
         PostgreSQLVersionedStatements.renameConstraint(
-            qualifiedTable: qualifiedTableName(table),
+            qualifiedTable: qualifiedTableName(table, schema: schema),
             from: oldName,
             to: newName,
             capabilities: versionedCapabilities
         )
     }
 
-    func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
-        let qt = qualifiedTableName(table)
+    func generateModifyPrimaryKeySQL(
+        table: String,
+        schema: String?,
+        oldColumns: [String],
+        newColumns: [String],
+        constraintName: String?
+    ) -> [String]? {
+        let qt = qualifiedTableName(table, schema: schema)
         var stmts: [String] = []
         if !oldColumns.isEmpty {
             let name = constraintName.map { quoteIdentifier($0) } ?? "/* unknown constraint */"

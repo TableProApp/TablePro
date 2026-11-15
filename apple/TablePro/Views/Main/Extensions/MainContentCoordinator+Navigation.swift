@@ -464,7 +464,7 @@ extension MainContentCoordinator {
     /// Nil when the engine has no listing, which is when the sidebar leaves the command out.
     func allTablesListing() -> String? {
         let pluginListing = DatabaseManager.shared.driver(for: connectionId).flatMap { driver in
-            (driver as? PluginDriverAdapter)?.allTablesMetadataSQL(schema: allTablesContainer(driver))
+            driver.plugin?.allTablesMetadataSQL(schema: allTablesContainer(driver))
         }
         return AllTablesListing.statement(databaseType: connection.type, pluginListing: pluginListing)
     }
