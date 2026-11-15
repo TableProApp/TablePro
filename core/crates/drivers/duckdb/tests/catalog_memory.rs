@@ -23,7 +23,8 @@ static HEAP: HeapCounter = HeapCounter;
 const BOUND: usize = 2 * ByteLimit::CATALOG_DEFAULT.get() as usize;
 
 const KEYS: usize = 1_000;
-const NAMED_KEYS: usize = 600;
+const NAMED_KEYS: usize = 60;
+const NAMED_LENGTH: usize = 640 * 1024;
 
 // DuckDB takes seconds to create and open more than this. One file a real schema could be:
 // - a child declaring 1,000 keys into one parent, whose CREATE TABLE, 40 KB, was read again for each of them;
@@ -45,14 +46,15 @@ fn large_schema() -> String {
     )
 }
 
-// And one crafted: a child with a 64 KiB name and 600 keys, which DuckDB names after it whatever table a read asks for.
+// And one crafted: a child with a 640 KiB name and 60 keys, which DuckDB names after it whatever table a read asks for.
+// A read costs keys times name, and DuckDB's open keys squared times name: 600 keys of 64 KiB took over 10 s to open.
 fn crafted_schema() -> String {
     format!(
         "CREATE TABLE named_parent (id INTEGER PRIMARY KEY); \
          CREATE TABLE other (id INTEGER PRIMARY KEY); \
          CREATE TABLE {} (a INTEGER{}); \
          CHECKPOINT;",
-        "n".repeat(64 * 1024),
+        "n".repeat(NAMED_LENGTH),
         ", FOREIGN KEY (a) REFERENCES named_parent (id)".repeat(NAMED_KEYS),
     )
 }
