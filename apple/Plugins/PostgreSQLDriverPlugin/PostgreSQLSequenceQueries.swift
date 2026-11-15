@@ -7,7 +7,7 @@ import Foundation
 import TableProPluginKit
 import TableProPostgreSQLCore
 
-struct PostgreSQLSequenceDefinition: Equatable, Sendable {
+nonisolated struct PostgreSQLSequenceDefinition: Equatable, Sendable {
     let name: String
     let startValue: String?
     let minValue: String?
@@ -112,7 +112,7 @@ struct PostgreSQLSequenceDefinition: Equatable, Sendable {
 
 // The sequence relation's own row: pg_sequences reports NULL both before the first nextval and after
 // setval(..., false), so only last_value with is_called says where the sequence stands.
-struct PostgreSQLSequencePosition: Equatable, Sendable {
+nonisolated struct PostgreSQLSequencePosition: Equatable, Sendable {
     let lastValue: Int64
     let isCalled: Bool
 
@@ -140,7 +140,7 @@ struct PostgreSQLSequencePosition: Equatable, Sendable {
     }
 }
 
-enum PostgreSQLSequenceQueries {
+nonisolated enum PostgreSQLSequenceQueries {
     enum Source: Equatable {
         case sequencesView
         case sequenceParameters
@@ -296,7 +296,7 @@ enum PostgreSQLSequenceQueries {
     }
 }
 
-enum PostgreSQLSequenceStatements {
+nonisolated enum PostgreSQLSequenceStatements {
     static let createTemplate = """
         CREATE SEQUENCE sequence_name
             INCREMENT BY 1

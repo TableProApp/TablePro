@@ -5,6 +5,7 @@ import SwiftUI
 import TableProDatabase
 import TableProModels
 import TableProSyncTransport
+import UIKit
 
 @main
 struct TableProMobileApp: App {
@@ -19,9 +20,20 @@ struct TableProMobileApp: App {
 
     init() {
         ConnectionListTips.configure()
+        // Nothing transfers at launch, so whatever tmp/Exports and tmp/Imports hold was left by a kill.
+        TransferFiles.sweep()
+        SQLiteDriver.removeLeftoverSnapshots()
         let appState = AppState()
         _appState = State(initialValue: appState)
         TableProAppDelegate.appState = appState
+        // A transfer holds its file database open through the background release; the last hold ending there
+        // releases it, or the file stays locked while the app is suspended.
+        appState.connectionManager.observeTransferHoldsEnded { _ in
+            Task { @MainActor in
+                guard UIApplication.shared.applicationState == .background else { return }
+                await appState.backgroundRelease.releaseForSuspension()
+            }
+        }
         // At launch, so a connection opened before the scene first turns active still sends its first-use event.
         if !TestRuntime.isActive {
             Self.startTelemetry(appState: appState)

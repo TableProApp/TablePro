@@ -55,6 +55,7 @@ final class QueryEditorViewModel {
     private(set) var rowsAffectedTotal = 0
     private(set) var interruption: ScriptInterruption?
     private(set) var cutLongValues = false
+    var selection = RowSelection()
     // Each request as it went to the server, split again after a statement changed how the session reads literals.
     @ObservationIgnored private(set) var sentStatements: [String] = []
     @ObservationIgnored private(set) var ranTransactionRollBack = false
@@ -139,6 +140,29 @@ final class QueryEditorViewModel {
         return try ClipboardExporter.exportRows(
             columns: columns, rows: rows.map(\.cells), format: format, databaseType: databaseType, driver: driver
         )
+    }
+
+    nonisolated enum ResultsExportSource: Sendable {
+        case rerun(String)
+        case buffered(ExportRowSet)
+    }
+
+    var bufferedRowCount: Int { buffer.count }
+
+    // A file wants the whole result, which only running the statement again gives, and only a read may run twice:
+    // `INSERT ... RETURNING`, `CALL` or a batch would write again (critic M9). Anything else exports the rows shown.
+    func resultsExportSource(databaseType: DatabaseType) throws(ClipboardExporter.IncompleteValues) -> ResultsExportSource {
+        if let statement = Self.rerunnableStatement(sentStatements, databaseType: databaseType) {
+            return .rerun(statement)
+        }
+        return .buffered(try ExportRowSet(columns: buffer.columns, cells: buffer.window.rows.map(\.cells)))
+    }
+
+    nonisolated static func rerunnableStatement(_ sent: [String], databaseType: DatabaseType) -> String? {
+        guard sent.count == 1, let statement = sent.first,
+              !statement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !SQLWriteClassifier.isWriteQuery(statement, databaseType: databaseType) else { return nil }
+        return statement
     }
 
     // The export text and the pasteboard's copy of it are held beside the values already on screen.
@@ -284,6 +308,7 @@ final class QueryEditorViewModel {
         runID &+= 1
         let run = runID
         phase = .running
+        selection.end()
         sentStatements = []
         buffer.reset()
         executionTime = 0
@@ -314,6 +339,7 @@ final class QueryEditorViewModel {
     func reset() {
         runID &+= 1
         fetchTask?.cancel()
+        selection.end()
         buffer.reset()
         executionTime = 0
         rowsAffectedTotal = 0

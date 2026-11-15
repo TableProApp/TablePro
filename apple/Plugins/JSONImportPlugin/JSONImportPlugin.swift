@@ -5,10 +5,9 @@
 
 import Combine
 import Foundation
-import SwiftUI
 import TableProPluginKit
 
-final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
+nonisolated final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "JSON Import"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Import data from JSON files"
@@ -21,7 +20,9 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     typealias Settings = JSONImportOptions
     static let settingsStorageId = "json-import"
 
-    @Published var settings = JSONImportOptions() {
+    // A nonisolated class cannot hold an @Published property, so the change is announced by hand.
+    var settings = JSONImportOptions() {
+        willSet { objectWillChange.send() }
         didSet { saveSettings() }
     }
 
@@ -35,11 +36,6 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
             wrapInTransaction: settings.wrapInTransaction,
             deleteExistingRows: settings.deleteExistingRows
         )
-    }
-
-    @MainActor
-    func settingsView() -> AnyView? {
-        AnyView(JSONImportOptionsView(plugin: self))
     }
 
     func resetSettingsToDefaults() {

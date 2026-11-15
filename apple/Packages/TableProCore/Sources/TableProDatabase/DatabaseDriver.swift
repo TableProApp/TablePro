@@ -60,6 +60,15 @@ public protocol DatabaseDriver: AnyObject, Sendable {
     var settledLexicalFacts: SQLSessionLexicalFacts? { get }
 
     func escapeStringLiteral(_ value: String) -> String
+
+    // One statement with bound values, sent the way this engine's macOS driver sends them. The default refuses:
+    // a literal fallback would quote binary and typed values differently from the Mac.
+    func executeParameterized(query: String, parameters: [PluginCellValue], typeNames: [String?]?) async throws
+        -> QueryResult
+
+    // The statements that turn the engine's foreign key checks off or back on for this session, empty where it
+    // has none.
+    func foreignKeyCheckStatements(enabled: Bool) -> [String]
 }
 
 public extension DatabaseDriver {
@@ -105,4 +114,11 @@ public extension DatabaseDriver {
     func executeStreaming(query: String, options: StreamOptions = .default) -> AsyncThrowingStream<StreamElement, Error> {
         QueryResultStreaming.stream(options: options) { try await self.execute(query: query) }
     }
+
+    func executeParameterized(query: String, parameters: [PluginCellValue], typeNames: [String?]?) async throws
+        -> QueryResult {
+        throw DatabaseDriverCapabilityError.unsupported(.parameterizedStatements)
+    }
+
+    func foreignKeyCheckStatements(enabled: Bool) -> [String] { [] }
 }

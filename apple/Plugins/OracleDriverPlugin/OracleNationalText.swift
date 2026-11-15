@@ -12,7 +12,7 @@ import Foundation
 /// (measured on 23ai). `UNISTR` carries each character as ASCII or a `\XXXX` UTF-16 escape, which the server turns
 /// straight into the national character set. Text that is all ASCII is in every database character set and keeps its
 /// plain literal.
-internal enum OracleNationalText {
+nonisolated internal enum OracleNationalText {
     /// The most a UNISTR argument may hold. It is a string literal: 800 escapes parse, 801 fail with ORA-01704.
     static let maxChunkBytes = 4_000
 

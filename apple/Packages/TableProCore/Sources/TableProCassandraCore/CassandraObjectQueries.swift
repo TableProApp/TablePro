@@ -154,4 +154,9 @@ public enum CassandraObjectQueries {
             USING '\(escapeLiteral(className))';
         """
     }
+
+    // A CQL trigger is named per table, so the drop needs its ON clause.
+    public static func dropTriggerStatement(name: String, keyspace: String, table: String) -> String {
+        "DROP TRIGGER IF EXISTS \(quote(name)) ON \(quote(keyspace)).\(quote(table))"
+    }
 }

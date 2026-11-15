@@ -6,11 +6,10 @@
 import Combine
 import Foundation
 import os
-import SwiftUI
 import TableProPluginKit
 import TableProTabularIO
 
-final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
+nonisolated final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "XLSX Import"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Import data from Excel workbooks"
@@ -29,7 +28,9 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     // The whole sheet is already in memory, so this bounds only the type guess for the mapping sheet.
     private static let detectionSampleRows = 200
 
-    @Published var settings = XLSXImportOptions() {
+    // A nonisolated class cannot hold an @Published property, so the change is announced by hand.
+    var settings = XLSXImportOptions() {
+        willSet { objectWillChange.send() }
         didSet { saveSettings() }
     }
 
@@ -47,11 +48,6 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
             wrapInTransaction: options.wrapInTransaction,
             deleteExistingRows: options.deleteExistingRows
         )
-    }
-
-    @MainActor
-    func settingsView() -> AnyView? {
-        AnyView(XLSXImportOptionsView(plugin: self))
     }
 
     func resetSettingsToDefaults() {
@@ -156,7 +152,7 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     }
 }
 
-private extension Array {
+nonisolated private extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
     }

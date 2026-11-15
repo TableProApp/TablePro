@@ -1,11 +1,3 @@
-//
-//  SQLStatementGenerator.swift
-//  TablePro
-//
-//  Generates parameterized SQL statements (INSERT, UPDATE, DELETE) from tracked changes.
-//  Uses prepared statements instead of string escaping to prevent SQL injection.
-//
-
 import Foundation
 import os
 import TableProPluginKit
@@ -25,6 +17,16 @@ struct ParameterizedStatement: @unchecked Sendable {
     }
 }
 
+extension ParameterizedStatement {
+    init(_ statement: SQLImportStatement) {
+        self.init(
+            sql: statement.sql,
+            parameters: statement.parameters.map(\.asAny),
+            parameterTypeNames: statement.parameterTypeNames
+        )
+    }
+}
+
 // The rows it should touch hold the server to a count; the changes it writes tell a written change from a dropped one.
 struct AttributedStatement: @unchecked Sendable {
     let statement: ParameterizedStatement
@@ -36,33 +38,26 @@ struct AttributedStatement: @unchecked Sendable {
     var rowCount: Int { rowIDs.count }
 }
 
-/// Generates SQL statements from data changes
 struct SQLStatementGenerator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLStatementGenerator")
 
     let tableName: String
-    /// Written into every statement when set, so a generator can address a table outside whatever
-    /// schema the connection happens to be on. A grid edit leaves it nil and keeps the unqualified
-    /// name it has always produced; a copy between two databases sets it, because the table it
-    /// writes is not the one the driver is pointed at.
+    // Nil for a grid edit, which keeps the unqualified name; set by a copy between databases, whose target is not the
+    // database the driver is pointed at.
     let schemaName: String?
     let columns: [String]
     let primaryKeyColumns: [String]
-    /// Server-computed columns. They reject any written value, so they are
-    /// dropped from every INSERT and UPDATE this generator produces.
+    // Server-computed columns reject any written value, so every INSERT and UPDATE leaves them out.
     let generatedColumns: Set<String>
     let rowMatchPolicy: RowMatchPolicy
     let databaseType: DatabaseType
     let parameterStyle: ParameterStyle
-    /// Set only by a restore that writes a row back with the identity it had: PostgreSQL refuses an explicit value
-    /// for a `GENERATED ALWAYS` column unless the INSERT says so.
+    // Set only by a restore that writes a row back with the identity it had: PostgreSQL refuses an explicit value for a
+    // `GENERATED ALWAYS` column unless the INSERT says so.
     let insertOverridesSystemValue: Bool
-    private let columnTypeNames: [String: String]
-    // BIT columns of a family that reads them as a number. Text bound to one is stored and compared as its bytes.
-    private let numberBitColumns: Set<String>
+    // The import statements, and the binding every statement here goes through.
+    let importStatements: SQLImportStatements
     private let quoteIdentifierFn: (String) -> String
-    private let rowUpdateFn: ((_ table: String, _ assignments: String, _ predicate: String) -> String?)?
-    private let rowDeleteFn: ((_ table: String, _ predicate: String?) -> String?)?
 
     init(
         tableName: String,
@@ -80,32 +75,42 @@ struct SQLStatementGenerator {
         rowUpdateStatement: ((_ table: String, _ assignments: String, _ predicate: String) -> String?)? = nil,
         rowDeleteStatement: ((_ table: String, _ predicate: String?) -> String?)? = nil
     ) throws {
+        let quote: (String) -> String
+        if let quoteIdentifier {
+            quote = quoteIdentifier
+        } else {
+            let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
+            quote = quoteIdentifierFromDialect(resolvedDialect, databaseType: databaseType)
+        }
+        let explicitSchema = SchemaQualifiedName.explicitSchema(schemaName, databaseType: databaseType)
+        let style = parameterStyle ?? Self.defaultParameterStyle(for: databaseType)
         self.tableName = tableName
-        self.rowUpdateFn = rowUpdateStatement
-        self.rowDeleteFn = rowDeleteStatement
-        self.schemaName = SchemaQualifiedName.explicitSchema(schemaName, databaseType: databaseType)
+        self.schemaName = explicitSchema
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
         self.generatedColumns = generatedColumns
         self.rowMatchPolicy = rowMatchPolicy
         self.databaseType = databaseType
-        self.parameterStyle = parameterStyle ?? Self.defaultParameterStyle(for: databaseType)
+        self.parameterStyle = style
         self.insertOverridesSystemValue = insertOverridesSystemValue
-        self.columnTypeNames = columnTypeNames
-        self.numberBitColumns = Self.numberBitColumns(in: columnTypeNames, databaseType: databaseType)
-        if let quoteIdentifier {
-            self.quoteIdentifierFn = quoteIdentifier
-        } else {
-            let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
-            self.quoteIdentifierFn = quoteIdentifierFromDialect(resolvedDialect, databaseType: databaseType)
-        }
+        self.quoteIdentifierFn = quote
+        self.importStatements = SQLImportStatements(
+            databaseTypeId: databaseType.rawValue,
+            qualifiedTableName: SchemaQualifiedName.render(
+                name: tableName, schema: explicitSchema, databaseType: databaseType, quote: quote
+            ),
+            parameterStyle: style,
+            quoteIdentifier: quote,
+            columnTypeNames: columnTypeNames,
+            numberBitColumns: Self.numberBitColumns(in: columnTypeNames, databaseType: databaseType),
+            rowUpdateStatement: rowUpdateStatement,
+            rowDeleteStatement: rowDeleteStatement
+        )
     }
 
-    /// The table as every statement spells it.
+    // The table as every statement spells it.
     var qualifiedTableName: String {
-        SchemaQualifiedName.render(
-            name: tableName, schema: schemaName, databaseType: databaseType, quote: quoteIdentifierFn
-        )
+        importStatements.qualifiedTableName
     }
 
     private static func defaultParameterStyle(for databaseType: DatabaseType) -> ParameterStyle {
@@ -114,13 +119,6 @@ struct SQLStatementGenerator {
 
     // MARK: - Public API
 
-    /// Generate all parameterized SQL statements from changes
-    /// - Parameters:
-    ///   - changes: Array of row changes to process
-    ///   - insertedRowData: Lazy storage for inserted row values
-    ///   - deletedRowIDs: Rows still marked as deleted
-    ///   - insertedRowIDs: Rows still marked as inserted
-    /// - Returns: Array of parameterized SQL statements
     func generateStatements(
         from changes: [RowChange],
         insertedRowData: [RowID: [PluginCellValue]],
@@ -182,15 +180,6 @@ struct SQLStatementGenerator {
         return statements
     }
 
-    private func placeholder(at index: Int) -> String {
-        switch parameterStyle {
-        case .dollar:
-            return "$\(index + 1)"
-        case .questionMark:
-            return "?"
-        }
-    }
-
     private static func numberBitColumns(in typeNames: [String: String], databaseType: DatabaseType) -> Set<String> {
         let family = SQLTypeFamily.of(databaseType)
         guard family.readsBitsAsDecimal else { return [] }
@@ -201,69 +190,18 @@ struct SQLStatementGenerator {
         return Set(bitColumns.keys)
     }
 
-    private struct Bindings {
-        var values: [Any?] = []
-        var typeNames: [String?] = []
-
-        var count: Int { values.count }
-
-        mutating func append(_ value: Any?, typeName: String?) {
-            values.append(value)
-            typeNames.append(typeName)
-        }
-    }
+    private typealias Bindings = SQLImportStatements.Bindings
 
     private func statement(_ sql: String, _ bindings: Bindings) -> ParameterizedStatement {
-        ParameterizedStatement(
-            sql: sql,
-            parameters: bindings.values,
-            parameterTypeNames: bindings.typeNames.contains { $0 != nil } ? bindings.typeNames : nil
-        )
+        ParameterizedStatement(importStatements.statement(sql, bindings))
     }
 
-    private func typeName(of column: String?) -> String? {
-        column.flatMap { columnTypeNames[$0] }
-    }
-
-    // Blank text goes as '', which the server stores as 0: cast, strict mode refuses it as a truncated integer, and a
-    // space bound as it is would be its byte, 32.
     private func bind(_ value: PluginCellValue, toColumn column: String?, into parameters: inout Bindings) -> String {
-        guard let column, numberBitColumns.contains(column), case .text(let text) = value else {
-            parameters.append(value.asAny, typeName: typeName(of: column))
-            return placeholder(at: parameters.count - 1)
-        }
-        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else {
-            parameters.append("", typeName: typeName(of: column))
-            return placeholder(at: parameters.count - 1)
-        }
-        // The value is the CAST's operand, not the column's.
-        parameters.append(Self.decimalBitText(text), typeName: nil)
-        return "CAST(\(placeholder(at: parameters.count - 1)) AS UNSIGNED)"
+        importStatements.bind(value, toColumn: column, into: &parameters)
     }
 
-    // b'101' and 0b101 are SQL, not values, and a boolean word is no number: cast as text, each is 0 or an error.
     static func decimalBitText(_ text: String) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        switch PluginSQLLiteral.booleanSynonym(for: trimmed) {
-        case .isTrue: return "1"
-        case .isFalse: return "0"
-        case nil: break
-        @unknown default: break
-        }
-        switch trimmed.lowercased() {
-        case "t": return "1"
-        case "f": return "0"
-        default: break
-        }
-        let digits: Substring
-        if trimmed.count > 3, trimmed.hasPrefix("b'") || trimmed.hasPrefix("B'"), trimmed.hasSuffix("'") {
-            digits = trimmed.dropFirst(2).dropLast()
-        } else if trimmed.hasPrefix("0b") {
-            digits = trimmed.dropFirst(2)
-        } else {
-            return text
-        }
-        return UInt64(digits, radix: 2).map { String($0) } ?? text
+        SQLImportStatements.decimalBitText(text)
     }
 
     // MARK: - INSERT Generation
@@ -277,8 +215,7 @@ struct SQLStatementGenerator {
         return generateInsertSQLFromCellChanges(for: change)
     }
 
-    /// A cell is written as SQL only when its change says so. Text that merely reads like a function, typed or
-    /// stored, is bound like any other value.
+    // A cell is written as SQL only when its change says so. Text that merely reads like a function is bound.
     private func generateInsertSQLFromStoredData(values: [PluginCellValue], expressionColumns: Set<Int>)
         -> ParameterizedStatement?
     {
@@ -320,64 +257,20 @@ struct SQLStatementGenerator {
         allDefaultsInsertStatement(firstColumn: columns.first { !generatedColumns.contains($0) })
     }
 
-    // For a generator built without the table's columns, the caller names the one Oracle needs.
     func allDefaultsInsertStatement(firstColumn: String?) -> ParameterizedStatement? {
-        AllDefaultsInsert.sql(
-            into: qualifiedTableName, databaseType: databaseType, firstWritableColumn: firstColumn.map(quoteIdentifierFn)
-        ).map { ParameterizedStatement(sql: $0, parameters: []) }
+        importStatements.allDefaultsInsertStatement(firstColumn: firstColumn).map(ParameterizedStatement.init)
     }
 
-    func insertStatement(columns insertColumns: [String], values: [PluginCellValue])
-        -> ParameterizedStatement?
-    {
-        guard !insertColumns.isEmpty, insertColumns.count == values.count else { return nil }
-
-        var bindParameters = Bindings()
-        let columnList = insertColumns.map(quoteIdentifierFn).joined(separator: ", ")
-        let placeholders = zip(insertColumns, values).map { column, value in
-            bind(value, toColumn: column, into: &bindParameters)
-        }.joined(separator: ", ")
-
-        let sql =
-            "INSERT INTO \(qualifiedTableName) (\(columnList)) VALUES (\(placeholders))"
-
-        return statement(sql, bindParameters)
+    func insertStatement(columns insertColumns: [String], values: [PluginCellValue]) -> ParameterizedStatement? {
+        importStatements.insertStatement(columns: insertColumns, values: values).map(ParameterizedStatement.init)
     }
 
-    func insertStatement(columns insertColumns: [String], rows: [[PluginCellValue]])
-        -> ParameterizedStatement?
-    {
-        guard !insertColumns.isEmpty, !rows.isEmpty,
-              rows.allSatisfy({ $0.count == insertColumns.count }) else { return nil }
-
-        var bindParameters = Bindings()
-        let columnList = insertColumns.map(quoteIdentifierFn).joined(separator: ", ")
-        let rowTuples = rows.map { values -> String in
-            let placeholders = zip(insertColumns, values).map { column, value in
-                bind(value, toColumn: column, into: &bindParameters)
-            }.joined(separator: ", ")
-            return "(\(placeholders))"
-        }.joined(separator: ", ")
-
-        let sql =
-            "INSERT INTO \(qualifiedTableName) (\(columnList)) VALUES \(rowTuples)"
-
-        return statement(sql, bindParameters)
+    func insertStatement(columns insertColumns: [String], rows: [[PluginCellValue]]) -> ParameterizedStatement? {
+        importStatements.insertStatement(columns: insertColumns, rows: rows).map(ParameterizedStatement.init)
     }
 
-    // The server compares, so its casting and collation decide a match, as they do for the UPDATE that follows.
     func keyMatchCountStatement(keyColumns: [String], keys: [[PluginCellValue]]) -> ParameterizedStatement? {
-        guard !keyColumns.isEmpty, !keys.isEmpty, keys.allSatisfy({ $0.count == keyColumns.count }) else { return nil }
-
-        var bindParameters = Bindings()
-        let selects = keys.enumerated().map { position, values -> String in
-            let conditions = zip(keyColumns, values).map { column, value -> String in
-                "\(quoteIdentifierFn(column)) = \(bind(value, toColumn: column, into: &bindParameters))"
-            }.joined(separator: " AND ")
-            return "SELECT \(position), COUNT(*) FROM \(qualifiedTableName) WHERE \(conditions)"
-        }
-
-        return statement(selects.joined(separator: " UNION ALL "), bindParameters)
+        importStatements.keyMatchCountStatement(keyColumns: keyColumns, keys: keys).map(ParameterizedStatement.init)
     }
 
     func keyedUpdateStatement(
@@ -386,32 +279,17 @@ struct SQLStatementGenerator {
         keyColumns: [String],
         keyValues: [PluginCellValue]
     ) -> ParameterizedStatement? {
-        guard !setColumns.isEmpty, setColumns.count == values.count,
-              !keyColumns.isEmpty, keyColumns.count == keyValues.count else { return nil }
-
-        var bindParameters = Bindings()
-        func bound(_ column: String, _ value: PluginCellValue) -> String {
-            "\(quoteIdentifierFn(column)) = \(bind(value, toColumn: column, into: &bindParameters))"
-        }
-        let assignments = zip(setColumns, values).map(bound).joined(separator: ", ")
-        let conditions = zip(keyColumns, keyValues).map(bound).joined(separator: " AND ")
-        let sql = rowUpdateFn?(qualifiedTableName, assignments, conditions)
-            ?? "UPDATE \(qualifiedTableName) SET \(assignments) WHERE \(conditions)"
-
-        return statement(sql, bindParameters)
+        importStatements.keyedUpdateStatement(
+            columns: setColumns, values: values, keyColumns: keyColumns, keyValues: keyValues
+        ).map(ParameterizedStatement.init)
     }
 
     var maxBindParameters: Int {
-        switch databaseType {
-        case .sqlite, .libsql, .turso: 32_766
-        case .mssql: 2_100
-        case .cloudflareD1: 100
-        default: 65_535
-        }
+        importStatements.maxBindParameters
     }
 
     func deleteAllRowsStatement() -> String {
-        rowDeleteFn?(qualifiedTableName, nil) ?? "DELETE FROM \(qualifiedTableName)"
+        importStatements.deleteAllRowsStatement()
     }
 
     private func generateInsertSQLFromCellChanges(for change: RowChange) -> ParameterizedStatement?
@@ -537,10 +415,9 @@ struct SQLStatementGenerator {
         rowMatchPolicy.textColumns.contains(column) ? nil : column
     }
 
-    /// The conditions that pick one row. SQLite keeps the number 5 and the text '5' apart in a column with no
-    /// affinity, and the grid read either one as `5`, so a number the grid read matches both, held by CAST to the
-    /// text SQLite reads it back as so a REAL 5.0 is not matched too; a typed column converts either literal to its
-    /// own type, so the form is exact there too. When both rows exist the statement itself refuses them.
+    // SQLite keeps the number 5 and the text '5' apart in a column with no affinity, and the grid read either as `5`,
+    // so a number the grid read matches both, held by a CAST to text so a REAL 5.0 is not matched too. When both rows
+    // exist the statement itself refuses them.
     private func rowCondition(_ terms: [RowMatchTerm], parameters: inout Bindings) -> String {
         let clause = conditions(terms, parameters: &parameters)
         guard terms.contains(where: { matchesEitherWay($0.value) }) else { return clause }
@@ -554,11 +431,11 @@ struct SQLStatementGenerator {
             guard matchesEitherWay(value), case .text(let text) = value else {
                 return "\(term.matched) = \(bind(value, toColumn: term.column, into: &parameters))"
             }
-            parameters.append(value.asAny, typeName: typeName(of: term.column))
-            let bound = placeholder(at: parameters.count - 1)
+            parameters.append(value, typeName: importStatements.typeName(of: term.column))
+            let bound = importStatements.placeholder(at: parameters.count - 1)
             // Compared with the column's text, not the column.
-            parameters.append(value.asAny, typeName: nil)
-            let read = placeholder(at: parameters.count - 1)
+            parameters.append(value, typeName: nil)
+            let read = importStatements.placeholder(at: parameters.count - 1)
             return "(\(term.matched) IN (\(text), \(bound)) AND CAST(\(term.matched) AS TEXT) = \(read))"
         }.joined(separator: " AND ")
     }

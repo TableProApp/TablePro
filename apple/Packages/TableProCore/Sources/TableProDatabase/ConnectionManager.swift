@@ -21,6 +21,9 @@ public final class ConnectionManager: @unchecked Sendable {
     private var dials: [UUID: SessionDial] = [:]
     private var catalogs: [UUID: CatalogConnection] = [:]
     private var catalogHolds: [UUID: Int] = [:]
+    private var transferDrivers: [UUID: [ObjectIdentifier: any DatabaseDriver]] = [:]
+    private var transferHolds: [UUID: Int] = [:]
+    private var transferHoldObservers: [@Sendable (UUID) -> Void] = []
     private let now: @Sendable () -> Date
 
     // The Mac's metadata pool values: an idle server connection is not held for good, and a failure is tried again.
@@ -235,11 +238,137 @@ public final class ConnectionManager: @unchecked Sendable {
         return ids
     }
 
+    // A connection a transfer holds keeps its file: the transfer's own background task keeps the process alive.
     private func suspensionBlockingIds() -> [UUID] {
         lock.lock()
         defer { lock.unlock() }
-        let connected = sessions.filter { $0.value.driver.holdsSuspensionBlockingResource }.map(\.key)
+        let connected = sessions.filter { id, session in
+            session.driver.holdsSuspensionBlockingResource && transferHolds[id] == nil
+        }.map(\.key)
         return Array(blockingTeardowns.union(connected))
+    }
+
+    // MARK: - Transfers
+
+    public func holdForTransfer(_ connectionId: UUID) -> TransferHold {
+        lock.lock()
+        transferHolds[connectionId, default: 0] += 1
+        lock.unlock()
+        return TransferHold { [weak self] in self?.releaseTransferHold(connectionId) }
+    }
+
+    // Called once the last hold on a connection ends, so a pass that skipped it can release it now.
+    public func observeTransferHoldsEnded(_ observer: @escaping @Sendable (UUID) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        transferHoldObservers.append(observer)
+    }
+
+    private func releaseTransferHold(_ connectionId: UUID) {
+        lock.lock()
+        let left = transferHolds[connectionId, default: 1] - 1
+        transferHolds[connectionId] = left > 0 ? left : nil
+        let observers = left > 0 ? [] : transferHoldObservers
+        lock.unlock()
+        for observer in observers {
+            observer(connectionId)
+        }
+    }
+
+    // A driver of the transfer's own, so a long read never shares the session the grid streams on. It is the session's
+    // driver itself when the engine has no second connection to give now (a SQLite file with a transaction open, an
+    // in-memory database). `closeDedicatedDriver` ends it; a disconnect or a catalog hold ends it first.
+    public func openDedicatedDriver(for connectionId: UUID, database: String?) async throws -> any DatabaseDriver {
+        guard let (session, dial) = sessionAndDial(for: connectionId) else { throw ConnectionError.notConnected }
+        guard !holdsCatalogs(connectionId) else { throw TransferConnectionError.connectionHeld }
+        let driver: any DatabaseDriver
+        if let owner = session.driver as? DedicatedTransferConnection {
+            driver = try await owner.openTransferDriver()
+            guard driver !== session.driver else { return driver }
+        } else {
+            driver = try await Self.openTransferDriver(
+                dial: dial, database: database ?? "", factory: driverFactory, secureStore: secureStore
+            )
+        }
+        guard registerTransferDriver(driver, for: connectionId, session: session) else {
+            try? await driver.disconnect()
+            throw holdsCatalogs(connectionId) ? TransferConnectionError.connectionHeld : ConnectionError.notConnected
+        }
+        return driver
+    }
+
+    // Leaves the session's own driver alone.
+    public func closeDedicatedDriver(_ driver: any DatabaseDriver, for connectionId: UUID) async {
+        guard takeTransferDriver(driver, for: connectionId) else { return }
+        try? await driver.disconnect()
+    }
+
+    private func sessionAndDial(for connectionId: UUID) -> (ConnectionSession, SessionDial)? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let session = sessions[connectionId], let dial = dials[connectionId] else { return nil }
+        return (session, dial)
+    }
+
+    private func holdsCatalogs(_ connectionId: UUID) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return catalogHolds[connectionId] != nil
+    }
+
+    // Refused once the session it was opened for has gone or a hold began while it opened.
+    private func registerTransferDriver(
+        _ driver: any DatabaseDriver,
+        for connectionId: UUID,
+        session: ConnectionSession
+    ) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard catalogHolds[connectionId] == nil, let current = sessions[connectionId],
+              current.driver === session.driver else { return false }
+        transferDrivers[connectionId, default: [:]][ObjectIdentifier(driver)] = driver
+        return true
+    }
+
+    private func takeTransferDriver(_ driver: any DatabaseDriver, for connectionId: UUID) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard transferDrivers[connectionId]?.removeValue(forKey: ObjectIdentifier(driver)) != nil else { return false }
+        if transferDrivers[connectionId]?.isEmpty == true {
+            transferDrivers.removeValue(forKey: connectionId)
+        }
+        return true
+    }
+
+    private func takeTransferDrivers(for connectionId: UUID) -> [any DatabaseDriver] {
+        lock.lock()
+        defer { lock.unlock() }
+        return transferDrivers.removeValue(forKey: connectionId).map { Array($0.values) } ?? []
+    }
+
+    // A transfer reads as long as it takes: no catalog preparation (SQL Server's LOCK_TIMEOUT) and no query timeout,
+    // as the Mac lifts the timeout for an export.
+    private static func openTransferDriver(
+        dial: SessionDial,
+        database: String,
+        factory: DriverFactory,
+        secureStore: SecureStore
+    ) async throws -> any DatabaseDriver {
+        var target = dial.effective
+        if !database.isEmpty {
+            target.database = database
+        }
+        target.queryTimeoutSeconds = nil
+        let stored = try secureStore.retrieve(forKey: passwordKey(for: dial.saved.id))
+        let password = try await factory.resolvePassword(for: dial.saved, stored: stored, secureStore: secureStore)
+        let driver = try factory.createDriver(
+            for: target,
+            password: password,
+            preTunnelHost: dial.preTunnelHost,
+            refreshPassword: passwordRefresh(for: dial.saved, stored: stored, factory: factory, secureStore: secureStore)
+        )
+        try await driver.connect()
+        return driver
     }
 
     /// Closes the tunnel before the driver, because a driver blocked reading through a tunnel the server
@@ -262,9 +391,14 @@ public final class ConnectionManager: @unchecked Sendable {
         if let catalog {
             Task { await catalog.close() }
         }
+        let transfers = transferDrivers.removeValue(forKey: connectionId).map { Array($0.values) } ?? []
         Task { [weak self] in
             if let sshProvider {
                 try? await sshProvider.closeTunnel(for: connectionId)
+            }
+            // Before the session: a DuckDB transfer connection reads the database the session's close ends.
+            for transfer in transfers {
+                try? await transfer.disconnect()
             }
             try? await session.driver.disconnect()
             self?.retireTeardown(teardown.id, for: connectionId)
@@ -345,8 +479,12 @@ public final class ConnectionManager: @unchecked Sendable {
 
     // SQL Server cannot drop or take single-user a database another connection sits in, so a run that may do either
     // closes the catalog connection first and keeps it closed until the run ends.
+    // A transfer's own connection sits in the database too, so the hold ends it.
     public func holdCatalogConnections(for connectionId: UUID) async {
         await takeCatalogForHold(for: connectionId)?.close()
+        for transfer in takeTransferDrivers(for: connectionId) {
+            try? await transfer.disconnect()
+        }
     }
 
     public func releaseCatalogConnections(for connectionId: UUID) {
@@ -492,6 +630,46 @@ public final class ConnectionManager: @unchecked Sendable {
         case cleared
         case cancelled
         case stillClosing
+    }
+}
+
+// A session driver whose engine gives no second connection through the factory makes the transfer's own: a SQLite
+// reader beside a WAL session or over a snapshot, a DuckDB connection on the open database. It answers with itself
+// when it has none to give now.
+public protocol DedicatedTransferConnection: DatabaseDriver {
+    func openTransferDriver() async throws -> any DatabaseDriver
+}
+
+// Keeps the connection's file open through a background release while a transfer runs.
+public final class TransferHold: @unchecked Sendable {
+    private let lock = NSLock()
+    private var onRelease: (@Sendable () -> Void)?
+
+    init(onRelease: @escaping @Sendable () -> Void) {
+        self.onRelease = onRelease
+    }
+
+    deinit {
+        release()
+    }
+
+    public func release() {
+        lock.lock()
+        let release = onRelease
+        onRelease = nil
+        lock.unlock()
+        release?()
+    }
+}
+
+public enum TransferConnectionError: Error, Equatable, Sendable, LocalizedError {
+    case connectionHeld
+
+    public var errorDescription: String? {
+        switch self {
+        case .connectionHeld:
+            return String(localized: "Another task needs this connection alone. Try again when it ends.")
+        }
     }
 }
 

@@ -7,7 +7,7 @@ import Foundation
 import TableProPluginKit
 import TableProPostgreSQLCore
 
-internal struct PostgreSQLSessionFacts: Sendable, Equatable {
+nonisolated internal struct PostgreSQLSessionFacts: Sendable, Equatable {
     static let probeQuery = "SELECT pg_catalog.current_database(), pg_catalog.current_setting('server_version_num')"
     static let unknown = PostgreSQLSessionFacts(database: nil, serverVersion: nil)
 
@@ -32,7 +32,7 @@ internal struct PostgreSQLSessionFacts: Sendable, Equatable {
     }
 }
 
-internal enum PostgreSQLVersionedStatements {
+nonisolated internal enum PostgreSQLVersionedStatements {
     static let mySQLOnlyIndexTypes: Set<String> = ["FULLTEXT", "SPATIAL"]
 
     static func createSchema(_ name: String, capabilities: PostgreSQLCapabilities) -> String {

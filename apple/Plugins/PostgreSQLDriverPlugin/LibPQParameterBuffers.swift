@@ -8,7 +8,7 @@ import TableProPluginKit
 
 // The C buffers `PQexecParams` and `PQsendQueryParams` read the parameters from: text as a C string, bytes in binary
 // format, null as a null pointer.
-internal enum LibPQParameterBuffers {
+nonisolated internal enum LibPQParameterBuffers {
     // libpq reads the buffers only while the call sends them, so they live for `body` alone.
     static func with<T>(
         _ parameters: [PluginCellValue],
@@ -35,7 +35,7 @@ internal enum LibPQParameterBuffers {
                 formats.append(0)
             case .text(let text):
                 guard let cString = strdup(text) else {
-                    throw LibPQPluginError(message: "Failed to allocate parameter buffer", sqlState: nil, detail: nil)
+                    throw LibPQParameterBufferError()
                 }
                 allocations.append(UnsafeMutableRawPointer(cString))
                 values.append(UnsafePointer(cString))
@@ -44,7 +44,7 @@ internal enum LibPQParameterBuffers {
             case .bytes(let data):
                 let byteCount = data.count
                 guard let raw = malloc(max(byteCount, 1)) else {
-                    throw LibPQPluginError(message: "Failed to allocate parameter buffer", sqlState: nil, detail: nil)
+                    throw LibPQParameterBufferError()
                 }
                 allocations.append(raw)
                 if byteCount > 0 {
@@ -62,4 +62,8 @@ internal enum LibPQParameterBuffers {
             }
         }
     }
+}
+
+nonisolated struct LibPQParameterBufferError: PluginDriverError {
+    var pluginErrorMessage: String { "Failed to allocate parameter buffer" }
 }

@@ -423,7 +423,7 @@ struct ExportTreeBuilder {
         return await reader.loadObjects(request: request, tables: tables)
     }
 
-    /// Carries a row's checkboxes across a reload, falling back to what the preselection asked for.
+    // Carries a row's checkboxes across a reload, falling back to what the preselection asked for.
     private func restoring(
         _ object: ExportObjectItem,
         priorRows: [String: ExportRowSnapshot],
@@ -439,6 +439,7 @@ struct ExportTreeBuilder {
             kind: object.kind,
             identity: object.identity,
             parentTable: object.parentTable,
+            routineKind: object.routineKind,
             isSelected: priorRow?.isSelected ?? preselection.selects(
                 object: object.name,
                 kind: object.kind,

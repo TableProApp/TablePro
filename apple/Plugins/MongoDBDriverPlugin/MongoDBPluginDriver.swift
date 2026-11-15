@@ -476,15 +476,19 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             throw MongoDBPluginError.notConnected
         }
 
-        return try await indexEntries(of: table, conn: conn).map(\.pluginIndexInfo)
+        return try await indexEntries(of: table, in: currentDb, conn: conn).map(\.pluginIndexInfo)
     }
 
     /// A view has no indexes, and the server says so by refusing `listIndexes` with
     /// CommandNotSupportedOnView. libmongoc answers a missing collection the same way, with an
     /// empty list, which is what the Enumerate Indexes spec asks for.
-    private func indexEntries(of collection: String, conn: MongoDBConnection) async throws -> [MongoDBIndexEntry] {
+    private func indexEntries(
+        of collection: String,
+        in database: String,
+        conn: MongoDBConnection
+    ) async throws -> [MongoDBIndexEntry] {
         do {
-            return try await conn.listIndexes(database: currentDb, collection: collection)
+            return try await conn.listIndexes(database: database, collection: collection)
                 .compactMap(MongoDBIndexEntry.init(json:))
         } catch let error as MongoDBError where error.code == MongoDBServerErrorCode.commandNotSupportedOnView {
             return []
@@ -549,10 +553,12 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected
         }
+        // An export names the collection's database, which need not be the one the session is on.
+        let database = schema?.nilIfEmpty ?? currentDb
 
         let entry: MongoDBNamespaceEntry?
         do {
-            entry = try await namespaceEntry(named: table, conn: conn)
+            entry = try await namespaceEntry(named: table, in: database, conn: conn)
         } catch {
             Self.logger.debug("Failed to fetch collection info for \(table): \(error.localizedDescription)")
             entry = nil
@@ -563,7 +569,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
 
         let indexes: [MongoDBIndexEntry]
         do {
-            indexes = try await indexEntries(of: table, conn: conn)
+            indexes = try await indexEntries(of: table, in: database, conn: conn)
         } catch {
             Self.logger.debug("Failed to fetch indexes for \(table): \(error.localizedDescription)")
             indexes = []
@@ -577,14 +583,18 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected
         }
-        guard let statement = try await namespaceEntry(named: view, conn: conn)?.collModStatement() else {
+        guard let statement = try await namespaceEntry(named: view, in: currentDb, conn: conn)?.collModStatement() else {
             throw MongoDBPluginError.viewNotFound(view)
         }
         return statement
     }
 
-    private func namespaceEntry(named name: String, conn: MongoDBConnection) async throws -> MongoDBNamespaceEntry? {
-        try await conn.listNamespaces(database: currentDb, named: name)
+    private func namespaceEntry(
+        named name: String,
+        in database: String,
+        conn: MongoDBConnection
+    ) async throws -> MongoDBNamespaceEntry? {
+        try await conn.listNamespaces(database: database, named: name)
             .lazy
             .compactMap(MongoDBNamespaceEntry.init(json:))
             .first { $0.name == name }

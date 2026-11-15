@@ -14,7 +14,7 @@ import Foundation
 /// the byte ceiling off and reproduces a row-count-only dump.
 ///
 /// `maxRows` is a syntax ceiling, not a size one: see `SQLMultiRowInsert`.
-internal struct SQLExportStatementBudget: Equatable {
+nonisolated internal struct SQLExportStatementBudget: Equatable {
     internal let maxRows: Int
     internal let maxBytes: Int
 
@@ -30,7 +30,7 @@ internal struct SQLExportStatementBudget: Equatable {
 /// figure accumulated on that instance belongs to whichever export wrote it last. It also carries the
 /// limit it was measured against, because the setting behind that limit is mutable and a second
 /// window's options pane can move it while this export is still running.
-internal struct SQLExportStatementTally: Equatable {
+nonisolated internal struct SQLExportStatementTally: Equatable {
     internal var largestStatementBytes = 0
     internal var largestStatementRows = 0
     internal var oversizedRowCount = 0
@@ -67,7 +67,7 @@ internal struct SQLExportStatementTally: Equatable {
 /// A class because it is a running buffer whose identity outlives the chunk of rows being fed to it:
 /// a statement spans as many driver chunks as the budget allows, so nothing may reset it at a chunk
 /// boundary.
-internal final class SQLExportStatementAccumulator {
+nonisolated internal final class SQLExportStatementAccumulator {
     /// What separates two rows, and what terminates a statement. Both are counted as the UTF-8 bytes
     /// they are, because the file is written as UTF-8 whatever encoding its prologue declares to the
     /// server. A terminator can carry a `GO` line, which ends each statement's batch on SQL Server.

@@ -43,29 +43,28 @@ nonisolated enum DuckDBTransactionProbe {
 
 nonisolated extension DuckDBDriver {
     func sessionTransactionState() async -> DriverTransactionState {
-        await actor.transactionState()
+        await actor.transactionState(lane: transferLane)
     }
 }
 
 extension DuckDBActor {
     // One actor turn for every reading, so no other statement lands between the two transaction ids.
-    func transactionState() -> DriverTransactionState {
-        guard connection != nil else { return .unknown }
+    func transactionState(lane: UInt64? = nil) -> DriverTransactionState {
+        guard let connection = connection(for: lane) else { return .unknown }
         // A statement would end the open stream inside DuckDB. Its consumer's own work reads the state once it ends.
-        guard streamResult == nil else { return .unknown }
-        let catalogType = probeReading(DuckDBTransactionProbe.catalogTypeQuery)
+        guard lane == nil ? streamResult == nil : !holdsExportResult(lane: lane) else { return .unknown }
+        let catalogType = probeReading(DuckDBTransactionProbe.catalogTypeQuery, on: connection)
         if let decided = DuckDBTransactionProbe.state(catalogType: catalogType) {
             return decided
         }
         return DuckDBTransactionProbe.state(
-            first: probeReading(DuckDBTransactionProbe.transactionIdQuery),
-            second: probeReading(DuckDBTransactionProbe.transactionIdQuery)
+            first: probeReading(DuckDBTransactionProbe.transactionIdQuery, on: connection),
+            second: probeReading(DuckDBTransactionProbe.transactionIdQuery, on: connection)
         )
     }
 
     // duckdb_query is the one path that reports the error type; the message text is no contract.
-    private func probeReading(_ sql: String) -> DuckDBTransactionProbe.Reading {
-        guard let connection else { return .unreadable }
+    private func probeReading(_ sql: String, on connection: duckdb_connection) -> DuckDBTransactionProbe.Reading {
         var result = duckdb_result()
         defer { duckdb_destroy_result(&result) }
         guard duckdb_query(connection, sql, &result) != DuckDBError else {

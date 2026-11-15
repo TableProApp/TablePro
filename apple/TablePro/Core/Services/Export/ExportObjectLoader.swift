@@ -7,17 +7,10 @@ import Foundation
 import os
 import TableProPluginKit
 
-/// Everything one container of the export tree can offer, read from the driver.
-///
-/// The export dialog asks per container, and only for the kinds the chosen format says it can
-/// write, so picking CSV never pays for a routine list nobody will export. A kind the driver
-/// cannot answer comes back empty rather than failing the load: one engine without routines must
-/// not cost the user their table list.
+// A kind the driver cannot answer comes back empty: one engine without routines must not cost the user their table list.
 internal enum ExportObjectLoader {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ExportObjectLoader")
 
-    /// The kinds this loader knows how to read. A driver that has no answer for one returns empty,
-    /// so a kind listed here costs nothing on an engine that lacks it.
     internal static let loadableKinds: Set<PluginExportObjectKind> = [
         .table, .view, .materializedView, .foreignTable,
         .routine, .trigger, .event, .sequence, .userType, .grant
@@ -86,7 +79,8 @@ internal enum ExportObjectLoader {
                     name: routine.name,
                     databaseName: container,
                     kind: .routine,
-                    identity: routine.argumentSignature
+                    identity: routine.argumentSignature,
+                    routineKind: routine.kind
                 )
             }
         } catch {
@@ -95,14 +89,13 @@ internal enum ExportObjectLoader {
         }
     }
 
-    /// Only a driver that answers a schema-wide trigger list is asked. Falling back to a read per
-    /// table would be one round trip per table just to fill a tree the user may never open.
+    // Not gated on `providesBulkTriggerFetch`: that is Compare's scope rule, and Oracle answers this list with it false.
+    // A driver without a schema-wide list answers empty without a read, and none is asked per table.
     private static func loadTriggers(
         schema: String?,
         container: String,
         driver: any PluginDatabaseDriver
     ) async -> [ExportObjectItem] {
-        guard driver.providesBulkTriggerFetch else { return [] }
         do {
             return try await driver.fetchAllTriggers(schema: schema).map { trigger in
                 ExportObjectItem(
@@ -133,9 +126,7 @@ internal enum ExportObjectLoader {
         }
     }
 
-    /// Every sequence in the container, including the ones a table already owns. The SQL export
-    /// emits each name once, so a sequence reached by both this list and `fetchDependentSequences`
-    /// is written a single time.
+    // Includes sequences a table owns; the SQL export writes a name reached twice only once.
     private static func loadSequences(
         schema: String?,
         container: String,
@@ -166,9 +157,7 @@ internal enum ExportObjectLoader {
         }
     }
 
-    /// Principals are server-wide rather than per container, so they are listed only under the
-    /// container the dialog opened on. Listing them under every schema would offer the same GRANT
-    /// statements several times over.
+    // Principals are server-wide, so they are listed only under the container the dialog opened on.
     private static func loadPrincipals(
         container: String,
         driver: any PluginDatabaseDriver

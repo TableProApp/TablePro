@@ -462,4 +462,13 @@ struct MSSQLSchemaQueriesTests {
         #expect(MSSQLSchemaQueries.columns(schema: "dbo", table: "t").contains("= 'PRIMARY KEY'"))
         #expect(MSSQLSchemaQueries.schemas.contains("'information_schema'"))
     }
+
+    @Test("The row estimate reads the heap or clustered partitions of the bracketed object")
+    func approximateRowCountQuery() {
+        #expect(MSSQLSchemaQueries.approximateRowCount(schema: "sales", table: "O'rders]") == """
+            SELECT SUM(p.rows)
+            FROM sys.partitions p
+            WHERE p.object_id = OBJECT_ID(N'[sales].[O''rders]]]') AND p.index_id IN (0, 1)
+            """)
+    }
 }

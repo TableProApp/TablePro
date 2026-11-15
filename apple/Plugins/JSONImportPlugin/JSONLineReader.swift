@@ -15,7 +15,7 @@ import Foundation
 ///
 /// A stop is checked before every chunk rather than between lines, because one line can run to
 /// the end of a file that holds no newline at all.
-struct JSONLineReader {
+nonisolated struct JSONLineReader {
     static let defaultChunkSize = 1 << 20
 
     private let handle: FileHandle

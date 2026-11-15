@@ -10,7 +10,7 @@
 import Foundation
 import TableProPluginKit
 
-enum PostgreSQLColumnClauses {
+nonisolated enum PostgreSQLColumnClauses {
     /// `ddlSpelling` first, because it is the one spelling that names the type's schema and keeps its
     /// modifier: `dataType` says `geometry` for `public.geometry(Point,4326)` and `ENUM` for an enum,
     /// and PostgreSQL rejects both under a `search_path` that is only the target schema.

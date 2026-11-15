@@ -230,6 +230,10 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         Self.queryResult(try await backend.executeQuery(query))
     }
 
+    var catalogRun: SQLiteCatalogReads.Run {
+        { [self] query in try await self.execute(query: query) }
+    }
+
     func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
         let rules = SQLiteStatementRules(context)
         guard rules != .unrestricted else { return try await execute(query: query) }
@@ -315,11 +319,11 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Foreign Key Checks
 
     func foreignKeyDisableStatements() -> [String]? {
-        ["PRAGMA foreign_keys = OFF"]
+        SQLiteCatalogReads.foreignKeyDisableStatements
     }
 
     func foreignKeyEnableStatements() -> [String]? {
-        ["PRAGMA foreign_keys = ON"]
+        SQLiteCatalogReads.foreignKeyEnableStatements
     }
 
     // MARK: - Session Scope
@@ -454,134 +458,25 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let safeTable = escapeStringLiteral(table)
-        // table_xinfo rather than table_info: table_info omits generated columns entirely, so they
-        // were invisible to the structure editor and to every write path that reads this list.
-        let query = "SELECT * FROM pragma_table_xinfo('\(safeTable)'\(SQLiteMasterQueries.pragmaSchemaArgument(schema)))"
-        let result = try await execute(query: query)
-        let generationExpressions = SQLiteCheckConstraintParser.generationExpressions(
-            inCreateStatement: try await createStatement(forTable: table, schema: schema) ?? ""
-        )
-
-        return result.rows.compactMap { row in
-            guard row.count >= 7,
-                  let name = row[1].asText,
-                  let dataType = row[2].asText else {
-                return nil
-            }
-
-            // hidden: 0 normal, 1 a virtual table's hidden column, 2 VIRTUAL generated,
-            // 3 STORED generated.
-            let hidden = row[6].asText.flatMap { Int($0) } ?? 0
-            guard hidden != 1 else { return nil }
-
-            let isNullable = row[3].asText == "0"
-            // PRAGMA pk column: 0 = not PK, 1+ = position in composite PK
-            let pkText = row[5].asText
-            let isPrimaryKey = pkText != nil && pkText != "0"
-            let defaultValue = sqliteDefaultValueFromCatalog(row[4].asText)
-            let generationKind: GenerationKind? = hidden == 2 ? .virtual : (hidden == 3 ? .stored : nil)
-
-            return PluginColumnInfo(
-                name: name,
-                dataType: dataType,
-                isNullable: isNullable,
-                isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue,
-                isGenerated: generationKind != nil,
-                generationExpression: generationKind == nil ? nil : generationExpressions[name],
-                generationKind: generationKind
-            )
-        }
-    }
-
-    private func createStatement(forTable table: String, schema: String?) async throws -> String? {
-        let query = SQLiteTemporarySchema.definitionQuery(name: table, types: ["table"], schema: schema)
-        let result = try await execute(query: query)
-        return result.rows.first?[safe: 1]?.asText
+        try await SQLiteCatalogReads.columns(table: table, schema: schema, run: catalogRun)
     }
 
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
-        guard let statement = try await createStatement(forTable: table, schema: schema) else { return [] }
-        return SQLiteCheckConstraintParser.constraints(inCreateStatement: statement).map { parsed in
-            PluginCheckConstraintInfo(name: parsed.name, expression: parsed.expression)
-        }
+        try await SQLiteCatalogReads.checkConstraints(table: table, schema: schema, run: catalogRun)
     }
 
     var providesBulkColumnFetch: Bool { true }
 
-    /// `pragma_table_xinfo`, not `pragma_table_info`, for the same reason `fetchColumns` uses it:
-    /// `table_info` omits generated columns entirely, so the bulk read used to answer with a
-    /// shorter column list than the per-table read for the same table. A caller comparing two
-    /// schemas through the bulk read saw neither side's generated columns and reported them as
-    /// matching. `m.sql` rides along so the generation expressions are parsed from the CREATE
-    /// statement without a second round trip per table.
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let query = """
-            SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk,
-                   p.hidden, m.sql
-            FROM \(SQLiteMasterQueries.catalogTable(schema: schema)) m,
-                 pragma_table_xinfo(m.name\(SQLiteMasterQueries.pragmaSchemaArgument(schema))) p
-            WHERE m.type = 'table' AND m.name NOT GLOB 'sqlite_*'
-            ORDER BY m.name, p.cid
-            """
-        let result = try await execute(query: query)
-
-        var allColumns: [String: [PluginColumnInfo]] = [:]
-        var expressionsByTable: [String: [String: String]] = [:]
-
-        for row in result.rows {
-            guard row.count >= 9,
-                  let tableName = row[0].asText,
-                  let columnName = row[2].asText,
-                  let dataType = row[3].asText else {
-                continue
-            }
-
-            // hidden: 0 normal, 1 a virtual table's hidden column, 2 VIRTUAL generated,
-            // 3 STORED generated.
-            let hidden = row[7].asText.flatMap { Int($0) } ?? 0
-            guard hidden != 1 else { continue }
-
-            let isNullable = row[4].asText == "0"
-            let defaultValue = sqliteDefaultValueFromCatalog(row[5].asText)
-            // PRAGMA table_xinfo pk column: 0 = not PK, 1+ = position in composite PK
-            let pkText = row[6].asText
-            let isPrimaryKey = pkText != nil && pkText != "0"
-            let generationKind: GenerationKind? = hidden == 2 ? .virtual : (hidden == 3 ? .stored : nil)
-
-            if generationKind != nil, expressionsByTable[tableName] == nil {
-                expressionsByTable[tableName] = SQLiteCheckConstraintParser.generationExpressions(
-                    inCreateStatement: row[8].asText ?? ""
-                )
-            }
-
-            let column = PluginColumnInfo(
-                name: columnName,
-                dataType: dataType,
-                isNullable: isNullable,
-                isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue,
-                isGenerated: generationKind != nil,
-                generationExpression: generationKind == nil ? nil : expressionsByTable[tableName]?[columnName],
-                generationKind: generationKind
-            )
-
-            allColumns[tableName, default: []].append(column)
-        }
-
-        return allColumns
+        try await SQLiteCatalogReads.allColumns(schema: schema, run: catalogRun)
     }
 
     var providesBulkForeignKeyFetch: Bool { true }
 
-    var tableDDLIncludesForeignKeys: Bool { true }
+    var tableDDLIncludesForeignKeys: Bool { SQLiteCatalogReads.tableDDLIncludesForeignKeys }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let result = try await execute(
-            query: SQLiteForeignKeyGrouping.schemaForeignKeysQuery(schema: schema, excludingTableGlob: nil)
-        )
-        return SQLiteForeignKeyGrouping.foreignKeysByTable(schema: schema, fromRows: result.rows)
+        try await SQLiteCatalogReads.allForeignKeys(schema: schema, run: catalogRun)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -595,7 +490,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        try await sqliteTriggerList(table: table, schema: schema)
+        try await SQLiteCatalogReads.triggers(table: table, schema: schema, run: catalogRun)
     }
 
     var supportsTransactionalDDL: Bool { true }
@@ -613,51 +508,19 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        "DROP TRIGGER IF EXISTS \(SQLiteMasterQueries.qualifiedTable(name, schema: schema, quote: quoteIdentifier))"
+        SQLiteCatalogReads.dropTriggerStatement(name: name, schema: schema)
     }
 
-    /// A view's `CREATE VIEW` sits in `sqlite_master` beside the tables, so one read answers both.
-    /// The view goes back exactly as it was written: SQLite keeps a trailing comment in it, which a
-    /// `;` appended here would land inside.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let query = SQLiteTemporarySchema.definitionQuery(name: table, types: ["table", "view"], schema: schema)
-        let result = try await execute(query: query)
-
-        guard let firstRow = result.rows.first,
-              let ddl = firstRow[safe: 1]?.asText else {
-            throw SQLitePluginError.queryFailed("Failed to fetch DDL for table '\(table)'")
-        }
-
-        guard firstRow[safe: 0]?.asText != "view" else { return ddl }
-        return ddl.hasSuffix(";") ? ddl : ddl + ";"
+        try await SQLiteCatalogReads.tableDDL(table: table, schema: schema, run: catalogRun)
     }
 
-    /// `sqlite_master` stores each index's own `CREATE INDEX` text, which is what `sqlite3 .dump`
-    /// replays and which carries a partial predicate, an expression key, a collation and a sort
-    /// direction exactly as written. An index SQLite created for itself to back a UNIQUE or PRIMARY
-    /// KEY constraint has a null `sql`, so testing for that is what keeps `sqlite_autoindex_*` out
-    /// of the dump: those come back with the constraint inside `CREATE TABLE`.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
-        let result = try await execute(
-            query: SQLiteTemporarySchema.indexDefinitionsQuery(table: table, schema: schema)
-        )
-        return result.rows.compactMap { $0[safe: 0]?.asText }
+        try await SQLiteCatalogReads.indexDDL(table: table, schema: schema, run: catalogRun)
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let safeView = escapeStringLiteral(view)
-        let query = """
-            SELECT sql FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
-            WHERE type = 'view' AND name = '\(safeView)'
-            """
-        let result = try await execute(query: query)
-
-        guard let firstRow = result.rows.first,
-              let ddl = firstRow[0].asText else {
-            throw SQLitePluginError.queryFailed("Failed to fetch definition for view '\(view)'")
-        }
-
-        return ddl
+        try await SQLiteCatalogReads.viewDefinition(view: view, schema: schema, run: catalogRun)
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {

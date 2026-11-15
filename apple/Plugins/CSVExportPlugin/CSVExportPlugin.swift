@@ -5,10 +5,9 @@
 
 import Combine
 import Foundation
-import SwiftUI
 import TableProPluginKit
 
-final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+nonisolated final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "CSV Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to CSV format"
@@ -23,16 +22,13 @@ final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
     typealias Settings = CSVExportOptions
     static let settingsStorageId = "csv"
 
-    @Published var settings = CSVExportOptions() {
+    // A nonisolated class cannot hold an @Published property, so the change is announced by hand.
+    var settings = CSVExportOptions() {
+        willSet { objectWillChange.send() }
         didSet { saveSettings() }
     }
 
     required init() { loadSettings() }
-
-    @MainActor
-    func settingsView() -> AnyView? {
-        AnyView(CSVExportOptionsView(plugin: self))
-    }
 
     func resetSettingsToDefaults() {
         settings = CSVExportOptions()

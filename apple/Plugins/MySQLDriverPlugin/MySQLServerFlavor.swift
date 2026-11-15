@@ -117,6 +117,11 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
     // No indexes, foreign keys, triggers, routines, events or partitions to read the MySQL way.
     var hasMySQLObjectCatalogs: Bool { !isDatabend && !isStarRocks }
 
+    // What a SQL file import runs around its statements; nil where the flavor has no foreign key checks.
+    func foreignKeyCheckStatements(enabled: Bool) -> [String]? {
+        hasMySQLObjectCatalogs ? ["SET FOREIGN_KEY_CHECKS=\(enabled ? 1 : 0)"] : nil
+    }
+
     var tidbVersion: MySQLEngineVersion? {
         guard case .tidb(let version) = self else { return nil }
         return version

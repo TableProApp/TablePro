@@ -8,11 +8,7 @@ internal struct InstallableExportFormat: Equatable, Sendable {
 }
 
 internal enum ExportFormatCatalog {
-    internal static let dataDictionaryFormatId = "datadict"
-
-    private static let displayOrder = [
-        "csv", "json", "sql", "xlsx", "md", "parquet", "mql", dataDictionaryFormatId
-    ]
+    internal static let dataDictionaryFormatId = ExportFormatOffer.dataDictionaryFormatId
 
     internal static func installable(in manifest: RegistryManifest?) -> [InstallableExportFormat] {
         (manifest?.plugins ?? []).flatMap { plugin in
@@ -37,51 +33,19 @@ internal enum ExportFormatCatalog {
         listsDatabaseObjects: Bool,
         columnsAreSampled: Bool
     ) -> [any ExportFormatPlugin] {
-        sorted(plugins.filter { plugin in
-            let pluginType = type(of: plugin)
-            if writesStructureOnly(plugin), !listsDatabaseObjects || columnsAreSampled {
-                return false
-            }
-            return accepts(
-                databaseTypeId: databaseTypeId,
-                supportedDatabaseTypeIds: pluginType.supportedDatabaseTypeIds,
-                excludedDatabaseTypeIds: pluginType.excludedDatabaseTypeIds
-            )
-        })
+        ExportFormatOffer.offered(
+            plugins.filter { !writesStructureOnly($0) || (listsDatabaseObjects && !columnsAreSampled) },
+            forDatabaseTypeId: databaseTypeId
+        )
     }
 
     internal static func writesStructureOnly(_ plugin: any ExportFormatPlugin) -> Bool {
         !plugin.readsRows(optionValues: plugin.defaultTableOptionValues(), kind: .table)
     }
 
-    internal static func accepts(
-        databaseTypeId: String,
-        supportedDatabaseTypeIds: [String],
-        excludedDatabaseTypeIds: [String]
-    ) -> Bool {
-        guard supportedDatabaseTypeIds.isEmpty else {
-            return supportedDatabaseTypeIds.contains(databaseTypeId)
-        }
-        return !excludedDatabaseTypeIds.contains(databaseTypeId)
-    }
-
-    internal static func sorted(_ plugins: [any ExportFormatPlugin]) -> [any ExportFormatPlugin] {
-        plugins.sorted { first, second in
-            let firstRank = rank(of: type(of: first).formatId)
-            let secondRank = rank(of: type(of: second).formatId)
-            guard firstRank == secondRank else { return firstRank < secondRank }
-            return type(of: first).formatDisplayName
-                .localizedCaseInsensitiveCompare(type(of: second).formatDisplayName) == .orderedAscending
-        }
-    }
-
     internal static func description(for plugin: any ExportFormatPlugin) -> String {
         let pluginType = type(of: plugin)
         return curatedDescription(for: pluginType.formatId) ?? pluginType.pluginDescription
-    }
-
-    private static func rank(of formatId: String) -> Int {
-        displayOrder.firstIndex(of: formatId) ?? displayOrder.count
     }
 
     private static func curatedDescription(for formatId: String) -> String? {

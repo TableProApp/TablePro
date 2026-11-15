@@ -9,6 +9,7 @@ import TableProPluginKit
 internal enum RowImportRefusal: LocalizedError, Equatable {
     case readOnly(connectionName: String)
     case importNotSupported(DatabaseType)
+    case rowsNotWritable(DatabaseType)
     case formatNotOffered(formatId: String)
     case sheetAlreadyPresented(connectionName: String)
 
@@ -18,6 +19,8 @@ internal enum RowImportRefusal: LocalizedError, Equatable {
             return String(format: String(localized: "%@ is read-only, so nothing can be written to it."), connectionName)
         case .importNotSupported(let databaseType):
             return String(format: String(localized: "Import is not supported for %@ connections."), databaseType.rawValue)
+        case .rowsNotWritable(let databaseType):
+            return String(format: String(localized: "%@ cannot take rows from a file."), databaseType.rawValue)
         case .formatNotOffered(let formatId):
             return String(
                 format: String(localized: "%@ files cannot be imported into this connection."),
@@ -37,6 +40,20 @@ internal struct ImportFormatLookup {
     internal var supportsImport: (DatabaseType) -> Bool
     internal var offeredFormats: (DatabaseType) -> [ImportFormatOption]
     internal var requiresTargetTable: (String) -> Bool?
+    internal var writesRows: (DatabaseType) -> Bool
+
+    internal init(
+        supportsImport: @escaping (DatabaseType) -> Bool,
+        offeredFormats: @escaping (DatabaseType) -> [ImportFormatOption],
+        requiresTargetTable: @escaping (String) -> Bool?,
+        // The sink's own test, so a file is refused before it is read rather than at the first batch.
+        writesRows: @escaping (DatabaseType) -> Bool = ImportDataSinkAdapter.canWriteRows(into:)
+    ) {
+        self.supportsImport = supportsImport
+        self.offeredFormats = offeredFormats
+        self.requiresTargetTable = requiresTargetTable
+        self.writesRows = writesRows
+    }
 
     internal static let live = ImportFormatLookup(
         supportsImport: { PluginManager.shared.supportsImport(for: $0) },
@@ -63,8 +80,12 @@ internal enum RowImportEligibility {
         guard lookup.supportsImport(databaseType) else {
             return .importNotSupported(databaseType)
         }
-        guard lookup.offeredFormats(databaseType).contains(where: { $0.id == formatId }),
-              lookup.requiresTargetTable(formatId) == true else {
+        let readsRows = lookup.requiresTargetTable(formatId) == true
+        // Asked before the offer, which leaves a row format out for the same reason and would only say "not offered".
+        guard !readsRows || lookup.writesRows(databaseType) else {
+            return .rowsNotWritable(databaseType)
+        }
+        guard lookup.offeredFormats(databaseType).contains(where: { $0.id == formatId }), readsRows else {
             return .formatNotOffered(formatId: formatId)
         }
         guard !isPresentingSheet else {

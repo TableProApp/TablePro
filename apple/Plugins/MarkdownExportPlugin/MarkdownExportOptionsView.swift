@@ -29,3 +29,10 @@ struct MarkdownExportOptionsView: View {
         .font(.system(size: 13))
     }
 }
+
+extension MarkdownExportPlugin {
+    @MainActor
+    func settingsView() -> AnyView? {
+        AnyView(MarkdownExportOptionsView(plugin: self))
+    }
+}

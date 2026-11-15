@@ -40,3 +40,10 @@ struct JSONExportOptionsView: View {
         .font(.system(size: 13))
     }
 }
+
+extension JSONExportPlugin {
+    @MainActor
+    func settingsView() -> AnyView? {
+        AnyView(JSONExportOptionsView(plugin: self))
+    }
+}

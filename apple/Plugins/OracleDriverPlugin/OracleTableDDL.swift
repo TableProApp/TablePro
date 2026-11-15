@@ -16,7 +16,7 @@ import TableProSQLGrammar
 /// Each column is written in the order Oracle's grammar takes it, measured on 23ai: the type verbatim, then
 /// `GENERATED ALWAYS AS (...) VIRTUAL` or `DEFAULT`, then `NOT NULL`. `NOT NULL` before `DEFAULT` fails with
 /// ORA-03076, and a type folded to upper case names no type at all when it is a quoted mixed-case object type.
-internal enum OracleTableDDL {
+nonisolated internal enum OracleTableDDL {
     // The keys and checks follow the columns. A NOT NULL the column definition writes is not written again as a check.
     static func createTable(
         qualifiedTable: String,
@@ -47,10 +47,10 @@ internal enum OracleTableDDL {
     private static func checkCondition(of constraint: OracleTableConstraint) throws -> String {
         let condition = SQLExpressionFragment.strippingComments(constraint.condition ?? "", databaseTypeId: "Oracle")
         guard !constraint.conditionMayBeCut, !condition.isEmpty, isSingleExpression(condition) else {
-            throw OraclePluginError(core: .queryFailed(String(
+            throw OracleStatementError(message: String(
                 format: String(localized: "The condition of check constraint %@ cannot be written as SQL."),
                 constraint.name
-            )))
+            ))
         }
         return condition
     }
@@ -114,7 +114,7 @@ internal enum OracleTableDDL {
         SQLExpressionFragment.isSingleExpression(text, databaseTypeId: "Oracle")
     }
 
-    private static func refusal(_ format: String, _ column: PluginColumnInfo) -> OraclePluginError {
-        OraclePluginError(core: .queryFailed(String(format: format, column.name)))
+    private static func refusal(_ format: String, _ column: PluginColumnInfo) -> OracleStatementError {
+        OracleStatementError(message: String(format: format, column.name))
     }
 }

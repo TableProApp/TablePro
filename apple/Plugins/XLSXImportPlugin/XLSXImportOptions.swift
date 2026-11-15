@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-struct XLSXImportOptions: Equatable, Codable {
+nonisolated struct XLSXImportOptions: Equatable, Codable {
     var hasHeaderRow: Bool = true
     var trimWhitespace: Bool = false
     var emptyAsNull: Bool = true

@@ -3,10 +3,12 @@ import Foundation
 import os
 import TableProDatabase
 import TableProModels
+import TableProPluginKit
 import TableProRedisCore
 
-nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unchecked Sendable {
+nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, ExportRowStreaming, @unchecked Sendable {
     private let actor = RedisActor()
+    private let selected: OSAllocatedUnfairLock<Int>
     private let host: String
     private let port: Int
     private let username: String?
@@ -35,6 +37,7 @@ nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unche
         self.password = password
         self.database = database
         self.ssl = ssl
+        self.selected = OSAllocatedUnfairLock(initialState: database)
     }
 
     // MARK: - Connection
@@ -145,6 +148,36 @@ nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unche
         }
 
         try await send(["SELECT", dbNum]).throwIfError().throwIfQueued("SELECT")
+        if let index = Int(dbNum) {
+            selected.withLock { $0 = index }
+        }
+    }
+
+    // MARK: - Transfer
+
+    // The database the last SELECT moved the session to.
+    var selectedDatabase: Int {
+        selected.withLock { $0 }
+    }
+
+    func selectDatabase(_ index: Int) async throws {
+        try await send(["SELECT", String(index)]).throwIfError().throwIfQueued("SELECT")
+        selected.withLock { $0 = index }
+    }
+
+    func command(_ arguments: [String]) async throws -> RedisReplyValue {
+        try await send(arguments)
+    }
+
+    // A bulk string's own bytes, which a value that is not UTF-8 text needs whole.
+    func bulkBytes(_ arguments: [String]) async throws -> Data? {
+        try await actor.bulkBytes(arguments.map { Data($0.utf8) })
+    }
+
+    // The Mac's KEYBROWSE export rows (`RedisExportRows`), a batch per pull.
+    func exportRows(query: String, readOnly: Bool) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let cursor = RedisExportCursor(driver: self, query: query)
+        return AsyncThrowingStream(unfolding: { try await cursor.next() })
     }
 
     func switchSchema(to name: String) async throws {
@@ -285,6 +318,25 @@ private actor RedisActor {
 
     func command(_ args: [Data]) throws -> RedisReplyValue {
         try executeCommand(args)
+    }
+
+    // Nil for anything but a bulk string: a missing key, an error, a queued command.
+    func bulkBytes(_ args: [Data]) throws -> Data? {
+        guard let ctx else { throw RedisError.notConnected }
+        let rawReply = RedisCommandArgv.withPointers(args) { argv, argvlen in
+            redisCommandArgv(ctx, Int32(args.count), argv, argvlen)
+        }
+        guard let rawReply else {
+            if ctx.pointee.err != 0 {
+                let msg = withUnsafePointer(to: &ctx.pointee.errstr.0) { String(cString: $0) }
+                throw RedisError.connectionFailed(msg)
+            }
+            throw RedisError.connectionFailed("No reply from server")
+        }
+        defer { HiredisReply.release(rawReply) }
+        let reply = rawReply.assumingMemoryBound(to: redisReply.self)
+        guard reply.pointee.type == REDIS_REPLY_STRING, let str = reply.pointee.str else { return nil }
+        return Data(bytes: str, count: reply.pointee.len)
     }
 
     func fetchServerVersion() throws -> String? {

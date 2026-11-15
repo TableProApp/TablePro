@@ -8,7 +8,7 @@
 
 import Foundation
 
-public enum PostgreSQLViewDefinition {
+nonisolated public enum PostgreSQLViewDefinition {
     public enum Kind: Equatable, Sendable {
         case view
         case materializedView
@@ -147,7 +147,7 @@ public enum PostgreSQLViewDefinition {
     }
 }
 
-private extension String {
+nonisolated private extension String {
     var nilIfBlank: String? {
         trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
     }

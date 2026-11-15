@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum ColumnQueryShape {
+nonisolated enum ColumnQueryShape {
     struct Fragments {
         let selectPrefix: String
         let tableLiteral: String?

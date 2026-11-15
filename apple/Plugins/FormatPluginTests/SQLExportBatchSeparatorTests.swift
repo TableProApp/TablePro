@@ -164,7 +164,8 @@ struct SQLExportBatchSeparatorTests {
         #expect(batches.contains("SET IDENTITY_INSERT [orders] ON;"))
         #expect(batches.contains("SET IDENTITY_INSERT [orders] OFF;"))
         #expect(batches.contains { $0.hasPrefix("INSERT INTO [orders]") && $0.hasSuffix(";") })
-        #expect(batches.filter { $0.hasPrefix("DROP ") }.count == 3)
+        // The routine gets no drop: the source writes none, and SQL Server has no DROP ROUTINE.
+        #expect(batches.filter { $0.hasPrefix("DROP ") }.count == 2)
     }
 
     @Test("A SQL Server dump ends each statement on a GO line, as SQL Server Management Studio writes one")

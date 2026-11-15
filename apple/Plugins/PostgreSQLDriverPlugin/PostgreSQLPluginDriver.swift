@@ -123,6 +123,16 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
     }
 
+    var exportCatalog: PostgreSQLCatalogExport {
+        PostgreSQLCatalogExport(
+            read: { [self] statement, schema in try await catalogRead(statement, namesRelativeTo: schema).rows },
+            currentSchema: core.currentSchema,
+            capabilities: versionedCapabilities,
+            catalogCapabilities: catalogCapabilities,
+            catalogPresence: catalogPresence
+        )
+    }
+
     func includesMaterializedViews() -> Bool {
         catalogPresence?.hasMaterializedViews ?? versionedCapabilities.hasMaterializedViewsCatalog
     }
@@ -131,24 +141,14 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         catalogPresence?.hasForeignTables ?? versionedCapabilities.hasForeignTablesCatalog
     }
 
-    func includesSequencesCatalog() -> Bool {
-        catalogPresence?.hasSequences ?? versionedCapabilities.hasSequencesCatalog
-    }
-
     // MARK: - Foreign Keys
 
     func foreignKeyDisableStatements() -> [String]? {
-        [Self.settingReplicationRole("replica")]
+        PostgreSQLForeignKeyChecks.disableStatements
     }
 
     func foreignKeyEnableStatements() -> [String]? {
-        [Self.settingReplicationRole("DEFAULT")]
-    }
-
-    /// Setting it takes a superuser or a `SET` grant, and a bare refusal aborts the transaction it runs in. The block
-    /// swallows the refusal and keeps the transaction, and an allowed `SET` outlives it (measured on 17.11 and 18.6).
-    private static func settingReplicationRole(_ value: String) -> String {
-        "DO $$ BEGIN SET session_replication_role = \(value); EXCEPTION WHEN insufficient_privilege THEN NULL; END $$"
+        PostgreSQLForeignKeyChecks.enableStatements
     }
 
     /// A duplicated database arrives with `public` alone, so every other schema its tables are
@@ -356,170 +356,42 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let resolvedSchema = schema ?? core.currentSchema
-        let query = PostgreSQLForeignKeyQueries.foreignKeyList(
-            schema: resolvedSchema, table: table, capabilities: catalogCapabilities
-        )
-        let result = try await catalogRead(query)
-        let foreignKeys = result.rows.compactMap { PostgreSQLForeignKeyRow($0)?.foreignKey }
-        Self.logger.info("[fk] postgres fetchForeignKeys schema=\(resolvedSchema, privacy: .private(mask: .hash)) table=\(table, privacy: .private(mask: .hash)) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
-        return foreignKeys
+        try await exportCatalog.fetchForeignKeys(table: table, schema: schema)
     }
 
-    /// The same builder the schema-wide list uses, with one more predicate. Two hand-written
-    /// queries over pg_trigger would be two chances to disagree about one table's triggers.
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        let resolvedSchema = schema ?? core.currentSchema
-        let query = PostgreSQLObjectQueries.triggerList(schema: resolvedSchema, table: table)
-        let result = try await catalogRead(query)
-        let triggers = result.rows.compactMap {
-            Self.trigger(from: $0, fallbackSchema: resolvedSchema)
-        }
-        Self.logger.info("[trigger] postgres fetchTriggers schema=\(resolvedSchema, privacy: .private(mask: .hash)) table=\(table, privacy: .private(mask: .hash)) rows=\(result.rows.count) parsed=\(triggers.count)")
-        return triggers
+        try await exportCatalog.fetchTriggers(table: table, schema: schema)
     }
 
-    /// PostgreSQL allows `f(integer)` and `f(text)` in one schema, so a drop that names only `f`
-    /// is ambiguous and the server refuses it.
     func generateDropRoutineSQL(
         name: String,
         signature: String?,
         schema: String?,
         isFunction: Bool
     ) -> String? {
-        let keyword = isFunction ? "FUNCTION" : "PROCEDURE"
-        let arguments = (signature ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return "DROP \(keyword) IF EXISTS \(qualifiedTable(name, schema: schema))\(arguments)"
+        exportCatalog.generateDropRoutineSQL(name: name, signature: signature, schema: schema, isFunction: isFunction)
     }
 
     var providesBulkForeignKeyFetch: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let query = PostgreSQLForeignKeyQueries.foreignKeyList(
-            schema: schema ?? core.currentSchema, table: nil, capabilities: catalogCapabilities
-        )
-        let result = try await catalogRead(query)
-        var grouped: [String: [PluginForeignKeyInfo]] = [:]
-        for row in result.rows {
-            guard let decoded = PostgreSQLForeignKeyRow(row) else { continue }
-            grouped[decoded.table, default: []].append(decoded.foreignKey)
-        }
-        return grouped
+        try await exportCatalog.fetchAllForeignKeys(schema: schema)
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        let query = PostgreSQLSchemaQueries.approximateRowCount(
-            schema: schema ?? core.currentSchema, table: table
-        )
-        let result = try await catalogRead(query)
-        return PostgreSQLSchemaQueries.rowEstimate(reltuples: result.rows.first?[safe: 0]?.asText).map { Int($0) }
+        try await exportCatalog.fetchApproximateRowCount(table: table, schema: schema)
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let resolvedSchema = schema ?? core.currentSchema
-        let quotedTable = quoteIdentifier(table)
-        let columnsQuery = PostgreSQLSchemaQueries.tableDDLColumnsQuery(
-            schema: resolvedSchema, table: table, capabilities: versionedCapabilities
-        )
-
-        let constraintsQuery = PostgreSQLSchemaQueries.tableDDLConstraintsQuery(
-            schema: resolvedSchema, table: table
-        )
-
-        let shapeQuery = PostgreSQLTableDDL.shapeQuery(
-            schema: resolvedSchema, table: table, capabilities: versionedCapabilities
-        )
-
-        async let columnsResult = catalogRead(columnsQuery)
-        async let constraintsResult = catalogRead(constraintsQuery)
-        async let shapeResult = try? catalogRead(shapeQuery)
-
-        let (cols, cons) = try await (columnsResult, constraintsResult)
-        let shapeRows = await shapeResult
-
-        /// `pg_attribute` covers views and materialized views as well as tables, so a view reached
-        /// here as a `CREATE TABLE` of its columns. The Structure tab's DDL and every other caller
-        /// that asks for a relation's DDL by name get the view's own statement instead.
-        if let relkind = cols.rows.first?[safe: 1]?.asText,
-           PostgreSQLViewDefinition.kind(forRelkind: relkind) != nil {
-            return try await fetchViewDefinition(view: table, schema: resolvedSchema)
-        }
-        // A sequence's attributes are its state columns, not a table to recreate.
-        if cols.rows.first?[safe: 1]?.asText == "S",
-           let ddl = try await sequenceDDL(sequence: table, schema: resolvedSchema) {
-            return ddl
-        }
-
-        let columnDefs = cols.rows.compactMap { $0[0].asText }
-        guard !columnDefs.isEmpty else {
-            throw LibPQPluginError(message: "Failed to fetch DDL for table '\(table)'", sqlState: nil, detail: nil)
-        }
-
-        let constraints = cons.rows.compactMap { $0[0].asText }
-        var parts = columnDefs
-        parts.append(contentsOf: constraints)
-
-        var shape = PostgreSQLTableDDL.shape(fromRows: shapeRows?.rows.map { $0.map(\.asText) })
-        var partitions: [PostgreSQLTableDDL.Partition] = []
-        var partitionIndexes: [String] = []
-        var partitionComments: [String] = []
-        if shape.partitionKey != nil {
-            let tree = try await catalogRead(PostgreSQLTableDDL.partitionTreeQuery(schema: resolvedSchema, table: table))
-            partitions = tree.rows.compactMap { PostgreSQLTableDDL.partition(from: $0.map(\.asText)) }
-            if !partitions.isEmpty {
-                async let elementRows = catalogRead(PostgreSQLTableDDL.partitionElementsQuery(
-                    schema: resolvedSchema, table: table, scope: .below, capabilities: versionedCapabilities
-                ))
-                async let indexRows = catalogRead(PostgreSQLTableDDL.partitionIndexesQuery(schema: resolvedSchema, table: table))
-                async let commentRows = catalogRead(PostgreSQLTableDDL.partitionCommentsQuery(schema: resolvedSchema, table: table))
-                let elements = PostgreSQLTableDDL.elementsByPartition(try await elementRows.rows.map { $0.map(\.asText) })
-                partitions = partitions.map { partition in
-                    var partition = partition
-                    partition.elements = elements[partition.name] ?? []
-                    return partition
-                }
-                partitionIndexes = try await indexRows.rows.compactMap { $0.first?.asText }
-                partitionComments = PostgreSQLTableDDL.partitionComments(try await commentRows.rows.map { $0.map(\.asText) })
-            }
-        } else if shape.partitionOf != nil {
-            let elementRows = try await catalogRead(PostgreSQLTableDDL.partitionElementsQuery(
-                schema: resolvedSchema, table: table, scope: .itself, capabilities: versionedCapabilities
-            ))
-            shape.partitionElements = PostgreSQLTableDDL.elementsByPartition(elementRows.rows.map { $0.map(\.asText) })
-                .values.first ?? []
-        }
-
-        let quotedSchema = quoteIdentifier(resolvedSchema)
-        return PostgreSQLTableDDL.script(
-            name: "\(quotedSchema).\(quotedTable)",
-            definitions: parts,
-            shape: shape,
-            partitions: partitions,
-            partitionIndexes: partitionIndexes,
-            partitionComments: partitionComments
-        )
+        try await exportCatalog.fetchTableDDL(table: table, schema: schema)
     }
 
-    /// `pg_get_indexdef` is what `pg_dump` itself emits, and it round-trips an expression key, an
-    /// operator class, an `INCLUDE` list, a storage parameter, a partial predicate and a per-column
-    /// sort direction verbatim. It also qualifies the table whatever `search_path` holds, so a dump
-    /// spanning two schemas attaches each index to the right one.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
-        try await fetchStandaloneIndexes(table: table, schema: schema ?? core.currentSchema).definitions
-            .map(PostgreSQLTableDDL.indexCoveringPartitions)
+        try await exportCatalog.fetchIndexDDL(table: table, schema: schema)
     }
 
     func fetchStandaloneIndexes(table: String, schema: String) async throws -> PostgreSQLStandaloneIndexes {
-        let query = PostgreSQLIndexQueries.standaloneIndexQuery(schema: schema, table: table)
-        let indexes = PostgreSQLIndexQueries.standaloneIndexes(
-            rows: try await catalogRead(query).rows
-        )
-        if !indexes.invalidNames.isEmpty {
-            Self.logger.info(
-                "Left out \(indexes.invalidNames.count) invalid index(es) on \(table, privacy: .private(mask: .hash))"
-            )
-        }
-        return indexes
+        try await exportCatalog.fetchStandaloneIndexes(table: table, schema: schema)
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
@@ -580,12 +452,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])] {
-        let query = PostgreSQLSchemaQueries.dependentEnumTypes(schema: schema ?? core.currentSchema, table: table)
-        let result = try await catalogRead(query)
-        return result.rows.compactMap { row -> (name: String, labels: [String])? in
-            guard let typeName = row[0].asText, let labelsStr = row[1].asText else { return nil }
-            return (name: typeName, labels: PostgreSQLTextArray.values(labelsStr))
-        }
+        try await exportCatalog.fetchDependentTypes(table: table, schema: schema)
     }
 
     private static let supportedEncodings: [String] = [
@@ -843,81 +710,15 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        guard let parts = createTableParts(definition) else { return nil }
-        var sql = parts.createTable + ";"
-        if !parts.indexStatements.isEmpty {
-            sql += "\n\n" + parts.indexStatements.joined(separator: ";\n") + ";"
-        }
-        return sql
+        PostgreSQLCreateTableSQL.script(definition, schema: core.currentSchema, capabilities: versionedCapabilities)
     }
 
     func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
-        guard let parts = createTableParts(definition) else { return nil }
-        let columnComments = PostgreSQLRelationSQL.columnCommentStatements(
-            qualifiedTable: parts.qualifiedTable,
-            columns: definition.columns
-        )
-        return [parts.createTable] + parts.indexStatements + columnComments
-    }
-
-    private func createTableParts(
-        _ definition: PluginCreateTableDefinition
-    ) -> (qualifiedTable: String, createTable: String, indexStatements: [String])? {
-        guard !definition.columns.isEmpty,
-              PostgreSQLVersionedStatements.refusal(for: definition, capabilities: versionedCapabilities) == nil
-        else { return nil }
-
-        let schema = core.currentSchema
-        let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(definition.tableName))"
-        let pkColumns = definition.columns.filter { $0.isPrimaryKey }
-        let inlinePK = pkColumns.count == 1
-        var parts: [String] = definition.columns.map { pgColumnDefinition($0, inlinePK: inlinePK) }
-
-        if pkColumns.count > 1 {
-            let pkCols = pkColumns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
-            parts.append("PRIMARY KEY (\(pkCols))")
-        }
-
-        for fk in definition.foreignKeys {
-            parts.append(pgForeignKeyDefinition(fk))
-        }
-
-        let createTable = "CREATE TABLE \(qualifiedTable) (\n  " +
-            parts.joined(separator: ",\n  ") +
-            "\n)"
-        let indexStatements = definition.indexes.map {
-            PostgreSQLIndexClauses.createStatement(for: $0, qualifiedTable: qualifiedTable)
-        }
-        return (qualifiedTable, createTable, indexStatements)
+        PostgreSQLCreateTableSQL.statements(definition, schema: core.currentSchema, capabilities: versionedCapabilities)
     }
 
     private func pgColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        var def = "\(quoteIdentifier(col.name)) \(PostgreSQLColumnClauses.type(for: col))"
-        if let collation = PostgreSQLColumnClauses.collation(for: col) {
-            def += " COLLATE \(collation)"
-        }
-        if let expression = PostgreSQLColumnClauses.generationExpression(for: col) {
-            def += " GENERATED ALWAYS AS (\(expression)) \(pgGenerationKeyword(col.generationKind))"
-            if !col.isNullable { def += " NOT NULL" }
-            // PostgreSQL allows a primary key on a generated column, and the caller relies on the
-            // inline key being emitted here: returning early without it created no key at all.
-            if inlinePK && col.isPrimaryKey { def += " PRIMARY KEY" }
-            return def
-        }
-        if !col.autoIncrement {
-            if col.isNullable {
-                def += " NULL"
-            } else {
-                def += " NOT NULL"
-            }
-        }
-        if let defaultValue = PostgreSQLColumnClauses.defaultExpression(for: col) {
-            def += " DEFAULT \(defaultValue)"
-        }
-        if inlinePK && col.isPrimaryKey {
-            def += " PRIMARY KEY"
-        }
-        return def
+        PostgreSQLCreateTableSQL.columnDefinition(col, inlinePK: inlinePK, capabilities: versionedCapabilities)
     }
 
     /// PostgreSQL 17 added ALTER COLUMN ... SET EXPRESSION AS, which rewrites the column in place.
@@ -939,36 +740,6 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return "ALTER TABLE \(qt) ALTER COLUMN \(colName) SET EXPRESSION AS (\(expression))"
     }
 
-    /// Never emitted bare: PostgreSQL 17 and earlier reject VIRTUAL outright and require STORED,
-    /// while 18 made VIRTUAL the default, so the keyword has to be explicit either way.
-    private func pgGenerationKeyword(_ kind: GenerationKind?) -> String {
-        guard versionedCapabilities.hasVirtualGeneratedColumns else { return "STORED" }
-        return (kind ?? .virtual).rawValue
-    }
-
-    private func pgForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
-        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refTable: String
-        if let schema = fk.referencedSchema, !schema.isEmpty {
-            refTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(fk.referencedTable))"
-        } else {
-            refTable = quoteIdentifier(fk.referencedTable)
-        }
-        let constraint = fk.name.isEmpty ? "" : "CONSTRAINT \(quoteIdentifier(fk.name)) "
-        var def = "\(constraint)FOREIGN KEY (\(cols)) REFERENCES \(refTable)"
-        if !refCols.isEmpty {
-            def += " (\(refCols))"
-        }
-        if fk.onDelete != "NO ACTION" {
-            def += " ON DELETE \(fk.onDelete)"
-        }
-        if fk.onUpdate != "NO ACTION" {
-            def += " ON UPDATE \(fk.onUpdate)"
-        }
-        return def
-    }
-
     // MARK: - Definition SQL (clipboard copy)
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
@@ -983,7 +754,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? {
-        pgForeignKeyDefinition(fk)
+        PostgreSQLCreateTableSQL.foreignKeyDefinition(fk)
     }
 
     // MARK: - ALTER TABLE DDL
@@ -1064,7 +835,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        "ALTER TABLE \(qualifiedTableName(table)) ADD \(pgForeignKeyDefinition(fk))"
+        "ALTER TABLE \(qualifiedTableName(table)) ADD \(PostgreSQLCreateTableSQL.foreignKeyDefinition(fk))"
     }
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {

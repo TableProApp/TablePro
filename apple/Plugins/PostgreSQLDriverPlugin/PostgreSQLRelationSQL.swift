@@ -9,7 +9,7 @@
 import Foundation
 import TableProPluginKit
 
-public enum PostgreSQLRelationSQL {
+nonisolated public enum PostgreSQLRelationSQL {
     /// The keyword `COMMENT ON` needs for each relation kind. PostgreSQL checks it against the
     /// relation's `relkind` and refuses a mismatch: `COMMENT ON TABLE` on a view fails with
     /// "is not a table", and `COMMENT ON VIEW` on a materialized view with "is not a view".

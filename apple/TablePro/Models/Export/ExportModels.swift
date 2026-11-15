@@ -221,6 +221,9 @@ struct ExportObjectItem: Identifiable, Hashable {
     /// The table a trigger fires for. Nil for every other kind.
     let parentTable: String?
 
+    // Function or procedure, so the drop names the right statement. Nil for every other kind.
+    let routineKind: PluginRoutineKind?
+
     var isSelected: Bool = false
     var optionValues: [Bool] = []
 
@@ -234,6 +237,7 @@ struct ExportObjectItem: Identifiable, Hashable {
         kind: PluginExportObjectKind,
         identity: String? = nil,
         parentTable: String? = nil,
+        routineKind: PluginRoutineKind? = nil,
         isSelected: Bool = false,
         optionValues: [Bool] = [],
         rowScope: PluginExportRowScope = .unrestricted
@@ -244,6 +248,7 @@ struct ExportObjectItem: Identifiable, Hashable {
         self.kind = kind
         self.identity = identity
         self.parentTable = parentTable
+        self.routineKind = routineKind
         self.isSelected = isSelected
         self.optionValues = optionValues
         self.rowScope = rowScope

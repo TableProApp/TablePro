@@ -131,17 +131,17 @@ struct DataSourceExportTests {
 
     @Test("A supported list wins over an excluded list")
     func supportedListWins() {
-        #expect(ExportFormatCatalog.accepts(
+        #expect(ExportFormatOffer.accepts(
             databaseTypeId: "MongoDB",
             supportedDatabaseTypeIds: ["MongoDB"],
             excludedDatabaseTypeIds: ["MongoDB"]
         ))
-        #expect(!ExportFormatCatalog.accepts(
+        #expect(!ExportFormatOffer.accepts(
             databaseTypeId: "DataFile",
             supportedDatabaseTypeIds: ["MongoDB"],
             excludedDatabaseTypeIds: []
         ))
-        #expect(ExportFormatCatalog.accepts(
+        #expect(ExportFormatOffer.accepts(
             databaseTypeId: "DataFile",
             supportedDatabaseTypeIds: [],
             excludedDatabaseTypeIds: ["MongoDB", "Redis"]

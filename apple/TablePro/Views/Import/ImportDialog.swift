@@ -8,6 +8,7 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProSQLFile
 import TableProSQLGrammar
 import TableProUtilities
 
@@ -439,17 +440,18 @@ struct ImportDialog: View {
             let maxPreviewSize = 5 * 1_024 * 1_024
             let previewData = try handle.read(upToCount: maxPreviewSize) ?? Data()
 
-            var decoder = SQLChunkDecoder(encoding: selectedEncoding.encoding)
-            if let preview = decoder.decode(previewData) {
+            if let preview = SQLDumpEncodingChoice.decodedPreview(
+                previewData, as: selectedEncoding.encoding, isWholeFile: previewData.count < maxPreviewSize
+            ) {
                 filePreview = preview
                 hasPreviewError = false
             } else if let detected = SQLDumpEncodingChoice.encoding(
-                replacing: selectedEncoding,
+                replacing: selectedEncoding.encoding,
                 forPreview: previewData,
                 isWholeFile: previewData.count < maxPreviewSize,
-                family: TransactionEngineFamily.of(connection.type),
+                family: TransactionEngineFamily.of(connection.type).dumpFamily,
                 grammar: sessionGrammar
-            ) {
+            ).flatMap({ found in ImportEncoding.allCases.first { $0.encoding == found } }) {
                 Self.logger.info("Preview did not decode as \(selectedEncoding.rawValue, privacy: .public); switching to the detected \(detected.rawValue, privacy: .public)")
                 detectedEncoding = detected
                 selectedEncoding = detected

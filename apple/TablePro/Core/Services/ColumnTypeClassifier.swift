@@ -1,12 +1,3 @@
-//
-//  ColumnTypeClassifier.swift
-//  TablePro
-//
-//  Maps raw database type strings to semantic ColumnType values.
-//  Handles type wrappers (Nullable, LowCardinality), parameterized types,
-//  and database-specific conventions across all supported databases.
-//
-
 import Foundation
 
 struct ColumnTypeClassifier {
@@ -211,11 +202,7 @@ struct ColumnTypeClassifier {
             map[key] = { .json(rawType: $0) }
         }
 
-        // Oracle's `LONG RAW` holds bytes, and no pattern arm below reads the name as binary.
-        for key in [
-            "BLOB", "BYTEA", "BINARY", "VARBINARY", "RAW", "IMAGE",
-            "TINYBLOB", "MEDIUMBLOB", "LONGBLOB", "LONG RAW"
-        ] {
+        for key in ColumnTypeTraits.byteTypeNames {
             map[key] = { .blob(rawType: $0) }
         }
 

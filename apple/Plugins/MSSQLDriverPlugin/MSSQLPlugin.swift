@@ -790,18 +790,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        let objectLiteral = MSSQLStringLiteral.quoted(
-            MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table))
-        let sql = """
-            SELECT SUM(p.rows)
-            FROM sys.partitions p
-            WHERE p.object_id = OBJECT_ID(\(objectLiteral)) AND p.index_id IN (0, 1)
-            """
-        let result = try await execute(query: sql)
-        if let row = result.rows.first, let cell = row.first, let str = cell.asText {
-            return Int(str)
-        }
-        return nil
+        try await exportCatalog.fetchApproximateRowCount(table: table, schema: schema)
     }
 
     // MARK: - Query Building
@@ -959,9 +948,16 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         MSSQLStringLiteral.escaped(value)
     }
 
+    var exportCatalog: MSSQLExportCatalog {
+        MSSQLExportCatalog(
+            run: { [self] query in try await execute(query: query) },
+            currentSchema: currentSchemaName,
+            principalState: principalState
+        )
+    }
+
     func effectiveSchema(_ schema: String?) -> String {
-        guard let schema, !schema.isEmpty else { return currentSchemaName }
-        return schema
+        MSSQLExportCatalog.effectiveSchema(schema, current: currentSchemaName)
     }
 
     func effectiveSchemaQuoted(_ schema: String?) -> String {
@@ -995,12 +991,6 @@ enum MSSQLPluginError: Error {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)
-}
-
-extension MSSQLPluginError {
-    init(_ refusal: MSSQLDefinitionRefusal) {
-        self = .queryFailed(refusal.reason)
-    }
 }
 
 extension MSSQLPluginError: PluginDriverError {

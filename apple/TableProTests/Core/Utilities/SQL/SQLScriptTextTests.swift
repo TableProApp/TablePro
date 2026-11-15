@@ -10,6 +10,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLFile
 import TableProSQLGrammar
 import Testing
 

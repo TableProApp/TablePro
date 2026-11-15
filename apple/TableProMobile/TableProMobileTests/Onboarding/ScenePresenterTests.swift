@@ -248,6 +248,70 @@ struct ScenePresenterTests {
         #expect(presenter.takeDeliverableIntent(isLocked: false, isLibraryWritable: true) != nil)
     }
 
+    @Test("An opened data file waits for a sheet like a link, and needs no writable library")
+    func dataImportWaitsForSheetOnly() {
+        let presenter = ScenePresenter()
+        let file = URL(fileURLWithPath: "/tmp/orders.csv")
+        presenter.present(.settings)
+        presenter.receive(.importData(file))
+
+        #expect(presenter.takeDeliverableIntent(isLocked: false, isLibraryWritable: false) == nil)
+
+        presenter.sheet = nil
+        #expect(presenter.takeDeliverableIntent(isLocked: false, isLibraryWritable: false) == .importData(file))
+        #expect(presenter.holdsConnectionRestore == false)
+    }
+
+    @Test("An opened data file waits while an editor holds unsaved changes")
+    func dataImportWaitsForEditor() {
+        let presenter = ScenePresenter()
+        let editor = UUID()
+        presenter.setEditorHold(editor, isHolding: true)
+        presenter.receive(.importData(URL(fileURLWithPath: "/tmp/orders.csv")))
+
+        #expect(presenter.takeDeliverableIntent(isLocked: false, isLibraryWritable: true) == nil)
+
+        presenter.setEditorHold(editor, isHolding: false)
+        #expect(presenter.takeDeliverableIntent(isLocked: false, isLibraryWritable: true) != nil)
+    }
+
+    @Test("A file handed to a connection is taken once, and only by that connection")
+    func dataImportTakenByItsConnection() {
+        let presenter = ScenePresenter()
+        let file = URL(fileURLWithPath: "/tmp/orders.csv")
+        presenter.requestDataImport(file, in: connectionId)
+
+        #expect(presenter.takeDataImport(for: UUID()) == nil)
+        #expect(presenter.takeDataImport(for: connectionId) == file)
+        #expect(presenter.takeDataImport(for: connectionId) == nil)
+    }
+
+    @Test("A file waiting for a connection that is no longer on screen is dropped, and one for the next is kept")
+    func dataImportDiscardedWithItsConnection() {
+        let presenter = ScenePresenter()
+        let file = URL(fileURLWithPath: "/tmp/orders.csv")
+        let next = UUID()
+
+        presenter.requestDataImport(file, in: next)
+        presenter.discardDataImport(unlessFor: next)
+        #expect(presenter.pendingDataImport == PendingDataImport(connectionId: next, fileURL: file))
+
+        presenter.discardDataImport(unlessFor: nil)
+        #expect(presenter.pendingDataImport == nil)
+    }
+
+    @Test("Moving a file to another connection opens that connection the way a link does")
+    func dataImportMovesToAnotherConnection() {
+        let presenter = ScenePresenter()
+        let file = URL(fileURLWithPath: "/tmp/orders.csv")
+        let other = UUID()
+
+        presenter.moveDataImport(file, to: other)
+        #expect(presenter.restoreHolds == [.pendingIntent])
+        #expect(presenter.takeDeliverableIntent(isLocked: false, isLibraryWritable: true) == .openConnection(other, table: nil))
+        #expect(presenter.takeDataImport(for: other) == file)
+    }
+
     @Test("An editor that goes away lets go of its hold", .timeLimit(.minutes(1)))
     func releasedEditorLetsGo() async {
         let presenter = ScenePresenter()

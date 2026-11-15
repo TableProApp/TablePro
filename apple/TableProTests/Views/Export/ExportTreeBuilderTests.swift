@@ -351,6 +351,25 @@ struct ExportTreeBuilderTests {
         #expect(loaded.map(\.name) == ["purge"])
     }
 
+    @Test("A routine's own kind survives the rebuild the tree makes of every row")
+    func routineKindSurvivesTheTreeBuild() async throws {
+        let reader = Self.threeSchemaReader()
+        reader.sideObjectsBySchema = ["archive": [
+            ExportObjectItem(name: "purge", databaseName: "archive", kind: .routine, routineKind: .procedure)
+        ]]
+        let builder = Self.builder(
+            typeId: Self.schemaTypeId,
+            preselection: .containers([.database("app")]),
+            reader: reader,
+            supportedObjectKinds: Self.sqlKinds
+        )
+
+        let items = try await builder.build(priorRows: [:])
+        let purge = items.first { $0.name == "archive" }?.objects.first { $0.name == "purge" }
+
+        #expect(purge?.routineKind == .procedure)
+    }
+
     @Test("Exporting a whole database reads every kind of every schema in it")
     func wholeDatabaseExportReadsEveryKind() async throws {
         let reader = Self.threeSchemaReader()

@@ -7,7 +7,7 @@ import Foundation
 import TableProPluginKit
 import TableProTabularIO
 
-struct XLSXImportSheet {
+nonisolated struct XLSXImportSheet {
     enum ReadError: LocalizedError {
         case noWorksheet
 

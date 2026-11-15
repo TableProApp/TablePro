@@ -19,6 +19,10 @@ extension PluginDriverAdapter {
         return schemaPluginDriver.streamExportRows(query: query, context: streamContext(query, safeModeIsReadOnly))
     }
 
+    func generateDropRelationSQL(name: String, kind: PluginExportObjectKind, schema: String?) -> String? {
+        schemaPluginDriver.generateDropRelationSQL(name: name, kind: kind, schema: schema)
+    }
+
     private func streamContext(_ query: String, _ safeModeIsReadOnly: Bool) -> PluginStatementContext {
         var context = statementContext(query)
         context.enforcesReadOnly = readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly) != nil

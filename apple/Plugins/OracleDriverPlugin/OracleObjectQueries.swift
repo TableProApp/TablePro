@@ -8,13 +8,10 @@
 import Foundation
 import TableProSQLQuoting
 
-/// Catalog SQL for routines and triggers. Pure, so it is testable without a server.
-///
-/// Every dictionary view is named with its `SYS` owner. Oracle resolves an unqualified name to a current-schema object
-/// before the public synonym, so a user who owns the schema the reader is in could plant a same-named table or view and
-/// have the app read it. The rule and its measurement live in `OracleDictionary` in TableProOracleCore, which this file
-/// cannot import: it compiles into the test target, which does not link that package, so the prefix is written out here.
-public enum OracleObjectQueries {
+// Every dictionary view is named with its `SYS` owner: an unqualified name resolves to a current-schema object before
+// the public synonym, so a planted same-named view would be read. The rule is `OracleDictionary`'s in TableProOracleCore,
+// written out here because a target compiling this file does not link that package.
+nonisolated public enum OracleObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
         SQLQuoting.stringLiteralBody(value)
     }
@@ -23,7 +20,7 @@ public enum OracleObjectQueries {
         SQLQuoting.identifier(value)
     }
 
-    /// Oracle's grammar is `COMMENT ON TABLE [schema.]{table | view}`: there is no `VIEW` keyword.
+    // Oracle's grammar is `COMMENT ON TABLE [schema.]{table | view}`: there is no `VIEW` keyword.
     public static func commentStatement(qualifiedName: String, objectType: String, comment: String?) -> String? {
         let keyword: String
         switch objectType.uppercased() {
@@ -43,13 +40,8 @@ public enum OracleObjectQueries {
         SQLQuoting.stringLiteral(comment ?? "")
     }
 
-    /// Standalone procedures and functions only. A packaged routine is addressed through its
-    /// package, which is a different object with a different DDL call, so listing it here would
-    /// produce rows whose source cannot be fetched.
-    ///
-    /// No argument list is built. Oracle only allows overloading inside a package, so a standalone
-    /// routine is identified by its name alone, and the LISTAGG that would assemble a signature
-    /// raises ORA-01489 past 4000 bytes, which fails the whole listing over one wide signature.
+    // Standalone routines only: a packaged one is read through its package, so its row would have no source. No
+    // argument list: only a package overloads, and the LISTAGG that builds one raises ORA-01489 past 4000 bytes.
     public static func routineList(schema: String) -> String {
         let schemaLiteral = escapeLiteral(schema)
         return """
@@ -65,9 +57,8 @@ public enum OracleObjectQueries {
             """
     }
 
-    /// ALL_SOURCE stores one row per line, so the body has to be reassembled in LINE order.
-    /// DBMS_METADATA.GET_DDL is nicer but returns nothing rather than raising when the caller
-    /// lacks SELECT_CATALOG_ROLE for another schema, which reads as a routine that vanished.
+    // ALL_SOURCE, one row per line, in LINE order. DBMS_METADATA.GET_DDL returns nothing rather than raising without
+    // SELECT_CATALOG_ROLE for another schema, which reads as a routine that vanished.
     public static func routineSource(schema: String, name: String, type: String) -> String {
         """
         SELECT TEXT
@@ -79,13 +70,11 @@ public enum OracleObjectQueries {
         """
     }
 
-    /// TRIGGER_BODY is the part the previous query never selected, which left the viewer showing a
-    /// CREATE OR REPLACE header with no body under it. It stays last because it is a LONG.
+    // TRIGGER_BODY stays last because it is a LONG.
     public static func triggerList(schema: String, table: String?) -> String {
         let schemaLiteral = escapeLiteral(schema)
-        /// A schema browse asks for the triggers this schema owns, which is OWNER. A per-table
-        /// fetch asks for the triggers on that table, which is TABLE_OWNER plus TABLE_NAME. They
-        /// differ for a trigger one schema owns on another schema's table.
+        // A schema browse reads OWNER, a per-table fetch TABLE_OWNER and TABLE_NAME: they differ for a trigger one
+        // schema owns on another schema's table.
         let scope = table.map {
             "TABLE_OWNER = '\(schemaLiteral)' AND TABLE_NAME = '\(escapeLiteral($0))'"
         } ?? "OWNER = '\(schemaLiteral)'"
@@ -119,21 +108,11 @@ public enum OracleObjectQueries {
         triggerType.uppercased().contains("EACH ROW") ? "ROW" : "STATEMENT"
     }
 
-    /// The statement that recreates a trigger, assembled from the columns ALL_TRIGGERS splits it into.
-    ///
-    /// DESCRIPTION holds the header up to the body: the name, timing, events, subject, REFERENCING,
-    /// FOR EACH ROW and FOLLOWS. Measured on Oracle 23ai, it holds neither the WHEN clause nor
-    /// DISABLE, and a trigger whose body is a CALL keeps only the call's target in TRIGGER_BODY,
-    /// with no CALL keyword and a `;` Oracle added. Written back as they were read, the WHEN clause
-    /// and the disabled state were lost and a CALL trigger failed with ORA-04079, after the sync had
-    /// already dropped the one in the target.
-    ///
-    /// The owner's own schema is taken out of the header, the way ALL_SOURCE already gives a
-    /// procedure without it, so the trigger lands in whatever schema the statement runs in rather
-    /// than going back to the one it was read from. That holds only for a trigger on its own
-    /// schema's table, or on the schema itself: one schema's trigger on another's table is listed
-    /// with that table and replayed from its schema, where only the owner's qualifier still names
-    /// the same trigger. A qualifier naming any other schema stays.
+    // Measured on 23ai: DESCRIPTION holds the header up to the body but neither the WHEN clause nor DISABLE, and a CALL
+    // trigger's TRIGGER_BODY holds only the call's target with a `;` Oracle added, so those are written back here or the
+    // trigger fails with ORA-04079. The owner's schema is taken out of the header, as ALL_SOURCE gives a procedure, so
+    // the trigger lands in the schema the statement runs in. Not for a trigger on another schema's table, which is
+    // replayed from that schema, where only the owner's qualifier still names it.
     public static func triggerDefinition(_ trigger: OracleTriggerSource) -> String {
         let prefix = "CREATE OR REPLACE TRIGGER "
         let body = triggerBody(trigger)
@@ -157,21 +136,8 @@ public enum OracleObjectQueries {
         return lines.joined(separator: "\n")
     }
 
-    /// `DROP TRIGGER`, qualified when the trigger lives outside the session's current schema. An
-    /// unqualified name is looked up in the current schema, so a trigger another schema owns was
-    /// dropped under the wrong owner or not found. A trigger in the current schema stays unqualified,
-    /// which keeps a dump restorable into a schema of another name.
-    public static func dropTrigger(name: String, schema: String?, currentSchema: String?) -> String {
-        guard let schema = nonEmpty(schema), schema != currentSchema else {
-            return "DROP TRIGGER \(quoteIdentifier(name))"
-        }
-        return "DROP TRIGGER \(quoteIdentifier(schema)).\(quoteIdentifier(name))"
-    }
-
-    /// `header` with every qualifier that names `schema` taken out: `probe.t`, `"PROBE"."T"` and
-    /// `PROBE.SCHEMA` all lose their `PROBE.`. An unquoted name matches however it is cased, since
-    /// Oracle folds it to upper case; a quoted one matches exactly. Comments and literals are copied
-    /// as they are.
+    // `probe.t`, `"PROBE"."T"` and `PROBE.SCHEMA` all lose their `PROBE.`: Oracle folds an unquoted name to upper case,
+    // and a quoted one matches exactly. Comments and literals are copied as they are.
     public static func strippingSchema(_ schema: String, from header: String) -> String {
         var reader = OracleHeaderScanner(header)
         var output = ""
@@ -207,8 +173,8 @@ public enum OracleObjectQueries {
     }
 }
 
-/// One ALL_TRIGGERS row, as ``OracleObjectQueries/triggerList(schema:table:)`` selects it.
-public struct OracleTriggerSource: Sendable, Equatable {
+// One ALL_TRIGGERS row, as `OracleObjectQueries.triggerList(schema:table:)` selects it.
+nonisolated public struct OracleTriggerSource: Sendable, Equatable {
     public let name: String
     public let owner: String?
     public let tableOwner: String?
@@ -239,10 +205,8 @@ public struct OracleTriggerSource: Sendable, Equatable {
     }
 }
 
-/// Reads a trigger header one token at a time: identifiers, quoted identifiers, comments, literals
-/// and single characters, each with the exact text it covers so the header can be written back
-/// unchanged around what is taken out.
-private struct OracleHeaderScanner {
+// Each token keeps the exact text it covers, so the header is written back unchanged around what is taken out.
+nonisolated private struct OracleHeaderScanner {
     enum Kind {
         case identifier(String, quoted: Bool)
         case other
@@ -280,7 +244,7 @@ private struct OracleHeaderScanner {
         return Token(kind: kind, text: text, end: index, followsPeriod: followsPeriod)
     }
 
-    /// Where the name after a `.` starts, when the token ending at `position` is followed by one.
+    // Where the name after a `.` starts, when the token ending at `position` is followed by one.
     func positionAfterPeriod(from position: Int) -> Int? {
         var cursor = skippingWhitespace(from: position)
         guard cursor < scalars.count, scalars[cursor] == "." else { return nil }

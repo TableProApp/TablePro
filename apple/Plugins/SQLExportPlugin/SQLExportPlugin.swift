@@ -6,10 +6,9 @@
 import Combine
 import Foundation
 import os
-import SwiftUI
 import TableProPluginKit
 
-final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "SQL Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to SQL format"
@@ -45,7 +44,9 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
     typealias Settings = SQLExportOptions
     static let settingsStorageId = "sql"
 
-    @Published var settings = SQLExportOptions() {
+    // A nonisolated class cannot hold an @Published property, so the change is announced by hand.
+    var settings = SQLExportOptions() {
+        willSet { objectWillChange.send() }
         didSet { saveSettings() }
     }
 
@@ -116,11 +117,6 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             excludesDefiner: settings.excludeDefiner)
     }
 
-    @MainActor
-    func settingsView() -> AnyView? {
-        AnyView(SQLExportOptionsView(plugin: self))
-    }
-
     func resetSettingsToDefaults() {
         settings = SQLExportOptions()
     }
@@ -140,9 +136,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         tablesUnorderedByCycle = []
         emittedSequenceNames = []
 
-        /// Read once, because `PluginManager` hands every window the same plugin instance and a
-        /// second window's options pane can write `settings` while this export is still running. A
-        /// cap re-read per table would let one export start at a mebibyte and finish unbounded.
+        // Read once: every window shares this plugin, and a cap re-read per table could start at 1 MiB and end unbounded.
         let options = settings
         var statementTally = SQLExportStatementTally()
 
@@ -159,8 +153,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             actualDestination = destination
         }
 
-        /// Compression runs over one file, so a compressed export never splits. Saying so beats
-        /// silently gzipping the first part and dropping the rest.
+        // Compression runs over one file, so a compressed export never splits, and says so.
         let splitSize = options.compressWithGzip ? 0 : options.splitSizeMegabytes
         if options.compressWithGzip, options.splitSizeMegabytes > 0 {
             metadataWarnings.append(String(localized:
@@ -218,33 +211,30 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             statementTally = try await writeDataPhase(
                 sortedTables: sortedTables, columnsByTable: columnsByTable, options: options,
                 dataSource: dataSource, to: writer, progress: progress)
+            let finishing = FinishingSteps(
+                progress: progress,
+                total: finishingStepCount(sortedTables: sortedTables, definitionObjects: definitionObjects))
             try await writeFinalizationPhase(
                 sortedTables: sortedTables, fkMap: fkMap, columnsByTable: columnsByTable,
-                dataSource: dataSource, to: writer, progress: progress)
+                dataSource: dataSource, to: writer, progress: progress, finishing: finishing)
             try await writeObjectCreatePhase(
                 objects: definitionObjects,
-                kinds: [.view, .materializedView, .routine, .trigger, .event],
-                dataSource: dataSource, to: writer, progress: progress)
-            /// A materialized view carries its own indexes, and PostgreSQL needs a unique one
-            /// before `REFRESH MATERIALIZED VIEW CONCURRENTLY` will run. It holds no rows the
-            /// export streams, so it is not in `sortedTables` and gets its own pass here, once the
-            /// phase above has created it.
+                kinds: Self.definitionKindsAfterRows,
+                dataSource: dataSource, to: writer, progress: progress, finishing: finishing)
+            // PostgreSQL needs a materialized view's unique index for `REFRESH ... CONCURRENTLY`; it is not in `sortedTables`.
             if try await writeIndexPhase(
                 objects: definitionObjects.filter { $0.kind == .materializedView },
-                dataSource: dataSource, to: writer, progress: progress) {
+                dataSource: dataSource, to: writer, progress: progress, finishing: finishing) {
                 try writer.write("\n")
             }
             try await writeGrantPhase(
-                objects: definitionObjects, dataSource: dataSource, to: writer)
+                objects: definitionObjects, dataSource: dataSource, to: writer, finishing: finishing)
 
             if let snapshot {
                 await snapshot.end(on: dataSource)
             }
             await readScope.close(on: dataSource)
-            /// The publication point. Every phase above can suspend on a driver call, and the
-            /// grant phase makes no cancellation check of its own, so a Stop arriving in one of
-            /// them used to resume and replace the user's file anyway. Nothing is published past
-            /// this line without the stop having been seen.
+            // The publication point: a Stop during any phase above, the grant phase included, must not replace the file.
             try progress.checkCancellation()
             let writtenParts = try writer.commit()
             committed = true
@@ -307,6 +297,37 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         }
         warnings.append(contentsOf: metadataWarnings)
         return ExportFormatResult(warnings: warnings, notes: Self.statementSizeNotes(tally: statementTally))
+    }
+
+    private static let definitionKindsAfterRows: [PluginExportObjectKind] = [
+        .view, .materializedView, .routine, .trigger, .event
+    ]
+
+    // The phases after the rows read none, so they move the status instead: iOS expires a background task that stalls.
+    private final class FinishingSteps {
+        private let progress: PluginExportProgress
+        private let total: Int
+        private var done = 0
+
+        init(progress: PluginExportProgress, total: Int) {
+            self.progress = progress
+            self.total = total
+        }
+
+        func advance() {
+            done += 1
+            progress.setStatus(String(
+                format: String(localized: "Writing definitions: %1$lld of %2$lld"), Int64(done), Int64(total)))
+        }
+    }
+
+    // One step per object the index, definition and grant phases below fetch, with the filters those loops use.
+    private func finishingStepCount(sortedTables: [PluginExportTable], definitionObjects: [PluginExportTable]) -> Int {
+        let afterRows = Set(Self.definitionKindsAfterRows)
+        let wanted = definitionObjects.filter { optionValue($0, at: 0) }
+        return sortedTables.filter { optionValue($0, at: 0) }.count
+            + wanted.filter { afterRows.contains($0.kind) || $0.kind == .grant }.count
+            + wanted.filter { $0.kind == .materializedView }.count
     }
 
     /// The size a byte limit should be judged against, in the same binary units the limit's own menu
@@ -499,10 +520,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         dataSource.supportsCascadeDrop ? " CASCADE" : ""
     }
 
-    /// The engine spells its own DROP for the kinds where dialects disagree: PostgreSQL's
-    /// `DROP TRIGGER` takes an `ON <table>` clause where MySQL's does not, and MySQL has no
-    /// `DROP ROUTINE` at all. Only the table-shaped kinds, which every SQL engine spells the same
-    /// way, fall through to the generic form here.
+    // The engine spells its own DROP where dialects disagree, such as PostgreSQL's `DROP TRIGGER ... ON <table>`.
     private func dropStatement(
         for object: PluginExportTable,
         dataSource: any PluginExportDataSource
@@ -510,12 +528,14 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         if let driverStatement = dataSource.dropStatement(for: object) {
             return dataSource.scriptText(for: driverStatement)
         }
+        // Only PostgreSQL has `DROP ROUTINE`, and MySQL, SQL Server, Oracle and DuckDB stop the restore at one.
+        guard object.kind != .routine else { return nil }
         let keyword = object.kind.dropKeyword
         guard !keyword.isEmpty else { return nil }
         let ref = qualifiedRef(
             schema: object.databaseName, table: object.name, dataSource: dataSource)
         switch object.kind {
-        case .trigger, .event, .routine:
+        case .trigger, .event:
             return "\(keyword) IF EXISTS \(dataSource.quoteIdentifier(object.name));"
         default:
             return "\(keyword) IF EXISTS \(ref)\(cascadeClause(dataSource));"
@@ -662,16 +682,14 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         }
     }
 
-    /// Writes the definition of every object of the named kinds, in dump order within the group so
-    /// a view that another view selects from is created first. A kind the driver cannot produce a
-    /// definition for is recorded as a failure and commented into the file rather than aborting the
-    /// export: one unreadable routine must not cost the user the whole dump.
+    // Dump order within the group creates a view before one that selects from it; an unreadable object is noted, not fatal.
     private func writeObjectCreatePhase(
         objects: [PluginExportTable],
         kinds: [PluginExportObjectKind],
         dataSource: any PluginExportDataSource,
         to writer: SQLExportFileWriter,
-        progress: PluginExportProgress
+        progress: PluginExportProgress,
+        finishing: FinishingSteps? = nil
     ) async throws {
         let wanted = Set(kinds)
         let targets = objects
@@ -681,6 +699,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
 
         for object in targets {
             try progress.checkCancellation()
+            finishing?.advance()
             let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(object.name)
             let label = objectCommentLabel(for: object.kind)
             try writer.write("-- --------------------------------------------------------\n")
@@ -745,11 +764,12 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             .joined()
     }
 
-    /// Grants come last, because every object they name has to exist first.
+    // Grants come last, because every object they name has to exist first.
     private func writeGrantPhase(
         objects: [PluginExportTable],
         dataSource: any PluginExportDataSource,
-        to writer: SQLExportFileWriter
+        to writer: SQLExportFileWriter,
+        finishing: FinishingSteps
     ) async throws {
         let principals = objects
             .filter { $0.kind == .grant && optionValue($0, at: 0) }
@@ -761,6 +781,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         try writer.write("-- --------------------------------------------------------\n\n")
 
         for principal in principals {
+            finishing.advance()
             do {
                 let statements = try await dataSource.fetchGrantStatements(
                     principal: principal.name, host: principal.identity)
@@ -822,14 +843,12 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         columnsByTable: [String: [PluginColumnInfo]],
         dataSource: any PluginExportDataSource,
         to writer: SQLExportFileWriter,
-        progress: PluginExportProgress
+        progress: PluginExportProgress,
+        finishing: FinishingSteps
     ) async throws {
         var emittedAnything = try await writeIndexPhase(
-            objects: sortedTables, dataSource: dataSource, to: writer, progress: progress)
-        /// A driver that hands back the server's own CREATE statement has already declared these
-        /// constraints inline, so adding them again names each one twice: MySQL and SQL Server
-        /// reject the duplicate, and SQLite has no ADD CONSTRAINT to reject it with. The phase
-        /// exists for the drivers whose DDL leaves foreign keys out, PostgreSQL and Oracle.
+            objects: sortedTables, dataSource: dataSource, to: writer, progress: progress, finishing: finishing)
+        // Only for DDL that leaves foreign keys out (PostgreSQL, Oracle): MySQL and SQL Server reject a duplicate one.
         if !dataSource.tableDDLIncludesForeignKeys {
             for table in sortedTables where optionValue(table, at: 0) {
                 let fks = fkMap[node(for: table).identifier] ?? []
@@ -842,9 +861,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             }
         }
 
-        /// `setval` and `pg_get_serial_sequence` are PostgreSQL's own, so the sequence is only
-        /// rewound on PostgreSQL. Every other engine reports its identity columns the same way and
-        /// would take the statement as a syntax error.
+        // `setval` and `pg_get_serial_sequence` are PostgreSQL's own; any other engine reads them as a syntax error.
         if SqlDialect.from(databaseTypeId: dataSource.databaseTypeId) == .postgres {
             for table in sortedTables where optionValue(table, at: 2) && table.kind.carriesRows {
                 let columns = columnsByTable[node(for: table).identifier] ?? []
@@ -862,26 +879,19 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         }
     }
 
-    /// Writes each object's `CREATE INDEX` statements, after its rows and before the deferred
-    /// foreign keys.
-    ///
-    /// That is where every engine's own dump tool puts them, and the reason is that a bulk load
-    /// into an indexed table pays to maintain an index it is about to have rebuilt anyway.
-    /// A driver whose `CREATE TABLE` already declares its indexes answers nothing here, so a dump
-    /// never creates one twice.
-    ///
-    /// A driver that cannot read them is recorded and commented into the file rather than failing
-    /// the export: one unreadable table must not cost the user a dump that is otherwise correct.
+    // After the rows, as every engine's own dump tool does, so the bulk load does not maintain the index.
     @discardableResult
     private func writeIndexPhase(
         objects: [PluginExportTable],
         dataSource: any PluginExportDataSource,
         to writer: SQLExportFileWriter,
-        progress: PluginExportProgress
+        progress: PluginExportProgress,
+        finishing: FinishingSteps
     ) async throws -> Bool {
         var emittedAnything = false
         for object in objects where optionValue(object, at: 0) {
             try progress.checkCancellation()
+            finishing.advance()
             let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(object.name)
             do {
                 let statements = try await dataSource.fetchIndexDDL(

@@ -8,19 +8,22 @@ import TableProPluginKit
 import TableProSQLGrammar
 import TableProSQLQuoting
 
+// The id `SQLitePlugin.databaseTypeId` holds, for the files iOS compiles without the plugin class.
+nonisolated internal let sqliteDatabaseTypeId = "SQLite"
+
 // Free functions, so the test target exercises the DDL without a connection.
-internal func sqliteQuoteIdentifier(_ name: String) -> String {
+nonisolated internal func sqliteQuoteIdentifier(_ name: String) -> String {
     SQLQuoting.identifier(name, quote: .backtick)
 }
 
 // Type, default and generation text, from the catalog or the user, goes into DDL only as one type or expression.
-internal func sqliteColumnRefusal(
+nonisolated internal func sqliteColumnRefusal(
     name: String,
     type: String?,
     defaultValue: String?,
     generationExpression: String? = nil
 ) -> String? {
-    let typeId = SQLitePlugin.databaseTypeId
+    let typeId = sqliteDatabaseTypeId
     if let type, !type.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
        !SQLExpressionFragment.isSingleType(type, databaseTypeId: typeId) {
         return String(format: String(localized: "The type of column %@ cannot be written as SQL."), name)
@@ -36,7 +39,7 @@ internal func sqliteColumnRefusal(
     return nil
 }
 
-internal func sqliteColumnRefusal(_ column: PluginColumnDefinition) -> String? {
+nonisolated internal func sqliteColumnRefusal(_ column: PluginColumnDefinition) -> String? {
     sqliteColumnRefusal(
         name: column.name,
         type: column.dataType,
@@ -45,7 +48,7 @@ internal func sqliteColumnRefusal(_ column: PluginColumnDefinition) -> String? {
     )
 }
 
-internal func sqliteRespecificationRefusal(_ respecification: PluginTableRespecification) -> String? {
+nonisolated internal func sqliteRespecificationRefusal(_ respecification: PluginTableRespecification) -> String? {
     respecification.addedColumns.lazy.compactMap { sqliteColumnRefusal($0) }.first
         ?? respecification.alteredColumns.lazy.compactMap {
             sqliteColumnRefusal(name: $0.column, type: $0.type, defaultValue: $0.defaultValue)
@@ -53,8 +56,8 @@ internal func sqliteRespecificationRefusal(_ respecification: PluginTableRespeci
 }
 
 // The partial-index predicate and the key list come back from `sqlite_master` and are spliced as written.
-internal func sqliteIndexRefusal(_ index: PluginIndexDefinition) -> String? {
-    let typeId = SQLitePlugin.databaseTypeId
+nonisolated internal func sqliteIndexRefusal(_ index: PluginIndexDefinition) -> String? {
+    let typeId = sqliteDatabaseTypeId
     let keys = index.ddlMethodAndKeys?.nilIfEmpty.map { [$0] } ?? (index.expressions ?? [])
     guard keys.allSatisfy({ SQLExpressionFragment.isSingleExpression($0, databaseTypeId: typeId) }) else {
         return String(format: String(localized: "Index %@ has a key part that is not one SQL expression."), index.name)
@@ -65,7 +68,7 @@ internal func sqliteIndexRefusal(_ index: PluginIndexDefinition) -> String? {
     return nil
 }
 
-internal func sqliteCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+nonisolated internal func sqliteCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
     guard !definition.columns.isEmpty, definition.columns.allSatisfy({ sqliteColumnRefusal($0) == nil }) else { return nil }
 
     let declaredKey = Set(definition.primaryKeyColumns)
@@ -89,10 +92,8 @@ internal func sqliteCreateTableSQL(definition: PluginCreateTableDefinition) -> S
         + "\n);"
 }
 
-/// `isInlinePrimaryKey` says whether to declare `PRIMARY KEY` on this column, so a key named only by
-/// `definition.primaryKeyColumns` still reaches the DDL along with the `AUTOINCREMENT` that only
-/// this arm writes.
-internal func sqliteColumnDefinitionSQL(
+// Only the inline key arm writes `AUTOINCREMENT`, so a key named by `primaryKeyColumns` alone is declared here too.
+nonisolated internal func sqliteColumnDefinitionSQL(
     _ column: PluginColumnDefinition,
     isInlinePrimaryKey: Bool
 ) -> String {
@@ -117,14 +118,8 @@ internal func sqliteColumnDefinitionSQL(
     return definition
 }
 
-/// `CONSTRAINT name` is optional in SQLite's table-constraint grammar, so it is written when there
-/// is a name and left out when there is not. This used to drop the name unconditionally, so a name
-/// the user typed never reached the database.
-///
-/// The referenced column list is omitted rather than emitted empty: `REFERENCES "t" ()` is a syntax
-/// error, while `REFERENCES "t"` means the parent's primary key, which is what an empty list asks
-/// for. SQLite has no cross-schema foreign key, so `referencedSchema` is deliberately not written.
-internal func sqliteForeignKeyDefinitionSQL(_ foreignKey: PluginForeignKeyDefinition) -> String {
+// `REFERENCES "t" ()` is a syntax error and bare `REFERENCES "t"` means the parent's key; SQLite has no cross-schema key.
+nonisolated internal func sqliteForeignKeyDefinitionSQL(_ foreignKey: PluginForeignKeyDefinition) -> String {
     let columns = foreignKey.columns.map(sqliteQuoteIdentifier).joined(separator: ", ")
     let constraint = foreignKey.name.isEmpty
         ? ""

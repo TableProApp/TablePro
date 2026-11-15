@@ -94,7 +94,9 @@ struct ClipboardExporterFidelityTests {
         }
     }
 
-    @Test("each column's declared type picks the JSON type")
+    // The macOS JSON export's rule (D6): a boolean column folds only true and false, `bit`, an unsigned ClickHouse type
+    // and a column with no type stay strings. The PostgreSQL driver now sends true and false (D7).
+    @Test("each column's declared type picks the JSON type the macOS export writes")
     func declaredTypePicksTheJSONType() throws {
         func value(_ text: String, typeName: String) throws -> String {
             let output = ClipboardExporter.exportRow(
@@ -105,24 +107,24 @@ struct ClipboardExporterFidelityTests {
             let line = try #require(output.split(separator: "\n").first { $0.contains("\"v\"") })
             return String(line.drop { $0 != ":" }.dropFirst(2))
         }
-        #expect(try value("t", typeName: "bool") == "true")
-        #expect(try value("f", typeName: "bool") == "false")
+        #expect(try value("true", typeName: "bool") == "true")
+        #expect(try value("false", typeName: "bool") == "false")
+        #expect(try value("t", typeName: "bool") == "\"t\"")
         #expect(try value("TRUE", typeName: "BOOLEAN") == "true")
         #expect(try value("false", typeName: "Nullable(Bool)") == "false")
         #expect(try value("yes", typeName: "bool") == "\"yes\"")
         #expect(try value("42", typeName: "int4") == "42")
         #expect(try value("12.50", typeName: "numeric(10,2)") == "12.50")
         #expect(try value("-1.5e3", typeName: "Float64") == "-1.5e3")
-        #expect(try value("18446744073709551615", typeName: "UInt64") == "18446744073709551615")
-        #expect(try value("1", typeName: "bit") == "1")
+        #expect(try value("18446744073709551615", typeName: "UInt64") == "\"18446744073709551615\"")
+        #expect(try value("1", typeName: "bit") == "\"1\"")
         #expect(try value("NaN", typeName: "float8") == "\"NaN\"")
         #expect(try value("$5.00", typeName: "money") == "\"$5.00\"")
         #expect(try value("t", typeName: "text") == "\"t\"")
-        #expect(try value("1", typeName: "BOOLEAN") == "true")
-        #expect(try value("0", typeName: "BOOLEAN") == "false")
-        // SQLite reports no type for an expression such as count(*), so its value decides.
-        #expect(try value("42", typeName: "") == "42")
-        #expect(try value("true", typeName: "") == "true")
+        #expect(try value("1", typeName: "BOOLEAN") == "\"1\"")
+        #expect(try value("0", typeName: "BOOLEAN") == "\"0\"")
+        #expect(try value("42", typeName: "") == "\"42\"")
+        #expect(try value("true", typeName: "") == "\"true\"")
         #expect(try value("01234", typeName: "") == "\"01234\"")
     }
 
@@ -263,6 +265,50 @@ struct ClipboardExporterFidelityTests {
         #expect(MySQLDriver.keptTextEscapes(for: .mysql, banner: nil) == .mysql)
         #expect(MySQLDriver.keptTextEscapes(for: .mysql, banner: "8.0.90-v1.2.725-nightly") == .backslash)
     }
+    // D2: MySQL stores a quoted '5' in a BIT column as the byte 53.
+    @Test("A MySQL BIT value is copied bare, and every other value stays quoted")
+    func mysqlBitIsBare() {
+        let bits = [
+            ColumnInfo(name: "id", typeName: "INT", ordinalPosition: 0),
+            ColumnInfo(name: "flags", typeName: "BIT(8)", ordinalPosition: 1),
+            ColumnInfo(name: "on", typeName: "BIT", ordinalPosition: 2)
+        ]
+        let text = ClipboardExporter.exportRow(
+            columns: bits, row: ["1", "5", "1"], format: .sqlInsert, tableName: "t", databaseType: .mysql, driver: nil
+        )
+        #expect(text == "INSERT INTO `t` (`id`, `flags`, `on`) VALUES ('1', 5, 1);")
+        let postgres = ClipboardExporter.exportRow(
+            columns: bits, row: ["1", "101", "1"], format: .sqlInsert, tableName: "t", databaseType: .postgresql, driver: nil
+        )
+        #expect(postgres.contains("'101'"))
+    }
+
+    // D3: the server refuses a value for a generated or identity column.
+    @Test("A column the server fills in is left out of the INSERT, and a row of only those writes its defaults")
+    func serverOwnedColumnsAreLeftOut() {
+        let shown = [
+            ColumnInfo(name: "id", typeName: "int4", ordinalPosition: 0),
+            ColumnInfo(name: "qty", typeName: "int4", ordinalPosition: 1),
+            ColumnInfo(name: "total", typeName: "numeric", ordinalPosition: 2)
+        ]
+        let catalog = [
+            ColumnInfo(name: "id", typeName: "int4", isPrimaryKey: true, ordinalPosition: 0, rejectsWrittenValues: true),
+            ColumnInfo(name: "qty", typeName: "int4", ordinalPosition: 1),
+            ColumnInfo(name: "total", typeName: "numeric", ordinalPosition: 2, isGenerated: true)
+        ]
+        let text = ClipboardExporter.exportRow(
+            columns: shown, row: ["1", "3", "9.00"], format: .sqlInsert, tableName: "orders",
+            databaseType: .postgresql, driver: nil, columnDetails: catalog
+        )
+        #expect(text == "INSERT INTO \"orders\" (\"qty\") VALUES ('3');")
+
+        let onlyOwned = ClipboardExporter.exportRow(
+            columns: [shown[0], shown[2]], row: ["1", "9.00"], format: .sqlInsert, tableName: "orders",
+            databaseType: .postgresql, driver: nil, columnDetails: catalog
+        )
+        #expect(onlyOwned == "INSERT INTO \"orders\" DEFAULT VALUES;")
+    }
+
     @Test("SQL Server copy as INSERT keeps Unicode and backslash line endings without a driver")
     func sqlServerLiteral() {
         #expect(insert(["1", "日本\\\n", nil], .mssql)

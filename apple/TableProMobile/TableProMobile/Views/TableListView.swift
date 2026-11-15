@@ -2,9 +2,12 @@ import SwiftUI
 import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
+import TableProPluginKit
 import TableProSQLGrammar
+import UniformTypeIdentifiers
 
 struct TableListView: View {
+    @Environment(AppState.self) private var appState
     @Environment(ConnectionCoordinator.self) private var coordinator
 
     private var connection: DatabaseConnection { coordinator.connection }
@@ -36,6 +39,37 @@ struct TableListView: View {
     @State private var tableToDrop: PendingTableAction?
     @State private var errorMessage = ""
     @State private var showError = false
+    @State private var exportItem: MobileExportItem?
+    @State private var showFilePicker = false
+    @State private var filePickerTypes: [UTType] = []
+    @State private var importFile: IdentifiableURL?
+
+    private var canExport: Bool {
+        session.map { ExportObjectListing.supportsExport($0.driver) } ?? false
+    }
+
+    // Read-Only hides what writes; Confirm Writes asks when the import starts.
+    private var writesAllowed: Bool {
+        !connection.safeModeLevel.blocksWrites && canExport
+    }
+
+    private var importFormats: [any ImportFormatPlugin] {
+        guard writesAllowed else { return [] }
+        let rows = MobileImportFormats.rowFormats(for: connection.type)
+        return MobileImportFormats.offersSQLFile(for: connection.type) ? rows + [MobileImportFormats.sql] : rows
+    }
+
+    private var canRunSQLFile: Bool {
+        writesAllowed && MobileImportFormats.offersSQLFile(for: connection.type)
+    }
+
+    private var exportDatabase: String? {
+        coordinator.activeDatabase.isEmpty ? nil : coordinator.activeDatabase
+    }
+
+    private var exportSchema: String? {
+        coordinator.supportsSchemas ? coordinator.activeSchema : nil
+    }
 
     private var showTruncateConfirmation: Binding<Bool> {
         Binding(
@@ -90,6 +124,14 @@ struct TableListView: View {
                                 Label("Copy Name", systemImage: "doc.on.doc")
                             }
 
+                            if canExport {
+                                Button {
+                                    presentExport(of: table)
+                                } label: {
+                                    Label("Export…", systemImage: "square.and.arrow.up")
+                                }
+                            }
+
                             let writesAllowed = !connection.safeModeLevel.blocksWrites && engineSpeaksSQLDDL
                             if writesAllowed && (table.type.allowsTruncate || table.type.allowsDrop) {
                                 Divider()
@@ -125,6 +167,24 @@ struct TableListView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .toolbar { transferMenu }
+        .sheet(item: $exportItem) { item in
+            MobileExportSheet(
+                input: item.input,
+                environment: .live(connectionManager: appState.connectionManager, coordinator: coordinator)
+            )
+        }
+        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: filePickerTypes, allowsMultipleSelection: false) { result in
+            guard case .success(let urls) = result, let url = urls.first else { return }
+            importFile = IdentifiableURL(url: url)
+        }
+        .sheet(item: $importFile) { item in
+            MobileImportSheet(fileURL: item.url) {
+                Task { await coordinator.refreshTables() }
+            }
+            .environment(appState)
+            .environment(coordinator)
+        }
         .searchable(text: $searchText, prompt: "Search tables")
         .searchFocused($searchFocused)
         .textInputAutocapitalization(.never)
@@ -223,6 +283,77 @@ struct TableListView: View {
         } message: {
             Text(errorMessage)
         }
+    }
+
+    @ToolbarContentBuilder
+    private var transferMenu: some ToolbarContent {
+        if canExport || !importFormats.isEmpty {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    if canExport {
+                        Button {
+                            presentDatabaseExport()
+                        } label: {
+                            Label("Export Database…", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                    if !importFormats.isEmpty {
+                        Button {
+                            pickFile(for: importFormats)
+                        } label: {
+                            Label("Import…", systemImage: "square.and.arrow.down")
+                        }
+                    }
+                    if canRunSQLFile {
+                        Button {
+                            pickFile(for: [MobileImportFormats.sql])
+                        } label: {
+                            Label("Run SQL File…", systemImage: "doc.text")
+                        }
+                    }
+                } label: {
+                    Label("More", systemImage: ToolbarSymbols.more())
+                }
+            }
+        }
+    }
+
+    private func pickFile(for formats: [any ImportFormatPlugin]) {
+        filePickerTypes = ImportPickerTypes.contentTypes(for: formats)
+        showFilePicker = true
+    }
+
+    private func exportInput(title: String, fileName: String, scope: ExportScopeOption) -> MobileExportInput {
+        MobileExportInput(
+            title: title,
+            fileName: fileName,
+            connectionId: connection.id,
+            databaseType: connection.type,
+            database: exportDatabase,
+            schema: exportSchema,
+            safeModeLevel: connection.safeModeLevel,
+            scopes: [scope]
+        )
+    }
+
+    private func presentExport(of table: TableInfo) {
+        exportItem = MobileExportItem(input: exportInput(
+            title: String(localized: "Export Table"),
+            fileName: table.name,
+            scope: ExportScopeOption(kind: .wholeTable, source: .table(table.name))
+        ))
+    }
+
+    // Named as the Mac names it: the container the objects sit in, else the database, else the connection.
+    private func presentDatabaseExport() {
+        let fileName = [exportSchema, exportDatabase, coordinator.displayName]
+            .compactMap { $0 }
+            .first { !$0.isEmpty } ?? String(localized: "Export")
+        exportItem = MobileExportItem(input: exportInput(
+            title: String(localized: "Export Database"),
+            fileName: fileName,
+            scope: ExportScopeOption(kind: .database, source: .database)
+        ))
     }
 
     // Another window can switch the shared session between the tap and the confirmation; the table named in the dialog

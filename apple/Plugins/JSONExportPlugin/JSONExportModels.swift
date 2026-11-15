@@ -6,7 +6,7 @@
 import Foundation
 
 /// How the rows are laid out in the file.
-public enum JSONExportLayout: String, Codable, CaseIterable, Sendable, Identifiable {
+nonisolated public enum JSONExportLayout: String, Codable, CaseIterable, Sendable, Identifiable {
     /// One object per table, each holding an array of rows. The whole file is one JSON value.
     case object
     /// One row per line, with no wrapping array. A stream reader can process it a line at a time,
@@ -30,7 +30,7 @@ public enum JSONExportLayout: String, Codable, CaseIterable, Sendable, Identifia
     }
 }
 
-public struct JSONExportOptions: Equatable, Codable {
+nonisolated public struct JSONExportOptions: Equatable, Codable {
     public var prettyPrint: Bool = true
     public var includeNullValues: Bool = true
     public var preserveAllAsStrings: Bool = false
