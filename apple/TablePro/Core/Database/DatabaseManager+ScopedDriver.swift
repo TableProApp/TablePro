@@ -797,8 +797,8 @@ extension DatabaseManager {
                         )
                     )
                 }
-            } else if let adapter = driver as? PluginDriverAdapter {
-                try await adapter.switchDatabase(to: scope.database)
+            } else if let plugin = driver.plugin {
+                try await plugin.switchDatabase(to: scope.database)
             }
         }
         guard let schema = scope.schema, let schemaDriver = driver as? SchemaSwitchable else { return }

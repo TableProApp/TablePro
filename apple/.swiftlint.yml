@@ -209,6 +209,13 @@ custom_rules:
     excluded_match_kinds: [comment, doccomment]
     message: "Schema, table and column names, SQL, payloads, hosts and paths are the user's. Log them at .private(mask: .hash), or .private next to a byte count."
     severity: error
+  driver_adapter_downcast:
+    name: "Driver Adapter Downcast"
+    regex: '\b(as[?!]|is)\s+PluginDriverAdapter\b'
+    included: ['.*/TablePro/']
+    excluded_match_kinds: [comment, doccomment]
+    message: "Ask DatabaseDriver, or its plugin, for what the call needs: a cast hands every other driver the nil branch."
+    severity: error
 
   # Storage and preferences
   preference_key_namespace:
@@ -295,7 +302,8 @@ custom_rules:
     regex: '\bSchemaStatementGenerator\(|\bCreateTableStatementComposer\.compose\(|\bgenerateCreateTableStatements\('
     excluded:
       - '.*/(Packages|Plugins)/'
-      - '.*/(DatabaseManager\+SchemaComposition|StructureTableRebuildHandler|CreateTableStatementComposer|SchemaSyncScriptBuilder)\.swift$'
+      # CreateTableEligibility only asks whether a probe table has a statement, and sends nothing.
+      - '.*/(DatabaseManager\+SchemaComposition|StructureTableRebuildHandler|CreateTableStatementComposer|SchemaSyncScriptBuilder|CreateTableEligibility)\.swift$'
     message: "Compose DDL only on a driver leased for the statement's own scope (DatabaseManager+SchemaComposition)."
     severity: error
   result_buffer_handoff:

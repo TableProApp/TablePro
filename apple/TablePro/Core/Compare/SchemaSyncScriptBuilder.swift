@@ -13,12 +13,15 @@ import TableProSQLGrammar
 
 internal struct SchemaSyncScriptBuilder {
     private let targetDriver: any PluginDatabaseDriver
+    // Names the schema in every statement: the snapshot's own is the source's on a compare across schemas.
+    private let targetSchema: String?
     private let targetTypeFamily: SQLTypeFamily
     private let scriptText: SQLScriptText
     private let classifier = SyncSafetyClassifier()
 
-    internal init(targetDriver: any PluginDatabaseDriver, targetDatabaseType: DatabaseType) {
+    internal init(targetDriver: any PluginDatabaseDriver, targetDatabaseType: DatabaseType, targetSchema: String?) {
         self.targetDriver = targetDriver
+        self.targetSchema = targetSchema
         self.targetTypeFamily = SQLTypeFamily.of(targetDatabaseType)
         self.scriptText = SQLScriptText(
             databaseType: targetDatabaseType,
@@ -114,7 +117,7 @@ internal struct SchemaSyncScriptBuilder {
         }
         /// Taken from the driver statement by statement rather than divided here: the driver wrote them and knows
         /// where each ends, and Oracle refuses its table and its indexes sent as one call.
-        let statements = (targetDriver.generateCreateTableStatements(definition: definition) ?? [])
+        let statements = (targetDriver.generateCreateTableStatements(definition: definition, schema: targetSchema) ?? [])
             .map { StatementBlank.trimming($0) }
             .filter { !$0.isEmpty }
         guard !statements.isEmpty else {
@@ -146,7 +149,7 @@ internal struct SchemaSyncScriptBuilder {
         changes: [SchemaChange],
         additionalHazards: (SchemaChange) -> [SyncHazard] = { _ in [] }
     ) throws -> [SyncStatement] {
-        let generator = SchemaStatementGenerator(tableName: relation, pluginDriver: targetDriver)
+        let generator = SchemaStatementGenerator(tableName: relation, schema: targetSchema, pluginDriver: targetDriver)
         var statements: [SyncStatement] = []
         for change in SchemaChangeOrdering.sorted(changes) {
             let hazards = classifier.hazards(for: change, typeFamily: targetTypeFamily) + additionalHazards(change)

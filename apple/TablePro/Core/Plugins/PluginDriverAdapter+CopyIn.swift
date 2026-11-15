@@ -8,7 +8,7 @@ import TableProPluginKit
 
 extension PluginDriverAdapter {
     var supportsCopyFromStandardInput: Bool {
-        schemaPluginDriver.capabilities.contains(.copyFromStandardInput)
+        pluginDriver.capabilities.contains(.copyFromStandardInput)
     }
 
     func copyFromStandardInput(
@@ -22,6 +22,6 @@ extension PluginDriverAdapter {
             throw PluginDriverUnsupportedOperation.copyFromStandardInput
         }
         let sent = context.map { statementContext(statement, approvedAs: $0) } ?? statementContext(statement)
-        return mapQueryResult(try await schemaPluginDriver.copyFromStandardInput(statement: statement, rows: rows, context: sent))
+        return mapQueryResult(try await pluginDriver.copyFromStandardInput(statement: statement, rows: rows, context: sent))
     }
 }

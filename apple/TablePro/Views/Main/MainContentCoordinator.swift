@@ -1173,8 +1173,7 @@ final class MainContentCoordinator: ObservableObject {
             return (nil, false)
         }
         let editorLanguage = services.pluginManager.editorLanguage(for: connection.type)
-        let pluginBuildsBrowse = (services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter)?
-            .queryBuildingPluginDriver != nil
+        let pluginBuildsBrowse = services.databaseManager.driver(for: connectionId)?.queryBuildingPluginDriver != nil
         // Plugin-built browse or non-SQL: no table from query text; a tab's stored name or a pipeline `_id` can name another collection.
         let usesNoSQLBrowsing = editorLanguage != .sql || pluginBuildsBrowse
         if tab.tabType != .table, usesNoSQLBrowsing {

@@ -155,9 +155,9 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         "CREATE OR REPLACE VIEW \(quoteIdentifier(viewName)) AS\nSELECT * FROM table_name;"
     }
 
-    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+    func generateAddColumnSQL(table: String, schema: String?, column: PluginColumnDefinition) -> String? {
         guard let projectId else { return nil }
-        var sql = "ALTER TABLE \(qualifiedTable(table, schema: nil, projectId: projectId)) "
+        var sql = "ALTER TABLE \(qualifiedTable(table, schema: schema, projectId: projectId)) "
             + "ADD COLUMN \(quoteIdentifier(column.name)) \(column.dataType)"
         if !column.isNullable {
             sql += " NOT NULL"
@@ -168,9 +168,9 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         return sql
     }
 
-    func generateDropColumnSQL(table: String, columnName: String) -> String? {
+    func generateDropColumnSQL(table: String, schema: String?, columnName: String) -> String? {
         guard let projectId else { return nil }
-        return "ALTER TABLE \(qualifiedTable(table, schema: nil, projectId: projectId)) "
+        return "ALTER TABLE \(qualifiedTable(table, schema: schema, projectId: projectId)) "
             + "DROP COLUMN \(quoteIdentifier(columnName))"
     }
 

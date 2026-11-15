@@ -7,8 +7,7 @@ extension DatabaseManager {
     func principalDriver(
         for connectionId: UUID
     ) -> (any PluginDatabaseDriver & PluginPrincipalManagement)? {
-        guard let adapter = driver(for: connectionId) as? PluginDriverAdapter else { return nil }
-        return adapter.schemaPluginDriver as? any PluginDatabaseDriver & PluginPrincipalManagement
+        driver(for: connectionId)?.plugin as? any PluginDatabaseDriver & PluginPrincipalManagement
     }
 
     func executePrincipalChanges(

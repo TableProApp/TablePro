@@ -373,7 +373,7 @@ struct SchemaStatementGenerator {
     // MARK: - Column Operations
 
     private func generateAddColumn(_ column: EditableColumnDefinition) -> SchemaStatement? {
-        guard let sql = pluginDriver.generateAddColumnSQL(table: tableName, column: column.toPlugin()) else {
+        guard let sql = pluginDriver.generateAddColumnSQL(table: tableName, schema: schema, column: column.toPlugin()) else {
             return nil
         }
         return SchemaStatement(sql: sql, description: "Add column '\(column.name)'", isDestructive: false)
@@ -382,6 +382,7 @@ struct SchemaStatementGenerator {
     private func generateModifyColumn(old: EditableColumnDefinition, new: EditableColumnDefinition) -> SchemaStatement? {
         guard let sql = pluginDriver.generateModifyColumnSQL(
             table: tableName,
+            schema: schema,
             oldColumn: old.toPlugin(),
             newColumn: new.toPlugin()
         ) else {
@@ -395,7 +396,7 @@ struct SchemaStatementGenerator {
     }
 
     private func generateDeleteColumn(_ column: EditableColumnDefinition) -> SchemaStatement? {
-        guard let sql = pluginDriver.generateDropColumnSQL(table: tableName, columnName: column.name) else {
+        guard let sql = pluginDriver.generateDropColumnSQL(table: tableName, schema: schema, columnName: column.name) else {
             return nil
         }
         return SchemaStatement(sql: sql, description: "Drop column '\(column.name)'", isDestructive: true)
@@ -404,7 +405,7 @@ struct SchemaStatementGenerator {
     // MARK: - Index Operations
 
     private func generateAddIndex(_ index: EditableIndexDefinition) -> SchemaStatement? {
-        guard let sql = pluginDriver.generateAddIndexSQL(table: tableName, index: index.toPlugin()) else {
+        guard let sql = pluginDriver.generateAddIndexSQL(table: tableName, schema: schema, index: index.toPlugin()) else {
             return nil
         }
         return SchemaStatement(sql: sql, description: "Add index '\(index.name)'", isDestructive: false)
@@ -416,11 +417,12 @@ struct SchemaStatementGenerator {
     }
 
     private func modifyIndexSQL(old: EditableIndexDefinition, new: EditableIndexDefinition) -> String? {
-        pluginDriver.generateModifyIndexSQL(table: tableName, oldIndexName: old.name, newIndex: new.toPlugin())
+        pluginDriver.generateModifyIndexSQL(
+            table: tableName, schema: schema, oldIndexName: old.name, newIndex: new.toPlugin())
     }
 
     private func generateDeleteIndex(_ index: EditableIndexDefinition) -> SchemaStatement? {
-        guard let sql = pluginDriver.generateDropIndexSQL(table: tableName, indexName: index.name) else {
+        guard let sql = pluginDriver.generateDropIndexSQL(table: tableName, schema: schema, indexName: index.name) else {
             return nil
         }
         return SchemaStatement(sql: sql, description: "Drop index '\(index.name)'", isDestructive: false)
@@ -431,6 +433,7 @@ struct SchemaStatementGenerator {
     private func generateAddForeignKey(_ fk: EditableForeignKeyDefinition) -> SchemaStatement? {
         guard let sql = pluginDriver.generateAddForeignKeySQL(
             table: tableName,
+            schema: schema,
             fk: fk.toPlugin()
         ) else {
             return nil
@@ -439,8 +442,8 @@ struct SchemaStatementGenerator {
     }
 
     private func generateModifyForeignKey(old: EditableForeignKeyDefinition, new: EditableForeignKeyDefinition) -> [SchemaStatement] {
-        guard let dropSql = pluginDriver.generateDropForeignKeySQL(table: tableName, constraintName: old.name),
-              let addSql = pluginDriver.generateAddForeignKeySQL(table: tableName, fk: new.toPlugin()) else {
+        guard let dropSql = pluginDriver.generateDropForeignKeySQL(table: tableName, schema: schema, constraintName: old.name),
+              let addSql = pluginDriver.generateAddForeignKeySQL(table: tableName, schema: schema, fk: new.toPlugin()) else {
             return []
         }
         return [
@@ -450,7 +453,7 @@ struct SchemaStatementGenerator {
     }
 
     private func generateDeleteForeignKey(_ fk: EditableForeignKeyDefinition) -> SchemaStatement? {
-        guard let sql = pluginDriver.generateDropForeignKeySQL(table: tableName, constraintName: fk.name) else {
+        guard let sql = pluginDriver.generateDropForeignKeySQL(table: tableName, schema: schema, constraintName: fk.name) else {
             return nil
         }
         return SchemaStatement(sql: sql, description: "Drop foreign key '\(fk.name)'", isDestructive: false)
@@ -460,7 +463,7 @@ struct SchemaStatementGenerator {
 
     private func generateAddCheckConstraint(_ constraint: EditableCheckConstraintDefinition) -> SchemaStatement? {
         guard let sql = pluginDriver.generateAddCheckConstraintSQL(
-            table: tableName, constraint: constraint.toPlugin()
+            table: tableName, schema: schema, constraint: constraint.toPlugin()
         ) else {
             return nil
         }
@@ -478,7 +481,7 @@ struct SchemaStatementGenerator {
     ) -> [SchemaStatement] {
         if old.expression == new.expression, old.name != new.name,
            let renameSql = pluginDriver.generateRenameCheckConstraintSQL(
-               table: tableName, from: old.name, to: new.name
+               table: tableName, schema: schema, from: old.name, to: new.name
            ) {
             return [SchemaStatement(
                 sql: renameSql,
@@ -487,8 +490,8 @@ struct SchemaStatementGenerator {
             )]
         }
 
-        guard let dropSql = pluginDriver.generateDropCheckConstraintSQL(table: tableName, constraintName: old.name),
-              let addSql = pluginDriver.generateAddCheckConstraintSQL(table: tableName, constraint: new.toPlugin())
+        guard let dropSql = pluginDriver.generateDropCheckConstraintSQL(table: tableName, schema: schema, constraintName: old.name),
+              let addSql = pluginDriver.generateAddCheckConstraintSQL(table: tableName, schema: schema, constraint: new.toPlugin())
         else {
             return []
         }
@@ -504,7 +507,7 @@ struct SchemaStatementGenerator {
 
     private func generateDeleteCheckConstraint(_ constraint: EditableCheckConstraintDefinition) -> SchemaStatement? {
         guard let sql = pluginDriver.generateDropCheckConstraintSQL(
-            table: tableName, constraintName: constraint.name
+            table: tableName, schema: schema, constraintName: constraint.name
         ) else {
             return nil
         }
@@ -555,7 +558,7 @@ struct SchemaStatementGenerator {
 
     private func generateModifyPrimaryKey(old: [String], new: [String]) -> [SchemaStatement] {
         guard let sqls = pluginDriver.generateModifyPrimaryKeySQL(
-            table: tableName, oldColumns: old, newColumns: new, constraintName: primaryKeyConstraintName
+            table: tableName, schema: schema, oldColumns: old, newColumns: new, constraintName: primaryKeyConstraintName
         ) else {
             return []
         }

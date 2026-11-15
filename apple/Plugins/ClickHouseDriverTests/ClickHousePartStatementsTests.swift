@@ -1,15 +1,14 @@
 //
 //  ClickHousePartStatementsTests.swift
-//  TableProTests
+//  ClickHouseDriverTests
 //
 
 import Foundation
-@testable import TablePro
+import TableProPluginKit
 import Testing
 
 struct ClickHousePartStatementsTests {
     private let quote: (String) -> String = { "`\($0.replacingOccurrences(of: "`", with: "``"))`" }
-    private let escape: (String) -> String = { $0.replacingOccurrences(of: "'", with: "\\'") }
 
     // An unqualified DROP PARTITION deleted data from whichever database the shared driver was last pinned to.
     @Test("Every statement names the database it was given")
@@ -75,9 +74,7 @@ struct ClickHousePartStatementsTests {
     // `currentDatabase()` answers with the request parameter, so the list showed another database's parts.
     @Test("The parts read filters on the named database, never the connection's current one")
     func partsReadNamesTheDatabase() {
-        let sql = ClickHousePartStatements.parts(
-            database: "analytics", table: "events", escape: escape
-        )
+        let sql = ClickHousePartStatements.parts(database: "analytics", table: "events")
         #expect(sql.contains("WHERE database = 'analytics'"))
         #expect(sql.contains("AND table = 'events'"))
         #expect(!sql.contains("currentDatabase()"))
@@ -85,7 +82,7 @@ struct ClickHousePartStatementsTests {
 
     @Test("The parts read selects the partition ID beside the displayed partition value")
     func partsReadSelectsThePartitionId() {
-        let sql = ClickHousePartStatements.parts(database: "analytics", table: "events", escape: escape)
+        let sql = ClickHousePartStatements.parts(database: "analytics", table: "events")
         #expect(sql.contains("SELECT partition, partition_id, name, rows, bytes_on_disk,"))
     }
 
@@ -100,7 +97,7 @@ struct ClickHousePartStatementsTests {
             ClickHousePartStatements.optimize(database: "", table: "events", quote: quote)
                 == "OPTIMIZE TABLE `events` FINAL"
         )
-        let sql = ClickHousePartStatements.parts(database: "", table: "events", escape: escape)
+        let sql = ClickHousePartStatements.parts(database: "", table: "events")
         #expect(sql.contains("WHERE database = currentDatabase()"))
         #expect(!sql.contains("database = ''"))
     }
@@ -111,5 +108,34 @@ struct ClickHousePartStatementsTests {
             database: "we`ird", table: "ev`ents", partitionId: "202401", quote: quote
         )
         #expect(sql == "ALTER TABLE `we``ird`.`ev``ents` DROP PARTITION ID '202401'")
+    }
+
+    @Test("A quote in a table name stays inside the literal")
+    func tableNameIsEscaped() {
+        let sql = ClickHousePartStatements.parts(database: "analytics", table: #"o'b\rien"#)
+        #expect(sql.contains(#"AND table = 'o''b\\rien'"#))
+    }
+
+    @Test("A parts row keeps the partition ID a statement names beside the value it shows")
+    func rowCarriesThePartitionId() throws {
+        let row: [PluginCellValue] = [
+            "(202401,'eu')",
+            "c1f8e6e2a7b04d4c9e1f0a2b3c4d5e6f",
+            "c1f8e6e2a7b04d4c9e1f0a2b3c4d5e6f_1_1_0",
+            "12",
+            "4096",
+            "2026-01-05 10:00:00",
+            "1",
+        ]
+
+        let parsed = try #require(ClickHousePartStatements.part(from: row))
+
+        #expect(parsed.partition == "(202401,'eu')")
+        #expect(parsed.partitionId == "c1f8e6e2a7b04d4c9e1f0a2b3c4d5e6f")
+        #expect(parsed.name == "c1f8e6e2a7b04d4c9e1f0a2b3c4d5e6f_1_1_0")
+        #expect(parsed.rows == 12)
+        #expect(parsed.bytesOnDisk == 4096)
+        #expect(parsed.modificationTime == "2026-01-05 10:00:00")
+        #expect(parsed.isActive)
     }
 }

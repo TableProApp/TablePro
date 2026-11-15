@@ -17,6 +17,10 @@ struct StructureAvailabilityTests {
         checkConstraintRefusal: "Check constraints need MySQL 8.0.16 or later."
     )
 
+    private static let storageParts = StructureServerSupport(
+        unsupportedColumnFields: [], unsupportedIndexTypes: [], offersStorageParts: true
+    )
+
     private let suite: EphemeralDefaults
 
     init() throws {
@@ -118,19 +122,25 @@ struct StructureAvailabilityTests {
         #expect(!makeSession(.redis).availablePanes.contains(.triggers))
     }
 
-    @Test("Parts is ClickHouse only, and the server refusal does not reach it")
-    func partsIsClickHouseOnly() {
-        let clickhouse = makeSession(.clickhouse)
-        #expect(clickhouse.availablePanes.contains(.parts))
-        #expect(!makeSession(.mysql).availablePanes.contains(.parts))
+    @Test("Parts follows the driver's storage parts, whatever the engine")
+    func partsFollowsTheDriver() {
+        let session = makeSession(.clickhouse)
+        #expect(!session.availablePanes.contains(.parts))
 
-        clickhouse.serverSupport = Self.legacyMySQL
-        #expect(clickhouse.availablePanes.contains(.parts))
+        session.serverSupport = Self.storageParts
+        #expect(session.availablePanes.contains(.parts))
+
+        session.pane = .parts
+        session.serverSupport = Self.legacyMySQL
+        #expect(!session.availablePanes.contains(.parts))
+        #expect(session.pane == .definition)
     }
 
     @Test("Panes keep one order: Definition, Triggers, DDL, Parts")
     func panesKeepTheirOrder() {
         #expect(makeSession(.mysql).availablePanes == [.definition, .triggers, .ddl])
-        #expect(makeSession(.clickhouse).availablePanes == [.definition, .ddl, .parts])
+        let clickhouse = makeSession(.clickhouse)
+        clickhouse.serverSupport = Self.storageParts
+        #expect(clickhouse.availablePanes == [.definition, .ddl, .parts])
     }
 }
