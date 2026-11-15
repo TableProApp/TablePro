@@ -30,15 +30,15 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 | Section | Boxes | Done |
 |---|---|---|
 | Phase 0: Release blockers | 16 | 3 |
-| Phase 1: Core enablers | 23 | 2 |
-| Phase 2: Windows daily use | 62 | 2 |
+| Phase 1: Core enablers | 23 | 4 |
+| Phase 2: Windows daily use | 62 | 16 |
 | Phase 3: Standard features both apps lack | 118 | 0 |
 | Phase 4: Advanced tier | 57 | 0 |
 | Phase 5: Engines | 27 | 0 |
 | Phase 6: Quality bars | 8 | 0 |
 | Phase 7: Sync and teams | 15 | 0 |
 | Phase 8: Beyond the market | 40 | 0 |
-| Total | 366 | 7 |
+| Total | 366 | 23 |
 
 ## Where each app stands
 
@@ -46,7 +46,7 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 
 **Linux**, 0.1.0-beta.3: 9 engines from the core. Covers most of the CORE tier: connections with SSH, TLS and sockets, filters, editing with undo, completion, formatter, snippets, Vim, history, saved queries, structure editing, ER diagram, 7 export formats, dump and SQL import, AI chat, MCP with 11 tools and client setup, a CLI, share links. Missing: all of admin and monitoring, query parameters, drawn plans, charts, schema compare, data transfer, backup through native tools, SOCKS, cloud IAM, users and roles, view and routine editing, the 10 paid features. 0.1.0 waits on [release criteria](linux/docs/releasing.md#release-criteria) 8 and 10.
 
-**Windows**, unreleased: 9 engines through the FFI. Has the connection library (groups, tags, favourites), in-process SSH, TLS with remedies, paging, sort and filters, a row estimate before an optional count, table-row editing with SQL review, read-only structure and routine, trigger and sequence definitions, export to 7 formats, query history with search, a Direct2D editor with highlighting and multiple cursors, run statement, selection or script with transactions, Safe Mode (3 levels), tab tear-out, session restore, account sign-in, share links, and an MSIX build whose release dry run passes. Missing most of the CORE tier past that: value viewers, row details, FK navigation, copy formats, completion, formatter, saved queries, .sql files, import, structure editing, a database switcher, Truncate and Drop in the sidebar, undo of edits.
+**Windows**, unreleased: 9 engines through the FFI. Has the connection library (groups, tags, favourites), in-process SSH, TLS with remedies, paging, sort and filters, a row estimate before an optional count, table-row editing with SQL review, read-only structure and routine, trigger and sequence definitions, export to 7 formats, CSV import, query history with search and pins, saved queries in folders, value viewers, FK navigation, a production cue, database switchers, a Direct2D editor with highlighting, multiple cursors, find and replace and .sql files, run statement, selection or script with transactions, Redis key tabs, Cassandra paging, Safe Mode (3 levels), tab tear-out, session restore with pending edits, account sign-in, share links, and an MSIX build whose release dry run passes. Missing from the CORE tier: filter by value, copy formats, completion, formatter, a script runner, SQL dump and import, the table designer, creating and dropping databases and schemas, Truncate and Drop in the sidebar, undo of edits.
 
 **Core**: the FFI exposes filters, table structure and object definitions, export, query history, the account and share links. `ddl` drafts and plans, `import`, `dump`, saved queries, `ai`, `mcp`, `cli` and `foreign-import` are core code the FFI does not expose yet. The formatter, completion scope, script runner, key-based change tracker, copy renderer, highlight rules, Open Quickly and ER layout sit in `linux/crates/app`, GTK-free. Phase 1 moves both down so Windows builds on the code Linux already runs.
 
@@ -96,10 +96,10 @@ Each item ends in an FFI surface Windows needs. Linux paths are under `linux/cra
 
 - [x] **C-01** Filters through the FFI: table pages and counts take a filter, and `filter_choices` gives each column's operators: #4213
 - [ ] **C-02** Export through the FFI: `core::export` encoders (CSV, TSV, JSON, JSON Lines, HTML, Markdown, SQL INSERT, XML, XLSX) as a streaming job with progress and Stop; the sinks and ledger in `ui/export/` move down · partly #4213: TSV, JSON Lines, CSV options, progress and the move of the sinks and ledger are left
-- [ ] **C-03** CSV import and pasted rows through the FFI: `core::import::{csv_import, plan_import, PastedRows}`
+- [ ] **C-03** CSV import and pasted rows through the FFI: `core::import::{csv_import, plan_import, PastedRows}` · partly #4288: `PastedRows` stays off the FFI until C-10 ([core ADR 0030](core/docs/decisions/0030-storage-import-and-library-through-the-ffi.md))
 - [ ] **C-04** SQL dump and SQL file import through the FFI: `core::dump`, `SqlFileReader`, with the orchestration in `ui/export/dump_job.rs` and `services/import_file.rs` moved down
 - [ ] **C-05** Structure through the FFI: the table definition (columns, indexes, keys, comments), CREATE statements, `core::ddl` drafts, `diff_table`, plans and catalog operations (core ADR 0013); the logic in `services/pending_structure.rs` moves down · partly #4213: `core::ddl` drafts, `diff_table`, plans, catalog operations and the move of `services/pending_structure.rs` are left
-- [ ] **C-06** Storage through the FFI: `QueryHistory` (FTS5, retention, export), `SavedQueries` with folders and keywords, `Favourites`, `DraftStore` (deferred by core ADR 0017) · partly #4213: history pins, retention and export, `SavedQueries`, `Favourites` and `DraftStore` are left
+- [x] **C-06** Storage through the FFI: `QueryHistory` (FTS5, retention, export), `SavedQueries` with folders and keywords, `Favourites`, `DraftStore` (deferred by core ADR 0017): #4213, #4288. `DraftStore` stays off the FFI, since Windows keeps tab text in its session file ([core ADR 0030](core/docs/decisions/0030-storage-import-and-library-through-the-ffi.md))
 - [ ] **C-07** SQL formatter into core: `ui/editor/format_plan.rs` and `significant_tokens.rs`
 - [ ] **C-08** Completion context into core: `completion/completion_scope.rs`, `catalog_read.rs` and the fuzzy ranking; proposal objects stay per app
 - [ ] **C-09** Script runner into core: `script_runner.rs` and `run_log.rs` with `BatchErrorPolicy` (the FFI's `QueryEditor::run` takes one statement or one `GO` batch)
@@ -115,7 +115,7 @@ Each item ends in an FFI surface Windows needs. Linux paths are under `linux/cra
 - [x] **C-19** Account through the FFI: the Windows `AppClient`, registered with tablepro-cloud, and the entitlement gate that every paid feature on Windows needs (core ADR 0016 and 0026, D-02): #4253
 - [ ] **C-20** CLI on Windows: a `Host`, MCP dispatch, peer verification on the pipe, PowerShell completion (core ADR 0018)
 - [ ] **C-21** Query-result editing through the FFI (core ADR 0015, after ADR 0019)
-- [ ] **C-22** Connection library through the FFI: export to JSON, duplicate with secrets
+- [x] **C-22** Connection library through the FFI: export to JSON, duplicate with secrets: #4288
 - [ ] **C-23** uniffi 0.32 once uniffi-bindgen-cs supports it (issue #183, core ADR 0002)
 
 ## Phase 2: Windows daily use
@@ -124,20 +124,20 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 ### Connections
 
-- [ ] **W-01** Duplicate a connection with its secrets · CORE · needs C-22
-- [ ] **W-02** Export the connections file (no secrets); import of TablePro's file exists · STD · needs C-22
+- [x] **W-01** Duplicate a connection with its secrets · CORE · needs C-22: #4288
+- [x] **W-02** Export the connections file (no secrets); import of TablePro's file exists · STD · needs C-22: #4288
 - [ ] **W-03** Paste a URL on the Connections page to start a connection (today only in the engine chooser) · STD
 - [ ] **W-04** Jump hosts in the SSH section; the core and the FFI record carry them · STD
 - [ ] **W-05** Connect timeout field · STD
 - [ ] **W-06** Group colour (the record has `Color`) · STD
 - [ ] **W-07** Import from TablePlus, DBeaver, DataGrip, Beekeeper, Navicat and DBX · STD · needs C-16
-- [ ] **W-08** Production cue: the connection colour on the tab strip, title bar and toolbar, and an environment label · CORE
+- [x] **W-08** Production cue: the connection colour on the tab strip, title bar and toolbar, and an environment label · CORE: #4285
 
 ### Sidebar
 
 - [ ] **W-09** Object context menu: Open, Open in New Tab, Copy Name, Show CREATE, Truncate, Drop, through Safe Mode · CORE · needs C-05 · partly #4213: Open in New Tab, Show CREATE for a table, Truncate and Drop are left
 - [ ] **W-10** Create and drop databases and schemas · CORE · needs C-05
-- [ ] **W-11** Database switcher per connection and per query tab · CORE
+- [ ] **W-11** Database switcher per connection and per query tab · CORE · partly #4285: Redis numbered databases get no switcher, because the core reports a Redis server as one database
 - [x] **W-12** Open a routine, trigger or sequence: its definition read-only, with Copy and Open in Editor · STD: #4213
 - [ ] **W-13** Columns, indexes and keys under a table node · STD · needs C-05
 - [ ] **W-14** Table info: rows, size, comment · STD
@@ -146,12 +146,12 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 - [ ] **W-15** Filters: per-column operators, raw WHERE, match any or all, kept per table · CORE · needs C-01 · partly #4213: the filter is kept with its tab; keeping it for the table when it opens again is left
 - [ ] **W-16** Filter by a cell's value, or exclude it · CORE · needs C-01
-- [ ] **W-17** Value viewers for long text, JSON, binary (hex) and images; a tooltip on a cut cell · CORE
+- [x] **W-17** Value viewers for long text, JSON, binary (hex) and images; a tooltip on a cut cell · CORE: #4282
 - [ ] **W-18** Row details pane with editing · STD
-- [ ] **W-19** Follow a foreign key to the referenced row, and show referencing rows · CORE
+- [x] **W-19** Follow a foreign key to the referenced row, and show referencing rows · CORE: #4282
 - [ ] **W-20** Copy as CSV or TSV with headers, JSON, Markdown, INSERT, IN clause · CORE · needs C-11
 - [ ] **W-21** Reorder, hide and freeze columns, kept per table (the control has frozen columns) · STD
-- [ ] **W-22** Context menu on query-result grids · CORE · partly #4253: the menu has Copy and Share Result; Copy As, filter by value and Export in it are left
+- [x] **W-22** Context menu on query-result grids · CORE: #4253, #4282. Copy As waits on W-20, filter by value on W-16
 - [ ] **W-23** Selection summary: count, sum, average, min, max · STD
 - [ ] **W-24** Find in the grid · STD · needs C-12
 - [ ] **W-25** Grid display settings: NULL text, date format, grid font, row height, stripes · STD · needs C-11
@@ -168,10 +168,10 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 - [ ] **W-31** Completion: tables, columns, aliases, schemas, functions, keywords · CORE · needs C-08 (#4275)
 - [ ] **W-32** Formatter · CORE · needs C-07
-- [ ] **W-33** Replace, and regular expressions in Find · CORE
-- [ ] **W-34** Open and save .sql files, drop a file on the editor, recent files · CORE
-- [ ] **W-35** Query history with search, pins and retention · CORE · needs C-06 · partly #4213: pins and retention are left
-- [ ] **W-36** Saved queries in folders · CORE · needs C-06
+- [x] **W-33** Replace, and regular expressions in Find · CORE: #4285
+- [x] **W-34** Open and save .sql files, drop a file on the editor, recent files · CORE: #4285
+- [x] **W-35** Query history with search, pins and retention · CORE · needs C-06: #4213, #4285, #4288
+- [x] **W-36** Saved queries in folders · CORE · needs C-06: #4288
 - [ ] **W-37** Snippets with tab stops · STD · needs C-15
 - [ ] **W-38** Run a whole script with an error policy, one entry per result · CORE · needs C-09
 - [ ] **W-39** Word wrap, bracket matching, the current-statement band, Go to Error · STD
@@ -187,23 +187,23 @@ The first public Windows release waits for every CORE item here and the Windows 
 ### Import and export
 
 - [ ] **W-45** Export a table or a result to CSV, JSON, XLSX, SQL INSERT, Markdown, HTML and XML, with progress and Stop · CORE · needs C-02 · partly #4213: SQL INSERT from a query result, and the rows written so far shown while it runs, are left
-- [ ] **W-46** CSV import into a table with a column mapping · CORE · needs C-03
+- [x] **W-46** CSV import into a table with a column mapping · CORE · needs C-03: #4288
 - [ ] **W-47** Import SQL File and Export Database · CORE · needs C-04
 
 ### NoSQL
 
-- [ ] **W-48** Redis key tab: the value by type, length, TTL, Load More (opening a key does nothing today) · CORE
+- [x] **W-48** Redis key tab: the value by type, length, TTL, Load More (opening a key does nothing today) · CORE: #4285
 - [ ] **W-49** MongoDB: documents as JSON with a tree view · STD
-- [ ] **W-50** Cassandra paging past the first page (the FFI refuses offsets; page by paging state) · CORE
+- [x] **W-50** Cassandra paging past the first page (the FFI refuses offsets; page by paging state) · CORE: #4285
 
 ### Workspace
 
 - [ ] **W-51** Open Quickly: objects, saved and past queries, commands · STD · needs C-13
-- [ ] **W-52** Settings: editor font family, grid font, NULL display, history, AI and MCP pages · CORE
+- [ ] **W-52** Settings: editor font family, grid font, NULL display, history, AI and MCP pages · CORE · partly #4285: the AI and MCP pages wait on C-17 and C-18
 - [ ] **W-53** A toast when a long query finishes in a background tab · STD
 - [ ] **W-54** Every string localizable, the editor's menu and find bar included; Vietnamese first · STD
 - [ ] **W-55** Editor colour schemes · STD
-- [ ] **W-56** Grid accessibility: row header peers, and a workaround for the empty `ColumnHeaders` in Windows App SDK 2.6.4 · CORE
+- [x] **W-56** Grid accessibility: row header peers, and a workaround for the empty `ColumnHeaders` in Windows App SDK 2.6.4 · CORE: #4282
 
 ### AI, MCP, account, integration
 

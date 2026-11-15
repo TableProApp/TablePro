@@ -10,8 +10,8 @@ mod sql_file;
 mod sql_import;
 
 pub use csv_import::{
-    CsvImportOptions, CsvRowError, CsvSheet, ImportError, MAX_CSV_FILE_BYTES, MAX_FIELDS, MAX_PREVIEW_ROWS, read_csv,
-    row_to_cells, suggest_mapping,
+    CsvImportOptions, CsvRecords, CsvRowError, CsvSheet, ImportError, MAX_CSV_FILE_BYTES, MAX_FIELDS, MAX_PREVIEW_ROWS,
+    padded_row, read_csv, read_csv_records, row_to_cells, suggest_mapping,
 };
 pub use import_column::ImportColumn;
 pub use import_plan::{ImportPlan, plan_import};

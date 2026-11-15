@@ -15,6 +15,7 @@ use tablepro_storage::{
 use uuid::Uuid;
 
 use crate::error::CoreError;
+use crate::export::write_whole_file;
 use crate::runtime::on_runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -278,6 +279,31 @@ impl ConnectionLibrary {
             Ok(())
         })
         .await
+    }
+
+    // A secret the store cannot read stops the copy, which would otherwise fail to connect for no reason it shows.
+    async fn copy_secrets(&self, source: &SavedConnection, copy: &SavedConnection) -> Result<(), CoreError> {
+        let vault = self.secrets.clone();
+        let (from, to) = (source.id, copy.clone());
+        on_runtime(&self.tasks, async move {
+            for kind in SecretKind::ALL {
+                if let SecretLookup::Found(secret) = vault.load(from, kind).await.map_err(secret_error)? {
+                    let label = english_secret_label(kind, &to.secret_target(kind));
+                    vault.store(to.id, kind, &secret, &label).await.map_err(secret_error)?;
+                }
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    async fn forget_secrets(&self, id: Uuid) {
+        if let Err(error) = self.delete_secrets(vec![id]).await {
+            tracing::warn!(
+                code = error.code(),
+                "the secrets of a copy that was not saved are still in the store"
+            );
+        }
     }
 
     // A value that cannot be read counts as none, so putting it back removes the new one rather than keep it.
@@ -644,6 +670,79 @@ impl ConnectionLibrary {
         let before = optional_id(before.as_deref())?;
         self.blocking(move |store| Ok(store.move_groups_blocking(&ids, parent, before)?))
             .await
+    }
+
+    // A copy under a new id right after the original in its group, with every secret the original keeps, so either
+    // connects alone. It has never been opened and is no favourite.
+    pub async fn duplicate(&self, id: String, name: String) -> Result<ConnectionRecord, CoreError> {
+        let id = parse_id(&id)?;
+        let name = name.trim().to_owned();
+        if name.is_empty() {
+            return Err(CoreError::failed("library.name_required", "a connection needs a name"));
+        }
+        let _held = self.hold_writes().await;
+        let source = self
+            .blocking(move |store| {
+                store
+                    .list_blocking()?
+                    .connections
+                    .iter()
+                    .find(|saved| saved.id == id)
+                    .cloned()
+                    .ok_or_else(|| StorageError::ConnectionNotFound { id }.into())
+            })
+            .await?;
+        let copy = SavedConnection {
+            id: Uuid::new_v4(),
+            name,
+            last_opened_at: None,
+            ..source.clone()
+        };
+        if let Err(error) = self.copy_secrets(&source, &copy).await {
+            self.forget_secrets(copy.id).await;
+            return Err(error);
+        }
+        let entry = copy.clone();
+        let written = self
+            .blocking(move |store| {
+                let id = entry.id;
+                store.insert_after_blocking(entry, source.id)?;
+                // The store gives the copy its place in the group; a read that fails now leaves the copy saved.
+                Ok(store
+                    .list_blocking()
+                    .ok()
+                    .and_then(|list| list.connections.iter().find(|saved| saved.id == id).cloned()))
+            })
+            .await;
+        let error = match written {
+            Ok(stored) => return Ok(ConnectionRecord::from(&stored.unwrap_or(copy))),
+            Err(error) => error,
+        };
+        // A write can fail after the file was replaced, as when the folder's sync fails; a listed copy keeps its secrets.
+        let id = copy.id;
+        let listed = self
+            .blocking(move |store| Ok(store.list_blocking()?.connections.iter().any(|saved| saved.id == id)))
+            .await;
+        match listed {
+            Ok(true) => Ok(ConnectionRecord::from(&copy)),
+            Ok(false) => {
+                self.forget_secrets(copy.id).await;
+                Err(error)
+            }
+            Err(_) => Err(error),
+        }
+    }
+
+    // The saved connections, groups and tags as a TablePro connections file at `path`, which appears only once
+    // whole. It carries no passwords: those stay in the system's store. Gives how many connections it holds.
+    pub async fn export_file(&self, path: String) -> Result<u32, CoreError> {
+        self.blocking(move |store| {
+            let count = store.list_blocking()?.connections.len();
+            let bytes = store.export_blocking()?;
+            write_whole_file(&path, &bytes)?;
+            Ok(u32::try_from(count).unwrap_or(u32::MAX))
+        })
+        .await
     }
 
     // Merges a TablePro connections file; it carries no passwords.

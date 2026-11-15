@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using TablePro.App.Model;
 using TablePro.App.Services;
+using Microsoft.Windows.Storage.Pickers;
 using TablePro.Interop;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
@@ -347,6 +348,7 @@ public sealed partial class HomeView : UserControl
             {
                 AddItem(menu, "MenuEdit", Symbol.Edit, () => _shell.EditConnection(connection));
                 AddItem(menu, "MenuRename", Symbol.Rename, () => StartRename(item));
+                AddItem(menu, "MenuDuplicate", Symbol.Copy, async () => await DuplicateAsync(connection).ConfigureAwait(true));
             }
 
             var ids = Ids(targets);
@@ -522,6 +524,68 @@ public sealed partial class HomeView : UserControl
         _workbench.NotifyLibraryChanged();
     }
 
+    // As macOS does, the form opens on the copy, which sits right after its original.
+    private async Task DuplicateAsync(SavedConnection connection)
+    {
+        if (connection.Id is not { } id)
+        {
+            return;
+        }
+
+        SavedConnection copy;
+        try
+        {
+            var name = CopyName.For(
+                connection.Name,
+                _snapshot.Connections.Select(saved => saved.Name),
+                Strings.Get("CopyNamePattern"),
+                Strings.Get("CopyNameNumberedPattern"));
+            copy = await _workbench.Library.DuplicateAsync(id, name).ConfigureAwait(true);
+        }
+        catch (TableProException exception)
+        {
+            ShowMessage(Strings.Format("DuplicateFailed", Strings.Error(exception.Error)), InfoBarSeverity.Error);
+            return;
+        }
+        finally
+        {
+            _workbench.NotifyLibraryChanged();
+        }
+
+        _shell.EditConnection(copy);
+    }
+
+    // The file is the one Import reads: every connection, group and tag, and no password.
+    public async Task ExportConnectionsAsync()
+    {
+        if (XamlRoot is not { } root)
+        {
+            return;
+        }
+
+        var picker = new FileSavePicker(root.ContentIslandEnvironment.AppWindowId)
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            SuggestedFileName = Strings.Get("ExportConnectionsFileName"),
+        };
+        picker.FileTypeChoices.Add(Strings.Get("ConnectionsFileType"), [".json"]);
+        var result = await picker.PickSaveFileAsync();
+        if (result is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var count = await _workbench.Library.ExportAsync(result.Path).ConfigureAwait(true);
+            ShowMessage(Strings.Format(count == 1 ? "ExportConnectionsDoneOne" : "ExportConnectionsDone", count), InfoBarSeverity.Success);
+        }
+        catch (TableProException exception)
+        {
+            ShowMessage(Strings.Format("ExportConnectionsFailed", Strings.Error(exception.Error)), InfoBarSeverity.Error);
+        }
+    }
+
     private async Task DeleteConnectionsAsync(List<SavedConnection> connections)
     {
         if (connections.Count == 0)
@@ -548,6 +612,7 @@ public sealed partial class HomeView : UserControl
                 foreach (var id in Ids(connections))
                 {
                     await _workbench.Library.DeleteAsync(id).ConfigureAwait(true);
+                    await _workbench.ForgetSavedQueriesAsync(id).ConfigureAwait(true);
                 }
             }).ConfigureAwait(true);
         }
@@ -944,6 +1009,8 @@ public sealed partial class HomeView : UserControl
     private async void OnOpenFile(object sender, RoutedEventArgs e) => await _shell.OpenFileAsync().ConfigureAwait(true);
 
     private async void OnImport(object sender, RoutedEventArgs e) => await _shell.ImportAsync().ConfigureAwait(true);
+
+    private async void OnExportConnections(object sender, RoutedEventArgs e) => await ExportConnectionsAsync().ConfigureAwait(true);
 
     private async void OnSample(object sender, RoutedEventArgs e) => await _shell.OpenSampleAsync().ConfigureAwait(true);
 

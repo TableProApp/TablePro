@@ -600,7 +600,7 @@ impl RowSave {
     }
 }
 
-fn save_gate(level: SafeModeLevel) -> SaveGate {
+pub(crate) fn save_gate(level: SafeModeLevel) -> SaveGate {
     match level.gate(StatementAccess::Write) {
         WriteGate::Run => SaveGate::Run,
         WriteGate::Confirm => SaveGate::Confirm,
