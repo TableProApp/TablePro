@@ -13,6 +13,7 @@ enum DuckDBIsolatedImport {
         ("autoinstall_known_extensions", "false"),
         ("autoload_known_extensions", "false"),
         ("allow_community_extensions", "false"),
+        (DuckDBExpressionDepth.configurationOption, DuckDBExpressionDepth.limit),
     ]
 
     // duckdb_set_config rejects allowed_directories, and DuckDB refuses to change it once external access is off.
@@ -47,14 +48,14 @@ enum DuckDBIsolatedImport {
             throw DuckDBPluginError.connectionFailed("DuckDB rejected \(option.name) = \(option.value)")
         }
 
-        var database: duckdb_database?
-        var openError: UnsafeMutablePointer<CChar>?
-        guard duckdb_open_ext(file, &database, config, &openError) != DuckDBError else {
-            let detail = openError.map { String(cString: $0) } ?? "unknown error"
-            duckdb_free(openError)
+        let opened = DuckDBExpressionDepth.open(file, config: config)
+        var database = opened.database
+        guard opened.state != DuckDBError else {
+            let detail = opened.error.map { String(cString: $0) } ?? "unknown error"
+            duckdb_free(opened.error)
             throw DuckDBPluginError.connectionFailed("Failed to open DuckDB database at '\(file)': \(detail)")
         }
-        defer { duckdb_close(&database) }
+        defer { DuckDBExpressionDepth.close(&database) }
 
         var handle: duckdb_connection?
         guard duckdb_connect(database, &handle) != DuckDBError, let connection = handle else {

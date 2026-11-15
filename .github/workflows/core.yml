@@ -99,6 +99,12 @@ jobs:
       # The sign-in's loopback listener and the token's file on each platform.
       - name: Account unit tests
         run: cargo test --locked --target "$TARGET" -p tablepro-account --lib
+      # DuckDB recurses on threads whose stack each platform sizes (core/docs/decisions/0031-duckdb-expression-depth.md).
+      - name: DuckDB's deepest expressions
+        run: |
+          cargo test --locked --target "$TARGET" -p tablepro-driver-duckdb --lib \
+            every_connection_refuses_an_expression_past_the_depth_limit
+          cargo test --locked --target "$TARGET" -p tablepro-driver-duckdb --test integration deep_expressions
       # The Arm64 image has no OpenSSH Server, and installing it takes about 20 minutes, so Arm64 runs these nightly.
       - name: Start Windows' OpenSSH Server
         id: sshd

@@ -13,6 +13,8 @@ mod ddl;
 #[cfg(test)]
 mod decode;
 #[cfg(test)]
+mod deep_expressions;
+#[cfg(test)]
 mod duckdb_engine;
 #[cfg(test)]
 mod dump;
