@@ -277,11 +277,16 @@ where
         .await
         .map_err(map_error)?;
     let read = work(pooled.connection()).await;
-    // A stop that ended the read must not stop its release, which would leave the read's lock held.
+    // A stop that ended the read must not stop its release, which would leave the read's lock held, and has to stand
+    // again after it: the stop is what tells a lock wait it cut short from one that gave up.
+    let stopped = flag.is_raised();
     flag.lower();
     if let Err(error) = pooled.connection().execute("RELEASE tablepro_catalog").await {
         tracing::warn!(%error, "a catalog read could not end its transaction; closing the connection");
         pooled.discard_on_release();
+    }
+    if stopped {
+        flag.raise();
     }
     read
 }
