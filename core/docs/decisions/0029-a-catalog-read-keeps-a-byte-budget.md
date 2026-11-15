@@ -40,3 +40,8 @@ A file engine reads its catalog from the file the user opened, and the file choo
 - A save on a table with millions of rows that already break its keys rolls back rather than compare them. Its error lists the first ten tables and parents.
 - Not budgeted: the schema list, reads of one value, and the SQL dumps, which read each object once.
 - The apps word the code: Linux in `linux/crates/app/src/ui/error_text/driver.rs`, Windows in `Resources.resw`.
+
+## Known limits
+
+- SQLite's own foreign key check on a structure save can compile far more than the file holds: it expands a virtual generated column's expression once per key, 217 MB from a 12.7 KB file, measured. `foreign_key_list_bytes` does not count it. A real cap needs a counting allocator armed per read (`SQLITE_CONFIG_MALLOC`) or a reader in a process of its own. It takes a crafted file the user opens and a structure change the user saves.
+- DuckDB's counterpart, expressions nested past the stacks DuckDB runs on, is ADR 0031.
