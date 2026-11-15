@@ -13,6 +13,10 @@ protocol TransferSessionHost: AnyObject, Sendable {
         _ work: @Sendable () async throws -> T
     ) async throws -> T
     func noteTransferChangedCatalog(_ kinds: SQLCatalogObjectKinds)
+    // What a SQL file left on the session the import ran on, recorded as a query run's is, before the catalog reloads.
+    func noteTransferSessionEffect(_ effect: SessionLocalStatements.Effect, on driver: any DatabaseDriver)
+    // The window's database and schema follow where a SQL file left the session, as they follow a query run.
+    func followTransferPlacement(movesDatabase: Bool, movesSchema: Bool) async
     // Background time ran out while the import's own rollback was still on the wire: closing the connection makes the
     // server end the transaction, and the next use of the session dials again.
     func abandonTransferSession() async
@@ -38,6 +42,14 @@ extension ConnectionCoordinator: TransferSessionHost {
 
     func noteTransferChangedCatalog(_ kinds: SQLCatalogObjectKinds) {
         noteCatalogChanged(kinds)
+    }
+
+    func noteTransferSessionEffect(_ effect: SessionLocalStatements.Effect, on driver: any DatabaseDriver) {
+        noteSessionEffect(effect, on: driver)
+    }
+
+    func followTransferPlacement(movesDatabase: Bool, movesSchema: Bool) async {
+        await followSessionPlacement(after: SessionMove(database: movesDatabase, schema: movesSchema))
     }
 
     func abandonTransferSession() async {

@@ -26,6 +26,23 @@ struct RowSelectionTests {
         #expect(selection.rows.isEmpty)
     }
 
+    @Test("Outside Select mode no row reads as picked and a row opens its detail; in it a tap picks the row")
+    func pickStateFollowsSelectMode() {
+        var selection = RowSelection()
+        #expect(selection.pick(of: 0) == nil)
+        #expect(selection.opensRowDetail)
+
+        selection.begin()
+        selection.toggle(0)
+        #expect(selection.pick(of: 0) == true)
+        #expect(selection.pick(of: 1) == false)
+        #expect(selection.opensRowDetail == false)
+
+        selection.end()
+        #expect(selection.pick(of: 0) == nil)
+        #expect(selection.opensRowDetail)
+    }
+
     @Test("Select All picks every loaded row, and says so only while all are picked")
     func selectAll() {
         var selection = RowSelection()

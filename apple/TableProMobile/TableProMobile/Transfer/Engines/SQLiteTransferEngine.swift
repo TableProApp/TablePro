@@ -48,9 +48,9 @@ nonisolated struct SQLiteTransferCatalog: MobileExportCatalog {
         sqliteQuoteIdentifier(identifier)
     }
 
-    // The Mac plugin keeps PluginKit's default body, which PluginSQLQuotingParityTests holds to this one.
+    // The driver's own body, so a NUL in a value lands in the dump as char(0) rather than being dropped.
     func escapeStringLiteral(_ value: String) -> String {
-        SQLQuoting.stringLiteralBody(value)
+        SQLiteDriver.literalBody(value)
     }
 
     func fetchTableDDL(table: String, databaseName: String) async throws -> String {

@@ -34,6 +34,7 @@ final class RecordingTransferDriver: DatabaseDriver, ExportRowStreaming, Catalog
     var enforcesReadOnlyMode = false
     var stall = ReadStall.none
     var exportCatalog: (any MobileExportCatalog)?
+    var literalEscaping: (@Sendable (String) -> String)?
     private(set) var disconnected = false
 
     var executed: [String] { lock.withLock { sent } }
@@ -97,6 +98,10 @@ final class RecordingTransferDriver: DatabaseDriver, ExportRowStreaming, Catalog
         }
         reads.forEach { $0.resume(throwing: Interrupted()) }
         stops.forEach { $0.resume() }
+    }
+
+    func escapeStringLiteral(_ value: String) -> String {
+        literalEscaping?(value) ?? SQLQuoting.stringLiteralBody(value)
     }
 
     func connect() async throws {}

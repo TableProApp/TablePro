@@ -15,7 +15,7 @@ nonisolated struct ExportScopeOption: Identifiable, Sendable {
     }
 
     nonisolated enum Source: Sendable {
-        case query(String)
+        case query(ExportSelect)
         // The user's statement run again, under the engine's read-only mode only.
         case rerun(String)
         case rows(ExportRowSet)

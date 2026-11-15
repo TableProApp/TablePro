@@ -1,10 +1,11 @@
 import Foundation
 import TableProGzip
+@testable import TableProMobile
 import TableProModels
 import TableProPluginKit
 import TableProSQLFile
+import TableProTestSupport
 import Testing
-@testable import TableProMobile
 
 struct ImportSourcesTests {
     private static let script = "CREATE TABLE t (a int);\nINSERT INTO t VALUES (1);\nINSERT INTO t VALUES ('x;y');\n"
@@ -34,6 +35,58 @@ struct ImportSourcesTests {
         #expect(TransferTestFolders.contents(of: folder).count == 2)
 
         source.cleanup()
+        #expect(TransferTestFolders.contents(of: folder).map(\.lastPathComponent) == ["dump.sql.gz"])
+        TransferFiles.remove(folder)
+    }
+
+    @Test("A stop during the expansion of a gzipped dump ends it at once and leaves no partial file")
+    func stopEndsTheExpansion() async throws {
+        let folder = try TransferTestFolders.make("sql-gz-stop")
+        let started = TestGate()
+        await started.open()
+        let source = MobileSQLFileImportSource(
+            url: try gzipped(in: folder),
+            encoding: .utf8,
+            family: .other,
+            grammar: { SQLImportFile.grammar(for: .sqlite, session: nil) },
+            expand: { _, destination in
+                // As `GzipFile.decompress` does: a partial file while it runs, removed when it is cancelled.
+                try Data("CREATE TABLE".utf8).write(to: destination)
+                await started.enter()
+                do {
+                    try await Task.sleep(for: .seconds(60))
+                } catch {
+                    try? FileManager.default.removeItem(at: destination)
+                    throw error
+                }
+            }
+        )
+
+        let reading = Task { _ = try await source.elements() }
+        await started.waitUntilEntered()
+        #expect(TransferTestFolders.contents(of: folder).count == 2)
+        source.stop()
+
+        let ended = try #require(await BoundedCall.result(within: .seconds(5)) { await reading.result })
+        #expect(throws: CancellationError.self) { try ended.get() }
+        #expect(TransferTestFolders.contents(of: folder).map(\.lastPathComponent) == ["dump.sql.gz"])
+        TransferFiles.remove(folder)
+    }
+
+    @Test("A stop before the dump is read keeps the real expansion from starting and leaves only the dump")
+    func stopBeforeReadingExpandsNothing() async throws {
+        let folder = try TransferTestFolders.make("sql-gz-early-stop")
+        let source = MobileSQLFileImportSource(
+            url: try gzipped(in: folder),
+            encoding: .utf8,
+            family: .other,
+            grammar: { SQLImportFile.grammar(for: .sqlite, session: nil) }
+        )
+        source.stop()
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await source.statements()
+        }
         #expect(TransferTestFolders.contents(of: folder).map(\.lastPathComponent) == ["dump.sql.gz"])
         TransferFiles.remove(folder)
     }

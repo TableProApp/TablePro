@@ -89,6 +89,9 @@ nonisolated struct DataImportOutcome: Sendable {
     let errors: [PluginImportResult.ImportStatementError]
     let createdTable: Bool
     let catalogChanges: SQLCatalogObjectKinds
+    // What a SQL file's statements left on the session, for the window to follow as it follows a query run.
+    var sessionEffect = SessionLocalStatements.Effect()
+    var endsTransaction = false
 
     var summaryLines: [String] {
         if let tally {
@@ -154,6 +157,78 @@ nonisolated final class ImportTablePlanner: @unchecked Sendable {
     }
 }
 
+// One import at a time on a connection's session, the rest waiting in line, as the Mac queues each piece of work for
+// its turn on the session.
+nonisolated final class ImportTurns: @unchecked Sendable {
+    static let shared = ImportTurns()
+
+    nonisolated struct Ticket: Hashable, Sendable {
+        let connectionId: UUID
+        let id = UUID()
+    }
+
+    nonisolated private struct Waiter {
+        let ticket: Ticket
+        let continuation: CheckedContinuation<Void, any Error>
+    }
+
+    private let lock = NSLock()
+    private var holders: [UUID: Ticket] = [:]
+    private var lines: [UUID: [Waiter]] = [:]
+    // Taken out before it joined the line; its `take` throws when it gets there.
+    private var withdrawn: Set<Ticket> = []
+
+    func take(_ ticket: Ticket) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            let ready = lock.withLock { () -> Result<Void, any Error>? in
+                if withdrawn.remove(ticket) != nil { return .failure(CancellationError()) }
+                guard holders[ticket.connectionId] != nil else {
+                    holders[ticket.connectionId] = ticket
+                    return .success(())
+                }
+                lines[ticket.connectionId, default: []].append(Waiter(ticket: ticket, continuation: continuation))
+                return nil
+            }
+            if let ready { continuation.resume(with: ready) }
+        }
+    }
+
+    // A stop while the ticket waits: it leaves the line, and its `take` throws `CancellationError`.
+    func withdraw(_ ticket: Ticket) {
+        let waiter = lock.withLock { () -> Waiter? in
+            guard holders[ticket.connectionId] != ticket else { return nil }
+            guard let index = lines[ticket.connectionId]?.firstIndex(where: { $0.ticket == ticket }) else {
+                withdrawn.insert(ticket)
+                return nil
+            }
+            let waiter = lines[ticket.connectionId]?.remove(at: index)
+            if lines[ticket.connectionId]?.isEmpty == true { lines[ticket.connectionId] = nil }
+            return waiter
+        }
+        waiter?.continuation.resume(throwing: CancellationError())
+    }
+
+    func release(_ ticket: Ticket) {
+        let next = lock.withLock { () -> Waiter? in
+            withdrawn.remove(ticket)
+            guard holders[ticket.connectionId] == ticket else { return nil }
+            guard var line = lines[ticket.connectionId], !line.isEmpty else {
+                holders[ticket.connectionId] = nil
+                return nil
+            }
+            let first = line.removeFirst()
+            lines[ticket.connectionId] = line.isEmpty ? nil : line
+            holders[ticket.connectionId] = first.ticket
+            return first
+        }
+        next?.continuation.resume()
+    }
+
+    func waiting(on connectionId: UUID) -> Int {
+        lock.withLock { lines[connectionId]?.count ?? 0 }
+    }
+}
+
 // The iOS counterpart of macOS `ImportService` for one file: runs the format plugin on the window's session inside the
 // coordinator's tracking, with one safe-mode decision for the whole run (made by the caller's `ConfirmedWriteGate`).
 nonisolated final class ImportRun: @unchecked Sendable {
@@ -168,6 +243,7 @@ nonisolated final class ImportRun: @unchecked Sendable {
     private let host: any TransferSessionHost
     private let background: TransferBackgroundRun?
     private let planner: ImportTablePlanner
+    private let turns: ImportTurns
     private let rollbackGrace: Duration
 
     private let lock = NSLock()
@@ -175,7 +251,9 @@ nonisolated final class ImportRun: @unchecked Sendable {
     private var expired = false
     private var finished = false
     private var sink: MobileImportDataSink?
+    private var sqlSource: MobileSQLFileImportSource?
     private var pluginProgress: PluginImportProgress?
+    private var waitingTurn: ImportTurns.Ticket?
 
     init(
         request: ImportRequest,
@@ -183,6 +261,7 @@ nonisolated final class ImportRun: @unchecked Sendable {
         host: any TransferSessionHost,
         background: TransferBackgroundRun? = nil,
         planner: ImportTablePlanner = .shared,
+        turns: ImportTurns = .shared,
         rollbackGrace: Duration = .milliseconds(1_500)
     ) {
         self.request = request
@@ -190,6 +269,7 @@ nonisolated final class ImportRun: @unchecked Sendable {
         self.host = host
         self.background = background
         self.planner = planner
+        self.turns = turns
         self.rollbackGrace = rollbackGrace
     }
 
@@ -240,14 +320,24 @@ nonisolated final class ImportRun: @unchecked Sendable {
         )
     }
 
-    // Latched: the first choice wins, and a stop before the run starts keeps it from writing at all.
+    // Latched: the first choice wins, and a stop before the run starts keeps it from writing at all. It also takes the
+    // run out of the line for its turn and stops a `.gz` still expanding.
     func stop(_ choice: ImportStopChoice) {
-        let (sink, progress) = lock.withLock { () -> (MobileImportDataSink?, PluginImportProgress?) in
+        let targets = lock.withLock { () -> StopTargets in
             if stopChoice == nil { stopChoice = choice }
-            return (self.sink, pluginProgress)
+            return StopTargets(sink: sink, progress: pluginProgress, source: sqlSource, turn: waitingTurn)
         }
-        sink?.stop(choice)
-        progress?.cancel()
+        targets.sink?.stop(choice)
+        targets.progress?.cancel()
+        targets.source?.stop()
+        if let turn = targets.turn { turns.withdraw(turn) }
+    }
+
+    nonisolated private struct StopTargets {
+        let sink: MobileImportDataSink?
+        let progress: PluginImportProgress?
+        let source: MobileSQLFileImportSource?
+        let turn: ImportTurns.Ticket?
     }
 
     // Background time ran out. An owned rollback that has not reached the server before the grace ends the connection,
@@ -287,6 +377,8 @@ nonisolated final class ImportRun: @unchecked Sendable {
             throw MobileTransferRefusal(reason: reason)
         }
         guard !isStopped else { throw CancellationError() }
+        let turn = try await takeTurn()
+        defer { turns.release(turn) }
         let driver = try await host.transferDriver.get()
 
         await background?.begin { [weak self] in self?.expire() }
@@ -319,8 +411,19 @@ nonisolated final class ImportRun: @unchecked Sendable {
             case .cancelled:
                 throw CancellationError()
             }
+            // A SQL file may have run `USE` or moved the search path, however it ended.
+            let followsSession = request.target == nil
+            if followsSession {
+                await host.noteTransferSessionEffect(outcome.sessionEffect, on: driver)
+            }
             if !outcome.catalogChanges.isEmpty {
                 await host.noteTransferChangedCatalog(outcome.catalogChanges)
+            }
+            if followsSession {
+                await host.followTransferPlacement(
+                    movesDatabase: outcome.sessionEffect.usesDatabase,
+                    movesSchema: outcome.sessionEffect.leavesCatalog || outcome.endsTransaction
+                )
             }
             await background?.end(success: outcome.ending == .completed)
             return outcome
@@ -329,6 +432,23 @@ nonisolated final class ImportRun: @unchecked Sendable {
             await background?.end(success: false)
             throw error
         }
+    }
+
+    // Waits behind any import already running on this connection: a second one started from another window would
+    // otherwise join the first's transaction, and the first's commit or rollback would decide both. The turn is held
+    // until the run has ended its transaction.
+    private func takeTurn() async throws -> ImportTurns.Ticket {
+        let ticket = ImportTurns.Ticket(connectionId: request.connectionId)
+        lock.withLock { waitingTurn = ticket }
+        defer { lock.withLock { waitingTurn = nil } }
+        guard !isStopped else { throw CancellationError() }
+        let turns = turns
+        try await withTaskCancellationHandler {
+            try await turns.take(ticket)
+        } onCancel: {
+            turns.withdraw(ticket)
+        }
+        return ticket
     }
 
     nonisolated private enum Performed: Sendable {
@@ -383,6 +503,13 @@ nonisolated final class ImportRun: @unchecked Sendable {
 
         let bytes = ImportBytesRead()
         let source = makeSource(on: driver, bytes: bytes)
+        if let sqlFile = source as? MobileSQLFileImportSource {
+            let stoppedBefore = lock.withLock { () -> Bool in
+                sqlSource = sqlFile
+                return stopChoice != nil
+            }
+            if stoppedBefore { sqlFile.stop() }
+        }
         let fileSize = request.file.fileSize
         let unit: TransferProgress.Unit = request.target == nil ? .statements : .rows
         let read: @Sendable () -> TransferProgress = {
@@ -426,7 +553,9 @@ nonisolated final class ImportRun: @unchecked Sendable {
             skippedStatements: result?.skippedStatements ?? 0,
             errors: result?.errors ?? [],
             createdTable: preparation.created,
-            catalogChanges: catalogChanges
+            catalogChanges: catalogChanges,
+            sessionEffect: sink.sessionEffect,
+            endsTransaction: sink.endedTransaction
         )
     }
 

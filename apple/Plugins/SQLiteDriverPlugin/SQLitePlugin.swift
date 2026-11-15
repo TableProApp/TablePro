@@ -160,6 +160,10 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         sqliteQuoteIdentifier(name)
     }
 
+    func escapeStringLiteral(_ value: String) -> String {
+        sqliteStringLiteralBody(value)
+    }
+
     convenience init(config: DriverConnectionConfig) {
         self.init(config: config, backend: Self.makeBackend(config: config))
     }

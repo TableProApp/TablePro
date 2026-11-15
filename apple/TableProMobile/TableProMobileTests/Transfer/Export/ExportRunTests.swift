@@ -272,6 +272,31 @@ struct ExportRunTests {
         #expect(driver.isDisconnected)
     }
 
+    @Test("Selected rows are matched with the escaping of the connection that reads them, not the window's")
+    func rowsSelectFollowsTheReadingConnection() async throws {
+        let select = DataBrowserViewModel.rowsSelect(
+            table: "t", schema: nil, database: "shop", type: .mysql, keys: [[(column: "k", value: #"a\b"#)]],
+            columns: [ColumnInfo(name: "k", typeName: "varchar(10)", ordinalPosition: 0)]
+        )
+        let escaping = RecordingTransferDriver()
+        escaping.literalEscaping = { $0.replacingOccurrences(of: "\\", with: "\\\\") }
+        let literal = RecordingTransferDriver()
+
+        #expect(select.statement(on: escaping).hasSuffix(#"= 'a\\b')"#))
+        #expect(select.statement(on: literal).hasSuffix(#"= 'a\b')"#))
+
+        let root = try TransferTestFolders.make("export-rows-escaping")
+        let run = ExportRun(
+            request: request(.query(select)), plugin: MobileExportFormats.csv,
+            drivers: FixedDriverProvider(driver: escaping), exportsRoot: root
+        )
+        let outcome = try await run.run { _ in }
+
+        #expect(escaping.executed == [select.statement(on: escaping)])
+        outcome.discard()
+        TransferFiles.remove(root)
+    }
+
     @Test("Redis keys have no Export of their own: the export's objects are its databases")
     func redisKeysExportByDatabase() {
         let redis = RedisDriver(host: "localhost", port: 6_379, password: nil)

@@ -5,11 +5,29 @@ import TableProLogRedaction
 import TableProModels
 import TableProPluginKit
 
+// A read the app builds, written for the connection that runs it: an export reads on a connection of its own, whose
+// literal rules (MySQL's NO_BACKSLASH_ESCAPES, PostgreSQL's standard_conforming_strings) can differ from the window's.
+nonisolated struct ExportSelect: Sendable, ExpressibleByStringLiteral {
+    private let render: @Sendable (any DatabaseDriver) -> String
+
+    init(render: @escaping @Sendable (any DatabaseDriver) -> String) {
+        self.render = render
+    }
+
+    init(stringLiteral sql: String) {
+        render = { _ in sql }
+    }
+
+    func statement(on driver: any DatabaseDriver) -> String {
+        render(driver)
+    }
+}
+
 nonisolated enum ExportSource: Sendable {
     // Objects of one database, from `ExportObjectListing`, with the option values the user chose.
     case objects([PluginExportTable])
     // A read statement the app built, run again in full: a filtered or sorted table, or rows read again by key.
-    case query(String)
+    case query(ExportSelect)
     // The user's statement run again for a query's whole result, only in the engine's read-only mode: the classifier
     // calls `SELECT post_payment(42)` a read, and its function writes.
     case rerun(String)
@@ -370,10 +388,10 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
             report(counting)
             let total = await countRows(of: objects, in: source, driver: lease.driver, readOnly: readOnly)
             return (source, objects, total)
-        case .query(let query):
+        case .query(let select):
             guard let lease else { throw CancellationError() }
             let source = MobileQueryExportDataSource(
-                query: query,
+                query: select.statement(on: lease.driver),
                 driver: lease.driver,
                 databaseType: request.databaseType,
                 readOnly: readOnly,

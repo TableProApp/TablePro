@@ -667,16 +667,29 @@ final class DataBrowserViewModel {
     var narrowsRows: Bool { hasActiveSearch || hasActiveFilters || sortState.isSorting }
 
     // Every row the browser's search, filter and sort pick, without the page's LIMIT. A driver that builds its own
-    // reads has no SQL to re-run, so it exports the whole table instead.
-    func exportSelect() -> String? {
-        guard let table, let driver = session?.driver, !(driver is any DriverQueryBuilding) else { return nil }
-        return SQLBuilder.buildExportSelect(
-            table: table.name, schema: schema, database: database, type: databaseType,
-            filters: filters, logicMode: filterLogicMode, columns: columnDetails,
-            session: driver.settledLexicalFacts,
-            searchText: hasActiveSearch ? activeSearchText : nil, searchColumns: searchableColumns(),
-            sortState: sortState
-        )
+    // reads has no SQL to re-run, so it exports the whole table instead. The literals are written for the export's own
+    // connection when it runs.
+    func exportSelect() -> ExportSelect? {
+        guard let table, let current = session?.driver, !(current is any DriverQueryBuilding) else { return nil }
+        let name = table.name
+        let schema = schema
+        let database = database
+        let type = databaseType
+        let filters = filters
+        let logicMode = filterLogicMode
+        let columns = columnDetails
+        let searchText = hasActiveSearch ? activeSearchText : nil
+        let searchColumns = searchableColumns()
+        let sortState = sortState
+        return ExportSelect { driver in
+            SQLBuilder.buildExportSelect(
+                table: name, schema: schema, database: database, type: type,
+                filters: filters, logicMode: logicMode, columns: columns,
+                session: driver.settledLexicalFacts,
+                searchText: searchText, searchColumns: searchColumns,
+                sortState: sortState
+            )
+        }
     }
 
     // Rows with a key are read again in full, bytes and long values included; the rest export what the page holds.
@@ -685,13 +698,30 @@ final class DataBrowserViewModel {
            let locators = rowLocators(at: indices) {
             let keys = locators.compactMap(\.keyValues).filter { !$0.isEmpty }
             if !keys.isEmpty, keys.count == locators.count {
-                return .query(SQLBuilder.buildRowsSelect(
+                return .query(Self.rowsSelect(
                     table: table.name, schema: schema, database: database, type: databaseType,
-                    keys: keys, columns: columnDetails, driver: driver
+                    keys: keys, columns: columnDetails
                 ))
             }
         }
         return .rows(try ExportRowSet(columns: columns, cells: indices.map(cells(at:))))
+    }
+
+    // Each key's literal is written with the escaping of the connection that runs the read, so a key like `a\b` names
+    // the same row there whatever the window's session reads backslashes as.
+    nonisolated static func rowsSelect(
+        table: String,
+        schema: String?,
+        database: String?,
+        type: DatabaseType,
+        keys: [[(column: String, value: String)]],
+        columns: [ColumnInfo]
+    ) -> ExportSelect {
+        ExportSelect { driver in
+            SQLBuilder.buildRowsSelect(
+                table: table, schema: schema, database: database, type: type, keys: keys, columns: columns, driver: driver
+            )
+        }
     }
 
     func cells(at index: Int) -> [Cell] {

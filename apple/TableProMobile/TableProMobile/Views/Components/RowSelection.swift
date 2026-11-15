@@ -46,6 +46,16 @@ nonisolated struct RowSelection: Equatable, Sendable {
         rows.contains(index)
     }
 
+    // Nil outside Select mode, so no row draws a circle or reads as selected there.
+    func pick(of index: Int) -> Bool? {
+        isActive ? rows.contains(index) : nil
+    }
+
+    // In Select mode a tap picks the row, which stays at full contrast; only outside it does a row open its detail.
+    var opensRowDetail: Bool {
+        !isActive
+    }
+
     func selectsAll(of count: Int) -> Bool {
         count > 0 && (0..<count).allSatisfy(rows.contains)
     }

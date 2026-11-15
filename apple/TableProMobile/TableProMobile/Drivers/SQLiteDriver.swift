@@ -21,11 +21,12 @@ nonisolated final class SQLiteDriver: DatabaseDriver, CatalogQuerying, ExportRow
     var supportsTransactions: Bool { true }
     var serverVersion: String? { String(cString: sqlite3_libversion()) }
 
-    // SQLite ends statement text at a NUL, so a NUL in a value goes in as char(0) between two literals.
     func escapeStringLiteral(_ value: String) -> String {
-        value.split(separator: "\0", omittingEmptySubsequences: false)
-            .map { SQLQuoting.stringLiteralBody(String($0)) }
-            .joined(separator: "'||char(0)||'")
+        Self.literalBody(value)
+    }
+
+    static func literalBody(_ value: String) -> String {
+        sqliteStringLiteralBody(value)
     }
 
     init(

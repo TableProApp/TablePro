@@ -623,8 +623,7 @@ struct QueryEditorView: View {
             keyColumn: RowKey.columnIndex(columns: columns, primaryKeys: []),
             selectedRows: isSelecting ? viewModel.selection.rows : nil
         ) { index, line in
-            if isSelecting {
-                let isSelected = viewModel.selection.contains(index)
+            if let isSelected = viewModel.selection.pick(of: index) {
                 Button {
                     viewModel.selection.toggle(index)
                 } label: {
@@ -655,10 +654,18 @@ struct QueryEditorView: View {
         @Bindable var viewModel = viewModel
         return List(selection: RowSelectionBinding.rows($viewModel.selection)) {
             ForEach(rows.indices, id: \.self) { rowIndex in
-                NavigationLink {
-                    resultRowDetail(columns: columns, initialIndex: rowIndex)
-                } label: {
-                    resultRowCard(columns: columns, row: rows[rowIndex].displayValues())
+                let card = resultRowCard(columns: columns, row: rows[rowIndex].displayValues())
+                // In Select mode the row is the card alone, which edit mode picks; a disabled link would draw it dimmed.
+                Group {
+                    if viewModel.selection.opensRowDetail {
+                        NavigationLink {
+                            resultRowDetail(columns: columns, initialIndex: rowIndex)
+                        } label: {
+                            card
+                        }
+                    } else {
+                        card
+                    }
                 }
                 .contextMenu {
                     resultRowContextMenu(columns: columns, rowIndex: rowIndex)
@@ -808,7 +815,7 @@ struct QueryEditorView: View {
                 Button {
                     viewModel.selection.begin()
                 } label: {
-                    Label("Select Rows", systemImage: "checkmark.circle")
+                    Label("Select Rows", systemImage: "checklist")
                 }
                 .disabled(isExecuting)
                 RowLayoutPicker()

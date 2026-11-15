@@ -48,6 +48,18 @@ struct SQLiteTransferEngineTests {
         #expect(rows[1] == [.text("2"), .null, .bytes(Data())])
     }
 
+    @Test("A NUL inside text reaches the SQL dump as char(0), so the value restores whole")
+    func dumpLiteralKeepsNul() async throws {
+        let driver = try await driver("nul.db")
+        let body = SQLiteTransferCatalog(driver: driver).escapeStringLiteral("a\0b'c")
+
+        let restored = try await driver.execute(query: "SELECT hex('\(body)')").rows.first?.first
+        try await driver.disconnect()
+
+        #expect(body == "a'||char(0)||'b''c")
+        #expect(restored == "6100622763")
+    }
+
     // SQLite refuses to drop a table a statement still reads (SQLITE_LOCKED), so the drop lands once the read is gone.
     @Test("A reader that stops early finalizes its statement when it lets go")
     func earlyStopFinalizes() async throws {

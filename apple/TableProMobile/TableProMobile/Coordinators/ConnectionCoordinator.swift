@@ -427,6 +427,11 @@ final class ConnectionCoordinator {
         var schema = false
     }
 
+    // What a run on `driver` left there that the catalog connection never sees: a role, a search path, a temporary table.
+    func noteSessionEffect(_ effect: SessionLocalStatements.Effect, on driver: any DatabaseDriver) {
+        appState.catalogChanges.noteSessionEffect(effect, for: connection.id, driver: ObjectIdentifier(driver))
+    }
+
     // A read that costs a statement replaces ROW_COUNT() and the warnings, so it is sent only after a run that can have
     // moved the session. The work runs in a task of its own, since Stop may have cancelled the run that asks.
     func followSessionPlacement(after move: SessionMove) async {

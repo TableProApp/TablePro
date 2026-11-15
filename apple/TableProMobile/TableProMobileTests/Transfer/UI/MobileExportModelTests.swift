@@ -149,8 +149,8 @@ struct MobileExportModelTests {
         await ObservedCondition.wait { model.phase == .sharing }
         #expect(model.finished?.files == [file])
         #expect(model.finished?.rowsWritten == 48_000)
-        if case .query(let sql)? = requests.requests.first?.source {
-            #expect(sql == "SELECT * FROM orders")
+        if case .query(let select)? = requests.requests.first?.source {
+            #expect(select.statement(on: RecordingTransferDriver()) == "SELECT * FROM orders")
         } else {
             Issue.record("The result was not exported as a query")
         }

@@ -9,25 +9,43 @@ import TableProTabularIO
 // The macOS `SqlFileImportSource` over the shared `TableProSQLFile` parser: a `.gz` is expanded beside the staged copy
 // first, the session's grammar is read again before each statement, and a dump not in UTF-8 has its literals rewritten.
 nonisolated final class MobileSQLFileImportSource: PluginImportSource, @unchecked Sendable {
+    typealias Expand = @Sendable (_ source: URL, _ destination: URL) async throws -> Void
+
     private let url: URL
     private let encoding: String.Encoding
     private let family: SQLDumpFamily
     private let grammar: @Sendable () -> SQLLexicalGrammar
+    private let expand: Expand
     private let parser = SQLFileParser()
     private let lock = NSLock()
     private var expandedURL: URL?
+    private var expansion: Task<Void, any Error>?
+    private var stopped = false
     private var onRead: (@Sendable (Int64, Int64) -> Void)?
 
+    // `expand` writes the whole of a `.gz` to the destination and removes it on any failure, a cancel included.
     init(
         url: URL,
         encoding: String.Encoding,
         family: SQLDumpFamily,
-        grammar: @escaping @Sendable () -> SQLLexicalGrammar
+        grammar: @escaping @Sendable () -> SQLLexicalGrammar,
+        expand: @escaping Expand = { try await GzipFile.decompress(source: $0, destination: $1) }
     ) {
         self.url = url
         self.encoding = encoding
         self.family = family
         self.grammar = grammar
+        self.expand = expand
+    }
+
+    // Latched. The expansion runs in a task of its own, which only this cancel reaches: the import's Stop does not
+    // cancel the task the plugin reads in.
+    func stop() {
+        let running = lock.withLock { () -> Task<Void, any Error>? in
+            stopped = true
+            return expansion
+        }
+        running?.cancel()
     }
 
     // Bytes read from the file the parser opens, which for a `.gz` is the expanded copy.
@@ -82,7 +100,20 @@ nonisolated final class MobileSQLFileImportSource: PluginImportSource, @unchecke
         if let expanded = lock.withLock({ expandedURL }) { return expanded }
         guard SQLImportFile.isCompressed(url) else { return url }
         let expanded = SQLImportFile.expandedURL(for: url)
-        try await GzipFile.decompress(source: url, destination: expanded)
+        let source = url
+        let expand = expand
+        let task = Task { try await expand(source, expanded) }
+        let stopped = lock.withLock { () -> Bool in
+            expansion = task
+            return self.stopped
+        }
+        if stopped { task.cancel() }
+        defer { lock.withLock { expansion = nil } }
+        try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
         lock.withLock { expandedURL = expanded }
         return expanded
     }

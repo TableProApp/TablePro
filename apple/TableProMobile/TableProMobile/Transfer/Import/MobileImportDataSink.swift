@@ -54,6 +54,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     // A table an earlier import made, reused by a retry: emptied inside the import's transaction, so a retry that fails
     // or stops gives back the rows the first run kept (macOS `RowImportTableMaker`).
     private let clearsTargetFirst: Bool
+    private let catalogGrammar: SQLLexicalGrammar
 
     private let lock = NSLock()
     private var stopChoice: ImportStopChoice?
@@ -65,6 +66,8 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     private var writerTarget: ImportRowWriter.Target?
     private var immutableColumns: Set<String>?
     private var clearedTarget = false
+    private var recordedEffect = SessionLocalStatements.Effect()
+    private var transactionEnded = false
 
     init(
         driver: any DatabaseDriver,
@@ -76,6 +79,9 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     ) {
         self.driver = driver
         self.clearsTargetFirst = clearsTargetFirst
+        self.catalogGrammar = SQLLexicalReadings.resolve(
+            databaseTypeId: databaseType.rawValue, declared: nil, session: nil
+        ).execution
         self.databaseType = databaseType
         self.databaseTypeId = databaseType.rawValue
         self.rowTarget = rowTarget
@@ -125,6 +131,17 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
 
     var rowTally: ImportRowTally? {
         rowWriter?.tally
+    }
+
+    // What the file's statements left on the session, read from each one before it is sent, so a statement that
+    // failed counts too, as the query editor counts every statement a run planned.
+    var sessionEffect: SessionLocalStatements.Effect {
+        lock.withLock { recordedEffect }
+    }
+
+    // A transaction ended, the file's own or the import's, which takes back a `SET` made inside it.
+    var endedTransaction: Bool {
+        lock.withLock { transactionEnded }
     }
 
     // What the import left, once it is over. Asks the session when the sink opened nothing, so rows written into a
@@ -213,6 +230,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
         case .idle:
             lock.withLock {
                 ownsTransaction = false
+                transactionEnded = true
                 ending = committedEarly ? .committed : .endedByServer
             }
             return
@@ -222,6 +240,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
         try await driver.commitTransaction()
         lock.withLock {
             ownsTransaction = false
+            transactionEnded = true
             ending = .committed
         }
     }
@@ -232,6 +251,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
         case .idle:
             lock.withLock {
                 ownsTransaction = false
+                transactionEnded = true
                 ending = committedEarly ? .rolledBack : .endedByServer
             }
             Self.logger.info("The import's transaction had already ended; no rollback sent")
@@ -242,6 +262,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
         try await driver.rollbackTransaction()
         lock.withLock {
             ownsTransaction = false
+            transactionEnded = true
             ending = .rolledBack
         }
     }
@@ -272,6 +293,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
 
     func execute(statement: String, line: Int) async throws {
         try admitWrite()
+        noteSessionEffect(of: statement)
         let grammar = SQLImportFile.grammar(for: databaseType, session: driver.settledLexicalFacts)
         if grammar.contains(.batchSeparatorLines), !driver.sendsBatchesWhole {
             for piece in SQLStatementScanner.executableStatements(in: statement, grammar: grammar) {
@@ -282,6 +304,17 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
             _ = try await driver.execute(query: statement)
         }
         await noteEffects(of: statement)
+    }
+
+    private func noteSessionEffect(of statement: String) {
+        let effect = SessionLocalStatements.effect(of: [statement], databaseType: databaseType)
+        let ends = SQLCatalogEffectClassifier.effect(of: statement, grammar: catalogGrammar).endsTransaction
+        lock.withLock {
+            recordedEffect.temporaryTables.formUnion(effect.temporaryTables)
+            recordedEffect.leavesCatalog = recordedEffect.leavesCatalog || effect.leavesCatalog
+            recordedEffect.usesDatabase = recordedEffect.usesDatabase || effect.usesDatabase
+            if ends { transactionEnded = true }
+        }
     }
 
     // `SET sql_mode` changes how the next statement reads; a COMMIT or a DDL statement can end the transaction early.

@@ -424,8 +424,7 @@ struct DataBrowserView: View {
             keyColumn: RowKey.columnIndex(columns: columns, primaryKeys: primaryKeys),
             selectedRows: isSelecting ? viewModel.selection.rows : nil
         ) { index, line in
-            if isSelecting {
-                let isSelected = viewModel.selection.contains(index)
+            if let isSelected = viewModel.selection.pick(of: index) {
                 Button {
                     viewModel.selection.toggle(index)
                 } label: {
@@ -505,17 +504,25 @@ struct DataBrowserView: View {
         )
     }
 
+    // In Select mode the row is the card alone, which the list's edit mode picks; a disabled link would draw it dimmed.
     private func rowLink(index: Int, row: [String?]) -> some View {
         let deleteKeys = deletableRow(at: index)
-        return NavigationLink {
-            rowDetail(index: index)
-        } label: {
-            RowCard(
-                columns: columns,
-                columnDetails: viewModel.columnDetails,
-                row: row,
-                previewFieldCount: DuoLayoutResolver.previewFieldCount(for: duoWidthClass)
-            )
+        let card = RowCard(
+            columns: columns,
+            columnDetails: viewModel.columnDetails,
+            row: row,
+            previewFieldCount: DuoLayoutResolver.previewFieldCount(for: duoWidthClass)
+        )
+        return Group {
+            if viewModel.selection.opensRowDetail {
+                NavigationLink {
+                    rowDetail(index: index)
+                } label: {
+                    card
+                }
+            } else {
+                card
+            }
         }
         .hoverEffect()
         .contextMenu { rowContextMenu(index: index) }
@@ -635,7 +642,7 @@ struct DataBrowserView: View {
                 Button {
                     viewModel.selection.begin()
                 } label: {
-                    Label("Select Rows", systemImage: "checkmark.circle")
+                    Label("Select Rows", systemImage: "checklist")
                 }
                 .disabled(rows.isEmpty)
                 RowLayoutPicker()

@@ -3,6 +3,7 @@ import TableProDatabase
 import TableProModels
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProTestSupport
 import Testing
 
 @testable import TableProMobile
@@ -13,6 +14,8 @@ private final class FakeSessionHost: TransferSessionHost {
     private(set) var trackedRuns = 0
     private(set) var sessionChecks = 0
     private(set) var changedKinds: [SQLCatalogObjectKinds] = []
+    private(set) var sessionEffects: [SessionLocalStatements.Effect] = []
+    private(set) var placementFollows: [[Bool]] = []
 
     init(driver: any DatabaseDriver) {
         self.driver = driver
@@ -33,6 +36,14 @@ private final class FakeSessionHost: TransferSessionHost {
 
     func noteTransferChangedCatalog(_ kinds: SQLCatalogObjectKinds) {
         changedKinds.append(kinds)
+    }
+
+    func noteTransferSessionEffect(_ effect: SessionLocalStatements.Effect, on driver: any DatabaseDriver) {
+        sessionEffects.append(effect)
+    }
+
+    func followTransferPlacement(movesDatabase: Bool, movesSchema: Bool) async {
+        placementFollows.append([movesDatabase, movesSchema])
     }
 
     func abandonTransferSession() async {}
@@ -253,5 +264,109 @@ struct ImportRunTests {
         #expect(retry.transaction == .rolledBack)
         let names = try await driver.execute(query: "SELECT name FROM people ORDER BY id").rows.compactMap { $0.first ?? nil }
         #expect(names == ["Ada", "Bo"])
+    }
+
+    @Test("A second import on the connection waits for the one running to end, instead of joining its transaction")
+    func importsOnOneConnectionTakeTurns() async throws {
+        let driver = try await database()
+        _ = try await driver.execute(query: "CREATE TABLE t (a INTEGER)")
+        let host = await FakeSessionHost(driver: driver)
+        let turns = ImportTurns()
+        let connectionId = UUID()
+        let running = ImportTurns.Ticket(connectionId: connectionId)
+        try await turns.take(running)
+        let file = try staged("seed.sql", "INSERT INTO t VALUES (1);\n")
+        let run = ImportRun(
+            request: request(file, formatId: "sql", connectionId: connectionId), plugin: MobileImportFormats.sql,
+            host: host, turns: turns
+        )
+
+        let second = Task { try await run.run { _ in } }
+        try await waitUntil { turns.waiting(on: connectionId) == 1 }
+        #expect(await host.trackedRuns == 0)
+        turns.release(running)
+
+        let outcome = try await second.value
+        #expect(outcome.ending == .completed)
+        #expect(await host.trackedRuns == 1)
+        let next = ImportTurns.Ticket(connectionId: connectionId)
+        #expect(await BoundedCall.result(within: .seconds(5)) { (try? await turns.take(next)) != nil } == true)
+        turns.release(next)
+    }
+
+    @Test("A stop while the import waits for its turn ends it before it touches the session")
+    func stopWhileWaitingForTheTurn() async throws {
+        let driver = try await database()
+        _ = try await driver.execute(query: "CREATE TABLE t (a INTEGER)")
+        let host = await FakeSessionHost(driver: driver)
+        let turns = ImportTurns()
+        let connectionId = UUID()
+        let running = ImportTurns.Ticket(connectionId: connectionId)
+        try await turns.take(running)
+        let file = try staged("seed.sql", "INSERT INTO t VALUES (1);\n")
+        let run = ImportRun(
+            request: request(file, formatId: "sql", connectionId: connectionId), plugin: MobileImportFormats.sql,
+            host: host, turns: turns
+        )
+
+        let second = Task { try await run.run { _ in } }
+        try await waitUntil { turns.waiting(on: connectionId) == 1 }
+        run.stop(.rollBack)
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await second.value
+        }
+        #expect(turns.waiting(on: connectionId) == 0)
+        #expect(await host.trackedRuns == 0)
+        #expect(try await driver.execute(query: "SELECT count(*) FROM t").rows.first?.first == "0")
+        turns.release(running)
+    }
+
+    @Test("A SQL file's temporary table is recorded on the session and the window follows where the file left it")
+    func sqlFileSessionEffectsReachTheWindow() async throws {
+        let driver = try await database()
+        let host = await FakeSessionHost(driver: driver)
+        let file = try staged("temp.sql", "CREATE TEMP TABLE scratch (a INTEGER);\nINSERT INTO scratch VALUES (1);\n")
+        let run = ImportRun(request: request(file, formatId: "sql"), plugin: MobileImportFormats.sql, host: host)
+
+        let outcome = try await run.run { _ in }
+
+        #expect(outcome.ending == .completed)
+        #expect(await host.sessionEffects.map(\.temporaryTables) == [["scratch"]])
+        #expect(await host.placementFollows.count == 1)
+    }
+
+    @Test("A SQL file that fails on its USE still has the window follow the session's database")
+    func failedSQLFileStillFollowsTheSession() async throws {
+        let driver = try await database()
+        let host = await FakeSessionHost(driver: driver)
+        let file = try staged("use.sql", "USE other_db;\n")
+        let run = ImportRun(request: request(file, formatId: "sql"), plugin: MobileImportFormats.sql, host: host)
+
+        let outcome = try await run.run { _ in }
+
+        guard case .failed = outcome.ending else {
+            Issue.record("expected a failed import, got \(outcome.ending)")
+            return
+        }
+        #expect(await host.sessionEffects.first?.usesDatabase == true)
+        #expect(await host.placementFollows.first == [true, true])
+    }
+
+    @Test("A row import leaves the session's placement to the window")
+    func rowImportDoesNotFollowTheSession() async throws {
+        let driver = try await database()
+        _ = try await driver.execute(query: "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)")
+        let host = await FakeSessionHost(driver: driver)
+        let target = RowImportTarget(
+            table: "people", schema: nil, columnMapping: ["id": "id", "name": "name"], sourceFields: ["id", "name"]
+        )
+        let file = try staged("people.csv", "id,name\n1,Ada\n")
+        let run = ImportRun(request: request(file, formatId: "csv", target: target), plugin: MobileImportFormats.csv, host: host)
+
+        _ = try await run.run { _ in }
+
+        #expect(await host.sessionEffects.isEmpty)
+        #expect(await host.placementFollows.isEmpty)
     }
 }
