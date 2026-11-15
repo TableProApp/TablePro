@@ -29,7 +29,7 @@ use crate::catalog::{
 use crate::ddl::{DeclaredComparisons, declared_descending_key, declared_foreign_key_names, foreign_key_list_bytes};
 use crate::errors::{SQLITE_ERROR, map_error};
 use crate::index_sql::read_index_sql;
-use crate::statement_limit::stored_sql;
+use crate::statement_limit::{parse_fits, stored_sql};
 
 /// What `pragma_table_list` and `pragma_table_xinfo` say about one
 /// table, read together.
@@ -762,7 +762,7 @@ pub(crate) async fn fetch_table_definition(
         &create_statement,
         shape.columns.iter().any(|c| c.generated_storage().is_some()),
     ) {
-        (Some(create), true) => generated_expressions(create),
+        (Some(create), true) => generated_expressions(create, &mut budget)?,
         _ => Default::default(),
     };
     let columns = shape
@@ -928,17 +928,26 @@ async fn index(
         .transpose()?
         .flatten();
     let stored_sql = budget.keep_optional(read)?;
-    let parsed = stored_sql.as_deref().and_then(read_index_sql);
-    let mut keys = Vec::new();
+    let mut listed = Vec::new();
     let mut rows = sqlx::query(catalog::INDEX_XINFO_SQL)
         .bind(name.as_str())
         .bind(schema)
         .fetch(&mut *connection);
     while let Some(key) = rows.try_next().await.map_err(map_error)? {
-        let position = keys.len();
         let cid: i64 = key.try_get("cid").map_err(map_error)?;
         let descending = key.try_get::<i64, _>("desc").map_err(map_error)? != 0;
         let column: Option<String> = budget.keep_optional(key.try_get("name").map_err(map_error)?)?;
+        listed.push((cid, descending, column));
+    }
+    let parsed = match stored_sql.as_deref() {
+        Some(sql) if partial || listed.iter().any(|(cid, _, _)| *cid == -2) => {
+            parse_fits(budget, sql)?;
+            read_index_sql(sql)
+        }
+        _ => None,
+    };
+    let mut keys = Vec::with_capacity(listed.len());
+    for (position, (cid, descending, column)) in listed.into_iter().enumerate() {
         keys.push(match (cid, column) {
             (-2, _) => IndexKey::Expression {
                 sql: budget.keep(

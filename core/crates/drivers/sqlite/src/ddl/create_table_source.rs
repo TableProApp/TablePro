@@ -289,16 +289,39 @@ impl<'a> CreateTableSource<'a> {
         users
     }
 
-    /// The columns the expression in the first parentheses of `range`
-    /// names.
     fn named_in(&self, range: Range<usize>) -> HashSet<String> {
-        let start = self.tokens.partition_point(|token| token.range.start < range.start);
-        let end = self.tokens.partition_point(|token| token.range.end <= range.end);
-        self.tokens
-            .get(start..end)
-            .and_then(first_group)
+        first_group(self.tokens_in(range))
             .map_or_else(HashSet::new, |group| named_columns(self.sql, group, Terms::Expression))
     }
+
+    // The text inside the first parentheses of `range`, which for a generated column is its expression.
+    fn first_group_text(&self, range: Range<usize>) -> Option<&'a str> {
+        let group = first_group(self.tokens_in(range))?;
+        Some(self.text(group.first()?.range.start..group.last()?.range.end))
+    }
+
+    fn tokens_in(&self, range: Range<usize>) -> &[Token] {
+        let start = self.tokens.partition_point(|token| token.range.start < range.start);
+        let end = self.tokens.partition_point(|token| token.range.end <= range.end);
+        self.tokens.get(start..end).unwrap_or_default()
+    }
+}
+
+// Each generated column's name and expression as written, or `None` when the text does not read.
+pub(crate) fn generated_expression_texts(sql: &str) -> Option<Vec<(String, &str)>> {
+    let source = CreateTableSource::read(sql).ok()?;
+    Some(
+        source
+            .columns()
+            .filter_map(|(_, column)| {
+                let segment = column
+                    .segments
+                    .iter()
+                    .find(|segment| segment.kind == ColumnConstraintKind::Generated)?;
+                Some((column.name.clone(), source.first_group_text(segment.range.clone())?))
+            })
+            .collect(),
+    )
 }
 
 /// The names a CREATE TABLE gives its foreign keys, in the order

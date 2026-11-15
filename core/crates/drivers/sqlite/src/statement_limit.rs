@@ -1,6 +1,6 @@
 use sqlx::Row;
 use sqlx::sqlite::{SqliteConnection as SqlxConnection, SqliteRow};
-use tablepro_core::DriverError;
+use tablepro_core::{CatalogBudget, DriverError};
 
 use crate::errors::map_error;
 
@@ -13,10 +13,21 @@ pub(crate) const MAX_STATEMENT_BYTES: i32 = 10_000_000;
 // long as any value, so every read that parses one takes it only up to the cap: `capped` selects it as `sql`, NULL past
 // the cap, beside `sql_too_long`, and `stored_sql` reads the two.
 pub(crate) fn capped(column: &str) -> String {
+    let bytes = byte_length(column);
     format!(
-        "CASE WHEN length(CAST({column} AS BLOB)) <= {MAX_STATEMENT_BYTES} THEN {column} END AS sql, \
-         length(CAST({column} AS BLOB)) > {MAX_STATEMENT_BYTES} AS sql_too_long"
+        "CASE WHEN {bytes} <= {MAX_STATEMENT_BYTES} THEN {column} END AS sql, \
+         {bytes} > {MAX_STATEMENT_BYTES} AS sql_too_long"
     )
+}
+
+// From SQLite 3.43, octet_length of a column takes the length from the record without reading the value. An older
+// library, which a Linux distribution can ship, reads it whole through the CAST.
+pub(crate) fn byte_length(column: &str) -> String {
+    // SAFETY: the call takes no arguments and returns a constant of the linked library.
+    match unsafe { libsqlite3_sys::sqlite3_libversion_number() } >= 3_043_000 {
+        true => format!("octet_length({column})"),
+        false => format!("length(CAST({column} AS BLOB))"),
+    }
 }
 
 pub(crate) fn stored_sql(row: &SqliteRow) -> Result<Option<String>, DriverError> {
@@ -26,6 +37,14 @@ pub(crate) fn stored_sql(row: &SqliteRow) -> Result<Option<String>, DriverError>
         });
     }
     row.try_get("sql").map_err(map_error)
+}
+
+// sqlparser holds up to about 420 bytes for each byte it parses, measured on an IN list of one-digit numbers, so a parse
+// of stored text has to fit beside what the read holds.
+const PARSED_BYTES_PER_BYTE: usize = 512;
+
+pub(crate) fn parse_fits(budget: &CatalogBudget, text: &str) -> Result<(), DriverError> {
+    budget.fits(text.len().saturating_mul(PARSED_BYTES_PER_BYTE))
 }
 
 pub(crate) async fn install(connection: &mut SqlxConnection) -> Result<(), DriverError> {

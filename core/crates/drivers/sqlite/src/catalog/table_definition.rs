@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use sqlparser::ast::{ColumnOption, Statement};
+use sqlparser::ast::Expr;
 use sqlparser::dialect::SQLiteDialect;
 use sqlparser::parser::Parser;
+use sqlparser::tokenizer::Token;
 use tablepro_core::column::SqlExpression;
 use tablepro_core::ddl::InboundForeignKey;
 use tablepro_core::meta::TableRef;
@@ -110,35 +111,35 @@ pub(crate) fn foreign_key_names(
     Ok(names)
 }
 
-/// The expressions of the generated columns, read from the table's own
-/// CREATE TABLE. The pragmas say a column is generated but not how.
-/// The text is the parser's rendering of the expression: the table's
-/// source keeps the original spelling for a rebuild.
-pub(crate) fn generated_expressions(create_statement: &str) -> HashMap<String, SqlExpression> {
-    let Ok(statements) = Parser::parse_sql(&SQLiteDialect {}, create_statement) else {
-        tracing::debug!("the CREATE TABLE of a table with generated columns did not parse");
-        return HashMap::new();
+// The pragmas say a column is generated but not how, so its expression comes from the CREATE TABLE. Each is parsed
+// alone, since a parse holds many times the text it reads and a wide table's other columns need none. The text is the
+// parser's rendering: the table's source keeps the spelling for a rebuild.
+pub(crate) fn generated_expressions(
+    create_statement: &str,
+    budget: &mut CatalogBudget,
+) -> Result<HashMap<String, SqlExpression>, DriverError> {
+    let Some(texts) = crate::ddl::generated_expression_texts(create_statement) else {
+        tracing::debug!("the CREATE TABLE of a table with generated columns did not read");
+        return Ok(HashMap::new());
     };
-    let Some(Statement::CreateTable(table)) = statements.into_iter().next() else {
-        return HashMap::new();
-    };
-    table
-        .columns
-        .into_iter()
-        .filter_map(|column| {
-            let expression = column.options.into_iter().find_map(|option| match option.option {
-                ColumnOption::Generated {
-                    generation_expr: Some(expression),
-                    ..
-                } => Some(expression),
-                _ => None,
-            })?;
-            Some((
-                column.name.value,
-                SqlExpression::from_catalog_text(expression.to_string()),
-            ))
-        })
-        .collect()
+    let mut expressions = HashMap::new();
+    for (name, text) in texts {
+        crate::statement_limit::parse_fits(budget, text)?;
+        match parsed_expression(text) {
+            Some(expression) => {
+                let rendered = budget.keep(expression.to_string())?;
+                expressions.insert(name, SqlExpression::from_catalog_text(rendered));
+            }
+            None => tracing::debug!("a generated column's expression did not parse"),
+        }
+    }
+    Ok(expressions)
+}
+
+fn parsed_expression(text: &str) -> Option<Expr> {
+    let mut parser = Parser::new(&SQLiteDialect {}).try_with_sql(text).ok()?;
+    let expression = parser.parse_expr().ok()?;
+    (parser.peek_token().token == Token::EOF).then_some(expression)
 }
 
 #[cfg(test)]
@@ -255,11 +256,45 @@ mod tests {
     #[test]
     fn generated_expressions_come_from_the_create_statement() {
         let expressions = generated_expressions(
-            "CREATE TABLE t (a INTEGER, b INTEGER GENERATED ALWAYS AS (a * 2) STORED, c AS (a + 1))",
-        );
+            "CREATE TABLE t (a INTEGER, b INTEGER GENERATED ALWAYS AS (a * 2) STORED, \"c d\" AS ((a + 1) * (a - 1)))",
+            &mut CatalogBudget::default(),
+        )
+        .unwrap();
 
         assert_eq!(expressions.get("b").map(SqlExpression::as_sql), Some("a * 2"));
-        assert_eq!(expressions.get("c").map(SqlExpression::as_sql), Some("a + 1"));
+        assert_eq!(
+            expressions.get("c d").map(SqlExpression::as_sql),
+            Some("(a + 1) * (a - 1)")
+        );
         assert!(!expressions.contains_key("a"));
+    }
+
+    #[test]
+    fn a_wide_table_parses_only_its_generated_expressions() {
+        let columns: Vec<String> = (0..2_000)
+            .map(|index| format!("c{index:04} {}", "x".repeat(200)))
+            .collect();
+        let create = format!("CREATE TABLE t ({}, g AS (c0000 + 1))", columns.join(", "));
+        let mut budget = CatalogBudget::new(tablepro_core::ByteLimit::new(1_000_000).unwrap());
+
+        let expressions = generated_expressions(&create, &mut budget).unwrap();
+
+        assert_eq!(expressions.get("g").map(SqlExpression::as_sql), Some("c0000 + 1"));
+    }
+
+    #[test]
+    fn a_generated_expression_too_long_to_parse_stops_at_the_budget() {
+        let create = format!(
+            "CREATE TABLE t (a INTEGER, g AS (a IN ({})))",
+            vec!["0"; 2_000].join(",")
+        );
+        let mut budget = CatalogBudget::new(tablepro_core::ByteLimit::new(1_000_000).unwrap());
+
+        let expressions = generated_expressions(&create, &mut budget);
+
+        assert_eq!(
+            expressions,
+            Err(DriverError::CatalogTooLarge { limit_bytes: 1_000_000 })
+        );
     }
 }
