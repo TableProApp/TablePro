@@ -8,8 +8,8 @@ import Foundation
 extension MainContentCoordinator {
     private var tableOperationBuilder: TableOperationSQLBuilder {
         TableOperationSQLBuilder(
-            adapterProvider: {
-                DatabaseManager.shared.driver(for: self.connectionId) as? PluginDriverAdapter
+            driverProvider: {
+                DatabaseManager.shared.driver(for: self.connectionId)
             }
         )
     }

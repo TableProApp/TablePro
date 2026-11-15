@@ -1,3 +1,5 @@
+import CDuckDB
+import Foundation
 import TableProDatabase
 @testable import TableProMobile
 import TableProModels
@@ -530,5 +532,74 @@ struct DuckDBNulTextTests {
         try await driver.disconnect()
         #expect(inserted.rows == [["a\u{0}b"]])
         #expect(after.rows == [["k", "other"], [key, "x\u{0}y"]])
+    }
+}
+
+// Built past DuckDB's default limit on a stack that holds it, as another program could.
+private actor DeepDuckDBFileWriter {
+    private let executor = DuckDBStackExecutor(name: "DeepDuckDBFileWriter")
+    nonisolated var unownedExecutor: UnownedSerialExecutor { executor.asUnownedSerialExecutor() }
+
+    func create(_ path: String, check: String) -> Bool {
+        var config: duckdb_config?
+        var database: duckdb_database?
+        var connection: duckdb_connection?
+        defer {
+            duckdb_disconnect(&connection)
+            duckdb_close(&database)
+            duckdb_destroy_config(&config)
+        }
+        guard duckdb_create_config(&config) != DuckDBError,
+              duckdb_set_config(config, "max_expression_depth", "100000") != DuckDBError,
+              duckdb_open_ext(path, &database, config, nil) != DuckDBError,
+              duckdb_connect(database, &connection) != DuckDBError
+        else { return false }
+        var result = duckdb_result()
+        defer { duckdb_destroy_result(&result) }
+        return duckdb_query(connection, "CREATE TABLE t (a INTEGER CHECK (\(check) > 0)); CHECKPOINT", &result)
+            != DuckDBError
+    }
+}
+
+struct DuckDBDeepExpressionTests {
+    private func deepFile(in directory: URL) async throws -> URL {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("deep.duckdb")
+        let check = String(repeating: "(", count: 900) + "a" + String(repeating: " + 1)", count: 900)
+        #expect(await DeepDuckDBFileWriter().create(file.path, check: check))
+        return file
+    }
+
+    @Test("A CHECK nested 900 deep opens, and reading its table's keys fails at the depth limit instead of overflowing")
+    func deepCheckOpensAndItsKeysAreRefused() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("duckdb-deep-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = try await deepFile(in: directory)
+
+        let driver = DuckDBDriver(source: .file(file))
+        try await driver.connect()
+        let refusal = await #expect(throws: DuckDBDriverError.self) {
+            try await driver.fetchColumns(table: "t", schema: nil)
+        }
+        try await driver.disconnect()
+
+        #expect(refusal?.localizedDescription.contains("Max expression depth limit of 250 exceeded") == true)
+    }
+
+    @Test("An ATTACH of a file nested 900 deep reads its catalog without overflowing")
+    func deepFileAttaches() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("duckdb-deep-attach-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = try await deepFile(in: directory)
+
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        _ = try await driver.execute(query: "ATTACH '\(file.path)' AS deep (READ_ONLY)")
+        let tables = try await driver.execute(query: "SELECT table_name FROM duckdb_tables() WHERE database_name = 'deep'")
+        try await driver.disconnect()
+
+        #expect(tables.rows == [["t"]])
     }
 }

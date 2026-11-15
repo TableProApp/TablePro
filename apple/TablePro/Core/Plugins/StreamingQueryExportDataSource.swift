@@ -38,11 +38,8 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
     }
 
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard let adapter = driver as? PluginDriverAdapter else {
-            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
-        }
         let rowCut = rowCut
-        let rows = adapter.streamRows(query: query, safeModeIsReadOnly: safeModeIsReadOnly)
+        let rows = driver.streamRows(query: query, safeModeIsReadOnly: safeModeIsReadOnly)
         return ExportRowCut<PluginStreamElement>.reporting(rows, engineCeiling: nil) { limit in
             rowCut.withLock { $0 = limit }
         }
@@ -53,11 +50,8 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
     }
 
     func streamExportRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
-        guard let adapter = driver as? PluginDriverAdapter else {
-            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
-        }
         let rowCut = rowCut
-        let rows = adapter.streamExportRows(query: query, safeModeIsReadOnly: safeModeIsReadOnly)
+        let rows = driver.streamExportRows(query: query, safeModeIsReadOnly: safeModeIsReadOnly)
         return ExportRowCut<PluginExportStreamElement>.reporting(rows, engineCeiling: nil) { limit in
             rowCut.withLock { $0 = limit }
         }

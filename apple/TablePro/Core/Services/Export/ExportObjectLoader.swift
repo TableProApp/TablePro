@@ -41,7 +41,7 @@ internal enum ExportObjectLoader {
             return ExportObjectItem(name: table.name, databaseName: request.containerName, kind: kind)
         }
 
-        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else { return items }
+        guard let pluginDriver = driver.plugin else { return items }
 
         if request.kinds.contains(.routine) {
             items += await loadRoutines(schema: request.schema, container: request.containerName, driver: pluginDriver)

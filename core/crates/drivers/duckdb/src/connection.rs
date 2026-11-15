@@ -176,15 +176,36 @@ fn server_info(version: &str) -> ServerInfo {
     ServerInfo::new("DuckDB", version, part(0), part(1), part(2))
 }
 
+// DuckDB reads, prints and saves the file's expressions one call per level with no limit of its own; 8 MiB is the
+// stack its CLI runs on, where a runtime's blocking thread has 2 (ADR 0030).
+const DUCKDB_STACK_BYTES: usize = 8 << 20;
+
+pub(crate) fn on_duckdb_stack<T, W>(work: W) -> Result<T, DriverError>
+where
+    T: Send,
+    W: FnOnce() -> T + Send,
+{
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("duckdb".to_owned())
+            .stack_size(DUCKDB_STACK_BYTES)
+            .spawn_scoped(scope, work)
+            .map_err(|error| DriverError::Protocol(format!("could not start a thread for DuckDB: {error}")))?
+            .join()
+            .map_err(|_| DriverError::Protocol("DuckDB failed inside a call".to_owned()))
+    })
+}
+
 /// Run DuckDB work that blocks, off the async threads.
 pub(crate) async fn blocking<T, W>(work: W) -> Result<T, DriverError>
 where
     T: Send + 'static,
     W: FnOnce() -> Result<T, DriverError> + Send + 'static,
 {
-    tokio::task::spawn_blocking(work)
+    tokio::task::spawn_blocking(move || on_duckdb_stack(work))
         .await
         .map_err(|error| DriverError::Protocol(format!("DuckDB work stopped: {error}")))?
+        .and_then(|result| result)
 }
 
 /// Hand a run's events to `sink` while `produce` makes them on the

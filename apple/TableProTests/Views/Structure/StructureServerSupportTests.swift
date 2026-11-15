@@ -40,6 +40,19 @@ private final class DefaultStructureStubDriver: PluginDriverStub, @unchecked Sen
     }
 }
 
+private final class StoragePartsStubDriver: PluginDriverStub, PluginStorageParts, @unchecked Sendable {
+    var supportsSchemas: Bool { false }
+    var supportsTransactions: Bool { false }
+    var currentSchema: String? { nil }
+    var serverVersion: String? { nil }
+
+    func ping() async throws {}
+    func fetchStorageParts(table: String, database: String) async throws -> [PluginStoragePart] { [] }
+    func mergePartsStatement(table: String, database: String) -> String? { nil }
+    func dropPartitionStatement(table: String, database: String, partitionId: String) -> String? { nil }
+    func detachPartitionStatement(table: String, database: String, partitionId: String) -> String? { nil }
+}
+
 @MainActor
 struct StructureServerSupportTests {
     private static let additionalFields: Set<StructureColumnField> = [
@@ -168,5 +181,19 @@ struct StructureServerSupportTests {
         )
         #expect(StructureServerSupport(driver: adapter) == .unrestricted)
         #expect(StructureServerSupport(driver: nil) == .unrestricted)
+    }
+
+    @Test("Parts is offered only for a driver whose plugin answers for its storage parts")
+    func storagePartsFollowThePlugin() {
+        let parts = PluginDriverAdapter(
+            connection: DatabaseConnection(name: "Test", type: .postgresql),
+            pluginDriver: StoragePartsStubDriver()
+        )
+        let plain = PluginDriverAdapter(
+            connection: DatabaseConnection(name: "Test", type: .clickhouse),
+            pluginDriver: DefaultStructureStubDriver()
+        )
+        #expect(StructureServerSupport(driver: parts).offersStorageParts)
+        #expect(!StructureServerSupport(driver: plain).offersStorageParts)
     }
 }

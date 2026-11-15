@@ -6,7 +6,7 @@ extension PluginDriverAdapter {
         if let error = StatementTextValidator.error(for: query) {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
-        return schemaPluginDriver.streamRows(query: query, context: streamContext(query, safeModeIsReadOnly))
+        return pluginDriver.streamRows(query: query, context: streamContext(query, safeModeIsReadOnly))
     }
 
     func streamExportRows(
@@ -16,7 +16,7 @@ extension PluginDriverAdapter {
         if let error = StatementTextValidator.error(for: query) {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
-        return schemaPluginDriver.streamExportRows(query: query, context: streamContext(query, safeModeIsReadOnly))
+        return pluginDriver.streamExportRows(query: query, context: streamContext(query, safeModeIsReadOnly))
     }
 
     func generateDropRelationSQL(name: String, kind: PluginExportObjectKind, schema: String?) -> String? {

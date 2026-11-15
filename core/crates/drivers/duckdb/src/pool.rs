@@ -1,4 +1,3 @@
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
@@ -7,6 +6,7 @@ use deadpool::Runtime;
 use deadpool::managed::{Manager, Metrics, Object, Pool, PoolError, RecycleResult, Timeouts};
 use tablepro_core::{BusyReason, CallResource, DriverError, LivenessPolicy, LossPhase, StopRequest};
 
+use crate::connection::on_duckdb_stack;
 use crate::instance::{Instance, Link, StopHandle};
 
 /// The workspace pool's size. DuckDB runs the queries of one database
@@ -175,8 +175,8 @@ impl DuckCall {
             let stopped = request.as_ref().is_some_and(StopRequest::is_requested);
             let outcome = match (&mut held, stopped) {
                 (_, true) => Ok(Err(crate::errors::interrupted())),
-                (Held::Pooled(object), false) => catch_unwind(AssertUnwindSafe(|| work(object))),
-                (Held::Own(link), false) => catch_unwind(AssertUnwindSafe(|| work(link))),
+                (Held::Pooled(object), false) => on_duckdb_stack(|| work(object)),
+                (Held::Own(link), false) => on_duckdb_stack(|| work(link)),
                 (Held::Empty, false) => Ok(Err(DriverError::Protocol("the call holds no connection".to_owned()))),
             };
             stop.set_stoppable(false);
@@ -185,10 +185,7 @@ impl DuckCall {
                 // A connection whose work broke off, or whose caller gave
                 // it up, holds a state nothing knows.
                 Ok(result) => (detach(held), result),
-                Err(_) => (
-                    detach(held),
-                    Err(DriverError::Protocol("DuckDB failed inside a call".to_owned())),
-                ),
+                Err(error) => (detach(held), Err(error)),
             }
         })
         .await;

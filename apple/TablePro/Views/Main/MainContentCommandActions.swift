@@ -521,9 +521,9 @@ final class MainContentCommandActions: ObservableObject {
 
     private var tableOperationEligibility: TableOperationEligibility.Context {
         guard let coordinator,
-              let adapter = DatabaseManager.shared.driver(for: coordinator.connectionId) as? PluginDriverAdapter
+              let driver = DatabaseManager.shared.driver(for: coordinator.connectionId)
         else { return .unavailable }
-        return adapter.tableOperationEligibility(
+        return driver.tableOperationEligibility(
             for: selectedTables.wrappedValue,
             isReadOnly: coordinator.safeModeLevel.blocksAllWrites
         )

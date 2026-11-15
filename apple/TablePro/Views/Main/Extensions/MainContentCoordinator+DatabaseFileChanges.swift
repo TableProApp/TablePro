@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 // Every commit rewrites a database file, so a file event alone says nothing about the catalog. The engine's
 // schema token does: the catalog reloads only when it moved, or when the engine has none.
@@ -25,7 +26,7 @@ internal struct SchemaChangeTokenGate: Equatable {
 extension MainContentCoordinator {
     func refreshTablesIfSchemaChanged() async {
         let token = try? await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-            try await (driver as? PluginDriverAdapter)?.schemaChangeToken()
+            try await driver.plugin?.schemaChangeToken()
         }
         guard schemaTokenGate.admits(token) else { return }
         DatabaseTreeMetadataService.shared.markListsStale(connectionId: connectionId)

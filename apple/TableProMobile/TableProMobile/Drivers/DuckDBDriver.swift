@@ -189,9 +189,9 @@ nonisolated final class DuckDBInterruptHandle: @unchecked Sendable {
 actor DuckDBActor {
     static let maxRows = 100_000
 
-    private let queue = DispatchSerialQueue(label: "com.TablePro.duckdb")
+    private let executor = DuckDBStackExecutor(name: "com.TablePro.duckdb")
 
-    nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
+    nonisolated var unownedExecutor: UnownedSerialExecutor { executor.asUnownedSerialExecutor() }
 
     nonisolated let interruptHandle = DuckDBInterruptHandle()
     private(set) var database: duckdb_database?
@@ -215,6 +215,7 @@ actor DuckDBActor {
         ("storage_compatibility_version", "v0.10.2"),
         ("autoinstall_known_extensions", "false"),
         ("autoload_known_extensions", "false"),
+        (DuckDBExpressionDepth.configurationOption, DuckDBExpressionDepth.limit),
     ]
 
     func open(path: String) throws {

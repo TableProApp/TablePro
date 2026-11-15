@@ -134,7 +134,7 @@ struct ExportDriverMetadataReader: ExportMetadataReading {
     func columnNames(table: String, schema: String?) async -> [String] {
         do {
             return try await withDriver(workload: .interactive) { driver in
-                guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else { return [] }
+                guard let pluginDriver = driver.plugin else { return [] }
                 return try await pluginDriver.fetchColumns(table: table, schema: schema).map(\.name)
             }
         } catch {

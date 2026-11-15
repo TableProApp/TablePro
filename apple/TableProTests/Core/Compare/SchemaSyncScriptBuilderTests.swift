@@ -70,7 +70,7 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
     override func setUp() {
         super.setUp()
         driver = StubSyncDriver()
-        builder = SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .mysql)
+        builder = SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .mysql, targetSchema: nil)
     }
 
     override func tearDown() {
@@ -122,7 +122,7 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
         let operations: [SchemaSyncOperation] = [.alterTable(name: "visits", schema: nil, changes: [change])]
 
         let mysql = try builder.build(operations: operations, foreignKeysByTable: [:])
-        let postgres = try SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .postgresql)
+        let postgres = try SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .postgresql, targetSchema: nil)
             .build(operations: operations, foreignKeysByTable: [:])
 
         XCTAssertTrue(mysql.first?.hazards.contains { $0.kind == .lossyTypeChange } == true)
@@ -295,7 +295,7 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
     /// Sent as one text, Oracle refuses a table and its index with ORA-03405 and creates neither.
     func testATableAndItsIndexGoOutAsTheStatementsTheDriverWrote() throws {
         driver.createTableStatements = ["CREATE TABLE \"T\" (\n  \"A\" NUMBER\n)", "CREATE INDEX \"I\" ON \"T\" (\"A\")"]
-        let statements = try SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .oracle)
+        let statements = try SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .oracle, targetSchema: nil)
             .build(operations: [.createTable(snapshot("T"))], foreignKeysByTable: [:])
 
         XCTAssertEqual(statements.map(\.sql), driver.createTableStatements)
@@ -313,7 +313,7 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
                 onUpdate: nil, charset: nil, extra: nil, isPrimaryKey: false
             )
         }
-        let statements = try SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .oracle).build(
+        let statements = try SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .oracle, targetSchema: nil).build(
             operations: [.alterTable(name: "T", schema: nil, changes: [.modifyColumn(old: column("A"), new: column("B"))])],
             foreignKeysByTable: [:]
         )

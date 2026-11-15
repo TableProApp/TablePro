@@ -395,7 +395,7 @@ struct TableTransferSheet: View {
             return try await DatabaseManager.shared.withMetadataDriver(
                 scope: scope, workload: .interactive
             ) { driver in
-                guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else { return [] }
+                guard let pluginDriver = driver.plugin else { return [] }
                 return try await pluginDriver.fetchColumns(table: table, schema: schema).map(\.name)
             }
         } catch {

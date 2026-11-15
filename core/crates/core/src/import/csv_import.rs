@@ -95,6 +95,41 @@ pub struct CsvSheet {
 /// mapping decides which fields matter and a file the user already has
 /// is not improved by refusing to look at it.
 pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) -> Result<CsvSheet, ImportError> {
+    let CsvRecords {
+        headers,
+        mut rows,
+        width,
+        truncated,
+    } = read_csv_records(bytes, options, limit)?;
+    // A short row is padded so every row can be indexed by field
+    // number without a bounds check at every cell.
+    for row in &mut rows {
+        row.resize(width.max(row.len()), String::new());
+    }
+
+    Ok(CsvSheet {
+        headers,
+        rows,
+        truncated,
+    })
+}
+
+// A file's records as `read_csv` reads them, each as long as it was written, with the widest record's width. A
+// whole-file import pads one row at a time with `padded_row`: one wide record padding every row of a file of
+// narrow ones would take far more memory than the file.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CsvRecords {
+    pub headers: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    pub width: usize,
+    pub truncated: bool,
+}
+
+pub fn read_csv_records(
+    bytes: &[u8],
+    options: &CsvImportOptions,
+    limit: Option<usize>,
+) -> Result<CsvRecords, ImportError> {
     if let Err(error) = std::str::from_utf8(bytes) {
         return Err(ImportError::NotUtf8 {
             offset: error.valid_up_to(),
@@ -137,17 +172,18 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
         true => vec![String::new(); width],
         false => headers,
     };
-    // A short row is padded so every row can be indexed by field
-    // number without a bounds check at every cell.
-    for row in &mut rows {
-        row.resize(width.max(row.len()), String::new());
-    }
-
-    Ok(CsvSheet {
+    Ok(CsvRecords {
         headers,
         rows,
+        width,
         truncated,
     })
+}
+
+// A row of `read_csv_records` as `read_csv` gives it: short rows padded to `width` with empty fields.
+pub fn padded_row(mut row: Vec<String>, width: usize) -> Vec<String> {
+    row.resize(width.max(row.len()), String::new());
+    row
 }
 
 pub(super) fn malformed(error: csv::Error) -> ImportError {
@@ -340,6 +376,30 @@ mod tests {
         let sheet = read_csv(b"a,b,c\n1\n", &options(), None).expect("read");
 
         assert_eq!(sheet.rows[0], vec!["1".to_owned(), String::new(), String::new()]);
+    }
+
+    #[test]
+    fn records_keep_each_row_as_written_and_padding_gives_what_read_csv_gives() {
+        let file = b"a,b\n1\n2,3,4\n";
+
+        let records = read_csv_records(file, &options(), None).expect("records");
+        let sheet = read_csv(file, &options(), None).expect("sheet");
+
+        assert_eq!(records.width, 3);
+        assert_eq!(
+            records.rows,
+            vec![
+                vec!["1".to_owned()],
+                vec!["2".to_owned(), "3".to_owned(), "4".to_owned()]
+            ]
+        );
+        let padded: Vec<Vec<String>> = records
+            .rows
+            .into_iter()
+            .map(|row| padded_row(row, records.width))
+            .collect();
+        assert_eq!(padded, sheet.rows);
+        assert_eq!(records.headers, sheet.headers);
     }
 
     #[test]

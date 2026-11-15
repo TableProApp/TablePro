@@ -378,7 +378,8 @@ nonisolated struct PluginWriteDialect: MobileWriteDialect {
     }
 
     func createTableStatements(definition: PluginCreateTableDefinition, schema: String?) throws -> [String] {
-        guard let statements = plugin.generateCreateTableStatements(definition: definition), !statements.isEmpty else {
+        guard let statements = plugin.generateCreateTableStatements(definition: definition, schema: schema),
+              !statements.isEmpty else {
             throw ImportTableNames.noStatement
         }
         return statements

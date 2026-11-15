@@ -1080,17 +1080,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Create Table DDL
 
-    /// The shape an older app runs: the table and its indexes. The sequences and column comments
-    /// need statements of their own, which only `generateCreateTableStatements` returns.
-    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        guard let statements = generateCreateTableStatements(definition: definition) else { return nil }
-        let sequenceCount = definition.columns.filter(\.autoIncrement).count
-        let tableAndIndexes = statements.dropFirst(sequenceCount).prefix(1 + definition.indexes.count)
-        return tableAndIndexes.map { $0 + ";" }.joined(separator: "\n\n")
-    }
-
-    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
-        duckdbCreateTableStatements(definition: definition, schema: resolveSchema(nil), quote: quoteIdentifier)
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]? {
+        duckdbCreateTableStatements(definition: definition, schema: resolveSchema(schema), quote: quoteIdentifier)
     }
 
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
@@ -1110,25 +1101,29 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func qualifiedTableName(_ table: String) -> String {
-        "\(quoteIdentifier(resolveSchema(nil))).\(quoteIdentifier(table))"
+    private func qualifiedTableName(_ table: String, schema: String?) -> String {
+        "\(quoteIdentifier(resolveSchema(schema))).\(quoteIdentifier(table))"
     }
 
     // MARK: - ALTER TABLE DDL
 
     // One statement only; an auto-increment column needs its sequence created first, so it is unsupported here.
-    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+    func generateAddColumnSQL(table: String, schema: String?, column: PluginColumnDefinition) -> String? {
         guard !column.autoIncrement, duckdbColumnTextRefusal(for: column) == nil else { return nil }
-        let schema = resolveSchema(nil)
         let colDef = duckdbColumnDefinition(
-            column, schema: schema, table: table, inlinePK: false, inCreateTable: false, quote: quoteIdentifier
+            column, schema: resolveSchema(schema), table: table, inlinePK: false, inCreateTable: false, quote: quoteIdentifier
         )
-        return "ALTER TABLE \(qualifiedTableName(table)) ADD COLUMN \(colDef)"
+        return "ALTER TABLE \(qualifiedTableName(table, schema: schema)) ADD COLUMN \(colDef)"
     }
 
-    func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
+    func generateModifyColumnSQL(
+        table: String,
+        schema: String?,
+        oldColumn: PluginColumnDefinition,
+        newColumn: PluginColumnDefinition
+    ) -> String? {
         guard duckdbColumnTextRefusal(for: newColumn) == nil else { return nil }
-        let qt = qualifiedTableName(table)
+        let qt = qualifiedTableName(table, schema: schema)
         var stmts: [String] = []
 
         if oldColumn.name != newColumn.name {
@@ -1157,29 +1152,39 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
     }
 
-    func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        "ALTER TABLE \(qualifiedTableName(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    func generateDropColumnSQL(table: String, schema: String?, columnName: String) -> String? {
+        "ALTER TABLE \(qualifiedTableName(table, schema: schema)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
-    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
+    func generateAddIndexSQL(table: String, schema: String?, index: PluginIndexDefinition) -> String? {
         guard duckdbIndexExpressionRefusal(for: index) == nil else { return nil }
-        return DuckDBIndexClauses.createStatement(for: index, qualifiedTable: qualifiedTableName(table), quote: quoteIdentifier)
+        return DuckDBIndexClauses.createStatement(
+            for: index, qualifiedTable: qualifiedTableName(table, schema: schema), quote: quoteIdentifier
+        )
     }
 
-    func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "DROP INDEX \(quoteIdentifier(indexName))"
+    func generateDropIndexSQL(table: String, schema: String?, indexName: String) -> String? {
+        "DROP INDEX \(quoteIdentifier(resolveSchema(schema))).\(quoteIdentifier(indexName))"
     }
 
-    func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        duckdbForeignKeyDefinition(fk, quote: quoteIdentifier).map { "ALTER TABLE \(qualifiedTableName(table)) ADD \($0)" }
+    func generateAddForeignKeySQL(table: String, schema: String?, fk: PluginForeignKeyDefinition) -> String? {
+        duckdbForeignKeyDefinition(fk, quote: quoteIdentifier).map {
+            "ALTER TABLE \(qualifiedTableName(table, schema: schema)) ADD \($0)"
+        }
     }
 
-    func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
-        "ALTER TABLE \(qualifiedTableName(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    func generateDropForeignKeySQL(table: String, schema: String?, constraintName: String) -> String? {
+        "ALTER TABLE \(qualifiedTableName(table, schema: schema)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
     }
 
-    func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
-        let qt = qualifiedTableName(table)
+    func generateModifyPrimaryKeySQL(
+        table: String,
+        schema: String?,
+        oldColumns: [String],
+        newColumns: [String],
+        constraintName: String?
+    ) -> [String]? {
+        let qt = qualifiedTableName(table, schema: schema)
         var stmts: [String] = []
         if !oldColumns.isEmpty {
             let name = constraintName.map { quoteIdentifier($0) } ?? "/* unknown constraint */"

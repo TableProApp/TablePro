@@ -14,19 +14,6 @@ nonisolated enum PostgreSQLCreateTableSQL {
         let indexStatements: [String]
     }
 
-    static func script(
-        _ definition: PluginCreateTableDefinition,
-        schema: String,
-        capabilities: PostgreSQLCapabilities
-    ) -> String? {
-        guard let parts = parts(definition, schema: schema, capabilities: capabilities) else { return nil }
-        var sql = parts.createTable + ";"
-        if !parts.indexStatements.isEmpty {
-            sql += "\n\n" + parts.indexStatements.joined(separator: ";\n") + ";"
-        }
-        return sql
-    }
-
     static func statements(
         _ definition: PluginCreateTableDefinition,
         schema: String,

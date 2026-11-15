@@ -77,26 +77,6 @@ struct PostgreSQLCreateTableSQLTests {
             == #""total" integer GENERATED ALWAYS AS (a * 2) VIRTUAL"#)
     }
 
-    @Test("The script ends every statement and puts the indexes after the table")
-    func scriptJoinsIndexes() throws {
-        let index = PluginIndexDefinition(name: "orders_note", columns: ["note"])
-        let definition = PluginCreateTableDefinition(
-            tableName: "orders",
-            columns: [PluginColumnDefinition(name: "note", dataType: "text")],
-            indexes: [index]
-        )
-        let script = try #require(PostgreSQLCreateTableSQL.script(definition, schema: "app", capabilities: Self.pg17))
-        let indexStatement = PostgreSQLIndexClauses.createStatement(for: index, qualifiedTable: #""app"."orders""#)
-
-        #expect(script == """
-            CREATE TABLE "app"."orders" (
-              "note" text NULL
-            );
-
-            \(indexStatement);
-            """)
-    }
-
     @Test("A table with no columns writes nothing")
     func noColumnsWritesNothing() {
         let definition = PluginCreateTableDefinition(tableName: "empty", columns: [])

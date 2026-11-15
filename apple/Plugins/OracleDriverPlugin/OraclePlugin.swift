@@ -192,14 +192,15 @@ private extension SQLOperatorDescriptor {
 final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     let config: DriverConnectionConfig
     private(set) var core: OracleCoreConnection?
-    private var _currentSchema: String?
+    // Read by statement generation on any thread while a connect or a schema switch writes it.
+    private let sessionSchema = OSAllocatedUnfairLock<String?>(initialState: nil)
     private var _serverVersion: String?
     let principalState = OSAllocatedUnfairLock(initialState: OraclePrincipalState())
     let debugState = OSAllocatedUnfairLock(initialState: OracleDebugState())
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "OraclePluginDriver")
 
-    var currentSchema: String? { _currentSchema }
+    var currentSchema: String? { sessionSchema.withLock { $0 } }
     var serverVersion: String? { _serverVersion }
     var connectionWarning: String? { core?.loginWarning }
     var supportsSchemas: Bool { true }
@@ -271,9 +272,9 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 on: connection,
                 deadline: deadline
             ), let schema = result.rows.first?.first?.stringValue {
-                _currentSchema = schema
+                sessionSchema.withLock { $0 = schema }
             } else {
-                _currentSchema = config.username.uppercased()
+                sessionSchema.withLock { $0 = config.username.uppercased() }
             }
 
             if let result = try await optionalConnectQuery(
@@ -637,19 +638,19 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
         OracleExportCatalog.dropTriggerStatement(
-            name: name, schema: schema, currentSchema: _currentSchema, release: core?.serverRelease
+            name: name, schema: schema, currentSchema: currentSchema, release: core?.serverRelease
         )
     }
 
     func generateDropRoutineSQL(name: String, signature: String?, schema: String?, isFunction: Bool) -> String? {
         OracleExportCatalog.dropRoutineStatement(
-            name: name, schema: schema, currentSchema: _currentSchema, isFunction: isFunction
+            name: name, schema: schema, currentSchema: currentSchema, isFunction: isFunction
         )
     }
 
     func generateDropRelationSQL(name: String, kind: PluginExportObjectKind, schema: String?) -> String? {
         OracleExportCatalog.dropRelationStatement(
-            kind: kind, name: name, schema: schema, currentSchema: _currentSchema, release: core?.serverRelease
+            kind: kind, name: name, schema: schema, currentSchema: currentSchema, release: core?.serverRelease
         )
     }
 
@@ -856,19 +857,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Create Table DDL
 
-    // No column comments: an older app sends this text in one call, and Oracle refuses a second statement (ORA-03405).
-    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        guard let statements = OracleCreateTableSQL.tableAndIndexStatements(
-            definition: definition, schema: createTableSchema, supportsIdentity: supportsIdentityColumns
-        ), let createTable = statements.first else { return nil }
-        let indexStatements = statements.dropFirst()
-        guard !indexStatements.isEmpty else { return createTable + ";" }
-        return createTable + ";\n\n" + indexStatements.joined(separator: ";\n") + ";"
-    }
-
-    func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
+    // Oracle runs one statement per call: sent as one text, the table and its indexes fail with ORA-03405.
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]? {
         OracleCreateTableSQL.statements(
-            definition: definition, schema: createTableSchema, supportsIdentity: supportsIdentityColumns
+            definition: definition, schema: effectiveSchema(schema), supportsIdentity: supportsIdentityColumns
         )
     }
 
@@ -895,7 +887,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
-        let qualifiedTable = tableName.map { oracleQualifiedTable($0) } ?? "\"table\""
+        let qualifiedTable = tableName.map { oracleQualifiedTable($0, schema: nil) } ?? "\"table\""
         return oracleIndexDefinition(index, qualifiedTable: qualifiedTable)
     }
 
@@ -905,23 +897,28 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - ALTER TABLE DDL
 
-    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        let qt = oracleQualifiedTable(table)
+    func generateAddColumnSQL(table: String, schema: String?, column: PluginColumnDefinition) -> String? {
+        let qt = oracleQualifiedTable(table, schema: schema)
         let colDef = oracleColumnDefinition(column, inlinePK: false)
         return "ALTER TABLE \(qt) ADD (\(colDef))"
     }
 
-    func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
+    func generateModifyColumnSQL(
+        table: String,
+        schema: String?,
+        oldColumn: PluginColumnDefinition,
+        newColumn: PluginColumnDefinition
+    ) -> String? {
         OracleColumnStatements.modify(
-            qualifiedTable: oracleQualifiedTable(table),
+            qualifiedTable: oracleQualifiedTable(table, schema: schema),
             oldColumn: oldColumn,
             newColumn: newColumn,
             quote: quoteIdentifier
         )
     }
 
-    func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        "ALTER TABLE \(oracleQualifiedTable(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    func generateDropColumnSQL(table: String, schema: String?, columnName: String) -> String? {
+        "ALTER TABLE \(oracleQualifiedTable(table, schema: schema)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
     // Making a column invisible and visible again moves it to the end, so any order is reachable. Measured on Oracle
@@ -934,7 +931,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         columns: [PluginColumnDefinition],
         desiredOrder: [String]
     ) async throws -> PluginColumnReorderPlan? {
-        let qt = oracleQualifiedTable(table)
+        let qt = oracleQualifiedTable(table, schema: schema)
         let currentOrder = try await fetchColumns(table: table, schema: schema).map(\.name)
         let cycled = PluginColumnReorderPlanner.appendCycle(from: currentOrder, to: desiredOrder)
         let statements = cycled.flatMap { column -> [String] in
@@ -955,35 +952,31 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        oracleIndexDefinition(index, qualifiedTable: oracleQualifiedTable(table))
+    func generateAddIndexSQL(table: String, schema: String?, index: PluginIndexDefinition) -> String? {
+        oracleIndexDefinition(index, qualifiedTable: oracleQualifiedTable(table, schema: schema))
     }
 
-    func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "DROP INDEX \(quoteIdentifier(indexName))"
+    func generateDropIndexSQL(table: String, schema: String?, indexName: String) -> String? {
+        "DROP INDEX \(quoteIdentifier(effectiveSchema(schema))).\(quoteIdentifier(indexName))"
     }
 
-    func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        "ALTER TABLE \(oracleQualifiedTable(table)) ADD \(oracleForeignKeyConstraint(fk))"
+    func generateAddForeignKeySQL(table: String, schema: String?, fk: PluginForeignKeyDefinition) -> String? {
+        "ALTER TABLE \(oracleQualifiedTable(table, schema: schema)) ADD \(oracleForeignKeyConstraint(fk))"
     }
 
-    func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
-        "ALTER TABLE \(oracleQualifiedTable(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    func generateDropForeignKeySQL(table: String, schema: String?, constraintName: String) -> String? {
+        "ALTER TABLE \(oracleQualifiedTable(table, schema: schema)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
     }
 
     // MARK: - DDL Helpers
-
-    private var createTableSchema: String {
-        _currentSchema ?? config.username.uppercased()
-    }
 
     // An unknown release writes the identity: `schemaOperationRefusal` stops auto-increment on a known 11g.
     private var supportsIdentityColumns: Bool {
         core?.serverRelease?.hasIdentityColumns ?? true
     }
 
-    private func oracleQualifiedTable(_ table: String) -> String {
-        OracleCreateTableSQL.qualifiedTable(table, schema: createTableSchema)
+    private func oracleQualifiedTable(_ table: String, schema: String?) -> String {
+        OracleCreateTableSQL.qualifiedTable(table, schema: effectiveSchema(schema))
     }
 
     private func oracleColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
@@ -1007,7 +1000,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         } catch let error as OracleCoreError {
             throw error.asPluginError
         }
-        _currentSchema = schema
+        sessionSchema.withLock { $0 = schema }
         core.noteSessionSchema(schema)
     }
 
@@ -1137,7 +1130,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         get throws {
             OracleExportCatalog(
                 run: { [self] query in try await rawQuery(query) },
-                currentSchema: _currentSchema,
+                currentSchema: currentSchema,
                 fallbackSchema: config.username.uppercased(),
                 release: try serverRelease(),
                 principalState: principalState,
@@ -1147,6 +1140,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func effectiveSchema(_ schema: String?) -> String {
-        schema ?? _currentSchema ?? config.username.uppercased()
+        schema ?? currentSchema ?? config.username.uppercased()
     }
 }

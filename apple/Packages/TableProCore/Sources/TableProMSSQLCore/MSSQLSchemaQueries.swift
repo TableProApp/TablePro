@@ -239,6 +239,13 @@ public enum MSSQLSchemaQueries {
         return collation.flatMap(nonEmpty) ?? previous.flatMap(nonEmpty)
     }
 
+    // sp_rename reads its first argument as a multipart name, so each part is bracketed before the whole becomes a
+    // literal: unbracketed, a schema literally named `[dbo]` names dbo. The new name is one part and stays bare.
+    public static func renameColumnStatement(schema: String, table: String, column: String, to newName: String) -> String {
+        let path = [schema, table, column].map { SQLQuoting.identifier($0, quote: .bracket) }.joined(separator: ".")
+        return "EXEC sp_rename \(MSSQLStringLiteral.quoted(path)), \(MSSQLStringLiteral.quoted(newName)), 'COLUMN'"
+    }
+
     public static func alterColumnStatement(
         qualifiedTable: String,
         column: String,

@@ -71,11 +71,11 @@ extension LiveMessageSessionSource {
     static func live(scope: DatabaseScope) -> LiveMessageSessionSource {
         LiveMessageSessionSource {
             let driver = try await openDedicatedDriver(scope: scope)
-            guard let adapter = driver as? PluginDriverAdapter else {
+            guard let plugin = driver.plugin else {
                 driver.disconnect()
                 throw LiveMessageError.unsupported
             }
-            return LiveMessageDriverHandle(driver: adapter.schemaPluginDriver) { adapter.disconnect() }
+            return LiveMessageDriverHandle(driver: plugin) { driver.disconnect() }
         }
     }
 

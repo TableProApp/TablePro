@@ -57,19 +57,19 @@ struct TableOperationSQLBuilderTests {
     private func makeForeignKeyBuilder() -> TableOperationSQLBuilder {
         let connection = DatabaseConnection(name: "Test", type: .mysql)
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: StubForeignKeyDriver())
-        return TableOperationSQLBuilder(adapterProvider: { adapter })
+        return TableOperationSQLBuilder(driverProvider: { adapter })
     }
 
     private func makeBuilder() -> TableOperationSQLBuilder {
         let connection = DatabaseConnection(name: "Test", type: .postgresql)
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: StubDropDriver())
-        return TableOperationSQLBuilder(adapterProvider: { adapter })
+        return TableOperationSQLBuilder(driverProvider: { adapter })
     }
 
     private func makeNonSQLBuilder() -> TableOperationSQLBuilder {
         let connection = DatabaseConnection(name: "Test", type: .elasticsearch)
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: StubDropDriver())
-        return TableOperationSQLBuilder(adapterProvider: { adapter })
+        return TableOperationSQLBuilder(driverProvider: { adapter })
     }
 
     /// Skipping it instead would run the rest of the plan while the coordinator still recorded

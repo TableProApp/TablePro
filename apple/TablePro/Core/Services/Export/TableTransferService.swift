@@ -386,7 +386,7 @@ final class TableTransferService: ObservableObject {
         if let supplied = request.columnMapping[object.name], !supplied.isEmpty {
             return supplied
         }
-        guard let pluginDriver = (destinationDriver as? PluginDriverAdapter)?.schemaPluginDriver else {
+        guard let pluginDriver = destinationDriver.plugin else {
             throw TableTransferError.targetMissing(table: object.name)
         }
         let destinationColumns: [String]

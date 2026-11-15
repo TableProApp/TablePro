@@ -201504,6 +201504,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This build of DuckDB does not accept a limit on how deep an expression nests" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This build of DuckDB does not accept a read-only access mode" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,

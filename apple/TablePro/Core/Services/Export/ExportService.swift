@@ -86,7 +86,7 @@ final class ExportService: ObservableObject {
     ) {
         self.driver = driver
         self.databaseType = databaseType
-        self.effectiveQueryTimeoutSeconds = (driver as? PluginDriverAdapter)?.effectiveQueryTimeoutSeconds
+        self.effectiveQueryTimeoutSeconds = driver.sessionQueryTimeoutSeconds
             ?? ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
                 configuredSeconds: driver.connection.queryTimeoutSeconds,
                 globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
@@ -103,7 +103,7 @@ final class ExportService: ObservableObject {
         self.driver = driver
         self.databaseType = databaseType
         self.effectiveQueryTimeoutSeconds = driver.map { driver in
-            (driver as? PluginDriverAdapter)?.effectiveQueryTimeoutSeconds
+            driver.sessionQueryTimeoutSeconds
                 ?? ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
                     configuredSeconds: driver.connection.queryTimeoutSeconds,
                     globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds

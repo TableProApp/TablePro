@@ -13,8 +13,8 @@ extension MainContentCoordinator {
     private var liveMessaging: (any PluginDatabaseDriver & PluginLiveMessaging)? {
         guard AppModuleSettings.shared.isEnabled(.liveMessages),
               connection.type.supportsConnectionPooling,
-              let adapter = services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter,
-              let messaging = adapter.schemaPluginDriver as? any PluginDatabaseDriver & PluginLiveMessaging,
+              let messaging = services.databaseManager.driver(for: connectionId)?.plugin
+                as? any PluginDatabaseDriver & PluginLiveMessaging,
               messaging.liveMessageKind != nil
         else { return nil }
         return messaging

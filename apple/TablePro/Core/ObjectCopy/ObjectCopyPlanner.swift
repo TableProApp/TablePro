@@ -767,12 +767,12 @@ internal struct ObjectCopyPlanner {
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
                 throw ObjectCopyError.refused(Self.noTargetDriver)
             }
-            let builder = SchemaSyncScriptBuilder(
-                targetDriver: plugin, targetDatabaseType: driver.connection.type
-            )
             var result: [String: ObjectCopyTableDDL] = [:]
             for input in inputs {
                 try Task.checkCancellation()
+                let builder = SchemaSyncScriptBuilder(
+                    targetDriver: plugin, targetDatabaseType: driver.connection.type, targetSchema: input.targetSchema
+                )
                 var ddl = ObjectCopyTableDDL()
                 if input.dropsFirst {
                     ddl.drop = Self.dropStatements(

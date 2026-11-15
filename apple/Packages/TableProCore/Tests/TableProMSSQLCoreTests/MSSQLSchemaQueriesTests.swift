@@ -471,4 +471,16 @@ struct MSSQLSchemaQueriesTests {
             WHERE p.object_id = OBJECT_ID(N'[sales].[O''rders]]]') AND p.index_id IN (0, 1)
             """)
     }
+
+    @Test("A rename brackets each part of the column it names, so a schema called [dbo] is not dbo")
+    func renameColumnBracketsEachPart() {
+        #expect(
+            MSSQLSchemaQueries.renameColumnStatement(schema: "sales", table: "orders", column: "id", to: "order_id")
+                == "EXEC sp_rename N'[sales].[orders].[id]', N'order_id', 'COLUMN'"
+        )
+        #expect(
+            MSSQLSchemaQueries.renameColumnStatement(schema: "[dbo]", table: "o'rders", column: "a.b", to: "c")
+                == "EXEC sp_rename N'[[dbo]]].[o''rders].[a.b]', N'c', 'COLUMN'"
+        )
+    }
 }

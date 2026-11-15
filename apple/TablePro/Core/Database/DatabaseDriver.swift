@@ -511,6 +511,19 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     var primaryKeyNamesOneRow: Bool { get }
 
+    // The plugin this session drives, for the PluginKit surface the app calls as it is. Nil for a driver that wraps
+    // none, so every caller states what happens without one.
+    var plugin: (any PluginDatabaseDriver)? { get }
+
+    // The query timeout the session was opened with, nil when the driver was given none.
+    var sessionQueryTimeoutSeconds: Int? { get }
+
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]?
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String?
+
+    func streamRows(query: String, safeModeIsReadOnly: Bool) -> AsyncThrowingStream<PluginStreamElement, Error>
+    func streamExportRows(query: String, safeModeIsReadOnly: Bool) -> AsyncThrowingStream<PluginExportStreamElement, Error>
+
     /// Quote an identifier (table or column name) using the driver's quoting style
     func quoteIdentifier(_ name: String) -> String
 
@@ -669,6 +682,57 @@ extension DatabaseDriver {
     var rowWritingPluginDriver: (any PluginDatabaseDriver)? { queryBuildingPluginDriver }
 
     var primaryKeyNamesOneRow: Bool { true }
+
+    var plugin: (any PluginDatabaseDriver)? { nil }
+
+    var sessionQueryTimeoutSeconds: Int? { nil }
+
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? { nil }
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? { nil }
+
+    func streamRows(query: String, safeModeIsReadOnly: Bool) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream { $0.finish(throwing: DatabaseError.unsupportedOperation) }
+    }
+
+    func streamExportRows(
+        query: String,
+        safeModeIsReadOnly: Bool
+    ) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        AsyncThrowingStream { $0.finish(throwing: DatabaseError.unsupportedOperation) }
+    }
+
+    /// Which of these objects this connection has a drop or truncate statement for.
+    ///
+    /// Resolved per object rather than per engine, because a plugin answers per object: Typesense
+    /// has a statement for a collection and none for anything else, and Elasticsearch has none for
+    /// an index name carrying a wildcard. Every menu that offers either operation asks this, so the
+    /// answer and the statement it leads to come from one place.
+    func tableOperationEligibility(
+        for refs: some Collection<DatabaseTreeTableRef>,
+        isReadOnly: Bool
+    ) -> TableOperationEligibility.Context {
+        guard !isReadOnly else { return .unavailable }
+        var droppable: Set<DatabaseTreeTableRef> = []
+        var truncatable: Set<DatabaseTreeTableRef> = []
+        for ref in refs {
+            if dropObjectStatement(
+                name: ref.table.name,
+                objectType: TableObjectKeyword.forDDL(ref.table.type),
+                schema: ref.qualifyingSchema,
+                cascade: false
+            ) != nil {
+                droppable.insert(ref)
+            }
+            if truncateTableStatements(
+                table: ref.table.name, schema: ref.qualifyingSchema, cascade: false
+            ) != nil {
+                truncatable.insert(ref)
+            }
+        }
+        return TableOperationEligibility.Context(
+            droppable: droppable, truncatable: truncatable, isReadOnly: false
+        )
+    }
 
     func beginTransaction(mode: PluginTransactionAccessMode) async throws {
         try await beginTransaction()

@@ -75,7 +75,7 @@ internal final class StructureEditingSession: ObservableObject {
             switch pane {
             case .definition, .ddl: true
             case .triggers: connection.type.supportsTriggers
-            case .parts: connection.type == .clickhouse
+            case .parts: serverSupport.offersStorageParts
             }
         }
     }

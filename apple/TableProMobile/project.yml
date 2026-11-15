@@ -77,6 +77,8 @@ targets:
       # The socket key a Mac connection stores, so iOS refuses exactly what the Mac driver dials
       # through a socket.
       - ../Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
+      # The expression depth limit and the open's stack both apps open a DuckDB file with.
+      - ../Plugins/DuckDBDriverPlugin/DuckDBExpressionDepth.swift
       - ../Plugins/Shared/PluginQueryTimeout.swift
       # The toolbar glyph rule both apps follow on and before the 26 releases.
       - ../TablePro/Core/Services/Infrastructure/Toolbar/ToolbarSymbols.swift

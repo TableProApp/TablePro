@@ -37,7 +37,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     let connection: DatabaseConnection
     let effectiveQueryTimeoutSeconds: Int
-    private let pluginDriver: any PluginDatabaseDriver
+    let pluginDriver: any PluginDatabaseDriver
     // The Vault lease this driver signed in with. Its database user goes away when it ends.
     private let credentialLease: VaultLeaseHold?
     private let connectionDeadline: ConnectionDeadline
@@ -59,8 +59,9 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     var sessionLexicalState: PluginSessionLexicalState? { pluginDriver.sessionLexicalState }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
 
-    /// The underlying plugin driver, exposed for DDL schema generation delegation.
-    var schemaPluginDriver: any PluginDatabaseDriver { pluginDriver }
+    var plugin: (any PluginDatabaseDriver)? { pluginDriver }
+
+    var sessionQueryTimeoutSeconds: Int? { effectiveQueryTimeoutSeconds }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? {
         if state.withLock({ $0.buildsBrowseQueries }) { return pluginDriver }
@@ -1020,91 +1021,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     // MARK: - Database Switching
 
-    func switchDatabase(to database: String) async throws {
-        try await pluginDriver.switchDatabase(to: database)
-    }
-
     var currentDatabase: String? {
         pluginDriver.currentDatabase
-    }
-
-    // MARK: - DDL Schema Generation
-
-    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        pluginDriver.generateAddColumnSQL(table: table, column: column)
-    }
-
-    func generateModifyColumnSQL(
-        table: String,
-        oldColumn: PluginColumnDefinition,
-        newColumn: PluginColumnDefinition
-    ) -> String? {
-        pluginDriver.generateModifyColumnSQL(table: table, oldColumn: oldColumn, newColumn: newColumn)
-    }
-
-    func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        pluginDriver.generateDropColumnSQL(table: table, columnName: columnName)
-    }
-
-    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        pluginDriver.generateAddIndexSQL(table: table, index: index)
-    }
-
-    func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        pluginDriver.generateDropIndexSQL(table: table, indexName: indexName)
-    }
-
-    func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        pluginDriver.generateAddForeignKeySQL(table: table, fk: fk)
-    }
-
-    func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
-        pluginDriver.generateDropForeignKeySQL(table: table, constraintName: constraintName)
-    }
-
-    func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
-        pluginDriver.generateModifyPrimaryKeySQL(table: table, oldColumns: oldColumns, newColumns: newColumns, constraintName: constraintName)
-    }
-
-    func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? {
-        pluginDriver.generateMoveColumnSQL(table: table, column: column, afterColumn: afterColumn)
-    }
-
-    /// Routed to the session driver rather than through `withMetadataDriver`. A rebuild plan reads
-    /// the catalog of the database this session is on, and a pooled driver is a second connection
-    /// that an embedded engine answers from a different database entirely.
-    func generateColumnReorderPlan(
-        table: String,
-        schema: String?,
-        columns: [PluginColumnDefinition],
-        desiredOrder: [String]
-    ) async throws -> PluginColumnReorderPlan? {
-        try await pluginDriver.generateColumnReorderPlan(
-            table: table,
-            schema: schema,
-            columns: columns,
-            desiredOrder: desiredOrder
-        )
-    }
-
-    func generateTableRebuildPlan(
-        table: String,
-        schema: String?,
-        respecification: PluginTableRespecification
-    ) async throws -> PluginColumnReorderPlan? {
-        try await pluginDriver.generateTableRebuildPlan(
-            table: table,
-            schema: schema,
-            respecification: respecification
-        )
-    }
-
-    func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
-        try await pluginDriver.columnReorderSchemaFingerprint(table: table, schema: schema)
-    }
-
-    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        pluginDriver.generateCreateTableSQL(definition: definition)
     }
 
     // MARK: - Definition SQL (clipboard copy)
@@ -1147,39 +1065,6 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     private var allowsGeneratedDDL: Bool {
         SQLDDLFallbackPolicy.allowsGeneratedDDL(for: connection.type)
-    }
-
-    /// Which of these objects this connection has a drop or truncate statement for.
-    ///
-    /// Resolved per object rather than per engine, because a plugin answers per object: Typesense
-    /// has a statement for a collection and none for anything else, and Elasticsearch has none for
-    /// an index name carrying a wildcard. Every menu that offers either operation asks this, so the
-    /// answer and the statement it leads to come from one place.
-    func tableOperationEligibility(
-        for refs: some Collection<DatabaseTreeTableRef>,
-        isReadOnly: Bool
-    ) -> TableOperationEligibility.Context {
-        guard !isReadOnly else { return .unavailable }
-        var droppable: Set<DatabaseTreeTableRef> = []
-        var truncatable: Set<DatabaseTreeTableRef> = []
-        for ref in refs {
-            if dropObjectStatement(
-                name: ref.table.name,
-                objectType: TableObjectKeyword.forDDL(ref.table.type),
-                schema: ref.qualifyingSchema,
-                cascade: false
-            ) != nil {
-                droppable.insert(ref)
-            }
-            if truncateTableStatements(
-                table: ref.table.name, schema: ref.qualifyingSchema, cascade: false
-            ) != nil {
-                truncatable.insert(ref)
-            }
-        }
-        return TableOperationEligibility.Context(
-            droppable: droppable, truncatable: truncatable, isReadOnly: false
-        )
     }
 
     func foreignKeyDisableStatements() -> [String]? {
@@ -1273,12 +1158,6 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func alterSequenceStatement(for sequence: PluginSequenceDetails, settings: PluginSequenceSettings) -> String? {
         pluginDriver.alterSequenceStatement(for: sequence, settings: settings)
-    }
-
-    // MARK: - All Tables Metadata SQL
-
-    func allTablesMetadataSQL(schema: String?) -> String? {
-        pluginDriver.allTablesMetadataSQL(schema: schema)
     }
 
     // MARK: - View Templates

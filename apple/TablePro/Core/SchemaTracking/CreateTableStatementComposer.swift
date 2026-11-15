@@ -42,7 +42,7 @@ enum CreateTableStatementComposer {
             return CreateTableStatements(statements: [], issues: issues, tableName: definition.tableName)
         }
 
-        guard let createTable = driver.generateCreateTableStatements(definition: definition), !createTable.isEmpty else {
+        guard let createTable = driver.generateCreateTableStatements(definition: definition, schema: schema), !createTable.isEmpty else {
             issues.append(SchemaDraftIssue(
                 section: .columns, row: nil,
                 message: String(localized: "This database cannot create a table from the visual editor.")
@@ -52,7 +52,7 @@ enum CreateTableStatementComposer {
 
         var statements = createTable
         for (position, index) in plan.indexes.enumerated() where !refusedIndexes.contains(position) {
-            guard let sql = driver.generateAddIndexSQL(table: definition.tableName, index: index) else {
+            guard let sql = driver.generateAddIndexSQL(table: definition.tableName, schema: schema, index: index) else {
                 issues.append(SchemaDraftIssue(
                     section: .indexes, row: plan.indexRow(at: position),
                     message: String(localized: "Create Table cannot add an index on this database.")
@@ -63,7 +63,9 @@ enum CreateTableStatementComposer {
         }
 
         for (position, constraint) in plan.checkConstraints.enumerated() {
-            guard let sql = driver.generateAddCheckConstraintSQL(table: definition.tableName, constraint: constraint) else {
+            guard let sql = driver.generateAddCheckConstraintSQL(
+                table: definition.tableName, schema: schema, constraint: constraint
+            ) else {
                 issues.append(SchemaDraftIssue(
                     section: .checkConstraints, row: plan.checkConstraintRow(at: position),
                     message: String(localized: "Create Table cannot add a check constraint on this database.")
