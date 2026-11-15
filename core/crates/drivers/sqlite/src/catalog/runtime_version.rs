@@ -10,11 +10,10 @@ pub struct SqliteVersion {
     pub patch: u32,
 }
 
-/// The oldest library the driver reads a catalogue from. 3.37.0 added
-/// `PRAGMA table_list`, which is what says whether a table is STRICT.
-/// Every system that ships GTK 4.22 has a newer one, so the floor turns
-/// away no supported system.
-pub const SQLITE_MIN_VERSION: SqliteVersion = SqliteVersion::new(3, 37, 0);
+// The oldest library the driver reads a catalogue from. 3.43.0 added `octet_length`, which sizes a stored text without
+// reading it, and 3.37.0 `PRAGMA table_list`, which says whether a table is STRICT. Every system that ships GTK 4.22
+// has a newer one, so the floor turns away no supported system.
+pub const SQLITE_MIN_VERSION: SqliteVersion = SqliteVersion::new(3, 43, 0);
 
 impl SqliteVersion {
     pub const fn new(major: u32, minor: u32, patch: u32) -> Self {
@@ -46,7 +45,7 @@ pub fn check_runtime_version(version: &SqliteVersion) -> Result<(), DriverError>
     if *version < SQLITE_MIN_VERSION {
         return Err(DriverError::Unsupported {
             feature: UnsupportedFeature::MinimumVersion {
-                required: "SQLite 3.37.0",
+                required: "SQLite 3.43.0",
             },
         });
     }
@@ -58,18 +57,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sqlite_runtime_version_below_3_37_is_unsupported() {
-        let refused = check_runtime_version(&SqliteVersion::new(3, 36, 0));
+    fn sqlite_runtime_version_below_3_43_is_unsupported() {
+        let refused = check_runtime_version(&SqliteVersion::new(3, 42, 0));
 
         assert_eq!(
             refused,
             Err(DriverError::Unsupported {
                 feature: UnsupportedFeature::MinimumVersion {
-                    required: "SQLite 3.37.0"
+                    required: "SQLite 3.43.0"
                 }
             })
         );
-        assert_eq!(check_runtime_version(&SqliteVersion::new(3, 37, 0)), Ok(()));
+        assert_eq!(check_runtime_version(&SqliteVersion::new(3, 43, 0)), Ok(()));
         assert_eq!(check_runtime_version(&SqliteVersion::new(3, 45, 1)), Ok(()));
     }
 

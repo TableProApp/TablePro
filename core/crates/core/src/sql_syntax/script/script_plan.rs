@@ -100,6 +100,22 @@ impl ScriptPlan {
             .collect()
     }
 
+    // Where the first statement's terminator starts, or the text's end when nothing ends it, lexed without keeping the
+    // tokens: SQLite reads only the first statement of a stored CREATE text, whatever follows it.
+    pub fn first_statement_end(text: &str, grammar: SqlGrammar) -> usize {
+        match rules_for(grammar) {
+            Some(rules) => Builder::new(
+                text,
+                rules,
+                LexicalSettings::default_for(grammar),
+                ServerReading::Client,
+                ";",
+            )
+            .first_statement_end(),
+            None => text.len(),
+        }
+    }
+
     pub fn batches(&self) -> &[ScriptBatch] {
         &self.batches
     }
@@ -215,6 +231,28 @@ impl<'a> Builder<'a> {
             batch_error: self.rules.batch_error,
         };
         (plan, settled)
+    }
+
+    fn first_statement_end(mut self) -> usize {
+        while self.lexer.position() < self.text.len() {
+            let start = self.lexer.position();
+            let ended_at = if self.reads_directives && self.lexer.at_line_start() && self.accept_directive() {
+                start
+            } else {
+                let delimiter = (self.rules.boundary == Boundary::DelimiterDirectives).then_some(self.delimiter);
+                let Some(token) = self.lexer.next_token(delimiter) else {
+                    break;
+                };
+                let token_start = token.range.start;
+                self.accept(token);
+                token_start
+            };
+            self.tokens.clear();
+            if !self.statements.is_empty() {
+                return ended_at;
+            }
+        }
+        self.text.len()
     }
 
     fn accept_directive(&mut self) -> bool {

@@ -561,3 +561,47 @@ async fn a_stored_create_text_past_the_cap_is_refused_before_it_is_parsed() {
     assert_eq!(definition, refused);
     connection.close().await.unwrap();
 }
+
+// A tail under the cap is cut where SQLite stops reading: an index's tail of 50,000 additions, which sqlparser would
+// drop one call per term, and a table's tail, which would reach a rebuild's source and a dump.
+#[tokio::test]
+async fn a_stored_text_is_read_to_its_first_statement() {
+    let file = TestFile::new().await;
+    create(&file, "CREATE TABLE p (id INTEGER PRIMARY KEY)".to_owned()).await;
+    create(&file, "CREATE TABLE c (a INTEGER REFERENCES p)".to_owned()).await;
+    create(&file, "CREATE INDEX ci ON c (a) WHERE a > 0".to_owned()).await;
+    let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
+        .await
+        .unwrap();
+    writer.execute("PRAGMA writable_schema = ON").await.unwrap();
+    writer
+        .execute("UPDATE sqlite_schema SET sql = sql || '; DROP TABLE p' WHERE name = 'c'")
+        .await
+        .unwrap();
+    writer
+        .execute(sqlx::AssertSqlSafe(format!(
+            "UPDATE sqlite_schema SET sql = sql || '; SELECT {}' WHERE name = 'ci'",
+            vec!["1"; 50_000].join("+")
+        )))
+        .await
+        .unwrap();
+    writer.close().await.unwrap();
+    let connection = file.open().await;
+    let table = TableRef::unqualified("c");
+
+    let definition = connection.fetch_table_definition(&table, call()).await.unwrap();
+    let indexes = connection.fetch_indexes(&table, call()).await.unwrap();
+
+    assert_eq!(
+        definition.source.map(|source| source.create_statement),
+        Some("CREATE TABLE c (a INTEGER REFERENCES p)".to_owned())
+    );
+    assert_eq!(definition.foreign_keys.len(), 1);
+    assert_eq!(indexes.len(), 1);
+    assert_eq!(indexes[0].predicate.as_deref(), Some("a > 0"));
+    assert_eq!(
+        indexes[0].definition.as_deref(),
+        Some("CREATE INDEX \"main\".ci ON c (a) WHERE a > 0")
+    );
+    connection.close().await.unwrap();
+}

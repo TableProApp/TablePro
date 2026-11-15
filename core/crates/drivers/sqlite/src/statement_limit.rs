@@ -1,5 +1,7 @@
 use sqlx::Row;
 use sqlx::sqlite::{SqliteConnection as SqlxConnection, SqliteRow};
+use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_core::sql_syntax::script::ScriptPlan;
 use tablepro_core::{CatalogBudget, DriverError};
 
 use crate::errors::map_error;
@@ -9,9 +11,13 @@ use crate::errors::map_error;
 // A schema with a longer one does not open: SQLite reports it malformed.
 pub(crate) const MAX_STATEMENT_BYTES: i32 = 10_000_000;
 
-// SQLite parses a stored CREATE text only to its statement's end and ignores the rest, which a crafted file can make as
-// long as any value, so every read that parses one takes it only up to the cap: `capped` selects it as `sql`, NULL past
-// the cap, beside `sql_too_long`, and `stored_sql` reads the two.
+// SQLite's default, set because a build can raise it: sqlparser drops and renders an expression one call per level, and
+// a stored statement's expressions are no deeper than SQLite let it load.
+const MAX_EXPRESSION_DEPTH: i32 = 1_000;
+
+// SQLite reads a stored CREATE text only to its first statement's end and ignores the rest, which a crafted file can
+// make as long as any value. Every read takes a stored text only up to the cap: `capped` selects it as `sql`, NULL past
+// the cap, beside `sql_too_long`, and `stored_sql` reads the two and keeps the first statement.
 pub(crate) fn capped(column: &str) -> String {
     let bytes = byte_length(column);
     format!(
@@ -20,14 +26,9 @@ pub(crate) fn capped(column: &str) -> String {
     )
 }
 
-// From SQLite 3.43, octet_length of a column takes the length from the record without reading the value. An older
-// library, which a Linux distribution can ship, reads it whole through the CAST.
+// octet_length of a column takes the length from the record without reading the value.
 pub(crate) fn byte_length(column: &str) -> String {
-    // SAFETY: the call takes no arguments and returns a constant of the linked library.
-    match unsafe { libsqlite3_sys::sqlite3_libversion_number() } >= 3_043_000 {
-        true => format!("octet_length({column})"),
-        false => format!("length(CAST({column} AS BLOB))"),
-    }
+    format!("octet_length({column})")
 }
 
 pub(crate) fn stored_sql(row: &SqliteRow) -> Result<Option<String>, DriverError> {
@@ -36,7 +37,21 @@ pub(crate) fn stored_sql(row: &SqliteRow) -> Result<Option<String>, DriverError>
             limit_bytes: u64::try_from(MAX_STATEMENT_BYTES).unwrap_or(u64::MAX),
         });
     }
-    row.try_get("sql").map_err(map_error)
+    Ok(row
+        .try_get::<Option<String>, _>("sql")
+        .map_err(map_error)?
+        .map(first_statement))
+}
+
+// SQLite stores a statement without its terminator, so only a crafted text has one, and the rest stays as stored.
+pub(crate) fn first_statement(mut sql: String) -> String {
+    let end = ScriptPlan::first_statement_end(&sql, SqlGrammar::Sqlite);
+    if end < sql.len() {
+        let kept = sql.get(..end).map_or(end, |statement| statement.trim_end().len());
+        sql.truncate(kept);
+        sql.shrink_to_fit();
+    }
+    sql
 }
 
 // sqlparser holds up to about 420 bytes for each byte it parses, measured on an IN list of one-digit numbers, so a parse
@@ -56,7 +71,12 @@ pub(crate) async fn install(connection: &mut SqlxConnection) -> Result<(), Drive
             raw.as_ptr(),
             libsqlite3_sys::SQLITE_LIMIT_SQL_LENGTH,
             MAX_STATEMENT_BYTES,
-        )
+        );
+        libsqlite3_sys::sqlite3_limit(
+            raw.as_ptr(),
+            libsqlite3_sys::SQLITE_LIMIT_EXPR_DEPTH,
+            MAX_EXPRESSION_DEPTH,
+        );
     };
     Ok(())
 }

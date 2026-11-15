@@ -29,7 +29,7 @@ use crate::catalog::{
 use crate::ddl::{DeclaredComparisons, declared_descending_key, declared_foreign_key_names, foreign_key_list_bytes};
 use crate::errors::{SQLITE_ERROR, map_error};
 use crate::index_sql::read_index_sql;
-use crate::statement_limit::{parse_fits, stored_sql};
+use crate::statement_limit::{first_statement, parse_fits, stored_sql};
 
 /// What `pragma_table_list` and `pragma_table_xinfo` say about one
 /// table, read together.
@@ -509,7 +509,8 @@ async fn small_children_keys(
             continue;
         }
         if read.sql.is_none() {
-            read.sql = budget.keep_optional(row.try_get("sql").map_err(map_error)?)?;
+            let sql: Option<String> = row.try_get("sql").map_err(map_error)?;
+            read.sql = budget.keep_optional(sql.map(first_statement))?;
         }
         read.columns.push(InboundKeyColumn {
             id,

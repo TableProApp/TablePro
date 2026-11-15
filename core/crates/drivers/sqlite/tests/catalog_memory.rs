@@ -210,9 +210,13 @@ fn tailed_schema() -> Vec<String> {
     vec![
         "CREATE TABLE neighbour (id INTEGER PRIMARY KEY)".to_owned(),
         "CREATE TABLE tailed (a INTEGER)".to_owned(),
+        "CREATE TABLE short_tail (a INTEGER REFERENCES neighbour)".to_owned(),
         "PRAGMA writable_schema = ON".to_owned(),
         "UPDATE sqlite_schema SET sql = sql || '; ' || replace(hex(zeroblob(12500000)), '00', 'x ') \
          WHERE name = 'tailed'"
+            .to_owned(),
+        "UPDATE sqlite_schema SET sql = sql || '; SELECT ' || replace(hex(zeroblob(2000000)), '00', '0,') || '0' \
+         WHERE name = 'short_tail'"
             .to_owned(),
         "PRAGMA writable_schema = OFF".to_owned(),
     ]
@@ -343,6 +347,13 @@ async fn a_tail_is_not_read(directory: &Path) -> Outcome {
     assert!(
         heap < BOUND / 8 && native < 8 << 20,
         "definition beside a tailed table: {heap}, {native}"
+    );
+    let (keys, heap, native) =
+        measured(connection.fetch_foreign_keys(&TableRef::unqualified("short_tail"), call())).await;
+    assert_eq!(keys?.len(), 1);
+    assert!(
+        heap < BOUND / 8 && native < NATIVE_BOUND,
+        "keys of a table with a tail under the cap: {heap}, {native}"
     );
     connection.close().await?;
     Ok(())
