@@ -393,10 +393,10 @@ extension DatabaseManager {
             switch action {
             case .selectDatabaseFromLastSession:
                 if resolvedConnection.database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   let adapter = driver as? PluginDriverAdapter,
+                   let plugin = driver.plugin,
                    let savedDb = appSettingsStorage.loadLastDatabase(for: connection.id) {
                     do {
-                        try await adapter.switchDatabase(to: savedDb)
+                        try await plugin.switchDatabase(to: savedDb)
                         activeSessions[connection.id]?.browseDatabase = savedDb
                     } catch {
                         Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .private(mask: .hash))' for \(connection.id): \(error.publicLogShape, privacy: .public)")
@@ -406,7 +406,7 @@ extension DatabaseManager {
                 let initialDb = resolvedConnection.databaseIndex(selectedBy: fieldId)
                 if initialDb != 0 {
                     do {
-                        try await (driver as? PluginDriverAdapter)?.switchDatabase(to: String(initialDb))
+                        try await driver.plugin?.switchDatabase(to: String(initialDb))
                     } catch {
                         Self.logger.error(
                             "Failed to switch to database \(initialDb): \(error.publicLogShape, privacy: .public)"
@@ -454,7 +454,7 @@ extension DatabaseManager {
             } else {
                 try await reconnectOntoDatabase(database, for: connectionId)
             }
-        } else if driver is PluginDriverAdapter {
+        } else if driver.plugin != nil {
             let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
             let browsesSchemas = grouping == .bySchema || grouping == .hierarchicalSchema
             let sessionStartedAt = session(for: connectionId)?.connectedAt
@@ -465,14 +465,15 @@ extension DatabaseManager {
                     guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
                         throw CancellationError()
                     }
-                    guard let adapter = self.driver(for: connectionId) as? PluginDriverAdapter else {
+                    guard let current = self.driver(for: connectionId), let plugin = current.plugin else {
                         throw DatabaseError.notConnected
                     }
-                    try await adapter.switchDatabase(to: database)
-                    if grouping == .bySchema {
-                        await resetSchema(on: adapter, to: pm?.schema.defaultSchemaName)
+                    try await plugin.switchDatabase(to: database)
+                    let schemaDriver = current as? SchemaSwitchable
+                    if grouping == .bySchema, let schemaDriver {
+                        await resetSchema(on: schemaDriver, to: pm?.schema.defaultSchemaName)
                     }
-                    return adapter.currentSchema
+                    return schemaDriver?.currentSchema
                 }
             }
             updateSession(connectionId) { session in

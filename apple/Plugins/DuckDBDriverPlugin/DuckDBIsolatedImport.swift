@@ -13,6 +13,7 @@ enum DuckDBIsolatedImport {
         ("autoinstall_known_extensions", "false"),
         ("autoload_known_extensions", "false"),
         ("allow_community_extensions", "false"),
+        (DuckDBExpressionDepth.configurationOption, DuckDBExpressionDepth.limit),
     ]
 
     // duckdb_set_config rejects allowed_directories, and DuckDB refuses to change it once external access is off.
@@ -47,14 +48,14 @@ enum DuckDBIsolatedImport {
             throw DuckDBPluginError.connectionFailed("DuckDB rejected \(option.name) = \(option.value)")
         }
 
-        var database: duckdb_database?
-        var openError: UnsafeMutablePointer<CChar>?
-        guard duckdb_open_ext(file, &database, config, &openError) != DuckDBError else {
-            let detail = openError.map { String(cString: $0) } ?? "unknown error"
-            duckdb_free(openError)
+        let opened = DuckDBExpressionDepth.open(file, config: config)
+        var database = opened.database
+        guard opened.state != DuckDBError else {
+            let detail = opened.error.map { String(cString: $0) } ?? "unknown error"
+            duckdb_free(opened.error)
             throw DuckDBPluginError.connectionFailed("Failed to open DuckDB database at '\(file)': \(detail)")
         }
-        defer { duckdb_close(&database) }
+        defer { DuckDBExpressionDepth.close(&database) }
 
         var handle: duckdb_connection?
         guard duckdb_connect(database, &handle) != DuckDBError, let connection = handle else {
@@ -67,14 +68,22 @@ enum DuckDBIsolatedImport {
         }
         if Task.isCancelled { throw CancellationError() }
 
-        // IMPORT DATABASE expands into the folder's statements, which duckdb_prepare refuses.
-        for statement in lockdownStatements(allowing: folder) + [importStatement(folder: folder)] {
-            var result = duckdb_result()
-            defer { duckdb_destroy_result(&result) }
-            guard duckdb_query(connection, statement, &result) != DuckDBError else {
-                let message = duckdb_result_error(&result).map { String(cString: $0) } ?? "Unknown DuckDB error"
-                throw DuckDBPluginError.queryFailed(message)
+        // IMPORT DATABASE expands into the folder's statements, which duckdb_prepare refuses. An ATTACH among them
+        // reads that file's expressions too.
+        nonisolated(unsafe) let importing = connection
+        let statements = lockdownStatements(allowing: folder) + [importStatement(folder: folder)]
+        let failure = DuckDBExpressionDepth.onStack { () -> String? in
+            for statement in statements {
+                var result = duckdb_result()
+                defer { duckdb_destroy_result(&result) }
+                guard duckdb_query(importing, statement, &result) != DuckDBError else {
+                    return duckdb_result_error(&result).map { String(cString: $0) } ?? "Unknown DuckDB error"
+                }
             }
+            return nil
+        } ?? "DuckDB did not run the import"
+        if let failure {
+            throw DuckDBPluginError.queryFailed(failure)
         }
     }
 }

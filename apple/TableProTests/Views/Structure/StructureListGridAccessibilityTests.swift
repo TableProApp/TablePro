@@ -108,18 +108,15 @@ struct StructureListGridAccessibilityTests {
         DataGridAccessibility.isActive = true
         defer { DataGridAccessibility.isActive = false }
         let parts = [true, false].map { active in
-            ClickHousePartInfo(
-                partition: "202601", partitionId: "202601", name: "p", rows: 1, bytesOnDisk: 1, modificationTime: "",
-                active: active
+            PluginStoragePart(
+                partition: "202601", partitionId: "202601", name: "p\(active)", rows: 1, bytesOnDisk: 1,
+                modificationTime: "", isActive: active
             )
         }
-        let rows = parts.map { part in
-            let row = ClickHousePartsView.gridRow(for: part)
-            return StructureListRow(id: part.id.uuidString, values: row.values, spokenValues: row.spokenValues)
-        }
-        let grid = MountedStructureList(columns: ClickHousePartsView.columnTitles, rows: rows)
+        let rows = parts.map(StoragePartsView.gridRow(for:))
+        let grid = MountedStructureList(columns: StoragePartsView.columnTitles, rows: rows)
         defer { grid.tearDown() }
-        let active = ClickHousePartsView.activeColumn
+        let active = StoragePartsView.activeColumn
 
         #expect(grid.drawn(row: 0, dataColumn: active) == "YES")
         #expect(try grid.spoken(row: 0, dataColumn: active) == String(localized: "Active"))

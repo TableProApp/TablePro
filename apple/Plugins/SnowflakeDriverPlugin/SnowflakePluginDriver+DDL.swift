@@ -76,43 +76,45 @@ extension SnowflakePluginDriver {
         )
     }
 
-    private var ddlGenerator: SnowflakeDDLGenerator {
+    private func ddlGenerator(schema: String?) -> SnowflakeDDLGenerator {
         SnowflakeDDLGenerator(qualifiedTable: { [weak self] table in
-            self?.qualifiedName(table: table, schema: nil) ?? table
+            self?.qualifiedName(table: table, schema: schema) ?? table
         })
     }
 
-    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        ddlGenerator.addColumnSQL(table: table, column: column)
+    func generateAddColumnSQL(table: String, schema: String?, column: PluginColumnDefinition) -> String? {
+        ddlGenerator(schema: schema).addColumnSQL(table: table, column: column)
     }
 
     func generateModifyColumnSQL(
         table: String,
+        schema: String?,
         oldColumn: PluginColumnDefinition,
         newColumn: PluginColumnDefinition
     ) -> String? {
-        ddlGenerator.modifyColumnSQL(table: table, old: oldColumn, new: newColumn)
+        ddlGenerator(schema: schema).modifyColumnSQL(table: table, old: oldColumn, new: newColumn)
     }
 
-    func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        ddlGenerator.dropColumnSQL(table: table, columnName: columnName)
+    func generateDropColumnSQL(table: String, schema: String?, columnName: String) -> String? {
+        ddlGenerator(schema: schema).dropColumnSQL(table: table, columnName: columnName)
     }
 
     func generateModifyPrimaryKeySQL(
         table: String,
+        schema: String?,
         oldColumns: [String],
         newColumns: [String],
         constraintName: String?
     ) -> [String]? {
-        ddlGenerator.modifyPrimaryKeySQL(table: table, oldColumns: oldColumns, newColumns: newColumns)
+        ddlGenerator(schema: schema).modifyPrimaryKeySQL(table: table, oldColumns: oldColumns, newColumns: newColumns)
     }
 
-    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        ddlGenerator.createTableSQL(definition: definition)
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]? {
+        ddlGenerator(schema: schema).createTableSQL(definition: definition).map { [$0] }
     }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
-        ddlGenerator.columnDefinitionSQL(column)
+        ddlGenerator(schema: nil).columnDefinitionSQL(column)
     }
 
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {

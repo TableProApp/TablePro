@@ -68,8 +68,7 @@ enum StructureRebuildPlanRunner {
             route: DatabaseManager.shared.executionRoute(for: scope),
             cancellation: .untracked
         ) { driver in
-            guard let adapter = driver as? PluginDriverAdapter else { return nil }
-            return try? await adapter.columnReorderSchemaFingerprint(table: tableName, schema: scope.schema)
+            try? await driver.plugin?.columnReorderSchemaFingerprint(table: tableName, schema: scope.schema)
         }
     }
 
@@ -138,8 +137,8 @@ enum StructureRebuildPlanRunner {
             cancellation: .protectedWrite
         ) { driver in
             if let expectedFingerprint,
-               let adapter = driver as? PluginDriverAdapter,
-               let current = try? await adapter.columnReorderSchemaFingerprint(
+               let plugin = driver.plugin,
+               let current = try? await plugin.columnReorderSchemaFingerprint(
                    table: tableName, schema: scope.schema
                ),
                current != expectedFingerprint {

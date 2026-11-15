@@ -533,7 +533,7 @@ internal struct CompareMetadataService {
     }
 
     nonisolated internal static func pluginDriver(from driver: DatabaseDriver) -> (any PluginDatabaseDriver)? {
-        (driver as? PluginDriverAdapter)?.schemaPluginDriver
+        driver.plugin
     }
 }
 

@@ -256,7 +256,7 @@ struct DatabaseManagerQueryTimeoutHandoffTests {
         do {
             try await DatabaseManager.shared.ensureConnected(connection)
             if let adapter = DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter,
-               let pluginDriver = adapter.schemaPluginDriver as? FakeMSSQLPluginDriver {
+               let pluginDriver = adapter.pluginDriver as? FakeMSSQLPluginDriver {
                 #expect(pluginDriver.applyQueryTimeoutValues == [expected])
                 #expect(DatabaseManager.shared.session(for: connection.id)?.effectiveQueryTimeoutSeconds == expected)
             } else {

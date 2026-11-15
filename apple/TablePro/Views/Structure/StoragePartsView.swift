@@ -1,5 +1,5 @@
 //
-//  ClickHousePartsView.swift
+//  StoragePartsView.swift
 //  TablePro
 //
 
@@ -8,13 +8,13 @@ import SwiftUI
 import TableProPluginKit
 import TableProSQLGrammar
 
-internal struct ClickHousePartsAlert: Equatable {
+internal struct StoragePartsAlert: Equatable {
     let title: String
     let message: String
 }
 
 // A failed or refused action never replaces the list it acted on; only a load with nothing shown does.
-internal struct ClickHousePartsPaneState {
+internal struct StoragePartsPaneState {
     internal enum Display: Equatable {
         case loading
         case loadFailed(String)
@@ -22,10 +22,10 @@ internal struct ClickHousePartsPaneState {
         case parts
     }
 
-    private(set) var parts: [ClickHousePartInfo] = []
+    private(set) var parts: [PluginStoragePart] = []
     private(set) var isLoading = true
     private(set) var loadError: String?
-    var alert: ClickHousePartsAlert?
+    var alert: StoragePartsAlert?
 
     var display: Display {
         guard parts.isEmpty else { return .parts }
@@ -38,7 +38,7 @@ internal struct ClickHousePartsPaneState {
         loadError = nil
     }
 
-    mutating func finishLoad(_ parts: [ClickHousePartInfo]) {
+    mutating func finishLoad(_ parts: [PluginStoragePart]) {
         self.parts = parts
         isLoading = false
     }
@@ -46,7 +46,7 @@ internal struct ClickHousePartsPaneState {
     mutating func failLoad(_ message: String) {
         isLoading = false
         guard parts.isEmpty else {
-            alert = ClickHousePartsAlert(title: String(localized: "Couldn't Read the Parts"), message: message)
+            alert = StoragePartsAlert(title: String(localized: "Couldn't Read the Parts"), message: message)
             return
         }
         loadError = message
@@ -54,12 +54,12 @@ internal struct ClickHousePartsPaneState {
 
     mutating func actionEnded(_ failure: GatedOperationFailure, title: String) {
         guard let message = failure.message else { return }
-        alert = ClickHousePartsAlert(title: title, message: message)
+        alert = StoragePartsAlert(title: title, message: message)
     }
 }
 
-struct ClickHousePartsView: View {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePartsView")
+struct StoragePartsView: View {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "StoragePartsView")
 
     let tableName: String
 
@@ -67,10 +67,10 @@ struct ClickHousePartsView: View {
     let connection: DatabaseConnection
     let reloadToken: Int
 
-    @State private var pane = ClickHousePartsPaneState()
+    @State private var pane = StoragePartsPaneState()
     @State private var loadedToken: Int?
-    @StateObject private var grid = StructureListGridModel<UUID>(accessibilityLabel: StructurePane.parts.displayName)
-    @StateObject private var selection = StructureListSelection<UUID>()
+    @StateObject private var grid = StructureListGridModel<String>(accessibilityLabel: StructurePane.parts.displayName)
+    @StateObject private var selection = StructureListSelection<String>()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -174,44 +174,33 @@ struct ClickHousePartsView: View {
         ]
     }
 
-    static func gridRow(for part: ClickHousePartInfo) -> StructureListRow<UUID> {
+    // A part's name is unique within its table, active or not.
+    static func gridRow(for part: PluginStoragePart) -> StructureListRow<String> {
         StructureListRow(
-            id: part.id,
+            id: part.name,
             values: [
                 part.partition,
                 part.name,
                 part.rows.formatted(.number.grouping(.automatic)),
                 ByteSizeFormatting.string(bytes: part.bytesOnDisk),
                 part.modificationTime,
-                part.active ? "YES" : "NO",
+                part.isActive ? "YES" : "NO",
             ],
-            spokenValues: [activeColumn: part.active ? String(localized: "Active") : String(localized: "Inactive")]
-        )
-    }
-
-    // Column order is ClickHousePartStatements.parts.
-    internal static func part(from row: [PluginCellValue]) -> ClickHousePartInfo? {
-        guard let name = row[safe: 2]?.asText else { return nil }
-        return ClickHousePartInfo(
-            partition: row[safe: 0]?.asText ?? "",
-            partitionId: row[safe: 1]?.asText ?? "",
-            name: name,
-            rows: row[safe: 3]?.asText.flatMap { UInt64($0) } ?? 0,
-            bytesOnDisk: row[safe: 4]?.asText.flatMap { UInt64($0) } ?? 0,
-            modificationTime: row[safe: 5]?.asText ?? "",
-            active: row[safe: 6]?.asText == "1"
+            spokenValues: [activeColumn: part.isActive ? String(localized: "Active") : String(localized: "Inactive")]
         )
     }
 
     // MARK: - Actions
 
+    private var storageParts: (any PluginStorageParts)? {
+        DatabaseManager.shared.driver(for: scope.connectionId)?.plugin as? any PluginStorageParts
+    }
+
     private func optimizeTable() {
         Task { @MainActor in
-            guard let driver = DatabaseManager.shared.driver(for: scope.connectionId) else { return }
+            guard let sql = storageParts?.mergePartsStatement(table: tableName, database: scope.database) else { return }
             await run(
-                ClickHousePartStatements.optimize(
-                    database: scope.database, table: tableName, quote: driver.quoteIdentifier
-                ),
+                sql,
                 description: String(localized: "Optimize Table"),
                 failureTitle: String(localized: "Couldn't Optimize Table"),
                 kind: .maintenance
@@ -233,15 +222,12 @@ struct ClickHousePartsView: View {
             )
             guard confirmed else { return }
 
-            guard let driver = DatabaseManager.shared.driver(for: scope.connectionId) else { return }
+            guard let storageParts else { return }
             let failureTitle = String(localized: "Couldn't Drop Partition")
-            guard let sql = ClickHousePartStatements.dropPartition(
-                database: scope.database,
-                table: tableName,
-                partitionId: part.partitionId,
-                quote: driver.quoteIdentifier
+            guard let sql = storageParts.dropPartitionStatement(
+                table: tableName, database: scope.database, partitionId: part.partitionId
             ) else {
-                pane.alert = ClickHousePartsAlert(title: failureTitle, message: Self.unusablePartitionIdMessage)
+                pane.alert = StoragePartsAlert(title: failureTitle, message: Self.unusablePartitionIdMessage)
                 return
             }
             guard await run(
@@ -265,15 +251,12 @@ struct ClickHousePartsView: View {
             )
             guard confirmed else { return }
 
-            guard let driver = DatabaseManager.shared.driver(for: scope.connectionId) else { return }
+            guard let storageParts else { return }
             let failureTitle = String(localized: "Couldn't Detach Partition")
-            guard let sql = ClickHousePartStatements.detachPartition(
-                database: scope.database,
-                table: tableName,
-                partitionId: part.partitionId,
-                quote: driver.quoteIdentifier
+            guard let sql = storageParts.detachPartitionStatement(
+                table: tableName, database: scope.database, partitionId: part.partitionId
             ) else {
-                pane.alert = ClickHousePartsAlert(title: failureTitle, message: Self.unusablePartitionIdMessage)
+                pane.alert = StoragePartsAlert(title: failureTitle, message: Self.unusablePartitionIdMessage)
                 return
             }
             guard await run(
@@ -328,13 +311,13 @@ struct ClickHousePartsView: View {
         return true
     }
 
-    private func selectedPart() -> ClickHousePartInfo? {
+    private func selectedPart() -> PluginStoragePart? {
         Self.selectedPart(of: selection.ids, in: pane.parts)
     }
 
-    internal static func selectedPart(of selectedIDs: Set<UUID>, in parts: [ClickHousePartInfo]) -> ClickHousePartInfo? {
+    internal static func selectedPart(of selectedIDs: Set<String>, in parts: [PluginStoragePart]) -> PluginStoragePart? {
         guard selectedIDs.count == 1, let selectedId = selectedIDs.first else { return nil }
-        return parts.first { $0.id == selectedId }
+        return parts.first { $0.name == selectedId }
     }
 
     // MARK: - Data Loading
@@ -351,14 +334,15 @@ struct ClickHousePartsView: View {
         let scope = scope
         let tableName = tableName
         do {
-            let result = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                try await driver.execute(query: ClickHousePartStatements.parts(
-                    database: scope.database, table: tableName, escape: driver.escapeStringLiteral
-                ))
+            let parts = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                guard let storageParts = driver.plugin as? any PluginStorageParts else {
+                    throw DatabaseError.unsupportedOperation
+                }
+                return try await storageParts.fetchStorageParts(table: tableName, database: scope.database)
             }
             guard !Task.isCancelled else { return }
             selection.ids = []
-            pane.finishLoad(result.rows.compactMap(Self.part(from:)))
+            pane.finishLoad(parts)
             loadedToken = token
         } catch {
             guard !Task.isCancelled else { return }

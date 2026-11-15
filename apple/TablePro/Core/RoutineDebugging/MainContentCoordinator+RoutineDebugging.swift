@@ -12,8 +12,8 @@ extension MainContentCoordinator {
     private var routineDebugger: (any PluginDatabaseDriver & PluginRoutineDebugging)? {
         guard AppModuleSettings.shared.isEnabled(.routineDebugger),
               connection.type.supportsConnectionPooling,
-              let adapter = services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter,
-              let debugger = adapter.schemaPluginDriver as? any PluginDatabaseDriver & PluginRoutineDebugging,
+              let debugger = services.databaseManager.driver(for: connectionId)?.plugin
+                as? any PluginDatabaseDriver & PluginRoutineDebugging,
               debugger.canDebugRoutines
         else { return nil }
         return debugger
@@ -206,8 +206,7 @@ extension MainContentCoordinator {
     nonisolated private static func metadataDebugger(
         _ driver: DatabaseDriver
     ) throws -> any PluginDatabaseDriver & PluginRoutineDebugging {
-        guard let adapter = driver as? PluginDriverAdapter,
-              let debugger = adapter.schemaPluginDriver as? any PluginDatabaseDriver & PluginRoutineDebugging
+        guard let debugger = driver.plugin as? any PluginDatabaseDriver & PluginRoutineDebugging
         else { throw RoutineDebugError.unsupported }
         return debugger
     }

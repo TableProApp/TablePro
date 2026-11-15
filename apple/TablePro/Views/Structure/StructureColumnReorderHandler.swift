@@ -89,10 +89,10 @@ enum StructureColumnReorderHandler {
             route: DatabaseManager.shared.executionRoute(for: scope),
             cancellation: .untracked
         ) { driver in
-            guard let adapter = driver as? PluginDriverAdapter else {
+            guard let plugin = driver.plugin else {
                 throw ReorderError.notSupported
             }
-            let plan = try await adapter.generateColumnReorderPlan(
+            let plan = try await plugin.generateColumnReorderPlan(
                 table: tableName,
                 schema: schema,
                 columns: columns,
@@ -101,7 +101,7 @@ enum StructureColumnReorderHandler {
             guard let plan, !plan.statements.isEmpty else {
                 throw ReorderError.sqlGenerationFailed
             }
-            let fingerprint = try? await adapter.columnReorderSchemaFingerprint(
+            let fingerprint = try? await plugin.columnReorderSchemaFingerprint(
                 table: tableName, schema: schema
             )
             return (plan, fingerprint)

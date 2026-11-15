@@ -3,20 +3,21 @@ import TableProPluginKit
 import TableProTrinoCore
 
 extension TrinoPluginDriver {
-    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        TrinoDDLSQL.addColumn(qualifiedTable: qualifiedName(table: table, schema: nil), column: columnSpec(column))
+    func generateAddColumnSQL(table: String, schema: String?, column: PluginColumnDefinition) -> String? {
+        TrinoDDLSQL.addColumn(qualifiedTable: qualifiedName(table: table, schema: schema), column: columnSpec(column))
     }
 
-    func generateDropColumnSQL(table: String, columnName: String) -> String? {
-        TrinoDDLSQL.dropColumn(qualifiedTable: qualifiedName(table: table, schema: nil), name: columnName)
+    func generateDropColumnSQL(table: String, schema: String?, columnName: String) -> String? {
+        TrinoDDLSQL.dropColumn(qualifiedTable: qualifiedName(table: table, schema: schema), name: columnName)
     }
 
     func generateModifyColumnSQL(
         table: String,
+        schema: String?,
         oldColumn: PluginColumnDefinition,
         newColumn: PluginColumnDefinition
     ) -> String? {
-        let target = qualifiedName(table: table, schema: nil)
+        let target = qualifiedName(table: table, schema: schema)
         var statements: [String] = []
         if oldColumn.name != newColumn.name {
             statements.append(TrinoDDLSQL.renameColumn(qualifiedTable: target, from: oldColumn.name, to: newColumn.name))
@@ -37,13 +38,13 @@ extension TrinoPluginDriver {
         return statements.isEmpty ? nil : statements.joined(separator: ";\n")
     }
 
-    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]? {
         TrinoDDLSQL.createTable(
-            qualifiedTable: qualifiedName(table: definition.tableName, schema: nil),
+            qualifiedTable: qualifiedName(table: definition.tableName, schema: schema),
             columns: definition.columns.map(columnSpec),
             tableComment: nil,
             ifNotExists: definition.ifNotExists
-        )
+        ).map { [$0] }
     }
 
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {

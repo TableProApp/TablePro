@@ -38,6 +38,9 @@ enum DuckDBReleaseOutcome: Equatable {
 actor DuckDBConnectionActor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DuckDBConnectionActor")
 
+    private let executor = DuckDBStackExecutor(name: "com.TablePro.duckdb")
+    nonisolated var unownedExecutor: UnownedSerialExecutor { executor.asUnownedSerialExecutor() }
+
     private var database: duckdb_database?
     private var connection: duckdb_connection?
     // Renders the rows of a result the session's own connection is still producing.
@@ -277,6 +280,15 @@ actor DuckDBConnectionActor {
         ) != DuckDBError else {
             throw DuckDBPluginError.connectionFailed(
                 String(localized: "This build of DuckDB does not accept the storage version that keeps files readable by DuckDB 1.x")
+            )
+        }
+        guard duckdb_set_config(
+            config,
+            DuckDBExpressionDepth.configurationOption,
+            DuckDBExpressionDepth.limit
+        ) != DuckDBError else {
+            throw DuckDBPluginError.connectionFailed(
+                String(localized: "This build of DuckDB does not accept a limit on how deep an expression nests")
             )
         }
         if !spec.allowsPersistentSecrets {

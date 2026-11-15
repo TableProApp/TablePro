@@ -359,7 +359,7 @@ struct SchemaOperationRefusalTests {
     @Test("Schema sync refuses to create a table the target cannot hold, naming table and reason")
     func schemaSyncRefusesCreateTable() {
         let snapshot = TableStructureSnapshot(name: "orders", columns: [column("total", generated: true)])
-        let builder = SchemaSyncScriptBuilder(targetDriver: legacyDriver(), targetDatabaseType: .postgresql)
+        let builder = SchemaSyncScriptBuilder(targetDriver: legacyDriver(), targetDatabaseType: .postgresql, targetSchema: nil)
         do {
             _ = try builder.build(operations: [.createTable(snapshot)], foreignKeysByTable: [:])
             Issue.record("expected a refusal")
@@ -371,7 +371,7 @@ struct SchemaOperationRefusalTests {
 
     @Test("Schema sync refuses to add a column the target cannot hold")
     func schemaSyncRefusesAlterTable() {
-        let builder = SchemaSyncScriptBuilder(targetDriver: legacyDriver(), targetDatabaseType: .postgresql)
+        let builder = SchemaSyncScriptBuilder(targetDriver: legacyDriver(), targetDatabaseType: .postgresql, targetSchema: nil)
         do {
             _ = try builder.build(
                 operations: [.alterTable(name: "orders", schema: nil, changes: [.addColumn(column("total", generated: true))])],

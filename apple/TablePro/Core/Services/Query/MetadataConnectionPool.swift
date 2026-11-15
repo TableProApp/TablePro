@@ -829,7 +829,7 @@ final class MetadataConnectionPool {
     }
 
     static func switchDatabase(_ driver: DatabaseDriver, to database: String, timeoutSeconds: Double?) async throws {
-        guard let adapter = driver as? PluginDriverAdapter else {
+        guard let plugin = driver.plugin else {
             throw DatabaseError.unsupportedOperation
         }
         try await bounded(
@@ -837,7 +837,7 @@ final class MetadataConnectionPool {
             timeoutSeconds: timeoutSeconds,
             timeoutMessage: String(format: String(localized: "Switching to database '%@' timed out."), database)
         ) {
-            try await adapter.switchDatabase(to: database)
+            try await plugin.switchDatabase(to: database)
         }
     }
 

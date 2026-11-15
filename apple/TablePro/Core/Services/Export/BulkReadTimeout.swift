@@ -38,7 +38,7 @@ enum BulkReadTimeout {
     }
 
     static func restoredSeconds(for driver: DatabaseDriver) async -> Int {
-        if let adapter = driver as? PluginDriverAdapter { return adapter.effectiveQueryTimeoutSeconds }
+        if let seconds = driver.sessionQueryTimeoutSeconds { return seconds }
         let configured = driver.connection.queryTimeoutSeconds
         return await MainActor.run {
             ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(

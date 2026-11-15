@@ -15,16 +15,20 @@ struct StructureServerSupport: Equatable, Sendable {
     /// 10.2.1 accept a `CHECK` clause and discard it.
     let checkConstraintRefusal: String?
 
+    let offersStorageParts: Bool
+
     static let unrestricted = StructureServerSupport(unsupportedColumnFields: [], unsupportedIndexTypes: [])
 
     init(
         unsupportedColumnFields: Set<StructureColumnField>,
         unsupportedIndexTypes: Set<String>,
-        checkConstraintRefusal: String? = nil
+        checkConstraintRefusal: String? = nil,
+        offersStorageParts: Bool = false
     ) {
         self.unsupportedColumnFields = unsupportedColumnFields
         self.unsupportedIndexTypes = Set(unsupportedIndexTypes.map { $0.uppercased() })
         self.checkConstraintRefusal = checkConstraintRefusal
+        self.offersStorageParts = offersStorageParts
     }
 
     init(driver: (any DatabaseDriver)?) {
@@ -35,7 +39,8 @@ struct StructureServerSupport: Equatable, Sendable {
         self.init(
             unsupportedColumnFields: driver.unsupportedStructureColumnFields,
             unsupportedIndexTypes: driver.unsupportedIndexTypes,
-            checkConstraintRefusal: driver.checkConstraintRefusal
+            checkConstraintRefusal: driver.checkConstraintRefusal,
+            offersStorageParts: driver.plugin is any PluginStorageParts
         )
     }
 
