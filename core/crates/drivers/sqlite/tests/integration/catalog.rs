@@ -517,3 +517,47 @@ async fn a_create_statement_past_ten_million_bytes_does_not_open() {
         "{opened:?}"
     );
 }
+
+// SQLite parses a stored CREATE text only to its statement's end, so a crafted file can carry any tail after it; the
+// catalog reads that parse the text refuse it past the same cap, before parsing it.
+#[tokio::test]
+async fn a_stored_create_text_past_the_cap_is_refused_before_it_is_parsed() {
+    let file = TestFile::new().await;
+    create(&file, "CREATE TABLE t (a INTEGER)".to_owned()).await;
+    let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
+        .await
+        .unwrap();
+    writer.execute("PRAGMA writable_schema = ON").await.unwrap();
+    writer
+        .execute(
+            "UPDATE sqlite_schema SET sql = sql || '; ' || replace(hex(zeroblob(5500000)), '00', 'x ') \
+             WHERE name = 't'",
+        )
+        .await
+        .unwrap();
+    writer.close().await.unwrap();
+    let connection = file.open().await;
+    let table = TableRef::unqualified("t");
+
+    let objects = connection.list_objects(&ObjectScope::DefaultSchema, call()).await;
+    let columns = connection.fetch_columns(&table, call()).await;
+    let keys = connection.fetch_foreign_keys(&table, call()).await.map(|_| ());
+    let definition = connection.fetch_table_definition(&table, call()).await.map(|_| ());
+
+    assert_eq!(
+        objects.map(|objects| objects.len()),
+        Ok(1),
+        "SQLite read the statement and left the tail"
+    );
+    assert_eq!(
+        columns.map(|columns| columns.len()),
+        Ok(1),
+        "a read that parses no text reads as before"
+    );
+    let refused = Err(DriverError::CatalogTooLarge {
+        limit_bytes: 10_000_000,
+    });
+    assert_eq!(keys, refused);
+    assert_eq!(definition, refused);
+    connection.close().await.unwrap();
+}

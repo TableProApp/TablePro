@@ -398,16 +398,15 @@ async fn foreign_keys(
 ) -> Result<HashMap<i64, (String, ViolatedKey)>, DriverError> {
     let mut budget = CatalogBudget::default();
     let schema_sql = format!("\"{}\"", schema.replace('"', "\"\""));
-    let create: Option<(String, Option<String>)> = sqlx::query_as(AssertSqlSafe(object_sql(&schema_sql)))
+    let create: Option<String> = sqlx::query(AssertSqlSafe(object_sql(&schema_sql)))
         .bind(table.name.as_str())
         .fetch_optional(&mut *connection)
         .await
-        .map_err(map_error)?;
-    budget.fits(
-        create
-            .and_then(|(_, sql)| sql)
-            .map_or(0, |sql| foreign_key_list_bytes(&sql)),
-    )?;
+        .map_err(map_error)?
+        .map(|row| crate::statement_limit::stored_sql(&row))
+        .transpose()?
+        .flatten();
+    budget.fits(create.map_or(0, |sql| foreign_key_list_bytes(&sql)))?;
     let mut rows = sqlx::query(FOREIGN_KEY_LIST_SQL)
         .bind(table.name.as_str())
         .bind(schema)

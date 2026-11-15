@@ -17,6 +17,8 @@ use tablepro_core::column::{
 use tablepro_core::sql_syntax::{LiteralToken, MAX_EXPRESSION_LEN, SqlGrammar, parse_expression};
 use tablepro_core::value::{SqlDecimal, Value};
 
+use crate::statement_limit::capped;
+
 pub(crate) use dependents::{SchemaRow, select_dependents};
 pub use runtime_version::{SQLITE_MIN_VERSION, SqliteVersion, check_runtime_version};
 pub(crate) use sqlite_column_row::{SqliteColumnRow, TableFacts};
@@ -66,23 +68,31 @@ pub(crate) fn objects_sql(schema_sql: &str) -> String {
 /// By the table too, which the sidebar names a trigger by.
 pub(crate) fn trigger_sql(schema_sql: &str) -> String {
     format!(
-        "SELECT sql FROM {schema_sql}.sqlite_schema \
-         WHERE type = 'trigger' AND name = ?1 AND tbl_name = ?2"
+        "SELECT {} FROM {schema_sql}.sqlite_schema \
+         WHERE type = 'trigger' AND name = ?1 AND tbl_name = ?2",
+        capped("sql")
     )
 }
 
 pub(crate) fn object_sql(schema_sql: &str) -> String {
-    format!("SELECT type, sql FROM {schema_sql}.sqlite_schema WHERE name = ?1 COLLATE NOCASE")
+    format!(
+        "SELECT type, {} FROM {schema_sql}.sqlite_schema WHERE name = ?1 COLLATE NOCASE",
+        capped("sql")
+    )
 }
 
 pub(crate) fn index_sql(schema_sql: &str) -> String {
-    format!("SELECT sql FROM {schema_sql}.sqlite_schema WHERE type = 'index' AND name = ?1")
+    format!(
+        "SELECT {} FROM {schema_sql}.sqlite_schema WHERE type = 'index' AND name = ?1",
+        capped("sql")
+    )
 }
 
 pub(crate) fn dependents_sql(schema_sql: &str) -> String {
     format!(
-        "SELECT type, name, tbl_name, sql FROM {schema_sql}.sqlite_schema \
-         WHERE type IN ('index', 'trigger', 'view') AND sql IS NOT NULL ORDER BY rowid"
+        "SELECT type, name, tbl_name, {} FROM {schema_sql}.sqlite_schema \
+         WHERE type IN ('index', 'trigger', 'view') AND sql IS NOT NULL ORDER BY rowid",
+        capped("sql")
     )
 }
 
@@ -122,7 +132,10 @@ pub(crate) fn large_tables_sql(schema_sql: &str) -> String {
 
 // By rowid: a lookup by name scans the whole schema, once per child.
 pub(crate) fn schema_row_sql(schema_sql: &str) -> String {
-    format!("SELECT name, sql FROM {schema_sql}.sqlite_schema WHERE rowid = ?1")
+    format!(
+        "SELECT name, {} FROM {schema_sql}.sqlite_schema WHERE rowid = ?1",
+        capped("sql")
+    )
 }
 
 /// `sqlite_stat1` exists only once ANALYZE has run, so its presence is

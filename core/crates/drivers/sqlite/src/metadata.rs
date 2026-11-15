@@ -29,6 +29,7 @@ use crate::catalog::{
 use crate::ddl::{DeclaredComparisons, declared_descending_key, declared_foreign_key_names, foreign_key_list_bytes};
 use crate::errors::{SQLITE_ERROR, map_error};
 use crate::index_sql::read_index_sql;
+use crate::statement_limit::stored_sql;
 
 /// What `pragma_table_list` and `pragma_table_xinfo` say about one
 /// table, read together.
@@ -103,14 +104,16 @@ pub(crate) async fn fetch_object_definition(
         });
     };
     let schema = object.schema.as_deref().filter(|schema| !schema.is_empty());
-    let sql: Option<Option<String>> = sqlx::query_scalar(AssertSqlSafe(catalog::trigger_sql(&quote(
+    let sql: Option<Option<String>> = sqlx::query(AssertSqlSafe(catalog::trigger_sql(&quote(
         schema.unwrap_or(MAIN_SCHEMA),
     ))))
     .bind(object.name.as_str())
     .bind(table)
     .fetch_optional(&mut *connection)
     .await
-    .map_err(map_error)?;
+    .map_err(map_error)?
+    .map(|row| stored_sql(&row))
+    .transpose()?;
     let schema = quote(schema.unwrap_or(MAIN_SCHEMA));
     Ok(sql.flatten().map(|sql| ObjectDefinition {
         sql: terminated(&qualify_created_name(&sql, SqlGrammar::Sqlite, &schema)),
@@ -448,11 +451,13 @@ async fn inbound_keys(
     }
     // One child at a time: its CREATE TABLE is let go before the next is read.
     for (rowid, child) in large {
-        let row: Option<(String, Option<String>)> = sqlx::query_as(AssertSqlSafe(catalog::schema_row_sql(&schema_sql)))
+        let row: Option<(String, Option<String>)> = sqlx::query(AssertSqlSafe(catalog::schema_row_sql(&schema_sql)))
             .bind(rowid)
             .fetch_optional(&mut *connection)
             .await
-            .map_err(map_error)?;
+            .map_err(map_error)?
+            .map(|row| Ok::<_, DriverError>((text(&row, "name")?, stored_sql(&row)?)))
+            .transpose()?;
         // A row another connection gave to another table since is not this child's.
         let sql = budget.keep_optional(row.filter(|(name, _)| *name == child).and_then(|(_, sql)| sql))?;
         if !sql.as_deref().is_some_and(|sql| names_table(sql, &table.name)) {
@@ -821,9 +826,8 @@ async fn create_statement(
         .fetch_optional(&mut *connection)
         .await
         .map_err(map_error)?
-        .map(|row| row.try_get::<Option<String>, _>("sql"))
-        .transpose()
-        .map_err(map_error)?
+        .map(|row| stored_sql(&row))
+        .transpose()?
         .flatten();
     budget.keep_optional(sql)
 }
@@ -852,7 +856,7 @@ async fn dependents(
             kind,
             name: budget.keep(text(&row, "name")?)?,
             table: budget.keep(text(&row, "tbl_name")?)?,
-            sql: budget.keep(text(&row, "sql")?)?,
+            sql: budget.keep(stored_sql(&row)?.unwrap_or_default())?,
         });
     }
     Ok(select_dependents(table, schema_rows))
@@ -915,13 +919,15 @@ async fn index(
     primary: bool,
     budget: &mut CatalogBudget,
 ) -> Result<IndexInfo, DriverError> {
-    let stored_sql: Option<String> = sqlx::query_scalar(AssertSqlSafe(catalog::index_sql(&quote(schema))))
+    let read: Option<String> = sqlx::query(AssertSqlSafe(catalog::index_sql(&quote(schema))))
         .bind(name.as_str())
         .fetch_optional(&mut *connection)
         .await
         .map_err(map_error)?
+        .map(|row| stored_sql(&row))
+        .transpose()?
         .flatten();
-    let stored_sql = budget.keep_optional(stored_sql)?;
+    let stored_sql = budget.keep_optional(read)?;
     let parsed = stored_sql.as_deref().and_then(read_index_sql);
     let mut keys = Vec::new();
     let mut rows = sqlx::query(catalog::INDEX_XINFO_SQL)
