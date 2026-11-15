@@ -57,15 +57,14 @@ public sealed partial class ShellTests
 
         app.Find("HomeItem").AsListBoxItem().Select();
         var tree = app.Find("ConnectionTree");
-        app.Front();
-        app.FindByNamePrefix("Orders,", tree).RightClick();
+        app.RightClick(app.FindByNamePrefix("Orders,", tree));
         app.OpenSubmenu("Tags", "New tag...").Patterns.Invoke.Pattern.Invoke();
         app.Find("NameDialogBox").AsTextBox().Text = "production";
         app.PressDialogButton();
-        Retry.WhileFalse(
-            () => app.FindByNamePrefix("Orders,", tree).Name.EndsWith("production", StringComparison.Ordinal),
+        Assert.True(Retry.WhileFalse(
+            () => AppSession.Holds(() => app.FindByNamePrefix("Orders,", tree).Name.EndsWith("production", StringComparison.Ordinal)),
             AppSession.Wait,
-            throwOnTimeout: false);
+            throwOnTimeout: false).Success);
 
         app.Find("Rail_Orders").AsListBoxItem().Select();
         app.FindByName("Album", app.Find("ObjectTree"));

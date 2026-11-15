@@ -36,9 +36,7 @@ public sealed partial class ShellTests
         app.Find("SaveButton", form).AsButton().Invoke();
         app.WaitForClose("New connection");
 
-        var row = app.FindByNamePrefix("Strict SQL Server,", app.Find("ConnectionTree"));
-        app.Front();
-        row.RightClick();
+        app.RightClick(app.FindByNamePrefix("Strict SQL Server,", app.Find("ConnectionTree")));
         app.FindMenuItem("Edit...").Patterns.Invoke.Pattern.Invoke();
         var edit = app.WaitForWindow("Edit connection");
         Assert.Equal("Windows authentication", app.Find("AuthBox", edit).AsComboBox().SelectedItem?.Text);
