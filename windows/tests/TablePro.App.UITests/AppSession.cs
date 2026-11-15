@@ -403,7 +403,7 @@ internal sealed class AppSession : IDisposable
         FlaUI.Core.Input.Wait.UntilInputIsProcessed();
     }
 
-    // FlaUI's own click gives up on the first failed read, and on Arm64 a live element's read failed for a moment as its layout changed.
+    // FlaUI's own click gives up on the first failed read, and a live element's point can fail to read for a moment.
     public System.Drawing.Point PointOf(AutomationElement element)
     {
         var point = System.Drawing.Point.Empty;
