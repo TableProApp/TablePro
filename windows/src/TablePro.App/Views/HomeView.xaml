@@ -35,6 +35,9 @@
                 <AppBarButton x:Uid="NewConnectionButton" x:Name="NewConnectionButton" AutomationProperties.AutomationId="NewConnectionButton" Icon="Add" Click="OnNewConnection" />
                 <AppBarButton x:Uid="OpenFileButton" x:Name="OpenFileButton" AutomationProperties.AutomationId="OpenFileButton" Icon="OpenFile" Click="OnOpenFile" />
                 <AppBarButton x:Uid="ImportButton" x:Name="ImportButton" AutomationProperties.AutomationId="ImportButton" Icon="Import" Click="OnImport" />
+                <AppBarButton x:Uid="ExportConnectionsButton" x:Name="ExportConnectionsButton" AutomationProperties.AutomationId="ExportConnectionsButton" Click="OnExportConnections">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xEDE1;" /></AppBarButton.Icon>
+                </AppBarButton>
                 <AppBarSeparator x:Name="LibrarySeparator" />
                 <AppBarButton x:Uid="NewGroupButton" x:Name="NewGroupButton" AutomationProperties.AutomationId="NewGroupButton" Icon="NewFolder" Click="OnNewGroup" />
                 <AppBarButton x:Uid="TagsButton" x:Name="TagsButton" AutomationProperties.AutomationId="TagsButton" Icon="Tag">

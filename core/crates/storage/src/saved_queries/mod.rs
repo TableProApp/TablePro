@@ -200,6 +200,34 @@ impl SavedQueries {
         Ok(())
     }
 
+    // By id, so an edit made from a list read before a rename still reaches the query it showed.
+    pub async fn set_query(&self, id: i64, query: &str) -> Result<(), StorageError> {
+        if query.len() > MAX_QUERY_BYTES {
+            return Err(StorageError::TooLarge {
+                got: query.len(),
+                limit: MAX_QUERY_BYTES,
+            });
+        }
+        let mut connection = self.pool.acquire().await?;
+        let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
+        let previous: Option<String> = sqlx::query_scalar("SELECT query FROM saved_queries WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&mut *transaction)
+            .await?;
+        if previous.ok_or(StorageError::NotFound)? == query {
+            return Ok(());
+        }
+        sqlx::query("UPDATE saved_queries SET query = ?, updated_at = ? WHERE id = ?")
+            .bind(query)
+            .bind(to_unix(SystemTime::now()))
+            .bind(id)
+            .execute(&mut *transaction)
+            .await?;
+        transaction.commit().await?;
+        self.changed();
+        Ok(())
+    }
+
     pub async fn set_keyword(&self, id: i64, keyword: Option<&str>) -> Result<(), StorageError> {
         let keyword: Option<String> = keyword
             .map(str::trim)
@@ -969,5 +997,34 @@ mod tests {
             store.get(saved.id).await.expect("get").expect("saved").connection_name,
             "renamed"
         );
+    }
+
+    #[tokio::test]
+    async fn set_query_changes_the_text_by_id_and_keeps_its_name_and_place() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let queries = store(&root).await;
+        let connection = Uuid::new_v4();
+        let id = queries
+            .save(new_query("Daily", "SELECT 1", connection))
+            .await
+            .expect("save")
+            .id;
+        queries.rename(id, "Weekly").await.expect("rename");
+
+        queries.set_query(id, "SELECT 7").await.expect("set the query");
+        let missing = queries
+            .set_query(id + 100, "SELECT 2")
+            .await
+            .expect_err("an unknown id");
+        let large = queries
+            .set_query(id, &"x".repeat(MAX_QUERY_BYTES + 1))
+            .await
+            .expect_err("past the cap");
+
+        let saved = queries.get(id).await.expect("get").expect("the query");
+        assert_eq!((saved.name.as_str(), saved.query.as_str()), ("Weekly", "SELECT 7"));
+        assert_eq!(queries.list(Some(connection)).await.expect("list").len(), 1);
+        assert!(matches!(missing, StorageError::NotFound), "{missing:?}");
+        assert!(matches!(large, StorageError::TooLarge { .. }), "{large:?}");
     }
 }
