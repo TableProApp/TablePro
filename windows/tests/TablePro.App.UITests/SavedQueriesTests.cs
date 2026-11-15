@@ -61,7 +61,8 @@ public sealed partial class ShellTests
         bool Shown() => tree.FindFirstDescendant(condition =>
             condition.ByName($"Five tracks, {FiveTracks}")) is { IsOffscreen: false };
         Assert.True(Retry.WhileFalse(
-            () => Folder().Patterns.ExpandCollapse.Pattern.ExpandCollapseState.Value == ExpandCollapseState.Expanded && Shown(),
+            () => AppSession.Holds(() =>
+                Folder().Patterns.ExpandCollapse.Pattern.ExpandCollapseState.Value == ExpandCollapseState.Expanded && Shown()),
             AppSession.Wait,
             throwOnTimeout: false).Success);
         app.Screenshot("72-saved-query-folders");
@@ -81,13 +82,13 @@ public sealed partial class ShellTests
         app.RightClick(app.FindByNamePrefix(FiveTracks, runs), () => app.TryFindMenuItem("Pin") is not null);
         app.FindMenuItem("Pin").Patterns.Invoke.Pattern.Invoke();
         var pinned = Retry.WhileFalse(
-            () => app.FindByNamePrefix(FiveTracks, runs).Name.EndsWith(", Pinned", StringComparison.Ordinal),
+            () => AppSession.Holds(() => app.FindByNamePrefix(FiveTracks, runs).Name.EndsWith(", Pinned", StringComparison.Ordinal)),
             AppSession.Wait,
             throwOnTimeout: false).Success;
         Assert.True(pinned, app.FindByNamePrefix(FiveTracks, runs).Name);
         // The list is built again with the pinned run first, and UI Automation lists a row before it is drawn.
         Assert.True(Retry.WhileFalse(
-            () => app.FindByNamePrefix(FiveTracks, runs) is { IsOffscreen: false } row && row.BoundingRectangle.Height > 0,
+            () => AppSession.Holds(() => app.FindByNamePrefix(FiveTracks, runs) is { IsOffscreen: false } row && row.BoundingRectangle.Height > 0),
             AppSession.Wait,
             throwOnTimeout: false).Success);
         Thread.Sleep(1_000);
@@ -95,8 +96,8 @@ public sealed partial class ShellTests
 
         app.RightClick(app.FindByNamePrefix(FiveTracks, runs), () => app.TryFindMenuItem("Unpin") is not null);
         app.FindMenuItem("Unpin").Patterns.Invoke.Pattern.Invoke();
-        Assert.True(Retry.WhileTrue(
-            () => app.FindByNamePrefix(FiveTracks, runs).Name.EndsWith(", Pinned", StringComparison.Ordinal),
+        Assert.True(Retry.WhileFalse(
+            () => AppSession.Holds(() => !app.FindByNamePrefix(FiveTracks, runs).Name.EndsWith(", Pinned", StringComparison.Ordinal)),
             AppSession.Wait,
             throwOnTimeout: false).Success);
     }
@@ -106,8 +107,7 @@ public sealed partial class ShellTests
     {
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            app.Front();
-            row().DoubleClick();
+            app.DoubleClick(row());
             if (Retry.WhileFalse(
                     () => AppSession.EditorText(app.FindEditor(tab)).TrimEnd('\r', '\n').Length > 0,
                     TimeSpan.FromSeconds(5),

@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Capturing;
 using FlaUI.Core.Definitions;
+using FlaUI.Core.Exceptions;
 using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
@@ -14,6 +16,7 @@ namespace TablePro.App.UITests;
 internal sealed class AppSession : IDisposable
 {
     public static readonly TimeSpan Wait = TimeSpan.FromSeconds(30);
+    private const int ElementNotAvailable = unchecked((int)0x80040201);
     private static readonly PackageTestState _packageState = new();
 
     private readonly UIA3Automation _automation = new();
@@ -95,7 +98,7 @@ internal sealed class AppSession : IDisposable
     public void Drag(AutomationElement from, AutomationElement to)
     {
         Front();
-        Drag(from.GetClickablePoint(), to.GetClickablePoint());
+        Drag(PointOf(from), PointOf(to));
     }
 
     // The Arm64 runner's own windows take keys and drags now and then, so each goes again until it lands.
@@ -142,7 +145,23 @@ internal sealed class AppSession : IDisposable
     }
 
     public void RightClick(AutomationElement element, Func<bool> landed) =>
-        Again(() => element.RightClick(), landed, "The right-click");
+        Again(() => RightClick(element), landed, "The right-click");
+
+    public void RightClick(AutomationElement element)
+    {
+        var point = PointOf(element);
+        Front();
+        Mouse.RightClick(point);
+        FlaUI.Core.Input.Wait.UntilInputIsProcessed();
+    }
+
+    public void DoubleClick(AutomationElement element)
+    {
+        var point = PointOf(element);
+        Front();
+        Mouse.DoubleClick(point);
+        FlaUI.Core.Input.Wait.UntilInputIsProcessed();
+    }
 
     public void Chord(Func<bool> landed, params VirtualKeyShort[] keys) =>
         Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys));
@@ -245,7 +264,7 @@ internal sealed class AppSession : IDisposable
         {
             if (box.AsCheckBox().IsChecked != isChecked)
             {
-                box.Click();
+                Click(box);
             }
 
             return;
@@ -265,7 +284,7 @@ internal sealed class AppSession : IDisposable
             return;
         }
 
-        row.Click();
+        Click(row);
     }
 
     // The ContentDialog template names its primary button PrimaryButton; a name tells it from a dialog still closing.
@@ -353,19 +372,47 @@ internal sealed class AppSession : IDisposable
 
     public AutomationElement FindByNamePrefix(string prefix, AutomationElement scope) =>
         Retry.WhileNull(
-                () => scope.FindAllDescendants().FirstOrDefault(element =>
-                    element.Properties.Name.TryGetValue(out var name) && name.StartsWith(prefix, StringComparison.Ordinal)),
+                () => scope.FindAllDescendants().FirstOrDefault(element => Holds(() =>
+                    element.Properties.Name.TryGetValue(out var name) && name.StartsWith(prefix, StringComparison.Ordinal))),
                 Wait,
                 throwOnTimeout: false).Result
             ?? throw Failure($"No element named {prefix}... appeared.");
+
+    // A list built again after a change drops the row just found, which WinUI then reports gone or, for a tree row's state, not supported.
+    public static bool Holds(Func<bool> check)
+    {
+        try
+        {
+            return check();
+        }
+        catch (Exception exception) when (exception is PropertyNotSupportedException or ElementNotAvailableException
+            || exception is COMException { HResult: ElementNotAvailable })
+        {
+            return false;
+        }
+    }
 
     // Mouse and keys reach the foreground window, and the Arm64 runner opens windows of its own over the app.
     public void Front(Window? window = null) => (window ?? Window).SetForeground();
 
     public void Click(AutomationElement element, Window? window = null)
     {
+        var point = PointOf(element);
         Front(window);
-        element.Click();
+        Mouse.Click(point);
+        FlaUI.Core.Input.Wait.UntilInputIsProcessed();
+    }
+
+    // FlaUI's own click gives up on the first failed read, and a live element's point can fail to read for a moment.
+    public System.Drawing.Point PointOf(AutomationElement element)
+    {
+        var point = System.Drawing.Point.Empty;
+        if (!Retry.WhileFalse(() => element.TryGetClickablePoint(out point), TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
+        {
+            throw Failure("The element to click has no clickable point.", screen: true);
+        }
+
+        return point;
     }
 
     // A window the runner opens for a moment can take a click, so it goes again until the app shows it landed.

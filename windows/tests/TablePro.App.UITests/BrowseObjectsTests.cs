@@ -92,8 +92,7 @@ public sealed partial class ShellTests
     {
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            app.Front();
-            run.DoubleClick();
+            app.DoubleClick(run);
             if (Retry.WhileNull(
                     () => app.Window.FindFirstDescendant(condition =>
                         condition.ByAutomationId("SqlEditor").And(condition.ByName($"SQL editor, {tab}"))),

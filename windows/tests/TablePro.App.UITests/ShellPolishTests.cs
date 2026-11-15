@@ -178,9 +178,7 @@ public sealed partial class ShellTests
         // The form saved the empty password it was given; taking it away leaves the connection with none saved.
         var target = $"TablePro/connection/{ConnectionId(app.DataFolder)}/database-password";
         Credentials.Delete(target);
-        var row = app.FindByNamePrefix("Asks,", app.Find("ConnectionTree"));
-        app.Front();
-        row.DoubleClick();
+        app.DoubleClick(app.FindByNamePrefix("Asks,", app.Find("ConnectionTree")));
 
         var box = app.Find("SecretBox");
         app.Screenshot("18-password-asked");
@@ -367,13 +365,12 @@ public sealed partial class ShellTests
         app.Chord(() => app.TryFind("RenameBox") is null, VirtualKeyShort.RETURN);
         var music = app.FindByNamePrefix("Music,", tree);
 
-        app.Front();
-        music.RightClick();
+        app.RightClick(music);
         app.OpenSubmenu("Tags", "New tag...").Patterns.Invoke.Pattern.Invoke();
         app.Find("NameDialogBox").AsTextBox().Text = "demo";
         app.PressDialogButton();
         var tagged = Retry.WhileFalse(
-            () => app.FindByNamePrefix("Music,", tree).Name.EndsWith("demo", StringComparison.Ordinal),
+            () => AppSession.Holds(() => app.FindByNamePrefix("Music,", tree).Name.EndsWith("demo", StringComparison.Ordinal)),
             AppSession.Wait,
             throwOnTimeout: false).Success;
         Assert.True(tagged, app.FindByNamePrefix("Music,", tree).Name);
