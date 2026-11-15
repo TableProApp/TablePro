@@ -45,6 +45,14 @@ fn the_first_statement_ends_where_its_terminator_starts() {
         ),
         ("CREATE INDEX i ON t (a) /* ; */", "CREATE INDEX i ON t (a) /* ; */"),
         ("CREATE VIEW v AS SELECT 1 -- note", "CREATE VIEW v AS SELECT 1 -- note"),
+        (
+            "CREATE VIRTUAL TABLE t USING fts4(a;b, tokenize=simple (x;y)); DROP TABLE t",
+            "CREATE VIRTUAL TABLE t USING fts4(a;b, tokenize=simple (x;y))",
+        ),
+        (
+            "CREATE VIRTUAL TABLE t USING fts4(a;b)",
+            "CREATE VIRTUAL TABLE t USING fts4(a;b)",
+        ),
         ("", ""),
     ];
     for (text, first) in cases {

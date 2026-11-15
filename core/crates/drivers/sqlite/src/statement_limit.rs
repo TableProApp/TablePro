@@ -80,3 +80,27 @@ pub(crate) async fn install(connection: &mut SqlxConnection) -> Result<(), Drive
     };
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stored_text_keeps_its_first_statement_and_a_module_argument_its_semicolon() {
+        let cut = |sql: &str| first_statement(sql.to_owned());
+
+        assert_eq!(cut("CREATE TABLE t (a) ; DROP TABLE t"), "CREATE TABLE t (a)");
+        assert_eq!(
+            cut("CREATE VIRTUAL TABLE v USING fts4(a;b)"),
+            "CREATE VIRTUAL TABLE v USING fts4(a;b)"
+        );
+        assert_eq!(
+            cut("CREATE VIRTUAL TABLE v USING fts4(a;b); SELECT 1"),
+            "CREATE VIRTUAL TABLE v USING fts4(a;b)"
+        );
+        assert_eq!(
+            cut("CREATE VIEW v AS SELECT 1 -- a note"),
+            "CREATE VIEW v AS SELECT 1 -- a note"
+        );
+    }
+}

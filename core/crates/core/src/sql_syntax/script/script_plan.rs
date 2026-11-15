@@ -101,7 +101,9 @@ impl ScriptPlan {
     }
 
     // Where the first statement's terminator starts, or the text's end when nothing ends it, lexed without keeping the
-    // tokens: SQLite reads only the first statement of a stored CREATE text, whatever follows it.
+    // tokens: SQLite reads only the first statement of a stored CREATE text, whatever follows it. A semicolon inside
+    // parentheses ends nothing, since SQLite reads it as one of a virtual table's module arguments, which the editor's
+    // split, like `sqlite3_complete`, does not know.
     pub fn first_statement_end(text: &str, grammar: SqlGrammar) -> usize {
         match rules_for(grammar) {
             Some(rules) => Builder::new(
@@ -234,6 +236,7 @@ impl<'a> Builder<'a> {
     }
 
     fn first_statement_end(mut self) -> usize {
+        let mut depth = 0usize;
         while self.lexer.position() < self.text.len() {
             let start = self.lexer.position();
             let ended_at = if self.reads_directives && self.lexer.at_line_start() && self.accept_directive() {
@@ -243,6 +246,12 @@ impl<'a> Builder<'a> {
                 let Some(token) = self.lexer.next_token(delimiter) else {
                     break;
                 };
+                match token.kind {
+                    ScriptTokenKind::OpenParen => depth += 1,
+                    ScriptTokenKind::CloseParen => depth = depth.saturating_sub(1),
+                    ScriptTokenKind::Semicolon if depth > 0 => continue,
+                    _ => {}
+                }
                 let token_start = token.range.start;
                 self.accept(token);
                 token_start
