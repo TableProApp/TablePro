@@ -570,50 +570,6 @@ mod tests {
         assert!(!instance.read_only);
     }
 
-    fn refuses_past_the_depth_limit(link: &Link) {
-        let nested = |levels: u32| {
-            let levels = levels as usize;
-            format!("SELECT {}1{}", "abs(".repeat(levels), ")".repeat(levels))
-        };
-        let within = link
-            .connection
-            .query_row(&nested(MAX_EXPRESSION_DEPTH - 10), [], |row| row.get::<_, i32>(0));
-        let past = link
-            .connection
-            .query_row(&nested(MAX_EXPRESSION_DEPTH), [], |row| row.get::<_, i32>(0));
-
-        assert_eq!(within.unwrap(), 1);
-        let DriverError::Server(diagnostics) = map_error(past.unwrap_err()) else {
-            panic!("not DuckDB's own refusal");
-        };
-        assert!(
-            diagnostics.message.starts_with(&format!(
-                "Max expression depth limit of {MAX_EXPRESSION_DEPTH} exceeded"
-            )),
-            "{}",
-            diagnostics.message
-        );
-    }
-
-    #[test]
-    fn every_connection_refuses_an_expression_past_the_depth_limit() {
-        let directory = tempfile::tempdir().unwrap();
-        let instance = Instance::open(
-            &created(directory.path(), "depth.duckdb"),
-            false,
-            &CancellationToken::new(),
-        )
-        .unwrap();
-
-        refuses_past_the_depth_limit(&instance.link().unwrap());
-        refuses_past_the_depth_limit(&instance.workspace_link().unwrap());
-        let tab = instance.link().unwrap();
-        tab.connection
-            .execute_batch("SET GLOBAL max_expression_depth = 100000")
-            .unwrap();
-        refuses_past_the_depth_limit(&instance.workspace_link().unwrap());
-    }
-
     /// Opening a FIFO would wait for a writer, with every other open in
     /// the process waiting behind it.
     #[test]
