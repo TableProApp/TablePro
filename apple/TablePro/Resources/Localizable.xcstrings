@@ -199044,6 +199044,9 @@
         }
       }
     },
+    "The string or comment that starts on line %lld is longer than the import reads." : {
+
+    },
     "The structure of a table in an attached database cannot be changed here." : {
       "extractionState" : "manual",
       "generatesSymbol" : false

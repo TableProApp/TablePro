@@ -49,7 +49,7 @@ enum SQLQueryFingerprint {
 
     /// The readable shape, used to label a group in the UI.
     static func normalize(_ sql: String, databaseType: DatabaseType) -> String {
-        let source = strippingDollarQuoted(truncated(sql))
+        let source = truncated(sql)
         let treatsDoubleQuoteAsString = Self.treatsDoubleQuoteAsString(databaseType)
 
         var parts: [Part] = []
@@ -57,7 +57,7 @@ enum SQLQueryFingerprint {
         var previousType: SQLTokenType?
         var previousValue = ""
 
-        for token in SQLTokenizer().tokenize(source) {
+        for token in tokens(of: source, grammar: databaseType.lexicalGrammar) {
             defer {
                 if token.type != .comment, token.type != .whitespace {
                     previousType = token.type
@@ -69,6 +69,11 @@ enum SQLQueryFingerprint {
             case .comment, .whitespace, .directive:
                 continue
 
+            // `@@version` names a server variable: two of them are two shapes, and neither is a literal.
+            case .placeholder where token.value.hasPrefix("@@"):
+                parts.append(Part(token.value))
+                previousWasLiteral = false
+
             case .number, .placeholder:
                 appendLiteral(to: &parts, previousWasLiteral: &previousWasLiteral)
 
@@ -79,6 +84,11 @@ enum SQLQueryFingerprint {
                 if isDoubleQuoted(token.value), !treatsDoubleQuoteAsString {
                     parts.append(Part(unquotedIdentifier(token.value)))
                     previousWasLiteral = false
+                } else if let prefix = literalPrefix(token.value) {
+                    // `N'x'` and SQLite's `b'alias'`, a column and its alias, stay apart from a bare `'x'`.
+                    parts.append(Part(prefix))
+                    previousWasLiteral = false
+                    appendLiteral(to: &parts, previousWasLiteral: &previousWasLiteral)
                 } else {
                     appendLiteral(to: &parts, previousWasLiteral: &previousWasLiteral)
                 }
@@ -110,35 +120,7 @@ enum SQLQueryFingerprint {
             }
         }
 
-        return join(collapsingLists(mergingBracketIdentifiers(parts)))
-    }
-
-    /// The tokenizer has no rule for T-SQL's `[name]`, so it arrives as three tokens and the
-    /// identifier never matches its unbracketed spelling. Only a bracket wrapping exactly one
-    /// identifier is merged, which leaves a PostgreSQL array subscript (`a[?]`) alone.
-    private static func mergingBracketIdentifiers(_ parts: [Part]) -> [Part] {
-        guard parts.contains(where: { $0.text == "[" }) else { return parts }
-
-        var out: [Part] = []
-        out.reserveCapacity(parts.count)
-        var index = 0
-
-        while index < parts.count {
-            if parts[index].text == "[", index + 2 < parts.count, parts[index + 2].text == "]",
-               isPlainIdentifier(parts[index + 1].text) {
-                out.append(parts[index + 1])
-                index += 3
-                continue
-            }
-            out.append(parts[index])
-            index += 1
-        }
-        return out
-    }
-
-    private static func isPlainIdentifier(_ value: String) -> Bool {
-        guard let first = value.first, first.isLetter || first == "_" else { return false }
-        return value.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+        return join(collapsingLists(parts))
     }
 
     /// A process-stable digest of `normalize`. `Hasher` is seeded per process, so it can never back
@@ -194,6 +176,16 @@ enum SQLQueryFingerprint {
         }
     }
 
+    private static func literalPrefix(_ value: String) -> String? {
+        let prefix = value.prefix { $0 != "'" && $0 != "\"" }
+        guard let first = prefix.first, first.isLetter || first == "_", prefix.count < value.count,
+              prefix.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "&" })
+        else {
+            return nil
+        }
+        return String(prefix)
+    }
+
     private static func isDoubleQuoted(_ value: String) -> Bool {
         value.hasPrefix("\"")
     }
@@ -207,55 +199,42 @@ enum SQLQueryFingerprint {
         case "`": closing = "`"
         case "\"": closing = "\""
         case "[": closing = "]"
+        case "\u{27E8}": closing = "\u{27E9}"
         default: return value
         }
         var inner = value.dropFirst()
         if inner.last == closing {
             inner = inner.dropLast()
         }
-        return String(inner)
+        // `[a, b]` is one column and `a, b` two, so only a name that needs no quotes loses them.
+        return isPlainIdentifier(inner) ? String(inner) : value
+    }
+
+    private static func isPlainIdentifier(_ name: Substring) -> Bool {
+        guard let first = name.first, first.isLetter || first == "_" else { return false }
+        return name.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "$" }
+    }
+
+    // A psql `COPY ... FROM STDIN` is one directive token with its rows: the command it sends is the shape, the rows are
+    // data. A directive that sends nothing, such as `GO`, leaves nothing.
+    private static func tokens(of source: String, grammar: SQLLexicalGrammar) -> [SQLToken] {
+        let tokenizer = SQLTokenizer()
+        return tokenizer.tokenize(source, grammar: grammar).flatMap { token -> [SQLToken] in
+            // MySQL's `/*! ... */` hint arrives as one string token; to the shape it is a comment.
+            if token.type == .string, token.value.hasPrefix("/*") {
+                return [SQLToken(type: .comment, value: token.value)]
+            }
+            guard token.type == .directive else { return [token] }
+            return SQLStatementScanner.executableStatements(in: token.value, grammar: grammar).flatMap { statement in
+                tokenizer.tokenize(statement.sql, grammar: grammar.subtracting(.psqlScripts))
+            }
+        }
     }
 
     private static func truncated(_ sql: String) -> String {
         let source = sql as NSString
         guard source.length > maxSourceLength else { return sql }
         return source.substring(to: maxSourceLength)
-    }
-
-    /// The tokenizer has no dollar-quote rule, so `$$body$$` reaches it as loose identifiers and
-    /// the literal survives into the shape. Replacing each one with an empty string literal lets
-    /// the tokenizer see the placeholder it would have seen for any other literal.
-    private static func strippingDollarQuoted(_ sql: String) -> String {
-        guard sql.contains("$") else { return sql }
-
-        let buffer = sql as NSString
-        let length = buffer.length
-        var out = ""
-        out.reserveCapacity(length)
-        var index = 0
-
-        while index < length {
-            let character = buffer.character(at: index)
-            guard character == SqlDollarQuote.dollar,
-                  case .opener(let openerLength, let tag) = SqlDollarQuote.scanOpener(
-                      at: index,
-                      in: buffer,
-                      bufLen: length
-                  )
-            else {
-                out += buffer.substring(with: NSRange(location: index, length: 1))
-                index += 1
-                continue
-            }
-
-            var scan = index + openerLength
-            while scan < length, !SqlDollarQuote.matchesClose(at: scan, tag: tag, in: buffer, bufLen: length) {
-                scan += 1
-            }
-            out += "''"
-            index = scan < length ? scan + (tag as NSString).length + 2 : length
-        }
-        return out
     }
 
     /// `IN (?, ?)` and `IN (?, ?, ?)` are one lookup asked with different cardinality, and a
