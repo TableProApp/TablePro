@@ -140,7 +140,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_open_is_kept_for_the_connect_to_report() {
-        // Bound and never listening: a dropped listener's port can go to the next bind, the relay's own included.
+        // Bound and never listening: on Windows a dropped listener's port went to another test's relay.
         let refusing = TcpSocket::new_v4().unwrap();
         refusing.bind((Ipv4Addr::LOCALHOST, 0).into()).unwrap();
         let endpoint = NetworkEndpoint::new("127.0.0.1", refusing.local_addr().unwrap().port()).unwrap();
