@@ -504,8 +504,8 @@ nonisolated final class MySQLDriver: DatabaseDriver, SessionDatabaseReporting, C
         actor.footprint.withLockUnchecked { change(&$0) }
     }
 
-    // Inlined as the Mac inlines for StarRocks and Databend: text as a quoted string spelled for the session, bytes as
-    // a hex literal, which store what a server-side bind of MYSQL_TYPE_STRING or MYSQL_TYPE_LONG_BLOB stores.
+    // Inlined rather than bound: text as hex under the character set the driver set at connect, bytes as a hex
+    // literal, which store what a server-side bind of MYSQL_TYPE_STRING or MYSQL_TYPE_LONG_BLOB stores.
     func executeParameterized(query: String, parameters: [PluginCellValue], typeNames: [String?]?) async throws
         -> QueryResult {
         let raw = try await actor.executeInlined(query, parameters: parameters)
@@ -562,33 +562,51 @@ nonisolated struct MySQLStatementFailure: Error, LocalizedError, Equatable {
     }
 }
 
+// A value never goes through escaping: under a multibyte character set the session can switch to (`SET NAMES gbk`), a
+// backslash escape's bytes read as part of one character and the quote after them ends the literal. Text is its UTF-8
+// bytes in hex behind the introducer of the character set the driver set at connect, so the server reads the same
+// characters whatever the session's character set is later.
 nonisolated enum MySQLInlineLiterals {
-    static func literal(_ value: PluginCellValue, spelling: MySQLLiteralSpelling) -> String {
+    static let defaultCharacterSet = MySQLConnectionEncoding.sessionCharacterSetName
+
+    static func literal(_ value: PluginCellValue, characterSet: String) -> String {
         switch value {
         case .null:
             return "NULL"
         case .text(let text):
-            return "'\(spelling.escaped(text))'"
+            return "_\(characterSetName(characterSet)) " + hexLiteral(Data(text.utf8))
         case .bytes(let data):
-            var hex = "X'"
-            hex.reserveCapacity(3 + data.count * 2)
-            for byte in data {
-                hex += String(format: "%02X", byte)
-            }
-            return hex + "'"
+            return hexLiteral(data)
         }
+    }
+
+    // The name goes into the statement as written, so anything but a plain name falls back to utf8mb4.
+    static func characterSetName(_ reported: String?) -> String {
+        guard let reported, !reported.isEmpty,
+              reported.unicodeScalars.allSatisfy({ $0.isASCII && (CharacterSet.alphanumerics.contains($0) || $0 == "_") })
+        else { return defaultCharacterSet }
+        return reported
+    }
+
+    private static func hexLiteral(_ data: Data) -> String {
+        var hex = "X'"
+        hex.reserveCapacity(3 + data.count * 2)
+        for byte in data {
+            hex += String(format: "%02X", byte)
+        }
+        return hex + "'"
     }
 
     // A placeholder counts only in code, as the session lexes it.
     static func bind(
         _ sql: String,
         parameters: [PluginCellValue],
-        spelling: MySQLLiteralSpelling,
+        characterSet: String,
         features: SQLLexicalFeatures
     ) throws -> String {
         try PluginParameterBinder.bind(
             sql,
-            literals: parameters.map { literal($0, spelling: spelling) },
+            literals: parameters.map { literal($0, characterSet: characterSet) },
             style: .questionMark,
             features: features
         )
@@ -802,6 +820,9 @@ private actor MySQLActor {
     ]
 
     private var encoding: MySQLConnectionEncoding = .utf8
+    // `character_set_client` right after the session was set up: utf8mb4, utf8 on a server without it, latin1 for
+    // UTF-8 via Latin 1. Inlined text names it, so a later `SET NAMES` cannot change how the value reads.
+    private var literalCharacterSet = MySQLInlineLiterals.defaultCharacterSet
     private var errorLanguage: String.Encoding?
     private var showTextIsBinary = false
     private var tlsServerName: MySQLTLSServerName?
@@ -877,6 +898,9 @@ private actor MySQLActor {
             mysql_close(handle)
             throw MySQLError.connectionFailed(msg)
         }
+        literalCharacterSet = MySQLInlineLiterals.characterSetName(
+            Self.clientCharacterSet(on: handle) ?? mysql_character_set_name(handle).map { String(cString: $0) }
+        )
 
         let banner = mysql_get_server_info(handle).map { String(cString: $0) }
         let sessionFlavor = MySQLDriver.serverFlavor(for: databaseType, banner: banner)
@@ -1045,6 +1069,17 @@ private actor MySQLActor {
 
     private static let hexPreviewBytes = 256
 
+    // Asked once at connect, before any statement of the user's can move it.
+    private static func clientCharacterSet(on mysql: UnsafeMutablePointer<MYSQL>) -> String? {
+        let statement = "SELECT @@character_set_client"
+        guard statement.withCString({ mysql_real_query(mysql, $0, UInt(strlen($0))) }) == 0,
+              let result = mysql_store_result(mysql)
+        else { return nil }
+        defer { mysql_free_result(result) }
+        guard mysql_num_fields(result) >= 1, let row = mysql_fetch_row(result), let value = row[0] else { return nil }
+        return String(cString: value)
+    }
+
     private func message(from mysql: UnsafeMutablePointer<MYSQL>) -> String {
         guard let text = mysql_error(mysql) else { return "" }
         return MySQLErrorText.decode(cString: text, language: errorLanguage, encoding: encoding)
@@ -1171,7 +1206,7 @@ private actor MySQLActor {
         let template = respells ? spelling.respelled(sql) : sql
         guard !parameters.isEmpty else { return template }
         return try MySQLInlineLiterals.bind(
-            template, parameters: parameters, spelling: spelling, features: lexicalFeatures(of: mysql)
+            template, parameters: parameters, characterSet: literalCharacterSet, features: lexicalFeatures(of: mysql)
         )
     }
 

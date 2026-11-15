@@ -82,6 +82,8 @@ targets:
       - ../Plugins/Shared/PluginQueryTimeout.swift
       # The toolbar glyph rule both apps follow on and before the 26 releases.
       - ../TablePro/Core/Services/Infrastructure/Toolbar/ToolbarSymbols.swift
+      # Animations that follow Reduce Motion, the same in both apps.
+      - ../TablePro/Theme/MotionAccessibility.swift
       # The PostHog client and what it may collect, the same in both apps.
       - ../TablePro/Core/Services/Telemetry/PostHogTelemetryClient.swift
       # The ClickHouse plugin driver runs whole behind PluginBackedDriver, so every file of the plugin is compiled in.

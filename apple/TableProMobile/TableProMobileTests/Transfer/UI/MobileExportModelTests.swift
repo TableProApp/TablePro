@@ -263,6 +263,31 @@ struct MobileExportModelTests {
         #expect(model.objectGroups[0].rows[0].object.optionValues == MobileExportFormats.csv.defaultTableOptionValues())
     }
 
+    @Test("Another format shows the kinds it writes with the selection they had, each with only the options it takes")
+    func formatChangeKeepsEveryKind() async throws {
+        let model = MobileExportModel(
+            input: input(scopes: [ExportScopeOption(kind: .database, source: .database)]),
+            environment: environment(objects: [
+                object("orders", kind: .table), object("total", kind: .routine), object("audit", kind: .trigger)
+            ])
+        )
+        await model.loadObjectsIfNeeded()
+        #expect(model.objectGroups.map { $0.kind } == [.table])
+
+        model.selectFormat(type(of: MobileExportFormats.sql).formatId)
+        #expect(Set(model.objectGroups.map { $0.kind }) == [.table, .routine, .trigger])
+        let rows = model.objectGroups.flatMap { $0.rows }
+        let routine = try #require(rows.first { $0.object.kind == .routine })
+        #expect(routine.isSelected)
+        #expect(routine.object.optionValues == [true, true, false])
+        #expect(rows.first { $0.object.kind == .table }?.object.optionValues == [true, true, true])
+
+        model.setSelected(false, for: routine.id)
+        model.selectFormat(type(of: MobileExportFormats.csv).formatId)
+        model.selectFormat(type(of: MobileExportFormats.sql).formatId)
+        #expect(model.objectGroups.flatMap { $0.rows }.first { $0.id == routine.id }?.isSelected == false)
+    }
+
     @Test("Without a file name nothing exports")
     func emptyFileName() {
         let model = MobileExportModel(

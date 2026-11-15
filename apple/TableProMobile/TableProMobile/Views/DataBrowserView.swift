@@ -88,6 +88,10 @@ struct DataBrowserView: View {
         session.map { ExportObjectListing.supportsExport($0.driver) } ?? false
     }
 
+    private var canExportTable: Bool {
+        session.map { ExportObjectListing.supportsTableExport($0.driver) } ?? false
+    }
+
     // Read-Only hides it, as it hides Insert Row; Confirm Writes asks when the import starts.
     private var canImportRows: Bool {
         allowsRowEditing && browsesSQLRows && !connection.safeModeLevel.blocksWrites && canExport
@@ -463,7 +467,7 @@ struct DataBrowserView: View {
             .opacity(viewModel.isPageLoading ? 0.5 : 1)
             .allowsHitTesting(!viewModel.isPageLoading)
             .overlay { if viewModel.isPageLoading { ProgressView() } }
-            .animation(.default, value: viewModel.isPageLoading)
+            .motionAnimation(.default, value: viewModel.isPageLoading)
             .refreshable { await viewModel.load() }
     }
 
@@ -636,9 +640,9 @@ struct DataBrowserView: View {
                 .disabled(rows.isEmpty)
                 RowLayoutPicker()
                 Divider()
-                if canExport || canImportRows {
+                if canExportTable || canImportRows {
                     Section {
-                        if canExport {
+                        if canExportTable {
                             Button { presentTableExport() } label: {
                                 Label("Export…", systemImage: "square.and.arrow.up")
                             }

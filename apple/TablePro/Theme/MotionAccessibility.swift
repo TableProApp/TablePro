@@ -1,21 +1,26 @@
-//
-//  MotionAccessibility.swift
-//  TablePro
-//
-
+#if canImport(AppKit)
 import AppKit
+#else
+import UIKit
+#endif
 import SwiftUI
 
+// Shared with the iOS app.
 internal enum MotionAccessibility {
-    /// `withAnimation(nil)` still performs the change, it just does not animate it, so a gated
-    /// call site never needs a second branch for the reduced case.
+    // `withAnimation(nil)` still performs the change without animating it, so a gated call site needs no second branch.
     internal static func animation(_ animation: Animation?, reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : animation
     }
 
+    #if canImport(AppKit)
     internal static var systemReduceMotion: Bool {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
+    #else
+    @MainActor internal static var systemReduceMotion: Bool {
+        UIAccessibility.isReduceMotionEnabled
+    }
+    #endif
 }
 
 private struct MotionAnimation<Value: Equatable>: ViewModifier {
@@ -38,8 +43,7 @@ internal extension View {
     }
 }
 
-/// For imperative call sites, where there is no environment to read. `withAnimation` captures the
-/// animation at the call, so the setting has to be read here rather than passed down.
+// For imperative call sites with no environment to read: `withAnimation` captures the animation at the call.
 internal func withMotion<Result>(
     _ animation: Animation? = .default,
     _ body: () throws -> Result

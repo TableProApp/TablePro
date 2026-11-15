@@ -366,7 +366,8 @@ nonisolated final class ImportRun: @unchecked Sendable {
                     binaryText: ImportBinaryText(formatId: request.formatId)
                 )
             },
-            dialect: dialect
+            dialect: dialect,
+            clearsTargetFirst: preparation.clearsFirst
         )
         let shared = SharedProgress(Progress(totalUnitCount: 0))
         let progress = PluginImportProgress(progress: shared.progress)
@@ -400,10 +401,10 @@ nonisolated final class ImportRun: @unchecked Sendable {
         var result: PluginImportResult?
         var failure: (any Error)?
         do {
-            if preparation.clearsFirst {
-                try await sink.deleteAllRowsFromTargetTable()
-            }
             result = try await plugin.performImport(source: source, sink: sink, progress: progress)
+            if lock.withLock({ stopChoice }) == nil {
+                try await sink.clearTargetIfDue()
+            }
         } catch {
             failure = error
         }

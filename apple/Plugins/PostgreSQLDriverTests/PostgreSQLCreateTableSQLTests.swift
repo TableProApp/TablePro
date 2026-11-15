@@ -92,7 +92,7 @@ struct PostgreSQLCreateTableSQLTests {
             tableName: "orders",
             columns: [PluginColumnDefinition(name: "id", dataType: "integer", isPrimaryKey: true)]
         )
-        #expect(driver.generateCreateTableStatements(definition: definition)
+        #expect(driver.generateCreateTableStatements(definition: definition, schema: nil)
             == PostgreSQLCreateTableSQL.statements(definition, schema: "public", capabilities: driver.versionedCapabilities))
     }
 }

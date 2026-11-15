@@ -1,30 +1,8 @@
 import Foundation
+@testable import TableProMobile
 import TableProTestSupport
 import Testing
 import UIKit
-@testable import TableProMobile
-
-@MainActor
-private final class RecordingAsserter: BackgroundTaskAsserting {
-    let identifier = UIBackgroundTaskIdentifier(rawValue: 11)
-    private(set) var names: [String] = []
-    private(set) var ended: [UIBackgroundTaskIdentifier] = []
-    private var expirationHandler: (() -> Void)?
-
-    func beginBackgroundTask(name: String, expirationHandler: @escaping () -> Void) -> UIBackgroundTaskIdentifier {
-        names.append(name)
-        self.expirationHandler = expirationHandler
-        return identifier
-    }
-
-    func endBackgroundTask(_ identifier: UIBackgroundTaskIdentifier) {
-        ended.append(identifier)
-    }
-
-    func fireExpiration() {
-        expirationHandler?()
-    }
-}
 
 @MainActor
 private final class FakeContinuedTask: ContinuedProcessingTask {
@@ -77,15 +55,6 @@ private final class FakeScheduler: ContinuedProcessingScheduling {
 @MainActor
 private final class Counter {
     var value = 0
-}
-
-@MainActor
-private final class FakeHold: TransferHolding {
-    private(set) var releases = 0
-
-    func release() {
-        releases += 1
-    }
 }
 
 @MainActor

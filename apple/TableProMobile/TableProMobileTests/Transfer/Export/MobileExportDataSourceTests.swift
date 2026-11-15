@@ -1,9 +1,9 @@
 import Foundation
 import TableProDatabase
+@testable import TableProMobile
 import TableProModels
 import TableProPluginKit
 import Testing
-@testable import TableProMobile
 
 struct MobileExportDataSourceTests {
     private func table(_ name: String, schema: String? = "public", scope: PluginExportRowScope = .unrestricted) -> PluginExportTable {
@@ -139,6 +139,24 @@ struct MobileExportDataSourceTests {
         let rows = try ExportRowSet(columns: columns, cells: [[.text("1"), .null]])
         #expect(rows.rows == [[.text("1"), .null]])
         #expect(rows.columnTypeNames == ["int", "blob"])
+    }
+
+    @Test("Held rows take the SQL format's snapshot statements as no-ops and refuse any other statement")
+    func rowsSourcePassesSnapshotStatements() async throws {
+        let source = MobileRowsExportDataSource(
+            rows: ExportRowSet(columns: ["n"], columnTypeNames: ["int"], rows: [[.text("1")]]),
+            databaseType: .postgresql, sessionDriver: nil
+        )
+        for dialect in [SqlDialect.mysql, .postgres, .sqlite] {
+            let snapshot = SQLExportSnapshot(dialect: dialect)
+            try await snapshot.begin(on: source)
+            await snapshot.end(on: source)
+        }
+        _ = try await source.execute(query: "COMMIT")
+        _ = try await source.execute(query: "ROLLBACK")
+        await #expect(throws: PluginExportError.self) {
+            _ = try await source.execute(query: "SELECT 1")
+        }
     }
 
     @Test("Held rows stream a slice at a time after the header")

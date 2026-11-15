@@ -215,4 +215,43 @@ struct ImportRunTests {
         #expect(try await driver.execute(query: "SELECT count(*) FROM people").rows.first?.first == "2")
         #expect(await host.changedKinds == [.tables])
     }
+
+    @Test("A retry into the table an earlier import made empties it inside its own transaction, so a failing retry keeps the rows")
+    func failedRetryKeepsTheFirstRunsRows() async throws {
+        let driver = try await database()
+        let host = await FakeSessionHost(driver: driver)
+        let planner = ImportTablePlanner()
+        let definition = PluginCreateTableDefinition(
+            tableName: "people",
+            columns: [
+                PluginColumnDefinition(name: "id", dataType: "INTEGER", isNullable: false, isPrimaryKey: true),
+                PluginColumnDefinition(name: "name", dataType: "TEXT")
+            ],
+            primaryKeyColumns: ["id"]
+        )
+        let target = RowImportTarget(
+            table: "people", schema: nil, columnMapping: ["id": "id", "name": "name"], sourceFields: ["id", "name"],
+            newTable: definition
+        )
+        let connectionId = UUID()
+        func importing(_ text: String) async throws -> DataImportOutcome {
+            let run = ImportRun(
+                request: request(try staged("people.csv", text), formatId: "csv", target: target, connectionId: connectionId),
+                plugin: MobileImportFormats.csv,
+                host: host, planner: planner
+            )
+            return try await run.run { _ in }
+        }
+
+        #expect(try await importing("id,name\n1,Ada\n2,Bo\n").ending == .completed)
+        let retry = try await importing("id,name\n3,Cy\n3,Dup\n")
+
+        guard case .failed = retry.ending else {
+            Issue.record("expected the retry to fail, got \(retry.ending)")
+            return
+        }
+        #expect(retry.transaction == .rolledBack)
+        let names = try await driver.execute(query: "SELECT name FROM people ORDER BY id").rows.compactMap { $0.first ?? nil }
+        #expect(names == ["Ada", "Bo"])
+    }
 }

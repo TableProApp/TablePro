@@ -151,15 +151,20 @@ final class QueryEditorViewModel {
 
     // A file wants the whole result, which only running the statement again gives, and only a read may run twice:
     // `INSERT ... RETURNING`, `CALL` or a batch would write again (critic M9). Anything else exports the rows shown.
-    func resultsExportSource(databaseType: DatabaseType) throws(ClipboardExporter.IncompleteValues) -> ResultsExportSource {
-        if let statement = Self.rerunnableStatement(sentStatements, databaseType: databaseType) {
+    func resultsExportSource(
+        databaseType: DatabaseType,
+        runsReadOnly: Bool
+    ) throws(ClipboardExporter.IncompleteValues) -> ResultsExportSource {
+        if let statement = Self.rerunnableStatement(sentStatements, databaseType: databaseType, runsReadOnly: runsReadOnly) {
             return .rerun(statement)
         }
         return .buffered(try ExportRowSet(columns: buffer.columns, cells: buffer.window.rows.map(\.cells)))
     }
 
-    nonisolated static func rerunnableStatement(_ sent: [String], databaseType: DatabaseType) -> String? {
-        guard sent.count == 1, let statement = sent.first,
+    // `runsReadOnly`: the driver runs the statement in the engine's read-only mode. The classifier alone is not enough,
+    // since `SELECT post_payment(42)` reads as a read and its function writes, so without that mode nothing runs twice.
+    nonisolated static func rerunnableStatement(_ sent: [String], databaseType: DatabaseType, runsReadOnly: Bool) -> String? {
+        guard runsReadOnly, sent.count == 1, let statement = sent.first,
               !statement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !SQLWriteClassifier.isWriteQuery(statement, databaseType: databaseType) else { return nil }
         return statement

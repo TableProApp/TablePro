@@ -1,22 +1,45 @@
 import Foundation
 import TableProDatabase
+@testable import TableProMobile
 import TableProModels
 import TableProPluginKit
 import TableProSQLGrammar
 import TableProSQLQuoting
-@testable import TableProMobile
+import UIKit
 
 // A driver that answers export reads from scripted rows and records every statement it is sent.
 final class RecordingTransferDriver: DatabaseDriver, ExportRowStreaming, CatalogQuerying, @unchecked Sendable {
+    // How a catalog read behaves: answered at once, held until `cancelCurrentQuery`, or held with the stop itself
+    // never answering either, as a driver blocked on a dead socket.
+    enum ReadStall {
+        case none
+        case untilInterrupted
+        case unresponsive
+    }
+
+    struct Interrupted: Error {}
+
     private let lock = NSLock()
     private var sent: [String] = []
     private var readOnlyFlags: [Bool] = []
+    private var stalledReads: [CheckedContinuation<Void, any Error>] = []
+    private var stalledStops: [CheckedContinuation<Void, Never>] = []
+    private var stallObservers: [CheckedContinuation<Void, Never>] = []
+    private var interruptCount = 0
     var scriptedRows: [String: (header: PluginStreamHeader, rows: [PluginRow])] = [:]
     var transactionState: DriverTransactionState = .idle
+    var supportsSchemas = false
+    var currentSchema: String?
+    var schemaSwitchFailure: (any Error)?
+    var enforcesReadOnlyMode = false
+    var stall = ReadStall.none
+    var exportCatalog: (any MobileExportCatalog)?
     private(set) var disconnected = false
 
     var executed: [String] { lock.withLock { sent } }
     var exportReadOnlyFlags: [Bool] { lock.withLock { readOnlyFlags } }
+    var interrupts: Int { lock.withLock { interruptCount } }
+    var isDisconnected: Bool { lock.withLock { disconnected } }
 
     private func record(_ query: String) {
         lock.withLock { sent.append(query) }
@@ -39,7 +62,41 @@ final class RecordingTransferDriver: DatabaseDriver, ExportRowStreaming, Catalog
 
     func catalogQuery(_ sql: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         record(sql)
+        if stall != .none {
+            try await withCheckedThrowingContinuation { continuation in
+                let observers = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+                    stalledReads.append(continuation)
+                    defer { stallObservers = [] }
+                    return stallObservers
+                }
+                observers.forEach { $0.resume() }
+            }
+        }
         return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+    }
+
+    func waitUntilStalled() async {
+        await withCheckedContinuation { observer in
+            let stalled = lock.withLock { () -> Bool in
+                guard stalledReads.isEmpty else { return true }
+                stallObservers.append(observer)
+                return false
+            }
+            if stalled { observer.resume() }
+        }
+    }
+
+    // Lets every held read and stop go, so a test leaves no continuation behind.
+    func endStall() {
+        let (reads, stops) = lock.withLock { () -> ([CheckedContinuation<Void, any Error>], [CheckedContinuation<Void, Never>]) in
+            defer {
+                stalledReads = []
+                stalledStops = []
+            }
+            return (stalledReads, stalledStops)
+        }
+        reads.forEach { $0.resume(throwing: Interrupted()) }
+        stops.forEach { $0.resume() }
     }
 
     func connect() async throws {}
@@ -49,23 +106,50 @@ final class RecordingTransferDriver: DatabaseDriver, ExportRowStreaming, Catalog
         record(query)
         return QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0)
     }
-    func cancelCurrentQuery() async throws {}
+    func cancelCurrentQuery() async throws {
+        let mode = lock.withLock { () -> ReadStall in
+            interruptCount += 1
+            return stall
+        }
+        switch mode {
+        case .none:
+            return
+        case .untilInterrupted:
+            let reads = lock.withLock { () -> [CheckedContinuation<Void, any Error>] in
+                defer { stalledReads = [] }
+                return stalledReads
+            }
+            reads.forEach { $0.resume(throwing: Interrupted()) }
+        case .unresponsive:
+            await withCheckedContinuation { stop in
+                lock.withLock { stalledStops.append(stop) }
+            }
+        }
+    }
     func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
     func fetchDatabases() async throws -> [String] { [] }
     func switchDatabase(to name: String) async throws {}
-    var supportsSchemas: Bool { false }
-    func switchSchema(to name: String) async throws {}
+    func switchSchema(to name: String) async throws {
+        record("switchSchema(\(name))")
+        if let schemaSwitchFailure { throw schemaSwitchFailure }
+    }
     func fetchSchemas() async throws -> [String] { [] }
-    var currentSchema: String? { nil }
     var supportsTransactions: Bool { true }
     func beginTransaction() async throws { record("BEGIN") }
     func commitTransaction() async throws { record("COMMIT") }
     func rollbackTransaction() async throws { record("ROLLBACK") }
     func sessionTransactionState() async -> DriverTransactionState { transactionState }
     var serverVersion: String? { nil }
+}
+
+extension RecordingTransferDriver: MobileTransferEngine {
+    func makeExportCatalog(context: MobileTransferContext) async throws -> any MobileExportCatalog {
+        guard let exportCatalog else { throw MobileTransferRefusal(reason: "No catalog scripted") }
+        return exportCatalog
+    }
 }
 
 // Every catalog answer at its default but the ones a test sets.
@@ -134,6 +218,62 @@ final class GatedExportPlugin: ExportFormatPlugin, @unchecked Sendable {
         await gate.enter()
         try progress.checkCancellation()
         return ExportFormatResult()
+    }
+}
+
+// Reads through the data source's `execute`, which the driver may hold, as a format's snapshot BEGIN does.
+final class ExecutingExportPlugin: ExportFormatPlugin, @unchecked Sendable {
+    static let pluginName = "Executing"
+    static let pluginVersion = "1.0"
+    static let pluginDescription = "Test export"
+    static let formatId = "executing"
+    static let formatDisplayName = "Executing"
+    static let defaultFileExtension = "txt"
+    static let iconName = "doc"
+
+    required init() {}
+
+    func export(
+        tables: [PluginExportTable],
+        dataSource: any PluginExportDataSource,
+        destination: URL,
+        progress: PluginExportProgress
+    ) async throws -> ExportFormatResult {
+        try Data("partial".utf8).write(to: destination)
+        _ = try await dataSource.execute(query: "SELECT pg_sleep(3600)")
+        try progress.checkCancellation()
+        return ExportFormatResult()
+    }
+}
+
+@MainActor
+final class RecordingAsserter: BackgroundTaskAsserting {
+    let identifier = UIBackgroundTaskIdentifier(rawValue: 11)
+    private(set) var names: [String] = []
+    private(set) var ended: [UIBackgroundTaskIdentifier] = []
+    private var expirationHandler: (() -> Void)?
+
+    func beginBackgroundTask(name: String, expirationHandler: @escaping () -> Void) -> UIBackgroundTaskIdentifier {
+        names.append(name)
+        self.expirationHandler = expirationHandler
+        return identifier
+    }
+
+    func endBackgroundTask(_ identifier: UIBackgroundTaskIdentifier) {
+        ended.append(identifier)
+    }
+
+    func fireExpiration() {
+        expirationHandler?()
+    }
+}
+
+@MainActor
+final class FakeHold: TransferHolding {
+    private(set) var releases = 0
+
+    func release() {
+        releases += 1
     }
 }
 

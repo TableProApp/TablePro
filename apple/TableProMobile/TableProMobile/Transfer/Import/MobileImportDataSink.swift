@@ -51,6 +51,9 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     private let dialect: (any MobileWriteDialect)?
     private let rowWriter: ImportRowWriter?
     private let externallyCancelled: @Sendable () -> Bool
+    // A table an earlier import made, reused by a retry: emptied inside the import's transaction, so a retry that fails
+    // or stops gives back the rows the first run kept (macOS `RowImportTableMaker`).
+    private let clearsTargetFirst: Bool
 
     private let lock = NSLock()
     private var stopChoice: ImportStopChoice?
@@ -61,15 +64,18 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     private var disabledForeignKeys = false
     private var writerTarget: ImportRowWriter.Target?
     private var immutableColumns: Set<String>?
+    private var clearedTarget = false
 
     init(
         driver: any DatabaseDriver,
         databaseType: DatabaseType,
         rowTarget: RowTarget? = nil,
         dialect: (any MobileWriteDialect)? = nil,
+        clearsTargetFirst: Bool = false,
         isCancelled: @escaping @Sendable () -> Bool = { false }
     ) {
         self.driver = driver
+        self.clearsTargetFirst = clearsTargetFirst
         self.databaseType = databaseType
         self.databaseTypeId = databaseType.rawValue
         self.rowTarget = rowTarget
@@ -157,7 +163,13 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
 
     // MARK: - Transactions
 
+    // A reused table is emptied right after, in the transaction the sink opened or joined.
     func beginTransaction() async throws {
+        try await openOrJoinTransaction()
+        try await clearTargetIfDue()
+    }
+
+    private func openOrJoinTransaction() async throws {
         try admitWrite()
         guard driver.supportsTransactions else { return }
         let state = await driver.sessionTransactionState()
@@ -274,7 +286,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
 
     // `SET sql_mode` changes how the next statement reads; a COMMIT or a DDL statement can end the transaction early.
     private func noteEffects(of statement: String) async {
-        let keyword = MobileExportStreams.leadingKeyword(of: statement)
+        let keyword = ExportSnapshotStatements.leadingKeyword(of: statement)
         if keyword == "SET" {
             _ = await driver.sessionLexicalFacts()
         }
@@ -302,11 +314,13 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     // MARK: - Rows
 
     func insertRow(_ values: [String: PluginCellValue]) async throws {
+        try await clearTargetIfDue()
         let (writer, target) = try await writing()
         try await writer.insertRow(values, into: target, host: host)
     }
 
     func insertRows(_ rows: [[String: PluginCellValue]]) async throws {
+        try await clearTargetIfDue()
         let (writer, target) = try await writing()
         try await writer.insertRows(rows, into: target, host: host)
     }
@@ -315,6 +329,13 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
         let (writer, target) = try await writing()
         let statement = try writer.clearingStatement(using: target.statements)
         _ = try await driver.execute(query: statement)
+        lock.withLock { clearedTarget = true }
+    }
+
+    // Before the first row when no transaction was begun, and by the run when a successful import wrote none.
+    func clearTargetIfDue() async throws {
+        guard lock.withLock({ clearsTargetFirst && !clearedTarget }) else { return }
+        try await deleteAllRowsFromTargetTable()
     }
 
     func mappedColumnsAndValues(_ values: [String: PluginCellValue]) -> ([String], [PluginCellValue]) {

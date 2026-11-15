@@ -909,7 +909,9 @@ struct QueryEditorView: View {
 
     private func presentResultsExport() {
         do {
-            let scope = try QueryResultsExport.resultScope(viewModel, databaseType: databaseType)
+            let scope = try QueryResultsExport.resultScope(
+                viewModel, databaseType: databaseType, driver: coordinator.session?.driver
+            )
             exportItem = MobileExportItem(input: exportInput(title: String(localized: "Export Results"), scope: scope))
         } catch {
             resultsExportError = error

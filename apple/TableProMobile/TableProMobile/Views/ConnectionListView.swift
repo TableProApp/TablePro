@@ -580,7 +580,7 @@ struct ConnectionListView: View {
             moreMenu
             if hasLibraryItems {
                 Button {
-                    withAnimation {
+                    withMotion {
                         editMode = isEditing ? .inactive : .active
                     }
                 } label: {

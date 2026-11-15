@@ -183,14 +183,9 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         guard let context = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly) else {
             return mapToPluginResult(try await driver.execute(query: query))
         }
-        let keyword = QueryClassifier.leadingKeyword(of: query, grammar: dbType.lexicalGrammar)
-        guard !Self.transactionKeywords.contains(keyword) else {
-            return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-        }
+        guard !ExportSnapshotStatements.isTransactionStatement(query) else { return ExportSnapshotStatements.noResult }
         return mapToPluginResult(try await driver.execute(query: query, context: context))
     }
-
-    private static let transactionKeywords: Set<String> = ["BEGIN", "START", "COMMIT", "END", "ROLLBACK"]
 
     func quoteIdentifier(_ identifier: String) -> String {
         driver.quoteIdentifier(identifier)
@@ -424,11 +419,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         let schema = exportSchema(for: object.databaseName)
         switch object.kind {
         case .table, .view, .materializedView:
-            return (driver as? PluginDriverAdapter)?.generateDropRelationSQL(
-                name: object.name,
-                kind: object.kind,
-                schema: schema
-            )
+            return pluginDriver.generateDropRelationSQL(name: object.name, kind: object.kind, schema: schema)
         case .trigger:
             guard let parent = object.parentTable else { return nil }
             return pluginDriver.generateDropTriggerSQL(name: object.name, table: parent, schema: schema)

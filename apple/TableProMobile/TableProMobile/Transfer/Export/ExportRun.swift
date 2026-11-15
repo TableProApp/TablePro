@@ -8,9 +8,12 @@ import TableProPluginKit
 nonisolated enum ExportSource: Sendable {
     // Objects of one database, from `ExportObjectListing`, with the option values the user chose.
     case objects([PluginExportTable])
-    // A read statement run again in full: a filtered or sorted table, or a query's whole result.
+    // A read statement the app built, run again in full: a filtered or sorted table, or rows read again by key.
     case query(String)
-    // Rows already held: selected rows with no key, or a result whose statement is not a read.
+    // The user's statement run again for a query's whole result, only in the engine's read-only mode: the classifier
+    // calls `SELECT post_payment(42)` a read, and its function writes.
+    case rerun(String)
+    // Rows already held: selected rows with no key, or a result that cannot run again in read-only mode.
     case rows(ExportRowSet)
 }
 
@@ -77,18 +80,26 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
     private let background: TransferBackgroundRun?
     private let sessionHost: (any TransferSessionHost)?
     private let exportsRoot: URL
+    private let stopGrace: Duration
 
     private let lock = NSLock()
     private var stopRequested = false
     private var pluginProgress: PluginExportProgress?
+    private var heldLease: TransferDriverLease?
+    private var writingFolder: URL?
+    private var work: Task<Void, Never>?
+    private var ending: FirstResult<ExportOutcome>?
 
+    // `stopGrace` bounds how long a stop waits for the driver to stop its statement before the connection is closed
+    // anyway: a dedicated connection has no query timeout, and a driver like Redis cannot cancel at all.
     init(
         request: ExportRequest,
         plugin: any ExportFormatPlugin,
         drivers: any TransferDriverProvider,
         background: TransferBackgroundRun? = nil,
         sessionHost: (any TransferSessionHost)? = nil,
-        exportsRoot: URL = TransferFiles.exportsDirectory
+        exportsRoot: URL = TransferFiles.exportsDirectory,
+        stopGrace: Duration = .seconds(2)
     ) {
         self.request = request
         self.plugin = plugin
@@ -96,6 +107,7 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
         self.background = background
         self.sessionHost = sessionHost
         self.exportsRoot = exportsRoot
+        self.stopGrace = stopGrace
     }
 
     // `sessionHost` tracks an export that ends up reading on the window's own session, as a SQLite file holding the
@@ -118,13 +130,36 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
         )
     }
 
-    // Latched, so a stop during the count or before the plugin starts is not lost.
+    // Latched, so a stop during the count or before the plugin starts is not lost. The run ends here and now, the
+    // background expiry included: the work is cancelled, the driver is asked to stop its statement, and the connection
+    // is released within `stopGrace` even when a read never returns.
     func cancel() {
-        let progress = lock.withLock { () -> PluginExportProgress? in
+        let stop = lock.withLock { () -> StopTargets in
             stopRequested = true
-            return pluginProgress
+            defer { heldLease = nil }
+            return StopTargets(
+                progress: pluginProgress, work: work, ending: ending, lease: heldLease, folder: writingFolder
+            )
         }
-        progress?.cancel()
+        stop.progress?.cancel()
+        stop.work?.cancel()
+        // Only a stop that ended the run removes the folder: a run that finished first hands its file to the caller.
+        if stop.ending?.settle(.failure(CancellationError())) == true, let folder = stop.folder {
+            TransferFiles.remove(folder)
+        }
+        // The window's own session is never closed, and a blind stop there could reach the user's next statement; the
+        // cancelled work ends its own stream on it.
+        if let lease = stop.lease, !lease.isSessionDriver {
+            stopAndRelease(lease)
+        }
+    }
+
+    nonisolated private struct StopTargets {
+        let progress: PluginExportProgress?
+        let work: Task<Void, Never>?
+        let ending: FirstResult<ExportOutcome>?
+        let lease: TransferDriverLease?
+        let folder: URL?
     }
 
     var isCancelled: Bool {
@@ -145,7 +180,7 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
             Task { @MainActor in background.report(progress) }
         }
         do {
-            let outcome = try await perform(report: report)
+            let outcome = try await performUntilStopped(report: report)
             await background?.end(success: true)
             return outcome
         } catch {
@@ -159,6 +194,33 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
 
     // MARK: - Run
 
+    // The work runs in a task of its own, so a stop returns at once even while a driver keeps reading; whatever the
+    // work finishes with after that is thrown away.
+    private func performUntilStopped(
+        report: @escaping @Sendable (TransferProgress) -> Void
+    ) async throws -> ExportOutcome {
+        let ending = FirstResult<ExportOutcome>()
+        let work = Task { [self] in
+            do {
+                let outcome = try await perform(report: report)
+                if !ending.settle(.success(outcome)) { outcome.discard() }
+            } catch {
+                ending.settle(.failure(error))
+            }
+        }
+        let stopped = lock.withLock { () -> Bool in
+            self.work = work
+            self.ending = ending
+            return stopRequested
+        }
+        if stopped { cancel() }
+        return try await withTaskCancellationHandler {
+            try await ending.value()
+        } onCancel: { [weak self] in
+            self?.cancel()
+        }
+    }
+
     private func perform(report: @escaping @Sendable (TransferProgress) -> Void) async throws -> ExportOutcome {
         var preparing = TransferProgress(stage: .preparing)
         preparing.objectCount = objectCount
@@ -166,12 +228,13 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
 
         let lease: TransferDriverLease?
         switch request.source {
-        case .objects, .query:
-            lease = try await drivers.openTransferDriver()
+        case .objects, .query, .rerun:
+            lease = try await hold(try await drivers.openTransferDriver())
         case .rows:
             lease = nil
         }
         do {
+            try await lease?.settle(schema: request.schema)
             let outcome: ExportOutcome
             if let lease, lease.isSessionDriver, let sessionHost {
                 // Carried out as a value: an error thrown through the tracking would read as a session lost mid-write.
@@ -186,11 +249,52 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
             } else {
                 outcome = try await export(on: lease, report: report)
             }
-            await lease?.close()
+            await releaseHeldLease()
             return outcome
         } catch {
-            await lease?.close()
+            await releaseHeldLease()
             throw error
+        }
+    }
+
+    // Kept where a stop can reach it. A stop that came while the connection opened closes it before anything reads.
+    private func hold(_ lease: TransferDriverLease) async throws -> TransferDriverLease {
+        let stopped = lock.withLock { () -> Bool in
+            if !stopRequested { heldLease = lease }
+            return stopRequested
+        }
+        guard !stopped else {
+            await lease.close()
+            throw CancellationError()
+        }
+        return lease
+    }
+
+    // Closed once, by whichever of the run's end and a stop comes first.
+    private func releaseHeldLease() async {
+        let lease = lock.withLock { () -> TransferDriverLease? in
+            defer { heldLease = nil }
+            return heldLease
+        }
+        await lease?.close()
+    }
+
+    private func stopAndRelease(_ lease: TransferDriverLease) {
+        let grace = stopGrace
+        let driver = lease.driver
+        let stopping = Task { _ = try? await driver.cancelCurrentQuery() }
+        Task {
+            let settled = FirstResult<Void>()
+            Task {
+                await stopping.value
+                settled.settle(.success(()))
+            }
+            Task {
+                try? await Task.sleep(for: grace)
+                settled.settle(.success(()))
+            }
+            try? await settled.value()
+            await lease.close()
         }
     }
 
@@ -208,7 +312,7 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
         let (dataSource, tables, total) = try await prepare(on: lease, readOnly: readOnly, report: report)
         try throwIfStopped()
 
-        let folder = try TransferFiles.makeExportFolder(in: exportsRoot)
+        let folder = try openFolder()
         do {
             let destination = TransferFiles.fileURL(
                 in: folder, name: request.fileName, fileExtension: plugin.currentFileExtension
@@ -227,6 +331,20 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
             TransferFiles.remove(folder)
             throw error
         }
+    }
+
+    // Known to a stop, which removes it when it ends the run before the plugin returns.
+    private func openFolder() throws -> URL {
+        let folder = try TransferFiles.makeExportFolder(in: exportsRoot)
+        let stopped = lock.withLock { () -> Bool in
+            writingFolder = folder
+            return stopRequested
+        }
+        guard !stopped else {
+            TransferFiles.remove(folder)
+            throw CancellationError()
+        }
+        return folder
     }
 
     private func prepare(
@@ -259,6 +377,21 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
                 driver: lease.driver,
                 databaseType: request.databaseType,
                 readOnly: readOnly,
+                skipsSnapshotStatements: lease.isSessionDriver
+            )
+            return (source, [queryTable], nil)
+        case .rerun(let query):
+            guard let lease else { throw CancellationError() }
+            guard lease.driver.enforcesReadOnlyMode else {
+                throw MobileTransferRefusal(reason: String(
+                    localized: "This connection cannot run the query again read-only, so it was not run. Export the rows shown instead."
+                ))
+            }
+            let source = MobileQueryExportDataSource(
+                query: query,
+                driver: lease.driver,
+                databaseType: request.databaseType,
+                readOnly: true,
                 skipsSnapshotStatements: lease.isSessionDriver
             )
             return (source, [queryTable], nil)
@@ -356,5 +489,39 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
             }
         }
         return total
+    }
+}
+
+// The first of several ways a wait can end wins; the others find it taken. `await task.value` alone cannot give up on
+// a task that never finishes.
+nonisolated final class FirstResult<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: Result<Value, any Error>?
+    private var waiters: [CheckedContinuation<Value, any Error>] = []
+
+    @discardableResult
+    func settle(_ result: Result<Value, any Error>) -> Bool {
+        let waiting = lock.withLock { () -> [CheckedContinuation<Value, any Error>]? in
+            guard self.result == nil else { return nil }
+            self.result = result
+            defer { waiters = [] }
+            return waiters
+        }
+        guard let waiting else { return false }
+        for waiter in waiting {
+            waiter.resume(with: result)
+        }
+        return true
+    }
+
+    func value() async throws -> Value {
+        try await withCheckedThrowingContinuation { continuation in
+            let settled = lock.withLock { () -> Result<Value, any Error>? in
+                if let result { return result }
+                waiters.append(continuation)
+                return nil
+            }
+            if let settled { continuation.resume(with: settled) }
+        }
     }
 }

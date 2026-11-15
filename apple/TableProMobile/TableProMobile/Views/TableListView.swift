@@ -48,6 +48,10 @@ struct TableListView: View {
         session.map { ExportObjectListing.supportsExport($0.driver) } ?? false
     }
 
+    private var canExportTable: Bool {
+        session.map { ExportObjectListing.supportsTableExport($0.driver) } ?? false
+    }
+
     // Read-Only hides what writes; Confirm Writes asks when the import starts.
     private var writesAllowed: Bool {
         !connection.safeModeLevel.blocksWrites && canExport
@@ -124,7 +128,7 @@ struct TableListView: View {
                                 Label("Copy Name", systemImage: "doc.on.doc")
                             }
 
-                            if canExport {
+                            if canExportTable {
                                 Button {
                                     presentExport(of: table)
                                 } label: {

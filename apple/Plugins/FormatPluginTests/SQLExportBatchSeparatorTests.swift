@@ -12,34 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-/// Holds an export inside its first table definition fetch until the test lets it go, so a second export can run to
-/// its end on the same plugin in between.
-private actor ExportPause {
-    private var reached = false
-    private var arrival: CheckedContinuation<Void, Never>?
-    private var released = false
-    private var release: CheckedContinuation<Void, Never>?
-
-    func hold() async {
-        reached = true
-        arrival?.resume()
-        arrival = nil
-        guard !released else { return }
-        await withCheckedContinuation { release = $0 }
-    }
-
-    func untilReached() async {
-        guard !reached else { return }
-        await withCheckedContinuation { arrival = $0 }
-    }
-
-    func resume() {
-        released = true
-        release?.resume()
-        release = nil
-    }
-}
-
 struct SQLExportBatchSeparatorTests {
     private enum Engine: String {
         case sqlServer = "SQL Server"
@@ -205,7 +177,7 @@ struct SQLExportBatchSeparatorTests {
                     on: plugin, tables: tables, dataSource: ServerDataSource(engine: otherEngine)
                 )
                 await pause.resume()
-                return (try await held, other)
+                return (try await held.text, other.text)
             }
             #expect(goLines(in: held) == expectedGoLines[heldEngine], "\(heldEngine.rawValue) held while another ran")
             #expect(goLines(in: other) == expectedGoLines[otherEngine], "\(otherEngine.rawValue) run during another")

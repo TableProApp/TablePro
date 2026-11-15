@@ -4517,6 +4517,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Cell %1$@ holds more than %2$@ of text, so the workbook was not read." : {
+
+    },
     "Certificate" : {
       "localizations" : {
         "ko" : {
@@ -7359,6 +7362,9 @@
           }
         }
       }
+    },
+    "Could not switch to schema %1$@: %2$@" : {
+
     },
     "Could not write %1$@. %2$@" : {
 
@@ -20401,6 +20407,9 @@
         }
       }
     },
+    "Rows read together hold more than %1$@ of text by row %2$@, so the workbook was not read." : {
+
+    },
     "Run" : {
       "localizations" : {
         "ko" : {
@@ -27733,6 +27742,9 @@
     "This connection cannot read its catalog for an export." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "This connection cannot run the query again read-only, so it was not run. Export the rows shown instead." : {
+
     },
     "This connection cannot send statements with bound values." : {
       "extractionState" : "manual",

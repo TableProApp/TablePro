@@ -69,25 +69,6 @@ nonisolated enum MobileExportStreams {
         AsyncThrowingStream { $0.finish(throwing: error) }
     }
 
-    // The keywords macOS `ExportDataSourceAdapter.execute` passes over at Read-Only, where each read takes a read-only
-    // transaction of its own.
-    static let transactionKeywords: Set<String> = ["BEGIN", "START", "COMMIT", "END", "ROLLBACK"]
-
-    static func leadingKeyword(of statement: String) -> String {
-        var text = Substring(statement)
-        while true {
-            text = text.drop { $0.isWhitespace }
-            if text.hasPrefix("--") {
-                text = text.drop { $0 != "\n" }
-            } else if text.hasPrefix("/*"), let end = text.range(of: "*/") {
-                text = text[end.upperBound...]
-            } else {
-                break
-            }
-        }
-        return text.prefix { $0.isLetter }.uppercased()
-    }
-
     // A snapshot statement is dropped where it cannot run: at Read-Only, and on a session that holds the user's own
     // transaction, whose COMMIT would end that transaction.
     static func execute(
@@ -96,8 +77,8 @@ nonisolated enum MobileExportStreams {
         readOnly: Bool,
         skipsTransactionStatements: Bool
     ) async throws -> PluginQueryResult {
-        if readOnly || skipsTransactionStatements, transactionKeywords.contains(leadingKeyword(of: query)) {
-            return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+        if readOnly || skipsTransactionStatements, ExportSnapshotStatements.isTransactionStatement(query) {
+            return ExportSnapshotStatements.noResult
         }
         if let catalog = driver as? any CatalogQuerying, !readOnly {
             return try await catalog.catalogQuery(query)

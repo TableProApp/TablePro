@@ -12,28 +12,45 @@ struct MySQLTransferTests {
         .executableComments, .dashCommentsNeedWhitespace,
     ]
 
-    @Test("A value is inlined as a quoted string, a hex literal or NULL, spelled for a backslash-escaping session")
-    func inlinesWithBackslashEscapes() throws {
+    @Test("Text is inlined as hex behind the connect-time character set, bytes as a hex literal, NULL as NULL")
+    func inlinesAsHex() throws {
         let sql = try MySQLInlineLiterals.bind(
             "INSERT INTO t (a, b, c, d) VALUES (?, ?, ?, ?)",
             parameters: [.text(#"it's a\b"#), .bytes(Data([0x00, 0xAB])), .null, .text("00123")],
-            spelling: .backslashEscapes,
+            characterSet: "utf8mb4",
             features: Self.mysqlFeatures
         )
 
-        #expect(sql == #"INSERT INTO t (a, b, c, d) VALUES ('it''s a\\b', X'00AB', NULL, '00123')"#)
+        #expect(sql == "INSERT INTO t (a, b, c, d) VALUES (_utf8mb4 X'6974277320615C62', X'00AB', NULL, _utf8mb4 X'3030313233')")
     }
 
-    @Test("Under NO_BACKSLASH_ESCAPES a quote is doubled and a backslash stays as it is")
-    func inlinesWithQuoteDoubling() throws {
+    // Under `SET NAMES gbk` the bytes e4 b9 97 5c read as two GBK characters, so a backslash escape let the next quote
+    // end the literal. In hex the value holds no quote, whatever the session reads.
+    @Test("A GBK escape payload stays inside its literal")
+    func gbkPayloadCannotBreakOut() throws {
+        let payload = #"乗\'), ((SELECT secret FROM secrets LIMIT 1)) #"#
         let sql = try MySQLInlineLiterals.bind(
-            "SELECT ?",
-            parameters: [.text(#"it's a\b"#)],
-            spelling: .quoteDoubling,
-            features: Self.mysqlFeatures.subtracting([.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes])
+            "INSERT INTO t (a) VALUES (?)", parameters: [.text(payload)], characterSet: "utf8mb4", features: Self.mysqlFeatures
         )
 
-        #expect(sql == #"SELECT 'it''s a\b'"#)
+        let prefix = "INSERT INTO t (a) VALUES (_utf8mb4 X'"
+        #expect(sql.hasPrefix(prefix))
+        #expect(sql.hasSuffix("')"))
+        let hex = sql.dropFirst(prefix.count).dropLast(2)
+        #expect(hex.allSatisfy { $0.isHexDigit })
+        let bytes = stride(from: 0, to: hex.count, by: 2).compactMap { offset -> UInt8? in
+            let start = hex.index(hex.startIndex, offsetBy: offset)
+            return UInt8(hex[start..<hex.index(start, offsetBy: 2)], radix: 16)
+        }
+        #expect(String(bytes: bytes, encoding: .utf8) == payload)
+    }
+
+    @Test("A character set name that is not a plain name falls back to utf8mb4", arguments: [
+        ("utf8", "utf8"), ("latin1", "latin1"), ("utf8mb4", "utf8mb4"), ("x' OR 1", "utf8mb4"), ("", "utf8mb4")
+    ])
+    func characterSetNameIsPlain(reported: String, used: String) {
+        #expect(MySQLInlineLiterals.characterSetName(reported) == used)
+        #expect(MySQLInlineLiterals.characterSetName(nil) == "utf8mb4")
     }
 
     @Test("A question mark inside a literal or a comment is not a placeholder")
@@ -41,18 +58,18 @@ struct MySQLTransferTests {
         let sql = try MySQLInlineLiterals.bind(
             "SELECT '?', ? # ?",
             parameters: [.text("x")],
-            spelling: .backslashEscapes,
+            characterSet: "utf8mb4",
             features: Self.mysqlFeatures
         )
 
-        #expect(sql == "SELECT '?', 'x' # ?")
+        #expect(sql == "SELECT '?', _utf8mb4 X'78' # ?")
     }
 
     @Test("A value count that does not match the placeholders is refused")
     func mismatchIsRefused() {
         #expect(throws: (any Error).self) {
             _ = try MySQLInlineLiterals.bind(
-                "SELECT ?, ?", parameters: [.text("x")], spelling: .backslashEscapes, features: Self.mysqlFeatures
+                "SELECT ?, ?", parameters: [.text("x")], characterSet: "utf8mb4", features: Self.mysqlFeatures
             )
         }
     }

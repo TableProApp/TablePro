@@ -16,6 +16,8 @@ nonisolated struct ExportScopeOption: Identifiable, Sendable {
 
     nonisolated enum Source: Sendable {
         case query(String)
+        // The user's statement run again, under the engine's read-only mode only.
+        case rerun(String)
         case rows(ExportRowSet)
         case table(String)
         case database
@@ -46,7 +48,7 @@ nonisolated struct ExportScopeOption: Identifiable, Sendable {
     var listsObjects: Bool {
         switch source {
         case .table, .database: true
-        case .query, .rows: false
+        case .query, .rerun, .rows: false
         }
     }
 }
@@ -253,10 +255,13 @@ final class MobileExportModel {
         await loadObjectsIfNeeded()
     }
 
+    // The format can change while the list loads, so the options come from the one chosen now.
     private func adopt(_ listed: [PluginExportTable]) {
         self.listed = listed
+        let plugin = plugin
         objects = .loaded(listed.map { object in
-            ExportObjectRow(object: object, isSelected: selectsAtFirst(object))
+            let options = plugin.map { ExportObjectOptions.defaults(for: object.kind, plugin: $0) } ?? object.optionValues
+            return ExportObjectRow(object: object.withOptionValues(options), isSelected: selectsAtFirst(object))
         })
     }
 
@@ -267,12 +272,13 @@ final class MobileExportModel {
         return object.name == name && object.kind.carriesRows
     }
 
+    // The list holds every kind the database has, so a format that writes more kinds shows them with the selection
+    // they had; option values belong to a format and start over at its defaults, as on the Mac.
     private func applyFormatDefaults() {
         guard let plugin, case .loaded(let rows) = objects else { return }
-        let defaults = plugin.defaultTableOptionValues()
         objects = .loaded(rows.map { row in
             var row = row
-            row.object = row.object.withOptionValues(defaults)
+            row.object = row.object.withOptionValues(ExportObjectOptions.defaults(for: row.object.kind, plugin: plugin))
             return row
         })
     }
@@ -313,6 +319,7 @@ final class MobileExportModel {
         let source: ExportSource
         switch scope.source {
         case .query(let sql): source = .query(sql)
+        case .rerun(let sql): source = .rerun(sql)
         case .rows(let rows): source = .rows(rows)
         case .table, .database: source = .objects(exportableObjects)
         }

@@ -170,6 +170,18 @@ struct DataSourceExportTests {
         #expect(dataSource.escapeStringLiteral("O'Brien\\n") == "O''Brien\\n")
     }
 
+    @Test("Held rows pass a SQL export's snapshot BEGIN and COMMIT as no-ops and refuse any other statement")
+    func heldRowsPassSnapshotStatements() async throws {
+        let dataSource = QueryResultExportDataSource(detachedRows: tableRows(), databaseTypeId: "PostgreSQL")
+        for statement in ["BEGIN", "START TRANSACTION READ ONLY", "COMMIT", "/* snapshot */ ROLLBACK"] {
+            let result = try await dataSource.execute(query: statement)
+            #expect(result.rows.isEmpty)
+        }
+        await #expect(throws: (any Error).self) {
+            _ = try await dataSource.execute(query: "SELECT 1")
+        }
+    }
+
     @Test("A detached data source streams every row, or only the rows it was given in that order")
     func detachedDataSourceStreamsRowSubset() async throws {
         let all = QueryResultExportDataSource(detachedRows: tableRows(), databaseTypeId: "DataFile")

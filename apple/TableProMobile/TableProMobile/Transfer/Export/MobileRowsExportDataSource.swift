@@ -82,8 +82,12 @@ nonisolated final class MobileRowsExportDataSource: PluginExportDataSource, @unc
         ""
     }
 
+    // Held rows have no session to snapshot, so a format's BEGIN or COMMIT passes as a no-op.
     func execute(query: String) async throws -> PluginQueryResult {
-        throw PluginExportError.exportFailed(String(localized: "These rows are not read from the database again."))
+        guard ExportSnapshotStatements.isTransactionStatement(query) else {
+            throw PluginExportError.exportFailed(String(localized: "These rows are not read from the database again."))
+        }
+        return ExportSnapshotStatements.noResult
     }
 
     func quoteIdentifier(_ identifier: String) -> String {

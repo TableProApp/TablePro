@@ -496,17 +496,12 @@ extension ExportObjectItem {
         return normalizedItem
     }
 
-    /// Clears every option the format says this kind does not support, so a routine never carries a
-    /// `Data` flag that would make it look exportable for a phase it has no rows for.
     func maskingUnsupportedOptions(
         columns: [PluginExportOptionColumn],
         supports: (String, PluginExportObjectKind) -> Bool
     ) -> ExportObjectItem {
-        guard optionValues.count == columns.count else { return self }
         var masked = self
-        masked.optionValues = zip(columns, optionValues).map { column, value in
-            supports(column.id, kind) ? value : false
-        }
+        masked.optionValues = ExportOptionMask.masked(optionValues, columns: columns, kind: kind, supports: supports)
         return masked
     }
 

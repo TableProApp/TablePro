@@ -28,13 +28,13 @@ nonisolated final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, 
 
     required init() { loadSettings() }
 
-    var rowImportConfiguration: RowImportRunner.Configuration? { runConfiguration }
+    var rowImportConfiguration: RowImportRunner.Configuration? { Self.runConfiguration(settings) }
 
-    private var runConfiguration: RowImportRunner.Configuration {
+    private static func runConfiguration(_ options: JSONImportOptions) -> RowImportRunner.Configuration {
         RowImportRunner.Configuration(
-            errorHandling: settings.errorHandling,
-            wrapInTransaction: settings.wrapInTransaction,
-            deleteExistingRows: settings.deleteExistingRows
+            errorHandling: options.errorHandling,
+            wrapInTransaction: options.wrapInTransaction,
+            deleteExistingRows: options.deleteExistingRows
         )
     }
 
@@ -57,7 +57,9 @@ nonisolated final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, 
     ) async throws -> PluginImportResult {
         let startTime = Date()
         let url = source.fileURL()
-        let configuration = runConfiguration
+        // One plugin instance serves every window, so a dialog in another window can change `settings` mid-import.
+        let options = settings
+        let configuration = Self.runConfiguration(options)
 
         let outcome: RowImportRunner.Outcome
         var unreadableLines: [PluginImportResult.ImportStatementError] = []
@@ -67,7 +69,7 @@ nonisolated final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, 
             var batches = JSONLineBatches(
                 lines: try JSONLineReader(url: url, checkCancellation: progress.checkCancellation),
                 linesPerBatch: Self.batchSize,
-                skipsUnreadableLines: settings.errorHandling == .skipAndContinue,
+                skipsUnreadableLines: options.errorHandling == .skipAndContinue,
                 maxRecordedErrors: Self.maxRecordedErrors
             )
             defer { batches.close() }
@@ -86,7 +88,7 @@ nonisolated final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, 
             var batches = JSONElementBatches(
                 elements: document.elements,
                 elementsPerBatch: Self.batchSize,
-                skipsUnreadableElements: settings.errorHandling == .skipAndContinue,
+                skipsUnreadableElements: options.errorHandling == .skipAndContinue,
                 maxRecordedErrors: Self.maxRecordedErrors
             )
             defer { batches.close() }

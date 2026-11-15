@@ -13,9 +13,13 @@ nonisolated struct MobileTransferContext: Sendable, Equatable {
 nonisolated protocol MobileTransferEngine: DatabaseDriver {
     func makeExportCatalog(context: MobileTransferContext) async throws -> any MobileExportCatalog
     func makeWriteDialect(context: MobileTransferContext) async throws -> any MobileWriteDialect
+    // Whether each table `fetchTables` lists is an object of the export catalog, so it can be exported on its own.
+    var exportsListedTables: Bool { get }
 }
 
 nonisolated extension MobileTransferEngine {
+    var exportsListedTables: Bool { true }
+
     func makeWriteDialect(context: MobileTransferContext) async throws -> any MobileWriteDialect {
         throw MobileTransferRefusal(reason: String(
             format: String(localized: "%@ cannot take rows from a file."), context.databaseType.mobileDisplayName

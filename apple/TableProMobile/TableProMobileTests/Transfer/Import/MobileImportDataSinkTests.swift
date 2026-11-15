@@ -42,7 +42,11 @@ struct MobileImportDataSinkTests {
         return driver
     }
 
-    private func sink(on driver: SQLiteDriver, mode: ImportWriteMode = .insert) -> MobileImportDataSink {
+    private func sink(
+        on driver: SQLiteDriver,
+        mode: ImportWriteMode = .insert,
+        clearsTargetFirst: Bool = false
+    ) -> MobileImportDataSink {
         MobileImportDataSink(
             driver: driver,
             databaseType: .sqlite,
@@ -54,7 +58,8 @@ struct MobileImportDataSinkTests {
                 rowWriting: ImportRowWriting(mode: mode, keyColumns: mode == .insert ? [] : ["id"]),
                 binaryText: nil
             ),
-            dialect: SQLiteTestDialect()
+            dialect: SQLiteTestDialect(),
+            clearsTargetFirst: clearsTargetFirst
         )
     }
 
@@ -183,6 +188,46 @@ struct MobileImportDataSinkTests {
         #expect(await sink.transactionEnding() == .leftInOpenTransaction)
         _ = try await driver.execute(query: "ROLLBACK")
         #expect(try await names(driver).isEmpty)
+    }
+
+    @Test("A reused table is emptied inside the transaction the import owns, so its rollback brings the rows back")
+    func clearRollsBackWithTheImport() async throws {
+        let driver = try await people([(1, "Ada")])
+        let sink = sink(on: driver, clearsTargetFirst: true)
+
+        try await sink.beginTransaction()
+        #expect(sink.holdsOwnTransaction)
+        #expect(try await names(driver).isEmpty)
+        try await sink.insertRows([row("2", "Bo")])
+        try await sink.rollbackTransaction()
+
+        #expect(try await names(driver) == ["1:Ada"])
+    }
+
+    @Test("A reused table is emptied inside the user's open transaction the import joins")
+    func clearJoinsTheUsersTransaction() async throws {
+        let driver = try await people([(1, "Ada")])
+        _ = try await driver.execute(query: "BEGIN")
+        let sink = sink(on: driver, clearsTargetFirst: true)
+
+        try await sink.beginTransaction()
+        #expect(sink.joinsUserTransaction)
+        try await sink.insertRows([row("2", "Bo")])
+        #expect(try await names(driver) == ["2:Bo"])
+
+        _ = try await driver.execute(query: "ROLLBACK")
+        #expect(try await names(driver) == ["1:Ada"])
+    }
+
+    @Test("Without a transaction the reused table is emptied once, before the first row")
+    func clearRunsBeforeTheFirstRow() async throws {
+        let driver = try await people([(1, "Ada")])
+        let sink = sink(on: driver, clearsTargetFirst: true)
+
+        try await sink.insertRow(row("2", "Bo"))
+        try await sink.insertRow(row("3", "Cy"))
+
+        #expect(try await names(driver) == ["2:Bo", "3:Cy"])
     }
 
     @Test("Rows written with no transaction report as kept, not rolled back")

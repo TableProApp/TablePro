@@ -36114,6 +36114,10 @@
         }
       }
     },
+    "Cell %1$@ holds more than %2$@ of text, so the workbook was not read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Cell selection cleared" : {
       "localizations" : {
         "fr" : {
@@ -158054,6 +158058,10 @@
           }
         }
       }
+    },
+    "Rows read together hold more than %1$@ of text by row %2$@, so the workbook was not read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Rows sent" : {
       "localizations" : {

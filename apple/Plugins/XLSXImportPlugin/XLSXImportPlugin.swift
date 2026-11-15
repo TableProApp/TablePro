@@ -57,7 +57,7 @@ nonisolated final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, 
     func detectSourceFields(at url: URL, targetTable: String?) throws -> [PluginImportField] {
         let sheet = try XLSXImportSheet.read(at: url, hasHeaderRow: settings.hasHeaderRow, isCancelled: { Task.isCancelled })
         guard let header = sheet.header else { return [] }
-        let sample = sheet.rows(0 ..< Self.detectionSampleRows).map(\.values)
+        let sample = try sheet.rows(0 ..< Self.detectionSampleRows).map(\.values)
         return header.enumerated().map { index, name in
             let values = sample.compactMap { $0[safe: index] ?? nil }
             return PluginImportField(
@@ -100,7 +100,7 @@ nonisolated final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, 
         ) {
             guard cursor < sheet.rowCount else { return nil }
             let end = min(cursor + Self.batchSize, sheet.rowCount)
-            let rows = sheet.rows(cursor ..< end)
+            let rows = try sheet.rows(cursor ..< end)
             cursor = end
             let filled = rows.filter { $0.values.contains { $0 != nil } }
             if filled.count < rows.count {

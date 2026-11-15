@@ -9,6 +9,9 @@ nonisolated extension RedisDriver: MobileTransferEngine {
     func makeExportCatalog(context: MobileTransferContext) async throws -> any MobileExportCatalog {
         RedisTransferCatalog(driver: self)
     }
+
+    // The list shows keys, but the export's objects are whole databases, as on the Mac: Export Database lists them.
+    var exportsListedTables: Bool { false }
 }
 
 // Each database is one object, read whole with the Mac's `KEYBROWSE DB n` export statement, as the Mac's flat tree
