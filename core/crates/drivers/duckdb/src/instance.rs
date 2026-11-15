@@ -77,7 +77,11 @@ impl std::fmt::Debug for Instance {
 impl Drop for Instance {
     fn drop(&mut self) {
         let mut open = OPEN.lock().unwrap_or_else(PoisonError::into_inner);
-        drop(self.root.lock().unwrap_or_else(PoisonError::into_inner).take());
+        let root = self.root.lock().unwrap_or_else(PoisonError::into_inner).take();
+        // Closing checkpoints the file, which writes every expression in it back out, whichever thread drops this.
+        if let Err(error) = crate::connection::on_duckdb_stack(move || drop(root)) {
+            tracing::warn!(%error, "DuckDB did not close the file cleanly");
+        }
         if open
             .get(&self.id)
             .is_some_and(|entry| entry.instance.strong_count() == 0)
@@ -259,15 +263,13 @@ impl Instance {
         Ok(Link::new(connection, self.clone()))
     }
 
-    /// A connection for the app's own reads and saves. `SET
-    /// default_collation` in an editor tab reaches every connection to
-    /// the database, and `=` on a key would then find `'ABC'` and `'abc'`
-    /// alike, which DuckDB keeps as two rows: these compare byte for byte
-    /// whatever the tabs set.
+    // A tab's SET reaches every connection; the app's own compare keys byte for byte and keep a depth DuckDB fits.
     pub(crate) fn workspace_link(self: &Arc<Self>) -> Result<Link, DriverError> {
         let link = self.link()?;
         link.connection
-            .execute_batch("SET SESSION default_collation = ''")
+            .execute_batch(&format!(
+                "SET SESSION default_collation = ''; SET SESSION max_expression_depth = {MAX_EXPRESSION_DEPTH}"
+            ))
             .map_err(map_error)?;
         Ok(link)
     }
@@ -381,9 +383,10 @@ pub(crate) fn attach_unless_open<T>(
 /// this keeps every file a connection creates or attaches readable there.
 const STORAGE_VERSION: &str = "v0.10.2";
 
-/// Every connection opens the same way. Extensions are never fetched:
-/// a query that needs one DuckDB does not link in fails instead of
-/// downloading it, as the app makes no requests of its own.
+// DuckDB binds about 1 KiB of stack per level, also on threads of its own that get 512 KiB on macOS (ADR 0030).
+const MAX_EXPRESSION_DEPTH: u32 = 250;
+
+// Extensions are never fetched: a query needing one DuckDB does not link in fails, as the app makes no requests.
 pub(crate) fn config(read_only: bool) -> Result<Config, DriverError> {
     let mode = match read_only {
         true => AccessMode::ReadOnly,
@@ -394,6 +397,7 @@ pub(crate) fn config(read_only: bool) -> Result<Config, DriverError> {
         .and_then(|config| config.with("storage_compatibility_version", STORAGE_VERSION))
         .and_then(|config| config.with("autoinstall_known_extensions", "false"))
         .and_then(|config| config.with("autoload_known_extensions", "false"))
+        .and_then(|config| config.with("max_expression_depth", MAX_EXPRESSION_DEPTH.to_string()))
         .map_err(map_error)
 }
 
