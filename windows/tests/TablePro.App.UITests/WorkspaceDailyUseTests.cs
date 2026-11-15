@@ -61,10 +61,10 @@ public sealed partial class ShellTests
         app.OpenSubmenu("Tags", "New tag...").Patterns.Invoke.Pattern.Invoke();
         app.Find("NameDialogBox").AsTextBox().Text = "production";
         app.PressDialogButton();
-        Retry.WhileFalse(
+        Assert.True(Retry.WhileFalse(
             () => AppSession.Holds(() => app.FindByNamePrefix("Orders,", tree).Name.EndsWith("production", StringComparison.Ordinal)),
             AppSession.Wait,
-            throwOnTimeout: false);
+            throwOnTimeout: false).Success);
 
         app.Find("Rail_Orders").AsListBoxItem().Select();
         app.FindByName("Album", app.Find("ObjectTree"));
