@@ -1,0 +1,545 @@
+{
+  "cases": [
+    {
+      "name": "a semicolon inside a string ends nothing",
+      "dialect": "postgresql",
+      "sql": "SELECT 'a;b'; SELECT 2;",
+      "statements": [
+        "SELECT 'a;b'",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a backslash is literal in a plain string",
+      "dialect": "postgresql",
+      "sql": "SELECT 'C:\\'; SELECT 2;",
+      "statements": [
+        "SELECT 'C:\\'",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a backslash escapes the quote of an E string",
+      "dialect": "postgresql",
+      "sql": "SELECT E'it\\'s; fine'; SELECT 2;",
+      "statements": [
+        "SELECT E'it\\'s; fine'",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a string after a line break carries on an E string with its escapes",
+      "dialect": "postgresql",
+      "sql": "SELECT E'x'\n'\\'; SELECT 2; --';\nSELECT 3;",
+      "statements": [
+        "SELECT E'x'\n'\\'; SELECT 2; --'",
+        "SELECT 3"
+      ]
+    },
+    {
+      "name": "a name glued to E is a name before a plain string",
+      "dialect": "postgresql",
+      "sql": "SELECT xE'\\'; SELECT 2;",
+      "statements": [
+        "SELECT xE'\\'",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a dollar body hides its semicolons",
+      "dialect": "postgresql",
+      "sql": "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1; SELECT 2; $$ LANGUAGE sql;\nSELECT 3;",
+      "statements": [
+        "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1; SELECT 2; $$ LANGUAGE sql",
+        "SELECT 3"
+      ]
+    },
+    {
+      "name": "a tagged dollar body holds an untagged one",
+      "dialect": "postgresql",
+      "sql": "DO $body$ BEGIN RAISE NOTICE '$$;'; END $body$;\nSELECT 1;",
+      "statements": [
+        "DO $body$ BEGIN RAISE NOTICE '$$;'; END $body$",
+        "SELECT 1"
+      ]
+    },
+    {
+      "name": "a dollar inside a name opens no body",
+      "dialect": "postgresql",
+      "sql": "SELECT a$b$c FROM t; SELECT $1;",
+      "statements": [
+        "SELECT a$b$c FROM t",
+        "SELECT $1"
+      ]
+    },
+    {
+      "name": "block comments nest",
+      "dialect": "postgresql",
+      "sql": "SELECT 1 /* a /* b; */ c; */ + 1; SELECT 2;",
+      "statements": [
+        "SELECT 1 /* a /* b; */ c; */ + 1",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a carriage return ends a dash comment",
+      "dialect": "postgresql",
+      "sql": "SELECT 1 -- c\r+ 1; SELECT 2;",
+      "statements": [
+        "SELECT 1 -- c\r+ 1",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a hash is an operator",
+      "dialect": "postgresql",
+      "sql": "SELECT 1 # 2; SELECT 3;",
+      "statements": [
+        "SELECT 1 # 2",
+        "SELECT 3"
+      ]
+    },
+    {
+      "name": "a quoted name holds a semicolon",
+      "dialect": "postgresql",
+      "sql": "SELECT \"a;b\" FROM t; SELECT 2;",
+      "statements": [
+        "SELECT \"a;b\" FROM t",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "an unterminated string runs to the end",
+      "dialect": "postgresql",
+      "sql": "SELECT 1; SELECT 'open; SELECT 2",
+      "statements": [
+        "SELECT 1",
+        "SELECT 'open; SELECT 2"
+      ]
+    },
+    {
+      "name": "an unterminated dollar body runs to the end",
+      "dialect": "postgresql",
+      "sql": "SELECT 1; SELECT $$ open; SELECT 2",
+      "statements": [
+        "SELECT 1",
+        "SELECT $$ open; SELECT 2"
+      ]
+    },
+    {
+      "name": "a backslash escapes in a single-quoted string",
+      "dialect": "mysql",
+      "sql": "SELECT 'it\\'s; x'; SELECT 2;",
+      "statements": [
+        "SELECT 'it\\'s; x'",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a backslash escapes in a double-quoted string",
+      "dialect": "mysql",
+      "sql": "SELECT \"a\\\"; b\"; SELECT 2;",
+      "statements": [
+        "SELECT \"a\\\"; b\"",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a backslash is literal in a backtick name",
+      "dialect": "mysql",
+      "sql": "SELECT `a\\`; SELECT 2;",
+      "statements": [
+        "SELECT `a\\`",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a backtick name holds a semicolon",
+      "dialect": "mysql",
+      "sql": "SELECT `a;b` FROM t; SELECT 2;",
+      "statements": [
+        "SELECT `a;b` FROM t",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a hash starts a comment",
+      "dialect": "mysql",
+      "sql": "SELECT 1 # c; d\n+ 1; SELECT 2;",
+      "statements": [
+        "SELECT 1 # c; d\n+ 1",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a dash comment needs a space after it",
+      "dialect": "mysql",
+      "sql": "SELECT 1--1; SELECT 2 -- c; d\n+ 1; SELECT 3;",
+      "statements": [
+        "SELECT 1--1",
+        "SELECT 2 -- c; d\n+ 1",
+        "SELECT 3"
+      ]
+    },
+    {
+      "name": "a carriage return does not end a dash comment",
+      "dialect": "mysql",
+      "sql": "SELECT 1 -- c\r; SELECT 2\n+ 1; SELECT 3;",
+      "statements": [
+        "SELECT 1 -- c\r; SELECT 2\n+ 1",
+        "SELECT 3"
+      ]
+    },
+    {
+      "name": "block comments do not nest",
+      "dialect": "mysql",
+      "sql": "SELECT 1 /* a /* b */ + 1; SELECT 2;",
+      "statements": [
+        "SELECT 1 /* a /* b */ + 1",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "an executable comment is code",
+      "dialect": "mysql",
+      "sql": "/*!40101 SET NAMES utf8 */; SELECT 2;",
+      "statements": [
+        "/*!40101 SET NAMES utf8 */",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "an executable comment ends at the first close read as code",
+      "dialect": "mysql",
+      "sql": "SELECT 1 /*! AS '*/' */; SELECT 2 /*!50100 -- */\n*/; SELECT 3;",
+      "statements": [
+        "SELECT 1 /*! AS '*/' */",
+        "SELECT 2 /*!50100 -- */\n*/",
+        "SELECT 3"
+      ]
+    },
+    {
+      "name": "a DELIMITER line sets what ends a routine",
+      "dialect": "mysql",
+      "sql": "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END//\nDELIMITER ;\nSELECT 3;",
+      "statements": [
+        "CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END",
+        "SELECT 3"
+      ]
+    },
+    {
+      "name": "a delimiter inside a string ends nothing",
+      "dialect": "mysql",
+      "sql": "DELIMITER $$\nSELECT '$$'$$\nDELIMITER ;\nSELECT 2;",
+      "statements": [
+        "SELECT '$$'",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a bracket name holds a semicolon",
+      "dialect": "sqlite",
+      "sql": "SELECT [a;b] FROM t; SELECT 2;",
+      "statements": [
+        "SELECT [a;b] FROM t",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a bracket name ends at its first close",
+      "dialect": "sqlite",
+      "sql": "SELECT [a]]; SELECT 2;",
+      "statements": [
+        "SELECT [a]]",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a backslash is literal",
+      "dialect": "sqlite",
+      "sql": "SELECT 'C:\\'; SELECT 2;",
+      "statements": [
+        "SELECT 'C:\\'",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a backtick quotes a name",
+      "dialect": "sqlite",
+      "sql": "SELECT `a;b` FROM t; SELECT 2;",
+      "statements": [
+        "SELECT `a;b` FROM t",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a Tcl parameter runs to its closing parenthesis",
+      "dialect": "sqlite",
+      "sql": "SELECT $a('); SELECT 2; --')",
+      "statements": [
+        "SELECT $a(')",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "block comments do not nest",
+      "dialect": "sqlite",
+      "sql": "SELECT 1 /* a /* b */ + 1; SELECT 2;",
+      "statements": [
+        "SELECT 1 /* a /* b */ + 1",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a hash is no comment",
+      "dialect": "sqlite",
+      "sql": "SELECT 1; SELECT #a;",
+      "statements": [
+        "SELECT 1",
+        "SELECT #a"
+      ]
+    },
+    {
+      "name": "a doubled close bracket escapes",
+      "dialect": "mssql",
+      "sql": "SELECT [a]];b] FROM t\nGO\nSELECT 2",
+      "statements": [
+        "SELECT [a]];b] FROM t",
+        "SELECT 2"
+      ],
+      "batches": [
+        {
+          "text": "SELECT [a]];b] FROM t",
+          "repeat": 1
+        },
+        {
+          "text": "SELECT 2",
+          "repeat": 1
+        }
+      ]
+    },
+    {
+      "name": "block comments nest",
+      "dialect": "mssql",
+      "sql": "SELECT 1 /* a /* b; */ c;\nGO\n*/ + 1\nGO\nSELECT 2",
+      "statements": [
+        "SELECT 1 /* a /* b; */ c;\nGO\n*/ + 1",
+        "SELECT 2"
+      ],
+      "batches": [
+        {
+          "text": "SELECT 1 /* a /* b; */ c;\nGO\n*/ + 1",
+          "repeat": 1
+        },
+        {
+          "text": "SELECT 2",
+          "repeat": 1
+        }
+      ]
+    },
+    {
+      "name": "a backslash is literal",
+      "dialect": "mssql",
+      "sql": "SELECT 'C:\\'\nGO\nSELECT 2",
+      "statements": [
+        "SELECT 'C:\\'",
+        "SELECT 2"
+      ],
+      "batches": [
+        {
+          "text": "SELECT 'C:\\'",
+          "repeat": 1
+        },
+        {
+          "text": "SELECT 2",
+          "repeat": 1
+        }
+      ]
+    },
+    {
+      "name": "GO lines end batches and repeat them",
+      "dialect": "mssql",
+      "sql": "INSERT INTO t VALUES (1)\nGO 3\nSELECT COUNT(*) FROM t\ngo\n",
+      "statements": [
+        "INSERT INTO t VALUES (1)",
+        "SELECT COUNT(*) FROM t"
+      ],
+      "batches": [
+        {
+          "text": "INSERT INTO t VALUES (1)",
+          "repeat": 3
+        },
+        {
+          "text": "SELECT COUNT(*) FROM t",
+          "repeat": 1
+        }
+      ]
+    },
+    {
+      "name": "GO inside a string separates nothing",
+      "dialect": "mssql",
+      "sql": "SELECT 'a\nGO\nb'\nGO\nSELECT 2",
+      "statements": [
+        "SELECT 'a\nGO\nb'",
+        "SELECT 2"
+      ],
+      "batches": [
+        {
+          "text": "SELECT 'a\nGO\nb'",
+          "repeat": 1
+        },
+        {
+          "text": "SELECT 2",
+          "repeat": 1
+        }
+      ]
+    },
+    {
+      "name": "GO inside a bracket name separates nothing",
+      "dialect": "mssql",
+      "sql": "SELECT [a]]\nGO\nb] FROM t\nGO\nSELECT 2",
+      "statements": [
+        "SELECT [a]]\nGO\nb] FROM t",
+        "SELECT 2"
+      ],
+      "batches": [
+        {
+          "text": "SELECT [a]]\nGO\nb] FROM t",
+          "repeat": 1
+        },
+        {
+          "text": "SELECT 2",
+          "repeat": 1
+        }
+      ]
+    },
+    {
+      "name": "GO inside a comment separates nothing",
+      "dialect": "mssql",
+      "sql": "SELECT 1 /*\nGO\n*/ + 1\nGO\nSELECT 2",
+      "statements": [
+        "SELECT 1 /*\nGO\n*/ + 1",
+        "SELECT 2"
+      ],
+      "batches": [
+        {
+          "text": "SELECT 1 /*\nGO\n*/ + 1",
+          "repeat": 1
+        },
+        {
+          "text": "SELECT 2",
+          "repeat": 1
+        }
+      ]
+    },
+    {
+      "name": "a backslash escapes in a string",
+      "dialect": "clickhouse",
+      "sql": "SELECT 'a\\'; b'; SELECT 2;",
+      "statements": [
+        "SELECT 'a\\'; b'",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a hash and a space start a comment",
+      "dialect": "clickhouse",
+      "sql": "SELECT 1 # c; d\n+ 1; SELECT 2;",
+      "statements": [
+        "SELECT 1 # c; d\n+ 1",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a double slash starts a comment",
+      "dialect": "clickhouse",
+      "sql": "SELECT 1 // c; d\n+ 1; SELECT 2;",
+      "statements": [
+        "SELECT 1 // c; d\n+ 1",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a heredoc hides its semicolons",
+      "dialect": "clickhouse",
+      "sql": "SELECT $doc$a;b$doc$; SELECT 2;",
+      "statements": [
+        "SELECT $doc$a;b$doc$",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a dollar body hides its semicolons",
+      "dialect": "duckdb",
+      "sql": "SELECT $$a;b$$; SELECT 2;",
+      "statements": [
+        "SELECT $$a;b$$",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a backslash escapes only in an E string",
+      "dialect": "duckdb",
+      "sql": "SELECT E'it\\'s; x'; SELECT 'a\\'; SELECT 2;",
+      "statements": [
+        "SELECT E'it\\'s; x'",
+        "SELECT 'a\\'",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "block comments nest",
+      "dialect": "duckdb",
+      "sql": "SELECT 1 /* a /* b; */ c; */ + 1; SELECT 2;",
+      "statements": [
+        "SELECT 1 /* a /* b; */ c; */ + 1",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a backtick quotes a name",
+      "dialect": "duckdb",
+      "sql": "SELECT `a;b` FROM t; SELECT 2;",
+      "statements": [
+        "SELECT `a;b` FROM t",
+        "SELECT 2"
+      ]
+    },
+    {
+      "name": "a dollar body hides its semicolons",
+      "dialect": "cql",
+      "sql": "SELECT $$a;b$$ FROM t; SELECT 2 FROM t;",
+      "statements": [
+        "SELECT $$a;b$$ FROM t",
+        "SELECT 2 FROM t"
+      ]
+    },
+    {
+      "name": "a double slash starts a comment",
+      "dialect": "cql",
+      "sql": "SELECT a FROM t // c; d\nWHERE a = 1; SELECT 2 FROM t;",
+      "statements": [
+        "SELECT a FROM t // c; d\nWHERE a = 1",
+        "SELECT 2 FROM t"
+      ]
+    },
+    {
+      "name": "a doubled quote escapes and a backslash does not",
+      "dialect": "cql",
+      "sql": "SELECT 'x''y;z', 'd\\' FROM t; SELECT 2 FROM t;",
+      "statements": [
+        "SELECT 'x''y;z', 'd\\' FROM t",
+        "SELECT 2 FROM t"
+      ]
+    },
+    {
+      "name": "a batch is one statement",
+      "dialect": "cql",
+      "sql": "BEGIN BATCH INSERT INTO t (a) VALUES (1); INSERT INTO t (a) VALUES (2); APPLY BATCH; SELECT a FROM t;",
+      "statements": [
+        "BEGIN BATCH INSERT INTO t (a) VALUES (1); INSERT INTO t (a) VALUES (2); APPLY BATCH",
+        "SELECT a FROM t"
+      ]
+    }
+  ]
+}

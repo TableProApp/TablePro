@@ -829,7 +829,7 @@ struct SQLFormatterServiceTests {
             dialectFunctions: ["toString"],
             rewritesFunctionCase: false
         )
-        let tokens = SQLTokenizer(dialectKeywords: ["toString"]).tokenize("select toString(x), count(*) from t")
+        let tokens = SQLTokenizer(dialectKeywords: ["toString"]).tokenize("select toString(x), count(*) from t", grammar: .ansi)
         #expect(tokenFormatter.format(tokens) == """
         SELECT toString(x),
                count(*)

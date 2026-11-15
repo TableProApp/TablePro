@@ -28,6 +28,9 @@ public sealed class QueryEditor : IAsyncDisposable
         return CoreCall.RunAsync(token => _editor.UseDatabase(database, token), cancellationToken);
     }
 
+    // Where an unqualified name resolves now, as the server last said, a typed USE included; null where not followed.
+    public string? Database => _editor.Database();
+
     // The connection is gone, and is never opened again by itself since its transaction would not come back with it.
     public bool IsLost => _editor.IsLost();
 

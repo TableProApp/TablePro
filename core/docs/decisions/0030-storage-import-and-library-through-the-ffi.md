@@ -1,4 +1,4 @@
-# 0029: Saved queries, favourites, history pins, CSV import and connection copies cross the FFI
+# 0030: Saved queries, favourites, history pins, CSV import and connection copies cross the FFI
 
 - **Status**: Accepted
 - **Date**: 2026-11-15

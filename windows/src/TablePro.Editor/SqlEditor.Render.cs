@@ -261,7 +261,7 @@ public sealed partial class SqlEditor
 
     private void ConfigureLayouts()
     {
-        _layouts?.Configure(_fontSize * _zoom, _model.Options.TabSize);
+        _layouts?.Configure(_fontFamily, _fontSize * _zoom, _model.Options.TabSize);
         _frameLayouts.Clear();
         _frameVersion = -1;
     }

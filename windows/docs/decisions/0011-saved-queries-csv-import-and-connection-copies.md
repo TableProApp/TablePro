@@ -5,7 +5,7 @@
 
 ## Context
 
-The Windows app could not keep a query, pin a run in the history, import a file into a table, duplicate a connection or export the connections file. The macOS app has each, and the core now carries them through the FFI ([core 0029](../../../core/docs/decisions/0029-storage-import-and-library-through-the-ffi.md)).
+The Windows app could not keep a query, pin a run in the history, import a file into a table, duplicate a connection or export the connections file. The macOS app has each, and the core now carries them through the FFI ([core 0030](../../../core/docs/decisions/0030-storage-import-and-library-through-the-ffi.md)).
 
 ## Decision
 

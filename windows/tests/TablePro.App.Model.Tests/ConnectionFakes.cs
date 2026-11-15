@@ -22,6 +22,9 @@ internal sealed class FakeConnector : IConnector<FakeDatabase>
     // What each attempt asked the core to store once it logged in.
     public List<ConnectionSecrets> Kept { get; } = [];
 
+    // The database each attempt opened the saved connection in, null for its own.
+    public List<string?> Databases { get; } = [];
+
     // Each connect takes the next failure, until none is left.
     public Queue<CoreError> Failures { get; } = new();
 
@@ -29,10 +32,12 @@ internal sealed class FakeConnector : IConnector<FakeDatabase>
 
     public async Task<FakeDatabase> ConnectSavedAsync(
         Guid id,
+        string? database,
         ConnectionSecrets secrets,
         ConnectionSecrets keep,
         CancellationToken cancellationToken)
     {
+        Databases.Add(database);
         Attempts.Add(secrets);
         Kept.Add(keep);
         return await OpenAsync(cancellationToken);

@@ -1,6 +1,7 @@
 //! What the catalogue reads report for a DuckDB file.
 
 use tablepro_core::column::ColumnDefault;
+use tablepro_core::dump::DumpScope;
 use tablepro_core::meta::{IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef};
 use tablepro_core::{RunEnd, Value};
 
@@ -432,5 +433,33 @@ async fn a_schema_named_like_the_file_is_read_and_changed() {
     assert_eq!(read.rows, vec![vec![Value::Int(2)]]);
     assert_eq!(columns.len(), 3);
     assert_eq!(dialect.portable_name(&table), "\"test\".\"t\"");
+    connection.close().await.unwrap();
+}
+
+// A dump reads each child's parents as one list, which a separator character inside a quoted name cannot split.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dump_orders_a_child_after_each_parent_it_names() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE \"z\u{1f}parent\" (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE other (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE achild (a INTEGER REFERENCES \"z\u{1f}parent\" (id), b INTEGER REFERENCES other (id), \
+             c INTEGER REFERENCES \"Z\u{1f}PARENT\" (id))",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let dump = connection
+        .read_dump_catalog(&DumpScope::Database, call())
+        .await
+        .unwrap();
+
+    let child = dump.tables.iter().find(|table| table.table.name == "achild").unwrap();
+    let parents: Vec<&str> = child.references.iter().map(|parent| parent.name.as_str()).collect();
+    assert_eq!(parents, ["z\u{1f}parent", "other"]);
     connection.close().await.unwrap();
 }

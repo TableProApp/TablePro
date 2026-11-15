@@ -83,7 +83,7 @@ fn comma() -> CsvReadOptions {
 }
 
 async fn run(session: &DatabaseSession, sql: &str) -> Option<Arc<ResultSet>> {
-    let editor = session.open_editor(None).await.unwrap();
+    let editor = session.open_editor(None, None).await.unwrap();
     let run = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Quiet));
     assert!(matches!(run.outcome().await.unwrap(), RunOutcome::Completed { .. }));
     let set = run.result_set(0);
@@ -350,6 +350,7 @@ async fn confirm_writes_asks_first_and_read_only_refuses() {
     let session = core
         .connect_saved(
             saved.id,
+            None,
             ConnectionSecrets::default(),
             ConnectionSecrets::default(),
             None,

@@ -120,6 +120,11 @@ public struct QueryScript: Sendable, Equatable {
         return SQLStatementScanner.executableStatements(in: unit.sql, grammar: grammar).map(\.sql)
     }
 
+    // The grammar the units were split by; standard SQL for a script built from units alone.
+    public var lexicalGrammar: SQLLexicalGrammar {
+        databaseType.map { Self.executionGrammar(for: $0, session: session) } ?? .ansi
+    }
+
     // A bare Redis argument may end in a byte Foundation trims, such as a vertical tab or a no-break space.
     public static func trimmed(_ text: String, databaseType: DatabaseType) -> String {
         guard databaseType == .redis else { return text.trimmingCharacters(in: .whitespacesAndNewlines) }

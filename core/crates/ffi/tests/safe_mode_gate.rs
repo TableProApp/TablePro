@@ -78,7 +78,7 @@ fn file(path: &Path, read_only: bool, create: bool) -> FileOpenRequest {
 
 async fn people(core: &Core, path: &Path) {
     let session = core.open_file(file(path, false, true), None).await.unwrap();
-    let editor = session.open_editor(None).await.unwrap();
+    let editor = session.open_editor(None, None).await.unwrap();
     let run = editor.run(
         "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)".to_owned(),
         RunSettings::default(),
@@ -126,6 +126,7 @@ async fn saved(core: &Core, path: &Path, safe_mode: SafeModeTag) -> Arc<Database
         .unwrap();
     core.connect_saved(
         saved.id,
+        None,
         ConnectionSecrets::default(),
         ConnectionSecrets::default(),
         None,

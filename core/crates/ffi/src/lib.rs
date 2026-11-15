@@ -21,6 +21,7 @@ mod history;
 mod host;
 mod host_key;
 mod import;
+mod key_read;
 mod library;
 mod masking;
 mod prompter;
@@ -35,6 +36,8 @@ mod session;
 mod statement_at;
 mod structure;
 mod syntax;
+#[cfg(test)]
+mod test_session;
 pub mod window_abi;
 
 pub use account::{
@@ -67,6 +70,7 @@ pub use import::{
     CsvDelimiterTag, CsvImport, CsvImportCheck, CsvImportOutcome, CsvPreview, CsvReadOptions, CsvRowFault,
     ImportColumnInfo, LineSpan,
 };
+pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
 pub use library::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, GroupRecord, ImportSummary, LibrarySnapshot, SafeModeTag,
     SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings,
@@ -85,7 +89,10 @@ pub use row_edits::{
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
 pub use safe_mode_gate::RunGate;
 pub use saved_queries::{SavedQueriesInfo, SavedQueryDraft, SavedQueryFolderInfo, SavedQueryInfo, SavedQueryStore};
-pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, RowEstimate, SessionHealthTag, TablePageRead};
+pub use session::{
+    ColumnSort, DatabaseLayoutTag, DatabaseSession, FailureCauseTag, PageResume, RowEstimate, SessionHealthTag,
+    TablePageRead,
+};
 pub use statement_at::StatementSpan;
 pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableStructure};
 
