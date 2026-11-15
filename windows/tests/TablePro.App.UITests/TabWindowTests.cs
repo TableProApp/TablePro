@@ -245,6 +245,33 @@ public sealed partial class ShellTests
         app.PressDialogButton();
     }
 
+    // The cancelled prompt is still playing its closing transition when Roll back asks.
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void RollBackRightAfterCancellingCloseStillAsks(string theme)
+    {
+        var folder = AppSession.NewDataFolder(theme);
+        var state = new
+        {
+            connections = new[]
+            {
+                new { filePath = AppSession.SampleDatabase(folder), name = "First", engineId = "sqlite",
+                    tabs = new[] { new { kind = "Query", title = "Query 1", sql = "BEGIN" } } },
+            },
+            front = 0,
+        };
+        File.WriteAllText(Path.Combine(folder, "session.json"), JsonSerializer.Serialize(state));
+        using var app = AppSession.Relaunch(folder, theme);
+        app.Find("SqlEditor");
+        app.Chord(() => app.TryFind("CommitButton") is { IsOffscreen: false }, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
+        app.Chord(() => app.TryFind("PrimaryButton") is not null, VirtualKeyShort.ALT, VirtualKeyShort.F4);
+        app.CloseDialog();
+        app.Find("RollBackButton").AsButton().Invoke();
+        app.PressDialogButton("Roll back");
+        Assert.True(Retry.WhileFalse(() => app.TryFind("CommitButton") is null or { IsOffscreen: true },
+            AppSession.Wait, throwOnTimeout: false).Success);
+    }
+
     private static void OpenTrack(AppSession app)
     {
         app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
