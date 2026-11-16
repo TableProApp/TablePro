@@ -25,6 +25,8 @@ private struct SQLiteTestDialect: MobileWriteDialect {
     }
 }
 
+private struct DuplicateTable: Error {}
+
 struct MobileImportDataSinkTests {
     private let directory: URL
 
@@ -184,6 +186,26 @@ struct MobileImportDataSinkTests {
         let enforced = try await driver.execute(query: "PRAGMA foreign_keys").rows.first?.first ?? nil
         #expect(enforced == "1")
         #expect(try await names(driver) == ["1:Ada"])
+    }
+
+    @Test("A DDL statement that fails after MySQL committed the rows before it reports them as kept")
+    func failedDDLAfterAnImplicitCommitKeepsTheRows() async throws {
+        let driver = MockDatabaseDriver()
+        driver.scriptedTransactionState = .idle
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0)),
+            .failure(DuplicateTable())
+        ]
+        let sink = MobileImportDataSink(driver: driver, databaseType: .mysql)
+        try await sink.beginTransaction()
+        try await sink.execute(statement: "INSERT INTO people (id) VALUES (1)")
+
+        await #expect(throws: DuplicateTable.self) {
+            try await sink.execute(statement: "CREATE TABLE people (id INT)")
+        }
+        try await sink.rollbackTransaction()
+
+        #expect(await sink.transactionEnding() == .partlyCommitted)
     }
 
     // Critic M8: the import never commits or rolls back the user's transaction, and says the rows wait in it.

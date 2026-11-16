@@ -92,6 +92,16 @@ nonisolated struct ExportObjectRow: Identifiable, Sendable {
     }
 }
 
+// A table's or view's Export names a relation: a routine or trigger of the same name is not it.
+nonisolated extension PluginExportObjectKind {
+    var isRelation: Bool {
+        switch self {
+        case .table, .view, .materializedView, .foreignTable: return true
+        case .sequence, .userType, .routine, .trigger, .event, .grant: return false
+        }
+    }
+}
+
 // The seams a test replaces: where the formats, the object list and the run come from.
 struct MobileExportEnvironment {
     var formats: (DatabaseType) -> [any ExportFormatPlugin]
@@ -214,7 +224,7 @@ final class MobileExportModel {
         let kinds = Set(type(of: plugin).supportedObjectKinds)
         var shown = rows.filter { kinds.contains($0.object.kind) }
         if case .table(let name)? = scope?.source {
-            shown = shown.filter { $0.object.name == name && $0.object.kind.carriesRows }
+            shown = shown.filter { $0.object.name == name && $0.object.kind.isRelation }
         }
         let grouped = Dictionary(grouping: shown, by: \.object.kind)
         return grouped.keys.sorted { $0.dumpOrder < $1.dumpOrder }.map { kind in
@@ -275,7 +285,7 @@ final class MobileExportModel {
     // table ticked.
     private func selectsAtFirst(_ object: PluginExportTable) -> Bool {
         guard case .table(let name)? = scope?.source else { return true }
-        return object.name == name && object.kind.carriesRows
+        return object.name == name && object.kind.isRelation
     }
 
     // The list holds every kind the database has, so a format that writes more kinds shows them with the selection

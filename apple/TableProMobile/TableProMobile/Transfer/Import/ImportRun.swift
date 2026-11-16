@@ -411,6 +411,11 @@ nonisolated final class ImportRun: @unchecked Sendable {
         let preparation = try await prepareNewTable(on: driver, dialect: dialect)
         if preparation.created { catalogChanges.insert(.tables) }
 
+        let host = host
+        let catalogHold = request.target == nil ? ImportCatalogHold(
+            hold: { await host.holdTransferCatalogConnections() },
+            release: { await host.releaseTransferCatalogConnections() }
+        ) : nil
         let sink = MobileImportDataSink(
             driver: driver,
             databaseType: request.databaseType,
@@ -426,7 +431,8 @@ nonisolated final class ImportRun: @unchecked Sendable {
                 )
             },
             dialect: dialect,
-            clearsTargetFirst: preparation.clearsFirst
+            clearsTargetFirst: preparation.clearsFirst,
+            catalogHold: catalogHold
         )
         let shared = SharedProgress(Progress(totalUnitCount: 0))
         let progress = PluginImportProgress(progress: shared.progress)
@@ -482,6 +488,7 @@ nonisolated final class ImportRun: @unchecked Sendable {
 
         let choice = lock.withLock { stopChoice }
         await sink.finish(commit: choice == .commit || (failure == nil && choice == nil))
+        await catalogHold?.releaseIfHeld()
         let transaction = await sink.transactionEnding()
 
         return DataImportOutcome(

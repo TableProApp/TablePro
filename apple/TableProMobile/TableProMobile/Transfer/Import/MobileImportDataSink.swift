@@ -58,6 +58,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     // or stops gives back the rows the first run kept (macOS `RowImportTableMaker`).
     private let clearsTargetFirst: Bool
     private let catalogGrammar: SQLLexicalGrammar
+    private let catalogHold: ImportCatalogHold?
 
     private let lock = NSLock()
     private var stopChoice: ImportStopChoice?
@@ -82,9 +83,11 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
         rowTarget: RowTarget? = nil,
         dialect: (any MobileWriteDialect)? = nil,
         clearsTargetFirst: Bool = false,
+        catalogHold: ImportCatalogHold? = nil,
         isCancelled: @escaping @Sendable () -> Bool = { false }
     ) {
         self.driver = driver
+        self.catalogHold = catalogHold
         self.clearsTargetFirst = clearsTargetFirst
         self.catalogGrammar = SQLLexicalReadings.resolve(
             databaseTypeId: databaseType.rawValue, declared: nil, session: nil
@@ -328,14 +331,23 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     func execute(statement: String, line: Int) async throws {
         try admitWrite()
         noteSessionEffect(of: statement)
+        if let catalogHold, SessionLocalStatements.changesDatabases(statement, databaseType: databaseType) {
+            await catalogHold.holdOnce()
+        }
         let grammar = SQLImportFile.grammar(for: databaseType, session: driver.settledLexicalFacts)
-        if grammar.contains(.batchSeparatorLines), !driver.sendsBatchesWhole {
-            for piece in SQLStatementScanner.executableStatements(in: statement, grammar: grammar) {
-                try admitWrite()
-                _ = try await driver.execute(query: piece.sql)
+        // MySQL commits the open transaction before a DDL statement runs, so one that then fails still ended it.
+        do {
+            if grammar.contains(.batchSeparatorLines), !driver.sendsBatchesWhole {
+                for piece in SQLStatementScanner.executableStatements(in: statement, grammar: grammar) {
+                    try admitWrite()
+                    _ = try await driver.execute(query: piece.sql)
+                }
+            } else {
+                _ = try await driver.execute(query: statement)
             }
-        } else {
-            _ = try await driver.execute(query: statement)
+        } catch {
+            await noteEffects(of: statement)
+            throw error
         }
         await noteEffects(of: statement)
     }

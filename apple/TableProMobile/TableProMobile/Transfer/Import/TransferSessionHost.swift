@@ -34,6 +34,38 @@ protocol TransferSessionHost: AnyObject, Sendable {
     // Background time ran out while the import's own rollback was still on the wire: closing the connection makes the
     // server end the transaction, and the next use of the session dials again.
     func abandonTransferSession() async
+    // SQL Server cannot drop or restore a database TablePro's catalog connection sits in (`holdCatalogConnections`).
+    func holdTransferCatalogConnections() async
+    func releaseTransferCatalogConnections()
+}
+
+// Taken at a SQL file's first statement that drops, alters or restores a database, and given back when the run ends.
+nonisolated final class ImportCatalogHold: @unchecked Sendable {
+    private let hold: @Sendable () async -> Void
+    private let release: @Sendable () async -> Void
+    private let lock = NSLock()
+    private var held = false
+
+    init(hold: @escaping @Sendable () async -> Void, release: @escaping @Sendable () async -> Void) {
+        self.hold = hold
+        self.release = release
+    }
+
+    func holdOnce() async {
+        let first = lock.withLock { () -> Bool in
+            defer { held = true }
+            return !held
+        }
+        if first { await hold() }
+    }
+
+    func releaseIfHeld() async {
+        let wasHeld = lock.withLock { () -> Bool in
+            defer { held = false }
+            return held
+        }
+        if wasHeld { await release() }
+    }
 }
 
 extension ConnectionCoordinator: TransferSessionHost {
@@ -60,6 +92,14 @@ extension ConnectionCoordinator: TransferSessionHost {
 
     func followTransferPlacement(movesDatabase: Bool, movesSchema: Bool) async {
         await followSessionPlacement(after: SessionMove(database: movesDatabase, schema: movesSchema))
+    }
+
+    func holdTransferCatalogConnections() async {
+        await connectionManager.holdCatalogConnections(for: connection.id)
+    }
+
+    func releaseTransferCatalogConnections() {
+        connectionManager.releaseCatalogConnections(for: connection.id)
     }
 
     func abandonTransferSession() async {

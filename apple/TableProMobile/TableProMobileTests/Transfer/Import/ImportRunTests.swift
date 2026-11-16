@@ -57,6 +57,17 @@ private final class FakeSessionHost: TransferSessionHost {
     }
 
     func abandonTransferSession() async {}
+
+    private(set) var catalogHolds = 0
+    private(set) var catalogReleases = 0
+
+    func holdTransferCatalogConnections() async {
+        catalogHolds += 1
+    }
+
+    func releaseTransferCatalogConnections() {
+        catalogReleases += 1
+    }
 }
 
 struct ImportRunTests {
@@ -308,6 +319,20 @@ struct ImportRunTests {
         }
         let names = try await driver.execute(query: "SELECT name FROM people ORDER BY id").rows.compactMap { $0.first ?? nil }
         #expect(names == ["Ada", "Bo"])
+    }
+
+    @Test("A SQL file that drops, alters or restores a database holds the catalog connections until the run ends",
+          arguments: [true, false])
+    func databaseChangesHoldTheCatalog(changesDatabases: Bool) async throws {
+        let driver = try await database()
+        let host = await FakeSessionHost(driver: driver)
+        let text = changesDatabases ? "CREATE TABLE t (a INTEGER);\nDROP DATABASE other;\n" : "CREATE TABLE t (a INTEGER);\n"
+        let run = ImportRun(request: request(try staged("run.sql", text), formatId: "sql"), plugin: MobileImportFormats.sql, host: host)
+
+        _ = try await run.run { _ in }
+
+        #expect(await host.catalogHolds == (changesDatabases ? 1 : 0))
+        #expect(await host.catalogReleases == (changesDatabases ? 1 : 0))
     }
 
     @Test("An import the session cannot take now is refused with why, before it writes anything", arguments: [

@@ -247,6 +247,22 @@ struct MobileExportModelTests {
         #expect(model.exportableObjects.map { $0.name } == ["orders"])
     }
 
+    @Test("A view's export shows and picks that view, and leaves out a routine of the same name")
+    func viewObjects() async {
+        let model = MobileExportModel(
+            input: input(scopes: [ExportScopeOption(kind: .wholeTable, source: .table("totals"))]),
+            environment: environment(objects: [
+                object("orders", kind: .table), object("totals", kind: .view), object("totals", kind: .routine)
+            ])
+        )
+        model.selectFormat(type(of: MobileExportFormats.sql).formatId)
+        await model.loadObjectsIfNeeded()
+
+        #expect(model.objectGroups.flatMap { $0.rows }.map { $0.object.kind } == [.view])
+        #expect(model.exportableObjects.map { $0.name } == ["totals"])
+        #expect(model.canExport)
+    }
+
     @Test("Another format gives every object that format's default options")
     func formatChangeResetsOptions() async {
         let model = MobileExportModel(
