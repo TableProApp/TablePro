@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use async_trait::async_trait;
 use tablepro_core::browse::{DeclaredPrecisionSink, ExportFields, ExportRequest, SortKey, build_export};
 use tablepro_core::column::{ColumnKind, ColumnType, ResultColumn};
-use tablepro_core::dialect::{DatabaseLayout, SqlDialect};
+use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::parse_filter_text;
 use tablepro_core::export::{
     CsvEncoder, CsvOptions, EncodeError, HtmlEncoder, JsonArrayEncoder, MarkdownEncoder, RenderError, RowEncoder,
@@ -72,7 +72,7 @@ pub enum ExportFormatTag {
 #[uniffi::export]
 impl DatabaseSession {
     // Only the first `visible_columns` columns, since a table page carries row addresses after them. SQL INSERT with no
-    // table writes into the one table every column was read from, else into `query_results`.
+    // table writes into `query_results`, as the macOS app names a query result's table.
     #[expect(
         clippy::too_many_arguments,
         reason = "the rows, their format, table and file, and the app's progress and cancel, as the app passes them"
@@ -105,7 +105,7 @@ impl DatabaseSession {
             }
             let held = rows.result_columns();
             let visible = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
-            let mut columns: Arc<[ResultColumn]> = held.iter().take(visible).cloned().collect();
+            let columns: Arc<[ResultColumn]> = held.iter().take(visible).cloned().collect();
             let insert = match (format, &table) {
                 (ExportFormatTag::SqlInsert, Some(table)) => {
                     let catalog = tokio::select! {
@@ -115,35 +115,12 @@ impl DatabaseSession {
                     };
                     Some(InsertTarget::of(table, &catalog))
                 }
-                (ExportFormatTag::SqlInsert, None) => match source_table(&columns) {
-                    Some((source, named)) => {
-                        // Read only to leave out what the server computes; a table that cannot be read leaves none out.
-                        let layout = session.current_dialect().map(|dialect| dialect.database_layout());
-                        let catalog = match catalog_describes(layout) {
-                            false => None,
-                            true => tokio::select! {
-                                biased;
-                                () = cancel.cancelled() => return Err(CoreError::Cancelled),
-                                columns = session.columns(source.clone()) => columns.ok(),
-                            },
-                        };
-                        let into = InsertTarget::of(&source, catalog.as_deref().unwrap_or_default());
-                        // A result of only what the server computes would write nothing there, so its values go to
-                        // query_results instead.
-                        match named.iter().all(|column| into.generated.contains(&column.name)) {
-                            true => Some(InsertTarget::of(&TableRef::unqualified(RESULT_TABLE), &[])),
-                            false => {
-                                columns = named;
-                                Some(into)
-                            }
-                        }
-                    }
-                    None => Some(InsertTarget::of(&TableRef::unqualified(RESULT_TABLE), &[])),
-                },
+                (ExportFormatTag::SqlInsert, None) => Some(InsertTarget::of(&TableRef::unqualified(RESULT_TABLE), &[])),
                 _ => None,
             };
-            // An INSERT that names a column twice is refused by the server, so it is refused here before any file.
-            if insert.is_some() && repeats_a_name(&columns, session.grammar()) {
+            // A query result's INSERT that names a column twice is refused by the server, or keeps one of the two values
+            // where the engine reads the names as one column, so it is refused here before any file.
+            if format == ExportFormatTag::SqlInsert && table.is_none() && repeats_a_name(&columns, session.grammar()) {
                 return Err(CoreError::failed(
                     "ffi.export_duplicate_columns",
                     "SQL INSERT names each column once",
@@ -266,7 +243,7 @@ impl TableRead {
     }
 }
 
-// The table a query result's INSERT statements write into when its columns name no one table.
+// The table a query result's INSERT statements write into, as the macOS app names it.
 const RESULT_TABLE: &str = "query_results";
 
 #[derive(Clone)]
@@ -528,30 +505,6 @@ fn repeats_a_name(columns: &[ResultColumn], grammar: SqlGrammar) -> bool {
             .take(index)
             .any(|before| same_name(&before.name, &column.name, grammar))
     })
-}
-
-// Where each database holds schemas of its own, an origin names no database, and an editor can read in another one
-// than the session's, so the session's catalog may describe another table of the same name.
-fn catalog_describes(layout: Option<DatabaseLayout>) -> bool {
-    layout != Some(DatabaseLayout::WithSchemas)
-}
-
-// The table every column was read from, as the driver traced it, with each column under the name the table gives it,
-// so an alias is written as the column it reads. A column it could not trace, or one read twice, names none.
-fn source_table(columns: &[ResultColumn]) -> Option<(TableRef, Arc<[ResultColumn]>)> {
-    let table = &columns.first()?.origin.as_ref()?.table;
-    let mut named: Vec<ResultColumn> = Vec::with_capacity(columns.len());
-    for column in columns {
-        let origin = column.origin.as_ref().filter(|origin| origin.table == *table)?;
-        if named.iter().any(|seen| seen.name == origin.column) {
-            return None;
-        }
-        named.push(ResultColumn {
-            name: origin.column.clone(),
-            ..column.clone()
-        });
-    }
-    Some((table.clone(), named.into()))
 }
 
 // The rows a set holds, through the same sink a streamed read feeds, so both write the same bytes.
@@ -867,54 +820,6 @@ mod tests {
             SqlGrammar::PostgreSql
         ));
         assert!(!repeats_a_name(&[named("id"), named("name")], SqlGrammar::MySql));
-    }
-
-    #[test]
-    fn a_result_where_each_database_holds_schemas_of_its_own_reads_no_catalog() {
-        assert!(!catalog_describes(Some(DatabaseLayout::WithSchemas)));
-        assert!(catalog_describes(Some(DatabaseLayout::AsSchemas)));
-        assert!(catalog_describes(Some(DatabaseLayout::Single)));
-        assert!(catalog_describes(None));
-    }
-
-    #[test]
-    fn a_result_writes_into_its_one_traced_table_under_the_tables_column_names() {
-        let traced = |name: &str, table: &str| {
-            array_of(name, bigint()).with_origin(Some(tablepro_core::column::ColumnOrigin::new(
-                TableRef::new(Some("public".to_owned()), table),
-                name,
-            )))
-        };
-        let orders = TableRef::new(Some("public".to_owned()), "orders");
-
-        let mut aliased = traced("total", "orders");
-        aliased.name = "amount".to_owned();
-        let names = |found: Option<(TableRef, Arc<[ResultColumn]>)>| {
-            found.map(|(table, columns)| {
-                (
-                    table,
-                    columns.iter().map(|column| column.name.clone()).collect::<Vec<_>>(),
-                )
-            })
-        };
-
-        assert_eq!(
-            names(source_table(&[traced("id", "orders"), aliased])),
-            Some((orders, vec!["id".to_owned(), "total".to_owned()]))
-        );
-        assert_eq!(
-            names(source_table(&[traced("id", "orders"), traced("name", "people")])),
-            None
-        );
-        assert_eq!(
-            names(source_table(&[traced("id", "orders"), array_of("sum", bigint())])),
-            None
-        );
-        assert_eq!(
-            names(source_table(&[traced("id", "orders"), traced("id", "orders")])),
-            None
-        );
-        assert_eq!(names(source_table(&[])), None);
     }
 
     #[test]

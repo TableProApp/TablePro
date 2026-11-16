@@ -29,7 +29,7 @@ public sealed class ExportPlan
     // Without an extension: the save picker adds the one of the format chosen.
     public string FileName { get; }
 
-    // A query result's SQL INSERT writes into the table its columns came from, which the core works out.
+    // A query result's SQL INSERT writes into query_results, as macOS names it.
     public static ExportPlan For(TableName? table, string resultsName)
     {
         ArgumentNullException.ThrowIfNull(resultsName);

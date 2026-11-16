@@ -1,6 +1,6 @@
 namespace TablePro.Interop;
 
-// SqlInsert writes the rows into the table they came from, or into query_results where no one table is known.
+// SqlInsert writes a table's rows into that table and a query result's into query_results.
 public enum ExportFormat
 {
     Csv,

@@ -51,7 +51,7 @@ public sealed class ExportTests
     }
 
     [Fact]
-    public async Task SqlInsertOfAResultWritesIntoTheTableItsColumnsCameFrom()
+    public async Task SqlInsertOfAResultWritesIntoQueryResults()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var database = await SqliteDatabase.CreateAsync();
@@ -65,7 +65,7 @@ public sealed class ExportTests
 
         Assert.Equal(3, rows);
         var first = (await File.ReadAllLinesAsync(path, cancellationToken))[0];
-        Assert.Equal("INSERT INTO \"people\" (\"id\", \"name\") VALUES (1, 'Ada');", first);
+        Assert.Equal("INSERT INTO \"query_results\" (\"id\", \"name\") VALUES (1, 'Ada');", first);
     }
 
     [Fact]

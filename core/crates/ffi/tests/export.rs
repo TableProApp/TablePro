@@ -252,10 +252,12 @@ async fn sql_insert_of_a_table_names_it_and_leaves_out_what_the_server_computes(
 }
 
 #[tokio::test]
-async fn sql_insert_of_a_query_result_writes_into_the_table_its_columns_came_from() {
+async fn sql_insert_of_a_query_result_writes_into_query_results_under_its_own_column_names() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, session) = fixture(dir.path()).await;
-    let set = run(&session, "SELECT id, name FROM people ORDER BY id").await.unwrap();
+    let set = run(&session, "SELECT id, name AS label FROM people ORDER BY id")
+        .await
+        .unwrap();
     let path = dir.path().join("people.sql");
 
     let rows = session
@@ -266,29 +268,8 @@ async fn sql_insert_of_a_query_result_writes_into_the_table_its_columns_came_fro
     assert_eq!(rows, 2);
     assert_eq!(
         text(&path),
-        "INSERT INTO \"people\" (\"id\", \"name\") VALUES (1, 'Ada');\n\
-         INSERT INTO \"people\" (\"id\", \"name\") VALUES (2, 'Grace, \"Amazing\"');\n"
-    );
-}
-
-#[tokio::test]
-async fn sql_insert_of_an_aliased_result_names_the_tables_columns() {
-    let dir = tempfile::tempdir().unwrap();
-    let (_core, session) = fixture(dir.path()).await;
-    let set = run(&session, "SELECT id, name AS label FROM people ORDER BY id")
-        .await
-        .unwrap();
-    let path = dir.path().join("aliased.sql");
-
-    session
-        .export_rows(set, 2, ExportFormatTag::SqlInsert, None, spelled(&path), None, None)
-        .await
-        .unwrap();
-
-    assert!(
-        text(&path).starts_with("INSERT INTO \"people\" (\"id\", \"name\") VALUES (1, 'Ada');"),
-        "{}",
-        text(&path)
+        "INSERT INTO \"query_results\" (\"id\", \"label\") VALUES (1, 'Ada');\n\
+         INSERT INTO \"query_results\" (\"id\", \"label\") VALUES (2, 'Grace, \"Amazing\"');\n"
     );
 }
 
@@ -308,31 +289,6 @@ async fn sql_insert_of_a_result_naming_a_column_twice_is_refused_before_any_file
 
     assert_eq!(error.code(), "ffi.export_duplicate_columns");
     assert_eq!(named(dir.path(), "pairs.sql"), Vec::<String>::new());
-}
-
-#[tokio::test]
-async fn sql_insert_of_only_what_the_server_computes_writes_into_query_results() {
-    let dir = tempfile::tempdir().unwrap();
-    let (_core, session) = fixture(dir.path()).await;
-    run(
-        &session,
-        "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL, \
-         loud TEXT GENERATED ALWAYS AS (upper(name)) VIRTUAL); \
-         INSERT INTO items (name) VALUES ('pen')",
-    )
-    .await;
-    let set = run(&session, "SELECT loud FROM items").await.unwrap();
-    let path = dir.path().join("loud.sql");
-
-    session
-        .export_rows(set, 1, ExportFormatTag::SqlInsert, None, spelled(&path), None, None)
-        .await
-        .unwrap();
-
-    assert_eq!(
-        text(&path),
-        "INSERT INTO \"query_results\" (\"loud\") VALUES ('PEN');\n"
-    );
 }
 
 #[tokio::test]

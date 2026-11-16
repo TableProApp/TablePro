@@ -8,7 +8,7 @@ public sealed partial class DatabaseSession
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
 
     // Only the first visibleColumns columns, since a table page carries row addresses after them. SqlInsert with no
-    // table writes into the one table every column was read from, else into query_results.
+    // table writes into query_results, as the macOS app names a query result's table.
     public async Task<long> ExportRowsAsync(
         ResultSet rows,
         int visibleColumns,
