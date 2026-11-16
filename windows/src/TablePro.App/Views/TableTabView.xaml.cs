@@ -695,10 +695,23 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             return [];
         }
 
+        var filterText = value.IsNull ? null : FilterTextAt(row, column);
         var choices = _model.FilterChoices ?? await _model.LoadFilterChoicesAsync().ConfigureAwait(true);
         var offered = choices?.Columns
             .FirstOrDefault(choice => string.Equals(choice.Name, value.Column, StringComparison.Ordinal))?.Operators ?? [];
-        return CellFilters.For(value.Column, offered, value, pending);
+        return CellFilters.For(value.Column, offered, value, filterText, pending);
+    }
+
+    private string? FilterTextAt(int row, int column)
+    {
+        try
+        {
+            return Results.ShownSet is { } rows && row < rows.RowCount ? rows.GetFilterText(row, column) : null;
+        }
+        catch (TableProException)
+        {
+            return null;
+        }
     }
 
     // As macOS titles them: the column, the operator and the value the rule compares with.

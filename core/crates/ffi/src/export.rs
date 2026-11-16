@@ -136,6 +136,13 @@ impl DatabaseSession {
                 },
                 _ => None,
             };
+            // An INSERT that names a column twice is refused by every server, so it is refused here before any file.
+            if insert.is_some() && repeats_a_name(&columns) {
+                return Err(CoreError::failed(
+                    "ffi.export_duplicate_columns",
+                    "SQL INSERT names each column once",
+                ));
+            }
             let recipe = Recipe {
                 format,
                 title: title(table.as_ref(), &target),
@@ -504,6 +511,13 @@ impl ResultSink for FileSink {
             }
         }
     }
+}
+
+fn repeats_a_name(columns: &[ResultColumn]) -> bool {
+    columns
+        .iter()
+        .enumerate()
+        .any(|(index, column)| columns[..index].iter().any(|before| before.name == column.name))
 }
 
 // Where each database holds schemas of its own, an origin names no database, so the session's catalog describes the

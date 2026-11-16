@@ -321,6 +321,33 @@ async fn sql_insert_of_an_aliased_result_names_the_tables_columns() {
 }
 
 #[tokio::test]
+async fn sql_insert_of_a_result_naming_a_column_twice_is_refused_before_any_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session) = fixture(dir.path()).await;
+    let set = run(&session, "SELECT a.id, b.id FROM people a JOIN people b ON a.id = b.id")
+        .await
+        .unwrap();
+    let path = dir.path().join("pairs.sql");
+
+    let error = session
+        .export_rows(
+            set,
+            2,
+            ExportFormatTag::SqlInsert,
+            None,
+            None,
+            spelled(&path),
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.code(), "ffi.export_duplicate_columns");
+    assert_eq!(named(dir.path(), "pairs.sql"), Vec::<String>::new());
+}
+
+#[tokio::test]
 async fn sql_insert_of_a_computed_result_writes_into_query_results() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, session) = fixture(dir.path()).await;

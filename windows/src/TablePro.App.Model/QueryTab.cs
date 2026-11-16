@@ -176,6 +176,9 @@ public sealed class QueryTab : IWorkspaceTab
     // Where each editor connection the tab opens runs; null for the connection's own.
     public string? Database { get; private set; }
 
+    // Where the rows shown were read, which a database picked since leaves as it was; null for the connection's own.
+    public string? ResultsDatabase { get; private set; }
+
     // The tab's own, else the connection's, else the one the server listed as the login's.
     public string? ShownDatabase => Database ?? _session.Database ?? _listedDefault;
 
@@ -706,6 +709,8 @@ public sealed class QueryTab : IWorkspaceTab
         {
             SetDatabase(now);
         }
+
+        ResultsDatabase = Database;
 
         var state = _results.Transaction == TransactionState.Unknown ? Transaction : _results.Transaction;
         ShowTransaction(WorkspaceNotices.Holds(state) ? state : TransactionState.Idle);

@@ -20,8 +20,8 @@ public sealed class CellFiltersTests
     [Fact]
     public void AValueOffersEqualAndNotAndAnOrderedColumnGreaterAndLessToo()
     {
-        var number = CellFilters.For("Total", Ordered, CellValue.Of("Total", "9.99"), pending: false);
-        var text = CellFilters.For("Name", Textual, CellValue.Of("Name", "AC/DC"), pending: false);
+        var number = CellFilters.For("Total", Ordered, CellValue.Of("Total", "9.99"), "9.99", pending: false);
+        var text = CellFilters.For("Name", Textual, CellValue.Of("Name", "AC/DC"), "AC/DC", pending: false);
 
         Assert.Equal<FilterOperator>(
             [FilterOperator.Equal, FilterOperator.NotEqual, FilterOperator.Greater, FilterOperator.Less],
@@ -33,7 +33,7 @@ public sealed class CellFiltersTests
     [Fact]
     public void ANullCellOffersTheNullTests()
     {
-        var rules = CellFilters.For("Composer", Textual, CellValue.Of("Composer", null), pending: false);
+        var rules = CellFilters.For("Composer", Textual, CellValue.Of("Composer", null), null, pending: false);
 
         Assert.Equal<FilterOperator>([FilterOperator.IsNull, FilterOperator.IsNotNull], rules.Select(rule => rule.Operator));
         Assert.All(rules, rule => Assert.Null(rule.Value));
@@ -45,18 +45,19 @@ public sealed class CellFiltersTests
     [InlineData("null")]
     [InlineData("")]
     public void AValueAFilterRowWouldReadOtherwiseOffersNothing(string text) =>
-        Assert.Empty(CellFilters.For("Name", Textual, CellValue.Of("Name", text), pending: false));
+        Assert.Empty(CellFilters.For("Name", Textual, CellValue.Of("Name", text), text, pending: false));
 
     [Fact]
-    public void ABinaryValueALongValueAndAPendingEditOfferNothing()
+    public void ABinaryValueALongValueAPendingEditAndAValueNoFilterBindsOfferNothing()
     {
         var bytes = new CellValue("Data", null, false, new byte[] { 1, 2 }, 2, IsDefault: false);
         var longText = CellValue.Of("Name", new string('x', CellFilters.MaximumValueLength + 1));
 
-        Assert.Empty(CellFilters.For("Data", Textual, bytes, pending: false));
-        Assert.Empty(CellFilters.For("Name", Textual, longText, pending: false));
-        Assert.Empty(CellFilters.For("Name", Textual, CellValue.Of("Name", "typed"), pending: true));
-        Assert.Empty(CellFilters.For("Name", Textual, null, pending: false));
+        Assert.Empty(CellFilters.For("Data", Textual, bytes, "0x0102", pending: false));
+        Assert.Empty(CellFilters.For("Name", Textual, longText, longText.Text, pending: false));
+        Assert.Empty(CellFilters.For("Name", Textual, CellValue.Of("Name", "typed"), "typed", pending: true));
+        Assert.Empty(CellFilters.For("Name", Textual, null, null, pending: false));
+        Assert.Empty(CellFilters.For("Active", Textual, CellValue.Of("Active", "true"), null, pending: false));
     }
 
     [Fact]

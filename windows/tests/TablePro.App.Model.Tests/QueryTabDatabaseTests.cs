@@ -137,6 +137,22 @@ public sealed class QueryTabDatabaseTests
         Assert.False(tab.IsRunning);
     }
 
+    [Fact]
+    public async Task TheRowsShownKeepTheDatabaseTheyWereReadInUntilTheNextRun()
+    {
+        var tab = Tab("shop");
+        await tab.RunAsync();
+
+        await tab.PickDatabaseAsync("inventory");
+
+        Assert.Equal("inventory", tab.Database);
+        Assert.Equal("shop", tab.ResultsDatabase);
+
+        await tab.RunAsync();
+
+        Assert.Equal("inventory", tab.ResultsDatabase);
+    }
+
     // The rows came from the database before the switch, so running the statement again would read another's.
     [Fact]
     public async Task ASortAfterASwitchOrdersTheRowsHeldInsteadOfRunningAgain()

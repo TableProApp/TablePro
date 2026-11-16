@@ -4096,10 +4096,10 @@ New fingerprint: {2}</value>
     <value>Cascade</value>
   </data>
   <data name="DropTableCascadeDetail" xml:space="preserve">
-    <value>Drop all tables that depend on this table</value>
+    <value>Also drop the views and foreign keys that depend on this table</value>
   </data>
   <data name="DropTableCascadeNamed" xml:space="preserve">
-    <value>Drop all tables that depend on this table: {0}</value>
+    <value>Also drop the views that depend on this table, and the foreign keys of {0} that point at it. Those tables and their rows stay.</value>
   </data>
   <data name="DropTableRefusedTitle" xml:space="preserve">
     <value>Cannot drop table</value>
@@ -4280,5 +4280,8 @@ New fingerprint: {2}</value>
   </data>
   <data name="CellFilter_IsNotNull" xml:space="preserve">
     <value>{0} is not NULL</value>
+  </data>
+  <data name="Error_ffi_export_duplicate_columns" xml:space="preserve">
+    <value>SQL INSERT names each column once. Name the columns apart with AS and run the query again.</value>
   </data>
 </root>

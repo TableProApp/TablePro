@@ -101,6 +101,23 @@ impl ResultSet {
             .ok_or_else(|| CoreError::failed("ffi.out_of_range", format!("no cell at row {row}, column {column}")))
     }
 
+    // The text a filter on the cell's column reads back as the very value stored, as a followed foreign key builds its
+    // filter. `None` for null, and for a value no filter text binds again, such as 'true' in a SQLite BOOLEAN column.
+    pub fn filter_text(&self, row: u64, column: u32) -> Result<Option<String>, CoreError> {
+        let index = usize::try_from(column).unwrap_or(usize::MAX);
+        let read = self.result_columns();
+        let Some(read) = read.get(index) else {
+            return Err(CoreError::failed(
+                "ffi.out_of_range",
+                format!("no cell at row {row}, column {column}"),
+            ));
+        };
+        Ok(self
+            .stored_value(row, index)
+            .filter(|value| !matches!(value, tablepro_core::Value::Null))
+            .and_then(|value| tablepro_core::browse::filter_text(&value, &read.column_type)))
+    }
+
     // A value's start for a viewer, read without copying the rest: its text with line breaks kept, or a binary
     // value's hex. `None` for null.
     pub fn cell_text_head(&self, row: u64, column: u32, max_chars: u32) -> Result<Option<CellTextHead>, CoreError> {

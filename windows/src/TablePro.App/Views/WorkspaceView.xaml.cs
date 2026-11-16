@@ -891,7 +891,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 request.Format,
                 table,
                 request.Path,
-                (tab as QueryTabView)?.Database,
+                (tab as QueryTabView)?.ResultsDatabase,
                 progress,
                 exporting.Token);
         }

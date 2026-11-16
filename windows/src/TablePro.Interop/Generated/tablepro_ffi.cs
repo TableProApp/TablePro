@@ -1295,6 +1295,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -2614,6 +2616,17 @@ static class _UniFFILib {
     public static extern
 #endif
      RustBuffer uniffi_tablepro_ffi_fn_method_resultset_columns(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_resultset_filter_text(ulong @ptr,ulong @row,uint @column,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -5319,6 +5332,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_resultset_filter_text(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_resultset_index(
     );
 
@@ -6894,6 +6918,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_columns();
             if (checksum != 43715) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_columns` checksum `43715`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_filter_text();
+            if (checksum != 51473) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_filter_text` checksum `51473`, library returned `{checksum}`");
             }
         }
         {
@@ -11670,6 +11700,8 @@ internal interface IResultSet {
     /// <exception cref="CoreException"></exception>
     CellTextHead? CellTextHead(ulong @row, uint @column, uint @maxChars);
     ResultColumnInfo[] Columns();
+    /// <exception cref="CoreException"></exception>
+    string? FilterText(ulong @row, uint @column);
     /// <summary>
     /// Its place among the run's result sets, from 0.
     /// </summary>
@@ -11869,6 +11901,15 @@ internal class ResultSet : IResultSet, IDisposable {
         return CallWithPointer(thisPtr => FfiConverterSequenceTypeResultColumnInfo.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_method_resultset_columns(thisPtr,  ref _status)
+)));
+    }
+    
+    
+    /// <exception cref="CoreException"></exception>
+    public string? FilterText(ulong @row, uint @column) {
+        return CallWithPointer(thisPtr => FfiConverterOptionalString.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_resultset_filter_text(thisPtr, FfiConverterUInt64.INSTANCE.Lower(@row), FfiConverterUInt32.INSTANCE.Lower(@column), ref _status)
 )));
     }
     

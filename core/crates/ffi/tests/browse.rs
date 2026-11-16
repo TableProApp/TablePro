@@ -794,3 +794,25 @@ async fn a_cell_reads_its_start_and_a_binary_cell_its_first_bytes_with_its_lengt
     assert_eq!(rows.cell_text_head(1, 2, 100).unwrap(), None);
     session.close().await.unwrap();
 }
+
+#[tokio::test]
+async fn a_cells_filter_text_is_offered_only_where_it_binds_the_value_stored() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session) = fixture(
+        dir.path(),
+        "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT, active BOOLEAN); \
+         INSERT INTO people VALUES (1, 'Ada', 'true'), (2, NULL, 1)",
+    )
+    .await;
+    let page = read(&session, None, None, 10, 0).await.unwrap();
+    let run = page.run();
+    let outcome = run.outcome().await.unwrap();
+    assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
+    let set = run.result_set(0).unwrap();
+
+    assert_eq!(set.filter_text(0, 1).unwrap().as_deref(), Some("Ada"));
+    assert_eq!(set.filter_text(1, 1).unwrap(), None);
+    assert_eq!(set.filter_text(0, 2).unwrap(), None);
+    assert_eq!(set.filter_text(1, 2).unwrap().as_deref(), Some("1"));
+    assert!(set.filter_text(0, 9).is_err());
+}

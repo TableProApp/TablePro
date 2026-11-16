@@ -14,12 +14,14 @@ public static class CellFilters
     private static readonly FilterOperator[] ForValue =
         [FilterOperator.Equal, FilterOperator.NotEqual, FilterOperator.Greater, FilterOperator.Less];
 
-    // None for a binary value, a value cut short or too long, one that starts or ends with a blank, which a filter
-    // row reads trimmed, one that reads as the NULL literal, and a cell holding an edit not saved yet.
+    // filterText is the core's text that binds back to the value stored, null where none does. None for a binary
+    // value, a value cut short or too long, one that starts or ends with a blank, which a filter row reads trimmed, one
+    // that reads as the NULL literal, and a cell holding an edit not saved yet.
     public static IReadOnlyList<FilterRule> For(
         string column,
         IReadOnlyList<FilterOperator> offered,
         CellValue? value,
+        string? filterText,
         bool pending)
     {
         ArgumentNullException.ThrowIfNull(column);
@@ -34,7 +36,7 @@ public static class CellFilters
             return [.. ForNull.Where(offered.Contains).Select(op => new FilterRule(column, op, null))];
         }
 
-        var text = value.Text ?? string.Empty;
+        var text = filterText ?? string.Empty;
         if (value.TextCut
             || text.Length == 0
             || text.Length > MaximumValueLength

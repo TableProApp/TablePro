@@ -36,6 +36,15 @@ public sealed class ResultSet : IDisposable
         return CoreCall.Run(() => _set.CellText(checked((ulong)row), checked((uint)column)));
     }
 
+    // The text a filter on the cell's column binds back to the very value stored; null for SQL NULL and for a value no
+    // filter text reads back as, such as 'true' in a SQLite BOOLEAN column.
+    public string? GetFilterText(long row, int column)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        return CoreCall.Run(() => _set.FilterText(checked((ulong)row), checked((uint)column)));
+    }
+
     // A value's start for a viewer, read without copying the rest: its text with line breaks kept, or a binary
     // value's hex. Null for SQL NULL.
     public CellTextHead? GetCellTextHead(long row, int column, int maxCharacters)
