@@ -177,6 +177,7 @@ public sealed class QueryTab : IWorkspaceTab
     public string? Database { get; private set; }
 
     // Where the rows shown were read, which a database picked since leaves as it was; null for the connection's own.
+    // A run that moved between databases names one that is not the connection's own.
     public string? ResultsDatabase { get; private set; }
 
     // The tab's own, else the connection's, else the one the server listed as the login's.
@@ -627,6 +628,7 @@ public sealed class QueryTab : IWorkspaceTab
             var startedAt = DateTimeOffset.Now;
             var started = Stopwatch.GetTimestamp();
             var settings = _settings();
+            var readIn = Database;
             _run = _editor.Run(sql, RunOptions(settings), cancellationToken);
             await _results.ShowRunAsync(_run, _sort, int.MaxValue, settings.ResultSetsKeptPerRun, cancellationToken)
                 .ConfigureAwait(true);
@@ -638,6 +640,9 @@ public sealed class QueryTab : IWorkspaceTab
                 }
 
                 await AfterRunAsync().ConfigureAwait(true);
+                // A typed USE can move the editor between the batches that read the rows, so another database than
+                // the connection's own is named whenever the run touched one.
+                ResultsDatabase = Database ?? readIn;
             }
         }
         catch (TableProException exception)
@@ -710,7 +715,6 @@ public sealed class QueryTab : IWorkspaceTab
             SetDatabase(now);
         }
 
-        ResultsDatabase = Database;
 
         var state = _results.Transaction == TransactionState.Unknown ? Transaction : _results.Transaction;
         ShowTransaction(WorkspaceNotices.Holds(state) ? state : TransactionState.Idle);

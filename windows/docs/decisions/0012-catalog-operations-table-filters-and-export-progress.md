@@ -17,7 +17,7 @@ A table's filter lived only with its tab ([0007](0007-browsing-a-connection.md))
 
 ### Export
 
-- SQL INSERT is offered for a query result too: the core writes into the one table every column was read from (`ColumnOrigin`), each under the table's own column name and leaving out what the server computes, and into `query_results` where the columns name no one table or one column twice. A result that names one column twice is refused before any file. Where each database holds schemas of its own, rows a query tab read in another database leave nothing out, since the session's catalog describes its own database; the tab keeps the database its rows were read in (`QueryTab.ResultsDatabase`).
+- SQL INSERT is offered for a query result too: the core writes into the one table every column was read from (`ColumnOrigin`), each under the table's own column name and leaving out what the server computes, and into `query_results` where the columns name no one table or one column twice. A result that names one column twice is refused before any file. Where each database holds schemas of its own, rows a query tab read in another database leave nothing out, since the session's catalog describes its own database; the tab keeps the database its rows were read in, or one that is not the connection's own where a run moved between databases (`QueryTab.ResultsDatabase`).
 - The export bar counts the rows written, read from the core's counter (`ExportProgress`) four times a second, out of the rows held or the counted total where known. Stop ends it with no file left, so it asks nothing first.
 
 ### Catalog operations
