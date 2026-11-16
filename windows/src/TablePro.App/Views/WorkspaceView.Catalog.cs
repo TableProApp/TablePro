@@ -196,7 +196,7 @@ public sealed partial class WorkspaceView
             return;
         }
 
-        await DiscardTabsAsync(view => string.Equals(view.Model.Table.Schema, schema, StringComparison.Ordinal))
+        await DiscardObjectTabsAsync(shown => string.Equals(shown.Schema, schema, StringComparison.Ordinal))
             .ConfigureAwait(true);
         _workbench.TableFilters.ForgetSchema(FilterConnection, session.Database, schema);
         // Cascade drops the views in other schemas that read this one's tables too.
@@ -230,7 +230,7 @@ public sealed partial class WorkspaceView
         if (session.Layout == DatabaseLayout.AsSchemas)
         {
             // Each database is a schema of this connection's catalog, so its tabs and filters go with it.
-            await DiscardTabsAsync(view => string.Equals(view.Model.Table.Schema, database, StringComparison.Ordinal))
+            await DiscardObjectTabsAsync(shown => string.Equals(shown.Schema, database, StringComparison.Ordinal))
                 .ConfigureAwait(true);
             _workbench.TableFilters.ForgetSchema(FilterConnection, session.Database, database);
             await DiscardGoneTabsAsync(session).ConfigureAwait(true);
@@ -379,11 +379,12 @@ public sealed partial class WorkspaceView
     // A read can outlast the window's session: a disconnect replaces it, and the last holder disposes it.
     private bool Holds(DatabaseSession session) => ReferenceEquals(_session, session);
 
-    // The objects of each schema a table tab shows, read again; a schema that cannot be read closes nothing.
+    // The objects of each schema a table or definition tab shows, read again; a schema that cannot be read closes
+    // nothing.
     private async Task DiscardGoneTabsAsync(DatabaseSession session)
     {
-        HashSet<(string? Schema, string Name)> gone = [];
-        foreach (var schema in TableViews().Select(view => view.Model.Table.Schema).Distinct())
+        HashSet<ShownObject> gone = [];
+        foreach (var schema in ObjectTabs().Select(shown => shown.Schema).Distinct())
         {
             IReadOnlyList<ObjectEntry> objects;
             try
@@ -405,25 +406,50 @@ public sealed partial class WorkspaceView
                 return;
             }
 
-            foreach (var view in TableViews().Where(view => view.Model.Table.Schema == schema))
+            // A tab opened from the tree and one restored can spell the default schema apart, so a name with no
+            // schema on either side is the same object.
+            foreach (var shown in ObjectTabs().Where(shown => shown.Schema == schema))
             {
-                var table = view.Model.Table;
-                // A tab opened from the tree and one restored can spell the default schema apart, so a name with no
-                // schema on either side is the same object.
-                if (!objects.Any(entry => entry.Name == table.Name
+                if (!objects.Any(entry => entry.Name == shown.Name
+                    && (shown.Kind is null || entry.Kind == shown.Kind)
                     && (entry.Schema is null || schema is null || entry.Schema == schema)))
                 {
-                    gone.Add((table.Schema, table.Name));
+                    gone.Add(shown);
                 }
             }
         }
 
-        foreach (var (schema, name) in gone)
+        foreach (var shown in gone.Where(shown => shown.Kind is null))
         {
-            _workbench.TableFilters.ForgetTable(FilterConnection, session.Database, new TableName(schema, name));
+            _workbench.TableFilters.ForgetTable(FilterConnection, session.Database, new TableName(shown.Schema, shown.Name));
         }
 
-        await DiscardTabsAsync(view => gone.Contains((view.Model.Table.Schema, view.Model.Table.Name))).ConfigureAwait(true);
+        await DiscardObjectTabsAsync(gone.Contains).ConfigureAwait(true);
+    }
+
+    // What a table or definition tab shows; a table tab's kind is left open, since a table and a view read alike.
+    private readonly record struct ShownObject(string? Schema, string Name, ObjectKind? Kind);
+
+    private static ShownObject? ShownBy(object? content) => content switch
+    {
+        TableTabView table => new ShownObject(table.Model.Table.Schema, table.Model.Table.Name, null),
+        DefinitionTabView definition => new ShownObject(definition.Entry.Schema, definition.Entry.Name, definition.Entry.Kind),
+        _ => null,
+    };
+
+    private List<ShownObject> ObjectTabs() =>
+        [.. Tabs.TabItems.OfType<TabViewItem>().Select(item => ShownBy(item.Content)).OfType<ShownObject>()];
+
+    // The object is gone, so its tabs close without asking, and none is kept to reopen.
+    private async Task DiscardObjectTabsAsync(Func<ShownObject, bool> shows)
+    {
+        var items = Tabs.TabItems.OfType<TabViewItem>()
+            .Where(item => ShownBy(item.Content) is { } shown && shows(shown))
+            .ToList();
+        foreach (var item in items)
+        {
+            await _tabs.DiscardAsync(item).ConfigureAwait(true);
+        }
     }
 
     // The table is gone, so its tabs close without asking about their changes, and none is kept to reopen.

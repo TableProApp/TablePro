@@ -393,7 +393,9 @@ internal static class CatalogDialogs
         public KeyspaceReplication Chosen() => Simple
             ? new KeyspaceReplication.Simple(Count(_factor))
             : new KeyspaceReplication.NetworkTopology(
-                [.. _centres.Select(centre => new DataCenterReplicas(centre.DataCenter, Count(centre.Box)))]);
+                [.. _centres
+                    .Select(centre => new DataCenterReplicas(centre.DataCenter, Count(centre.Box)))
+                    .Where(centre => centre.Replicas > 0)]);
 
         public void Watch(Action refresh)
         {

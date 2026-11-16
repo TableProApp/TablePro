@@ -47,6 +47,8 @@ public sealed partial class DefinitionTabView : UserControl, ITabContent, IDefin
 
     public bool Shows(ObjectEntry entry) => _model.Entry == entry;
 
+    internal ObjectEntry Entry => _model.Entry;
+
     public async void Load() => await _model.LoadAsync().ConfigureAwait(true);
 
     public void Run()
