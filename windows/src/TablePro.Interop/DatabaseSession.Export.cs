@@ -8,15 +8,13 @@ public sealed partial class DatabaseSession
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
 
     // Only the first visibleColumns columns, since a table page carries row addresses after them. SqlInsert with no
-    // table writes into the one table every column was read from, else into query_results; database names where the
-    // rows were read when that is not the session's own.
+    // table writes into the one table every column was read from, else into query_results.
     public async Task<long> ExportRowsAsync(
         ResultSet rows,
         int visibleColumns,
         ExportFormat format,
         TableName? table,
         string path,
-        string? database = null,
         IProgress<long>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -34,7 +32,6 @@ public sealed partial class DatabaseSession
                         checked((uint)visibleColumns),
                         NativeFormat(format),
                         target,
-                        database,
                         path,
                         counter,
                         token),

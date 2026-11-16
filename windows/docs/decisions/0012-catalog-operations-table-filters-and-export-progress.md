@@ -17,7 +17,7 @@ A table's filter lived only with its tab ([0007](0007-browsing-a-connection.md))
 
 ### Export
 
-- SQL INSERT is offered for a query result too: the core writes into the one table every column was read from (`ColumnOrigin`), each under the table's own column name and leaving out what the server computes, and into `query_results` where the columns name no one table or one column twice. A result that names one column twice is refused before any file. Where each database holds schemas of its own, rows a query tab read in another database leave nothing out, since the session's catalog describes its own database; the tab keeps the database its rows were read in, or one that is not the connection's own where a run moved between databases (`QueryTab.ResultsDatabase`).
+- SQL INSERT is offered for a query result too: the core writes into the one table every column was read from (`ColumnOrigin`), each under the table's own column name and leaving out what the server computes, and into `query_results` where the columns name no one table or one column twice. A result that names one column twice is refused before any file. Where each database holds schemas of its own, an origin names no database and an editor can read in another one, so the session's catalog is not read and nothing is left out: a computed column then makes the script fail where it runs rather than lose a value.
 - The export bar counts the rows written, read from the core's counter (`ExportProgress`) four times a second, out of the rows held or the counted total where known. Stop ends it with no file left, so it asks nothing first.
 
 ### Catalog operations
@@ -26,7 +26,7 @@ A table's filter lived only with its tab ([0007](0007-browsing-a-connection.md))
 - Each dialog shows the statements the core planned for its options (`PlanCatalogChange`), planned again as an option changes: Cascade and Restart identity for a truncate, Cascade for a drop, Close other connections first for a database, Run on for a cluster, and for a new database the options the engine names (`CatalogAbilities.DatabaseFields`) with the server's choices.
 - A truncate where the server refuses a table other tables' keys point at is refused first, naming them; so is a drop where the engine has no Cascade.
 - Safe Mode gates them as the core says (`CatalogChange.Gate`): emptying or dropping is asked at every level, in the dialog that shows the statements; creating is asked again where Confirm writes asks; Read only refuses. Each runs at once, as the Linux app's do.
-- After a drop, the table's tabs close without asking, since their changes have nowhere to go, and are not kept to reopen. A truncate reads its table's tabs again, every table tab with Cascade. A change whose outcome is unknown reads the tree again and closes nothing. The tree reads the schemas again on every refresh.
+- After a drop, the table's tabs close without asking, since their changes have nowhere to go, and are not kept to reopen; so do the tabs of every object the catalog no longer lists, as a partitioned table's partitions and the views Cascade drops. A truncate reads every table tab again, since Cascade and a partitioned table empty others; a tab holding edits asks first. A change whose outcome is unknown reads the tree again and closes nothing. The tree reads the schemas again on every refresh.
 
 ## Rationale
 

@@ -110,9 +110,6 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     // Set by the workspace that holds the tab: only a saved connection keeps queries.
     public bool CanSaveQuery { get; set; }
 
-    // Where the rows shown were read, null for the connection's own.
-    internal string? ResultsDatabase => _model.ResultsDatabase;
-
     public string Title => _model.Title;
 
     public TabKind Kind => _model.Kind;

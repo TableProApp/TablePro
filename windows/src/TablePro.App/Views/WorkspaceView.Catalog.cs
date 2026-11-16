@@ -107,10 +107,9 @@ public sealed partial class WorkspaceView
             return;
         }
 
-        // A cascade empties the tables pointing at this one too, so every table tab reads again.
-        var cascaded = change.Operation is CatalogOperation.TruncateTable { Cascade: true };
-        var views = TableViews().Where(view => cascaded || view.Shows(entry.Schema, entry.Name)).ToList();
-        foreach (var view in views)
+        // A cascade empties the tables pointing at this one, and a partitioned table its partitions, so every table tab
+        // reads again; one holding edits asks first.
+        foreach (var view in TableViews())
         {
             if (TableViews().Contains(view))
             {
@@ -148,6 +147,9 @@ public sealed partial class WorkspaceView
 
         await DiscardTabsAsync(view => view.Shows(entry.Schema, entry.Name)).ConfigureAwait(true);
         _workbench.TableFilters.ForgetTable(FilterConnection, session.Database, table);
+        // A partitioned table takes its partitions with it, and Cascade the views on it, so every tab whose object the
+        // catalog no longer lists goes too.
+        await DiscardGoneTabsAsync(session).ConfigureAwait(true);
         await RefreshAsync().ConfigureAwait(true);
         if (entry.Schema is { } schema && !_singleSchema)
         {
@@ -302,6 +304,44 @@ public sealed partial class WorkspaceView
 
     private List<TableTabView> TableViews() =>
         [.. Tabs.TabItems.OfType<TabViewItem>().Select(item => item.Content).OfType<TableTabView>()];
+
+    // The objects of each schema a table tab shows, read again; a schema that cannot be read closes nothing.
+    private async Task DiscardGoneTabsAsync(DatabaseSession session)
+    {
+        HashSet<(string? Schema, string Name)> gone = [];
+        foreach (var schema in TableViews().Select(view => view.Model.Table.Schema).Distinct())
+        {
+            IReadOnlyList<ObjectEntry> objects;
+            try
+            {
+                var scope = schema is null ? ObjectScope.DefaultSchema : ObjectScope.Schema(schema);
+                objects = await session.RefreshObjectsAsync(scope).ConfigureAwait(true);
+            }
+            catch (TableProException)
+            {
+                continue;
+            }
+
+            foreach (var view in TableViews().Where(view => view.Model.Table.Schema == schema))
+            {
+                var table = view.Model.Table;
+                // A tab opened from the tree and one restored can spell the default schema apart, so a name with no
+                // schema on either side is the same object.
+                if (!objects.Any(entry => entry.Name == table.Name
+                    && (entry.Schema is null || schema is null || entry.Schema == schema)))
+                {
+                    gone.Add((table.Schema, table.Name));
+                }
+            }
+        }
+
+        foreach (var (schema, name) in gone)
+        {
+            _workbench.TableFilters.ForgetTable(FilterConnection, session.Database, new TableName(schema, name));
+        }
+
+        await DiscardTabsAsync(view => gone.Contains((view.Model.Table.Schema, view.Model.Table.Name))).ConfigureAwait(true);
+    }
 
     // The table is gone, so its tabs close without asking about their changes, and none is kept to reopen.
     private async Task DiscardTabsAsync(Func<TableTabView, bool> shows)

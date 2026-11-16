@@ -71,11 +71,10 @@ pub enum ExportFormatTag {
 #[uniffi::export]
 impl DatabaseSession {
     // Only the first `visible_columns` columns, since a table page carries row addresses after them. SQL INSERT with no
-    // table writes into the one table every column was read from, else into `query_results`. `database` is where the
-    // rows were read when that is not the session's own, as after a USE.
+    // table writes into the one table every column was read from, else into `query_results`.
     #[expect(
         clippy::too_many_arguments,
-        reason = "the rows, their format, table, database and file, and the app's progress and cancel"
+        reason = "the rows, their format, table and file, and the app's progress and cancel, as the app passes them"
     )]
     pub async fn export_rows(
         &self,
@@ -83,7 +82,6 @@ impl DatabaseSession {
         visible_columns: u32,
         format: ExportFormatTag,
         table: Option<TableName>,
-        database: Option<String>,
         path: String,
         progress: Option<Arc<ExportProgress>>,
         cancel: Option<Arc<CancelToken>>,
@@ -120,10 +118,9 @@ impl DatabaseSession {
                     Some((source, named)) => {
                         // Read only to leave out what the server computes; a table that cannot be read leaves none out.
                         let layout = session.current_dialect().map(|dialect| dialect.database_layout());
-                        let elsewhere = !catalog_describes(database.as_deref(), layout);
-                        let catalog = match elsewhere {
-                            true => None,
-                            false => tokio::select! {
+                        let catalog = match catalog_describes(layout) {
+                            false => None,
+                            true => tokio::select! {
                                 biased;
                                 () = cancel.cancelled() => return Err(CoreError::Cancelled),
                                 columns = session.columns(source.clone()) => columns.ok(),
@@ -520,10 +517,10 @@ fn repeats_a_name(columns: &[ResultColumn]) -> bool {
         .any(|(index, column)| columns[..index].iter().any(|before| before.name == column.name))
 }
 
-// Where each database holds schemas of its own, an origin names no database, so the session's catalog describes the
-// table only when the rows were read in the session's own database. `read_in` is None there.
-fn catalog_describes(read_in: Option<&str>, layout: Option<DatabaseLayout>) -> bool {
-    read_in.is_none() || layout != Some(DatabaseLayout::WithSchemas)
+// Where each database holds schemas of its own, an origin names no database, and an editor can read in another one
+// than the session's, so the session's catalog may describe another table of the same name.
+fn catalog_describes(layout: Option<DatabaseLayout>) -> bool {
+    layout != Some(DatabaseLayout::WithSchemas)
 }
 
 // The table every column was read from, as the driver traced it, with each column under the name the table gives it,
@@ -847,11 +844,11 @@ mod tests {
     }
 
     #[test]
-    fn a_result_read_after_a_move_to_another_database_with_schemas_of_its_own_reads_no_catalog() {
-        assert!(catalog_describes(None, Some(DatabaseLayout::WithSchemas)));
-        assert!(!catalog_describes(Some("sales"), Some(DatabaseLayout::WithSchemas)));
-        assert!(catalog_describes(Some("sales"), Some(DatabaseLayout::AsSchemas)));
-        assert!(catalog_describes(Some("sales"), Some(DatabaseLayout::Single)));
+    fn a_result_where_each_database_holds_schemas_of_its_own_reads_no_catalog() {
+        assert!(!catalog_describes(Some(DatabaseLayout::WithSchemas)));
+        assert!(catalog_describes(Some(DatabaseLayout::AsSchemas)));
+        assert!(catalog_describes(Some(DatabaseLayout::Single)));
+        assert!(catalog_describes(None));
     }
 
     #[test]

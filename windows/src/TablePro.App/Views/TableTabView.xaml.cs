@@ -697,7 +697,8 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
         // The core reads the whole stored value, so a value the menu would refuse anyway is never read whole.
         var filterText = value is { IsNull: false, Bytes: null, TextCut: false } ? FilterTextAt(row, column) : null;
-        var choices = _model.FilterChoices ?? await _model.LoadFilterChoicesAsync().ConfigureAwait(true);
+        // Kept until a refresh makes them stale, so this reads them only the first time and after a refresh.
+        var choices = await _model.LoadFilterChoicesAsync().ConfigureAwait(true);
         var offered = choices?.Columns
             .FirstOrDefault(choice => string.Equals(choice.Name, value.Column, StringComparison.Ordinal))?.Operators ?? [];
         return CellFilters.For(value.Column, offered, value, filterText, pending);

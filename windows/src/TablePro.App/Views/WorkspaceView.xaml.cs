@@ -886,14 +886,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         {
             total = rows.RowCount;
             export = share.Session.ExportRowsAsync(
-                rows,
-                results.Columns.Count,
-                request.Format,
-                table,
-                request.Path,
-                (tab as QueryTabView)?.ResultsDatabase,
-                progress,
-                exporting.Token);
+                rows, results.Columns.Count, request.Format, table, request.Path, progress, exporting.Token);
         }
         else
         {

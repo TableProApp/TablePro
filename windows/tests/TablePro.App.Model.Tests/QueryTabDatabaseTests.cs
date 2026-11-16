@@ -137,44 +137,6 @@ public sealed class QueryTabDatabaseTests
         Assert.False(tab.IsRunning);
     }
 
-    [Fact]
-    public async Task TheRowsShownKeepTheDatabaseTheyWereReadInUntilTheNextRun()
-    {
-        var tab = Tab("shop");
-        await tab.RunAsync();
-
-        await tab.PickDatabaseAsync("inventory");
-
-        Assert.Equal("inventory", tab.Database);
-        Assert.Equal("shop", tab.ResultsDatabase);
-
-        await tab.RunAsync();
-
-        Assert.Equal("inventory", tab.ResultsDatabase);
-    }
-
-    [Fact]
-    public async Task ARunThatMovedBackToTheConnectionsOwnDatabaseNamesTheOneItLeft()
-    {
-        _session.Database = "shop";
-        _session.Script = sql =>
-        {
-            if (sql.EndsWith("use shop", StringComparison.Ordinal))
-            {
-                _session.Editors[^1].Database = "shop";
-            }
-
-            return FakeRun.Rows(1);
-        };
-        var tab = Tab("inventory");
-        _view.WholeText = "select * from Artist; use shop";
-
-        await tab.RunAsync();
-
-        Assert.Null(tab.Database);
-        Assert.Equal("inventory", tab.ResultsDatabase);
-    }
-
     // The rows came from the database before the switch, so running the statement again would read another's.
     [Fact]
     public async Task ASortAfterASwitchOrdersTheRowsHeldInsteadOfRunningAgain()

@@ -129,20 +129,11 @@ async fn csv_and_json_of_a_result_set_hold_exactly_its_rows() {
     std::fs::write(&csv, "an older export").unwrap();
 
     let csv_rows = session
-        .export_rows(
-            set.clone(),
-            4,
-            ExportFormatTag::Csv,
-            None,
-            None,
-            spelled(&csv),
-            None,
-            None,
-        )
+        .export_rows(set.clone(), 4, ExportFormatTag::Csv, None, spelled(&csv), None, None)
         .await
         .unwrap();
     let json_rows = session
-        .export_rows(set, 4, ExportFormatTag::Json, None, None, spelled(&json), None, None)
+        .export_rows(set, 4, ExportFormatTag::Json, None, spelled(&json), None, None)
         .await
         .unwrap();
 
@@ -174,7 +165,7 @@ async fn an_excel_export_is_a_workbook() {
     let path = dir.path().join("people.xlsx");
 
     let rows = session
-        .export_rows(set, 4, ExportFormatTag::Excel, None, None, spelled(&path), None, None)
+        .export_rows(set, 4, ExportFormatTag::Excel, None, spelled(&path), None, None)
         .await
         .unwrap();
 
@@ -215,7 +206,6 @@ async fn a_page_exports_only_its_visible_columns() {
             visible,
             ExportFormatTag::Csv,
             Some(table("notes")),
-            None,
             spelled(&path),
             None,
             None,
@@ -269,16 +259,7 @@ async fn sql_insert_of_a_query_result_writes_into_the_table_its_columns_came_fro
     let path = dir.path().join("people.sql");
 
     let rows = session
-        .export_rows(
-            set,
-            2,
-            ExportFormatTag::SqlInsert,
-            None,
-            None,
-            spelled(&path),
-            None,
-            None,
-        )
+        .export_rows(set, 2, ExportFormatTag::SqlInsert, None, spelled(&path), None, None)
         .await
         .unwrap();
 
@@ -300,16 +281,7 @@ async fn sql_insert_of_an_aliased_result_names_the_tables_columns() {
     let path = dir.path().join("aliased.sql");
 
     session
-        .export_rows(
-            set,
-            2,
-            ExportFormatTag::SqlInsert,
-            None,
-            None,
-            spelled(&path),
-            None,
-            None,
-        )
+        .export_rows(set, 2, ExportFormatTag::SqlInsert, None, spelled(&path), None, None)
         .await
         .unwrap();
 
@@ -330,16 +302,7 @@ async fn sql_insert_of_a_result_naming_a_column_twice_is_refused_before_any_file
     let path = dir.path().join("pairs.sql");
 
     let error = session
-        .export_rows(
-            set,
-            2,
-            ExportFormatTag::SqlInsert,
-            None,
-            None,
-            spelled(&path),
-            None,
-            None,
-        )
+        .export_rows(set, 2, ExportFormatTag::SqlInsert, None, spelled(&path), None, None)
         .await
         .unwrap_err();
 
@@ -357,16 +320,7 @@ async fn sql_insert_of_a_computed_result_writes_into_query_results() {
     let path = dir.path().join("loud.sql");
 
     session
-        .export_rows(
-            set,
-            2,
-            ExportFormatTag::SqlInsert,
-            None,
-            None,
-            spelled(&path),
-            None,
-            None,
-        )
+        .export_rows(set, 2, ExportFormatTag::SqlInsert, None, spelled(&path), None, None)
         .await
         .unwrap();
 
@@ -475,7 +429,7 @@ async fn a_failed_export_keeps_the_file_it_would_have_replaced() {
     std::fs::write(&path, "an older export").unwrap();
 
     let error = session
-        .export_rows(set, 2, ExportFormatTag::Xml, None, None, spelled(&path), None, None)
+        .export_rows(set, 2, ExportFormatTag::Xml, None, spelled(&path), None, None)
         .await
         .unwrap_err();
 
@@ -510,7 +464,7 @@ async fn rows_still_arriving_are_not_exported() {
     let path = spelled(&dir.path().join("endless.csv"));
 
     let refused = session
-        .export_rows(set, 1, ExportFormatTag::Csv, None, None, path, None, None)
+        .export_rows(set, 1, ExportFormatTag::Csv, None, path, None, None)
         .await
         .unwrap_err();
     run.cancel();

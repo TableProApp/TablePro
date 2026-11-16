@@ -3165,7 +3165,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_databasesession_export_rows(ulong @ptr,ulong @rows,uint @visibleColumns,RustBuffer @format,RustBuffer @table,RustBuffer @database,RustBuffer @path,RustBuffer @progress,RustBuffer @cancel
+     ulong uniffi_tablepro_ffi_fn_method_databasesession_export_rows(ulong @ptr,ulong @rows,uint @visibleColumns,RustBuffer @format,RustBuffer @table,RustBuffer @path,RustBuffer @progress,RustBuffer @cancel
     );
 
     #if NET8_0_OR_GREATER
@@ -7156,8 +7156,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_export_rows();
-            if (checksum != 59377) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_export_rows` checksum `59377`, library returned `{checksum}`");
+            if (checksum != 60707) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_export_rows` checksum `60707`, library returned `{checksum}`");
             }
         }
         {
@@ -9532,7 +9532,7 @@ internal interface IDatabaseSession {
     /// <exception cref="CoreException"></exception>
     Task<SchemaEntry[]> RefreshSchemas(CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
-    Task<ulong> ExportRows(ResultSet @rows, uint @visibleColumns, ExportFormatTag @format, TableName? @table, string? @database, string @path, ExportProgress? @progress, CancelToken? @cancel);
+    Task<ulong> ExportRows(ResultSet @rows, uint @visibleColumns, ExportFormatTag @format, TableName? @table, string @path, ExportProgress? @progress, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
     Task<ulong> ExportTable(TableName @table, ColumnSort? @sort, TableFilterArg? @filter, ExportFormatTag @format, string @path, ExportProgress? @progress, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
@@ -9751,11 +9751,11 @@ internal class DatabaseSession : IDatabaseSession, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task<ulong> ExportRows(ResultSet @rows, uint @visibleColumns, ExportFormatTag @format, TableName? @table, string? @database, string @path, ExportProgress? @progress, CancelToken? @cancel) {
+    public async Task<ulong> ExportRows(ResultSet @rows, uint @visibleColumns, ExportFormatTag @format, TableName? @table, string @path, ExportProgress? @progress, CancelToken? @cancel) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_export_rows(thisPtr, FfiConverterTypeResultSet.INSTANCE.Lower(@rows), FfiConverterUInt32.INSTANCE.Lower(@visibleColumns), FfiConverterTypeExportFormatTag.INSTANCE.Lower(@format), FfiConverterOptionalTypeTableName.INSTANCE.Lower(@table), FfiConverterOptionalString.INSTANCE.Lower(@database), FfiConverterString.INSTANCE.Lower(@path), FfiConverterOptionalTypeExportProgress.INSTANCE.Lower(@progress), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_export_rows(thisPtr, FfiConverterTypeResultSet.INSTANCE.Lower(@rows), FfiConverterUInt32.INSTANCE.Lower(@visibleColumns), FfiConverterTypeExportFormatTag.INSTANCE.Lower(@format), FfiConverterOptionalTypeTableName.INSTANCE.Lower(@table), FfiConverterString.INSTANCE.Lower(@path), FfiConverterOptionalTypeExportProgress.INSTANCE.Lower(@progress), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_u64(future, continuation, data),
