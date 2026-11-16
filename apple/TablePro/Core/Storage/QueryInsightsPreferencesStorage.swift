@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 struct QueryInsightsPreferences: Codable, Equatable, Sendable {
     var showsAllConnections: Bool
@@ -7,8 +6,7 @@ struct QueryInsightsPreferences: Codable, Equatable, Sendable {
     var dateRange: HistoryDateRange
     var slowestRanking: QueryInsightsSlowestRanking
 
-    /// Four weeks rather than the drawer's All Time, because a regression is a statement about a
-    /// period and comparing all of history against the nothing before it has no answer.
+    // Four weeks, not the drawer's All Time: a regression compares a period with the one before it.
     static let `default` = QueryInsightsPreferences(
         showsAllConnections: false,
         sources: QueryHistorySource.userAuthored,
@@ -43,34 +41,19 @@ struct QueryInsightsPreferences: Codable, Equatable, Sendable {
 }
 
 enum QueryInsightsPreferencesStorage {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "QueryInsightsPreferencesStorage")
-
-    private static func key(for connectionId: UUID) -> String {
-        "QueryInsights.\(connectionId.uuidString)"
+    private static func key(for connectionId: UUID) -> JSONDefaultsKey<QueryInsightsPreferences> {
+        JSONDefaultsKey("QueryInsights.\(connectionId.uuidString)")
     }
 
     static func load(for connectionId: UUID) -> QueryInsightsPreferences {
-        guard let data = AppStorageEnvironment.shared.defaults.data(forKey: key(for: connectionId)) else {
-            return .default
-        }
-        do {
-            return try JSONDecoder().decode(QueryInsightsPreferences.self, from: data)
-        } catch {
-            logger.error("Failed to decode query insights preferences: \(error.publicLogShape, privacy: .public)")
-            return .default
-        }
+        AppStorageEnvironment.shared.defaults.read(key(for: connectionId)).value ?? .default
     }
 
     static func save(_ preferences: QueryInsightsPreferences, for connectionId: UUID) {
-        do {
-            let data = try JSONEncoder().encode(preferences)
-            AppStorageEnvironment.shared.defaults.set(data, forKey: key(for: connectionId))
-        } catch {
-            logger.error("Failed to encode query insights preferences: \(error.publicLogShape, privacy: .public)")
-        }
+        try? AppStorageEnvironment.shared.defaults.write(preferences, to: key(for: connectionId))
     }
 
     static func remove(for connectionId: UUID) {
-        AppStorageEnvironment.shared.defaults.removeObject(forKey: key(for: connectionId))
+        AppStorageEnvironment.shared.defaults.removeValue(for: key(for: connectionId))
     }
 }

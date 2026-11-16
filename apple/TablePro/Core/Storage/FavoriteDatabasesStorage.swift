@@ -4,22 +4,18 @@
 //
 
 import Foundation
-import os
 import TableProSyncTransport
 
 extension Notification.Name {
     internal static let favoriteDatabasesDidChange = Notification.Name("FavoriteDatabasesDidChange")
 }
 
-/// Every entry lives under one key rather than one key per connection, so a sync push can resolve a
-/// dirty id back to its entry without knowing which connections exist, and so deleting a connection
-/// leaves nothing behind to forget. `FavoriteTablesStorage` is the same shape.
+// One key for every connection, so a sync push resolves a dirty id without knowing the connections. `FavoriteTablesStorage` is the same shape.
 @MainActor
 internal final class FavoriteDatabasesStorage {
     internal static let shared = FavoriteDatabasesStorage()
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "FavoriteDatabasesStorage")
-    private static let storageKey = "com.TablePro.favoriteDatabases"
+    private static let storageKey = JSONDefaultsKey<Set<FavoriteDatabaseEntry>>("com.TablePro.favoriteDatabases")
 
     private let defaults: UserDefaults
     private let syncTracker: SyncChangeTracker
@@ -35,13 +31,7 @@ internal final class FavoriteDatabasesStorage {
 
     internal func loadFavorites() -> Set<FavoriteDatabaseEntry> {
         if let cache { return cache }
-        guard let data = defaults.data(forKey: Self.storageKey),
-              let decoded = try? JSONDecoder().decode(Set<FavoriteDatabaseEntry>.self, from: data)
-        else {
-            cache = []
-            return []
-        }
-        let valid = decoded.filter { !$0.database.isEmpty }
+        let valid = (defaults.read(Self.storageKey).value ?? []).filter { !$0.database.isEmpty }
         cache = valid
         return valid
     }
@@ -105,9 +95,7 @@ internal final class FavoriteDatabasesStorage {
         }
     }
 
-    /// The composite id never includes the environment. A record keyed on a mutable payload is
-    /// orphaned the moment that payload changes, so re-tagging a database would leave the old
-    /// record behind and push a second one beside it.
+    // No environment in the id: re-tagging a database would orphan the old record and push a second one.
     nonisolated internal static func syncId(for entry: FavoriteDatabaseEntry) -> String {
         (entry.connectionId.uuidString + "|" + entry.database).sha256
     }
@@ -158,13 +146,9 @@ internal final class FavoriteDatabasesStorage {
     private func persist(_ favorites: Set<FavoriteDatabaseEntry>) {
         cache = favorites
         guard !favorites.isEmpty else {
-            defaults.removeObject(forKey: Self.storageKey)
+            defaults.removeValue(for: Self.storageKey)
             return
         }
-        do {
-            defaults.set(try JSONEncoder().encode(favorites), forKey: Self.storageKey)
-        } catch {
-            Self.logger.error("Failed to encode favorite databases: \(error.publicLogShape, privacy: .public)")
-        }
+        try? defaults.write(favorites, to: Self.storageKey)
     }
 }

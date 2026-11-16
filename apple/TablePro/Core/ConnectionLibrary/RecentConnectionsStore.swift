@@ -5,14 +5,11 @@
 
 import Combine
 import Foundation
-import os
 import TableProConnectionLibrary
 
 @MainActor
 internal final class RecentConnectionsStore: ObservableObject {
     internal static let shared = RecentConnectionsStore()
-
-    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RecentConnectionsStore")
 
     private let defaults: UserDefaults
     private let appEvents: AppEvents
@@ -24,7 +21,7 @@ internal final class RecentConnectionsStore: ObservableObject {
     ) {
         self.defaults = defaults
         self.appEvents = appEvents
-        self.ledger = Self.load(from: defaults)
+        self.ledger = defaults.read(PreferenceKeys.recentConnections).value ?? RecentConnectionsLedger()
     }
 
     internal var lastConnected: [UUID: Date] {
@@ -58,24 +55,7 @@ internal final class RecentConnectionsStore: ObservableObject {
     private func commit(_ updated: RecentConnectionsLedger) {
         guard updated != ledger else { return }
         ledger = updated
-        do {
-            let data = try JSONEncoder().encode(updated)
-            defaults.set(data, forKey: PreferenceKeys.recentConnections.name)
-        } catch {
-            Self.logger.error("Failed to save recent connections: \(error.publicLogShape, privacy: .public)")
-        }
+        try? defaults.write(updated, to: PreferenceKeys.recentConnections)
         appEvents.connectionListStateChanged.send(())
-    }
-
-    private static func load(from defaults: UserDefaults) -> RecentConnectionsLedger {
-        guard let data = defaults.data(forKey: PreferenceKeys.recentConnections.name) else {
-            return RecentConnectionsLedger()
-        }
-        do {
-            return try JSONDecoder().decode(RecentConnectionsLedger.self, from: data)
-        } catch {
-            logger.error("Discarding unreadable recent connections: \(error.publicLogShape, privacy: .public)")
-            return RecentConnectionsLedger()
-        }
     }
 }

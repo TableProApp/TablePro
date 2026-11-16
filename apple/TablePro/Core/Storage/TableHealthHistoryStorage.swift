@@ -226,25 +226,17 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
         return loaded.document
     }
 
+    // The file store reports a file that will not open and one that will not decode alike; only the second is set aside.
     private func read(_ connectionId: UUID) throws -> Loaded {
-        let url = fileURL(for: connectionId)
-        guard FileManager.default.fileExists(atPath: url.path) else { return Loaded() }
-        let data: Data
-        do {
-            data = try Data(contentsOf: url)
-        } catch {
-            Self.logger.error(
-                "Failed to read Table Health history for \(connectionId, privacy: .public): \(error.publicLogShape, privacy: .public)"
-            )
-            throw TableHealthHistoryStorageError.readFailed(error.localizedDescription)
-        }
-        do {
-            return Loaded(document: try JSONDecoder().decode(Document.self, from: data))
-        } catch {
-            Self.logger.error(
-                "Unreadable Table Health history for \(connectionId, privacy: .public): \(error.publicLogShape, privacy: .public)"
-            )
+        switch file(for: connectionId).read() {
+        case .missing:
+            return Loaded()
+        case .value(let document):
+            return Loaded(document: document)
+        case .unreadable(is DecodingError):
             return Loaded(isUnreadable: true)
+        case .unreadable(let error):
+            throw TableHealthHistoryStorageError.readFailed(error.localizedDescription)
         }
     }
 
@@ -272,20 +264,14 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
     }
 
     private func save(_ document: Document, for connectionId: UUID) throws {
-        let url = fileURL(for: connectionId)
+        let store = file(for: connectionId)
         do {
-            guard !document.databases.isEmpty else {
-                if FileManager.default.fileExists(atPath: url.path) {
-                    try FileManager.default.removeItem(at: url)
-                }
-                return
+            if document.databases.isEmpty {
+                try store.remove()
+            } else {
+                try store.write(document)
             }
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try JSONEncoder().encode(document).write(to: url, options: .atomic)
         } catch {
-            Self.logger.error(
-                "Failed to save Table Health history for \(connectionId, privacy: .public): \(error.publicLogShape, privacy: .public)"
-            )
             throw TableHealthHistoryStorageError.saveFailed(error.localizedDescription)
         }
     }
@@ -304,6 +290,10 @@ final class TableHealthHistoryStorage: TableHealthHistoryStoring, TableScopedSet
 
     private func fileURL(for connectionId: UUID) -> URL {
         directory.appendingPathComponent("\(connectionId.uuidString).json")
+    }
+
+    private func file(for connectionId: UUID) -> JSONFileStore<Document> {
+        JSONFileStore(url: fileURL(for: connectionId))
     }
 
     private func corruptFileURL(for connectionId: UUID, number: Int) -> URL {

@@ -151,28 +151,26 @@ internal struct TeamLibraryStateStore {
     func loadAll() -> [TeamLibraryTeamState] {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         return files.filter { $0.pathExtension == "json" }.compactMap { file in
-            guard let data = try? Data(contentsOf: file) else { return nil }
-            do {
-                return try JSONDecoder().decode(TeamLibraryTeamState.self, from: data)
-            } catch {
-                Self.logger.error("Dropping an unreadable team library file: \(error.publicLogShape, privacy: .public)")
-                try? FileManager.default.removeItem(at: file)
+            let store = JSONFileStore<TeamLibraryTeamState>(url: file)
+            switch store.read() {
+            case .value(let state):
+                return state
+            case .unreadable(let error) where error is DecodingError:
+                try? store.remove()
+                return nil
+            // A file that could not be read at all is kept for the next launch.
+            case .missing, .unreadable:
                 return nil
             }
         }
     }
 
     func save(_ state: TeamLibraryTeamState) {
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try JSONEncoder().encode(state).write(to: file(for: state.teamID), options: .atomic)
-        } catch {
-            Self.logger.error("Could not store the team library: \(error.publicLogShape, privacy: .public)")
-        }
+        try? teamFile(state.teamID).write(state)
     }
 
     func remove(teamID: String) {
-        try? FileManager.default.removeItem(at: file(for: teamID))
+        try? teamFile(teamID).remove()
     }
 
     func removeAll() {
@@ -182,9 +180,9 @@ internal struct TeamLibraryStateStore {
 
     // What the last /v1 pull cached, keyed by client ID like a /v2 snapshot, so the first one matches it item by item.
     func loadLegacy(now: Date) -> TeamLibraryLegacyLibrary? {
-        guard let data = try? Data(contentsOf: legacyFile) else { return nil }
+        guard let cache = legacyCache.read().value else { return nil }
         do {
-            return try JSONDecoder().decode(TeamLibraryLegacyCache.self, from: data).library(at: now)
+            return try cache.library(at: now)
         } catch {
             Self.logger.error("The /v1 team library cache is unreadable: \(error.publicLogShape, privacy: .public)")
             return nil
@@ -192,13 +190,17 @@ internal struct TeamLibraryStateStore {
     }
 
     func removeLegacy() {
-        try? FileManager.default.removeItem(at: legacyFile)
+        try? legacyCache.remove()
         defaults.removeObject(forKey: Self.legacyPullKey)
     }
 
-    private func file(for teamID: String) -> URL {
+    private var legacyCache: JSONFileStore<TeamLibraryLegacyCache> {
+        JSONFileStore(url: legacyFile)
+    }
+
+    private func teamFile(_ teamID: String) -> JSONFileStore<TeamLibraryTeamState> {
         let name = String(teamID.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) || $0 == "_" })
-        return directory.appendingPathComponent("\(name).json")
+        return JSONFileStore(url: directory.appendingPathComponent("\(name).json"))
     }
 }
 

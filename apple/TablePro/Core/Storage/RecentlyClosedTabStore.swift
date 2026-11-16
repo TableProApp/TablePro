@@ -39,10 +39,7 @@ internal extension RecentlyClosedTabEntry {
     private static let previewLength = 48
 }
 
-/// Durable history of recently closed tabs, deliberately independent of `TabDiskActor`.
-/// `TabDiskActor` answers "what is open right now" and is recomputed from the surviving
-/// windows on every save, so a closed tab necessarily falls out of it. This store is the
-/// append-and-prune log that lets a closed tab come back.
+// Independent of `TabDiskActor`, which is recomputed from the surviving windows on every save and so drops a closed tab.
 @MainActor
 internal final class RecentlyClosedTabStore: ObservableObject {
     internal static let shared = RecentlyClosedTabStore()
@@ -55,11 +52,13 @@ internal final class RecentlyClosedTabStore: ObservableObject {
     @Published internal private(set) var entries: [RecentlyClosedTabEntry] = []
 
     private let directory: URL
+    private let stateFile: JSONFileStore<StoredEntries>
 
     internal init(directory: URL = RecentlyClosedTabStore.defaultDirectory()) {
         self.directory = directory
+        stateFile = JSONFileStore(url: directory.appendingPathComponent("entries.json"))
         createDirectories()
-        entries = Self.decodeEntries(at: Self.stateFileURL(in: directory))
+        entries = stateFile.read().value?.entries ?? []
         prune()
         persist()
     }
@@ -80,12 +79,7 @@ internal final class RecentlyClosedTabStore: ObservableObject {
         entries.first
     }
 
-    /// The entry with any overflow text folded back into the tab, so the caller holds everything
-    /// needed to rebuild the tab without touching disk again.
-    ///
-    /// Reading removes nothing. Opening the tab can still fail or wait on a connect, and an entry
-    /// taken out before the tab is on screen is a closed tab lost for good; `discard(id:)` is the
-    /// caller's to call once it is shown.
+    // Removes nothing: opening the tab can still fail or wait on a connect, so the caller discards it once shown.
     internal func restorableEntry(id: UUID) -> RecentlyClosedTabEntry? {
         guard var entry = entries.first(where: { $0.id == id }) else { return nil }
         if let overflow = overflowText(for: entry) {
@@ -168,9 +162,7 @@ internal final class RecentlyClosedTabStore: ObservableObject {
 
     // MARK: - Overflow Files
 
-    /// A query above `maxPersistableQuerySize` is blanked by `toPersistedTab()` to keep the
-    /// tab-state JSON small. A recovery entry cannot afford that, so the full text goes to a
-    /// sidecar file instead of being silently truncated.
+    // `toPersistedTab()` blanks a query above `maxPersistableQuerySize`, so the full text goes to a sidecar file.
     private func writeOverflow(_ query: String, fileName: String) -> Bool {
         do {
             try query.write(to: overflowDirectory.appendingPathComponent(fileName), atomically: true, encoding: .utf8)
@@ -206,24 +198,7 @@ internal final class RecentlyClosedTabStore: ObservableObject {
     }
 
     private func persist() {
-        do {
-            let data = try JSONEncoder().encode(entries)
-            try data.write(to: Self.stateFileURL(in: directory), options: .atomic)
-        } catch {
-            Self.logger.fault("Failed to persist recently closed tabs: \(error.publicLogShape, privacy: .public)")
-        }
-    }
-
-    /// One unreadable entry must not cost the user the rest of the history, so entries decode
-    /// leniently, matching `TabDiskState`.
-    private static func decodeEntries(at url: URL) -> [RecentlyClosedTabEntry] {
-        guard let data = try? Data(contentsOf: url) else { return [] }
-        do {
-            return try JSONDecoder().decode([LossyEntry].self, from: data).compactMap(\.value)
-        } catch {
-            logger.error("Failed to load recently closed tabs: \(error.publicLogShape, privacy: .public)")
-            return []
-        }
+        try? stateFile.write(StoredEntries(entries))
     }
 
     nonisolated internal static func defaultDirectory() -> URL {
@@ -232,9 +207,23 @@ internal final class RecentlyClosedTabStore: ObservableObject {
             .appendingPathComponent("TablePro", isDirectory: true)
             .appendingPathComponent("RecentlyClosedTabs", isDirectory: true)
     }
+}
 
-    private static func stateFileURL(in directory: URL) -> URL {
-        directory.appendingPathComponent("entries.json")
+// Entries decode one by one, matching `TabDiskState`, so one unreadable entry does not cost the rest of the history.
+private struct StoredEntries: Codable {
+    let entries: [RecentlyClosedTabEntry]
+
+    init(_ entries: [RecentlyClosedTabEntry]) {
+        self.entries = entries
+    }
+
+    init(from decoder: Decoder) throws {
+        entries = try decoder.singleValueContainer().decode([LossyEntry].self).compactMap(\.value)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(entries)
     }
 }
 

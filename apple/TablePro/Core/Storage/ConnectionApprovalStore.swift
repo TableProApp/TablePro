@@ -109,24 +109,21 @@ internal final class ConnectionApprovalStore {
         return true
     }
 
+    private var approvalsKey: JSONDefaultsKey<Approvals> {
+        JSONDefaultsKey(kind.storageKey)
+    }
+
     private func approvals() -> Approvals {
-        guard let data = defaults.data(forKey: kind.storageKey),
-              let decoded = try? JSONDecoder().decode(Approvals.self, from: data)
-        else { return [:] }
-        return decoded
+        defaults.read(approvalsKey).value ?? [:]
     }
 
     private func save(_ approvals: Approvals) {
         let kept = approvals.filter { !$0.value.isEmpty }
         guard !kept.isEmpty else {
-            defaults.removeObject(forKey: kind.storageKey)
+            defaults.removeValue(for: approvalsKey)
             return
         }
-        guard let data = try? JSONEncoder().encode(kept) else {
-            Self.logger.error("Could not encode \(self.kind.logName, privacy: .public)")
-            return
-        }
-        defaults.set(data, forKey: kind.storageKey)
+        try? defaults.write(kept, to: approvalsKey)
     }
 }
 

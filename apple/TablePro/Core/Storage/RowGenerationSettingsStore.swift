@@ -19,12 +19,11 @@ internal final class RowGenerationSettingsStore: TableScopedSettingsStore {
     }
 
     func settings(for scope: TableScope) -> RowGenerationSettings? {
-        guard let data = store.dataValue(forKey: PreferenceKeys.rowGeneration(scope).name) else { return nil }
-        return try? JSONDecoder().decode(RowGenerationSettings.self, from: data)
+        store.read(PreferenceKeys.rowGeneration(scope)).value
     }
 
     func save(_ settings: RowGenerationSettings, for scope: TableScope) {
-        store.setDataValue(try? JSONEncoder().encode(settings), forKey: PreferenceKeys.rowGeneration(scope).name)
+        try? store.write(settings, to: PreferenceKeys.rowGeneration(scope))
     }
 
     func renameTable(from oldScope: TableScope, to newScope: TableScope) {
@@ -50,7 +49,7 @@ internal final class RowGenerationSettingsStore: TableScopedSettingsStore {
     }
 
     func dropTable(_ scope: TableScope) {
-        store.setDataValue(nil, forKey: PreferenceKeys.rowGeneration(scope).name)
+        store.removeValue(for: PreferenceKeys.rowGeneration(scope))
     }
 
     func dropContainer(connectionId: UUID, database: String, schema: String?) {
