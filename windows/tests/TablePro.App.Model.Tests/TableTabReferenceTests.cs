@@ -90,6 +90,22 @@ public sealed class TableTabReferenceTests
     }
 
     [Fact]
+    public async Task AnotherTablesDropReadsTheKeysAgainAndLeavesTheRowsAndEdits()
+    {
+        await _tab.RunAsync();
+        _tab.CommitEdit(0, 1, "changed");
+        var first = Assert.Single(_session.KeyReads);
+        var reads = _session.Queries.Count;
+
+        _tab.ForgetCatalog();
+
+        Assert.Equal(2, _session.KeyReads.Count);
+        Assert.True(first.IsDisposed);
+        Assert.Equal(reads, _session.Queries.Count);
+        Assert.True(_tab.HasUnsavedChanges);
+    }
+
+    [Fact]
     public async Task ARefreshWhoseKeyReadFailsOffersNoneOfTheKeysReadBefore()
     {
         await _tab.RunAsync();

@@ -129,11 +129,17 @@ public sealed partial class WorkspaceView
         }
 
         // A cascade empties the tables pointing at this one, and a partitioned table its partitions, so every table tab
-        // reads again; one holding edits asks first.
-        foreach (var view in TableViews())
+        // reads again; one holding edits comes forward first, since the question names no table.
+        var items = Tabs.TabItems.OfType<TabViewItem>().Where(item => item.Content is TableTabView).ToList();
+        foreach (var item in items)
         {
-            if (TableViews().Contains(view))
+            if (item.Content is TableTabView view && Tabs.TabItems.Contains(item))
             {
+                if (view.Model.HasUnsavedChanges)
+                {
+                    Tabs.SelectedItem = item;
+                }
+
                 await view.RefreshRowsAsync().ConfigureAwait(true);
             }
         }
@@ -428,6 +434,12 @@ public sealed partial class WorkspaceView
         }
 
         await DiscardObjectTabsAsync(gone.Contains).ConfigureAwait(true);
+
+        // A table that stays can lose a foreign key into one that went, so every other table tab reads its keys again.
+        foreach (var view in TableViews())
+        {
+            await view.ForgetCatalogAsync().ConfigureAwait(true);
+        }
     }
 
     // What a table or definition tab shows; a table tab's kind is left open, since a table and a view read alike.

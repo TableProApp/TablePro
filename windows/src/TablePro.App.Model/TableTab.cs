@@ -521,6 +521,23 @@ public sealed class TableTab : IWorkspaceTab
         }
     }
 
+    // Another table's drop can take a foreign key of this one with it: its keys, structure and filter choices are read
+    // again, and the rows and their edits stay.
+    public void ForgetCatalog()
+    {
+        _reopenTableEditor = true;
+        _keysVersion++;
+        _keysStale = true;
+        _keys?.Dispose();
+        _keys = null;
+        _structure.MarkStale();
+        _choices.MarkStale();
+        if (!IsRunning && !IsSaving && _shown)
+        {
+            ReadKeysIfNeeded();
+        }
+    }
+
     // From the first page, counting the rows the filter picks; a filter the core refuses leaves the one shown.
     public async Task ApplyFilterAsync(TableFilter? filter)
     {

@@ -934,6 +934,13 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     private async void OnRefresh(object sender, RoutedEventArgs e) => await RefreshRowsAsync().ConfigureAwait(true);
 
     // As Refresh does, for rows written from outside the tab, such as an import.
+    // The rows and their edits stay; a structure or filter bar on screen reads again.
+    internal async Task ForgetCatalogAsync()
+    {
+        _model.ForgetCatalog();
+        await ReloadShownAsync().ConfigureAwait(true);
+    }
+
     internal async Task RefreshRowsAsync()
     {
         await _model.RefreshAsync().ConfigureAwait(true);
