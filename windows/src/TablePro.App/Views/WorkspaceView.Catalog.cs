@@ -29,6 +29,11 @@ public sealed partial class WorkspaceView
 
         var abilities = Abilities;
         var choices = abilities.SchemaOwner ? await ChoicesAsync(session).ConfigureAwait(true) : DatabaseChoices.None;
+        if (!Holds(session))
+        {
+            return;
+        }
+
         using var change = await CatalogDialogs.AskNewSchemaAsync(this, session, abilities, choices).ConfigureAwait(true);
         if (change is null || !await RunCatalogChangeAsync(session, change, "CreateSchemaFailed").ConfigureAwait(true))
         {
@@ -51,6 +56,11 @@ public sealed partial class WorkspaceView
 
         var abilities = Abilities;
         var choices = await ChoicesAsync(session).ConfigureAwait(true);
+        if (!Holds(session))
+        {
+            return;
+        }
+
         using var change = await CatalogDialogs.AskNewDatabaseAsync(this, session, abilities, choices).ConfigureAwait(true);
         if (change is null
             || !await RunCatalogChangeAsync(session, change, abilities.Keyspaces ? "CreateKeyspaceFailed" : "CreateDatabaseFailed")
@@ -65,7 +75,7 @@ public sealed partial class WorkspaceView
         }
 
         // As macOS does, the window goes on in the new database.
-        if (CreatedName(change) is { } name && ReferenceEquals(_session, session))
+        if (CreatedName(change) is { } name && Holds(session))
         {
             PickDatabase(session, name);
         }
@@ -90,6 +100,11 @@ public sealed partial class WorkspaceView
         var table = new TableName(entry.Schema, entry.Name);
         var abilities = Abilities;
         var referencing = await ReferencingAsync(session, table).ConfigureAwait(true);
+        if (!Holds(session))
+        {
+            return;
+        }
+
         if (referencing.Count > 0 && abilities.TruncateRefusedWhenReferenced)
         {
             await CatalogDialogs.ShowRefusedAsync(
@@ -101,6 +116,11 @@ public sealed partial class WorkspaceView
         }
 
         var clusters = abilities.OnCluster ? (await ChoicesAsync(session).ConfigureAwait(true)).Clusters : [];
+        if (!Holds(session))
+        {
+            return;
+        }
+
         using var change = await CatalogDialogs.AskTruncateAsync(this, session, table, abilities, clusters).ConfigureAwait(true);
         if (change is null || !await RunCatalogChangeAsync(session, change, "TruncateFailed").ConfigureAwait(true))
         {
@@ -128,6 +148,11 @@ public sealed partial class WorkspaceView
         var table = new TableName(entry.Schema, entry.Name);
         var abilities = Abilities;
         var referencing = await ReferencingAsync(session, table).ConfigureAwait(true);
+        if (!Holds(session))
+        {
+            return;
+        }
+
         if (referencing.Count > 0 && !abilities.DropTableCascade)
         {
             await CatalogDialogs.ShowRefusedAsync(
@@ -173,6 +198,8 @@ public sealed partial class WorkspaceView
         await DiscardTabsAsync(view => string.Equals(view.Model.Table.Schema, schema, StringComparison.Ordinal))
             .ConfigureAwait(true);
         _workbench.TableFilters.ForgetSchema(FilterConnection, session.Database, schema);
+        // Cascade drops the views in other schemas that read this one's tables too.
+        await DiscardGoneTabsAsync(session).ConfigureAwait(true);
         await RefreshAsync().ConfigureAwait(true);
     }
 
@@ -185,6 +212,11 @@ public sealed partial class WorkspaceView
 
         var abilities = Abilities;
         var clusters = abilities.OnCluster ? (await ChoicesAsync(session).ConfigureAwait(true)).Clusters : [];
+        if (!Holds(session))
+        {
+            return;
+        }
+
         using var change = await CatalogDialogs.AskDropDatabaseAsync(this, session, database, abilities, clusters)
             .ConfigureAwait(true);
         if (change is null
@@ -200,6 +232,7 @@ public sealed partial class WorkspaceView
             await DiscardTabsAsync(view => string.Equals(view.Model.Table.Schema, database, StringComparison.Ordinal))
                 .ConfigureAwait(true);
             _workbench.TableFilters.ForgetSchema(FilterConnection, session.Database, database);
+            await DiscardGoneTabsAsync(session).ConfigureAwait(true);
             if (string.Equals(_defaultDatabase, database, StringComparison.Ordinal))
             {
                 _defaultDatabase = null;
@@ -219,6 +252,11 @@ public sealed partial class WorkspaceView
     // was asked in its own question, which showed them. True only once the change landed on this window's session.
     private async Task<bool> RunCatalogChangeAsync(DatabaseSession session, CatalogChange change, string failedTitle)
     {
+        if (!Holds(session))
+        {
+            return false;
+        }
+
         if (change.Gate == SaveGate.Refuse)
         {
             await CatalogDialogs.ShowRefusedAsync(this, Strings.Get(failedTitle), Strings.Get("EditLockReadOnly"))
@@ -246,8 +284,9 @@ public sealed partial class WorkspaceView
                 .ConfigureAwait(true);
             return false;
         }
-        catch (OperationCanceledException)
+        catch (Exception exception) when (exception is OperationCanceledException or ObjectDisposedException)
         {
+            // Stopped, or the window let go of its session while the change waited.
             return false;
         }
 
@@ -264,14 +303,14 @@ public sealed partial class WorkspaceView
                         Strings.Get(failedTitle),
                         $"{Strings.Error(unknown.Error)} {Strings.Get("CatalogChangeUnknown")}")
                     .ConfigureAwait(true);
-                if (ReferenceEquals(_session, session))
+                if (Holds(session))
                 {
                     await RefreshAsync().ConfigureAwait(true);
                 }
 
                 return false;
             default:
-                return ReferenceEquals(_session, session);
+                return Holds(session);
         }
     }
 
@@ -283,7 +322,7 @@ public sealed partial class WorkspaceView
             using var keys = await session.ReadTableKeysAsync(table).ConfigureAwait(true);
             return keys.ReferencingTables;
         }
-        catch (TableProException)
+        catch (Exception exception) when (exception is TableProException or ObjectDisposedException)
         {
             return [];
         }
@@ -296,7 +335,7 @@ public sealed partial class WorkspaceView
         {
             return await session.GetDatabaseChoicesAsync().ConfigureAwait(true);
         }
-        catch (TableProException)
+        catch (Exception exception) when (exception is TableProException or ObjectDisposedException)
         {
             return DatabaseChoices.None;
         }
@@ -304,6 +343,9 @@ public sealed partial class WorkspaceView
 
     private List<TableTabView> TableViews() =>
         [.. Tabs.TabItems.OfType<TabViewItem>().Select(item => item.Content).OfType<TableTabView>()];
+
+    // A read can outlast the window's session: a disconnect replaces it, and the last holder disposes it.
+    private bool Holds(DatabaseSession session) => ReferenceEquals(_session, session);
 
     // The objects of each schema a table tab shows, read again; a schema that cannot be read closes nothing.
     private async Task DiscardGoneTabsAsync(DatabaseSession session)
@@ -320,6 +362,15 @@ public sealed partial class WorkspaceView
             catch (TableProException)
             {
                 continue;
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+
+            if (!Holds(session))
+            {
+                return;
             }
 
             foreach (var view in TableViews().Where(view => view.Model.Table.Schema == schema))

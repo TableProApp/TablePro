@@ -327,6 +327,12 @@ internal static class CatalogDialogs
                     _statements.Text = Strings.Error(exception.Error);
                     _dialog.IsPrimaryButtonEnabled = false;
                 }
+                catch (ObjectDisposedException)
+                {
+                    // The window let go of its session while the question was open.
+                    _statements.Text = string.Empty;
+                    _dialog.IsPrimaryButtonEnabled = false;
+                }
             }
 
             foreach (var watch in _watches)

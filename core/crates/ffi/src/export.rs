@@ -510,11 +510,11 @@ impl ResultSink for FileSink {
     }
 }
 
+// Ignoring case, since SQLite, MySQL and SQL Server read two names that differ only in case as one column, and the
+// second value would be dropped without a word.
 fn repeats_a_name(columns: &[ResultColumn]) -> bool {
-    columns
-        .iter()
-        .enumerate()
-        .any(|(index, column)| columns[..index].iter().any(|before| before.name == column.name))
+    let mut seen = std::collections::HashSet::with_capacity(columns.len());
+    columns.iter().any(|column| !seen.insert(column.name.to_lowercase()))
 }
 
 // Where each database holds schemas of its own, an origin names no database, and an editor can read in another one
@@ -841,6 +841,15 @@ mod tests {
             width: IntegerWidth::W64,
             signed: true,
         })
+    }
+
+    #[test]
+    fn two_names_that_differ_only_in_case_are_one_column() {
+        let named = |name: &str| array_of(name, bigint());
+
+        assert!(repeats_a_name(&[named("a"), named("A")]));
+        assert!(repeats_a_name(&[named("id"), named("name"), named("id")]));
+        assert!(!repeats_a_name(&[named("id"), named("name")]));
     }
 
     #[test]
