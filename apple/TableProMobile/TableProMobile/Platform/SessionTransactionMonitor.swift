@@ -40,6 +40,10 @@ final class SessionTransactionMonitor {
     // Sessions whose last answer was idle, apart from those that could not say.
     @ObservationIgnored private var idleDrivers: [UUID: ObjectIdentifier] = [:]
     private var workCounts: [UUID: Int] = [:]
+    // Sessions an import holds alone, and imports waiting for the work already running to end.
+    private var heldAlone: Set<UUID> = []
+    @ObservationIgnored private var waitingAlone: [UUID: Int] = [:]
+    @ObservationIgnored private var turnWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
     @ObservationIgnored private var statementCounts: [UUID: Int] = [:]
     private var rollBackCounts: [UUID: Int] = [:]
     @ObservationIgnored private var refreshGenerations: [UUID: Int] = [:]
@@ -84,6 +88,10 @@ final class SessionTransactionMonitor {
         workCounts[connectionId, default: 0] > 0
     }
 
+    func isHeldAlone(_ connectionId: UUID) -> Bool {
+        heldAlone.contains(connectionId)
+    }
+
     // A grid page is a read the app built, so a session lost under it cannot have committed anything.
     func isRunningStatements(_ connectionId: UUID) -> Bool {
         statementCounts[connectionId, default: 0] > 0
@@ -110,19 +118,51 @@ final class SessionTransactionMonitor {
     }
 
     // `reading` work keeps Commit and Roll Back off the session while it streams, and stales a dialog opened before it.
-    func track<T>(_ connectionId: UUID, reading: Bool = false, _ work: () async throws -> T) async rethrows -> T {
+    // `alone` work, an import, has the session to itself: it starts once the work already running ends, and work from
+    // any window waits until it ends, so no statement lands between its batches inside its transaction.
+    func track<T>(
+        _ connectionId: UUID,
+        reading: Bool = false,
+        alone: Bool = false,
+        _ work: () async throws -> T
+    ) async rethrows -> T {
+        await waitForTurn(connectionId, alone: alone)
+        if alone { heldAlone.insert(connectionId) }
         workCounts[connectionId, default: 0] += 1
         if !reading { statementCounts[connectionId, default: 0] += 1 }
         workGenerations[connectionId, default: 0] += 1
         do {
             let value = try await work()
             await refresh(connectionId)
-            endWork(connectionId, reading: reading)
+            endWork(connectionId, reading: reading, alone: alone)
             return value
         } catch {
             await refresh(connectionId)
-            endWork(connectionId, reading: reading)
+            endWork(connectionId, reading: reading, alone: alone)
             throw error
+        }
+    }
+
+    // An import waiting for its turn goes ahead of work that comes after it, so a busy grid cannot keep it out.
+    private func waitForTurn(_ connectionId: UUID, alone: Bool) async {
+        if alone { waitingAlone[connectionId, default: 0] += 1 }
+        while mustWait(connectionId, alone: alone) {
+            await withCheckedContinuation { turnWaiters[connectionId, default: []].append($0) }
+        }
+        guard alone else { return }
+        let left = waitingAlone[connectionId, default: 1] - 1
+        waitingAlone[connectionId] = left > 0 ? left : nil
+    }
+
+    private func mustWait(_ connectionId: UUID, alone: Bool) -> Bool {
+        if heldAlone.contains(connectionId) { return true }
+        if alone { return workCounts[connectionId, default: 0] > 0 }
+        return waitingAlone[connectionId, default: 0] > 0
+    }
+
+    private func wakeTurnWaiters(_ connectionId: UUID) {
+        for waiter in turnWaiters.removeValue(forKey: connectionId) ?? [] {
+            waiter.resume()
         }
     }
 
@@ -221,10 +261,12 @@ final class SessionTransactionMonitor {
     }
 
     // A read cannot end a transaction, so only its start, which a confirmation may race, stales a dialog.
-    private func endWork(_ connectionId: UUID, reading: Bool) {
+    private func endWork(_ connectionId: UUID, reading: Bool, alone: Bool) {
         if !reading { workGenerations[connectionId, default: 0] += 1 }
         let remaining = workCounts[connectionId, default: 1] - 1
         workCounts[connectionId] = remaining > 0 ? remaining : nil
+        if alone { heldAlone.remove(connectionId) }
+        if alone || remaining <= 0 { wakeTurnWaiters(connectionId) }
         guard !reading else { return }
         let statements = statementCounts[connectionId, default: 1] - 1
         statementCounts[connectionId] = statements > 0 ? statements : nil

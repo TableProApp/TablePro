@@ -113,6 +113,20 @@ struct MySQLTransferTests {
         #expect(!MySQLWriteDialect.isBitColumn("bigint"))
     }
 
+    @Test("With the import's database the rows go to db.table, whatever database a USE left the session on")
+    func writeDialectNamesTheDatabase() async throws {
+        let dialect = MySQLWriteDialect(
+            databaseTypeId: "MySQL", isMariaDB: false, spelling: .backslashEscapes, database: "shop"
+        )
+        let statements = try await dialect.importStatements(
+            table: "orders", schema: nil, columns: [ColumnInfo(name: "id", typeName: "int")]
+        )
+
+        #expect(statements.insertStatement(columns: ["id"], values: [.text("1")])?.sql
+            == "INSERT INTO `shop`.`orders` (`id`) VALUES (?)")
+        #expect(dialect.namesDatabase)
+    }
+
     @Test("A new table's literals are spelled for a session under NO_BACKSLASH_ESCAPES")
     func createTableIsRespelled() throws {
         let dialect = MySQLWriteDialect(databaseTypeId: "MySQL", isMariaDB: false, spelling: .quoteDoubling)

@@ -81,9 +81,10 @@ nonisolated struct ExportObjectRow: Identifiable, Sendable {
     var object: PluginExportTable
     var isSelected: Bool
 
+    // The type too: a MySQL function and procedure can share a name and a signature, and both are routines.
     init(object: PluginExportTable, isSelected: Bool) {
         self.id = [
-            object.kind.rawValue, object.databaseName, object.schema ?? "", object.parentTable ?? "",
+            object.kind.rawValue, object.tableType, object.databaseName, object.schema ?? "", object.parentTable ?? "",
             object.identity ?? "", object.name
         ].joined(separator: "\u{1F}")
         self.object = object

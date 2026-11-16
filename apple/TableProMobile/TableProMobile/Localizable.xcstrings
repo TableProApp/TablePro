@@ -3110,6 +3110,9 @@
     "An extra value that should be imported as NULL, for example \\N." : {
 
     },
+    "An import is running on this connection." : {
+
+    },
     "an item has an empty reference" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -12445,6 +12448,9 @@
 
     },
     "Import Rows…" : {
+
+    },
+    "Import Running" : {
 
     },
     "Import Stopped" : {
@@ -29470,6 +29476,9 @@
       }
     },
     "Try again in a moment." : {
+
+    },
+    "Try again once it ends." : {
 
     },
     "Try again or check your connection." : {

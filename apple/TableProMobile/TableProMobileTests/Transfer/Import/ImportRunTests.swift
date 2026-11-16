@@ -22,13 +22,18 @@ private final class FakeSessionHost: TransferSessionHost {
     }
 
     var transferDriver: Result<any DatabaseDriver, AppError> { .success(driver) }
+    var transferDatabase: String?
 
     // As `ConnectionCoordinator.track(failed:)` does: a value the test calls failed sends the session to its check.
+    private(set) var aloneRuns = 0
+
     func trackTransfer<T: Sendable>(
+        alone: Bool,
         failed: @Sendable (T) -> Bool,
         _ work: @Sendable () async throws -> T
     ) async throws -> T {
         trackedRuns += 1
+        if alone { aloneRuns += 1 }
         let value = try await work()
         if failed(value) { sessionChecks += 1 }
         return value
@@ -91,6 +96,7 @@ struct ImportRunTests {
         #expect(outcome.executedStatements == 3)
         #expect(try await driver.execute(query: "SELECT count(*) FROM t").rows.first?.first == "2")
         #expect(await host.trackedRuns == 1)
+        #expect(await host.aloneRuns == 1)
         #expect(await host.changedKinds == [.everything])
     }
 
@@ -368,5 +374,62 @@ struct ImportRunTests {
 
         #expect(await host.sessionEffects.isEmpty)
         #expect(await host.placementFollows.isEmpty)
+    }
+
+    @Test("A row import whose session moved to another database since the sheet opened is refused before it writes")
+    func movedSessionRefusesTheImport() async throws {
+        let driver = try await database()
+        _ = try await driver.execute(query: "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)")
+        let host = await FakeSessionHost(driver: driver)
+        await MainActor.run { host.transferDatabase = "archive" }
+        let target = RowImportTarget(
+            table: "people", schema: nil, columnMapping: ["id": "id", "name": "name"], sourceFields: ["id", "name"]
+        )
+        let file = try staged("people.csv", "id,name\n1,Ada\n")
+        let moved = ImportRequest(
+            formatId: "csv", file: file, connectionId: UUID(), connectionName: "Local", databaseType: .sqlite,
+            database: "main", safeModeLevel: .off, target: target
+        )
+        let run = ImportRun(request: moved, plugin: MobileImportFormats.csv, host: host)
+
+        await #expect(throws: MobileTransferRefusal(reason: ImportRun.sessionMovedMessage)) {
+            _ = try await run.run { _ in }
+        }
+        #expect(try await driver.execute(query: "SELECT count(*) FROM people").rows.first?.first == "0")
+    }
+
+    @Test("A row import on the session's own database goes ahead")
+    func sameDatabaseImports() async throws {
+        let driver = try await database()
+        _ = try await driver.execute(query: "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)")
+        let host = await FakeSessionHost(driver: driver)
+        await MainActor.run { host.transferDatabase = "main" }
+        let target = RowImportTarget(
+            table: "people", schema: nil, columnMapping: ["id": "id", "name": "name"], sourceFields: ["id", "name"]
+        )
+        let file = try staged("people.csv", "id,name\n1,Ada\n")
+        let request = ImportRequest(
+            formatId: "csv", file: file, connectionId: UUID(), connectionName: "Local", databaseType: .sqlite,
+            database: "main", safeModeLevel: .off, target: target
+        )
+
+        let outcome = try await ImportRun(request: request, plugin: MobileImportFormats.csv, host: host).run { _ in }
+
+        #expect(outcome.ending == .completed)
+    }
+
+    @Test("A SQL file that rolls back the import's transaction and then inserts keeps that row and says so")
+    func sqlFileRollbackThenInsertIsReported() async throws {
+        let driver = try await database()
+        _ = try await driver.execute(query: "CREATE TABLE t (a INTEGER)")
+        let host = await FakeSessionHost(driver: driver)
+        let file = try staged("rollback.sql", "INSERT INTO t VALUES (1);\nROLLBACK;\nINSERT INTO t VALUES (2);\n")
+        let run = ImportRun(request: request(file, formatId: "sql"), plugin: MobileImportFormats.sql, host: host)
+
+        let outcome = try await run.run { _ in }
+
+        #expect(outcome.ending == .completed)
+        #expect(outcome.transaction == .committed)
+        #expect(try await driver.execute(query: "SELECT group_concat(a) FROM t").rows.first?.first == "2")
     }
 }

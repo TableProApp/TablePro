@@ -391,6 +391,7 @@ nonisolated final class ImportRun: @unchecked Sendable {
             // A refusal is carried out of the tracked work as a value: thrown through it, the coordinator would treat it
             // as a session lost mid-write and redial. A failed run is a value too, and `failed` hands it to that check.
             let performed = try await host.trackTransfer(
+                alone: true,
                 failed: { (performed: Performed) in performed.mayHaveLostSession }
             ) { [self] () async throws -> Performed in
                 do {
@@ -469,6 +470,7 @@ nonisolated final class ImportRun: @unchecked Sendable {
     ) async throws -> DataImportOutcome {
         report(TransferProgress(stage: .preparing, unit: request.target == nil ? .statements : .rows))
         let dialect = try await writeDialect(on: driver)
+        try await refuseIfSessionMoved(on: driver, dialect: dialect)
         var catalogChanges: SQLCatalogObjectKinds = request.target == nil ? .everything : []
         let preparation = try await prepareNewTable(on: driver, dialect: dialect)
         if preparation.created { catalogChanges.insert(.tables) }
@@ -483,7 +485,8 @@ nonisolated final class ImportRun: @unchecked Sendable {
                     columnMapping: target.columnMapping,
                     sourceFields: Set(target.sourceFields),
                     rowWriting: target.rowWriting,
-                    binaryText: ImportBinaryText(formatId: request.formatId)
+                    binaryText: ImportBinaryText(formatId: request.formatId),
+                    database: request.database
                 )
             },
             dialect: dialect,
@@ -577,6 +580,25 @@ nonisolated final class ImportRun: @unchecked Sendable {
         return try await engine.makeWriteDialect(context: MobileTransferContext(
             databaseType: request.databaseType, database: request.database, schema: target.schema
         ))
+    }
+
+    // The sheet named its database, and another window can have moved the session since. Rows that name the database
+    // land there anyway; anything that does not, a new table among them, is refused rather than written elsewhere.
+    private func refuseIfSessionMoved(on driver: any DatabaseDriver, dialect: (any MobileWriteDialect)?) async throws {
+        guard let target = request.target, let wanted = request.database, !wanted.isEmpty else { return }
+        if dialect?.namesDatabase == true, target.newTable == nil { return }
+        let current: String?
+        if let reporting = driver as? any SessionDatabaseReporting {
+            current = try? await reporting.sessionDatabase()
+        } else {
+            current = await host.transferDatabase
+        }
+        guard let current, !current.isEmpty, current != wanted else { return }
+        throw MobileTransferRefusal(reason: Self.sessionMovedMessage)
+    }
+
+    static var sessionMovedMessage: String {
+        String(localized: "The connection moved to another database or schema. Choose the table again.")
     }
 
     nonisolated private struct NewTablePreparation {

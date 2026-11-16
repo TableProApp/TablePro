@@ -230,6 +230,37 @@ struct MobileImportDataSinkTests {
         #expect(try await names(driver) == ["2:Bo", "3:Cy"])
     }
 
+    @Test("A write after the file's own ROLLBACK stays, and the import says rows were kept, on success and on failure",
+          arguments: [true, false])
+    func writeAfterTheFilesRollbackIsKept(commits: Bool) async throws {
+        let driver = try await people()
+        let sink = sink(on: driver)
+        try await sink.beginTransaction()
+        try await sink.execute(statement: "INSERT INTO people (id, name) VALUES (1, 'Ada')")
+        try await sink.execute(statement: "ROLLBACK")
+        try await sink.execute(statement: "INSERT INTO people (id, name) VALUES (2, 'Bo')")
+
+        await sink.finish(commit: commits)
+
+        #expect(try await names(driver) == ["2:Bo"])
+        #expect(await sink.transactionEnding() == (commits ? .committed : .partlyCommitted))
+    }
+
+    @Test("The file's own ROLLBACK with nothing after it reports the rows as rolled back, not ended by the server")
+    func filesRollbackKeepsNothing() async throws {
+        let driver = try await people()
+        let sink = sink(on: driver)
+        try await sink.beginTransaction()
+        try await sink.execute(statement: "INSERT INTO people (id, name) VALUES (1, 'Ada')")
+        try await sink.execute(statement: "ROLLBACK")
+        try await sink.execute(statement: "SELECT count(*) FROM people")
+
+        await sink.finish(commit: true)
+
+        #expect(try await names(driver).isEmpty)
+        #expect(await sink.transactionEnding() == .rolledBack)
+    }
+
     @Test("Rows written with no transaction report as kept, not rolled back")
     func noTransactionReportsKeptRows() async throws {
         let driver = try await people()

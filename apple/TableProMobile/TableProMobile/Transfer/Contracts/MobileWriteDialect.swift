@@ -15,10 +15,15 @@ nonisolated protocol MobileWriteDialect: Sendable {
 
     // The CREATE TABLE statements for a table made from an import, or a throw naming why the engine refuses one.
     func createTableStatements(definition: PluginCreateTableDefinition, schema: String?) throws -> [String]
+
+    // Whether every row statement names the import's database, so they land there wherever the session has moved.
+    var namesDatabase: Bool { get }
 }
 
 nonisolated extension MobileWriteDialect {
     func columnsUpdateCannotSet(table: String, schema: String?) async throws -> Set<String> { [] }
+
+    var namesDatabase: Bool { false }
 }
 
 nonisolated struct MobileTransferRefusal: Error, Equatable, Sendable, LocalizedError {

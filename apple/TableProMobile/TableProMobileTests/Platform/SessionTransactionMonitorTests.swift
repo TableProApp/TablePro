@@ -57,6 +57,66 @@ struct SessionTransactionMonitorTests {
         #expect(log.events == ["waiting", "write", "run"])
     }
 
+    @Test("Work from any window waits while an import holds the session, and runs once the import ends")
+    func importHoldsTheSessionAlone() async throws {
+        attach()
+        let log = EventLog()
+        let gate = TestGate()
+        let importRun = Task {
+            await monitor.track(id, alone: true) {
+                log.events.append("batch 1")
+                await gate.enter()
+                log.events.append("batch 2")
+            }
+        }
+        await gate.waitUntilEntered()
+        #expect(monitor.isHeldAlone(id))
+        #expect(monitor.isBusy(id))
+        let query = Task {
+            log.events.append("query waiting")
+            await monitor.track(id) { log.events.append("query") }
+        }
+        try await waitUntil { log.events.contains("query waiting") }
+
+        await gate.open()
+        await importRun.value
+        await query.value
+
+        #expect(log.events == ["batch 1", "query waiting", "batch 2", "query"])
+        #expect(monitor.isHeldAlone(id) == false)
+    }
+
+    @Test("An import starts once the work already on the session ends, ahead of work that comes after it")
+    func importWaitsForRunningWork() async throws {
+        attach()
+        let log = EventLog()
+        let gate = TestGate()
+        let write = Task {
+            await monitor.track(id) {
+                await gate.enter()
+                log.events.append("write")
+            }
+        }
+        await gate.waitUntilEntered()
+        let importRun = Task {
+            log.events.append("import waiting")
+            await monitor.track(id, alone: true) { log.events.append("import") }
+        }
+        try await waitUntil { log.events.contains("import waiting") }
+        let read = Task {
+            log.events.append("read waiting")
+            await monitor.track(id, reading: true) { log.events.append("read") }
+        }
+        try await waitUntil { log.events.contains("read waiting") }
+
+        await gate.open()
+        await write.value
+        await importRun.value
+        await read.value
+
+        #expect(log.events == ["import waiting", "read waiting", "write", "import", "read"])
+    }
+
     @Test("Stop ends the wait for a write that is still running")
     func stopEndsTheWait() async throws {
         attach()

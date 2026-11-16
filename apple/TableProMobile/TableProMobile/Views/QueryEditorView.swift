@@ -436,7 +436,7 @@ struct QueryEditorView: View {
     }
 
     private var canRun: Bool {
-        !isExecuting && !coordinator.isDatabaseMoving && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !isExecuting && coordinator.runRefusal == nil && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var runAtCursorTitle: String {
@@ -1037,9 +1037,9 @@ struct QueryEditorView: View {
     // Claimed before the first await, so a second Run while the session reports how it reads literals starts nothing.
     private func executeQueryDirect(_ trimmed: String, enforcesReadOnly: Bool) async {
         guard let session, !isExecuting else { return }
-        // A run with a `USE` in any window holds the session until the picker follows it.
-        guard !coordinator.isDatabaseMoving else {
-            appError = ConnectionCoordinator.databaseMovingRefusal
+        // A run with a `USE` in any window holds the session until the picker follows it, and an import until it ends.
+        if let refusal = coordinator.runRefusal {
+            appError = refusal
             return
         }
 

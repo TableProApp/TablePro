@@ -298,6 +298,15 @@ nonisolated final class MySQLDriver: DatabaseDriver, SessionDatabaseReporting, C
         return MySQLTableListing.tables(fromShowTables: raw.rows, databaseType: databaseType)
     }
 
+    // A MySQL schema is a database, so a read that names the database reads there whatever the session's `USE` says.
+    func fetchColumns(table: String, schema: String?, database: String?) async throws -> [ColumnInfo] {
+        try await fetchColumns(table: table, schema: schema ?? database)
+    }
+
+    func fetchIndexes(table: String, schema: String?, database: String?) async throws -> [IndexInfo] {
+        try await fetchIndexes(table: table, schema: schema ?? database)
+    }
+
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         let raw = try await actor.execute(Self.showFullColumnsStatement(table: table, database: schema))
         let source = MySQLColumnListing.defaultSource(

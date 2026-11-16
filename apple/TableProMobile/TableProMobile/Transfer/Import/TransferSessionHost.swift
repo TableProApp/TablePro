@@ -7,8 +7,12 @@ import TableProSQLGrammar
 @MainActor
 protocol TransferSessionHost: AnyObject, Sendable {
     var transferDriver: Result<any DatabaseDriver, AppError> { get }
+    // The database the window's session is on, for an engine whose driver cannot say.
+    var transferDatabase: String? { get }
     // A run that ends on an error comes back as a value, so `failed` says which values may have lost the session.
+    // `alone`: an import, which holds the session for its whole run, so no window sends a statement between its batches.
     func trackTransfer<T: Sendable>(
+        alone: Bool,
         failed: @Sendable (T) -> Bool,
         _ work: @Sendable () async throws -> T
     ) async throws -> T
@@ -24,7 +28,7 @@ protocol TransferSessionHost: AnyObject, Sendable {
 
 extension TransferSessionHost {
     func trackTransfer<T: Sendable>(_ work: @Sendable () async throws -> T) async throws -> T {
-        try await trackTransfer(failed: { _ in false }, work)
+        try await trackTransfer(alone: false, failed: { _ in false }, work)
     }
 }
 
@@ -33,11 +37,16 @@ extension ConnectionCoordinator: TransferSessionHost {
         writableSession.map(\.driver)
     }
 
+    var transferDatabase: String? {
+        activeDatabase.isEmpty ? nil : activeDatabase
+    }
+
     func trackTransfer<T: Sendable>(
+        alone: Bool,
         failed: @Sendable (T) -> Bool,
         _ work: @Sendable () async throws -> T
     ) async throws -> T {
-        try await track(failed: failed) { try await work() }
+        try await track(alone: alone, failed: failed) { try await work() }
     }
 
     func noteTransferChangedCatalog(_ kinds: SQLCatalogObjectKinds) {

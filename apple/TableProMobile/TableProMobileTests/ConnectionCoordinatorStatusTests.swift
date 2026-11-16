@@ -65,6 +65,43 @@ struct ConnectionCoordinatorStatusTests {
         return false
     }
 
+    // MARK: - Import
+
+    @Test("While an import in one window holds the session, another window's query waits and its writes are refused")
+    func importHoldsTheSessionForEveryWindow() async throws {
+        let session = driver()
+        let importing = try await attachedCoordinator(on: session)
+        let other = ConnectionCoordinator(connection: connection, appState: appState)
+        await other.connect()
+        let log = QueryLog()
+        let gate = TestGate()
+        let importRun = Task {
+            try await importing.trackTransfer(alone: true, failed: { (_: Bool) in false }) {
+                await gate.enter()
+                return true
+            }
+        }
+        await gate.waitUntilEntered()
+
+        #expect(other.isImportRunning)
+        if case .failure(let error) = other.writableSession {
+            #expect(error.message == ConnectionCoordinator.importRunningRefusal.message)
+        } else {
+            Issue.record("A write path got the session while the import held it")
+        }
+        let query = Task {
+            await other.track { log.events.append("query") }
+        }
+        for _ in 0..<50 { await Task.yield() }
+        #expect(log.events.isEmpty)
+
+        await gate.open()
+        _ = try await importRun.value
+        await query.value
+        #expect(log.events == ["query"])
+        #expect(other.isImportRunning == false)
+    }
+
     // MARK: - Mapping
 
     @Test("Each phase maps to the shared display status, and a redial reads as reconnecting")
@@ -568,4 +605,9 @@ nonisolated enum ScriptedFailure: LocalizedError {
         case .noSuchDatabase: "FATAL: the requested database does not exist"
         }
     }
+}
+
+@MainActor
+private final class QueryLog {
+    var events: [String] = []
 }

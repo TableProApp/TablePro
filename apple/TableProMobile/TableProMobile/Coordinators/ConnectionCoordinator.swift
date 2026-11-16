@@ -94,6 +94,8 @@ final class ConnectionCoordinator {
     // A screen opened on an older session writes on this, so a save after a redial reaches the live driver and one
     // with no session says why rather than fail on a dead driver.
     var writableSession: Result<ConnectionSession, AppError> {
+        // A save or an insert would land between an import's batches, inside its transaction.
+        if session != nil, isImportRunning { return .failure(Self.importRunningRefusal) }
         if let session { return .success(session) }
         switch phase {
         case .lost(let error):
@@ -339,8 +341,10 @@ final class ConnectionCoordinator {
     }
 
     // `reading` work is a read the app built, so a session lost under it cannot have committed anything.
+    // `alone`: an import, which holds the session for its whole run; work from every window waits for it.
     func track<T>(
         reading: Bool = false,
+        alone: Bool = false,
         failed: (T) -> Bool = { _ in false },
         rolledBack: (T) -> Bool = { _ in false },
         _ work: () async throws -> T
@@ -348,7 +352,9 @@ final class ConnectionCoordinator {
         let heldBefore = transactionHold != nil
         let loss: SessionLoss = reading ? .whileIdle : .duringWork
         do {
-            let value = try await appState.sessionTransactions.track(connection.id, reading: reading, work)
+            let value = try await appState.sessionTransactions.track(
+                connection.id, reading: reading, alone: alone, work
+            )
             var lossSettled = false
             if failed(value) {
                 lossSettled = await restoreSession(after: loss)
@@ -511,6 +517,25 @@ final class ConnectionCoordinator {
     }
 
     var isDatabaseMoving: Bool { model.isDatabaseMoving }
+
+    // Set in every window on the connection while an import holds its session.
+    var isImportRunning: Bool { appState.sessionTransactions.isHeldAlone(connection.id) }
+
+    // Why a typed run cannot start now; its tracked work would otherwise wait behind the import.
+    var runRefusal: AppError? {
+        if isDatabaseMoving { return Self.databaseMovingRefusal }
+        return isImportRunning ? Self.importRunningRefusal : nil
+    }
+
+    static var importRunningRefusal: AppError {
+        AppError(
+            category: .query,
+            title: String(localized: "Import Running"),
+            message: String(localized: "An import is running on this connection."),
+            recovery: String(localized: "Try again once it ends."),
+            underlying: nil
+        )
+    }
 
     static var databaseMovingRefusal: AppError {
         AppError(

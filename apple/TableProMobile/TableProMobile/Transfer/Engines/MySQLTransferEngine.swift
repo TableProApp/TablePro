@@ -20,7 +20,8 @@ nonisolated extension MySQLDriver: MobileTransferEngine {
         MySQLWriteDialect(
             databaseTypeId: databaseType.rawValue,
             isMariaDB: serverFlavor.isMariaDB,
-            spelling: MySQLLiteralSpelling(noBackslashEscapes: Self.noBackslashEscapes(in: settledLexicalFacts))
+            spelling: MySQLLiteralSpelling(noBackslashEscapes: Self.noBackslashEscapes(in: settledLexicalFacts)),
+            database: context.database
         )
     }
 
@@ -239,10 +240,16 @@ nonisolated struct MySQLTransferCatalog: MobileExportCatalog {
     }
 }
 
+// With a database the rows go to `db`.`table`, so a `USE` another window ran cannot send them elsewhere.
 nonisolated struct MySQLWriteDialect: MobileWriteDialect {
     let databaseTypeId: String
     let isMariaDB: Bool
     let spelling: MySQLLiteralSpelling
+    var database: String?
+
+    var namesDatabase: Bool {
+        database.map { !$0.isEmpty } ?? false
+    }
 
     // The family reads BIT as a number, so a value bound to one is cast (`SQLImportStatements.bind`).
     static func isBitColumn(_ typeName: String) -> Bool {
@@ -252,7 +259,9 @@ nonisolated struct MySQLWriteDialect: MobileWriteDialect {
     func importStatements(table: String, schema: String?, columns: [ColumnInfo]) async throws -> SQLImportStatements {
         SQLImportStatements(
             databaseTypeId: databaseTypeId,
-            qualifiedTableName: ImportTableNames.qualified(table, schema: schema, quote: { mysqlQuoteIdentifier($0) }),
+            qualifiedTableName: ImportTableNames.qualified(
+                table, schema: schema ?? database, quote: { mysqlQuoteIdentifier($0) }
+            ),
             parameterStyle: .questionMark,
             quoteIdentifier: { mysqlQuoteIdentifier($0) },
             columnTypeNames: ImportTableNames.columnTypeNames(columns),

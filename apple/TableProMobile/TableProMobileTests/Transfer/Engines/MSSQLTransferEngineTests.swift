@@ -90,6 +90,24 @@ struct MSSQLTransferEngineTests {
         #expect(statements.maxRowsPerInsert == 1_000)
     }
 
+    @Test("With the import's database the rows go to a three-part name, whatever database the session is on")
+    func importStatementsNameTheDatabase() async throws {
+        let dialect = MSSQLMobileWriteDialect(
+            databaseTypeId: DatabaseType.mssql.rawValue, currentSchema: "dbo", database: "sales_db"
+        )
+        let columns = [ColumnInfo(name: "a", typeName: "int", ordinalPosition: 0)]
+
+        let named = try await dialect.importStatements(table: "t", schema: "sales", columns: columns)
+        let defaulted = try await dialect.importStatements(table: "t", schema: nil, columns: columns)
+
+        #expect(named.insertStatement(columns: ["a"], values: [.text("1")])?.sql
+            == "INSERT INTO [sales_db].[sales].[t] ([a]) VALUES (?)")
+        #expect(defaulted.insertStatement(columns: ["a"], values: [.text("1")])?.sql
+            == "INSERT INTO [sales_db].[dbo].[t] ([a]) VALUES (?)")
+        #expect(dialect.namesDatabase)
+        #expect(Self.dialect.namesDatabase == false)
+    }
+
     @Test("A new table goes into the session's schema when the import names an empty one")
     func createTableInCurrentSchema() throws {
         let definition = PluginCreateTableDefinition(

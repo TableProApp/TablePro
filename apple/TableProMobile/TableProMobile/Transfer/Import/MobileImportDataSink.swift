@@ -4,6 +4,7 @@ import TableProDatabase
 import TableProLogRedaction
 import TableProModels
 import TableProPluginKit
+import TableProQuery
 import TableProSQLFile
 import TableProSQLGrammar
 
@@ -37,6 +38,8 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
         let sourceFields: Set<String>
         let rowWriting: ImportRowWriting
         let binaryText: ImportBinaryText?
+        // The database the import was started in, which a read names wherever the session has moved since.
+        var database: String?
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MobileImportDataSink")
@@ -61,7 +64,10 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     private var ownsTransaction = false
     private var joinedTransaction = false
     private var ending: ImportTransactionEnding?
-    private var committedEarly = false
+    // Read statement by statement: a COMMIT, ROLLBACK or DDL statement in the file that ended the import's own
+    // transaction, and rows that stay whatever the import's end does, committed by the file or written after that end.
+    private var fileEndedTransaction = false
+    private var keptWrites = false
     private var disabledForeignKeys = false
     private var writerTarget: ImportRowWriter.Target?
     private var immutableColumns: Set<String>?
@@ -148,7 +154,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     // transaction the user holds are never reported as kept.
     func transactionEnding() async -> ImportTransactionEnding {
         let recorded = lock.withLock { () -> ImportTransactionEnding? in
-            if committedEarly, ending == .rolledBack { return .partlyCommitted }
+            if keptWrites, ending == .rolledBack { return .partlyCommitted }
             if joinedTransaction { return .leftInOpenTransaction }
             return ending
         }
@@ -200,7 +206,8 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
         try await driver.beginTransaction(mode: .readWrite)
         lock.withLock {
             ownsTransaction = true
-            committedEarly = false
+            fileEndedTransaction = false
+            keptWrites = false
             ending = nil
         }
     }
@@ -231,7 +238,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
             lock.withLock {
                 ownsTransaction = false
                 transactionEnded = true
-                ending = committedEarly ? .committed : .endedByServer
+                ending = keptWrites ? .committed : endedBeforeTheImportLocked
             }
             return
         case .explicitTransaction, .implicitTransaction, .unknown:
@@ -252,7 +259,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
             lock.withLock {
                 ownsTransaction = false
                 transactionEnded = true
-                ending = committedEarly ? .rolledBack : .endedByServer
+                ending = keptWrites ? .rolledBack : endedBeforeTheImportLocked
             }
             Self.logger.info("The import's transaction had already ended; no rollback sent")
             return
@@ -317,24 +324,35 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
         }
     }
 
-    // `SET sql_mode` changes how the next statement reads; a COMMIT or a DDL statement can end the transaction early.
+    // Found idle at the import's end with nothing kept: the file rolled the transaction back, or the server ended it.
+    // Read inside `lock`, which is not recursive.
+    private var endedBeforeTheImportLocked: ImportTransactionEnding {
+        fileEndedTransaction ? .rolledBack : .endedByServer
+    }
+
+    // `SET sql_mode` changes how the next statement reads. A COMMIT, a ROLLBACK or a DDL statement can end the import's
+    // transaction early, and a write after that runs on its own and stays, so each is read as it lands.
     private func noteEffects(of statement: String) async {
         let keyword = ExportSnapshotStatements.leadingKeyword(of: statement)
         if keyword == "SET" {
             _ = await driver.sessionLexicalFacts()
         }
         guard holdsOwnTransaction else { return }
-        switch keyword {
-        case "COMMIT", "END":
-            lock.withLock { committedEarly = true }
-        case _ where Self.ddlKeywords.contains(keyword):
-            if await driver.sessionTransactionState() == .idle {
-                lock.withLock { committedEarly = true }
+        let endedBefore = lock.withLock { fileEndedTransaction }
+        let mayEnd = Self.transactionEndKeywords.contains(keyword) || Self.ddlKeywords.contains(keyword)
+        let writes = endedBefore && SQLWriteClassifier.isWriteQuery(statement, databaseType: databaseType)
+        guard mayEnd || writes, await driver.sessionTransactionState() == .idle else { return }
+        lock.withLock {
+            if endedBefore {
+                keptWrites = keptWrites || writes
+            } else {
+                fileEndedTransaction = true
+                if keyword != "ROLLBACK" { keptWrites = true }
             }
-        default:
-            break
         }
     }
+
+    private static let transactionEndKeywords: Set<String> = ["COMMIT", "END", "ROLLBACK"]
 
     func copyFromStandardInput(statement: String, line: Int, rows: PluginCopyData) async throws {
         try admitWrite()
@@ -386,7 +404,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
                 format: String(localized: "%@ cannot take rows from a file."), databaseType.mobileDisplayName
             ))
         }
-        let columns = try await driver.fetchColumns(table: rowTarget.table, schema: rowTarget.schema)
+        let columns = try await driver.fetchColumns(table: rowTarget.table, schema: rowTarget.schema, database: rowTarget.database)
         let statements = try await dialect.importStatements(table: rowTarget.table, schema: rowTarget.schema, columns: columns)
         let target = ImportRowWriter.Target(
             tableName: rowTarget.table,

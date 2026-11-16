@@ -24,7 +24,9 @@ nonisolated extension MSSQLDriver: CatalogQuerying, ExportRowStreaming, MobileTr
     }
 
     func makeWriteDialect(context: MobileTransferContext) async throws -> any MobileWriteDialect {
-        MSSQLMobileWriteDialect(databaseTypeId: DatabaseType.mssql.rawValue, currentSchema: effectiveSchema)
+        MSSQLMobileWriteDialect(
+            databaseTypeId: DatabaseType.mssql.rawValue, currentSchema: effectiveSchema, database: context.database
+        )
     }
 }
 
@@ -186,15 +188,29 @@ nonisolated struct MSSQLMobileExportCatalog: MobileExportCatalog {
     }
 }
 
-// Quoting, the bind and row ceilings of `SQLImportStatements`, and the Mac's CREATE TABLE writer.
+// Quoting, the bind and row ceilings of `SQLImportStatements`, and the Mac's CREATE TABLE writer. With a database the
+// rows go to `[db].[schema].[table]`, so another window's switch or `USE` cannot send them to another database.
 nonisolated struct MSSQLMobileWriteDialect: MobileWriteDialect {
     let databaseTypeId: String
     let currentSchema: String
+    var database: String?
+
+    var namesDatabase: Bool {
+        database.map { !$0.isEmpty } ?? false
+    }
+
+    func qualifiedTableName(_ table: String, schema: String?) -> String {
+        guard let database, !database.isEmpty else {
+            return ImportTableNames.qualified(table, schema: schema, quote: Self.quote)
+        }
+        let target = MSSQLExportCatalog.effectiveSchema(schema, current: currentSchema)
+        return [database, target, table].map(Self.quote).joined(separator: ".")
+    }
 
     func importStatements(table: String, schema: String?, columns: [ColumnInfo]) async throws -> SQLImportStatements {
         SQLImportStatements(
             databaseTypeId: databaseTypeId,
-            qualifiedTableName: ImportTableNames.qualified(table, schema: schema, quote: Self.quote),
+            qualifiedTableName: qualifiedTableName(table, schema: schema),
             parameterStyle: .questionMark,
             quoteIdentifier: Self.quote,
             columnTypeNames: ImportTableNames.columnTypeNames(columns)

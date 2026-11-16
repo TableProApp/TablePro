@@ -288,6 +288,29 @@ struct MobileExportModelTests {
         #expect(model.objectGroups.flatMap { $0.rows }.first { $0.id == routine.id }?.isSelected == false)
     }
 
+    @Test("A function and a procedure with one name are two rows, and picking one leaves the other")
+    func sameNamedRoutinesAreTwoRows() async throws {
+        let function = PluginExportTable(
+            name: "total", databaseName: "shop", tableType: "function", schema: nil, kind: .routine
+        )
+        let procedure = PluginExportTable(
+            name: "total", databaseName: "shop", tableType: "procedure", schema: nil, kind: .routine
+        )
+        let model = MobileExportModel(
+            input: input(scopes: [ExportScopeOption(kind: .database, source: .database)]),
+            environment: environment(objects: [function, procedure])
+        )
+        model.selectFormat(type(of: MobileExportFormats.sql).formatId)
+        await model.loadObjectsIfNeeded()
+
+        let rows = model.objectGroups.flatMap { $0.rows }
+        #expect(Set(rows.map(\.id)).count == 2)
+        let procedureRow = try #require(rows.first { $0.object.tableType == "procedure" })
+        model.setSelected(false, for: procedureRow.id)
+
+        #expect(model.exportableObjects.map(\.tableType) == ["function"])
+    }
+
     @Test("Without a file name nothing exports")
     func emptyFileName() {
         let model = MobileExportModel(
