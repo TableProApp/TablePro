@@ -5,7 +5,6 @@
 
 import Combine
 import Foundation
-import os
 import TableProSyncTransport
 
 enum CustomSlashCommandError: LocalizedError, Equatable {
@@ -28,8 +27,7 @@ final class CustomSlashCommandStorage: ObservableObject {
 
     nonisolated static let syncCategory = "customSlashCommands"
 
-    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CustomSlashCommandStorage")
-    private static let defaultsKey = "ai.customSlashCommands.v1"
+    private static let defaultsKey = JSONDefaultsKey<[CustomSlashCommand]>("ai.customSlashCommands.v1")
     private let defaults: UserDefaults
     private let syncTracker: SyncChangeTracker
 
@@ -41,7 +39,6 @@ final class CustomSlashCommandStorage: ObservableObject {
         self.commands = Self.load(from: defaults)
     }
 
-    /// Replaces all commands from a remote sync without re-marking them dirty.
     func applyRemote(_ commands: [CustomSlashCommand]) {
         self.commands = commands
         persist(markDirty: false)
@@ -97,23 +94,16 @@ final class CustomSlashCommandStorage: ObservableObject {
 
     private func persist(markDirty: Bool = true) {
         do {
-            let data = try JSONEncoder().encode(commands)
-            defaults.set(data, forKey: Self.defaultsKey)
-            if markDirty {
-                syncTracker.markDirty(.settings, id: Self.syncCategory)
-            }
+            try defaults.write(commands, to: Self.defaultsKey)
         } catch {
-            Self.logger.warning("Failed to persist custom slash commands: \(error.publicLogShape, privacy: .public)")
+            return
+        }
+        if markDirty {
+            syncTracker.markDirty(.settings, id: Self.syncCategory)
         }
     }
 
     private static func load(from defaults: UserDefaults) -> [CustomSlashCommand] {
-        guard let data = defaults.data(forKey: Self.defaultsKey) else { return [] }
-        do {
-            return try JSONDecoder().decode([CustomSlashCommand].self, from: data)
-        } catch {
-            Self.logger.warning("Failed to load custom slash commands: \(error.publicLogShape, privacy: .public)")
-            return []
-        }
+        defaults.read(Self.defaultsKey).value ?? []
     }
 }

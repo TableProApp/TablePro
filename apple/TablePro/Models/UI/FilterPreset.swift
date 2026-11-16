@@ -1,6 +1,5 @@
 import Foundation
 
-/// Represents a saved filter preset with a name and filters
 struct FilterPreset: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
@@ -15,19 +14,16 @@ struct FilterPreset: Identifiable, Codable, Equatable {
     }
 }
 
-/// Storage manager for filter presets
 @MainActor final class FilterPresetStorage {
     static let shared = FilterPresetStorage()
 
-    private let presetsKey = "com.TablePro.filter.presets"
+    private static let presetsKey = JSONDefaultsKey<[FilterPreset]>("com.TablePro.filter.presets")
     private let defaults = AppStorageEnvironment.shared.defaults
 
-    /// Cached presets to avoid repeated UserDefaults read + JSON decode
     private var cachedPresets: [FilterPreset]?
 
     private init() {}
 
-    /// Save a new preset
     func savePreset(_ preset: FilterPreset) {
         var presets = loadAllPresets()
 
@@ -55,12 +51,10 @@ struct FilterPreset: Identifiable, Codable, Equatable {
         return candidate
     }
 
-    /// Load all saved presets (cached after first read)
     func loadAllPresets() -> [FilterPreset] {
         if let cached = cachedPresets { return cached }
 
-        guard let data = defaults.data(forKey: presetsKey),
-              let presets = try? JSONDecoder().decode([FilterPreset].self, from: data) else {
+        guard let presets = defaults.read(Self.presetsKey).value else {
             cachedPresets = []
             return []
         }
@@ -69,20 +63,17 @@ struct FilterPreset: Identifiable, Codable, Equatable {
         return sorted
     }
 
-    /// Delete a preset
     func deletePreset(_ preset: FilterPreset) {
         var presets = loadAllPresets()
         presets.removeAll { $0.id == preset.id }
         saveAllPresets(presets)
     }
 
-    /// Delete all presets
     func deleteAllPresets() {
-        defaults.removeObject(forKey: presetsKey)
+        defaults.removeValue(for: Self.presetsKey)
         cachedPresets = nil
     }
 
-    /// Rename a preset
     func renamePreset(_ preset: FilterPreset, to newName: String) {
         var updatedPreset = preset
         updatedPreset.name = newName
@@ -92,8 +83,11 @@ struct FilterPreset: Identifiable, Codable, Equatable {
     // MARK: - Private
 
     private func saveAllPresets(_ presets: [FilterPreset]) {
-        guard let data = try? JSONEncoder().encode(presets) else { return }
-        defaults.set(data, forKey: presetsKey)
+        do {
+            try defaults.write(presets, to: Self.presetsKey)
+        } catch {
+            return
+        }
         cachedPresets = presets.sorted { $0.createdAt > $1.createdAt }
     }
 }

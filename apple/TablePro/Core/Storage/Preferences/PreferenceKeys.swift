@@ -1,30 +1,30 @@
 import Foundation
+import TableProConnectionLibrary
 
 enum PreferenceKeys {
-    static let linkedFolders = DefaultsKey<[LinkedFolder]>("com.TablePro.linkedFolders")
-    static let linkedSQLFolders = DefaultsKey<[LinkedSQLFolder]>("com.TablePro.linkedSQLFolders")
+    static let linkedFolders = JSONDefaultsKey<[LinkedFolder]>("com.TablePro.linkedFolders")
+    static let linkedSQLFolders = JSONDefaultsKey<[LinkedSQLFolder]>("com.TablePro.linkedSQLFolders")
     static let selectedSettingsPane = DefaultsKey<String>("com.TablePro.settings.selectedPane")
-    static let rowInspectorFieldHeights = DefaultsKey<Data>("com.TablePro.rightSidebar.fieldHeights")
+    static let rowInspectorFieldHeights = JSONDefaultsKey<[InspectorFieldHeightStore.Entry]>("com.TablePro.rightSidebar.fieldHeights")
     // Text or Map, as the field's picker last left it. Device-local, like the heights beside it.
     static let rowInspectorGeometryFieldMode = DefaultsKey<String>("com.TablePro.rightSidebar.geometryFieldMode")
-    static let workspaceRailOrder = DefaultsKey<[WorkspaceID]>("com.TablePro.workspaceRail.order")
+    static let workspaceRailOrder = JSONDefaultsKey<[WorkspaceID]>("com.TablePro.workspaceRail.order")
     static let queryPlanRawFontSize = DefaultsKey<Double>("com.TablePro.queryPlan.rawFontSize")
     static let queryPlanBarMetric = DefaultsKey<String>("com.TablePro.queryPlan.barMetric")
     static let lastBackupDirectory = DefaultsKey<String>("com.TablePro.backup.lastDirectory")
-    /// The newest build this Mac has run, for the Welcome window's What's New link. Device-local: it
-    /// records what has been shown here, not a preference, so it must not sync to another Mac.
+    // Device-local: what What's New has shown on this Mac, so it never syncs.
     static let lastSeenAppBuild = DefaultsKey<Int>("com.TablePro.welcome.lastSeenAppBuild")
-    /// What a build before `lastSeenAppBuild` recorded instead, read once to carry it over.
+    // What a build before `lastSeenAppBuild` recorded instead, read once to carry it over.
     static let lastSeenAppVersion = DefaultsKey<String>("com.TablePro.welcome.lastSeenAppVersion")
-    /// Device-local: the sign-in window shows once per Mac, whatever another Mac has seen.
+    // Device-local: the sign-in window shows once per Mac, whatever another Mac has seen.
     static let signInPromptShown = DefaultsKey<Bool>("com.TablePro.account.signInPromptShown")
     static let connectionListSortMode = DefaultsKey<String>("com.TablePro.connectionList.sortMode")
     static let connectionListFavoritesOrder = DefaultsKey<[String]>("com.TablePro.connectionList.favoritesOrder")
     static let connectionListShowsRecent = DefaultsKey<Bool>("com.TablePro.connectionList.showsRecent")
-    static let recentConnections = DefaultsKey<Data>("com.TablePro.connectionList.recentConnections")
-    /// Device-local, and in the standard domain so a configuration profile can pin it.
+    static let recentConnections = JSONDefaultsKey<RecentConnectionsLedger>("com.TablePro.connectionList.recentConnections")
+    // Device-local, and in the standard domain so a configuration profile can pin it.
     static let receivesBetaUpdates = DefaultsKey<Bool>("com.TablePro.updates.receivesBetaUpdates")
-    /// Set by Relaunch to Update and cleared by the next launch, which reopens the last session once.
+    // Set by Relaunch to Update and cleared by the next launch, which reopens the last session once.
     static let reopenSessionAfterRelaunch = DefaultsKey<Bool>("com.TablePro.updates.reopenSessionAfterRelaunch")
     // Device-local: the highest plugin manifest serial accepted here, so an older signed manifest is refused.
     static let pluginRegistrySerial = DefaultsKey<Int>("com.TablePro.plugins.registrySerial")
@@ -57,27 +57,27 @@ enum PreferenceKeys {
     static let tableFoldersPrefix = "com.TablePro.tableFolders."
     static let rowGenerationPrefix = "com.TablePro.rowGeneration."
 
-    static func columnDisplayFormats(_ scope: TableScope) -> DefaultsKey<[String: ValueDisplayFormat]> {
-        DefaultsKey(columnDisplayFormatsPrefix + scope.storageComponent)
+    static func columnDisplayFormats(_ scope: TableScope) -> JSONDefaultsKey<[String: String]> {
+        JSONDefaultsKey(columnDisplayFormatsPrefix + scope.storageComponent)
     }
 
-    static func recentTables(connectionId: UUID) -> DefaultsKey<[RecentTableEntry]> {
-        DefaultsKey("com.TablePro.recentTables." + connectionId.uuidString)
+    static func recentTables(connectionId: UUID) -> JSONDefaultsKey<[RecentTableEntry]> {
+        JSONDefaultsKey("com.TablePro.recentTables." + connectionId.uuidString)
     }
 
     static func foreignKeyLabelColumn(_ scope: TableScope) -> DefaultsKey<String> {
         DefaultsKey(foreignKeyLabelColumnPrefix + scope.storageComponent)
     }
 
-    static func importColumnMapping(_ scope: TableScope) -> DefaultsKey<[String: ImportMappingOverride]> {
-        DefaultsKey(importColumnMappingPrefix + scope.storageComponent)
+    static func importColumnMapping(_ scope: TableScope) -> JSONDefaultsKey<[String: ImportMappingOverride]> {
+        JSONDefaultsKey(importColumnMappingPrefix + scope.storageComponent)
     }
 
-    static func rowGeneration(_ scope: TableScope) -> DefaultsKey<RowGenerationSettings> {
-        DefaultsKey(rowGenerationPrefix + scope.storageComponent)
+    static func rowGeneration(_ scope: TableScope) -> JSONDefaultsKey<RowGenerationSettings> {
+        JSONDefaultsKey(rowGenerationPrefix + scope.storageComponent)
     }
 
-    static func tableFolders(connectionId: UUID) -> DefaultsKey<Data> {
-        DefaultsKey(tableFoldersPrefix + connectionId.uuidString)
+    static func tableFolders(connectionId: UUID) -> JSONDefaultsKey<TableFolderStorage.Document> {
+        JSONDefaultsKey(tableFoldersPrefix + connectionId.uuidString)
     }
 }

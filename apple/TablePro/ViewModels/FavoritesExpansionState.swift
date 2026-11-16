@@ -14,10 +14,11 @@ internal final class FavoritesExpansionState: ObservableObject {
     @Published private(set) var linkedNodesByConnection: [UUID: Set<String>] = [:]
     @Published private(set) var collapsedDatabaseEnvironmentsByConnection: [UUID: Set<FavoriteDatabaseEnvironment>] = [:]
 
-    private let foldersKey = "com.TablePro.favoritesExpandedFolders"
-    private let linkedKey = "com.TablePro.favoritesExpandedLinkedNodes"
-    private let collapsedDatabaseEnvironmentsKey =
-        "com.TablePro.favoritesCollapsedDatabaseEnvironments"
+    private static let foldersKey = JSONDefaultsKey<[UUID: Set<UUID>]>("com.TablePro.favoritesExpandedFolders")
+    private static let linkedKey = JSONDefaultsKey<[UUID: Set<String>]>("com.TablePro.favoritesExpandedLinkedNodes")
+    // Raw values, so one environment this build does not know drops only itself.
+    private static let collapsedDatabaseEnvironmentsKey =
+        JSONDefaultsKey<[UUID: Set<String>]>("com.TablePro.favoritesCollapsedDatabaseEnvironments")
 
     private let defaults: UserDefaults
 
@@ -94,50 +95,44 @@ internal final class FavoritesExpansionState: ObservableObject {
     }
 
     private func load() {
-        if let data = defaults.data(forKey: foldersKey),
-           let decoded = try? JSONDecoder().decode([UUID: Set<UUID>].self, from: data) {
+        if let decoded = defaults.read(Self.foldersKey).value {
             foldersByConnection = decoded
         }
-        if let data = defaults.data(forKey: linkedKey),
-           let decoded = try? JSONDecoder().decode([UUID: Set<String>].self, from: data) {
+        if let decoded = defaults.read(Self.linkedKey).value {
             linkedNodesByConnection = decoded
         }
-        collapsedDatabaseEnvironmentsByConnection = Self.decodeCollapsedEnvironments(
-            defaults.data(forKey: collapsedDatabaseEnvironmentsKey)
-        )
+        collapsedDatabaseEnvironmentsByConnection = defaults.read(Self.collapsedDatabaseEnvironmentsKey)
+            .value.map(Self.knownEnvironments) ?? [:]
     }
 
-    /// Decoded per raw value rather than whole. `Set<FavoriteDatabaseEnvironment>` fails the entire
-    /// payload on one case this build does not know, which would silently discard the collapsed
-    /// state of every group of every connection, permanently, from the next write onward.
     internal static func decodeCollapsedEnvironments(
         _ data: Data?
     ) -> [UUID: Set<FavoriteDatabaseEnvironment>] {
         guard let data,
-              let raw = try? JSONDecoder().decode([UUID: Set<String>].self, from: data)
+              let raw = try? collapsedDatabaseEnvironmentsKey.coding.decode([UUID: Set<String>].self, from: data)
         else { return [:] }
-        return raw.compactMapValues { values in
+        return knownEnvironments(raw)
+    }
+
+    nonisolated private static func knownEnvironments(
+        _ raw: [UUID: Set<String>]
+    ) -> [UUID: Set<FavoriteDatabaseEnvironment>] {
+        raw.compactMapValues { values in
             let environments = Set(values.compactMap(FavoriteDatabaseEnvironment.init(rawValue:)))
             return environments.isEmpty ? nil : environments
         }
     }
 
     private func persistFolders() {
-        if let data = try? JSONEncoder().encode(foldersByConnection) {
-            defaults.set(data, forKey: foldersKey)
-        }
+        try? defaults.write(foldersByConnection, to: Self.foldersKey)
     }
 
     private func persistLinkedNodes() {
-        if let data = try? JSONEncoder().encode(linkedNodesByConnection) {
-            defaults.set(data, forKey: linkedKey)
-        }
+        try? defaults.write(linkedNodesByConnection, to: Self.linkedKey)
     }
 
     private func persistCollapsedDatabaseEnvironments() {
         let raw = collapsedDatabaseEnvironmentsByConnection.mapValues { Set($0.map(\.rawValue)) }
-        if let data = try? JSONEncoder().encode(raw) {
-            defaults.set(data, forKey: collapsedDatabaseEnvironmentsKey)
-        }
+        try? defaults.write(raw, to: Self.collapsedDatabaseEnvironmentsKey)
     }
 }

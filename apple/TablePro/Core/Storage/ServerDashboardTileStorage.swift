@@ -4,11 +4,8 @@
 //
 
 import Foundation
-import os
 
 struct ServerDashboardTileStorage: Sendable {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ServerDashboardTileStorage")
-
     private let defaults: @Sendable () -> UserDefaults
 
     init(defaults: @escaping @Sendable () -> UserDefaults = { AppStorageEnvironment.shared.defaults }) {
@@ -19,14 +16,12 @@ struct ServerDashboardTileStorage: Sendable {
         "ServerDashboardTiles.\(connectionId.uuidString)"
     }
 
+    private static func entry(for connectionId: UUID) -> JSONDefaultsKey<ServerDashboardTileLayout> {
+        JSONDefaultsKey(key(for: connectionId))
+    }
+
     func load(for connectionId: UUID) -> ServerDashboardTileLayout {
-        guard let data = defaults().data(forKey: Self.key(for: connectionId)) else { return .empty }
-        do {
-            return try JSONDecoder().decode(ServerDashboardTileLayout.self, from: data)
-        } catch {
-            Self.logger.error("Failed to decode dashboard tiles: \(error.publicLogShape, privacy: .public)")
-            return .empty
-        }
+        defaults().read(Self.entry(for: connectionId)).value ?? .empty
     }
 
     func save(_ layout: ServerDashboardTileLayout, for connectionId: UUID) {
@@ -34,14 +29,10 @@ struct ServerDashboardTileStorage: Sendable {
             remove(for: connectionId)
             return
         }
-        do {
-            defaults().set(try JSONEncoder().encode(layout), forKey: Self.key(for: connectionId))
-        } catch {
-            Self.logger.error("Failed to encode dashboard tiles: \(error.publicLogShape, privacy: .public)")
-        }
+        try? defaults().write(layout, to: Self.entry(for: connectionId))
     }
 
     func remove(for connectionId: UUID) {
-        defaults().removeObject(forKey: Self.key(for: connectionId))
+        defaults().removeValue(for: Self.entry(for: connectionId))
     }
 }

@@ -10,43 +10,35 @@ final class DatabaseTreeFilterStorage {
         self.defaults = defaults
     }
 
-    private func databasesKey(connectionId: UUID) -> String {
-        "com.TablePro.treeDatabaseFilter.\(connectionId.uuidString).selected"
+    private func databasesKey(connectionId: UUID) -> JSONDefaultsKey<[String]> {
+        JSONDefaultsKey("com.TablePro.treeDatabaseFilter.\(connectionId.uuidString).selected")
     }
 
-    /// Keyed per database inside one value, because a schema name means something only inside the
-    /// database that holds it. An engine with no database name keys its schemas under "".
-    private func schemasKey(connectionId: UUID) -> String {
-        "com.TablePro.treeSchemaFilter.\(connectionId.uuidString).selected"
+    // Keyed per database, since a schema name means something only inside its database. No database name keys as "".
+    private func schemasKey(connectionId: UUID) -> JSONDefaultsKey<[String: [String]]> {
+        JSONDefaultsKey("com.TablePro.treeSchemaFilter.\(connectionId.uuidString).selected", coding: .sortedKeys)
     }
 
     func selectedDatabases(connectionId: UUID) -> Set<String> {
-        guard let data = defaults.data(forKey: databasesKey(connectionId: connectionId)),
-              let names = try? JSONDecoder().decode([String].self, from: data)
-        else { return [] }
-        return Set(names)
+        Set(defaults.read(databasesKey(connectionId: connectionId)).value ?? [])
     }
 
     func setSelectedDatabases(_ databases: Set<String>, connectionId: UUID) {
         let key = databasesKey(connectionId: connectionId)
         guard !databases.isEmpty else {
-            defaults.removeObject(forKey: key)
+            defaults.removeValue(for: key)
             return
         }
-        guard let data = try? JSONEncoder().encode(databases.sorted()) else { return }
-        defaults.set(data, forKey: key)
+        try? defaults.write(databases.sorted(), to: key)
     }
 
-    /// The raw selection, empty for no filter. A reader that decides what to read wants
-    /// `SidebarSchemaFilter`, which sets aside names the sidebar would not show.
+    // The raw selection, empty for no filter. A reader deciding what to load wants `SidebarSchemaFilter`.
     func selectedSchemas(connectionId: UUID, database: String) -> Set<String> {
         allSelectedSchemas(connectionId: connectionId)[database] ?? []
     }
 
     func allSelectedSchemas(connectionId: UUID) -> [String: Set<String>] {
-        guard let data = defaults.data(forKey: schemasKey(connectionId: connectionId)),
-              let stored = try? JSONDecoder().decode([String: [String]].self, from: data)
-        else { return [:] }
+        let stored = defaults.read(schemasKey(connectionId: connectionId)).value ?? [:]
         return stored.reduce(into: [:]) { result, entry in
             guard !entry.value.isEmpty else { return }
             result[entry.key] = Set(entry.value)
@@ -66,18 +58,15 @@ final class DatabaseTreeFilterStorage {
             result[entry.key] = entry.value.sorted()
         }
         guard !stored.isEmpty else {
-            defaults.removeObject(forKey: key)
+            defaults.removeValue(for: key)
             return
         }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .sortedKeys
-        guard let data = try? encoder.encode(stored) else { return }
-        defaults.set(data, forKey: key)
+        try? defaults.write(stored, to: key)
     }
 
     func removeFilter(for connectionId: UUID) {
-        defaults.removeObject(forKey: databasesKey(connectionId: connectionId))
-        defaults.removeObject(forKey: schemasKey(connectionId: connectionId))
+        defaults.removeValue(for: databasesKey(connectionId: connectionId))
+        defaults.removeValue(for: schemasKey(connectionId: connectionId))
     }
 
     func removeFilters(for connectionIds: Set<UUID>) {

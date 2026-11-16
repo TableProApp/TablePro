@@ -13,19 +13,6 @@ actor AIChatStorage {
 
     private let directory: URL
 
-    private static let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return encoder
-    }()
-
-    private static let decoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
-    }()
-
     private init() {
         let dir = AppStorageEnvironment.shared.applicationSupportRoot
             .appendingPathComponent("TablePro", isDirectory: true)
@@ -60,18 +47,16 @@ actor AIChatStorage {
     }
 
     nonisolated private static func write(_ conversation: AIConversation, into directory: URL) {
-        let fileURL = directory.appendingPathComponent("\(conversation.id.uuidString).json")
-
+        let store = file(for: conversation.id, in: directory)
         do {
-            var data = try Self.encoder.encode(conversation)
-
+            var data = try store.coding.encode(conversation)
             if data.count > Self.maxFileSize {
                 let originalSize = data.count
                 let originalCount = conversation.messages.count
                 var trimmed = conversation
-                trimmed.messages = Array(trimmed.messages.suffix(Self.turnsKeptWhenTrimmed))
+                trimmed.messages = Array(conversation.messages.suffix(Self.turnsKeptWhenTrimmed))
                 let dropped = originalCount - trimmed.messages.count
-                data = try Self.encoder.encode(trimmed)
+                data = try store.coding.encode(trimmed)
                 Self.logger.warning(
                     """
                     Trimmed conversation \(conversation.id, privacy: .public): \
@@ -80,11 +65,18 @@ actor AIChatStorage {
                     """
                 )
             }
-
-            try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            try store.write(encoded: data)
         } catch {
             Self.logger.error("Failed to save conversation \(conversation.id): \(error.localizedDescription)")
         }
+    }
+
+    nonisolated private static func file(for id: UUID, in directory: URL) -> JSONFileStore<AIConversation> {
+        JSONFileStore(
+            url: directory.appendingPathComponent("\(id.uuidString).json"),
+            coding: .prettyISO8601,
+            writingOptions: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        )
     }
 
     // A conversation stored before conversations carried a connection id is shown everywhere, not lost.
@@ -109,34 +101,20 @@ actor AIChatStorage {
         let summaries: [AIConversation] = files
             .filter { $0.pathExtension == "json" }
             .compactMap { fileURL in
-                do {
-                    let data = try Data(contentsOf: fileURL)
-                    let header = try Self.decoder.decode(ConversationHeader.self, from: data)
-                    guard Self.isShown(conversationOf: header.connectionId, on: connectionId) else { return nil }
-                    return header.summary
-                } catch {
-                    Self.logger.error("Failed to load conversation from \(fileURL.lastPathComponent): \(error.localizedDescription)")
-                    return nil
-                }
+                let header = JSONFileStore<ConversationHeader>(url: fileURL, coding: .prettyISO8601).read().value
+                guard let header, Self.isShown(conversationOf: header.connectionId, on: connectionId) else { return nil }
+                return header.summary
             }
 
         return summaries.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     func load(id: UUID) -> AIConversation? {
-        let fileURL = directory.appendingPathComponent("\(id.uuidString).json")
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return try? Self.decoder.decode(AIConversation.self, from: data)
+        Self.file(for: id, in: directory).read().value
     }
 
     func delete(_ id: UUID) {
-        let fileURL = directory.appendingPathComponent("\(id.uuidString).json")
-
-        do {
-            try FileManager.default.removeItem(at: fileURL)
-        } catch {
-            Self.logger.error("Failed to delete conversation \(id): \(error.localizedDescription)")
-        }
+        try? Self.file(for: id, in: directory).remove()
     }
 
     func deleteAll() {

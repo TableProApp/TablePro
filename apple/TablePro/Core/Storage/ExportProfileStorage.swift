@@ -4,14 +4,9 @@
 //
 
 import Foundation
-import os
 import TableProPluginKit
 
-/// One saved export: the format, and which objects it covered with how each was narrowed.
-///
-/// The format's own options already persist globally through `SettablePlugin`, and the last format
-/// through `TransferDialogStorage`. What neither carries is the selection, which is the part a user
-/// rebuilds by hand every time: forty tables ticked, three of them filtered, two limited.
+// Format options and the last format persist elsewhere; this keeps the selection a user would rebuild by hand.
 struct ExportProfile: Codable, Identifiable, Equatable {
     struct Entry: Codable, Equatable {
         let container: String
@@ -34,8 +29,7 @@ struct ExportProfile: Codable, Identifiable, Equatable {
             self.rowScope = rowScope
         }
 
-        /// Matches the row it was saved from. Keyed by kind as well as name, because a routine and
-        /// a table can share one.
+        // Keyed by kind as well as name, because a routine and a table can share one.
         var key: String { "\(container).\(kind).\(name)" }
     }
 
@@ -56,15 +50,10 @@ struct ExportProfile: Codable, Identifiable, Equatable {
     }
 }
 
-/// Saved export profiles, one file per connection.
-///
-/// Device-local: a profile names tables on one server, and syncing it would offer a selection whose
-/// objects the other Mac's connection may not have.
+// Device-local: a profile names tables on one server, which the other Mac's connection may not have.
 @MainActor
 final class ExportProfileStorage {
     static let shared = ExportProfileStorage()
-
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ExportProfileStorage")
 
     private let directory: URL
     private var cache: [UUID: [ExportProfile]] = [:]
@@ -85,8 +74,7 @@ final class ExportProfileStorage {
         return loaded
     }
 
-    /// Saving under a name that already exists replaces it, so re-saving a profile the user is
-    /// working on does not leave two rows with the same label in the picker.
+    // Saving under a name that already exists replaces it, so the picker never shows one label twice.
     func save(_ profile: ExportProfile, for connectionId: UUID) {
         var profiles = profiles(for: connectionId)
         if let index = profiles.firstIndex(where: { $0.name == profile.name }) {
@@ -128,9 +116,7 @@ final class ExportProfileStorage {
         return ExportProfile(name: name, formatId: formatId, entries: entries)
     }
 
-    /// Applies a profile over the tree the dialog is showing. An object the profile names that the
-    /// database no longer has is dropped rather than resurrected, and one the profile does not name
-    /// is deselected, so applying a profile twice gives the same selection both times.
+    // A gone object stays gone and an unnamed one is deselected, so applying a profile twice gives the same selection.
     nonisolated static func apply(_ profile: ExportProfile, to databases: [ExportDatabaseItem]) -> [ExportDatabaseItem] {
         let entries = profile.entriesByKey
         return databases.map { database in
@@ -157,8 +143,7 @@ final class ExportProfileStorage {
         }
     }
 
-    /// How many of a profile's objects the current tree still holds, so the picker can say when a
-    /// profile has gone stale instead of silently selecting fewer rows than it names.
+    // Lets the picker say a profile has gone stale instead of silently selecting fewer rows than it names.
     nonisolated static func matchCount(_ profile: ExportProfile, in databases: [ExportDatabaseItem]) -> Int {
         let present = Set(databases.flatMap { database in
             database.objects.map { object in
@@ -176,35 +161,21 @@ final class ExportProfileStorage {
 
     // MARK: - Persistence
 
-    private func fileURL(for connectionId: UUID) -> URL {
-        directory.appendingPathComponent("\(connectionId.uuidString).json")
+    private func file(for connectionId: UUID) -> JSONFileStore<[ExportProfile]> {
+        JSONFileStore(url: directory.appendingPathComponent("\(connectionId.uuidString).json"))
     }
 
     private func load(_ connectionId: UUID) -> [ExportProfile] {
-        let url = fileURL(for: connectionId)
-        guard let data = try? Data(contentsOf: url) else { return [] }
-        do {
-            return try JSONDecoder().decode([ExportProfile].self, from: data)
-        } catch {
-            Self.logger.warning("Failed to read export profiles: \(error.localizedDescription)")
-            return []
-        }
+        file(for: connectionId).read().value ?? []
     }
 
     private func persist(_ profiles: [ExportProfile], for connectionId: UUID) {
         cache[connectionId] = profiles
-        let url = fileURL(for: connectionId)
-        do {
-            try FileManager.default.createDirectory(
-                at: directory, withIntermediateDirectories: true)
-            guard !profiles.isEmpty else {
-                try? FileManager.default.removeItem(at: url)
-                return
-            }
-            let data = try JSONEncoder().encode(profiles)
-            try data.write(to: url, options: .atomic)
-        } catch {
-            Self.logger.warning("Failed to write export profiles: \(error.localizedDescription)")
+        let store = file(for: connectionId)
+        guard !profiles.isEmpty else {
+            try? store.remove()
+            return
         }
+        try? store.write(profiles)
     }
 }

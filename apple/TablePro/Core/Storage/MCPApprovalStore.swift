@@ -26,17 +26,13 @@ protocol MCPApprovalStoring: Sendable {
     func record(_ denial: MCPConnectionDenial) async
 }
 
-/// Durable, revocable MCP connection grants, device-local.
-///
-/// A grant is a security decision the user made, so it outlives the session that earned it: the
-/// server is torn down and rebuilt whenever the port changes, and the app is relaunched far more
-/// often than that. It is never synced, for the same reason MCP tokens are not.
+// Device-local and never synced, like MCP tokens. A grant outlives the session because the server is rebuilt on every port change.
 actor MCPApprovalStore: MCPApprovalStoring {
     static let shared = MCPApprovalStore()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPApprovalStore")
-    private static let grantsKey = "com.TablePro.mcp.connectionGrants"
-    private static let denialsKey = "com.TablePro.mcp.connectionDenials"
+    private static let grantsKey = JSONDefaultsKey<[MCPConnectionGrant]>("com.TablePro.mcp.connectionGrants")
+    private static let denialsKey = JSONDefaultsKey<[MCPConnectionDenial]>("com.TablePro.mcp.connectionDenials")
 
     private let defaults: UserDefaults
 
@@ -45,61 +41,53 @@ actor MCPApprovalStore: MCPApprovalStoring {
     }
 
     func grants() -> [MCPConnectionGrant] {
-        decode([MCPConnectionGrant].self, forKey: Self.grantsKey)
+        load(Self.grantsKey)
     }
 
     func record(_ grant: MCPConnectionGrant) {
         var updated = grants().filter { $0.id != grant.id }
         updated.append(grant)
-        encode(updated, forKey: Self.grantsKey)
+        save(updated, to: Self.grantsKey)
         Self.logger.info("Remembered an MCP connection grant for \(grant.subject, privacy: .public)")
     }
 
     func revoke(subject: String, connectionId: UUID) {
-        encode(
+        save(
             grants().filter { !($0.subject == subject && $0.connectionId == connectionId) },
-            forKey: Self.grantsKey
+            to: Self.grantsKey
         )
     }
 
     func revokeAll(subject: String) {
-        encode(grants().filter { $0.subject != subject }, forKey: Self.grantsKey)
+        save(grants().filter { $0.subject != subject }, to: Self.grantsKey)
     }
 
     func revokeEverything() {
-        defaults.removeObject(forKey: Self.grantsKey)
+        defaults.removeValue(for: Self.grantsKey)
     }
 
     func denial(subject: String, connectionId: UUID, now: Date) -> Date? {
-        let surviving = decode([MCPConnectionDenial].self, forKey: Self.denialsKey)
-            .filter { $0.expiresAt > now }
-        encode(surviving, forKey: Self.denialsKey)
+        let surviving = load(Self.denialsKey).filter { $0.expiresAt > now }
+        save(surviving, to: Self.denialsKey)
         return surviving.first { $0.subject == subject && $0.connectionId == connectionId }?.expiresAt
     }
 
     func record(_ denial: MCPConnectionDenial) {
-        var updated = decode([MCPConnectionDenial].self, forKey: Self.denialsKey)
+        var updated = load(Self.denialsKey)
             .filter { !($0.subject == denial.subject && $0.connectionId == denial.connectionId) }
         updated.append(denial)
-        encode(updated, forKey: Self.denialsKey)
+        save(updated, to: Self.denialsKey)
     }
 
-    private func decode<T: Decodable>(_ type: [T].Type, forKey key: String) -> [T] {
-        guard let data = defaults.data(forKey: key),
-              let decoded = try? JSONDecoder().decode(type, from: data)
-        else { return [] }
-        return decoded
+    private func load<Element: Codable>(_ key: JSONDefaultsKey<[Element]>) -> [Element] {
+        defaults.read(key).value ?? []
     }
 
-    private func encode(_ value: some Encodable & Collection, forKey key: String) {
-        guard !value.isEmpty else {
-            defaults.removeObject(forKey: key)
+    private func save<Element: Codable>(_ elements: [Element], to key: JSONDefaultsKey<[Element]>) {
+        guard !elements.isEmpty else {
+            defaults.removeValue(for: key)
             return
         }
-        guard let data = try? JSONEncoder().encode(value) else {
-            Self.logger.error("Failed to encode MCP approvals for \(key, privacy: .public)")
-            return
-        }
-        defaults.set(data, forKey: key)
+        try? defaults.write(elements, to: key)
     }
 }

@@ -5,8 +5,7 @@
 
 import Foundation
 
-/// Keyed by the table rather than the file, because the same export is downloaded again under new
-/// names. Device-local, so it needs no CloudKit record type.
+// Keyed by table, not file, since the same export comes back under new names. Device-local: no CloudKit record type.
 @MainActor
 internal final class ImportColumnMappingStore: TableScopedSettingsStore {
     static let shared = ImportColumnMappingStore()
@@ -20,21 +19,21 @@ internal final class ImportColumnMappingStore: TableScopedSettingsStore {
     }
 
     func overrides(for scope: TableScope) -> [String: ImportMappingOverride] {
-        guard let data = store.dataValue(forKey: PreferenceKeys.importColumnMapping(scope).name),
-              let overrides = try? JSONDecoder().decode([String: ImportMappingOverride].self, from: data) else {
-            return [:]
-        }
-        return overrides
+        store.read(PreferenceKeys.importColumnMapping(scope)).value ?? [:]
     }
 
     func remember(_ overrides: [String: ImportMappingOverride], forFields fields: [String], in scope: TableScope) {
         let merged = ImportColumnMatcher.merging(overrides, forFields: fields, into: self.overrides(for: scope))
-        let key = PreferenceKeys.importColumnMapping(scope).name
-        guard !merged.isEmpty, let data = try? JSONEncoder().encode(merged) else {
-            store.setDataValue(nil, forKey: key)
+        let key = PreferenceKeys.importColumnMapping(scope)
+        guard !merged.isEmpty else {
+            store.removeValue(for: key)
             return
         }
-        store.setDataValue(data, forKey: key)
+        do {
+            try store.write(merged, to: key)
+        } catch {
+            store.removeValue(for: key)
+        }
     }
 
     func renameTable(from oldScope: TableScope, to newScope: TableScope) {
@@ -60,7 +59,7 @@ internal final class ImportColumnMappingStore: TableScopedSettingsStore {
     }
 
     func dropTable(_ scope: TableScope) {
-        store.setDataValue(nil, forKey: PreferenceKeys.importColumnMapping(scope).name)
+        store.removeValue(for: PreferenceKeys.importColumnMapping(scope))
     }
 
     func dropContainer(connectionId: UUID, database: String, schema: String?) {
