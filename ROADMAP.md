@@ -31,14 +31,14 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 |---|---|---|
 | Phase 0: Release blockers | 16 | 3 |
 | Phase 1: Core enablers | 23 | 4 |
-| Phase 2: Windows daily use | 62 | 16 |
+| Phase 2: Windows daily use | 62 | 20 |
 | Phase 3: Standard features both apps lack | 118 | 0 |
 | Phase 4: Advanced tier | 57 | 0 |
 | Phase 5: Engines | 27 | 0 |
 | Phase 6: Quality bars | 8 | 0 |
 | Phase 7: Sync and teams | 15 | 0 |
 | Phase 8: Beyond the market | 40 | 0 |
-| Total | 366 | 23 |
+| Total | 366 | 27 |
 
 ## Where each app stands
 
@@ -46,7 +46,7 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 
 **Linux**, 0.1.0-beta.3: 9 engines from the core. Covers most of the CORE tier: connections with SSH, TLS and sockets, filters, editing with undo, completion, formatter, snippets, Vim, history, saved queries, structure editing, ER diagram, 7 export formats, dump and SQL import, AI chat, MCP with 11 tools and client setup, a CLI, share links. Missing: all of admin and monitoring, query parameters, drawn plans, charts, schema compare, data transfer, backup through native tools, SOCKS, cloud IAM, users and roles, view and routine editing, the 10 paid features. 0.1.0 waits on [release criteria](linux/docs/releasing.md#release-criteria) 8 and 10.
 
-**Windows**, unreleased: 9 engines through the FFI. Has the connection library (groups, tags, favourites), in-process SSH, TLS with remedies, paging, sort and filters, a row estimate before an optional count, table-row editing with SQL review, read-only structure and routine, trigger and sequence definitions, export to 7 formats, CSV import, query history with search and pins, saved queries in folders, value viewers, FK navigation, a production cue, database switchers, a Direct2D editor with highlighting, multiple cursors, find and replace and .sql files, run statement, selection or script with transactions, Redis key tabs, Cassandra paging, Safe Mode (3 levels), tab tear-out, session restore with pending edits, account sign-in, share links, and an MSIX build whose release dry run passes. Missing from the CORE tier: filter by value, copy formats, completion, formatter, a script runner, SQL dump and import, the table designer, creating and dropping databases and schemas, Truncate and Drop in the sidebar, undo of edits.
+**Windows**, unreleased: 9 engines through the FFI. Has the connection library (groups, tags, favourites), in-process SSH, TLS with remedies, paging, sort and filters, a row estimate before an optional count, table-row editing with SQL review, read-only structure and routine, trigger and sequence definitions, export to 7 formats with progress and Stop, CSV import, filters kept per table and by a cell, create and drop of databases and schemas, Truncate and Drop, query history with search and pins, saved queries in folders, value viewers, FK navigation, a production cue, database switchers, a Direct2D editor with highlighting, multiple cursors, find and replace and .sql files, run statement, selection or script with transactions, Redis key tabs, Cassandra paging, Safe Mode (3 levels), tab tear-out, session restore with pending edits, account sign-in, share links, and an MSIX build whose release dry run passes. Missing from the CORE tier: copy formats, completion, formatter, a script runner, SQL dump and import, the table designer, Truncate and Drop held until Save, undo of edits.
 
 **Core**: the FFI exposes filters, table structure and object definitions, export, query history, the account and share links. `ddl` drafts and plans, `import`, `dump`, saved queries, `ai`, `mcp`, `cli` and `foreign-import` are core code the FFI does not expose yet. The formatter, completion scope, script runner, key-based change tracker, copy renderer, highlight rules, Open Quickly and ER layout sit in `linux/crates/app`, GTK-free. Phase 1 moves both down so Windows builds on the code Linux already runs.
 
@@ -135,8 +135,8 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 ### Sidebar
 
-- [ ] **W-09** Object context menu: Open, Open in New Tab, Copy Name, Show CREATE, Truncate, Drop, through Safe Mode · CORE · needs C-05 · partly #4213: Open in New Tab, Show CREATE for a table, Truncate and Drop are left
-- [ ] **W-10** Create and drop databases and schemas · CORE · needs C-05
+- [ ] **W-09** Object context menu: Open, Open in New Tab, Copy Name, Show CREATE, Truncate, Drop, through Safe Mode · CORE · needs C-05 · partly #4213, #4304: Truncate and Drop run once confirmed instead of waiting for Save, and views, materialized views and sequences cannot be dropped yet; both wait on C-05
+- [x] **W-10** Create and drop databases and schemas · CORE · needs C-05: #4304
 - [ ] **W-11** Database switcher per connection and per query tab · CORE · partly #4285: Redis numbered databases get no switcher, because the core reports a Redis server as one database
 - [x] **W-12** Open a routine, trigger or sequence: its definition read-only, with Copy and Open in Editor · STD: #4213
 - [ ] **W-13** Columns, indexes and keys under a table node · STD · needs C-05
@@ -144,8 +144,8 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 ### Grid
 
-- [ ] **W-15** Filters: per-column operators, raw WHERE, match any or all, kept per table · CORE · needs C-01 · partly #4213: the filter is kept with its tab; keeping it for the table when it opens again is left
-- [ ] **W-16** Filter by a cell's value, or exclude it · CORE · needs C-01
+- [x] **W-15** Filters: per-column operators, raw WHERE, match any or all, kept per table · CORE · needs C-01: #4213, #4304
+- [x] **W-16** Filter by a cell's value, or exclude it · CORE · needs C-01: #4304
 - [x] **W-17** Value viewers for long text, JSON, binary (hex) and images; a tooltip on a cut cell · CORE: #4282
 - [ ] **W-18** Row details pane with editing · STD
 - [x] **W-19** Follow a foreign key to the referenced row, and show referencing rows · CORE: #4282
@@ -186,7 +186,7 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 ### Import and export
 
-- [ ] **W-45** Export a table or a result to CSV, JSON, XLSX, SQL INSERT, Markdown, HTML and XML, with progress and Stop · CORE · needs C-02 · partly #4213: SQL INSERT from a query result, and the rows written so far shown while it runs, are left
+- [x] **W-45** Export a table or a result to CSV, JSON, XLSX, SQL INSERT, Markdown, HTML and XML, with progress and Stop · CORE · needs C-02: #4213, #4304
 - [x] **W-46** CSV import into a table with a column mapping · CORE · needs C-03: #4288
 - [ ] **W-47** Import SQL File and Export Database · CORE · needs C-04
 
