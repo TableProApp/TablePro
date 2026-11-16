@@ -159,9 +159,16 @@ public sealed partial class ShellTests
                 AppSession.Wait,
                 throwOnTimeout: false).Result
             ?? throw new InvalidOperationException("The Save dialog has no File name box.");
+        // The Save dialog keeps its suggested name when the box's value is set without typing, so the path is typed.
         dialog.SetForeground();
         name.Focus();
-        name.AsTextBox().Text = path;
+        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
+        Keyboard.Type(path);
+        if (!Retry.WhileFalse(() => name.AsTextBox().Text == path, AppSession.Wait, throwOnTimeout: false).Success)
+        {
+            throw new InvalidOperationException("The Save dialog did not take the path typed.");
+        }
+
         Keyboard.Type(VirtualKeyShort.RETURN);
         if (!Retry.WhileFalse(() => SaveDialog(app, form) is null, AppSession.Wait, throwOnTimeout: false).Success)
         {
