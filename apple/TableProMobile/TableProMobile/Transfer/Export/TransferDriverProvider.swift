@@ -31,6 +31,13 @@ nonisolated extension TransferDriverLease {
 
 nonisolated protocol TransferDriverProvider: Sendable {
     func openTransferDriver() async throws -> TransferDriverLease
+    func openSessionDriver() async throws -> TransferDriverLease
+}
+
+nonisolated extension TransferDriverProvider {
+    func openSessionDriver() async throws -> TransferDriverLease {
+        try await openTransferDriver()
+    }
 }
 
 nonisolated struct DedicatedTransferDriverProvider: TransferDriverProvider {
@@ -48,6 +55,13 @@ nonisolated struct DedicatedTransferDriverProvider: TransferDriverProvider {
             guard !isSession else { return }
             await manager.closeDedicatedDriver(driver, for: connectionId)
         })
+    }
+
+    func openSessionDriver() async throws -> TransferDriverLease {
+        guard let driver = connectionManager.session(for: connectionId)?.driver else {
+            throw DatabaseDriverCapabilityError.unsupported(.exportRows)
+        }
+        return TransferDriverLease(driver: driver, isSessionDriver: true, close: {})
     }
 }
 

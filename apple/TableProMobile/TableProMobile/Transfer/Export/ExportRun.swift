@@ -9,13 +9,17 @@ import TableProPluginKit
 // literal rules (MySQL's NO_BACKSLASH_ESCAPES, PostgreSQL's standard_conforming_strings) can differ from the window's.
 nonisolated struct ExportSelect: Sendable, ExpressibleByStringLiteral {
     private let render: @Sendable (any DatabaseDriver) -> String
+    // Read on the window's own session: rows the user sees inside an open transaction exist only there.
+    let readsOnSession: Bool
 
-    init(render: @escaping @Sendable (any DatabaseDriver) -> String) {
+    init(readsOnSession: Bool = false, render: @escaping @Sendable (any DatabaseDriver) -> String) {
         self.render = render
+        self.readsOnSession = readsOnSession
     }
 
     init(stringLiteral sql: String) {
         render = { _ in sql }
+        readsOnSession = false
     }
 
     func statement(on driver: any DatabaseDriver) -> String {
@@ -246,6 +250,8 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
 
         let lease: TransferDriverLease?
         switch request.source {
+        case .query(let select) where select.readsOnSession:
+            lease = try await hold(try await drivers.openSessionDriver())
         case .objects, .query, .rerun:
             lease = try await hold(try await drivers.openTransferDriver())
         case .rows:

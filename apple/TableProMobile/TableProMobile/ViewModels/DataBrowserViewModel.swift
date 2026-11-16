@@ -703,14 +703,18 @@ final class DataBrowserViewModel {
     }
 
     // Rows with a key are read again in full, bytes and long values included; the rest export what the page holds.
-    func selectedRowsExportSource(_ indices: [Int]) throws(ClipboardExporter.IncompleteValues) -> ExportScopeOption.Source {
+    // A session holding writes a fresh connection cannot see is read again on the session itself.
+    func selectedRowsExportSource(
+        _ indices: [Int],
+        readsOnSession: Bool = false
+    ) throws(ClipboardExporter.IncompleteValues) -> ExportScopeOption.Source {
         if let table, let driver = session?.driver, databaseType.speaksSQL, !(driver is any DriverQueryBuilding),
            let locators = rowLocators(at: indices) {
             let keys = locators.compactMap(\.keyValues).filter { !$0.isEmpty }
             if !keys.isEmpty, keys.count == locators.count {
                 return .query(Self.rowsSelect(
                     table: table.name, schema: schema, database: database, type: databaseType,
-                    keys: keys, columns: columnDetails
+                    keys: keys, columns: columnDetails, readsOnSession: readsOnSession
                 ))
             }
         }
@@ -725,9 +729,10 @@ final class DataBrowserViewModel {
         database: String?,
         type: DatabaseType,
         keys: [[(column: String, value: String)]],
-        columns: [ColumnInfo]
+        columns: [ColumnInfo],
+        readsOnSession: Bool = false
     ) -> ExportSelect {
-        ExportSelect { driver in
+        ExportSelect(readsOnSession: readsOnSession) { driver in
             SQLBuilder.buildRowsSelect(
                 table: table, schema: schema, database: database, type: type, keys: keys, columns: columns, driver: driver
             )

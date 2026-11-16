@@ -297,6 +297,30 @@ struct ExportRunTests {
         TransferFiles.remove(root)
     }
 
+    @Test("Selected rows a fresh connection cannot see, inside the session's open transaction, are read on the session")
+    func selectedRowsReadOnTheSessionWhenItHoldsWrites() async throws {
+        let columns = [ColumnInfo(name: "k", typeName: "int", ordinalPosition: 0)]
+        let dedicated = RecordingTransferDriver()
+        let session = RecordingTransferDriver()
+        let root = try TransferTestFolders.make("export-rows-session")
+        for readsOnSession in [false, true] {
+            let select = DataBrowserViewModel.rowsSelect(
+                table: "t", schema: nil, database: nil, type: .postgresql, keys: [[(column: "k", value: "1")]],
+                columns: columns, readsOnSession: readsOnSession
+            )
+            let run = ExportRun(
+                request: request(.query(select)), plugin: MobileExportFormats.csv,
+                drivers: SplitDriverProvider(dedicated: dedicated, session: session), exportsRoot: root
+            )
+            let outcome = try await run.run { _ in }
+            outcome.discard()
+        }
+        TransferFiles.remove(root)
+
+        #expect(dedicated.executed.count == 1)
+        #expect(session.executed.count == 1)
+    }
+
     @Test("A run's plugin holds the settings the shared one had when it was taken, whatever is changed after")
     func frozenPluginKeepsItsSettings() throws {
         let shared = SettingsProbePlugin()
