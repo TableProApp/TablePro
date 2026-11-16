@@ -311,6 +311,31 @@ struct MobileExportModelTests {
         #expect(model.exportableObjects.map(\.tableType) == ["function"])
     }
 
+    @Test("Export hands the run its own copy of the format, and the live Safe Mode level")
+    func exportRunsWithAFrozenPlugin() async {
+        let plugins = PluginLog()
+        let requests = RequestLog()
+        var live = environment(requests: requests)
+        live.makeRunner = { request, plugin in
+            requests.requests.append(request)
+            plugins.plugins.append(plugin)
+            return ScriptedExportRunner()
+        }
+        live.safeModeLevel = { .readOnly }
+        let model = MobileExportModel(
+            input: input(scopes: [ExportScopeOption(kind: .result, source: .query("SELECT 1"))]),
+            environment: live
+        )
+
+        model.start()
+
+        let used = plugins.plugins.first
+        #expect(used != nil)
+        #expect(used.map { $0 !== MobileExportFormats.csv } == true)
+        #expect(requests.requests.first?.safeModeLevel == .readOnly)
+        model.close()
+    }
+
     @Test("Without a file name nothing exports")
     func emptyFileName() {
         let model = MobileExportModel(
@@ -325,4 +350,9 @@ struct MobileExportModelTests {
 @MainActor
 final class RequestLog {
     var requests: [ExportRequest] = []
+}
+
+@MainActor
+final class PluginLog {
+    var plugins: [any ExportFormatPlugin] = []
 }

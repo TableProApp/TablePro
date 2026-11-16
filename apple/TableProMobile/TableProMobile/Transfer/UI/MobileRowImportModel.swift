@@ -197,13 +197,16 @@ final class MobileRowImportModel {
             safeModeLevel: context.safeModeLevel,
             target: target
         )
+        // The settings are taken now, so the delete question and the run read the same ones whatever another window
+        // changes on the shared form while the confirmation is open.
+        let frozen = MobileImportFormats.frozen(plugin)
         let clears = destination == .existingTable && writeMode == .insert
-            && ImportPluginSettings.deletesExistingRows(plugin)
+            && ImportPluginSettings.deletesExistingRows(frozen)
         let extra = clears ? String(
             format: String(localized: "Every row in “%@” is deleted before the file’s rows are inserted."),
             targetTable ?? ""
         ) : nil
-        runner.requestImport(request, extraConfirmation: extra)
+        runner.requestImport(request, plugin: frozen, extraConfirmation: extra)
     }
 
     private func makeTarget() -> RowImportTarget? {

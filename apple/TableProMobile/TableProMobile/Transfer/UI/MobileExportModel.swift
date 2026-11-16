@@ -98,6 +98,8 @@ struct MobileExportEnvironment {
     var loadObjects: @MainActor (MobileExportInput, any ExportFormatPlugin) async throws -> [PluginExportTable]
     var makeRunner: @MainActor (ExportRequest, any ExportFormatPlugin) -> any ExportRunning
     var sessionDriver: @MainActor () -> (any DatabaseDriver)?
+    // The connection's Safe Mode as it is when Export is tapped; nil keeps the level the sheet opened with.
+    var safeModeLevel: @MainActor () -> SafeModeLevel? = { nil }
 
     // The coordinator is the session host: an export that lands on the window's own session runs tracked.
     static func live(connectionManager: ConnectionManager, coordinator: ConnectionCoordinator) -> MobileExportEnvironment {
@@ -120,7 +122,8 @@ struct MobileExportEnvironment {
                     sessionHost: coordinator
                 )
             },
-            sessionDriver: { [weak coordinator] in coordinator?.session?.driver }
+            sessionDriver: { [weak coordinator] in coordinator?.session?.driver },
+            safeModeLevel: { [weak coordinator] in coordinator?.connection.safeModeLevel }
         )
     }
 }
@@ -315,8 +318,11 @@ final class MobileExportModel {
 
     // MARK: - Run
 
+    // The run gets a copy of the format's settings as they are now, so another window editing the shared form cannot
+    // change the name or the content of a file already started.
     func start() {
-        guard canExport, let plugin, let scope else { return }
+        guard canExport, let shared = plugin, let scope else { return }
+        let plugin = MobileExportFormats.frozen(shared)
         let source: ExportSource
         switch scope.source {
         case .query(let sql): source = .query(sql)
@@ -332,7 +338,7 @@ final class MobileExportModel {
             databaseType: input.databaseType,
             database: input.database,
             schema: input.schema,
-            safeModeLevel: input.safeModeLevel,
+            safeModeLevel: environment.safeModeLevel() ?? input.safeModeLevel,
             sessionDriver: environment.sessionDriver()
         )
         let runner = environment.makeRunner(request, plugin)

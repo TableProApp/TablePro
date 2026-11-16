@@ -1,21 +1,31 @@
 import Foundation
 import TableProDatabase
+import TableProModels
 import TableProSQLGrammar
 
-// The window's session an import writes on, as macOS imports on the session driver: the whole run is tracked, so the
-// session reads as busy, the bar's Commit and Roll Back wait, and a session lost under it is restored.
+// What an import is admitted with, read in the same turn that marks the session as the import's.
+nonisolated struct ImportAdmission: Sendable {
+    let driver: any DatabaseDriver
+    let safeModeLevel: SafeModeLevel
+}
+
+// The window's session an import writes on, as macOS imports on the session driver: the whole run holds the session,
+// so every other statement on it, from any window, is refused until it ends, and a session lost under it is restored.
 @MainActor
 protocol TransferSessionHost: AnyObject, Sendable {
-    var transferDriver: Result<any DatabaseDriver, AppError> { get }
+    // The connection's Safe Mode as it is now, which another window can change while a sheet is open.
+    var transferSafeModeLevel: SafeModeLevel { get }
     // The database the window's session is on, for an engine whose driver cannot say.
     var transferDatabase: String? { get }
-    // A run that ends on an error comes back as a value, so `failed` says which values may have lost the session.
-    // `alone`: an import, which holds the session for its whole run, so no window sends a statement between its batches.
-    func trackTransfer<T: Sendable>(
-        alone: Bool,
+    // Refused at once (`SessionBusyForImport`, `SessionHeldByImport`) unless nothing else runs on the session and
+    // nothing moves it. A run that ends on an error comes back as a value, so `failed` says which values may have
+    // lost the session.
+    func trackImport<T: Sendable>(
         failed: @Sendable (T) -> Bool,
-        _ work: @Sendable () async throws -> T
+        _ work: @Sendable (ImportAdmission) async throws -> T
     ) async throws -> T
+    // Work an export runs on the session's own driver, as a SQLite file holding the user's transaction requires.
+    func trackTransfer<T: Sendable>(_ work: @Sendable () async throws -> T) async throws -> T
     func noteTransferChangedCatalog(_ kinds: SQLCatalogObjectKinds)
     // What a SQL file left on the session the import ran on, recorded as a query run's is, before the catalog reloads.
     func noteTransferSessionEffect(_ effect: SessionLocalStatements.Effect, on driver: any DatabaseDriver)
@@ -26,27 +36,18 @@ protocol TransferSessionHost: AnyObject, Sendable {
     func abandonTransferSession() async
 }
 
-extension TransferSessionHost {
-    func trackTransfer<T: Sendable>(_ work: @Sendable () async throws -> T) async throws -> T {
-        try await trackTransfer(alone: false, failed: { _ in false }, work)
-    }
-}
-
 extension ConnectionCoordinator: TransferSessionHost {
-    var transferDriver: Result<any DatabaseDriver, AppError> {
-        writableSession.map(\.driver)
+    var transferSafeModeLevel: SafeModeLevel {
+        connection.safeModeLevel
     }
 
     var transferDatabase: String? {
         activeDatabase.isEmpty ? nil : activeDatabase
     }
 
-    func trackTransfer<T: Sendable>(
-        alone: Bool,
-        failed: @Sendable (T) -> Bool,
-        _ work: @Sendable () async throws -> T
-    ) async throws -> T {
-        try await track(alone: alone, failed: failed) { try await work() }
+    // An export only reads, so it leaves nothing a fresh connection would lack.
+    func trackTransfer<T: Sendable>(_ work: @Sendable () async throws -> T) async throws -> T {
+        try await track(reading: true) { try await work() }
     }
 
     func noteTransferChangedCatalog(_ kinds: SQLCatalogObjectKinds) {

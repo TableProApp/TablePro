@@ -58,6 +58,8 @@ final class QueryEditorViewModel {
     var selection = RowSelection()
     // Each request as it went to the server, split again after a statement changed how the session reads literals.
     @ObservationIgnored private(set) var sentStatements: [String] = []
+    // The session and the database and schema the result was read on.
+    @ObservationIgnored private(set) var resultPlacement: ConnectionCoordinator.TablePlacement?
     @ObservationIgnored private(set) var ranTransactionRollBack = false
 
     @ObservationIgnored private var unitKind: QueryScript.UnitKind = .statement
@@ -150,12 +152,16 @@ final class QueryEditorViewModel {
     var bufferedRowCount: Int { buffer.count }
 
     // A file wants the whole result, which only running the statement again gives, and only a read may run twice:
-    // `INSERT ... RETURNING`, `CALL` or a batch would write again (critic M9). Anything else exports the rows shown.
+    // `INSERT ... RETURNING`, `CALL` or a batch would write again (critic M9). It runs on a connection of its own, so
+    // `reproducible` says that connection reads what the session read (`SET @v` then `SELECT @v` does not). Anything
+    // else exports the rows shown.
     func resultsExportSource(
         databaseType: DatabaseType,
-        runsReadOnly: Bool
+        runsReadOnly: Bool,
+        reproducible: Bool
     ) throws(ClipboardExporter.IncompleteValues) -> ResultsExportSource {
-        if let statement = Self.rerunnableStatement(sentStatements, databaseType: databaseType, runsReadOnly: runsReadOnly) {
+        if reproducible,
+           let statement = Self.rerunnableStatement(sentStatements, databaseType: databaseType, runsReadOnly: runsReadOnly) {
             return .rerun(statement)
         }
         return .buffered(try ExportRowSet(columns: buffer.columns, cells: buffer.window.rows.map(\.cells)))
@@ -300,7 +306,8 @@ final class QueryEditorViewModel {
         driver: DatabaseDriver,
         script: QueryScript,
         maxRows: Int = QueryEditorViewModel.maxBufferedRows,
-        enforcesReadOnly: Bool = false
+        enforcesReadOnly: Bool = false,
+        placement: ConnectionCoordinator.TablePlacement? = nil
     ) async {
         fetchTask?.cancel()
         let options = StreamOptions(
@@ -315,6 +322,7 @@ final class QueryEditorViewModel {
         phase = .running
         selection.end()
         sentStatements = []
+        resultPlacement = placement
         buffer.reset()
         executionTime = 0
         rowsAffectedTotal = 0

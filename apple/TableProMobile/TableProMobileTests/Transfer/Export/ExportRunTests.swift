@@ -297,6 +297,34 @@ struct ExportRunTests {
         TransferFiles.remove(root)
     }
 
+    @Test("A run's plugin holds the settings the shared one had when it was taken, whatever is changed after")
+    func frozenPluginKeepsItsSettings() throws {
+        let shared = SettingsProbePlugin()
+        shared.settings.compresses = true
+
+        let frozen = try #require(MobileExportFormats.frozen(shared) as? SettingsProbePlugin)
+        shared.settings.compresses = false
+
+        #expect(frozen !== shared)
+        #expect(frozen.settings.compresses)
+        #expect(frozen.currentFileExtension == "txt.gz")
+    }
+
+    @Test("Each shipped format gives a run its own instance with the same settings")
+    func shippedFormatsFreeze() {
+        for shared in MobileExportFormats.all {
+            let frozen = MobileExportFormats.frozen(shared)
+            #expect(frozen !== shared)
+            #expect(type(of: frozen) == type(of: shared))
+            #expect(frozen.currentFileExtension == shared.currentFileExtension)
+        }
+        for shared in MobileImportFormats.all {
+            let frozen = MobileImportFormats.frozen(shared)
+            #expect(frozen !== shared)
+            #expect(type(of: frozen) == type(of: shared))
+        }
+    }
+
     @Test("Redis keys have no Export of their own: the export's objects are its databases")
     func redisKeysExportByDatabase() {
         let redis = RedisDriver(host: "localhost", port: 6_379, password: nil)

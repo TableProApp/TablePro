@@ -188,7 +188,7 @@ struct ConnectionCoordinatorCatalogTests {
         let coordinator = await connected(session)
         session.scriptedTables = [TableInfo(name: "orders"), TableInfo(name: "invoices")]
         let gate = TestGate()
-        let page = Task { await appState.sessionTransactions.track(connection.id, reading: true) { await gate.enter() } }
+        let page = Task { try? await appState.sessionTransactions.track(connection.id, reading: true) { await gate.enter() } }
         await gate.waitUntilEntered()
 
         coordinator.noteCatalogChanged(.tables)

@@ -67,7 +67,7 @@ struct ConnectionCoordinatorStatusTests {
 
     // MARK: - Import
 
-    @Test("While an import in one window holds the session, another window's query waits and its writes are refused")
+    @Test("While an import in one window holds the session, another window's query, write and switch are refused at once")
     func importHoldsTheSessionForEveryWindow() async throws {
         let session = driver()
         let importing = try await attachedCoordinator(on: session)
@@ -76,7 +76,8 @@ struct ConnectionCoordinatorStatusTests {
         let log = QueryLog()
         let gate = TestGate()
         let importRun = Task {
-            try await importing.trackTransfer(alone: true, failed: { (_: Bool) in false }) {
+            try await importing.trackImport(failed: { (_: Bool) in false }) { admission in
+                #expect(admission.driver === session)
                 await gate.enter()
                 return true
             }
@@ -84,22 +85,54 @@ struct ConnectionCoordinatorStatusTests {
         await gate.waitUntilEntered()
 
         #expect(other.isImportRunning)
-        if case .failure(let error) = other.writableSession {
-            #expect(error.message == ConnectionCoordinator.importRunningRefusal.message)
-        } else {
-            Issue.record("A write path got the session while the import held it")
+        #expect(other.runRefusal?.message == SessionHeldByImport().appError.message)
+        await #expect(throws: SessionHeldByImport.self) {
+            try await other.track { log.events.append("query") }
         }
-        let query = Task {
-            await other.track { log.events.append("query") }
+        await #expect(throws: SessionHeldByImport.self) {
+            try await other.track(reading: true) { log.events.append("page") }
         }
-        for _ in 0..<50 { await Task.yield() }
+        await other.switchDatabase(to: "app_archive")
+        #expect(other.failureAlertMessage == SessionHeldByImport().localizedDescription)
         #expect(log.events.isEmpty)
 
         await gate.open()
         _ = try await importRun.value
-        await query.value
+        try await other.track { log.events.append("query") }
         #expect(log.events == ["query"])
         #expect(other.isImportRunning == false)
+    }
+
+    @Test("An import asked for while other work runs on the session is refused, not queued")
+    func importRefusedWhileWorkRuns() async throws {
+        let importing = try await attachedCoordinator(on: driver())
+        let gate = TestGate()
+        let work = Task { try? await importing.track { await gate.enter() } }
+        await gate.waitUntilEntered()
+
+        await #expect(throws: SessionBusyForImport.self) {
+            try await importing.trackImport(failed: { (_: Bool) in false }) { _ in true }
+        }
+
+        await gate.open()
+        await work.value
+        #expect(try await importing.trackImport(failed: { (_: Bool) in false }) { _ in true })
+    }
+
+    @Test("A result reruns on a fresh connection only from the same unchanged session, still where it was read")
+    func freshConnectionReproducesOnlyAnUnchangedSession() async throws {
+        let coordinator = try await attachedCoordinator(on: driver())
+        let placement = coordinator.tablePlacement
+
+        try await coordinator.track(reading: true) {}
+        #expect(coordinator.reproducesOnFreshConnection(placement))
+        #expect(coordinator.reproducesOnFreshConnection(nil) == false)
+
+        try await coordinator.track(marksSession: false) {}
+        #expect(coordinator.reproducesOnFreshConnection(placement))
+
+        try await coordinator.track {}
+        #expect(coordinator.reproducesOnFreshConnection(placement) == false)
     }
 
     // MARK: - Mapping
@@ -263,7 +296,7 @@ struct ConnectionCoordinatorStatusTests {
         let second = driver(tables: ["orders"])
         factory.queue(second)
 
-        _ = await coordinator.track(failed: { $0 }) { true }
+        _ = try await coordinator.track(failed: { $0 }) { true }
 
         #expect(coordinator.session?.driver === second)
         #expect(isConnected(coordinator))
@@ -410,7 +443,7 @@ struct ConnectionCoordinatorStatusTests {
         await coordinator.reconnectIfNeeded()
         #expect(coordinator.session?.driver === second)
 
-        let saved = await coordinator.track(failed: { _ in viewModel.operationError != nil }) {
+        let saved = try await coordinator.track(failed: { _ in viewModel.operationError != nil }) {
             await viewModel.saveChanges()
         }
 
@@ -456,7 +489,7 @@ struct ConnectionCoordinatorStatusTests {
 
         let second = driver(tables: ["users"])
         factory.queue(second)
-        let saved = await coordinator.track(failed: { _ in viewModel.operationError != nil }) {
+        let saved = try await coordinator.track(failed: { _ in viewModel.operationError != nil }) {
             await viewModel.saveChanges()
         }
 

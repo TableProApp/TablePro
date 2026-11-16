@@ -251,6 +251,39 @@ final class ExecutingExportPlugin: ExportFormatPlugin, @unchecked Sendable {
     }
 }
 
+// A format with one setting kept under a test-only storage key, so changing it touches no shipped format's defaults.
+final class SettingsProbePlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+    struct Settings: Codable, Equatable {
+        var compresses = false
+    }
+
+    static let pluginName = "Settings Probe"
+    static let pluginVersion = "1.0"
+    static let pluginDescription = "Test export"
+    static let formatId = "settings-probe"
+    static let formatDisplayName = "Settings Probe"
+    static let defaultFileExtension = "txt"
+    static let iconName = "doc"
+    static let settingsStorageId = "tests.settings-probe"
+
+    var settings = Settings() {
+        didSet { saveSettings() }
+    }
+
+    required init() {}
+
+    var currentFileExtension: String { settings.compresses ? "txt.gz" : "txt" }
+
+    func export(
+        tables: [PluginExportTable],
+        dataSource: any PluginExportDataSource,
+        destination: URL,
+        progress: PluginExportProgress
+    ) async throws -> ExportFormatResult {
+        ExportFormatResult()
+    }
+}
+
 @MainActor
 final class RecordingAsserter: BackgroundTaskAsserting {
     let identifier = UIBackgroundTaskIdentifier(rawValue: 11)

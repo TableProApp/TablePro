@@ -21,22 +21,27 @@ private final class FakeSessionHost: TransferSessionHost {
         self.driver = driver
     }
 
-    var transferDriver: Result<any DatabaseDriver, AppError> { .success(driver) }
     var transferDatabase: String?
+    var transferSafeModeLevel: SafeModeLevel = .off
+    // The level the import is admitted under, which a test can make stricter than the one it was confirmed under.
+    var admittedLevel: SafeModeLevel = .off
+    var refusesImport: (any Error)?
 
-    // As `ConnectionCoordinator.track(failed:)` does: a value the test calls failed sends the session to its check.
-    private(set) var aloneRuns = 0
-
-    func trackTransfer<T: Sendable>(
-        alone: Bool,
+    // As `ConnectionCoordinator.trackImport` does: refused before anything runs, else a value the test calls failed
+    // sends the session to its check.
+    func trackImport<T: Sendable>(
         failed: @Sendable (T) -> Bool,
-        _ work: @Sendable () async throws -> T
+        _ work: @Sendable (ImportAdmission) async throws -> T
     ) async throws -> T {
+        if let refusesImport { throw refusesImport }
         trackedRuns += 1
-        if alone { aloneRuns += 1 }
-        let value = try await work()
+        let value = try await work(ImportAdmission(driver: driver, safeModeLevel: admittedLevel))
         if failed(value) { sessionChecks += 1 }
         return value
+    }
+
+    func trackTransfer<T: Sendable>(_ work: @Sendable () async throws -> T) async throws -> T {
+        try await work()
     }
 
     func noteTransferChangedCatalog(_ kinds: SQLCatalogObjectKinds) {
@@ -96,7 +101,6 @@ struct ImportRunTests {
         #expect(outcome.executedStatements == 3)
         #expect(try await driver.execute(query: "SELECT count(*) FROM t").rows.first?.first == "2")
         #expect(await host.trackedRuns == 1)
-        #expect(await host.aloneRuns == 1)
         #expect(await host.changedKinds == [.everything])
     }
 
@@ -272,60 +276,37 @@ struct ImportRunTests {
         #expect(names == ["Ada", "Bo"])
     }
 
-    @Test("A second import on the connection waits for the one running to end, instead of joining its transaction")
-    func importsOnOneConnectionTakeTurns() async throws {
+    @Test("An import the session cannot take now is refused with why, before it writes anything", arguments: [
+        SessionAdmissionCase.otherWork, .anotherImport
+    ])
+    func refusedAdmissionWritesNothing(_ refusal: SessionAdmissionCase) async throws {
         let driver = try await database()
         _ = try await driver.execute(query: "CREATE TABLE t (a INTEGER)")
         let host = await FakeSessionHost(driver: driver)
-        let turns = ImportTurns()
-        let connectionId = UUID()
-        let running = ImportTurns.Ticket(connectionId: connectionId)
-        try await turns.take(running)
+        await MainActor.run { host.refusesImport = refusal.error }
         let file = try staged("seed.sql", "INSERT INTO t VALUES (1);\n")
-        let run = ImportRun(
-            request: request(file, formatId: "sql", connectionId: connectionId), plugin: MobileImportFormats.sql,
-            host: host, turns: turns
-        )
+        let run = ImportRun(request: request(file, formatId: "sql"), plugin: MobileImportFormats.sql, host: host)
 
-        let second = Task { try await run.run { _ in } }
-        try await waitUntil { turns.waiting(on: connectionId) == 1 }
-        #expect(await host.trackedRuns == 0)
-        turns.release(running)
-
-        let outcome = try await second.value
-        #expect(outcome.ending == .completed)
-        #expect(await host.trackedRuns == 1)
-        let next = ImportTurns.Ticket(connectionId: connectionId)
-        #expect(await BoundedCall.result(within: .seconds(5)) { (try? await turns.take(next)) != nil } == true)
-        turns.release(next)
+        await #expect(throws: MobileTransferRefusal(reason: refusal.error.localizedDescription)) {
+            _ = try await run.run { _ in }
+        }
+        #expect(try await driver.execute(query: "SELECT count(*) FROM t").rows.first?.first == "0")
     }
 
-    @Test("A stop while the import waits for its turn ends it before it touches the session")
-    func stopWhileWaitingForTheTurn() async throws {
+    @Test("Safe Mode read again at admission refuses an import another window made stricter since it was confirmed",
+          arguments: [SafeModeLevel.readOnly, .confirmWrites])
+    func stricterSafeModeAtAdmissionRefuses(_ live: SafeModeLevel) async throws {
         let driver = try await database()
         _ = try await driver.execute(query: "CREATE TABLE t (a INTEGER)")
         let host = await FakeSessionHost(driver: driver)
-        let turns = ImportTurns()
-        let connectionId = UUID()
-        let running = ImportTurns.Ticket(connectionId: connectionId)
-        try await turns.take(running)
+        await MainActor.run { host.admittedLevel = live }
         let file = try staged("seed.sql", "INSERT INTO t VALUES (1);\n")
-        let run = ImportRun(
-            request: request(file, formatId: "sql", connectionId: connectionId), plugin: MobileImportFormats.sql,
-            host: host, turns: turns
-        )
+        let run = ImportRun(request: request(file, formatId: "sql"), plugin: MobileImportFormats.sql, host: host)
 
-        let second = Task { try await run.run { _ in } }
-        try await waitUntil { turns.waiting(on: connectionId) == 1 }
-        run.stop(.rollBack)
-
-        await #expect(throws: CancellationError.self) {
-            _ = try await second.value
+        await #expect(throws: MobileTransferRefusal.self) {
+            _ = try await run.run { _ in }
         }
-        #expect(turns.waiting(on: connectionId) == 0)
-        #expect(await host.trackedRuns == 0)
         #expect(try await driver.execute(query: "SELECT count(*) FROM t").rows.first?.first == "0")
-        turns.release(running)
     }
 
     @Test("A SQL file's temporary table is recorded on the session and the window follows where the file left it")
@@ -431,5 +412,17 @@ struct ImportRunTests {
         #expect(outcome.ending == .completed)
         #expect(outcome.transaction == .committed)
         #expect(try await driver.execute(query: "SELECT group_concat(a) FROM t").rows.first?.first == "2")
+    }
+}
+
+nonisolated enum SessionAdmissionCase: Sendable, CaseIterable {
+    case otherWork
+    case anotherImport
+
+    var error: any Error {
+        switch self {
+        case .otherWork: SessionBusyForImport()
+        case .anotherImport: SessionHeldByImport()
+        }
     }
 }

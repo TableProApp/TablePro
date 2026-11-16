@@ -17289,6 +17289,9 @@
         }
       }
     },
+    "Other work is running on this connection. Start the import again once it ends." : {
+
+    },
     "Other work ran on this connection before you confirmed. Check the transaction and try again." : {
 
     },
@@ -20622,6 +20625,9 @@
 
     },
     "Safe Mode is set to Read-Only for this connection, and the database refused the statement." : {
+
+    },
+    "Safe Mode on this connection changed. Start the import again." : {
 
     },
     "Same key as SSH server" : {

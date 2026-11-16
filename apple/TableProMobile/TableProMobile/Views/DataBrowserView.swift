@@ -181,6 +181,11 @@ struct DataBrowserView: View {
             .onChange(of: appState.sessionTransactions.rollBackCount(for: connection.id)) {
                 Task { await viewModel.load() }
             }
+            // A load an import refused runs once the import ends.
+            .onChange(of: coordinator.isImportRunning) { _, running in
+                guard !running, viewModel.waitsForImport else { return }
+                Task { await viewModel.load() }
+            }
             .onDisappear { viewModel.cancel() }
             .sheet(isPresented: $showInsertSheet) { insertSheet }
             .sheet(item: $exportItem) { item in
@@ -958,7 +963,14 @@ struct DataBrowserView: View {
             return
         }
         let total = pending.locators.count
-        let deleted = await coordinator.track(failed: { $0 < total }) { await viewModel.deleteRows(pending.locators) }
+        let deleted: Int
+        do {
+            deleted = try await coordinator.track(failed: { $0 < total }) { await viewModel.deleteRows(pending.locators) }
+        } catch {
+            viewModel.operationError = ConnectionCoordinator.refusal(for: error)
+            hapticError.toggle()
+            return
+        }
         if deleted == total {
             hapticSuccess.toggle()
         } else {
@@ -972,7 +984,14 @@ struct DataBrowserView: View {
             return
         }
         let locator = pending.locator
-        let success = await coordinator.track(failed: { !$0 }) { await viewModel.deleteRow(locator) }
+        let success: Bool
+        do {
+            success = try await coordinator.track(failed: { !$0 }) { await viewModel.deleteRow(locator) }
+        } catch {
+            viewModel.operationError = ConnectionCoordinator.refusal(for: error)
+            hapticError.toggle()
+            return
+        }
         if success {
             hapticSuccess.toggle()
         } else {

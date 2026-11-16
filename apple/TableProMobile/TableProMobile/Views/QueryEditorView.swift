@@ -916,9 +916,7 @@ struct QueryEditorView: View {
 
     private func presentResultsExport() {
         do {
-            let scope = try QueryResultsExport.resultScope(
-                viewModel, databaseType: databaseType, driver: coordinator.session?.driver
-            )
+            let scope = try QueryResultsExport.resultScope(viewModel, databaseType: databaseType, coordinator: coordinator)
             exportItem = MobileExportItem(input: exportInput(title: String(localized: "Export Results"), scope: scope))
         } catch {
             resultsExportError = error
@@ -1099,11 +1097,26 @@ struct QueryEditorView: View {
 
         let progressUpdater = startActivityProgressUpdater(token: token)
 
-        await coordinator.track(
-            failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed },
-            rolledBack: { _ in viewModel.ranTransactionRollBack }
-        ) {
-            await viewModel.run(driver: session.driver, script: script, enforcesReadOnly: enforcesReadOnly)
+        let placement = coordinator.tablePlacement
+        do {
+            try await coordinator.track(
+                marksSession: false,
+                failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed },
+                rolledBack: { _ in viewModel.ranTransactionRollBack }
+            ) {
+                await viewModel.run(driver: session.driver, script: script, enforcesReadOnly: enforcesReadOnly, placement: placement)
+            }
+        } catch {
+            // An import took the session after the check above; nothing ran.
+            progressUpdater.cancel()
+            if movesDatabase { coordinator.endDatabaseMove() }
+            if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) }
+            appError = ConnectionCoordinator.refusal(for: error)
+            isExecuting = false
+            completion.reopenColumnReads()
+            executionStartTime = nil
+            await appState.queryActivities.end(token: token, outcome: QueryExecutionOutcome.failed.activityOutcome)
+            return
         }
 
         progressUpdater.cancel()
@@ -1154,40 +1167,6 @@ struct QueryEditorView: View {
         await appState.queryActivities.end(token: token, outcome: outcome.activityOutcome)
     }
 
-    // Every statement sent counts as run, a failed one's too: a missed reload leaves the lists naming what is gone.
-    // They are read as sent, since a run splits the rest of its text again after a statement that changes how the
-    // session reads literals.
-    private func postCatalogChanges(on session: ConnectionSession) -> ConnectionCoordinator.SessionMove {
-        let statements = viewModel.sentStatements
-        // A key or a collection a write made or removed is on the lists too; only a proven read leaves them as they are.
-        guard databaseType.speaksSQL else {
-            if statements.contains(where: { SQLWriteClassifier.isWriteQuery($0, databaseType: databaseType) }) {
-                coordinator.noteCatalogChanged([.tables, .databases])
-            }
-            return ConnectionCoordinator.SessionMove()
-        }
-        let sessionEffect = SessionLocalStatements.effect(of: statements, databaseType: databaseType)
-        appState.catalogChanges.noteSessionEffect(
-            sessionEffect,
-            for: connectionId,
-            driver: ObjectIdentifier(session.driver)
-        )
-        let grammar = SQLLexicalReadings.resolve(
-            databaseTypeId: databaseType.rawValue, declared: nil, session: nil
-        ).execution
-        let effect = SQLCatalogEffectClassifier.effect(ofStatements: statements, grammar: grammar)
-        var kinds = effect.kinds
-        // A commit shows the transaction's DDL to the catalog connection, a rollback takes it back from the session.
-        if effect.endsTransaction { kinds.formUnion([.tables, .schemas, .databases]) }
-        coordinator.noteCatalogChanged(kinds)
-        // A transaction's end takes back a `SET LOCAL` or a `SET` inside it, a function may set the search path, and a
-        // typed ROLLBACK of a held transaction also reaches the Roll Back reload.
-        return ConnectionCoordinator.SessionMove(
-            database: sessionEffect.usesDatabase,
-            schema: sessionEffect.leavesCatalog || effect.endsTransaction
-        )
-    }
-
     private func plan(_ text: String, on session: ConnectionSession) async -> QueryScript {
         QueryScript.plan(
             text,
@@ -1232,5 +1211,46 @@ struct QueryEditorView: View {
                 await controller.update(token: token, rowsStreamed: count)
             }
         }
+    }
+}
+
+// Outside the struct's body, which is long enough already.
+fileprivate extension QueryEditorView {
+    // Every statement sent counts as run, a failed one's too: a missed reload leaves the lists naming what is gone.
+    // They are read as sent, since a run splits the rest of its text again after a statement that changes how the
+    // session reads literals.
+    func postCatalogChanges(on session: ConnectionSession) -> ConnectionCoordinator.SessionMove {
+        let statements = viewModel.sentStatements
+        // A fresh connection would not repeat what these left on the session, so Export Results stops running again.
+        if SessionLocalStatements.changesSession(statements, databaseType: databaseType) {
+            coordinator.noteSessionChanged(on: session.driver)
+        }
+        // A key or a collection a write made or removed is on the lists too; only a proven read leaves them as they are.
+        guard databaseType.speaksSQL else {
+            if statements.contains(where: { SQLWriteClassifier.isWriteQuery($0, databaseType: databaseType) }) {
+                coordinator.noteCatalogChanged([.tables, .databases])
+            }
+            return ConnectionCoordinator.SessionMove()
+        }
+        let sessionEffect = SessionLocalStatements.effect(of: statements, databaseType: databaseType)
+        appState.catalogChanges.noteSessionEffect(
+            sessionEffect,
+            for: connectionId,
+            driver: ObjectIdentifier(session.driver)
+        )
+        let grammar = SQLLexicalReadings.resolve(
+            databaseTypeId: databaseType.rawValue, declared: nil, session: nil
+        ).execution
+        let effect = SQLCatalogEffectClassifier.effect(ofStatements: statements, grammar: grammar)
+        var kinds = effect.kinds
+        // A commit shows the transaction's DDL to the catalog connection, a rollback takes it back from the session.
+        if effect.endsTransaction { kinds.formUnion([.tables, .schemas, .databases]) }
+        coordinator.noteCatalogChanged(kinds)
+        // A transaction's end takes back a `SET LOCAL` or a `SET` inside it, a function may set the search path, and a
+        // typed ROLLBACK of a held transaction also reaches the Roll Back reload.
+        return ConnectionCoordinator.SessionMove(
+            database: sessionEffect.usesDatabase,
+            schema: sessionEffect.leavesCatalog || effect.endsTransaction
+        )
     }
 }

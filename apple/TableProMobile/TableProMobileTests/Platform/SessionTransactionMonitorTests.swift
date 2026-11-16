@@ -37,7 +37,7 @@ struct SessionTransactionMonitorTests {
         let log = EventLog()
         let gate = TestGate()
         let write = Task {
-            await monitor.track(id) {
+            try? await monitor.track(id) {
                 await gate.enter()
                 log.events.append("write")
             }
@@ -57,64 +57,78 @@ struct SessionTransactionMonitorTests {
         #expect(log.events == ["waiting", "write", "run"])
     }
 
-    @Test("Work from any window waits while an import holds the session, and runs once the import ends")
-    func importHoldsTheSessionAlone() async throws {
+    @Test("An import holding the session refuses every other statement at once, reads and a second import included")
+    func importRefusesEveryOtherStatement() async throws {
         attach()
-        let log = EventLog()
         let gate = TestGate()
         let importRun = Task {
-            await monitor.track(id, alone: true) {
-                log.events.append("batch 1")
-                await gate.enter()
-                log.events.append("batch 2")
-            }
+            try await monitor.track(id, importing: true) { await gate.enter() }
         }
         await gate.waitUntilEntered()
-        #expect(monitor.isHeldAlone(id))
+        #expect(monitor.isHeldByImport(id))
         #expect(monitor.isBusy(id))
-        let query = Task {
-            log.events.append("query waiting")
-            await monitor.track(id) { log.events.append("query") }
-        }
-        try await waitUntil { log.events.contains("query waiting") }
+
+        await #expect(throws: SessionHeldByImport.self) { try await monitor.track(id) {} }
+        await #expect(throws: SessionHeldByImport.self) { try await monitor.track(id, reading: true) {} }
+        await #expect(throws: SessionHeldByImport.self) { try await monitor.track(id, importing: true) {} }
 
         await gate.open()
-        await importRun.value
-        await query.value
-
-        #expect(log.events == ["batch 1", "query waiting", "batch 2", "query"])
-        #expect(monitor.isHeldAlone(id) == false)
+        try await importRun.value
+        #expect(monitor.isHeldByImport(id) == false)
+        try await monitor.track(id, reading: true) {}
     }
 
-    @Test("An import starts once the work already on the session ends, ahead of work that comes after it")
-    func importWaitsForRunningWork() async throws {
+    @Test("An import is refused at once while other work runs on the session or the session is moving")
+    func importRefusedOnABusyOrMovingSession() async throws {
         attach()
-        let log = EventLog()
         let gate = TestGate()
-        let write = Task {
-            await monitor.track(id) {
-                await gate.enter()
-                log.events.append("write")
-            }
-        }
+        let write = Task { try? await monitor.track(id) { await gate.enter() } }
         await gate.waitUntilEntered()
-        let importRun = Task {
-            log.events.append("import waiting")
-            await monitor.track(id, alone: true) { log.events.append("import") }
-        }
-        try await waitUntil { log.events.contains("import waiting") }
-        let read = Task {
-            log.events.append("read waiting")
-            await monitor.track(id, reading: true) { log.events.append("read") }
-        }
-        try await waitUntil { log.events.contains("read waiting") }
+
+        await #expect(throws: SessionBusyForImport.self) { try await monitor.track(id, importing: true) {} }
+        #expect(monitor.isHeldByImport(id) == false)
 
         await gate.open()
         await write.value
-        await importRun.value
-        await read.value
+        await #expect(throws: SessionBusyForImport.self) {
+            try await monitor.track(id, importing: true, sessionMoving: true) {}
+        }
+        try await monitor.track(id, importing: true) {}
+    }
 
-        #expect(log.events == ["import waiting", "read waiting", "write", "import", "read"])
+    // Round 4 deadlocked here: a delete's reload is tracked inside the delete's own tracked work.
+    @Test("Work nested inside tracked work runs, and an import asked meanwhile is refused instead of waiting")
+    func nestedWorkRunsAndAnImportIsRefused() async throws {
+        attach()
+        let log = EventLog()
+        try await monitor.track(id) {
+            log.events.append("delete")
+            do {
+                try await monitor.track(id, importing: true) { log.events.append("import") }
+            } catch {
+                log.events.append("import refused")
+            }
+            try? await monitor.track(id, reading: true) { log.events.append("reload") }
+        }
+
+        #expect(log.events == ["delete", "import refused", "reload"])
+    }
+
+    @Test("Work held until an import ends runs once it ends, or at once when none holds the session")
+    func afterImportRunsOnceTheImportEnds() async throws {
+        attach()
+        let log = EventLog()
+        monitor.afterImport(id) { log.events.append("now") }
+        let gate = TestGate()
+        let importRun = Task { try await monitor.track(id, importing: true) { await gate.enter() } }
+        await gate.waitUntilEntered()
+        monitor.afterImport(id) { log.events.append("after") }
+        #expect(log.events == ["now"])
+
+        await gate.open()
+        try await importRun.value
+
+        #expect(log.events == ["now", "after"])
     }
 
     @Test("Stop ends the wait for a write that is still running")
@@ -122,7 +136,7 @@ struct SessionTransactionMonitorTests {
         attach()
         let log = EventLog()
         let gate = TestGate()
-        let write = Task { await monitor.track(id) { await gate.enter() } }
+        let write = Task { try? await monitor.track(id) { await gate.enter() } }
         await gate.waitUntilEntered()
         let run = Task {
             log.events.append("waiting")
@@ -142,29 +156,29 @@ struct SessionTransactionMonitorTests {
     }
 
     @Test("A run that leaves a transaction open shows it, explicit or implicit")
-    func runLeavesTheTransactionOpen() async {
+    func runLeavesTheTransactionOpen() async throws {
         let driver = attach(.explicitTransaction)
-        await monitor.track(id) {}
+        try await monitor.track(id) {}
         #expect(monitor.hold(for: id) == .open)
 
         driver.scriptedTransactionState = .implicitTransaction
-        await monitor.track(id) {}
+        try await monitor.track(id) {}
         #expect(monitor.hold(for: id) == .open)
     }
 
     @Test("A typed COMMIT clears it on the next settle")
-    func typedCommitClears() async {
+    func typedCommitClears() async throws {
         let driver = attach(.explicitTransaction)
-        await monitor.track(id) {}
+        try await monitor.track(id) {}
 
         driver.scriptedTransactionState = .idle
-        await monitor.track(id) {}
+        try await monitor.track(id) {}
 
         #expect(monitor.hold(for: id) == nil)
     }
 
     @Test("Work that throws still refreshes")
-    func throwingWorkRefreshes() async {
+    func throwingWorkRefreshes() async throws {
         attach(.abortedTransaction)
 
         await #expect(throws: MockDatabaseDriver.MockError.self) {
@@ -232,7 +246,7 @@ struct SessionTransactionMonitorTests {
     }
 
     @Test("A window on a replaced session sees no hold and cannot act on the newer session's transaction")
-    func staleWindowCannotActOnTheNewerSession() async {
+    func staleWindowCannotActOnTheNewerSession() async throws {
         let old = attach(.idle)
         let newer = attach(.explicitTransaction)
         await monitor.refresh(id)
@@ -254,7 +268,7 @@ struct SessionTransactionMonitorTests {
         await monitor.refresh(id)
         let token = try #require(monitor.token(for: id, on: driver))
 
-        await monitor.track(id) {}
+        try await monitor.track(id) {}
 
         await #expect(throws: TransactionActionError.transactionChanged) {
             try await monitor.rollBack(id, as: token)
@@ -274,7 +288,7 @@ struct SessionTransactionMonitorTests {
         let commit = Task { try await monitor.commit(id, as: token) }
         await gate.waitUntilEntered()
         driver.beforeTransactionState = nil
-        await monitor.track(id) {}
+        try await monitor.track(id) {}
         await gate.open()
 
         await #expect(throws: TransactionActionError.transactionChanged) {
@@ -352,7 +366,7 @@ struct SessionTransactionMonitorTests {
         await monitor.refresh(id)
         let gate = TestGate()
 
-        let work = Task { await monitor.track(id) { await gate.enter() } }
+        let work = Task { try? await monitor.track(id) { await gate.enter() } }
         await gate.waitUntilEntered()
         live.drivers[id] = nil
         await gate.open()
@@ -379,7 +393,7 @@ struct SessionTransactionMonitorTests {
         attach()
         let gate = TestGate()
 
-        let work = Task { await monitor.track(id) { await gate.enter() } }
+        let work = Task { try? await monitor.track(id) { await gate.enter() } }
         await gate.waitUntilEntered()
         #expect(monitor.isBusy(id))
 
@@ -391,11 +405,11 @@ struct SessionTransactionMonitorTests {
     @Test("A page read keeps the connection busy, never counts as statements, and stales a commit dialog")
     func pageReadIsBusyButNotStatements() async throws {
         let driver = attach(.explicitTransaction)
-        await monitor.track(id) {}
+        try await monitor.track(id) {}
         let token = try #require(monitor.token(for: id, on: driver))
         let gate = TestGate()
 
-        let read = Task { await monitor.track(id, reading: true) { await gate.enter() } }
+        let read = Task { try? await monitor.track(id, reading: true) { await gate.enter() } }
         await gate.waitUntilEntered()
         let busyDuring = monitor.isBusy(id)
         let statementsDuring = monitor.isRunningStatements(id)
@@ -416,7 +430,7 @@ struct SessionTransactionMonitorTests {
         attach()
         let gate = TestGate()
 
-        let work = Task { await monitor.track(id) { await gate.enter() } }
+        let work = Task { try? await monitor.track(id) { await gate.enter() } }
         await gate.waitUntilEntered()
         let during = monitor.isRunningStatements(id)
         await gate.open()

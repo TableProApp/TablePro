@@ -65,6 +65,14 @@ nonisolated struct ImportRequest: Sendable {
         self.target = target
         self.sqlEncoding = sqlEncoding
     }
+
+    // The level the user confirmed under, read live from the connection when they did.
+    func confirmed(under level: SafeModeLevel) -> ImportRequest {
+        ImportRequest(
+            formatId: formatId, file: file, connectionId: connectionId, connectionName: connectionName,
+            databaseType: databaseType, database: database, safeModeLevel: level, target: target, sqlEncoding: sqlEncoding
+        )
+    }
 }
 
 nonisolated struct ImportStopQuestion: Sendable, Equatable {
@@ -157,78 +165,6 @@ nonisolated final class ImportTablePlanner: @unchecked Sendable {
     }
 }
 
-// One import at a time on a connection's session, the rest waiting in line, as the Mac queues each piece of work for
-// its turn on the session.
-nonisolated final class ImportTurns: @unchecked Sendable {
-    static let shared = ImportTurns()
-
-    nonisolated struct Ticket: Hashable, Sendable {
-        let connectionId: UUID
-        let id = UUID()
-    }
-
-    nonisolated private struct Waiter {
-        let ticket: Ticket
-        let continuation: CheckedContinuation<Void, any Error>
-    }
-
-    private let lock = NSLock()
-    private var holders: [UUID: Ticket] = [:]
-    private var lines: [UUID: [Waiter]] = [:]
-    // Taken out before it joined the line; its `take` throws when it gets there.
-    private var withdrawn: Set<Ticket> = []
-
-    func take(_ ticket: Ticket) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-            let ready = lock.withLock { () -> Result<Void, any Error>? in
-                if withdrawn.remove(ticket) != nil { return .failure(CancellationError()) }
-                guard holders[ticket.connectionId] != nil else {
-                    holders[ticket.connectionId] = ticket
-                    return .success(())
-                }
-                lines[ticket.connectionId, default: []].append(Waiter(ticket: ticket, continuation: continuation))
-                return nil
-            }
-            if let ready { continuation.resume(with: ready) }
-        }
-    }
-
-    // A stop while the ticket waits: it leaves the line, and its `take` throws `CancellationError`.
-    func withdraw(_ ticket: Ticket) {
-        let waiter = lock.withLock { () -> Waiter? in
-            guard holders[ticket.connectionId] != ticket else { return nil }
-            guard let index = lines[ticket.connectionId]?.firstIndex(where: { $0.ticket == ticket }) else {
-                withdrawn.insert(ticket)
-                return nil
-            }
-            let waiter = lines[ticket.connectionId]?.remove(at: index)
-            if lines[ticket.connectionId]?.isEmpty == true { lines[ticket.connectionId] = nil }
-            return waiter
-        }
-        waiter?.continuation.resume(throwing: CancellationError())
-    }
-
-    func release(_ ticket: Ticket) {
-        let next = lock.withLock { () -> Waiter? in
-            withdrawn.remove(ticket)
-            guard holders[ticket.connectionId] == ticket else { return nil }
-            guard var line = lines[ticket.connectionId], !line.isEmpty else {
-                holders[ticket.connectionId] = nil
-                return nil
-            }
-            let first = line.removeFirst()
-            lines[ticket.connectionId] = line.isEmpty ? nil : line
-            holders[ticket.connectionId] = first.ticket
-            return first
-        }
-        next?.continuation.resume()
-    }
-
-    func waiting(on connectionId: UUID) -> Int {
-        lock.withLock { lines[connectionId]?.count ?? 0 }
-    }
-}
-
 // The iOS counterpart of macOS `ImportService` for one file: runs the format plugin on the window's session inside the
 // coordinator's tracking, with one safe-mode decision for the whole run (made by the caller's `ConfirmedWriteGate`).
 nonisolated final class ImportRun: @unchecked Sendable {
@@ -243,7 +179,6 @@ nonisolated final class ImportRun: @unchecked Sendable {
     private let host: any TransferSessionHost
     private let background: TransferBackgroundRun?
     private let planner: ImportTablePlanner
-    private let turns: ImportTurns
     private let rollbackGrace: Duration
 
     private let lock = NSLock()
@@ -253,7 +188,6 @@ nonisolated final class ImportRun: @unchecked Sendable {
     private var sink: MobileImportDataSink?
     private var sqlSource: MobileSQLFileImportSource?
     private var pluginProgress: PluginImportProgress?
-    private var waitingTurn: ImportTurns.Ticket?
 
     init(
         request: ImportRequest,
@@ -261,7 +195,6 @@ nonisolated final class ImportRun: @unchecked Sendable {
         host: any TransferSessionHost,
         background: TransferBackgroundRun? = nil,
         planner: ImportTablePlanner = .shared,
-        turns: ImportTurns = .shared,
         rollbackGrace: Duration = .milliseconds(1_500)
     ) {
         self.request = request
@@ -269,7 +202,6 @@ nonisolated final class ImportRun: @unchecked Sendable {
         self.host = host
         self.background = background
         self.planner = planner
-        self.turns = turns
         self.rollbackGrace = rollbackGrace
     }
 
@@ -320,24 +252,22 @@ nonisolated final class ImportRun: @unchecked Sendable {
         )
     }
 
-    // Latched: the first choice wins, and a stop before the run starts keeps it from writing at all. It also takes the
-    // run out of the line for its turn and stops a `.gz` still expanding.
+    // Latched: the first choice wins, and a stop before the run starts keeps it from writing at all. It also stops a
+    // `.gz` still expanding.
     func stop(_ choice: ImportStopChoice) {
         let targets = lock.withLock { () -> StopTargets in
             if stopChoice == nil { stopChoice = choice }
-            return StopTargets(sink: sink, progress: pluginProgress, source: sqlSource, turn: waitingTurn)
+            return StopTargets(sink: sink, progress: pluginProgress, source: sqlSource)
         }
         targets.sink?.stop(choice)
         targets.progress?.cancel()
         targets.source?.stop()
-        if let turn = targets.turn { turns.withdraw(turn) }
     }
 
     nonisolated private struct StopTargets {
         let sink: MobileImportDataSink?
         let progress: PluginImportProgress?
         let source: MobileSQLFileImportSource?
-        let turn: ImportTurns.Ticket?
     }
 
     // Background time ran out. An owned rollback that has not reached the server before the grace ends the connection,
@@ -377,9 +307,6 @@ nonisolated final class ImportRun: @unchecked Sendable {
             throw MobileTransferRefusal(reason: reason)
         }
         guard !isStopped else { throw CancellationError() }
-        let turn = try await takeTurn()
-        defer { turns.release(turn) }
-        let driver = try await host.transferDriver.get()
 
         await background?.begin { [weak self] in self?.expire() }
         let report: @Sendable (TransferProgress) -> Void = { [background] progress in
@@ -390,12 +317,12 @@ nonisolated final class ImportRun: @unchecked Sendable {
         do {
             // A refusal is carried out of the tracked work as a value: thrown through it, the coordinator would treat it
             // as a session lost mid-write and redial. A failed run is a value too, and `failed` hands it to that check.
-            let performed = try await host.trackTransfer(
-                alone: true,
-                failed: { (performed: Performed) in performed.mayHaveLostSession }
-            ) { [self] () async throws -> Performed in
+            let performed = try await admitted { [self] (admission: ImportAdmission) async throws -> Performed in
+                if let reason = self.admissionRefusal(liveLevel: admission.safeModeLevel) {
+                    return .refused(MobileTransferRefusal(reason: reason))
+                }
                 do {
-                    return .outcome(try await self.perform(on: driver, report: report))
+                    return .outcome(try await self.perform(on: admission.driver, report: report), on: admission.driver)
                 } catch let refusal as MobileTransferRefusal {
                     return .refused(refusal)
                 } catch is CancellationError {
@@ -404,9 +331,11 @@ nonisolated final class ImportRun: @unchecked Sendable {
             }
             lock.withLock { finished = true }
             let outcome: DataImportOutcome
+            let driver: any DatabaseDriver
             switch performed {
-            case .outcome(let value):
+            case .outcome(let value, let ranOn):
                 outcome = value
+                driver = ranOn
             case .refused(let refusal):
                 throw refusal
             case .cancelled:
@@ -435,30 +364,39 @@ nonisolated final class ImportRun: @unchecked Sendable {
         }
     }
 
-    // Waits behind any import already running on this connection: a second one started from another window would
-    // otherwise join the first's transaction, and the first's commit or rollback would decide both. The turn is held
-    // until the run has ended its transaction.
-    private func takeTurn() async throws -> ImportTurns.Ticket {
-        let ticket = ImportTurns.Ticket(connectionId: request.connectionId)
-        lock.withLock { waitingTurn = ticket }
-        defer { lock.withLock { waitingTurn = nil } }
-        guard !isStopped else { throw CancellationError() }
-        let turns = turns
-        try await withTaskCancellationHandler {
-            try await turns.take(ticket)
-        } onCancel: {
-            turns.withdraw(ticket)
+    // The session is the import's for the whole run or not at all: another import, other work or a session that is
+    // moving refuses it at once, and nothing waits.
+    private func admitted(_ work: @escaping @Sendable (ImportAdmission) async throws -> Performed) async throws -> Performed {
+        do {
+            return try await host.trackImport(failed: { (performed: Performed) in performed.mayHaveLostSession }, work)
+        } catch let held as SessionHeldByImport {
+            throw MobileTransferRefusal(reason: held.localizedDescription)
+        } catch let busy as SessionBusyForImport {
+            throw MobileTransferRefusal(reason: busy.localizedDescription)
         }
-        return ticket
+    }
+
+    // Safe Mode read again as the run is admitted: a level another window made stricter since the confirmation wins.
+    private func admissionRefusal(liveLevel: SafeModeLevel) -> String? {
+        if let reason = Self.refusal(
+            connectionName: request.connectionName,
+            databaseType: request.databaseType,
+            safeModeLevel: liveLevel,
+            formatId: request.formatId
+        ) {
+            return reason
+        }
+        guard liveLevel.requiresConfirmation, !request.safeModeLevel.requiresConfirmation else { return nil }
+        return String(localized: "Safe Mode on this connection changed. Start the import again.")
     }
 
     nonisolated private enum Performed: Sendable {
-        case outcome(DataImportOutcome)
+        case outcome(DataImportOutcome, on: any DatabaseDriver)
         case refused(MobileTransferRefusal)
         case cancelled
 
         var mayHaveLostSession: Bool {
-            guard case .outcome(let outcome) = self else { return false }
+            guard case .outcome(let outcome, _) = self else { return false }
             return outcome.mayHaveLostSession
         }
     }

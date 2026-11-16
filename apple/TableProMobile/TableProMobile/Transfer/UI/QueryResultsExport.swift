@@ -4,15 +4,17 @@ import TableProModels
 
 // What Export Results and the Select bar's Export hand the export sheet for a query's rows.
 enum QueryResultsExport {
-    // A read runs again for every row where the engine can hold it to read-only; anything else exports the rows on
-    // screen, which may be a cut result.
+    // A read runs again for every row where the engine can hold it to read-only and a fresh connection reads what the
+    // session read; anything else exports the rows on screen, which may be a cut result.
     static func resultScope(
         _ viewModel: QueryEditorViewModel,
         databaseType: DatabaseType,
-        driver: (any DatabaseDriver)?
+        coordinator: ConnectionCoordinator
     ) throws(ClipboardExporter.IncompleteValues) -> ExportScopeOption {
         switch try viewModel.resultsExportSource(
-            databaseType: databaseType, runsReadOnly: driver?.enforcesReadOnlyMode ?? false
+            databaseType: databaseType,
+            runsReadOnly: coordinator.session?.driver.enforcesReadOnlyMode ?? false,
+            reproducible: coordinator.reproducesOnFreshConnection(viewModel.resultPlacement)
         ) {
         case .rerun(let statement):
             return ExportScopeOption(

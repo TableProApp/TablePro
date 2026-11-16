@@ -36,6 +36,8 @@ final class DataBrowserViewModel {
     var filterLogicMode: FilterLogicMode = .and
     private(set) var activeSearchText = ""
     private(set) var loadError: AppError?
+    // The last load was refused because an import holds the session; the browser loads again once it ends.
+    private(set) var waitsForImport = false
     var operationError: AppError?
     private(set) var isLoading = true
     private(set) var isPageLoading = false
@@ -117,7 +119,7 @@ final class DataBrowserViewModel {
 
     // MARK: - Attach
 
-    typealias SessionReadTracker = @MainActor (_ read: () async -> Void) async -> Void
+    typealias SessionReadTracker = @MainActor (_ read: () async -> Void) async throws -> Void
 
     // `trackRead` marks the session busy for the whole load, so Commit and Roll Back cannot end a page mid-stream.
     func attach(
@@ -190,24 +192,32 @@ final class DataBrowserViewModel {
             isPageLoading = true
         }
         loadError = nil
+        waitsForImport = false
 
-        await tracked {
-            if let reader = TableBrowseMode.keyContentsReader(of: session.driver) {
-                await loadKeyContents(reader: reader, key: table.name, generation: generation)
-            } else {
-                await loadRows(session: session, table: table, isInitial: isInitial, generation: generation)
+        do {
+            try await tracked {
+                if let reader = TableBrowseMode.keyContentsReader(of: session.driver) {
+                    await loadKeyContents(reader: reader, key: table.name, generation: generation)
+                } else {
+                    await loadRows(session: session, table: table, isInitial: isInitial, generation: generation)
+                }
             }
+        } catch {
+            guard isCurrent(generation) else { return }
+            loadError = (error as? SessionHeldByImport)?.appError
+                ?? ErrorClassifier.classify(error, context: ErrorContext(operation: "loadRows", databaseType: databaseType))
+            waitsForImport = error is SessionHeldByImport
         }
         guard isCurrent(generation) else { return }
         finishLoad()
     }
 
-    private func tracked(_ read: () async -> Void) async {
+    private func tracked(_ read: () async -> Void) async throws {
         guard let trackRead else {
             await read()
             return
         }
-        await trackRead(read)
+        try await trackRead(read)
     }
 
     private func isCurrent(_ generation: Int) -> Bool {

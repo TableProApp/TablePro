@@ -87,6 +87,23 @@ struct DataBrowserViewModelTests {
         #expect(vm.window.shownValues.count == 1)
     }
 
+    @Test("A page load an import refused says so, reads nothing, and is marked to load again once the import ends")
+    func importRefusedLoadWaitsForTheImport() async {
+        let driver = MockDatabaseDriver()
+        let vm = DataBrowserViewModel()
+        vm.attach(
+            session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql,
+            host: "localhost", trackRead: { _ in throw SessionHeldByImport() }
+        )
+
+        await vm.load(isInitial: true)
+
+        #expect(vm.loadError?.message == SessionHeldByImport().appError.message)
+        #expect(vm.waitsForImport)
+        #expect(driver.executedQueries.isEmpty)
+        #expect(vm.isLoading == false)
+    }
+
     @Test("A page cut short is not taken as the end of the table")
     func cutPageKeepsTheTotalOpen() async {
         let driver = MockDatabaseDriver()

@@ -58,6 +58,12 @@ nonisolated enum ImportFileHandoff {
     }
 }
 
+// A confirmed import and the plugin holding the settings it was confirmed with.
+nonisolated struct ConfirmedImport: Sendable {
+    let request: ImportRequest
+    let plugin: any ImportFormatPlugin
+}
+
 // The staging, the confirmation, the run and the stop question every import sheet goes through. The row and SQL file
 // sheets own one and add what they ask before it.
 @MainActor
@@ -82,8 +88,8 @@ final class ImportRunController {
 
     @ObservationIgnored private let host: any TransferSessionHost
     @ObservationIgnored private let connectionManager: ConnectionManager
-    @ObservationIgnored private var gate = ConfirmedWriteGate<ImportRequest>()
-    @ObservationIgnored private var confirmedRequest: ImportRequest?
+    @ObservationIgnored private var gate = ConfirmedWriteGate<ConfirmedImport>()
+    @ObservationIgnored private var confirmedRequest: ConfirmedImport?
     @ObservationIgnored private var run: ImportRun?
     @ObservationIgnored private var runGeneration = 0
     @ObservationIgnored private var keepsFile = false
@@ -104,11 +110,12 @@ final class ImportRunController {
         self.connectionManager = connectionManager
     }
 
+    // Safe Mode as the connection has it now: another window can make it Read-Only while this sheet is open.
     var refusal: String? {
         ImportRun.refusal(
             connectionName: context.connectionName,
             databaseType: context.databaseType,
-            safeModeLevel: context.safeModeLevel,
+            safeModeLevel: host.transferSafeModeLevel,
             formatId: type(of: plugin).formatId
         )
     }
@@ -142,9 +149,19 @@ final class ImportRunController {
     }
 
     // `extraConfirmation` is asked on top of Safe Mode's question: emptying the table first cannot be taken back.
-    func requestImport(_ request: ImportRequest, extraConfirmation: String? = nil) {
+    // `frozen` is the plugin copy the caller decided that question from; the run uses it, not the shared form, so
+    // another window's later edit cannot change what was confirmed.
+    func requestImport(
+        _ request: ImportRequest,
+        plugin frozen: (any ImportFormatPlugin)? = nil,
+        extraConfirmation: String? = nil
+    ) {
         guard refusal == nil, isConfiguring else { return }
-        switch gate.submit(request, under: context.safeModeLevel) {
+        let level = host.transferSafeModeLevel
+        let confirmed = ConfirmedImport(
+            request: request.confirmed(under: level), plugin: frozen ?? MobileImportFormats.frozen(plugin)
+        )
+        switch gate.submit(confirmed, under: level) {
         case .run(let approved):
             if let extraConfirmation {
                 confirmedRequest = approved
@@ -163,11 +180,17 @@ final class ImportRunController {
 
     func confirmImport() {
         confirmationMessage = nil
-        if let request = confirmedRequest {
+        if let confirmed = confirmedRequest {
             confirmedRequest = nil
-            begin(request)
-        } else if let request = gate.confirm(under: context.safeModeLevel) {
-            begin(request)
+            guard refusal == nil else {
+                blockedMessage = refusal
+                return
+            }
+            begin(confirmed)
+        } else if let confirmed = gate.confirm(under: host.transferSafeModeLevel) {
+            begin(confirmed)
+        } else if let refusal {
+            blockedMessage = refusal
         }
     }
 
@@ -181,14 +204,14 @@ final class ImportRunController {
         blockedMessage = nil
     }
 
-    private func begin(_ request: ImportRequest) {
-        willBegin?(request)
+    private func begin(_ confirmed: ConfirmedImport) {
+        willBegin?(confirmed.request)
         let background = TransferBackgroundRun(
             title: String(format: String(localized: "Importing %@"), fileName),
             connectionManager: connectionManager,
             connectionId: context.connectionId
         )
-        let run = ImportRun(request: request, plugin: plugin, host: host, background: background)
+        let run = ImportRun(request: confirmed.request, plugin: confirmed.plugin, host: host, background: background)
         self.run = run
         runGeneration += 1
         let generation = runGeneration

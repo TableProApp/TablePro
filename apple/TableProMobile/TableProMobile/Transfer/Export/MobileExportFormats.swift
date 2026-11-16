@@ -22,4 +22,21 @@ nonisolated enum MobileExportFormats {
     static func plugin(formatId: String) -> (any ExportFormatPlugin)? {
         all.first { type(of: $0).formatId == formatId }
     }
+
+    static func frozen(_ shared: any ExportFormatPlugin) -> any ExportFormatPlugin {
+        let fresh = type(of: shared).init()
+        RunPluginSettings.copy(from: shared, to: fresh)
+        return fresh
+    }
+}
+
+// A run gets a plugin of its own holding the settings the shared one had when the user confirmed, so another window
+// editing the shared form cannot change a run that is already decided. Restoring re-saves the same values as the
+// defaults, which is harmless.
+nonisolated enum RunPluginSettings {
+    static func copy(from shared: AnyObject, to fresh: AnyObject) {
+        guard let source = shared as? any SettablePluginDiscoverable, let data = source.snapshotSettingsData(),
+              let target = fresh as? any SettablePluginDiscoverable else { return }
+        target.restoreSettingsData(data)
+    }
 }

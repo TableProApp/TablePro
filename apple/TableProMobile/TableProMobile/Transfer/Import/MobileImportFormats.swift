@@ -20,6 +20,12 @@ nonisolated enum MobileImportFormats {
         all.first { type(of: $0).formatId == formatId }
     }
 
+    static func frozen(_ shared: any ImportFormatPlugin) -> any ImportFormatPlugin {
+        let fresh = type(of: shared).init()
+        RunPluginSettings.copy(from: shared, to: fresh)
+        return fresh
+    }
+
     // By the lowercased extension, never by UTType, as macOS `ImportFileFormatResolver` reads a file. A compressed row
     // file is refused by name: only a SQL dump is read through gzip.
     static func plugin(forFileExtension fileExtension: String) -> (any ImportFormatPlugin)? {
