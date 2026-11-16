@@ -1,0 +1,80 @@
+using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Definitions;
+using FlaUI.Core.Input;
+using FlaUI.Core.Tools;
+using FlaUI.Core.WindowsAPI;
+
+namespace TablePro.App.UITests;
+
+public sealed partial class ShellTests
+{
+    public static TheoryData<string, string> ThemesAndFileEngines => new()
+    {
+        { "Light", "duckdb" },
+        { "Dark", "duckdb" },
+        { "Light", "sqlite" },
+        { "Dark", "sqlite" },
+    };
+
+    [Theory]
+    [MemberData(nameof(ThemesAndFileEngines))]
+    public void ANewFileNamedInTheSavePickerIsMadeAndConnects(string theme, string engine)
+    {
+        using var app = AppSession.Launch(theme);
+        var file = Path.Combine(app.DataFolder, $"made.{engine}");
+        var name = $"New {engine} file";
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
+        var form = app.WaitForWindow("New connection");
+        app.Click(app.Find($"Engine_{engine}", form), () => app.TryFind("FileBox", form) is not null, form);
+        app.Find("NameBox", form).AsTextBox().Text = name;
+        app.Click(app.Find("NewFileButton", form), () => SaveDialog(app, form) is not null, form);
+        SaveInFileDialog(app, form, file);
+        // The picker hands back the long form of a folder typed with an 8.3 name, as the runner's temp folder can be.
+        Assert.Equal(Path.GetFileName(file), Path.GetFileName(app.Find("FileBox", form).AsTextBox().Text));
+        Assert.False(File.Exists(file), "the picker made the file before Connect");
+        app.Screenshot($"109-new-{engine}-file-named", form);
+
+        app.Find("ConnectButton", form).AsButton().Invoke();
+        var status = app.Find("FormStatus", form);
+        Assert.True(
+            Retry.WhileFalse(() => !app.HasWindow("New connection"), AppSession.Wait, throwOnTimeout: false).Success,
+            "The form stayed open: " + AppSession.TextOf(status));
+
+        Assert.True(File.Exists(file));
+        Assert.False(app.Find($"Rail_{name}").IsOffscreen);
+        app.Find("ObjectTree");
+        app.Screenshot($"110-new-{engine}-file-connected");
+    }
+
+    // The form owns its picker, so UI Automation lists it under the form, the app's window or the desktop.
+    private static Window? SaveDialog(AppSession app, Window form) =>
+        form.FindFirstChild(condition => condition.ByClassName("#32770"))?.AsWindow() ?? FileDialog(app);
+
+    // The Save dialog's File name box is control 1001, and Enter saves to the path typed there.
+    private static void SaveInFileDialog(AppSession app, Window form, string path)
+    {
+        var dialog = Retry.WhileNull(() => SaveDialog(app, form), AppSession.Wait, throwOnTimeout: false).Result
+            ?? throw new InvalidOperationException("The Save dialog did not appear.");
+        var box = Retry.WhileNull(
+                () => dialog.FindFirstDescendant(condition =>
+                    condition.ByAutomationId("1001").And(condition.ByControlType(ControlType.Edit))),
+                AppSession.Wait,
+                throwOnTimeout: false).Result
+            ?? throw new InvalidOperationException("The Save dialog has no File name box.");
+        // The Save dialog keeps its suggested name when the box's value is set without typing, so the path is typed.
+        dialog.SetForeground();
+        box.Focus();
+        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
+        Keyboard.Type(path);
+        if (!Retry.WhileFalse(() => box.AsTextBox().Text == path, AppSession.Wait, throwOnTimeout: false).Success)
+        {
+            throw new InvalidOperationException("The Save dialog did not take the path typed.");
+        }
+
+        Keyboard.Type(VirtualKeyShort.RETURN);
+        if (!Retry.WhileFalse(() => SaveDialog(app, form) is null, AppSession.Wait, throwOnTimeout: false).Success)
+        {
+            throw new InvalidOperationException("The Save dialog did not take the path.");
+        }
+    }
+}

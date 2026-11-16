@@ -187,11 +187,30 @@ fn wal_of(path: &Path) -> PathBuf {
 }
 
 #[cfg(test)]
-#[cfg(unix)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt;
-
     use super::*;
+
+    fn tables_in(path: &Path) -> i64 {
+        let reopened = duckdb::Connection::open(path).unwrap();
+        reopened
+            .query_row("SELECT count(*) FROM duckdb_tables()", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn a_new_database_is_made_where_no_file_was() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("new.duckdb");
+
+        create_or_replace(&path, &CancellationToken::new()).unwrap();
+
+        let made: Vec<_> = std::fs::read_dir(directory.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(made, [std::ffi::OsString::from("new.duckdb")]);
+        assert_eq!(tables_in(&path), 0);
+    }
 
     #[test]
     fn an_existing_file_and_its_log_are_replaced_by_an_empty_private_database() {
@@ -202,8 +221,13 @@ mod tests {
 
         create_or_replace(&path, &CancellationToken::new()).unwrap();
 
-        let metadata = std::fs::metadata(&path).unwrap();
-        assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let metadata = std::fs::metadata(&path).unwrap();
+            assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+        }
         assert!(
             !wal_of(&path).exists(),
             "the old log would be replayed into the new database"
@@ -213,11 +237,7 @@ mod tests {
             .map(|entry| entry.unwrap().file_name())
             .collect();
         assert_eq!(leftovers, [std::ffi::OsString::from("data.duckdb")]);
-        let reopened = duckdb::Connection::open(&path).unwrap();
-        let tables: i64 = reopened
-            .query_row("SELECT count(*) FROM duckdb_tables()", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(tables, 0);
+        assert_eq!(tables_in(&path), 0);
     }
 
     #[test]
@@ -246,6 +266,8 @@ mod tests {
         );
     }
 
+    // Windows lists no process's handles, so there only a claim says a file is held.
+    #[cfg(unix)]
     #[test]
     fn a_file_this_process_holds_is_not_replaced() {
         let directory = tempfile::tempdir().unwrap();
