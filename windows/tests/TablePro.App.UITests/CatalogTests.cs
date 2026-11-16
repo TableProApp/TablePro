@@ -113,8 +113,8 @@ public sealed partial class ShellTests
         var form = app.WaitForWindow("New connection");
         app.Click(app.Find("Engine_duckdb", form), () => app.TryFind("FileBox", form) is not null, form);
         app.Find("NameBox", form).AsTextBox().Text = "Catalog";
-        app.Click(app.Find("NewFileButton", form), () => FileDialog(app) is not null, form);
-        SaveInFileDialog(app, file);
+        app.Click(app.Find("NewFileButton", form), () => SaveDialog(app, form) is not null, form);
+        SaveInFileDialog(app, form, file);
         app.Find("ConnectButton", form).AsButton().Invoke();
         app.WaitForClose("New connection");
         var tree = app.Find("ObjectTree");
@@ -144,10 +144,14 @@ public sealed partial class ShellTests
             throwOnTimeout: false).Success);
     }
 
+    // The form owns its picker, so UI Automation lists it under the form, the app's window or the desktop.
+    private static Window? SaveDialog(AppSession app, Window form) =>
+        form.FindFirstChild(condition => condition.ByClassName("#32770"))?.AsWindow() ?? FileDialog(app);
+
     // The Save dialog's File name box is control 1001, and Enter saves to the path typed there.
-    private static void SaveInFileDialog(AppSession app, string path)
+    private static void SaveInFileDialog(AppSession app, Window form, string path)
     {
-        var dialog = Retry.WhileNull(() => FileDialog(app), AppSession.Wait, throwOnTimeout: false).Result
+        var dialog = Retry.WhileNull(() => SaveDialog(app, form), AppSession.Wait, throwOnTimeout: false).Result
             ?? throw new InvalidOperationException("The Save dialog did not appear.");
         var name = Retry.WhileNull(
                 () => dialog.FindFirstDescendant(condition =>
@@ -159,7 +163,7 @@ public sealed partial class ShellTests
         name.Focus();
         name.AsTextBox().Text = path;
         Keyboard.Type(VirtualKeyShort.RETURN);
-        if (!Retry.WhileFalse(() => FileDialog(app) is null, AppSession.Wait, throwOnTimeout: false).Success)
+        if (!Retry.WhileFalse(() => SaveDialog(app, form) is null, AppSession.Wait, throwOnTimeout: false).Success)
         {
             throw new InvalidOperationException("The Save dialog did not take the path.");
         }
