@@ -37,7 +37,7 @@ nonisolated enum ImportFileStaging {
     @concurrent
     static func stage(_ source: URL, into root: URL = TransferFiles.importsDirectory) async throws -> StagedImportFile {
         let folder = try TransferFiles.makeImportFolder(in: root)
-        let name = TransferFiles.sanitizedFileName(source.lastPathComponent, fallback: "Import")
+        let name = TransferFiles.sanitizedFileNameKeepingExtension(source.lastPathComponent, fallback: "Import")
         let destination = folder.appendingPathComponent(name, isDirectory: false)
         let scoped = source.startAccessingSecurityScopedResource()
         defer {

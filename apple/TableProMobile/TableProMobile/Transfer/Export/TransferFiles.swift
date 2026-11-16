@@ -50,6 +50,22 @@ nonisolated enum TransferFiles {
 
     // The name the recipient sees, so it keeps the table's own letters and drops only what a file name cannot hold.
     static func sanitizedFileName(_ name: String, fallback: String = "Export") -> String {
+        let cleaned = truncated(cleanedName(name), toBytes: maximumNameBytes).trimmingCharacters(in: .whitespaces)
+        return cleaned.isEmpty ? fallback : cleaned
+    }
+
+    // An import reads its format and its gzip from the extension, so a long name loses letters from its stem instead.
+    static func sanitizedFileNameKeepingExtension(_ name: String, fallback: String) -> String {
+        let cleaned = cleanedName(name)
+        let suffix = extensionSuffix(of: cleaned)
+        let stem = String(decoding: cleaned.utf8.dropLast(suffix.utf8.count), as: UTF8.self)
+        let cut = truncated(stem, toBytes: maximumNameBytes - suffix.utf8.count).trimmingCharacters(in: .whitespaces)
+        return (cut.isEmpty ? fallback : cut) + suffix
+    }
+
+    private static let maximumExtensionBytes = 16
+
+    private static func cleanedName(_ name: String) -> String {
         let forbidden = CharacterSet(charactersIn: "/\\:")
             .union(.controlCharacters)
             .union(.newlines)
@@ -60,8 +76,21 @@ nonisolated enum TransferFiles {
         while cleaned.hasPrefix(".") {
             cleaned.removeFirst()
         }
-        cleaned = truncated(cleaned, toBytes: maximumNameBytes).trimmingCharacters(in: .whitespaces)
-        return cleaned.isEmpty ? fallback : cleaned
+        return cleaned
+    }
+
+    // The last extension, and the one inside a ".gz".
+    private static func extensionSuffix(of name: String) -> String {
+        var suffix = ""
+        var rest = name as NSString
+        while true {
+            let ext = rest.pathExtension
+            guard !ext.isEmpty, ext.utf8.count <= maximumExtensionBytes else { break }
+            suffix = "." + ext + suffix
+            rest = rest.deletingPathExtension as NSString
+            guard ext.lowercased() == "gz", suffix.utf8.count == ext.utf8.count + 1 else { break }
+        }
+        return suffix
     }
 
     static func fileURL(in folder: URL, name: String, fileExtension: String) -> URL {

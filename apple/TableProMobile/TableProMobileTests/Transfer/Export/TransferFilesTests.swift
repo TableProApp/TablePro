@@ -28,6 +28,20 @@ struct TransferFilesTests {
         #expect(TransferFiles.sanitizedFileName("Cafe\u{301} orders") == "Cafe\u{301} orders")
     }
 
+    @Test("A long imported name is cut in its stem, so its extension and a gzip's inner one survive")
+    func longImportNamesKeepTheirExtensions() {
+        let stem = String(repeating: "a", count: 201)
+        let gzipped = TransferFiles.sanitizedFileNameKeepingExtension("\(stem).sql.gz", fallback: "Import")
+        #expect(gzipped == String(repeating: "a", count: TransferFiles.maximumNameBytes - 7) + ".sql.gz")
+        #expect(SQLImportFile.isCompressed(URL(fileURLWithPath: "/tmp/\(gzipped)")))
+        let plain = TransferFiles.sanitizedFileNameKeepingExtension("\(stem).CSV", fallback: "Import")
+        #expect(plain == String(repeating: "a", count: TransferFiles.maximumNameBytes - 4) + ".CSV")
+        #expect(TransferFiles.sanitizedFileNameKeepingExtension("orders.2024.csv", fallback: "Import") == "orders.2024.csv")
+        #expect(TransferFiles.sanitizedFileNameKeepingExtension("../x.sql", fallback: "Import") == "_x.sql")
+        #expect(TransferFiles.sanitizedFileNameKeepingExtension(".gz", fallback: "Import") == "gz")
+        #expect(TransferFiles.sanitizedFileNameKeepingExtension("", fallback: "Import") == "Import")
+    }
+
     @Test("The export file sits in its folder under the clean name with the format's extension")
     func fileURLUsesTheCleanName() {
         let folder = URL(fileURLWithPath: "/tmp/x", isDirectory: true)
