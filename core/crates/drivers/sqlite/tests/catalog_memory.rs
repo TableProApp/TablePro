@@ -1,6 +1,7 @@
 // Catalog reads of a crafted file stop at the catalog budget. A test binary of its own because it counts every heap
 // allocation the process makes, which another test running beside it would add to. Add no other test here.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -153,7 +154,7 @@ fn call() -> CallOptions {
     )
 }
 
-async fn open(path: &std::path::Path) -> Result<Arc<dyn Connection>, DriverError> {
+async fn open(path: &Path) -> Result<Arc<dyn Connection>, DriverError> {
     let options = ConnectOptions {
         target: ConnectTarget::File(FileEndpoint::open_existing(path.to_path_buf())?),
         workspace_settings: WorkspaceSettings::workspace(false),
@@ -172,19 +173,61 @@ fn too_large<T>(read: &str, result: Result<T, DriverError>) {
     );
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_crafted_catalog_stops_at_the_budget() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("crafted.sqlite3");
+type Outcome = Result<(), Box<dyn std::error::Error>>;
+
+async fn file_with(directory: &Path, name: &str, schema: Vec<String>) -> Result<PathBuf, sqlx::Error> {
+    let path = directory.join(name);
     let options = SqliteConnectOptions::new()
         .filename(&path)
         .create_if_missing(true)
         .foreign_keys(false);
-    let mut writer = SqliteConnection::connect_with(&options).await.unwrap();
-    for sql in crafted_schema() {
-        writer.execute(sqlx::AssertSqlSafe(sql)).await.unwrap();
+    let mut writer = SqliteConnection::connect_with(&options).await?;
+    for sql in schema {
+        writer.execute(sqlx::AssertSqlSafe(sql)).await?;
     }
-    writer.close().await.unwrap();
+    writer.close().await?;
+    Ok(path)
+}
+
+fn zeros(terms: usize) -> String {
+    vec!["0"; terms].join(",")
+}
+
+// One line of short terms, which sqlparser holds hundreds of times over and which an offset counted from the line's
+// start made quadratic, and a stored text past SQLite's statement end, which the table sizing once copied whole.
+fn parsed_schema() -> Vec<String> {
+    vec![
+        format!(
+            "CREATE TABLE generated_list (a INTEGER, g AS (a IN ({})))",
+            zeros(500_000)
+        ),
+        "CREATE TABLE indexed (a INTEGER)".to_owned(),
+        format!("CREATE INDEX listed ON indexed (a) WHERE a IN ({})", zeros(50_000)),
+    ]
+}
+
+fn tailed_schema() -> Vec<String> {
+    vec![
+        "CREATE TABLE neighbour (id INTEGER PRIMARY KEY)".to_owned(),
+        "CREATE TABLE tailed (a INTEGER)".to_owned(),
+        "CREATE TABLE short_tail (a INTEGER REFERENCES neighbour)".to_owned(),
+        "PRAGMA writable_schema = ON".to_owned(),
+        "UPDATE sqlite_schema SET sql = sql || '; ' || replace(hex(zeroblob(5500000)), '00', 'x ') \
+         WHERE name = 'tailed'"
+            .to_owned(),
+        "UPDATE sqlite_schema SET sql = sql || '; SELECT ' || replace(hex(zeroblob(2000000)), '00', '0,') || '0' \
+         WHERE name = 'short_tail'"
+            .to_owned(),
+        "PRAGMA writable_schema = OFF".to_owned(),
+    ]
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_crafted_catalog_stops_at_the_budget() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = file_with(directory.path(), "crafted.sqlite3", crafted_schema())
+        .await
+        .unwrap();
     let connection = open(&path).await.unwrap();
     let table = |name: &str| TableRef::unqualified(name);
     let child = table(&"n".repeat(LONG));
@@ -257,4 +300,61 @@ async fn a_crafted_catalog_stops_at_the_budget() {
         "keys into bulky_parent: {heap}, {native}"
     );
     connection.close().await.unwrap();
+
+    parsed_texts_stay_bounded(directory.path()).await.unwrap();
+    a_tail_is_not_read(directory.path()).await.unwrap();
+}
+
+async fn parsed_texts_stay_bounded(directory: &Path) -> Outcome {
+    let connection = open(&file_with(directory, "parsed.sqlite3", parsed_schema()).await?).await?;
+    let generated = TableRef::unqualified("generated_list");
+    let (columns, _, _) = measured(connection.fetch_columns(&generated, call())).await;
+    assert_eq!(columns?.len(), 2);
+    let (read, heap, native) = measured(connection.fetch_table_definition(&generated, call())).await;
+    too_large("definition of generated_list", read);
+    assert!(
+        heap < BOUND && native < NATIVE_BOUND,
+        "definition of generated_list: {heap}, {native}"
+    );
+    let (indexes, heap, native) = measured(connection.fetch_indexes(&TableRef::unqualified("indexed"), call())).await;
+    let predicate = format!("a IN ({})", zeros(50_000));
+    assert_eq!(
+        indexes?.first().and_then(|index| index.predicate.as_deref()),
+        Some(predicate.as_str())
+    );
+    assert!(
+        heap < BOUND && native < NATIVE_BOUND,
+        "indexes of indexed: {heap}, {native}"
+    );
+    connection.close().await?;
+    Ok(())
+}
+
+async fn a_tail_is_not_read(directory: &Path) -> Outcome {
+    let connection = open(&file_with(directory, "tailed.sqlite3", tailed_schema()).await?).await?;
+    let (read, heap, native) =
+        measured(connection.fetch_table_definition(&TableRef::unqualified("neighbour"), call())).await;
+    assert!(
+        matches!(
+            read,
+            Err(DriverError::CatalogTooLarge {
+                limit_bytes: 10_000_000
+            })
+        ),
+        "definition beside a tailed table: {:?}",
+        read.err()
+    );
+    assert!(
+        heap < BOUND / 8 && native < 8 << 20,
+        "definition beside a tailed table: {heap}, {native}"
+    );
+    let (keys, heap, native) =
+        measured(connection.fetch_foreign_keys(&TableRef::unqualified("short_tail"), call())).await;
+    assert_eq!(keys?.len(), 1);
+    assert!(
+        heap < BOUND / 8 && native < NATIVE_BOUND,
+        "keys of a table with a tail under the cap: {heap}, {native}"
+    );
+    connection.close().await?;
+    Ok(())
 }

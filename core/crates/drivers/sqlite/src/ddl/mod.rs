@@ -26,6 +26,7 @@ use tablepro_core::{ForeignKeyInfo, Value};
 use self::create_table_source::CreateTableSource;
 pub(crate) use self::create_table_source::{
     DeclaredComparisons, declared_descending_key, declared_foreign_key_names, foreign_key_list_bytes,
+    generated_expression_texts,
 };
 use self::declared_shape::readable;
 use crate::catalog::MAIN_SCHEMA;

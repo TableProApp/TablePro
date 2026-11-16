@@ -13,7 +13,8 @@ permissions:
 jobs:
   verify:
     name: Verify
-    runs-on: ubuntu-latest
+    # setup-python has no 3.9 for Ubuntu 26.04, which ubuntu-latest became.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read

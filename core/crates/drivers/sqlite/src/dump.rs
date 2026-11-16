@@ -36,11 +36,16 @@ impl DumpDialect for SqliteDialect {
 /// `sqlite_schema` in the order the objects were made, each table with
 /// what `table_list` calls it, so a virtual table and its shadow tables
 /// can be told from the rest. An automatic index has no text.
-const OBJECTS_SQL: &str = "SELECT m.type AS type, m.name AS name, m.sql AS sql, coalesce(l.type, '') AS kind \
-     FROM \"main\".sqlite_schema AS m \
-     LEFT JOIN pragma_table_list AS l ON m.type = 'table' AND l.schema = ?1 AND l.name = m.name \
-     WHERE m.sql IS NOT NULL AND m.name NOT LIKE 'sqlite!_%' ESCAPE '!' \
-     ORDER BY m.rowid";
+fn objects_sql() -> String {
+    format!(
+        "SELECT m.type AS type, m.name AS name, {}, coalesce(l.type, '') AS kind \
+         FROM \"main\".sqlite_schema AS m \
+         LEFT JOIN pragma_table_list AS l ON m.type = 'table' AND l.schema = ?1 AND l.name = m.name \
+         WHERE m.sql IS NOT NULL AND m.name NOT LIKE 'sqlite!_%' ESCAPE '!' \
+         ORDER BY m.rowid",
+        crate::statement_limit::capped("m.sql")
+    )
+}
 
 const SEQUENCE_SQL: &str =
     "SELECT name, CAST(seq AS INTEGER) AS seq FROM \"main\".sqlite_sequence WHERE name IS NOT NULL ORDER BY rowid";
@@ -65,7 +70,7 @@ pub(crate) async fn read_dump_catalog(
             feature: UnsupportedFeature::SqlDump,
         });
     }
-    let entries = sqlx::query(OBJECTS_SQL)
+    let entries = sqlx::query(sqlx::AssertSqlSafe(objects_sql()))
         .bind(MAIN_SCHEMA)
         .fetch_all(&mut *connection)
         .await
@@ -99,7 +104,7 @@ fn schema_entry(row: &SqliteRow) -> Result<SchemaEntry, DriverError> {
     Ok(SchemaEntry {
         kind: text(row, "type")?,
         name: text(row, "name")?,
-        sql: text(row, "sql")?,
+        sql: crate::statement_limit::stored_sql(row)?.unwrap_or_default(),
         table_kind: text(row, "kind")?,
     })
 }

@@ -3,12 +3,12 @@
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use sqlx::{Connection as _, Executor as _};
-use tablepro_core::Value;
 use tablepro_core::column::{ColumnDefault, ColumnKind, IntegerKind, IntegerWidth};
 use tablepro_core::ddl::{GeneratedStorage, IdentityStyle, SchemaObjectKind};
 use tablepro_core::meta::{ObjectScope, TableRef};
+use tablepro_core::{DriverError, ServerCode, Value};
 
-use crate::support::{TestFile, apply, call};
+use crate::support::{TestFile, apply, call, connect, writable};
 
 #[tokio::test]
 async fn strict_table_is_not_dynamic() {
@@ -479,5 +479,129 @@ async fn dependents_and_source_are_read() {
     let generated = doubled.attributes.generated.as_ref().unwrap();
     assert_eq!(generated.storage, GeneratedStorage::Stored);
     assert_eq!(generated.expression.as_sql(), "total * 2");
+    connection.close().await.unwrap();
+}
+
+async fn create(file: &TestFile, sql: String) {
+    let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
+        .await
+        .unwrap();
+    writer.execute(sqlx::AssertSqlSafe(sql)).await.unwrap();
+    writer.close().await.unwrap();
+}
+
+// Past ten million bytes SQLite calls the schema malformed, so a crafted statement cannot reach the catalog reads.
+#[tokio::test]
+async fn a_create_statement_past_ten_million_bytes_does_not_open() {
+    let file = TestFile::new().await;
+    create(
+        &file,
+        format!("CREATE TABLE fits (a INTEGER /* {} */)", "x".repeat(9_000_000)),
+    )
+    .await;
+    let connection = file.open().await;
+    let columns = connection.fetch_columns(&TableRef::unqualified("fits"), call()).await;
+    assert_eq!(columns.map(|columns| columns.len()), Ok(1));
+    connection.close().await.unwrap();
+
+    create(
+        &file,
+        format!("CREATE TABLE past (a INTEGER /* {} */)", "x".repeat(10_000_000)),
+    )
+    .await;
+    let opened = connect(file.endpoint(), writable()).await.map(|_| ());
+
+    assert!(
+        matches!(&opened, Err(DriverError::Server(diagnostics))
+            if matches!(diagnostics.code, Some(ServerCode::Sqlite { primary: 11, .. }))),
+        "{opened:?}"
+    );
+}
+
+// SQLite parses a stored CREATE text only to its statement's end, so a crafted file can carry any tail after it; the
+// catalog reads that parse the text refuse it past the same cap, before parsing it.
+#[tokio::test]
+async fn a_stored_create_text_past_the_cap_is_refused_before_it_is_parsed() {
+    let file = TestFile::new().await;
+    create(&file, "CREATE TABLE t (a INTEGER)".to_owned()).await;
+    let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
+        .await
+        .unwrap();
+    writer.execute("PRAGMA writable_schema = ON").await.unwrap();
+    writer
+        .execute(
+            "UPDATE sqlite_schema SET sql = sql || '; ' || replace(hex(zeroblob(5500000)), '00', 'x ') \
+             WHERE name = 't'",
+        )
+        .await
+        .unwrap();
+    writer.close().await.unwrap();
+    let connection = file.open().await;
+    let table = TableRef::unqualified("t");
+
+    let objects = connection.list_objects(&ObjectScope::DefaultSchema, call()).await;
+    let columns = connection.fetch_columns(&table, call()).await;
+    let keys = connection.fetch_foreign_keys(&table, call()).await.map(|_| ());
+    let definition = connection.fetch_table_definition(&table, call()).await.map(|_| ());
+
+    assert_eq!(
+        objects.map(|objects| objects.len()),
+        Ok(1),
+        "SQLite read the statement and left the tail"
+    );
+    assert_eq!(
+        columns.map(|columns| columns.len()),
+        Ok(1),
+        "a read that parses no text reads as before"
+    );
+    let refused = Err(DriverError::CatalogTooLarge {
+        limit_bytes: 10_000_000,
+    });
+    assert_eq!(keys, refused);
+    assert_eq!(definition, refused);
+    connection.close().await.unwrap();
+}
+
+// A tail under the cap is cut where SQLite stops reading: an index's tail of 50,000 additions, which sqlparser would
+// drop one call per term, and a table's tail, which would reach a rebuild's source and a dump.
+#[tokio::test]
+async fn a_stored_text_is_read_to_its_first_statement() {
+    let file = TestFile::new().await;
+    create(&file, "CREATE TABLE p (id INTEGER PRIMARY KEY)".to_owned()).await;
+    create(&file, "CREATE TABLE c (a INTEGER REFERENCES p)".to_owned()).await;
+    create(&file, "CREATE INDEX ci ON c (a) WHERE a > 0".to_owned()).await;
+    let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
+        .await
+        .unwrap();
+    writer.execute("PRAGMA writable_schema = ON").await.unwrap();
+    writer
+        .execute("UPDATE sqlite_schema SET sql = sql || '; DROP TABLE p' WHERE name = 'c'")
+        .await
+        .unwrap();
+    writer
+        .execute(sqlx::AssertSqlSafe(format!(
+            "UPDATE sqlite_schema SET sql = sql || '; SELECT {}' WHERE name = 'ci'",
+            vec!["1"; 50_000].join("+")
+        )))
+        .await
+        .unwrap();
+    writer.close().await.unwrap();
+    let connection = file.open().await;
+    let table = TableRef::unqualified("c");
+
+    let definition = connection.fetch_table_definition(&table, call()).await.unwrap();
+    let indexes = connection.fetch_indexes(&table, call()).await.unwrap();
+
+    assert_eq!(
+        definition.source.map(|source| source.create_statement),
+        Some("CREATE TABLE c (a INTEGER REFERENCES p)".to_owned())
+    );
+    assert_eq!(definition.foreign_keys.len(), 1);
+    assert_eq!(indexes.len(), 1);
+    assert_eq!(indexes[0].predicate.as_deref(), Some("a > 0"));
+    assert_eq!(
+        indexes[0].definition.as_deref(),
+        Some("CREATE INDEX \"main\".ci ON c (a) WHERE a > 0")
+    );
     connection.close().await.unwrap();
 }
