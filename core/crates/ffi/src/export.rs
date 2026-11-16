@@ -15,6 +15,7 @@ use tablepro_core::export::{
 };
 use tablepro_core::filter::FilterSet;
 use tablepro_core::meta::{RowIdentity, TableRef};
+use tablepro_core::sql_syntax::{SqlGrammar, same_name};
 use tablepro_core::value::{JsonText, OtherValue, UndecodableReason, UndecodedValue};
 use tablepro_core::{ColumnInfo, ReadStatement, ResultEvent, ResultSink, SinkFlow, Truncation, Value};
 use tablepro_session::OperationKind;
@@ -126,15 +127,23 @@ impl DatabaseSession {
                                 columns = session.columns(source.clone()) => columns.ok(),
                             },
                         };
-                        columns = named;
-                        Some(InsertTarget::of(&source, catalog.as_deref().unwrap_or_default()))
+                        let into = InsertTarget::of(&source, catalog.as_deref().unwrap_or_default());
+                        // A result of only what the server computes would write nothing there, so its values go to
+                        // query_results instead.
+                        match named.iter().all(|column| into.generated.contains(&column.name)) {
+                            true => Some(InsertTarget::of(&TableRef::unqualified(RESULT_TABLE), &[])),
+                            false => {
+                                columns = named;
+                                Some(into)
+                            }
+                        }
                     }
                     None => Some(InsertTarget::of(&TableRef::unqualified(RESULT_TABLE), &[])),
                 },
                 _ => None,
             };
-            // An INSERT that names a column twice is refused by every server, so it is refused here before any file.
-            if insert.is_some() && repeats_a_name(&columns) {
+            // An INSERT that names a column twice is refused by the server, so it is refused here before any file.
+            if insert.is_some() && repeats_a_name(&columns, session.grammar()) {
                 return Err(CoreError::failed(
                     "ffi.export_duplicate_columns",
                     "SQL INSERT names each column once",
@@ -510,11 +519,15 @@ impl ResultSink for FileSink {
     }
 }
 
-// Ignoring case, since SQLite, MySQL and SQL Server read two names that differ only in case as one column, and the
-// second value would be dropped without a word.
-fn repeats_a_name(columns: &[ResultColumn]) -> bool {
-    let mut seen = std::collections::HashSet::with_capacity(columns.len());
-    columns.iter().any(|column| !seen.insert(column.name.to_lowercase()))
+// By the engine's own rule, since SQLite, MySQL and SQL Server read two names that differ only in case as one column,
+// and the second value would be dropped without a word.
+fn repeats_a_name(columns: &[ResultColumn], grammar: SqlGrammar) -> bool {
+    columns.iter().enumerate().any(|(index, column)| {
+        columns
+            .iter()
+            .take(index)
+            .any(|before| same_name(&before.name, &column.name, grammar))
+    })
 }
 
 // Where each database holds schemas of its own, an origin names no database, and an editor can read in another one
@@ -844,12 +857,16 @@ mod tests {
     }
 
     #[test]
-    fn two_names_that_differ_only_in_case_are_one_column() {
+    fn two_names_that_differ_only_in_case_are_one_column_where_the_engine_reads_them_so() {
         let named = |name: &str| array_of(name, bigint());
 
-        assert!(repeats_a_name(&[named("a"), named("A")]));
-        assert!(repeats_a_name(&[named("id"), named("name"), named("id")]));
-        assert!(!repeats_a_name(&[named("id"), named("name")]));
+        assert!(repeats_a_name(&[named("a"), named("A")], SqlGrammar::Sqlite));
+        assert!(!repeats_a_name(&[named("a"), named("A")], SqlGrammar::PostgreSql));
+        assert!(repeats_a_name(
+            &[named("id"), named("name"), named("id")],
+            SqlGrammar::PostgreSql
+        ));
+        assert!(!repeats_a_name(&[named("id"), named("name")], SqlGrammar::MySql));
     }
 
     #[test]

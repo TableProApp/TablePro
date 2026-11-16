@@ -311,6 +311,31 @@ async fn sql_insert_of_a_result_naming_a_column_twice_is_refused_before_any_file
 }
 
 #[tokio::test]
+async fn sql_insert_of_only_what_the_server_computes_writes_into_query_results() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session) = fixture(dir.path()).await;
+    run(
+        &session,
+        "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL, \
+         loud TEXT GENERATED ALWAYS AS (upper(name)) VIRTUAL); \
+         INSERT INTO items (name) VALUES ('pen')",
+    )
+    .await;
+    let set = run(&session, "SELECT loud FROM items").await.unwrap();
+    let path = dir.path().join("loud.sql");
+
+    session
+        .export_rows(set, 1, ExportFormatTag::SqlInsert, None, spelled(&path), None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        text(&path),
+        "INSERT INTO \"query_results\" (\"loud\") VALUES ('PEN');\n"
+    );
+}
+
+#[tokio::test]
 async fn sql_insert_of_a_computed_result_writes_into_query_results() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, session) = fixture(dir.path()).await;
