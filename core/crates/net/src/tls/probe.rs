@@ -140,10 +140,9 @@ mod tests {
 
     #[tokio::test]
     async fn nothing_listening_does_not_serve_tls() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        drop(listener);
+        // Port 1 is below every system's ephemeral range, so no test's listener takes it and the connect is refused.
+        let refused = SocketAddr::from(([127, 0, 0, 1], 1));
 
-        assert!(!serves_tls(&transport(address), NAME, WITHIN).await);
+        assert!(!serves_tls(&transport(refused), NAME, WITHIN).await);
     }
 }

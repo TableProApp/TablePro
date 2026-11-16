@@ -546,11 +546,9 @@ async fn a_changed_token_is_refused_and_a_closed_port_is_unreachable() {
         token: Some("tp_other".to_owned()),
         ..Machine::of(&harness)
     };
-    let free = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
-    let closed_port = free.local_addr().expect("an address").port();
-    drop(free);
+    // Port 1 is below every system's ephemeral range, so no test's listener takes it and the connect is refused.
     let silent = Machine {
-        port: closed_port,
+        port: 1,
         ..Machine::of(&harness)
     };
 

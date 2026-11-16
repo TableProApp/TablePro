@@ -478,10 +478,8 @@ async fn the_models_are_listed_sorted() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_closed_port_says_it_could_not_reach_the_host() {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = listener.local_addr().unwrap();
-    drop(listener);
-    let endpoint = Endpoint::new(AiProvider::OpenAiCompatible, &format!("http://{address}/v1"), "m", None).unwrap();
+    // Port 1 is below every system's ephemeral range, so no test's listener takes it and the request is refused.
+    let endpoint = Endpoint::new(AiProvider::OpenAiCompatible, "http://127.0.0.1:1/v1", "m", None).unwrap();
 
     let models = list_models(&client(), &endpoint).await;
 

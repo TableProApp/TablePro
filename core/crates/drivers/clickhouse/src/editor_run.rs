@@ -487,12 +487,9 @@ mod tests {
         )
     }
 
-    /// A port nothing listens on, so a request is refused at once.
-    async fn closed_route() -> clickhouse::Client {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("a listener");
-        let address = listener.local_addr().expect("an address");
-        drop(listener);
-        clickhouse::Client::default().with_url(format!("http://{address}"))
+    // Port 1 is below every system's ephemeral range, so no test's listener takes it and a request is refused at once.
+    fn closed_route() -> clickhouse::Client {
+        clickhouse::Client::default().with_url("http://127.0.0.1:1")
     }
 
     struct Discard;
@@ -526,7 +523,7 @@ mod tests {
         let lingering = Arc::new(LingeringQuery::default());
         lingering.left(Uuid::new_v4());
         let run = EditorRun {
-            session: closed_route().await,
+            session: closed_route(),
             control,
             statement_timeout: None,
             bounds_on_server: true,
@@ -558,7 +555,7 @@ mod tests {
         for bounds_on_server in [false, true] {
             let run = EditorRun {
                 session: clickhouse::Client::default().with_url(url.clone()),
-                control: closed_route().await,
+                control: closed_route(),
                 statement_timeout: None,
                 bounds_on_server,
                 grace: Duration::from_millis(200),

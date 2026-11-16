@@ -745,11 +745,9 @@ mod tests {
         MachineId::derive("4c4f5e2a0b6d4f3c9e8a7b6c5d4e3f20\n").expect("a machine ID")
     }
 
-    // Nothing listens on the port once the listener is dropped, so every request is refused.
+    // Port 1 is below every system's ephemeral range, so no test's listener takes it and every request is refused.
     fn unreachable() -> Endpoints {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
-        let base = format!("http://{}", listener.local_addr().expect("its address"));
-        Endpoints::new(&base, &format!("{base}/v2")).expect("the endpoints")
+        Endpoints::new("http://127.0.0.1:1", "http://127.0.0.1:1/v2").expect("the endpoints")
     }
 
     // Stands in for tablepro-cloud: `answer` gives the status and body for a method and path.

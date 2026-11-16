@@ -905,10 +905,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_network_failure_never_words_the_share_token() {
         let dir = tempfile::tempdir().expect("a temporary directory");
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
-        let base = format!("http://{}", listener.local_addr().expect("its address"));
-        drop(listener);
-        let endpoints = Endpoints::new(&base, &format!("{base}/v2")).expect("the endpoints");
+        // Port 1 is below every system's ephemeral range, so no test's listener takes it and the request is refused.
+        let endpoints = Endpoints::new("http://127.0.0.1:1", "http://127.0.0.1:1/v2").expect("the endpoints");
         let account = signed_in(dir.path(), endpoints).await;
 
         let failed = account.fetch_shared(TOKEN, None).await.expect_err("nothing listens");
