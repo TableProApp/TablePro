@@ -13772,3 +13772,17 @@ msgstr[0] "Đã che {n} cột, đã gỡ {m} cột."
 
 msgid "Mask as {style}"
 msgstr "Che kiểu {style}"
+
+#, rust-format
+msgid "The database's structure is larger than TablePro reads at once ({size})."
+msgstr "Cấu trúc của cơ sở dữ liệu lớn hơn mức TablePro đọc trong một lần ({size})."
+
+msgid "A SQL file cannot hold COPY rows in the binary format, so these rows were skipped."
+msgstr "Tệp SQL không chứa được các dòng COPY ở định dạng nhị phân, nên các dòng này đã bị bỏ qua."
+
+#, rust-format
+msgid "Context: {context}"
+msgstr "Ngữ cảnh: {context}"
+
+msgid "This database cannot take the rows of COPY FROM STDIN."
+msgstr "Cơ sở dữ liệu này không nhận được các dòng của COPY FROM STDIN."
