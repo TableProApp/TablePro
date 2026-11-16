@@ -191,20 +191,6 @@ struct FixedDriverProvider: TransferDriverProvider {
     }
 }
 
-// Hands a dedicated connection and the window's session out separately, so a test sees which one a read took.
-struct SplitDriverProvider: TransferDriverProvider {
-    let dedicated: any DatabaseDriver
-    let session: any DatabaseDriver
-
-    func openTransferDriver() async throws -> TransferDriverLease {
-        TransferDriverLease(driver: dedicated, isSessionDriver: false) {}
-    }
-
-    func openSessionDriver() async throws -> TransferDriverLease {
-        TransferDriverLease(driver: session, isSessionDriver: true) {}
-    }
-}
-
 struct UnreachableDriverProvider: TransferDriverProvider {
     struct Unreachable: Error {}
 

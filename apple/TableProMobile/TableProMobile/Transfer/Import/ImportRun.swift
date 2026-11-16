@@ -148,11 +148,9 @@ nonisolated struct DataImportOutcome: Sendable {
     }
 }
 
-// Tables an import made in this app session, so a retry clears and reuses its own table rather than failing on the
-// name or writing the kept rows a second time.
+// Tables one import sheet made, so its retry clears and reuses its own table rather than failing on the name or writing
+// the kept rows a second time. Another sheet never counts as a retry (macOS `RowImportSheet`).
 nonisolated final class ImportTablePlanner: @unchecked Sendable {
-    static let shared = ImportTablePlanner()
-
     private let lock = NSLock()
     private var planner = NewTableImportPlanner()
 
@@ -194,7 +192,7 @@ nonisolated final class ImportRun: @unchecked Sendable {
         plugin: any ImportFormatPlugin,
         host: any TransferSessionHost,
         background: TransferBackgroundRun? = nil,
-        planner: ImportTablePlanner = .shared,
+        planner: ImportTablePlanner = ImportTablePlanner(),
         rollbackGrace: Duration = .milliseconds(1_500)
     ) {
         self.request = request

@@ -100,6 +100,7 @@ struct MobileExportEnvironment {
     var sessionDriver: @MainActor () -> (any DatabaseDriver)?
     // The connection's Safe Mode as it is when Export is tapped; nil keeps the level the sheet opened with.
     var safeModeLevel: @MainActor () -> SafeModeLevel? = { nil }
+    var sessionHoldsTransaction: @MainActor () -> Bool = { false }
 
     // The coordinator is the session host: an export that lands on the window's own session runs tracked.
     static func live(connectionManager: ConnectionManager, coordinator: ConnectionCoordinator) -> MobileExportEnvironment {
@@ -123,7 +124,8 @@ struct MobileExportEnvironment {
                 )
             },
             sessionDriver: { [weak coordinator] in coordinator?.session?.driver },
-            safeModeLevel: { [weak coordinator] in coordinator?.connection.safeModeLevel }
+            safeModeLevel: { [weak coordinator] in coordinator?.connection.safeModeLevel },
+            sessionHoldsTransaction: { [weak coordinator] in coordinator?.transactionHold != nil }
         )
     }
 }
@@ -339,7 +341,8 @@ final class MobileExportModel {
             database: input.database,
             schema: input.schema,
             safeModeLevel: environment.safeModeLevel() ?? input.safeModeLevel,
-            sessionDriver: environment.sessionDriver()
+            sessionDriver: environment.sessionDriver(),
+            sessionHoldsTransaction: environment.sessionHoldsTransaction()
         )
         let runner = environment.makeRunner(request, plugin)
         self.runner = runner

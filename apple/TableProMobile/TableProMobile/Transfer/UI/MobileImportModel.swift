@@ -91,6 +91,7 @@ final class ImportRunController {
     @ObservationIgnored private var gate = ConfirmedWriteGate<ConfirmedImport>()
     @ObservationIgnored private var confirmedRequest: ConfirmedImport?
     @ObservationIgnored private var run: ImportRun?
+    @ObservationIgnored private let tablePlanner = ImportTablePlanner()
     @ObservationIgnored private var runGeneration = 0
     @ObservationIgnored private var keepsFile = false
     @ObservationIgnored var willBegin: (@MainActor (ImportRequest) -> Void)?
@@ -211,7 +212,9 @@ final class ImportRunController {
             connectionManager: connectionManager,
             connectionId: context.connectionId
         )
-        let run = ImportRun(request: confirmed.request, plugin: confirmed.plugin, host: host, background: background)
+        let run = ImportRun(
+            request: confirmed.request, plugin: confirmed.plugin, host: host, background: background, planner: tablePlanner
+        )
         self.run = run
         runGeneration += 1
         let generation = runGeneration

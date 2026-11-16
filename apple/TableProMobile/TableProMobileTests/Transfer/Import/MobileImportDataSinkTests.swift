@@ -168,6 +168,24 @@ struct MobileImportDataSinkTests {
         #expect(await sink.transactionEnding() == .committed)
     }
 
+    @Test("After Stop and Commit the foreign key checks come back once the run's finish has committed")
+    func stopAndCommitRestoresForeignKeysAfterTheCommit() async throws {
+        let driver = try await people()
+        let sink = sink(on: driver)
+        try await sink.disableForeignKeyChecks()
+        try await sink.beginTransaction()
+        try await sink.insertRows([row("1", "Ada")])
+
+        sink.stop(.commit)
+        try await sink.rollbackTransaction()
+        try await sink.enableForeignKeyChecks()
+        await sink.finish(commit: true)
+
+        let enforced = try await driver.execute(query: "PRAGMA foreign_keys").rows.first?.first ?? nil
+        #expect(enforced == "1")
+        #expect(try await names(driver) == ["1:Ada"])
+    }
+
     // Critic M8: the import never commits or rolls back the user's transaction, and says the rows wait in it.
     @Test("An import into the user's open transaction joins it and leaves the rows there")
     func joinsTheUsersTransaction() async throws {

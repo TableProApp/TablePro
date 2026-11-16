@@ -26629,6 +26629,9 @@
     "The row's primary key is not loaded, so the row cannot be found." : {
 
     },
+    "The rows were read on a connection of the export's own, so changes in the transaction open on this connection are not in the file." : {
+
+    },
     "The rows written before the import ended stay in the table." : {
 
     },

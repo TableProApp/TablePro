@@ -702,19 +702,19 @@ final class DataBrowserViewModel {
         }
     }
 
-    // Rows with a key are read again in full, bytes and long values included; the rest export what the page holds.
-    // A session holding writes a fresh connection cannot see is read again on the session itself.
+    // Rows with a key are read again in full, bytes and long values included; the rest export what the page holds. So
+    // do all of them while the session holds a transaction: the export's own connection cannot see its changes.
     func selectedRowsExportSource(
         _ indices: [Int],
-        readsOnSession: Bool = false
+        readsAgain: Bool = true
     ) throws(ClipboardExporter.IncompleteValues) -> ExportScopeOption.Source {
-        if let table, let driver = session?.driver, databaseType.speaksSQL, !(driver is any DriverQueryBuilding),
+        if readsAgain, let table, let driver = session?.driver, databaseType.speaksSQL, !(driver is any DriverQueryBuilding),
            let locators = rowLocators(at: indices) {
             let keys = locators.compactMap(\.keyValues).filter { !$0.isEmpty }
             if !keys.isEmpty, keys.count == locators.count {
                 return .query(Self.rowsSelect(
                     table: table.name, schema: schema, database: database, type: databaseType,
-                    keys: keys, columns: columnDetails, readsOnSession: readsOnSession
+                    keys: keys, columns: columnDetails
                 ))
             }
         }
@@ -729,10 +729,9 @@ final class DataBrowserViewModel {
         database: String?,
         type: DatabaseType,
         keys: [[(column: String, value: String)]],
-        columns: [ColumnInfo],
-        readsOnSession: Bool = false
+        columns: [ColumnInfo]
     ) -> ExportSelect {
-        ExportSelect(readsOnSession: readsOnSession) { driver in
+        ExportSelect { driver in
             SQLBuilder.buildRowsSelect(
                 table: table, schema: schema, database: database, type: type, keys: keys, columns: columns, driver: driver
             )

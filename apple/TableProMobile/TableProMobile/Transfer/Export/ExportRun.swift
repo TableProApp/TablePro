@@ -9,17 +9,13 @@ import TableProPluginKit
 // literal rules (MySQL's NO_BACKSLASH_ESCAPES, PostgreSQL's standard_conforming_strings) can differ from the window's.
 nonisolated struct ExportSelect: Sendable, ExpressibleByStringLiteral {
     private let render: @Sendable (any DatabaseDriver) -> String
-    // Read on the window's own session: rows the user sees inside an open transaction exist only there.
-    let readsOnSession: Bool
 
-    init(readsOnSession: Bool = false, render: @escaping @Sendable (any DatabaseDriver) -> String) {
+    init(render: @escaping @Sendable (any DatabaseDriver) -> String) {
         self.render = render
-        self.readsOnSession = readsOnSession
     }
 
     init(stringLiteral sql: String) {
         render = { _ in sql }
-        readsOnSession = false
     }
 
     func statement(on driver: any DatabaseDriver) -> String {
@@ -50,6 +46,8 @@ nonisolated struct ExportRequest: Sendable {
     let safeModeLevel: SafeModeLevel
     // Spells the literals of a `.rows` export the way the session reads them.
     let sessionDriver: (any DatabaseDriver)?
+    // Read when Export is tapped: a connection of the export's own cannot see that transaction's changes.
+    let sessionHoldsTransaction: Bool
 
     init(
         formatId: String,
@@ -60,7 +58,8 @@ nonisolated struct ExportRequest: Sendable {
         database: String?,
         schema: String?,
         safeModeLevel: SafeModeLevel,
-        sessionDriver: (any DatabaseDriver)? = nil
+        sessionDriver: (any DatabaseDriver)? = nil,
+        sessionHoldsTransaction: Bool = false
     ) {
         self.formatId = formatId
         self.source = source
@@ -71,6 +70,7 @@ nonisolated struct ExportRequest: Sendable {
         self.schema = schema
         self.safeModeLevel = safeModeLevel
         self.sessionDriver = sessionDriver
+        self.sessionHoldsTransaction = sessionHoldsTransaction
     }
 }
 
@@ -250,8 +250,6 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
 
         let lease: TransferDriverLease?
         switch request.source {
-        case .query(let select) where select.readsOnSession:
-            lease = try await hold(try await drivers.openSessionDriver())
         case .objects, .query, .rerun:
             lease = try await hold(try await drivers.openTransferDriver())
         case .rows:
@@ -344,17 +342,22 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
             let result = try await write(tables: tables, dataSource: dataSource, to: destination, total: total, report: report)
             // A plugin that returns after a stop has still written the file the user said to throw away.
             try throwIfStopped()
+            let missesTransaction = request.sessionHoldsTransaction && lease.map { !$0.isSessionDriver } == true
             return ExportOutcome(
                 folder: folder,
                 files: TransferFiles.writtenFiles(in: folder, primary: destination),
                 rowsWritten: result.rows,
-                warnings: result.format.warnings,
+                warnings: result.format.warnings + (missesTransaction ? [Self.missedTransactionWarning] : []),
                 notes: result.format.notes
             )
         } catch {
             TransferFiles.remove(folder)
             throw error
         }
+    }
+
+    static var missedTransactionWarning: String {
+        String(localized: "The rows were read on a connection of the export's own, so changes in the transaction open on this connection are not in the file.")
     }
 
     // Known to a stop, which removes it when it ends the run before the plugin returns.

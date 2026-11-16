@@ -276,6 +276,40 @@ struct ImportRunTests {
         #expect(names == ["Ada", "Bo"])
     }
 
+    @Test("Another sheet's import into the same new table is no retry: it is refused on the name and leaves the rows")
+    func anotherSheetNeverClearsTheTable() async throws {
+        let driver = try await database()
+        let host = await FakeSessionHost(driver: driver)
+        let definition = PluginCreateTableDefinition(
+            tableName: "people",
+            columns: [
+                PluginColumnDefinition(name: "id", dataType: "INTEGER", isNullable: false, isPrimaryKey: true),
+                PluginColumnDefinition(name: "name", dataType: "TEXT")
+            ],
+            primaryKeyColumns: ["id"]
+        )
+        let target = RowImportTarget(
+            table: "people", schema: nil, columnMapping: ["id": "id", "name": "name"], sourceFields: ["id", "name"],
+            newTable: definition
+        )
+        let connectionId = UUID()
+        func importing(_ text: String) async throws -> DataImportOutcome {
+            let run = ImportRun(
+                request: request(try staged("people.csv", text), formatId: "csv", target: target, connectionId: connectionId),
+                plugin: MobileImportFormats.csv,
+                host: host, planner: ImportTablePlanner()
+            )
+            return try await run.run { _ in }
+        }
+
+        #expect(try await importing("id,name\n1,Ada\n2,Bo\n").ending == .completed)
+        await #expect(throws: MobileTransferRefusal.self) {
+            _ = try await importing("id,name\n3,Cy\n")
+        }
+        let names = try await driver.execute(query: "SELECT name FROM people ORDER BY id").rows.compactMap { $0.first ?? nil }
+        #expect(names == ["Ada", "Bo"])
+    }
+
     @Test("An import the session cannot take now is refused with why, before it writes anything", arguments: [
         SessionAdmissionCase.otherWork, .anotherImport
     ])

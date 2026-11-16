@@ -69,6 +69,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     private var fileEndedTransaction = false
     private var keptWrites = false
     private var disabledForeignKeys = false
+    private var restoresForeignKeysAtFinish = false
     private var writerTarget: ImportRowWriter.Target?
     private var immutableColumns: Set<String>?
     private var clearedTarget = false
@@ -170,16 +171,25 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     // Ends a transaction the sink still owns after the plugin returned: committed when the import finished or the user
     // chose to keep the rows, rolled back otherwise.
     func finish(commit: Bool) async {
-        guard holdsOwnTransaction else { return }
-        do {
-            if commit {
-                try await commitOwned()
-            } else {
-                try await rollbackOwned()
+        if holdsOwnTransaction {
+            do {
+                if commit {
+                    try await commitOwned()
+                } else {
+                    try await rollbackOwned()
+                }
+            } catch {
+                Self.logger.warning(
+                    "Ending the import's transaction failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
+                )
             }
+        }
+        guard lock.withLock({ restoresForeignKeysAtFinish }) else { return }
+        do {
+            try await restoreForeignKeyChecks()
         } catch {
             Self.logger.warning(
-                "Ending the import's transaction failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
+                "Turning foreign key checks back on failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
         }
     }
@@ -284,12 +294,29 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
         lock.withLock { disabledForeignKeys = !statements.isEmpty }
     }
 
+    // SQLite ignores the re-enable inside a transaction and a rollback takes PostgreSQL's back, so while the sink still
+    // owns one, as after Stop and Commit, `finish` turns the checks back on once it has ended it.
     func enableForeignKeyChecks() async throws {
-        guard lock.withLock({ disabledForeignKeys }) else { return }
+        let restoresNow = lock.withLock { () -> Bool in
+            guard disabledForeignKeys else { return false }
+            guard !ownsTransaction else {
+                restoresForeignKeysAtFinish = true
+                return false
+            }
+            return true
+        }
+        guard restoresNow else { return }
+        try await restoreForeignKeyChecks()
+    }
+
+    private func restoreForeignKeyChecks() async throws {
         for statement in driver.foreignKeyCheckStatements(enabled: true) {
             _ = try await driver.execute(query: statement)
         }
-        lock.withLock { disabledForeignKeys = false }
+        lock.withLock {
+            disabledForeignKeys = false
+            restoresForeignKeysAtFinish = false
+        }
     }
 
     // MARK: - Statements

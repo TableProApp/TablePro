@@ -934,9 +934,7 @@ struct DataBrowserView: View {
 
     private func presentSelectionExport(_ indices: [Int]) {
         do {
-            let source = try viewModel.selectedRowsExportSource(
-                indices, readsOnSession: !coordinator.reproducesOnFreshConnection(coordinator.tablePlacement)
-            )
+            let source = try viewModel.selectedRowsExportSource(indices, readsAgain: coordinator.transactionHold == nil)
             let detail = String(AttributedString(localized: "^[\(indices.count) row](inflect: true) selected.").characters)
             exportItem = MobileExportItem(input: exportInput(
                 title: String(localized: "Export Rows"),

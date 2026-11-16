@@ -221,6 +221,29 @@ struct DataBrowserViewModelTests {
         #expect(vm.rowLocator(forRowAt: 1) == nil)
     }
 
+    @Test("Selected rows with a key are read again, except while the session holds a transaction, when the page's values go out")
+    func selectedRowsReadAgainOnlyOutsideATransaction() async throws {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["42", "Alice"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["1"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        await vm.load(isInitial: true)
+
+        guard case .query = try vm.selectedRowsExportSource([0]) else {
+            Issue.record("expected a read by key")
+            return
+        }
+        guard case .rows(let held) = try vm.selectedRowsExportSource([0], readsAgain: false) else {
+            Issue.record("expected the page's rows")
+            return
+        }
+        #expect(held.rows == [[.text("42"), .text("Alice")]])
+    }
+
     @Test("A row whose key holds binary data gives no key values to delete it by")
     func binaryKeyGivesNoDeleteValues() async {
         let columns = [
