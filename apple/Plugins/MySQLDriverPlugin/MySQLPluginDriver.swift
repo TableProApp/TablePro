@@ -905,7 +905,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         // A temporary table cannot carry a trigger.
         guard flavor.hasMySQLObjectCatalogs, await !resolvesToTemporaryTable(table, schema: schema) else { return [] }
         let dbName = effectiveSchema(schema)
-        let triggers = try await triggerList(schema: dbName, table: table)
+        let triggers = try await exportCatalog.triggerList(schema: dbName, table: table)
         Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .private(mask: .hash)) table=\(table, privacy: .private(mask: .hash)) parsed=\(triggers.count)")
         return triggers
     }
@@ -922,7 +922,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        "DROP TRIGGER \(qualifiedName(name, schema: schema))"
+        exportCatalog.dropTriggerStatement(name: name, schema: schema)
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
@@ -933,78 +933,29 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard serverHasInformationSchema else {
             return try await tableStatusRow(table: table, schema: schema)?[safe: 4]?.asText.flatMap { Int($0) }
         }
-        let escapedDb = effectiveSchemaLiteral(schema)
-        let escapedTable = mysqlEscapeStringLiteral(table)
-
-        let query = """
-            SELECT TABLE_ROWS
-            FROM information_schema.TABLES
-            WHERE TABLE_SCHEMA = '\(escapedDb)'
-              AND TABLE_NAME = '\(escapedTable)'
-            """
-
-        let result = try await execute(ownStatement: query)
-        guard let firstRow = result.rows.first,
-              let value = firstRow[safe: 0]?.asText,
-              let count = Int(value)
-        else { return nil }
-
-        return count
+        return try await exportCatalog.approximateRowCount(table: table, schema: schema)
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let result = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table, schema: schema))")
-
-        guard let firstRow = result.rows.first,
-              let ddl = firstRow[safe: 1]?.asText
-        else {
+        guard let ddl = try await exportCatalog.tableDDL(table: table, schema: schema) else {
             throw MariaDBPluginError(code: 0, message: "Failed to fetch DDL for table '\(table)'", sqlState: nil)
-        }
-
-        return ddl.hasSuffix(";") ? ddl : ddl + ";"
-    }
-
-    /// Scheduled events. `information_schema.EVENTS` lists them for the current database, and
-    /// `SHOW CREATE EVENT` is the only thing that produces a runnable definition.
-    func fetchEvents(schema: String?) async throws -> [PluginEventInfo] {
-        guard flavor.hasMySQLObjectCatalogs,
-              holdsForServer(MySQLServerVersion.hasPartitionAndEventCatalogs(banner:flavor:))
-        else { return [] }
-        let exactSchema = await schemaNamesAreCaseSensitive()
-        let result = try await execute(
-            ownStatement: MySQLObjectQueries.eventList(schema: effectiveSchema(schema), exactSchema: exactSchema)
-        )
-        return result.rows.compactMap { row in
-            guard let name = row[safe: 0]?.asText else { return nil }
-            return PluginEventInfo(
-                name: name,
-                schema: row[safe: 3]?.asText,
-                kind: row[safe: 1]?.asText,
-                isEnabled: row[safe: 2]?.asText?.uppercased() == "ENABLED"
-            )
-        }
-    }
-
-    func fetchEventDDL(_ event: PluginEventInfo) async throws -> String {
-        let result = try await execute(query: "SHOW CREATE EVENT \(qualifiedName(event.name, schema: event.schema))")
-        guard let row = result.rows.first, let ddl = row[safe: 3]?.asText else {
-            throw PluginObjectSourceError.unsupported(event.name)
         }
         return ddl
     }
 
+    func fetchEvents(schema: String?) async throws -> [PluginEventInfo] {
+        try await exportCatalog.events(schema: schema)
+    }
+
+    func fetchEventDDL(_ event: PluginEventInfo) async throws -> String {
+        try await exportCatalog.eventDDL(event)
+    }
+
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         guard !flavor.isDatabend else { return try await databendViewDefinition(view: view, schema: schema) }
-        // StarRocks's `SHOW CREATE VIEW` rewrites a materialized view as a plain `CREATE VIEW`.
-        let show = flavor.isStarRocks ? "SHOW CREATE TABLE" : "SHOW CREATE VIEW"
-        let result = try await execute(query: "\(show) \(qualifiedName(view, schema: schema))")
-
-        guard let firstRow = result.rows.first,
-              let ddl = firstRow[safe: 1]?.asText
-        else {
+        guard let ddl = try await exportCatalog.viewDefinition(view: view, schema: schema) else {
             throw MariaDBPluginError(code: 0, message: "Failed to fetch definition for view '\(view)'", sqlState: nil)
         }
-
         return ddl
     }
 
@@ -1426,11 +1377,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Foreign Key Checks
 
     func foreignKeyDisableStatements() -> [String]? {
-        flavor.hasMySQLObjectCatalogs ? ["SET FOREIGN_KEY_CHECKS=0"] : nil
+        flavor.foreignKeyCheckStatements(enabled: false)
     }
 
     func foreignKeyEnableStatements() -> [String]? {
-        flavor.hasMySQLObjectCatalogs ? ["SET FOREIGN_KEY_CHECKS=1"] : nil
+        flavor.foreignKeyCheckStatements(enabled: true)
     }
 }
 

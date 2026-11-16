@@ -580,7 +580,7 @@ struct ConnectionListView: View {
             moreMenu
             if hasLibraryItems {
                 Button {
-                    withAnimation {
+                    withMotion {
                         editMode = isEditing ? .inactive : .active
                     }
                 } label: {
@@ -730,6 +730,14 @@ struct ConnectionListView: View {
         case .export:
             MobileConnectionExportSheet(connections: appState.connections.filter(\.participatesInSync))
                 .environment(appState)
+        case .importData(let url):
+            DataImportConnectionChooser(
+                fileURL: url,
+                connections: appState.connections.filter { !MacOnlyConnection.isMacOnly($0) }
+            ) { connectionId in
+                presenter.requestDataImport(url, in: connectionId)
+                presenter.sheet = nil
+            }
         }
     }
 
@@ -887,6 +895,14 @@ struct ConnectionListView: View {
     private func sheetDidDismiss() {
         presenter.sheetDidDismiss(appState: appState)
         deliverPendingIntent()
+        openConnectionForDataImport()
+    }
+
+    // The chooser has gone, so the cover the chosen connection needs can come up.
+    private func openConnectionForDataImport() {
+        guard let pending = presenter.pendingDataImport, !isConnectionCoverOnScreen,
+              selectedConnectionUUID != pending.connectionId else { return }
+        open(pending.connectionId)
     }
 
     private func deliverPendingIntent() {
@@ -904,6 +920,13 @@ struct ConnectionListView: View {
         case .importConnections(let url):
             selectedConnectionIdString = nil
             presenter.presentImportFile(url, coverIsOnScreen: isConnectionCoverOnScreen)
+        case .importData(let url):
+            // The connection on screen, or the one about to be restored, keeps its session and takes the file.
+            if let connectionId = selectedConnectionUUID, presentableRecord(for: connectionId) != nil {
+                presenter.requestDataImport(url, in: connectionId)
+            } else {
+                presenter.present(.importData(url))
+            }
         }
     }
 
@@ -916,6 +939,7 @@ struct ConnectionListView: View {
 
     private func connectionCoverDidDismiss() {
         isConnectionCoverOnScreen = false
+        presenter.discardDataImport(unlessFor: selectedConnectionUUID)
         presenter.dismissConnectionEditor()
         coordinatorStore.discardRemovedRecords()
         presenter.presentHeldImport()

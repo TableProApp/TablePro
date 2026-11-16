@@ -6,20 +6,9 @@
 import Foundation
 import TableProPluginKit
 
+// PGlite inherits this. CockroachDB and Redshift conform to `LibPQBackedDriver` directly, so they do not.
 extension PostgreSQLPluginDriver {
-    /// A plain read rather than the `search_path`-emptied one `fetchViewDefinition` takes: nothing
-    /// here is deparsed by the server, so the session's path cannot change the answer.
-    ///
-    /// PGlite inherits this. CockroachDB and Redshift conform to `LibPQBackedDriver` directly, so
-    /// they do not.
     func fetchCommentDDL(table: String, schema: String?) async throws -> [String] {
-        let resolvedSchema = schema ?? core.currentSchema
-        let query = PostgreSQLCommentStatements.catalogQuery(name: table, schema: resolvedSchema)
-        let result = try await catalogRead(query)
-        return PostgreSQLCommentStatements.statements(
-            name: table,
-            schema: resolvedSchema,
-            rows: result.rows.map { $0.map(\.asText) }
-        )
+        try await exportCatalog.fetchCommentDDL(table: table, schema: schema)
     }
 }

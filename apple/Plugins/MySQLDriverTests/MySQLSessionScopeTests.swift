@@ -246,17 +246,17 @@ struct MySQLSessionScopeTests {
 
     @Test("A creation scope needs a recorded mode, and carries the zone only when there is one")
     func creationScopeNeedsRecordedMode() {
-        #expect(MySQLPluginDriver.creationScope(sqlMode: nil, timeZone: "SYSTEM") == nil)
-        let routine = MySQLPluginDriver.creationScope(sqlMode: "STRICT_TRANS_TABLES", timeZone: nil)
+        #expect(MySQLExportCatalog.creationScope(sqlMode: nil, timeZone: "SYSTEM") == nil)
+        let routine = MySQLExportCatalog.creationScope(sqlMode: "STRICT_TRANS_TABLES", timeZone: nil)
         #expect(routine?.opening == [
             "/*!50003 SET @saved_sql_mode = @@sql_mode */",
             "/*!50003 SET sql_mode = 'STRICT_TRANS_TABLES' */",
         ])
         #expect(routine?.closing == ["/*!50003 SET sql_mode = @saved_sql_mode */"])
-        let event = MySQLPluginDriver.creationScope(sqlMode: "", timeZone: "SYSTEM")
+        let event = MySQLExportCatalog.creationScope(sqlMode: "", timeZone: "SYSTEM")
         #expect(event?.opening.count == 4)
         #expect(event?.closing.first == "/*!50003 SET time_zone = @saved_time_zone */")
-        let mariaDBRoutine = MySQLPluginDriver.creationScope(
+        let mariaDBRoutine = MySQLExportCatalog.creationScope(
             sqlMode: "STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION",
             timeZone: nil
         )

@@ -11,7 +11,7 @@ import TableProSQLQuoting
 // PRIMARY KEY or UNIQUE constraint owns is left out: `fetchTableDDL` writes the constraint, which makes its own index,
 // and a second index on the same columns fails with ORA-01408. A disabled or NOVALIDATE constraint is written disabled
 // and makes none, so an index it kept is written, and a NOVALIDATE one is enabled on it after the rows.
-internal enum OracleIndexStatements {
+nonisolated internal enum OracleIndexStatements {
     // NORMAL and BITMAP only: a function-based index keeps its key in a LONG column OracleNIO cannot decode. A
     // constraint row with no `INDEX_OWNER` is read as naming an index of its own schema.
     internal static func query(schema: String, table: String) -> String {
@@ -75,7 +75,7 @@ internal enum OracleIndexStatements {
     }
 }
 
-private extension Array where Element == String? {
+nonisolated private extension Array where Element == String? {
     func element(at index: Int) -> String? {
         indices.contains(index) ? self[index] : nil
     }

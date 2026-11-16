@@ -73,10 +73,10 @@ struct ConnectionCoordinatorReconnectTests {
         return (left, right)
     }
 
-    private func runQuery(_ text: String, in coordinator: ConnectionCoordinator, on driver: MockDatabaseDriver) async {
+    private func runQuery(_ text: String, in coordinator: ConnectionCoordinator, on driver: MockDatabaseDriver) async throws {
         let viewModel = QueryEditorViewModel()
         let script = QueryScript(units: [QueryScript.Unit(sql: text)], unitKind: .statement)
-        await coordinator.track(rolledBack: { _ in viewModel.ranTransactionRollBack }) {
+        try await coordinator.track(rolledBack: { _ in viewModel.ranTransactionRollBack }) {
             await viewModel.run(driver: driver, script: script)
         }
     }
@@ -713,7 +713,7 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(coordinator.transactionHold == .open)
 
         first.scriptedTransactionState = .idle
-        await runQuery("COMMIT", in: coordinator, on: first)
+        try await runQuery("COMMIT", in: coordinator, on: first)
         #expect(coordinator.transactionHold == nil)
         #expect(monitor.rollBackCount(for: connection.id) == 0)
 
@@ -721,7 +721,7 @@ struct ConnectionCoordinatorReconnectTests {
         await coordinator.refreshTransaction()
         #expect(coordinator.transactionHold == .open)
         first.scriptedTransactionState = .idle
-        await runQuery("ROLLBACK", in: coordinator, on: first)
+        try await runQuery("ROLLBACK", in: coordinator, on: first)
 
         #expect(coordinator.transactionHold == nil)
         #expect(monitor.rollBackCount(for: connection.id) == 1)
@@ -736,7 +736,7 @@ struct ConnectionCoordinatorReconnectTests {
 
         let viewModel = QueryEditorViewModel()
         let script = QueryScript.plan("SELECT 1; ROLLBACK TRANSACTION;", databaseType: .mssql, sendsBatchesWhole: true)
-        await coordinator.track(rolledBack: { _ in viewModel.ranTransactionRollBack }) {
+        try await coordinator.track(rolledBack: { _ in viewModel.ranTransactionRollBack }) {
             await viewModel.run(driver: first, script: script)
         }
 
@@ -750,7 +750,7 @@ struct ConnectionCoordinatorReconnectTests {
         try await dial(first)
         let coordinator = await attachedCoordinator()
 
-        await runQuery("ROLLBACK AND CHAIN", in: coordinator, on: first)
+        try await runQuery("ROLLBACK AND CHAIN", in: coordinator, on: first)
 
         #expect(coordinator.transactionHold == .open)
         #expect(monitor.rollBackCount(for: connection.id) == 1)
@@ -814,7 +814,7 @@ struct ConnectionCoordinatorReconnectTests {
         try await dial(first)
         let coordinator = await attachedCoordinator()
         let gate = TestGate()
-        let work = Task { await coordinator.track { await gate.enter() } }
+        let work = Task { try? await coordinator.track { await gate.enter() } }
         await gate.waitUntilEntered()
 
         first.pingError = MockDatabaseDriver.MockError.scripted
@@ -957,7 +957,7 @@ struct ConnectionCoordinatorReconnectTests {
         first.pingError = MockDatabaseDriver.MockError.scripted
         let second = driver(tables: ["orders"])
         factory.queue(second)
-        let ranIntoAnError = await coordinator.track(failed: { $0 }) { true }
+        let ranIntoAnError = try await coordinator.track(failed: { $0 }) { true }
 
         #expect(ranIntoAnError)
         #expect(coordinator.session?.driver === second)

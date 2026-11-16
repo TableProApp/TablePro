@@ -5,7 +5,7 @@
 
 import Foundation
 
-public struct XLSXExportOptions: Equatable, Codable {
+nonisolated public struct XLSXExportOptions: Equatable, Codable {
     public var includeHeaderRow: Bool = true
     public var convertNullToEmpty: Bool = true
 

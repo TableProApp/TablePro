@@ -49,17 +49,7 @@ extension MSSQLPluginDriver {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        try await columnRows(table: table, schema: schema).map(\.pluginColumnInfo)
-    }
-
-    private func columnRows(table: String, schema: String?) async throws -> [MSSQLColumnRow] {
-        let sql = MSSQLSchemaQueries.namesTemporaryTable(table)
-            ? MSSQLSchemaQueries.temporaryColumns(table: table)
-            : MSSQLSchemaQueries.columns(schema: effectiveSchema(schema), table: table)
-        let result = try await execute(query: sql)
-        return result.rows.compactMap { row in
-            MSSQLSchemaQueries.parseColumnRow(row.map(\.asText))
-        }
+        try await exportCatalog.fetchColumns(table: table, schema: schema)
     }
 
     func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
@@ -127,7 +117,7 @@ extension MSSQLPluginDriver {
     }
 
     private func catalogRows(_ query: String) async throws -> [[String?]] {
-        try await execute(query: query).rows.map { $0.map(\.asText) }
+        try await exportCatalog.textRows(query)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -175,50 +165,18 @@ extension MSSQLPluginDriver {
         }.sorted { $0.name < $1.name }
     }
 
-    // The primary key and UNIQUE constraints are declared in `fetchTableDDL`, which builds their indexes. What runs
-    // after the rows also turns back on the checks the source enforced without having checked its rows.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
-        let resolvedSchema = effectiveSchema(schema)
-        let rows = try await catalogRows(MSSQLSchemaQueries.indexDefinitions(schema: resolvedSchema, table: table))
-        let checks = try await catalogRows(MSSQLSchemaQueries.checkConstraints(schema: resolvedSchema, table: table))
-            .compactMap(MSSQLSchemaQueries.parseCheckConstraintRow)
-        do {
-            return try MSSQLSchemaQueries.indexStatements(rows: rows, schema: resolvedSchema, table: table)
-                + MSSQLSchemaQueries.checkConstraintReenableStatements(
-                    schema: resolvedSchema, table: table, checkConstraints: checks
-                )
-        } catch let refusal as MSSQLDefinitionRefusal {
-            throw MSSQLPluginError(refusal)
-        }
+        try await exportCatalog.fetchIndexDDL(table: table, schema: schema)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        try await foreignKeyRows(table: table, schema: schema).map(Self.foreignKey)
-    }
-
-    private func foreignKeyRows(table: String, schema: String?) async throws -> [MSSQLForeignKeyRow] {
-        let sql = MSSQLSchemaQueries.foreignKeys(schema: effectiveSchema(schema), table: table)
-        let result = try await execute(query: sql)
-        return result.rows.compactMap { row in
-            MSSQLSchemaQueries.parseForeignKeyRow(row.map { $0.asText })
-        }
-    }
-
-    private static func foreignKey(_ row: MSSQLForeignKeyRow) -> PluginForeignKeyInfo {
-        PluginForeignKeyInfo(
-            name: row.constraintName,
-            column: row.columnName,
-            referencedTable: row.referencedTable,
-            referencedColumn: row.referencedColumn,
-            referencedSchema: row.referencedSchema,
-            onDelete: row.onDelete,
-            onUpdate: row.onUpdate
-        )
+        try await exportCatalog.fetchForeignKeys(table: table, schema: schema)
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        try await triggerList(schema: effectiveSchema(schema), table: table)
+        try await exportCatalog.fetchTriggers(table: table, schema: schema)
     }
+
     var triggerEditUsesReplace: Bool { true }
 
     var supportsTransactionalDDL: Bool { true }
@@ -249,37 +207,21 @@ extension MSSQLPluginDriver {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        let resolved = effectiveSchema(schema)
-        return "DROP TRIGGER \(quoteIdentifier(resolved)).\(quoteIdentifier(name))"
+        exportCatalog.generateDropTriggerSQL(name: name, table: table, schema: schema)
     }
 
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let result = try await execute(query: MSSQLSchemaQueries.allColumns(schema: effectiveSchema(schema)))
-        var columnsByTable: [String: [PluginColumnInfo]] = [:]
-        for row in result.rows {
-            let cells = row.map(\.asText)
-            guard let tableName = cells[safe: MSSQLSchemaQueries.allColumnsTableNameIndex] ?? nil,
-                  let column = MSSQLSchemaQueries.parseColumnRow(cells) else { continue }
-            columnsByTable[tableName, default: []].append(column.pluginColumnInfo)
-        }
-        return columnsByTable
+        try await exportCatalog.fetchAllColumns(schema: schema)
     }
 
     var providesBulkForeignKeyFetch: Bool { true }
 
-    var tableDDLIncludesForeignKeys: Bool { true }
+    var tableDDLIncludesForeignKeys: Bool { MSSQLExportCatalog.tableDDLIncludesForeignKeys }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let result = try await execute(query: MSSQLSchemaQueries.foreignKeys(schema: effectiveSchema(schema), table: nil))
-        var fksByTable: [String: [PluginForeignKeyInfo]] = [:]
-        for row in result.rows {
-            guard let parsed = MSSQLSchemaQueries.parseForeignKeyRow(row.map { $0.asText }),
-                  let table = parsed.table else { continue }
-            fksByTable[table, default: []].append(Self.foreignKey(parsed))
-        }
-        return fksByTable
+        try await exportCatalog.fetchAllForeignKeys(schema: schema)
     }
 
     private static let metadataLogger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")
@@ -325,53 +267,12 @@ extension MSSQLPluginDriver {
         }
     }
 
-    // A view answers with its own definition: a column over an identity column reports `IsIdentity`.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let resolvedSchema = effectiveSchema(schema)
-        let module = try await storedModule(schema: resolvedSchema, name: table)
-        if MSSQLObjectQueries.isView(objectType: module?[safe: 2].flatMap { $0 } ?? "") {
-            return try MSSQLObjectQueries.viewSource(row: module, schema: resolvedSchema, name: table)
-        }
-
-        let columns = try await columnRows(table: table, schema: schema)
-        let keyConstraints = try await catalogRows(MSSQLSchemaQueries.keyConstraints(schema: resolvedSchema, table: table))
-            .compactMap(MSSQLSchemaQueries.parseKeyConstraintRow)
-        let checkConstraints = try await catalogRows(MSSQLSchemaQueries.checkConstraints(schema: resolvedSchema, table: table))
-            .compactMap(MSSQLSchemaQueries.parseCheckConstraintRow)
-        let foreignKeys = try await foreignKeyRows(table: table, schema: schema)
-        let collation = await databaseCollation(forTable: table)
-        do {
-            return try MSSQLSchemaQueries.createTableStatement(
-                schema: resolvedSchema,
-                table: table,
-                columns: columns,
-                keyConstraints: keyConstraints,
-                checkConstraints: checkConstraints,
-                foreignKeys: foreignKeys,
-                databaseCollation: collation
-            )
-        } catch let refusal as MSSQLDefinitionRefusal {
-            throw MSSQLPluginError(refusal)
-        }
-    }
-
-    // Unread, every column states its collation, which keeps it rather than changing it.
-    private func databaseCollation(forTable table: String) async -> String? {
-        guard let result = try? await execute(query: MSSQLSchemaQueries.databaseCollation(forTable: table)) else {
-            return nil
-        }
-        return result.rows.first?[safe: 0]?.asText
+        try await exportCatalog.fetchTableDDL(table: table, schema: schema)
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let resolvedSchema = effectiveSchema(schema)
-        let module = try await storedModule(schema: resolvedSchema, name: view)
-        return try MSSQLObjectQueries.viewSource(row: module, schema: resolvedSchema, name: view)
-    }
-
-    private func storedModule(schema: String, name: String) async throws -> [String?]? {
-        let result = try await execute(query: MSSQLObjectQueries.moduleDefinition(schema: schema, name: name))
-        return result.rows.first.map { $0.map(\.asText) }
+        try await exportCatalog.fetchViewDefinition(view: view, schema: schema)
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
@@ -484,22 +385,6 @@ extension MSSQLPluginDriver {
         GROUP BY s.name, t.name, p.rows, v.object_id
         ORDER BY t.name
         """
-    }
-}
-
-extension MSSQLColumnRow {
-    var pluginColumnInfo: PluginColumnInfo {
-        PluginColumnInfo(
-            name: name,
-            dataType: displayType,
-            isNullable: isNullable,
-            isPrimaryKey: isPrimaryKey,
-            defaultValue: defaultValue,
-            extra: isIdentity ? "IDENTITY" : nil,
-            collation: collation,
-            identityKind: isIdentity ? .always : nil,
-            isGenerated: isGenerated
-        )
     }
 }
 

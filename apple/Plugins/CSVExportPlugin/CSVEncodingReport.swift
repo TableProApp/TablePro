@@ -12,7 +12,7 @@ import TableProPluginKit
 /// file that lost half its names looks exactly like one that lost nothing. This collects the
 /// distinct characters as the rows go past and turns them into the warning the export dialog
 /// already knows how to show.
-struct CSVEncodingReport {
+nonisolated struct CSVEncodingReport {
     /// Enough to recognise what was lost without filling an alert. A result holding thousands of
     /// distinct unrepresentable characters says the same thing as one holding twelve: the encoding
     /// is wrong for this data.

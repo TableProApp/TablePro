@@ -13,7 +13,7 @@ nonisolated extension DuckDBDriver {
             WHERE table_schema = '\(escapeLiteral(schemaName))'
             ORDER BY table_name
             """
-        let result = try await actor.query(query)
+        let result = try await actor.query(query, lane: transferLane)
         return result.rows.compactMap { row in
             guard row.count > 0, let name = row[0] else { return nil }
             let typeString = (row.count > 1 ? row[1] : nil) ?? "BASE TABLE"
@@ -31,7 +31,7 @@ nonisolated extension DuckDBDriver {
               AND table_name = '\(escapeLiteral(table))'
             ORDER BY ordinal_position
             """
-        let result = try await actor.query(query)
+        let result = try await actor.query(query, lane: transferLane)
         let primaryKeys = try await fetchPrimaryKeyColumns(table: table, schema: schemaName)
 
         return result.rows.enumerated().compactMap { index, row in
@@ -55,7 +55,7 @@ nonisolated extension DuckDBDriver {
             WHERE schema_name = '\(escapeLiteral(schemaName))'
               AND table_name = '\(escapeLiteral(table))'
             """
-        let result = try await actor.query(query)
+        let result = try await actor.query(query, lane: transferLane)
         return result.rows.compactMap { row in
             guard row.count > 0, let name = row[0] else { return nil }
             let sql = row.count > 2 ? row[2] : nil
@@ -94,7 +94,7 @@ nonisolated extension DuckDBDriver {
               AND kcu.table_name = '\(escapeLiteral(table))'
             """
         do {
-            let result = try await actor.query(query)
+            let result = try await actor.query(query, lane: transferLane)
             return result.rows.compactMap { row in
                 guard row.count >= 4,
                       let name = row[0],
@@ -121,7 +121,7 @@ nonisolated extension DuckDBDriver {
 
     func fetchSchemas() async throws -> [String] {
         let query = "SELECT schema_name FROM information_schema.schemata ORDER BY schema_name"
-        let result = try await actor.query(query)
+        let result = try await actor.query(query, lane: transferLane)
         return result.rows.compactMap { $0.first ?? nil }
     }
 
@@ -130,7 +130,7 @@ nonisolated extension DuckDBDriver {
     }
 
     func switchSchema(to name: String) async throws {
-        _ = try await actor.query("SET schema = \(SQLQuoting.identifier(name))")
+        _ = try await actor.query("SET schema = \(SQLQuoting.identifier(name))", lane: transferLane)
         setCurrentSchema(name)
     }
 
@@ -147,7 +147,7 @@ nonisolated extension DuckDBDriver {
               AND tc.table_schema = '\(escapeLiteral(schema))'
               AND tc.table_name = '\(escapeLiteral(table))'
             """
-        let result = try await actor.query(query)
+        let result = try await actor.query(query, lane: transferLane)
         return Set(result.rows.compactMap { $0.first ?? nil })
     }
 

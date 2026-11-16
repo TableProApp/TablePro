@@ -8,11 +8,6 @@ import os
 import TableProMSSQLCore
 import TableProPluginKit
 
-struct MSSQLPrincipalState: Sendable {
-    var directory: MSSQLPrincipalDirectory?
-    var catalog: PluginPrivilegeCatalog?
-}
-
 extension MSSQLPluginDriver: PluginPrincipalManagement {
     var supportsRoleMembership: Bool { true }
     var restrictsGrantBrowsingToCurrentDatabase: Bool { true }
@@ -28,14 +23,7 @@ extension MSSQLPluginDriver: PluginPrincipalManagement {
     }
 
     func fetchPrincipals() async throws -> [PluginPrincipalInfo] {
-        try await loadPrincipalDirectory().entries.map { entry in
-            PluginPrincipalInfo(
-                ref: PluginPrincipalRef(name: entry.name),
-                isRole: entry.kind.isRole,
-                canLogin: !entry.kind.isRole && entry.isEnabled,
-                memberOf: entry.memberOf
-            )
-        }
+        try await exportCatalog.fetchPrincipals()
     }
 
     func fetchPrivilegeCatalog() async throws -> PluginPrivilegeCatalog {
@@ -61,40 +49,26 @@ extension MSSQLPluginDriver: PluginPrincipalManagement {
     }
 
     func fetchGrants(for principal: PluginPrincipalRef) async throws -> [PluginGrantInfo] {
-        let directory = try await principalDirectory()
-        var grants: [MSSQLGrant] = []
-        switch directory.kind(of: principal.name) {
-        case let .login(user):
-            grants += try await serverGrants(principal.name)
-            if let user {
-                grants += try await databaseGrants(user, database: directory.database)
-            }
-        case .serverRole:
-            grants += try await serverGrants(principal.name)
-        case .databaseRole, .databaseUser:
-            grants += try await databaseGrants(principal.name, database: directory.database)
-        case nil:
-            return []
-        }
-        return grants.map { Self.pluginGrant($0, database: directory.database) }
+        try await exportCatalog.fetchGrants(for: principal)
     }
 
     func fetchGrantableChildren(of scope: PluginPrivilegeScope) async throws -> [PluginPrivilegeScope] {
-        let database = try await principalDirectory().database
+        let catalog = exportCatalog
+        let database = try await catalog.principalDirectory().database
         switch scope {
         case let .database(name):
             guard name == database else { return [] }
-            return try await names(MSSQLPrincipalQueries.schemas(database: name)).map {
+            return try await catalog.names(MSSQLPrincipalQueries.schemas(database: name)).map {
                 .schema(database: name, schema: $0)
             }
         case let .schema(name, schema):
             guard name == database else { return [] }
-            return try await names(MSSQLPrincipalQueries.objects(schema: schema, database: name)).map {
+            return try await catalog.names(MSSQLPrincipalQueries.objects(schema: schema, database: name)).map {
                 .table(database: name, schema: schema, table: $0)
             }
         case let .table(name, schema, table):
             guard name == database, let schema else { return [] }
-            return try await names(MSSQLPrincipalQueries.columns(schema: schema, object: table, database: name)).map {
+            return try await catalog.names(MSSQLPrincipalQueries.columns(schema: schema, object: table, database: name)).map {
                 .column(database: name, schema: schema, table: table, column: $0)
             }
         case .server, .column:
@@ -105,7 +79,7 @@ extension MSSQLPluginDriver: PluginPrincipalManagement {
     }
 
     func searchGrantableScopes(matching query: String, limit: Int) async throws -> [PluginPrivilegeScope] {
-        let database = try await principalDirectory().database
+        let database = try await exportCatalog.principalDirectory().database
         let result = try await execute(
             query: MSSQLPrincipalQueries.searchObjects(matching: query, limit: limit, database: database)
         )
@@ -116,7 +90,7 @@ extension MSSQLPluginDriver: PluginPrincipalManagement {
     }
 
     func currentPrincipalRef() async throws -> PluginPrincipalRef? {
-        try await names(MSSQLPrincipalQueries.currentLogin).first.map { PluginPrincipalRef(name: $0) }
+        try await exportCatalog.names(MSSQLPrincipalQueries.currentLogin).first.map { PluginPrincipalRef(name: $0) }
     }
 
     // MARK: - Statements
@@ -150,118 +124,17 @@ extension MSSQLPluginDriver: PluginPrincipalManagement {
     }
 
     func generateGrantSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
-        guard let grants = mssqlGrants(changeSet.grantsToAdd) else { return nil }
-        return principalStatements.grantStatements(grants, to: changeSet.principal.name)
+        exportCatalog.generateGrantSQL(changeSet: changeSet)
     }
 
     func generateRevokeSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
-        guard let grants = mssqlGrants(changeSet.grantsToRemove) else { return nil }
-        return principalStatements.revokeStatements(grants, from: changeSet.principal.name)
+        exportCatalog.generateRevokeSQL(changeSet: changeSet)
     }
 
     // MARK: - Helpers
 
     private var principalStatements: MSSQLPrincipalStatements {
-        MSSQLPrincipalStatements(directory: principalState.withLock { $0.directory })
-    }
-
-    private func principalDirectory() async throws -> MSSQLPrincipalDirectory {
-        if let cached = principalState.withLock({ $0.directory }) {
-            return cached
-        }
-        return try await loadPrincipalDirectory()
-    }
-
-    private func loadPrincipalDirectory() async throws -> MSSQLPrincipalDirectory {
-        let database = try await currentPrincipalDatabase()
-        let directory = MSSQLPrincipalDirectory(
-            database: database,
-            logins: MSSQLPrincipalQueries.parseLogins(try await textRows(MSSQLPrincipalQueries.logins(database: database))),
-            serverRoles: MSSQLPrincipalQueries.parseNames(try await textRows(MSSQLPrincipalQueries.serverRoles)),
-            databasePrincipals: MSSQLPrincipalQueries.parseDatabasePrincipals(
-                try await textRows(MSSQLPrincipalQueries.databasePrincipals(database: database))
-            ),
-            serverMemberships: MSSQLPrincipalQueries.parseMemberships(
-                try await textRows(MSSQLPrincipalQueries.serverRoleMembers)
-            ),
-            databaseMemberships: MSSQLPrincipalQueries.parseMemberships(
-                try await textRows(MSSQLPrincipalQueries.databaseRoleMembers(database: database))
-            )
-        )
-        principalState.withLock { $0.directory = directory }
-        return directory
-    }
-
-    private func serverGrants(_ name: String) async throws -> [MSSQLGrant] {
-        MSSQLPrincipalQueries.parseServerPermissions(
-            try await textRows(MSSQLPrincipalQueries.serverPermissions(grantee: name))
-        )
-    }
-
-    private func databaseGrants(_ name: String, database: String) async throws -> [MSSQLGrant] {
-        MSSQLPrincipalQueries.parseDatabasePermissions(
-            try await textRows(MSSQLPrincipalQueries.databasePermissions(grantee: name, database: database))
-        )
-    }
-
-    private func currentPrincipalDatabase() async throws -> String {
-        try await names(MSSQLPrincipalQueries.currentDatabase).first ?? ""
-    }
-
-    private func textRows(_ query: String) async throws -> [[String?]] {
-        try await execute(query: query).rows.map { $0.map(\.asText) }
-    }
-
-    private func names(_ query: String) async throws -> [String] {
-        MSSQLPrincipalQueries.parseNames(try await textRows(query))
-    }
-
-    // Statements run in the database the list was read from, so a scope naming another one is refused.
-    private func mssqlGrants(_ grants: [PluginGrantInfo]) -> [MSSQLGrant]? {
-        let database = principalState.withLock { $0.directory?.database }
-        var converted: [MSSQLGrant] = []
-        for grant in grants {
-            if let database, let scopeDatabase = grant.scope.databaseName, scopeDatabase != database {
-                return nil
-            }
-            let securable: MSSQLSecurable
-            switch grant.scope {
-            case .server:
-                securable = .server
-            case .database:
-                securable = .database
-            case let .schema(_, schema):
-                securable = .schema(schema)
-            case let .table(_, schema, table), let .column(_, schema, table, _):
-                securable = .object(schema: effectiveSchema(schema), name: table)
-            @unknown default:
-                return nil
-            }
-            converted.append(MSSQLGrant(
-                permission: grant.privilege,
-                securable: securable,
-                column: grant.scope.columnName,
-                withGrantOption: grant.isGrantable
-            ))
-        }
-        return converted
-    }
-
-    private static func pluginGrant(_ grant: MSSQLGrant, database: String) -> PluginGrantInfo {
-        let scope: PluginPrivilegeScope
-        switch grant.securable {
-        case .server:
-            scope = .server
-        case .database:
-            scope = .database(database)
-        case let .schema(schema):
-            scope = .schema(database: database, schema: schema)
-        case let .object(schema, name):
-            scope = grant.column.map {
-                .column(database: database, schema: schema, table: name, column: $0)
-            } ?? .table(database: database, schema: schema, table: name)
-        }
-        return PluginGrantInfo(privilege: grant.permission, scope: scope, isGrantable: grant.withGrantOption)
+        exportCatalog.principalStatements
     }
 
     private static func descriptors(_ names: [String]) -> [PluginPrivilegeDescriptor] {

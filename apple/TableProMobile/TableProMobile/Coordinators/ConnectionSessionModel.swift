@@ -590,6 +590,8 @@ final class ConnectionSessionModel {
     // True when the redial dropped a held transaction and the outcome is already settled for the user.
     @discardableResult
     func restoreSession(after loss: SessionLoss, from scene: ConnectionCoordinator) async -> Bool {
+        // The check's ping would land between an import's batches; the import's own end checks the session.
+        guard !appState.sessionTransactions.isHeldByImport(connectionId) else { return false }
         // One check per connection, and a statement that failed while it ran makes the loss ambiguous.
         if let running = state.check, let task = running.task {
             if loss == .duringWork { running.ambiguous = true }
@@ -893,6 +895,24 @@ final class ConnectionSessionModel {
 
     var isDatabaseMoving: Bool { databaseMoves > 0 }
 
+    // Sessions that ran something a fresh connection would not have: a write, a `SET`, a `USE`, a temporary table, a
+    // transaction statement. A redial lands another driver, which starts clean.
+    @ObservationIgnored private var changedSessions: Set<ObjectIdentifier> = []
+
+    func noteSessionChanged(on driver: any DatabaseDriver) {
+        changedSessions.insert(ObjectIdentifier(driver))
+    }
+
+    func hasChangedSession(_ driver: any DatabaseDriver) -> Bool {
+        changedSessions.contains(ObjectIdentifier(driver))
+    }
+
+    // A switch, a run with a `USE`, a dial or a session check in flight: an import admitted now could be handed a
+    // session that is about to move or be replaced.
+    var isMovingSession: Bool {
+        switchesInFlight > 0 || databaseMoves > 0 || state.check != nil || state.isReconnecting || state.isOpening
+    }
+
     func beginDatabaseMove() {
         databaseMoves += 1
     }
@@ -906,11 +926,19 @@ final class ConnectionSessionModel {
         return placementEpoch
     }
 
+    // Every door that moves the session refuses while an import holds it: a `USE` would land between its batches, and a
+    // PostgreSQL redial would tear its session down.
+    private var importRefusal: ConnectionFailure? {
+        guard appState.sessionTransactions.isHeldByImport(connectionId) else { return nil }
+        return ConnectionFailure(error: SessionHeldByImport(), title: ConnectionCoordinator.switchDatabaseFailedTitle, redialRepeats: false)
+    }
+
     func switchDatabase(
         to name: String,
         from scene: ConnectionCoordinator,
         inside open: ConnectionAttempt?
     ) async -> ConnectionFailure? {
+        if let importRefusal { return importRefusal }
         let failure: ConnectionFailure?
         if redialsToSwitchDatabase {
             await reconnectWithDatabase(name, from: scene, inside: open)
@@ -1050,6 +1078,9 @@ final class ConnectionSessionModel {
     }
 
     func switchSchema(to name: String, on session: ConnectionSession) async -> ConnectionFailure? {
+        guard !appState.sessionTransactions.isHeldByImport(connectionId) else {
+            return ConnectionFailure(error: SessionHeldByImport(), title: ConnectionCoordinator.switchSchemaFailedTitle, redialRepeats: false)
+        }
         let request = beginPlacementRequest()
         do {
             try await session.driver.switchSchema(to: name)

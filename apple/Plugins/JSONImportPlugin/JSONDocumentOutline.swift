@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-enum JSONDocumentRows: Equatable {
+nonisolated enum JSONDocumentRows: Equatable {
     // The rows are the elements of the array that opens at `offset`. `slot` is the one `visit` was given for them.
     case array(offset: Int, elementCount: Int, slot: Int)
     case singleObject(offset: Int)
@@ -14,7 +14,7 @@ enum JSONDocumentRows: Equatable {
 
 // Finds which array of a `.json` file holds the rows, by the rules `JSONImportParsing.extractElements`
 // applies to a parsed file, in one pass that builds nothing but member names.
-enum JSONDocumentOutline {
+nonisolated enum JSONDocumentOutline {
     private struct Member {
         let name: String
         let slot: Int

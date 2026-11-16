@@ -9,8 +9,8 @@
 # MERGE, and where one does not is the server's decision: a MERGE inside parentheses, a MERGE JOIN hint, and a name
 # such as @merge or x$merge need none, while a MERGE after a name and a space, or on a table named range, does.
 #
-# So this builds a harness from the real Plugins/MSSQLDriverPlugin sources, the TableProCore and TableProMacCore
-# packages, the app's TablePro/Core/Utilities/SQL/SQLFileParser.swift and the shipped Libs/libsybdb.a. For each
+# So this builds a harness from the real Plugins/MSSQLDriverPlugin sources, the TableProCore package with its SQL
+# file parser in TableProSQLFile, and the shipped Libs/libsybdb.a. For each
 # editor text it takes what the scanner sends, as one batch cut from the first statement to the last the way the
 # app's batch planner cuts it, statement by statement, and what the import parser reads from the text saved as a
 # file, and runs each through MSSQLPluginDriver. Each must run and leave the rows expected. For a MERGE it also sends
@@ -78,10 +78,9 @@ fi
 
 mkdir -p "$WORK/Sources/Check"
 ln -s "$ROOT/Plugins/MSSQLDriverPlugin/CFreeTDS" "$WORK/CFreeTDS"
-for source in "$ROOT"/Plugins/MSSQLDriverPlugin/*.swift "$ROOT"/TablePro/Core/Utilities/SQL/SQLFileParser.swift; do
+for source in "$ROOT"/Plugins/MSSQLDriverPlugin/*.swift; do
     ln -s "$source" "$WORK/Sources/Check/$(basename "$source")"
 done
-echo 'enum DecompressionError: Error { case fileReadFailed(String) }' > "$WORK/Sources/Check/DecompressionError.swift"
 
 cat > "$WORK/Package.swift" << MANIFEST
 // swift-tools-version: 6.0
@@ -92,7 +91,6 @@ let package = Package(
     platforms: [.macOS(.v14)],
     dependencies: [
         .package(path: "$ROOT/Packages/TableProCore"),
-        .package(path: "$ROOT/Packages/TableProMacCore"),
     ],
     targets: [
         .systemLibrary(name: "CFreeTDS", path: "CFreeTDS"),
@@ -105,7 +103,7 @@ let package = Package(
                 .product(name: "TableProMSSQLCore", package: "TableProCore"),
                 .product(name: "TableProLogRedaction", package: "TableProCore"),
                 .product(name: "TableProSQLGrammar", package: "TableProCore"),
-                .product(name: "TableProUtilities", package: "TableProMacCore"),
+                .product(name: "TableProSQLFile", package: "TableProCore"),
             ],
             path: "Sources/Check",
             swiftSettings: [.swiftLanguageMode(.v6)],
@@ -122,6 +120,7 @@ cat > "$WORK/Sources/Check/Check.swift" << 'SWIFT'
 import Foundation
 import TableProCoreTypes
 import TableProPluginKit
+import TableProSQLFile
 import TableProSQLGrammar
 
 @main

@@ -1,13 +1,18 @@
 import Foundation
+import os
 import SQLite3
 import TableProDatabase
 import TableProModels
 import TableProPluginKit
 import TableProSQLQuoting
 
-nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated final class SQLiteDriver: DatabaseDriver, CatalogQuerying, ExportRowStreaming,
+    DedicatedTransferConnection, @unchecked Sendable {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteDriver")
+
     private let source: LocalDatabaseFileSource
     private let openMode: LocalDatabaseOpenMode
+    private let access: SQLiteAccess
     private let fileAccess = LocalDatabaseFileAccess()
     private let actor = SQLiteActor()
 
@@ -16,16 +21,22 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { true }
     var serverVersion: String? { String(cString: sqlite3_libversion()) }
 
-    // SQLite ends statement text at a NUL, so a NUL in a value goes in as char(0) between two literals.
     func escapeStringLiteral(_ value: String) -> String {
-        value.split(separator: "\0", omittingEmptySubsequences: false)
-            .map { SQLQuoting.stringLiteralBody(String($0)) }
-            .joined(separator: "'||char(0)||'")
+        Self.literalBody(value)
     }
 
-    init(source: LocalDatabaseFileSource, openMode: LocalDatabaseOpenMode = .existingOnly) {
+    static func literalBody(_ value: String) -> String {
+        sqliteStringLiteralBody(value)
+    }
+
+    init(
+        source: LocalDatabaseFileSource,
+        openMode: LocalDatabaseOpenMode = .existingOnly,
+        access: SQLiteAccess = .readWrite
+    ) {
         self.source = source
         self.openMode = openMode
+        self.access = access
     }
 
     // MARK: - Connection
@@ -43,9 +54,13 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     func disconnect() async throws {
         await actor.close()
         fileAccess.end()
+        if access == .snapshot, case .file(let url) = source {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     private var openFlags: Int32 {
+        guard access == .readWrite else { return SQLITE_OPEN_READONLY }
         guard openMode == .createNew || source == .inMemory else { return SQLITE_OPEN_READWRITE }
         return SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
     }
@@ -58,7 +73,13 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> QueryResult {
-        let raw = try await actor.execute(query)
+        try await executeParameterized(query: query, parameters: [], typeNames: nil)
+    }
+
+    // Bound the way the Mac plugin binds: text as UTF-8 text, bytes as a blob, nothing else rewritten.
+    func executeParameterized(query: String, parameters: [PluginCellValue], typeNames: [String?]?) async throws
+        -> QueryResult {
+        let raw = try await actor.execute(query, parameters: parameters)
         return QueryResult(
             columns: raw.columns.enumerated().map { i, name in
                 ColumnInfo(
@@ -137,6 +158,59 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
 
     func sessionTransactionState() async -> DriverTransactionState {
         await actor.transactionState()
+    }
+
+    // MARK: - Transfer
+
+    func catalogQuery(_ sql: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
+        try await actor.catalogRows(sql, parameters: parameters)
+    }
+
+    // Every row, a blob as its bytes, one batch per pull. A cancel interrupts the step only while this read is the one
+    // stepping, so the grid's statement on the same connection runs on.
+    func exportRows(query: String, readOnly: Bool) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let cursor = SQLiteExportCursor(actor: actor, query: query)
+        return AsyncThrowingStream(unfolding: { try await cursor.next() })
+    }
+
+    func foreignKeyCheckStatements(enabled: Bool) -> [String] {
+        enabled ? SQLiteCatalogReads.foreignKeyEnableStatements : SQLiteCatalogReads.foreignKeyDisableStatements
+    }
+
+    // A second reader in rollback-journal mode makes the user's COMMIT fail with SQLITE_BUSY, so outside WAL the
+    // transfer reads a copy, made only while the session is idle and the copy fits. Every other case reads the session.
+    func openTransferDriver() async throws -> any DatabaseDriver {
+        guard access == .readWrite, source != .inMemory,
+              await actor.transactionState() == .idle else { return self }
+        if await actor.journalMode() == "wal" {
+            let reader = SQLiteDriver(source: source, access: .readOnly)
+            do {
+                try await reader.connect()
+                return reader
+            } catch {
+                Self.logger.warning("A second SQLite reader did not open: \(error.localizedDescription, privacy: .private)")
+                return self
+            }
+        }
+        guard let copy = await actor.snapshot(into: Self.snapshotDirectory) else { return self }
+        let snapshot = SQLiteDriver(source: .file(copy), access: .snapshot)
+        do {
+            try await snapshot.connect()
+            return snapshot
+        } catch {
+            try? FileManager.default.removeItem(at: copy)
+            Self.logger.warning("A SQLite snapshot did not open: \(error.localizedDescription, privacy: .private)")
+            return self
+        }
+    }
+
+    static var snapshotDirectory: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("TransferSnapshots", isDirectory: true)
+    }
+
+    // A snapshot a closed or killed app left behind; nothing reads one across launches.
+    static func removeLeftoverSnapshots() {
+        try? FileManager.default.removeItem(at: snapshotDirectory)
     }
 
     // MARK: - Schema
@@ -357,6 +431,10 @@ private actor SQLiteActor {
     func close() {
         interruptHandle.detach()
         finalizeStreamingStatement()
+        for statement in exportStatements.values {
+            sqlite3_finalize(statement.handle)
+        }
+        exportStatements.removeAll()
         if let db {
             sqlite3_close(db)
             self.db = nil
@@ -370,7 +448,7 @@ private actor SQLiteActor {
         return sqlite3_get_autocommit(db) == 0 ? .explicitTransaction : .idle
     }
 
-    func execute(_ query: String) throws -> RawResult {
+    func execute(_ query: String, parameters: [PluginCellValue] = []) throws -> RawResult {
         guard let db else { throw SQLiteError.notConnected }
 
         let start = Date()
@@ -382,9 +460,11 @@ private actor SQLiteActor {
         defer { sqlite3_finalize(stmt) }
         // Text with only whitespace or comments prepares to no statement, and stepping nothing is a misuse.
         guard stmt != nil else {
+            guard parameters.isEmpty else { throw SQLiteError.queryFailed(Self.parameterCountMessage) }
             return RawResult(columns: [], columnTypes: [], rows: [],
                              rowsAffected: 0, executionTime: Date().timeIntervalSince(start), isTruncated: false)
         }
+        try Self.bind(parameters, to: stmt, db: db)
 
         let colCount = sqlite3_column_count(stmt)
         var columns: [String] = []
@@ -453,6 +533,199 @@ private actor SQLiteActor {
     private func changes(of db: OpaquePointer, sinceTotal totalBefore: Int64) -> Int {
         guard sqlite3_total_changes64(db) != totalBefore else { return 0 }
         return Int(sqlite3_changes64(db))
+    }
+
+    // MARK: - Binding
+
+    private static let parameterCountMessage = "The statement does not take the values it was given"
+
+    private static func bind(_ parameters: [PluginCellValue], to statement: OpaquePointer?, db: OpaquePointer) throws {
+        // A statement run with no values leaves any placeholder NULL, as it always has.
+        guard !parameters.isEmpty else { return }
+        guard Int(sqlite3_bind_parameter_count(statement)) == parameters.count else {
+            throw SQLiteError.queryFailed(parameterCountMessage)
+        }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        for (index, parameter) in parameters.enumerated() {
+            let position = Int32(index + 1)
+            let result: Int32
+            switch parameter {
+            case .null:
+                result = sqlite3_bind_null(statement, position)
+            case .text(let text):
+                result = sqlite3_bind_text64(
+                    statement, position, text, sqlite3_uint64(text.utf8.count), transient, UInt8(SQLITE_UTF8)
+                )
+            case .bytes(let data):
+                // An empty Data has no base address, and a null pointer would bind NULL rather than an empty blob.
+                let bytes = data.isEmpty ? Data([0]) : data
+                result = bytes.withUnsafeBytes { buffer in
+                    sqlite3_bind_blob64(statement, position, buffer.baseAddress, sqlite3_uint64(data.count), transient)
+                }
+            }
+            guard result == SQLITE_OK else {
+                throw SQLiteError.queryFailed(String(cString: sqlite3_errmsg(db)))
+            }
+        }
+    }
+
+    // MARK: - Transfer
+
+    // Every row the statement returns, each value as SQLite holds it.
+    func catalogRows(_ query: String, parameters: [PluginCellValue]) throws -> PluginQueryResult {
+        guard let db else { throw SQLiteError.notConnected }
+        let start = Date()
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else {
+            throw SQLiteError.queryFailed(String(cString: sqlite3_errmsg(db)))
+        }
+        defer { sqlite3_finalize(stmt) }
+        guard let stmt else {
+            return PluginQueryResult(
+                columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0
+            )
+        }
+        try Self.bind(parameters, to: stmt, db: db)
+        let header = Self.header(of: stmt)
+        var rows: [[PluginCellValue]] = []
+        let totalBefore = sqlite3_total_changes64(db)
+        var stepResult = sqlite3_step(stmt)
+        while stepResult == SQLITE_ROW {
+            rows.append(Self.values(of: stmt, count: header.columns.count))
+            stepResult = sqlite3_step(stmt)
+        }
+        guard stepResult == SQLITE_DONE else {
+            throw SQLiteError.queryFailed(String(cString: sqlite3_errmsg(db)))
+        }
+        return PluginQueryResult(
+            columns: header.columns,
+            columnTypeNames: header.columnTypeNames,
+            rows: rows,
+            rowsAffected: header.columns.isEmpty ? changes(of: db, sinceTotal: totalBefore) : 0,
+            executionTime: Date().timeIntervalSince(start)
+        )
+    }
+
+    private static func header(of stmt: OpaquePointer) -> PluginStreamHeader {
+        let count = Int(sqlite3_column_count(stmt))
+        let names = (0..<count).map { index in
+            sqlite3_column_name(stmt, Int32(index)).map { String(cString: $0) } ?? "col_\(index)"
+        }
+        let types = (0..<count).map { index in
+            sqlite3_column_decltype(stmt, Int32(index)).map { String(cString: $0) } ?? ""
+        }
+        return PluginStreamHeader(columns: names, columnTypeNames: types)
+    }
+
+    private static func values(of stmt: OpaquePointer, count: Int) -> [PluginCellValue] {
+        (0..<count).map { index in
+            let column = Int32(index)
+            switch sqlite3_column_type(stmt, column) {
+            case SQLITE_NULL:
+                return .null
+            case SQLITE_BLOB:
+                let byteCount = Int(sqlite3_column_bytes(stmt, column))
+                guard byteCount > 0, let pointer = sqlite3_column_blob(stmt, column) else { return .bytes(Data()) }
+                return .bytes(Data(bytes: pointer, count: byteCount))
+            default:
+                return text(of: stmt, column: column).map(PluginCellValue.text) ?? .null
+            }
+        }
+    }
+
+    // Kept apart from `streamingStmt`, so the grid's next page never ends a transfer reading the same connection.
+    private var exportStatements: [ObjectIdentifier: (handle: OpaquePointer, columnCount: Int)] = [:]
+    // A read whose last batch carried rows: its statement is already finalized, and the next pull ends the stream.
+    private var finishedExports: Set<ObjectIdentifier> = []
+
+    func beginExport(query: String, stream: SQLiteStreamToken) throws -> PluginStreamHeader {
+        guard let db else { throw SQLiteError.notConnected }
+        try Task.checkCancellation()
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else {
+            throw SQLiteError.queryFailed(String(cString: sqlite3_errmsg(db)))
+        }
+        guard let stmt else { throw SQLiteError.queryFailed("Failed to prepare statement") }
+        let header = Self.header(of: stmt)
+        exportStatements[ObjectIdentifier(stream)] = (stmt, header.columns.count)
+        return header
+    }
+
+    // Nil once the statement has no rows left, and the statement is then finalized.
+    func nextExportRows(stream: SQLiteStreamToken, limit: Int) throws -> [[PluginCellValue]]? {
+        guard let statement = exportStatements[ObjectIdentifier(stream)] else {
+            if finishedExports.remove(ObjectIdentifier(stream)) != nil { return nil }
+            throw CancellationError()
+        }
+        var rows: [[PluginCellValue]] = []
+        while rows.count < limit {
+            let outcome: (result: Int32, interrupted: Bool)
+            do {
+                outcome = try step(statement.handle, of: stream)
+            } catch {
+                endExport(stream)
+                throw error
+            }
+            if outcome.interrupted {
+                endExport(stream)
+                throw CancellationError()
+            }
+            switch outcome.result {
+            case SQLITE_ROW:
+                rows.append(Self.values(of: statement.handle, count: statement.columnCount))
+            case SQLITE_DONE:
+                endExport(stream)
+                guard !rows.isEmpty else { return nil }
+                finishedExports.insert(ObjectIdentifier(stream))
+                return rows
+            default:
+                let message = String(cString: sqlite3_errmsg(sqlite3_db_handle(statement.handle)))
+                endExport(stream)
+                throw SQLiteError.queryFailed(message)
+            }
+        }
+        return rows
+    }
+
+    func endExport(_ stream: SQLiteStreamToken) {
+        finishedExports.remove(ObjectIdentifier(stream))
+        guard let statement = exportStatements.removeValue(forKey: ObjectIdentifier(stream)) else { return }
+        sqlite3_finalize(statement.handle)
+    }
+
+    func journalMode() -> String? {
+        pragmaValue("journal_mode")?.lowercased()
+    }
+
+    private func pragmaValue(_ name: String) -> String? {
+        guard let result = try? execute("PRAGMA \(name)"), let row = result.rows.first, let value = row.first else {
+            return nil
+        }
+        return value
+    }
+
+    // Nil when the session holds a transaction, the copy would not fit, or SQLite refuses it; the partial copy is
+    // removed. VACUUM INTO copies the main database only, rowids included, as SQLite 3.27 and later make it.
+    func snapshot(into directory: URL) -> URL? {
+        guard let db, sqlite3_get_autocommit(db) != 0 else { return nil }
+        guard let pageCount = pragmaValue("page_count").flatMap(Int64.init),
+              let pageSize = pragmaValue("page_size").flatMap(Int64.init) else { return nil }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        } catch {
+            return nil
+        }
+        let free = try? directory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+            .volumeAvailableCapacityForImportantUsage
+        guard let free, free > pageCount * pageSize else { return nil }
+        let destination = directory.appendingPathComponent("\(UUID().uuidString).sqlite")
+        do {
+            _ = try execute("VACUUM INTO \(SQLQuoting.stringLiteral(destination.path))")
+            return destination
+        } catch {
+            try? FileManager.default.removeItem(at: destination)
+            return nil
+        }
     }
 
     // MARK: - Streaming
@@ -596,6 +869,54 @@ private actor SQLiteActor {
         guard let text = sqlite3_column_text(statement, column) else { return nil }
         let count = Int(sqlite3_column_bytes(statement, column))
         return String(decoding: UnsafeBufferPointer(start: text, count: count), as: UTF8.self)
+    }
+}
+
+nonisolated enum SQLiteAccess: Sendable, Equatable {
+    case readWrite
+    case readOnly
+    // A copy made for one transfer, removed when the driver disconnects.
+    case snapshot
+}
+
+// The pull side of one export read. A reader that stops before the end finalizes the statement when it lets go.
+nonisolated private final class SQLiteExportCursor: @unchecked Sendable {
+    private static let batchSize = 500
+
+    private let actor: SQLiteActor
+    private let query: String
+    private let stream = SQLiteStreamToken()
+    private let lock = NSLock()
+    private var started = false
+
+    init(actor: SQLiteActor, query: String) {
+        self.actor = actor
+        self.query = query
+    }
+
+    deinit {
+        let actor = actor
+        let stream = stream
+        Task { await actor.endExport(stream) }
+    }
+
+    func next() async throws -> PluginStreamElement? {
+        let actor = actor
+        let stream = stream
+        let interruptHandle = actor.interruptHandle
+        let isFirst = lock.withLock {
+            defer { started = true }
+            return !started
+        }
+        return try await withTaskCancellationHandler {
+            if isFirst {
+                return .header(try await actor.beginExport(query: query, stream: stream))
+            }
+            guard let rows = try await actor.nextExportRows(stream: stream, limit: Self.batchSize) else { return nil }
+            return .rows(rows)
+        } onCancel: {
+            interruptHandle.interrupt(stream)
+        }
     }
 }
 

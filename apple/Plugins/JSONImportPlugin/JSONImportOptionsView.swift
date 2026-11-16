@@ -32,3 +32,10 @@ struct JSONImportOptionsView: View {
         }
     }
 }
+
+extension JSONImportPlugin {
+    @MainActor
+    func settingsView() -> AnyView? {
+        AnyView(JSONImportOptionsView(plugin: self))
+    }
+}

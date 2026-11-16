@@ -425,8 +425,14 @@ struct RowDetailView: View {
     }
 
     private func handleSave() async {
-        let success = await connectionCoordinator.track(failed: { _ in viewModel.operationError != nil }) {
-            await viewModel.saveChanges()
+        let success: Bool
+        do {
+            success = try await connectionCoordinator.track(failed: { _ in viewModel.operationError != nil }) {
+                await viewModel.saveChanges()
+            }
+        } catch {
+            refused(error)
+            return
         }
         if viewModel.pendingWriteConfirmation {
             showSaveConfirmation = true
@@ -440,14 +446,26 @@ struct RowDetailView: View {
     }
 
     private func executePendingSave() async {
-        let success = await connectionCoordinator.track(failed: { _ in viewModel.operationError != nil }) {
-            await viewModel.executePendingSave()
+        let success: Bool
+        do {
+            success = try await connectionCoordinator.track(failed: { _ in viewModel.operationError != nil }) {
+                await viewModel.executePendingSave()
+            }
+        } catch {
+            refused(error)
+            return
         }
         if success {
             hapticSuccess.toggle()
         } else {
             hapticError.toggle()
         }
+    }
+
+    // An import holds the session, so nothing was sent.
+    private func refused(_ error: any Error) {
+        viewModel.operationError = ConnectionCoordinator.refusal(for: error)
+        hapticError.toggle()
     }
 
     // Names the cell rather than carrying its text, so the route stays cheap to compare.

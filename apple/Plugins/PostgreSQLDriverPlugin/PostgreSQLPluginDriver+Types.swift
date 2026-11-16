@@ -9,16 +9,7 @@ import TableProPostgreSQLCore
 
 extension PostgreSQLPluginDriver {
     func fetchUserDefinedTypes(schema: String?) async throws -> [PluginUserDefinedTypeInfo] {
-        let resolvedSchema = schema ?? currentSchema ?? "public"
-        let query = PostgreSQLObjectQueries.userDefinedTypeList(
-            schema: resolvedSchema,
-            identity: nil,
-            capabilities: catalogCapabilities
-        )
-        let result = try await catalogRead(query)
-        return result.rows
-            .compactMap(PostgreSQLTypeDefinition.record(from:))
-            .map(PostgreSQLTypeDefinition.info(from:))
+        try await exportCatalog.fetchUserDefinedTypes(schema: schema)
     }
 
     func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [PluginUserDefinedTypeInfo]? {
@@ -30,37 +21,8 @@ extension PostgreSQLPluginDriver {
             .map(PostgreSQLTypeDefinition.info(from:))
     }
 
-    /// An identity is the oid this driver handed out, so one that is not an oid is refused rather
-    /// than widened into a schema listing that would hand back whichever type sorts first. The
-    /// oid is looked up without a schema predicate, because a type moved to another schema keeps
-    /// it, and the row that comes back is checked against it before it is believed.
     func fetchUserDefinedType(_ type: PluginUserDefinedTypeInfo) async throws -> PluginUserDefinedTypeInfo {
-        if let identity = type.identity {
-            guard let oid = UInt32(identity) else { throw PluginObjectSourceError.notFound(type.name) }
-            let query = PostgreSQLObjectQueries.userDefinedTypeList(
-                schema: nil,
-                identity: String(oid),
-                capabilities: catalogCapabilities
-            )
-            let result = try await catalogRead(query)
-            let match = result.rows
-                .compactMap(PostgreSQLTypeDefinition.record(from:))
-                .first { $0.identity == String(oid) }
-            guard let match else { throw PluginObjectSourceError.notFound(type.name) }
-            return PostgreSQLTypeDefinition.info(from: match)
-        }
-        let resolvedSchema = type.schema ?? currentSchema ?? "public"
-        let query = PostgreSQLObjectQueries.userDefinedTypeList(
-            schema: resolvedSchema,
-            identity: nil,
-            capabilities: catalogCapabilities
-        )
-        let result = try await catalogRead(query)
-        let match = result.rows
-            .compactMap(PostgreSQLTypeDefinition.record(from:))
-            .first { $0.name == type.name }
-        guard let match else { throw PluginObjectSourceError.notFound(type.name) }
-        return PostgreSQLTypeDefinition.info(from: match)
+        try await exportCatalog.fetchUserDefinedType(type)
     }
 
     func createTypeTemplate(schema: String?) -> String? {

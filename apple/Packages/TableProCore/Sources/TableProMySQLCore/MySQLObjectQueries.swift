@@ -377,4 +377,37 @@ public enum MySQLObjectQueries {
         let host = String(scalars[scalars.index(after: separator)...])
         return "\(quoteIdentifier(user))@\(quoteIdentifier(host))"
     }
+
+    public static func columnCatalog(schema: String, table: String?, projectsGenerationExpression: Bool) -> String {
+        let tableFilter = table.map { " AND TABLE_NAME = '\(escapeLiteral($0))'" } ?? ""
+        let generationProjection = projectsGenerationExpression ? "GENERATION_EXPRESSION" : "NULL"
+        return """
+            SELECT
+                TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, COLLATION_NAME,
+                IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT,
+                \(generationProjection)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = '\(escapeLiteral(schema))'\(tableFilter)
+            ORDER BY TABLE_NAME, ORDINAL_POSITION
+            """
+    }
+
+    public static func approximateRowCount(schema: String, table: String) -> String {
+        """
+        SELECT TABLE_ROWS
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = '\(escapeLiteral(schema))'
+          AND TABLE_NAME = '\(escapeLiteral(table))'
+        """
+    }
+
+    // MySQL has no `DROP ROUTINE`, and takes no argument list: a database holds one routine of a kind per name.
+    public static func dropRoutine(isFunction: Bool, schema: String?, name: String, quote: (String) -> String) -> String {
+        let kind = isFunction ? "FUNCTION" : "PROCEDURE"
+        return "DROP \(kind) IF EXISTS \(qualifiedIdentifier(schema: schema, name: name, quote: quote))"
+    }
+
+    public static func dropTrigger(schema: String?, name: String, quote: (String) -> String) -> String {
+        "DROP TRIGGER \(qualifiedIdentifier(schema: schema, name: name, quote: quote))"
+    }
 }

@@ -37,3 +37,10 @@ struct XLSXImportOptionsView: View {
         .font(.system(size: 13))
     }
 }
+
+extension XLSXImportPlugin {
+    @MainActor
+    func settingsView() -> AnyView? {
+        AnyView(XLSXImportOptionsView(plugin: self))
+    }
+}

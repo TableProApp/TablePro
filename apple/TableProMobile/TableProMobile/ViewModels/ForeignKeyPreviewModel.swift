@@ -28,12 +28,21 @@ final class ForeignKeyPreviewModel {
 
     @ObservationIgnored private let session: ConnectionSession?
     @ObservationIgnored private let databaseType: DatabaseType
+    @ObservationIgnored private let trackRead: DataBrowserViewModel.SessionReadTracker?
     @ObservationIgnored private var isRunning = false
 
-    init(reference: ForeignKeyReference, session: ConnectionSession?, databaseType: DatabaseType) {
+    // `trackRead` marks the session busy for the reads, so an import cannot start between them, and refuses them while
+    // one holds the session.
+    init(
+        reference: ForeignKeyReference,
+        session: ConnectionSession?,
+        databaseType: DatabaseType,
+        trackRead: DataBrowserViewModel.SessionReadTracker? = nil
+    ) {
         self.reference = reference
         self.session = session
         self.databaseType = databaseType
+        self.trackRead = trackRead
     }
 
     var isLoaded: Bool {
@@ -78,6 +87,24 @@ final class ForeignKeyPreviewModel {
         defer { isRunning = false }
 
         let driver = session.driver
+        guard let trackRead else {
+            await read(on: driver)
+            return
+        }
+        do {
+            try await trackRead { await self.read(on: driver) }
+        } catch {
+            phase = .failed((error as? SessionHeldByImport)?.appError ?? AppError(
+                category: .query,
+                title: String(localized: "Could Not Load the Referenced Row"),
+                message: error.localizedDescription,
+                recovery: nil,
+                underlying: error
+            ))
+        }
+    }
+
+    private func read(on driver: any DatabaseDriver) async {
         // The key columns' types pick each literal, as they do for the filter Open Table runs.
         var keyColumns: [ColumnInfo] = []
         do {

@@ -12,7 +12,7 @@ import TableProPluginKit
 /// `isMariaDB` is threaded rather than defaulted. MariaDB and MySQL spell an expression default
 /// differently, the flag is driver state that `PluginCreateTableDefinition` does not carry, and a
 /// default here would silently give every MariaDB table MySQL's parentheses.
-internal func mysqlCreateTableSQL(
+nonisolated internal func mysqlCreateTableSQL(
     definition: PluginCreateTableDefinition,
     isMariaDB: Bool
 ) -> String? {
@@ -53,7 +53,7 @@ internal func mysqlCreateTableSQL(
     return sql + ";"
 }
 
-internal enum MySQLIndexKeyPart: Equatable {
+nonisolated internal enum MySQLIndexKeyPart: Equatable {
     case column(String, prefixLength: Int?)
     case expression(String)
 
@@ -73,7 +73,7 @@ internal enum MySQLIndexKeyPart: Equatable {
     }
 }
 
-internal struct MySQLIndexKey: Equatable {
+nonisolated internal struct MySQLIndexKey: Equatable {
     let part: MySQLIndexKeyPart
     let isDescending: Bool
 
@@ -82,7 +82,7 @@ internal struct MySQLIndexKey: Equatable {
     }
 }
 
-internal func mysqlIndexKeyClause(_ keys: [MySQLIndexKey], type: String?) -> String {
+nonisolated internal func mysqlIndexKeyClause(_ keys: [MySQLIndexKey], type: String?) -> String {
     var clause = "(\(keys.map(\.sql).joined(separator: ", ")))"
     let upperType = type?.uppercased() ?? ""
     if upperType == "BTREE" || upperType == "HASH" {
@@ -91,7 +91,7 @@ internal func mysqlIndexKeyClause(_ keys: [MySQLIndexKey], type: String?) -> Str
     return clause
 }
 
-internal func mysqlIndexKeys(of index: PluginIndexDefinition) -> [MySQLIndexKey] {
+nonisolated internal func mysqlIndexKeys(of index: PluginIndexDefinition) -> [MySQLIndexKey] {
     let expressions = Set(index.expressions ?? [])
     return index.columns.map { column in
         let part: MySQLIndexKeyPart = expressions.contains(column)
@@ -101,7 +101,7 @@ internal func mysqlIndexKeys(of index: PluginIndexDefinition) -> [MySQLIndexKey]
     }
 }
 
-internal func mysqlIndexDefinitionSQL(_ index: PluginIndexDefinition) -> String {
+nonisolated internal func mysqlIndexDefinitionSQL(_ index: PluginIndexDefinition) -> String {
     let upperType = index.indexType?.uppercased() ?? ""
     let kind: String
     switch upperType {
@@ -115,11 +115,11 @@ internal func mysqlIndexDefinitionSQL(_ index: PluginIndexDefinition) -> String 
 }
 
 // `spelling` is the session's: a key part is the catalog's backslash-escaped text.
-internal func mysqlAddIndexSQL(table: String, index: PluginIndexDefinition, spelling: MySQLLiteralSpelling) -> String {
+nonisolated internal func mysqlAddIndexSQL(table: String, index: PluginIndexDefinition, spelling: MySQLLiteralSpelling) -> String {
     spelling.respelled("ALTER TABLE \(mysqlQuoteIdentifier(table)) ADD \(mysqlIndexDefinitionSQL(index))")
 }
 
-internal func mysqlModifyIndexSQL(
+nonisolated internal func mysqlModifyIndexSQL(
     table: String,
     oldIndexName: String,
     newIndex: PluginIndexDefinition,
@@ -136,7 +136,7 @@ internal func mysqlModifyIndexSQL(
 /// `PRIMARY`, in any case, names the primary key and nothing else: MariaDB 13 refuses
 /// `ADD INDEX primary (b)` with ERROR 1280. Refused before the save, because a save that splits a
 /// replacement of the key's row drops the key first and then cannot add anything back.
-internal func mysqlReservedIndexNameRefusal(for index: PluginIndexDefinition) -> String? {
+nonisolated internal func mysqlReservedIndexNameRefusal(for index: PluginIndexDefinition) -> String? {
     guard index.name.caseInsensitiveCompare("PRIMARY") == .orderedSame else { return nil }
     return String(
         localized: "PRIMARY is the primary key's name, and no other index can take it. Rename the index, or change the key on the Columns tab."
@@ -144,7 +144,7 @@ internal func mysqlReservedIndexNameRefusal(for index: PluginIndexDefinition) ->
 }
 
 // A key part, and the key list read from the catalog, go into the statement as SQL.
-internal func mysqlIndexExpressionRefusal(for index: PluginIndexDefinition, flavor: MySQLServerFlavor) -> String? {
+nonisolated internal func mysqlIndexExpressionRefusal(for index: PluginIndexDefinition, flavor: MySQLServerFlavor) -> String? {
     let texts = (index.expressions ?? []) + [index.ddlMethodAndKeys].compactMap { $0 }
     guard !texts.allSatisfy({ $0.isEmpty || mysqlIsSingleExpression($0, flavor: flavor) }) else { return nil }
     return String(format: String(localized: "Index %@ has a key part that is not one SQL expression."), index.name)
@@ -152,7 +152,7 @@ internal func mysqlIndexExpressionRefusal(for index: PluginIndexDefinition, flav
 
 /// `CONSTRAINT name` is optional in MySQL's grammar and the server invents one when it is left out,
 /// so a blank name writes no clause rather than `CONSTRAINT `` `` ``, which is a syntax error.
-internal func mysqlForeignKeyDefinitionSQL(_ foreignKey: PluginForeignKeyDefinition) -> String {
+nonisolated internal func mysqlForeignKeyDefinitionSQL(_ foreignKey: PluginForeignKeyDefinition) -> String {
     let columns = foreignKey.columns.map(mysqlQuoteIdentifier).joined(separator: ", ")
     let referencedColumns = foreignKey.referencedColumns.map(mysqlQuoteIdentifier).joined(separator: ", ")
     let referencedTable: String
@@ -184,7 +184,7 @@ internal func mysqlForeignKeyDefinitionSQL(_ foreignKey: PluginForeignKeyDefinit
 }
 
 // Catalog text that is no referential action goes in as a name, which the server refuses.
-private func mysqlReferentialAction(_ action: String) -> String {
+nonisolated private func mysqlReferentialAction(_ action: String) -> String {
     let actions = ["CASCADE", "SET NULL", "SET DEFAULT", "RESTRICT", "NO ACTION"]
     return actions.first { $0 == action.uppercased() } ?? mysqlQuoteIdentifier(action)
 }

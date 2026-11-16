@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-internal struct SQLExportSessionDeclaration: Equatable {
+nonisolated internal struct SQLExportSessionDeclaration: Equatable {
     static let empty = SQLExportSessionDeclaration(prologue: "", epilogue: "")
 
     let prologue: String

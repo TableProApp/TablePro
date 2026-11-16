@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import os
+import TableProTabularIO
 import TableProUtilities
 
 internal enum LinkedFolderCommitDiff: Equatable, Sendable {

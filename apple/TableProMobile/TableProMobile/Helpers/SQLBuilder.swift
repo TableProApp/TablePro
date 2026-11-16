@@ -182,6 +182,7 @@ nonisolated enum SQLBuilder {
         return "UPDATE \(quotedTable) SET \(assignments) WHERE \(predicate)"
     }
 
+    // `firstWritableColumn` is the column Oracle names in a row of only defaults.
     static func buildInsert(
         table: String,
         schema: String?,
@@ -189,11 +190,12 @@ nonisolated enum SQLBuilder {
         type: DatabaseType,
         driver: any DatabaseDriver,
         columns: [String],
-        values: [String?]
+        values: [String?],
+        firstWritableColumn: String? = nil
     ) -> String? {
         let qualifiedTable = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
         guard !columns.isEmpty else {
-            return buildAllDefaultsInsert(qualifiedTable: qualifiedTable, for: type)
+            return buildAllDefaultsInsert(qualifiedTable: qualifiedTable, for: type, firstWritableColumn: firstWritableColumn)
         }
         let cols = columns.map { quoteIdentifier($0, for: type) }.joined(separator: ", ")
         let vals = values.map { val in
@@ -203,13 +205,17 @@ nonisolated enum SQLBuilder {
         return "INSERT INTO \(qualifiedTable) (\(cols)) VALUES (\(vals))"
     }
 
-    // Oracle accepts neither `() VALUES ()` nor `DEFAULT VALUES`, so it gets no statement.
-    static func buildAllDefaultsInsert(qualifiedTable: String, for type: DatabaseType) -> String? {
-        if speaksMySQLDialect(type) {
-            return "INSERT INTO \(qualifiedTable) () VALUES ()"
-        }
-        let takesDefaultValues = type.isSQLiteFamily || [.postgresql, .redshift, .mssql, .duckdb].contains(type)
-        return takesDefaultValues ? "INSERT INTO \(qualifiedTable) DEFAULT VALUES" : nil
+    // The macOS spelling through the shared `AllDefaultsInsert`: Oracle names one column with `VALUES (DEFAULT)`.
+    static func buildAllDefaultsInsert(
+        qualifiedTable: String,
+        for type: DatabaseType,
+        firstWritableColumn: String? = nil
+    ) -> String? {
+        AllDefaultsInsert.sql(
+            into: qualifiedTable,
+            databaseTypeId: type.rawValue,
+            firstWritableColumn: firstWritableColumn.map { quoteIdentifier($0, for: type) }
+        )
     }
 
     // SQLite has no TRUNCATE statement; a DELETE with no WHERE is its truncate.
@@ -218,8 +224,9 @@ nonisolated enum SQLBuilder {
         return type.isSQLiteFamily ? "DELETE FROM \(quoted)" : "TRUNCATE TABLE \(quoted)"
     }
 
+    // Given a column to name, which every table with a column the server does not fill in has.
     static func supportsAllDefaultsInsert(_ type: DatabaseType) -> Bool {
-        buildAllDefaultsInsert(qualifiedTable: "t", for: type) != nil
+        buildAllDefaultsInsert(qualifiedTable: "t", for: type, firstWritableColumn: "c") != nil
     }
 
     // SQL Server resolves `[schema].[table]` in the session's database, which a `USE` run in the Query tab moves, so
@@ -299,6 +306,54 @@ nonisolated enum SQLBuilder {
             return "SELECT COUNT(*) FROM \(quoted)"
         }
         return "SELECT COUNT(*) FROM \(quoted) \(whereClause)"
+    }
+
+    // MARK: - Export
+
+    // The data browser's rows with its filter, search and sort, every page of them: the table export a filtered view
+    // runs, as macOS exports `baseQueryForMore`.
+    static func buildExportSelect(
+        table: String,
+        schema: String?,
+        database: String? = nil,
+        type: DatabaseType,
+        filters: [TableFilter] = [],
+        logicMode: FilterLogicMode = .and,
+        columns: [ColumnInfo] = [],
+        session: SQLSessionLexicalFacts? = nil,
+        searchText: String? = nil,
+        searchColumns: [ColumnInfo] = [],
+        sortState: SortState = SortState()
+    ) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
+        let whereClause = buildSearchWhereClause(
+            searchText: searchText ?? "", searchColumns: searchColumns,
+            filters: filters, logicMode: logicMode, columns: columns, type: type, session: session
+        )
+        let orderBy = buildOrderByClause(sortState, for: type)
+        var sql = "SELECT * FROM \(quoted)"
+        if !whereClause.isEmpty { sql += " \(whereClause)" }
+        if !orderBy.isEmpty { sql += " \(orderBy)" }
+        return sql
+    }
+
+    // Rows picked in the browser, read again by their keys so the file holds whole values and bytes, not the page's
+    // previews.
+    static func buildRowsSelect(
+        table: String,
+        schema: String?,
+        database: String? = nil,
+        type: DatabaseType,
+        keys: [[(column: String, value: String)]],
+        columns: [ColumnInfo],
+        driver: any DatabaseDriver
+    ) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, database: database, for: type)
+        let predicates = keys.filter { !$0.isEmpty }.map { key in
+            "(\(keyPredicate(key, columns: columns, type: type, driver: driver)))"
+        }
+        let condition = predicates.isEmpty ? "1 = 0" : predicates.joined(separator: " OR ")
+        return "SELECT * FROM \(quoted) WHERE \(condition)"
     }
 
     // MARK: - Search

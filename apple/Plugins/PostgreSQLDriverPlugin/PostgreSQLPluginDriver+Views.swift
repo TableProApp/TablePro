@@ -8,17 +8,8 @@ import TableProPluginKit
 import TableProPostgreSQLCore
 
 extension PostgreSQLPluginDriver {
-    // Rebuilt from the catalog with every name qualified: pg_views lost the options and the check option.
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let resolvedSchema = schema ?? core.currentSchema
-        let query = PostgreSQLViewDefinition.catalogQuery(name: view, schema: resolvedSchema)
-        let result = try await catalogRead(query)
-        guard let row = result.rows.first,
-              let catalogRow = PostgreSQLViewDefinition.parse(row: row.map(\.asText))
-        else {
-            throw LibPQPluginError(message: "Failed to fetch definition for view '\(view)'", sqlState: nil, detail: nil)
-        }
-        return PostgreSQLViewDefinition.statement(name: view, schema: resolvedSchema, row: catalogRow)
+        try await exportCatalog.fetchViewDefinition(view: view, schema: schema)
     }
 
     func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {

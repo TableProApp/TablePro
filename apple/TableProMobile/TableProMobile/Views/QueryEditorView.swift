@@ -52,6 +52,7 @@ struct QueryEditorView: View {
     @State private var containerSize: CGSize = .zero
     @State private var savedQueriesRoute: SavedQueriesSheetRoute?
     @State private var savedQueryFolderExpansion: Set<UUID> = []
+    @State private var exportItem: MobileExportItem?
     @AppStorage(AppPreferences.rowLayoutKey) private var preferredLayout: RowLayout?
 
     private var session: ConnectionSession? { coordinator.session }
@@ -60,6 +61,11 @@ struct QueryEditorView: View {
     private var activeSchema: String? { coordinator.supportsSchemas ? coordinator.activeSchema : nil }
     private var safeModeLevel: SafeModeLevel { coordinator.connection.safeModeLevel }
     private var connectionId: UUID { coordinator.connection.id }
+    private var isSelecting: Bool { viewModel.selection.isActive }
+
+    private var canExport: Bool {
+        session.map { ExportObjectListing.supportsExport($0.driver) } ?? false
+    }
 
     private var completionScope: QueryCompletionScope {
         QueryCompletionScope(
@@ -249,6 +255,14 @@ struct QueryEditorView: View {
         .sheet(isPresented: $showShareSheet) {
             ActivityViewController(items: [shareText])
         }
+        .sheet(item: $exportItem) { item in
+            MobileExportSheet(
+                input: item.input,
+                environment: .live(connectionManager: appState.connectionManager, coordinator: coordinator)
+            )
+        }
+        .toolbar { selectionBar }
+        .toolbar(isSelecting ? .hidden : .automatic, for: .tabBar)
         .sheet(item: $savedQueriesRoute) { route in
             SavedQueriesSheet(
                 route: route,
@@ -297,7 +311,19 @@ struct QueryEditorView: View {
         }
     }
 
+    @ViewBuilder
     private var actionBar: some View {
+        if isSelecting {
+            RowSelectionHeader(
+                selection: Binding(get: { viewModel.selection }, set: { viewModel.selection = $0 }),
+                rowCount: viewModel.window.count
+            )
+        } else {
+            runActionBar
+        }
+    }
+
+    private var runActionBar: some View {
         HStack(spacing: 12) {
             if isExecuting {
                 Button {
@@ -410,7 +436,7 @@ struct QueryEditorView: View {
     }
 
     private var canRun: Bool {
-        !isExecuting && !coordinator.isDatabaseMoving && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !isExecuting && coordinator.runRefusal == nil && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var runAtCursorTitle: String {
@@ -594,20 +620,30 @@ struct QueryEditorView: View {
         return RowGrid(
             columns: columns,
             window: window,
-            keyColumn: RowKey.columnIndex(columns: columns, primaryKeys: [])
+            keyColumn: RowKey.columnIndex(columns: columns, primaryKeys: []),
+            selectedRows: isSelecting ? viewModel.selection.rows : nil
         ) { index, line in
-            NavigationLink {
-                resultRowDetail(columns: columns, initialIndex: index)
-            } label: {
-                line
-            }
-            .hoverEffect()
-            .contextMenu {
-                resultRowContextMenu(columns: columns, rowIndex: index)
-            } preview: {
-                resultRowCard(columns: columns, row: rows.indices.contains(index) ? rows[index].displayValues() : [])
-                    .padding()
-                    .frame(maxWidth: 360, alignment: .leading)
+            if let isSelected = viewModel.selection.pick(of: index) {
+                Button {
+                    viewModel.selection.toggle(index)
+                } label: {
+                    line
+                }
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            } else {
+                NavigationLink {
+                    resultRowDetail(columns: columns, initialIndex: index)
+                } label: {
+                    line
+                }
+                .hoverEffect()
+                .contextMenu {
+                    resultRowContextMenu(columns: columns, rowIndex: index)
+                } preview: {
+                    resultRowCard(columns: columns, row: rows.indices.contains(index) ? rows[index].displayValues() : [])
+                        .padding()
+                        .frame(maxWidth: 360, alignment: .leading)
+                }
             }
         }
     }
@@ -615,12 +651,21 @@ struct QueryEditorView: View {
     private var resultList: some View {
         let columns = viewModel.columns
         let rows = viewModel.window.rows
-        return List {
+        @Bindable var viewModel = viewModel
+        return List(selection: RowSelectionBinding.rows($viewModel.selection)) {
             ForEach(rows.indices, id: \.self) { rowIndex in
-                NavigationLink {
-                    resultRowDetail(columns: columns, initialIndex: rowIndex)
-                } label: {
-                    resultRowCard(columns: columns, row: rows[rowIndex].displayValues())
+                let card = resultRowCard(columns: columns, row: rows[rowIndex].displayValues())
+                // In Select mode the row is the card alone, which edit mode picks; a disabled link would draw it dimmed.
+                Group {
+                    if viewModel.selection.opensRowDetail {
+                        NavigationLink {
+                            resultRowDetail(columns: columns, initialIndex: rowIndex)
+                        } label: {
+                            card
+                        }
+                    } else {
+                        card
+                    }
                 }
                 .contextMenu {
                     resultRowContextMenu(columns: columns, rowIndex: rowIndex)
@@ -628,6 +673,31 @@ struct QueryEditorView: View {
             }
         }
         .listStyle(.plain)
+        .environment(\.editMode, RowSelectionBinding.editMode($viewModel.selection))
+    }
+
+    @ToolbarContentBuilder
+    private var selectionBar: some ToolbarContent {
+        if isSelecting {
+            ToolbarItemGroup(placement: .bottomBar) {
+                let indices = viewModel.selection.indices(within: viewModel.window.count)
+                Button {
+                    presentSelectionExport(indices)
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .disabled(indices.isEmpty || !canExport)
+                Spacer()
+                Menu {
+                    ForEach(ExportFormat.offered(for: databaseType)) { format in
+                        Button(format.rawValue) { copySelection(indices, as: format) }
+                    }
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .disabled(indices.isEmpty || isExportingResults)
+            }
+        }
     }
 
     // No table, so nothing to edit; the engine's type and session decide how Copy Row quotes and escapes.
@@ -742,7 +812,21 @@ struct QueryEditorView: View {
             }
 
             if !viewModel.window.isEmpty {
+                Button {
+                    viewModel.selection.begin()
+                } label: {
+                    Label("Select Rows", systemImage: "checklist")
+                }
+                .disabled(isExecuting)
                 RowLayoutPicker()
+                if canExport {
+                    Button {
+                        presentResultsExport()
+                    } label: {
+                        Label("Export Results…", systemImage: "square.and.arrow.up.on.square")
+                    }
+                    .disabled(isExecuting)
+                }
                 Section("Share Results") {
                     ForEach(ExportFormat.offered(for: databaseType)) { format in
                         Button {
@@ -808,6 +892,61 @@ struct QueryEditorView: View {
             do {
                 deliver(try await viewModel.exportResults(
                     as: format, databaseType: databaseType, driver: driver, availableBytes: availableBytes
+                ))
+            } catch {
+                resultsExportError = error
+            }
+        }
+    }
+
+    // MARK: - Export and Selection
+
+    private func exportInput(title: String, scope: ExportScopeOption) -> MobileExportInput {
+        MobileExportInput(
+            title: title,
+            fileName: String(localized: "Query Results"),
+            connectionId: connectionId,
+            databaseType: databaseType,
+            database: coordinator.activeDatabase.isEmpty ? nil : coordinator.activeDatabase,
+            schema: activeSchema,
+            safeModeLevel: safeModeLevel,
+            scopes: [scope]
+        )
+    }
+
+    private func presentResultsExport() {
+        do {
+            let scope = try QueryResultsExport.resultScope(viewModel, databaseType: databaseType, coordinator: coordinator)
+            exportItem = MobileExportItem(input: exportInput(title: String(localized: "Export Results"), scope: scope))
+        } catch {
+            resultsExportError = error
+        }
+    }
+
+    private func presentSelectionExport(_ indices: [Int]) {
+        do {
+            let scope = try QueryResultsExport.selectionScope(
+                columns: viewModel.columns, rows: viewModel.window.rows, indices: indices
+            )
+            exportItem = MobileExportItem(input: exportInput(title: String(localized: "Export Rows"), scope: scope))
+        } catch {
+            resultsExportError = error
+        }
+    }
+
+    private func copySelection(_ indices: [Int], as format: ExportFormat) {
+        guard !isExportingResults else { return }
+        let rows = viewModel.window.rows
+        let picked = indices.filter(rows.indices.contains).map { rows[$0].cells }
+        let columns = viewModel.columns
+        let databaseType = databaseType
+        let driver = coordinator.session?.driver
+        isExportingResults = true
+        Task {
+            defer { isExportingResults = false }
+            do {
+                ClipboardExporter.copyToClipboard(try await QueryResultsExport.clipboardText(
+                    picked, columns: columns, format: format, databaseType: databaseType, driver: driver
                 ))
             } catch {
                 resultsExportError = error
@@ -896,9 +1035,9 @@ struct QueryEditorView: View {
     // Claimed before the first await, so a second Run while the session reports how it reads literals starts nothing.
     private func executeQueryDirect(_ trimmed: String, enforcesReadOnly: Bool) async {
         guard let session, !isExecuting else { return }
-        // A run with a `USE` in any window holds the session until the picker follows it.
-        guard !coordinator.isDatabaseMoving else {
-            appError = ConnectionCoordinator.databaseMovingRefusal
+        // A run with a `USE` in any window holds the session until the picker follows it, and an import until it ends.
+        if let refusal = coordinator.runRefusal {
+            appError = refusal
             return
         }
 
@@ -958,11 +1097,26 @@ struct QueryEditorView: View {
 
         let progressUpdater = startActivityProgressUpdater(token: token)
 
-        await coordinator.track(
-            failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed },
-            rolledBack: { _ in viewModel.ranTransactionRollBack }
-        ) {
-            await viewModel.run(driver: session.driver, script: script, enforcesReadOnly: enforcesReadOnly)
+        let placement = coordinator.tablePlacement
+        do {
+            try await coordinator.track(
+                marksSession: false,
+                failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed },
+                rolledBack: { _ in viewModel.ranTransactionRollBack }
+            ) {
+                await viewModel.run(driver: session.driver, script: script, enforcesReadOnly: enforcesReadOnly, placement: placement)
+            }
+        } catch {
+            // An import took the session after the check above; nothing ran.
+            progressUpdater.cancel()
+            if movesDatabase { coordinator.endDatabaseMove() }
+            if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) }
+            appError = ConnectionCoordinator.refusal(for: error)
+            isExecuting = false
+            completion.reopenColumnReads()
+            executionStartTime = nil
+            await appState.queryActivities.end(token: token, outcome: QueryExecutionOutcome.failed.activityOutcome)
+            return
         }
 
         progressUpdater.cancel()
@@ -1013,40 +1167,6 @@ struct QueryEditorView: View {
         await appState.queryActivities.end(token: token, outcome: outcome.activityOutcome)
     }
 
-    // Every statement sent counts as run, a failed one's too: a missed reload leaves the lists naming what is gone.
-    // They are read as sent, since a run splits the rest of its text again after a statement that changes how the
-    // session reads literals.
-    private func postCatalogChanges(on session: ConnectionSession) -> ConnectionCoordinator.SessionMove {
-        let statements = viewModel.sentStatements
-        // A key or a collection a write made or removed is on the lists too; only a proven read leaves them as they are.
-        guard databaseType.speaksSQL else {
-            if statements.contains(where: { SQLWriteClassifier.isWriteQuery($0, databaseType: databaseType) }) {
-                coordinator.noteCatalogChanged([.tables, .databases])
-            }
-            return ConnectionCoordinator.SessionMove()
-        }
-        let sessionEffect = SessionLocalStatements.effect(of: statements, databaseType: databaseType)
-        appState.catalogChanges.noteSessionEffect(
-            sessionEffect,
-            for: connectionId,
-            driver: ObjectIdentifier(session.driver)
-        )
-        let grammar = SQLLexicalReadings.resolve(
-            databaseTypeId: databaseType.rawValue, declared: nil, session: nil
-        ).execution
-        let effect = SQLCatalogEffectClassifier.effect(ofStatements: statements, grammar: grammar)
-        var kinds = effect.kinds
-        // A commit shows the transaction's DDL to the catalog connection, a rollback takes it back from the session.
-        if effect.endsTransaction { kinds.formUnion([.tables, .schemas, .databases]) }
-        coordinator.noteCatalogChanged(kinds)
-        // A transaction's end takes back a `SET LOCAL` or a `SET` inside it, a function may set the search path, and a
-        // typed ROLLBACK of a held transaction also reaches the Roll Back reload.
-        return ConnectionCoordinator.SessionMove(
-            database: sessionEffect.usesDatabase,
-            schema: sessionEffect.leavesCatalog || effect.endsTransaction
-        )
-    }
-
     private func plan(_ text: String, on session: ConnectionSession) async -> QueryScript {
         QueryScript.plan(
             text,
@@ -1091,5 +1211,46 @@ struct QueryEditorView: View {
                 await controller.update(token: token, rowsStreamed: count)
             }
         }
+    }
+}
+
+// Outside the struct's body, which is long enough already.
+fileprivate extension QueryEditorView {
+    // Every statement sent counts as run, a failed one's too: a missed reload leaves the lists naming what is gone.
+    // They are read as sent, since a run splits the rest of its text again after a statement that changes how the
+    // session reads literals.
+    func postCatalogChanges(on session: ConnectionSession) -> ConnectionCoordinator.SessionMove {
+        let statements = viewModel.sentStatements
+        // A fresh connection would not repeat what these left on the session, so Export Results stops running again.
+        if SessionLocalStatements.changesSession(statements, databaseType: databaseType) {
+            coordinator.noteSessionChanged(on: session.driver)
+        }
+        // A key or a collection a write made or removed is on the lists too; only a proven read leaves them as they are.
+        guard databaseType.speaksSQL else {
+            if statements.contains(where: { SQLWriteClassifier.isWriteQuery($0, databaseType: databaseType) }) {
+                coordinator.noteCatalogChanged([.tables, .databases])
+            }
+            return ConnectionCoordinator.SessionMove()
+        }
+        let sessionEffect = SessionLocalStatements.effect(of: statements, databaseType: databaseType)
+        appState.catalogChanges.noteSessionEffect(
+            sessionEffect,
+            for: connectionId,
+            driver: ObjectIdentifier(session.driver)
+        )
+        let grammar = SQLLexicalReadings.resolve(
+            databaseTypeId: databaseType.rawValue, declared: nil, session: nil
+        ).execution
+        let effect = SQLCatalogEffectClassifier.effect(ofStatements: statements, grammar: grammar)
+        var kinds = effect.kinds
+        // A commit shows the transaction's DDL to the catalog connection, a rollback takes it back from the session.
+        if effect.endsTransaction { kinds.formUnion([.tables, .schemas, .databases]) }
+        coordinator.noteCatalogChanged(kinds)
+        // A transaction's end takes back a `SET LOCAL` or a `SET` inside it, a function may set the search path, and a
+        // typed ROLLBACK of a held transaction also reaches the Roll Back reload.
+        return ConnectionCoordinator.SessionMove(
+            database: sessionEffect.usesDatabase,
+            schema: sessionEffect.leavesCatalog || effect.endsTransaction
+        )
     }
 }

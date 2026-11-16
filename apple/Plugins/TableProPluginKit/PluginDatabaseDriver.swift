@@ -769,6 +769,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String?
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String?
     func generateDropRoutineSQL(name: String, signature: String?, schema: String?, isFunction: Bool) -> String?
+    // A dump's drop of a table, view or materialized view, which succeeds when the relation is missing. Nil keeps the
+    // export's own `DROP ... IF EXISTS`.
+    func generateDropRelationSQL(name: String, kind: PluginExportObjectKind, schema: String?) -> String?
     var triggerEditUsesReplace: Bool { get }
 
     /// Whether an object whose definition this driver reports as `CREATE OR REPLACE` is replaced by running that
@@ -1000,6 +1003,7 @@ public extension PluginDatabaseDriver {
         schema: String?,
         isFunction: Bool
     ) -> String? { nil }
+    func generateDropRelationSQL(name: String, kind: PluginExportObjectKind, schema: String?) -> String? { nil }
     var triggerEditUsesReplace: Bool { false }
     var replacesDefinitionsInPlace: Bool { false }
     var supportsTransactionalDDL: Bool { false }

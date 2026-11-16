@@ -554,7 +554,8 @@ final class RowDetailViewModel {
             return try ClipboardExporter.exportRow(
                 columns: columns, cells: completeCells(at: currentIndex),
                 format: format, tableName: table?.name,
-                databaseType: databaseType, driver: openedSession?.driver
+                databaseType: databaseType, driver: openedSession?.driver,
+                columnDetails: columnDetails
             )
         } catch {
             operationError = AppError(

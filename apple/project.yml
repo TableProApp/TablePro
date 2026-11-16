@@ -421,7 +421,7 @@ targets:
       - package: Yams
       - package: PostHog
       - package: TableProCore
-        products: [TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProEtcdCore, TableProFirebaseCore, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProMemcachedCore, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTLSClientIdentity, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
+        products: [TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProEtcdCore, TableProFirebaseCore, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProMemcachedCore, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLFile, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTLSClientIdentity, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
       - package: TableProMacCore
         products: [TableProCloudAPI, TableProMCP, TableProMCPClients, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
@@ -745,7 +745,7 @@ targets:
       principalClass: SQLExportPlugin
     dependencies:
       - package: TableProCore
-        product: TableProProcess
+        product: TableProGzip
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.SQLExportPlugin
@@ -846,7 +846,7 @@ targets:
       - TablePro/Core/RemoteSQLite/RemoteSQLiteWire.swift
     dependencies:
       - package: TableProCore
-        products: [TableProProcess, TableProSQLGrammar, TableProTestSupport]
+        products: [TableProGzip, TableProSQLGrammar, TableProTestSupport]
 
   ClickHouseDriverTests:
     templates: [PluginTests, ClickHouseLinkage]
@@ -898,7 +898,7 @@ targets:
     dependencies:
       - target: TableProPluginKit
       - package: TableProCore
-        products: [TableProJavaScriptText, TableProNumberFormatting, TableProProcess, TableProTabularIO]
+        products: [TableProJavaScriptText, TableProGzip, TableProNumberFormatting, TableProTabularIO]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

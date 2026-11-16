@@ -15,6 +15,7 @@ struct FKPreviewView: View {
     let databaseType: DatabaseType
     let currentSchema: String?
     let allowsOpen: Bool
+    let trackRead: DataBrowserViewModel.SessionReadTracker?
     let refreshTransaction: () async -> Void
     let onOpen: ((ForeignKeyReference) -> Void)?
 
@@ -24,6 +25,7 @@ struct FKPreviewView: View {
         databaseType: DatabaseType,
         currentSchema: String? = nil,
         allowsOpen: Bool = true,
+        trackRead: DataBrowserViewModel.SessionReadTracker? = nil,
         refreshTransaction: @escaping () async -> Void,
         onOpen: ((ForeignKeyReference) -> Void)? = nil
     ) {
@@ -32,6 +34,7 @@ struct FKPreviewView: View {
         self.databaseType = databaseType
         self.currentSchema = currentSchema
         self.allowsOpen = allowsOpen
+        self.trackRead = trackRead
         self.refreshTransaction = refreshTransaction
         self.onOpen = onOpen
     }
@@ -53,6 +56,7 @@ struct FKPreviewView: View {
             databaseType: databaseType,
             currentSchema: currentSchema,
             allowsOpen: allowsOpen,
+            trackRead: trackRead,
             refreshTransaction: refreshTransaction,
             onOpen: openAndClose,
             close: { dismiss() }

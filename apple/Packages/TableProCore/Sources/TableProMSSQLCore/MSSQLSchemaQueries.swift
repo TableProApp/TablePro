@@ -609,6 +609,16 @@ public enum MSSQLSchemaQueries {
         return "SELECT CONVERT(nvarchar(128), DATABASEPROPERTYEX(\(database), 'Collation'))"
     }
 
+    // The heap or clustered index partitions only, so a row is not counted once per index.
+    public static func approximateRowCount(schema: String, table: String) -> String {
+        let object = MSSQLStringLiteral.quoted(bracketed(schema: schema, table: table))
+        return """
+            SELECT SUM(p.rows)
+            FROM sys.partitions p
+            WHERE p.object_id = OBJECT_ID(\(object)) AND p.index_id IN (0, 1)
+            """
+    }
+
     private static func catalogObject(schema: String, table: String) -> (catalog: String, object: String) {
         if namesTemporaryTable(table) {
             return ("tempdb.", temporaryObjectID(table))

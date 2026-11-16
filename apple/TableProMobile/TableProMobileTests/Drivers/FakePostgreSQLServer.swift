@@ -9,11 +9,20 @@ import os
 final class FakePostgreSQLServer: @unchecked Sendable {
     struct SetupFailure: Error {}
 
+    struct Column: Sendable {
+        let name: String
+        let oid: UInt32
+    }
+
     enum Reply: Sendable {
         // One text column `n`, its values `row 0`, `row 1` and on.
         case rows(Int)
+        // Columns of the given type oids, their values in text form; nil is NULL.
+        case typed([Column], rows: [[String?]])
         // An ErrorResponse after `rowsFirst` rows.
         case failure(sqlState: String, message: String, rowsFirst: Int = 0)
+        // A `COPY ... FROM STDIN` that takes the client's data and completes with its line count.
+        case copyIn
     }
 
     struct Session: Sendable {
@@ -21,6 +30,9 @@ final class FakePostgreSQLServer: @unchecked Sendable {
         // Every statement in the order it arrived, as a simple Query or a Parse.
         var queries: [String] = []
         var extendedQueries: [String] = []
+        // The CopyData a COPY received, and the reason of a CopyFail.
+        var copied: [UInt8] = []
+        var copyFailure: String?
         var terminated = false
     }
 
@@ -148,7 +160,23 @@ final class FakePostgreSQLServer: @unchecked Sendable {
             case UInt8(ascii: "Q"):
                 let query = String(decoding: body.prefix { $0 != 0 }, as: UTF8.self)
                 session.queries.append(query)
+                if case .copyIn? = server.replies[query] {
+                    // CopyInResponse: text format, one column; ReadyForQuery waits for the copy's end.
+                    return FakePostgreSQLServer.message("G", [0] + FakePostgreSQLServer.bytes16(1) + FakePostgreSQLServer.bytes16(0))
+                }
                 return run(query, server: server, describes: true) + FakePostgreSQLServer.message("Z", [status])
+            case UInt8(ascii: "d"):
+                session.copied += body
+                return []
+            case UInt8(ascii: "c"):
+                let lines = session.copied.filter { $0 == UInt8(ascii: "\n") }.count
+                return FakePostgreSQLServer.message("C", Array("COPY \(lines)".utf8) + [0])
+                    + FakePostgreSQLServer.message("Z", [status])
+            case UInt8(ascii: "f"):
+                session.copyFailure = String(decoding: body.prefix { $0 != 0 }, as: UTF8.self)
+                if status == UInt8(ascii: "T") { status = UInt8(ascii: "E") }
+                return FakePostgreSQLServer.errorResponse("57014", "COPY from stdin failed: \(session.copyFailure ?? "")")
+                    + FakePostgreSQLServer.message("Z", [status])
             case UInt8(ascii: "P"):
                 let fields = body.split(separator: 0, maxSplits: 2, omittingEmptySubsequences: false)
                 parsed = fields.count > 1 ? String(decoding: fields[1], as: UTF8.self) : ""
@@ -158,7 +186,9 @@ final class FakePostgreSQLServer: @unchecked Sendable {
             case UInt8(ascii: "B"):
                 return skippingToSync ? [] : FakePostgreSQLServer.message("2", [])
             case UInt8(ascii: "D"):
-                return skippingToSync ? [] : FakePostgreSQLServer.rowDescription
+                guard !skippingToSync else { return [] }
+                guard case .typed(let columns, _)? = server.replies[parsed] else { return FakePostgreSQLServer.rowDescription }
+                return FakePostgreSQLServer.rowDescription(columns)
             case UInt8(ascii: "E"):
                 guard !skippingToSync else { return [] }
                 if case .failure? = server.replies[parsed] { skippingToSync = true }
@@ -179,6 +209,11 @@ final class FakePostgreSQLServer: @unchecked Sendable {
             case .rows(let count)?:
                 return (describes ? FakePostgreSQLServer.rowDescription : []) + FakePostgreSQLServer.dataRows(count)
                     + FakePostgreSQLServer.message("C", Array("SELECT \(count)".utf8) + [0])
+            case .typed(let columns, let rows)?:
+                return (describes ? FakePostgreSQLServer.rowDescription(columns) : []) + FakePostgreSQLServer.dataRows(rows)
+                    + FakePostgreSQLServer.message("C", Array("SELECT \(rows.count)".utf8) + [0])
+            case .copyIn?:
+                return FakePostgreSQLServer.message("C", Array("SELECT 0".utf8) + [0])
             case .failure(let sqlState, let message, let rowsFirst)?:
                 if status == UInt8(ascii: "T") { status = UInt8(ascii: "E") }
                 let header = rowsFirst > 0 && describes ? FakePostgreSQLServer.rowDescription : []
@@ -221,6 +256,24 @@ final class FakePostgreSQLServer: @unchecked Sendable {
             bytes16(1) + Array("n".utf8) + [0] + bytes(UInt32(0)) + bytes16(0) + bytes(textOid) + bytes16(0xFFFF)
                 + bytes(UInt32.max) + bytes16(0)
         )
+    }
+
+    private static func rowDescription(_ columns: [Column]) -> [UInt8] {
+        let fields = columns.flatMap { column in
+            Array(column.name.utf8) + [0] + bytes(UInt32(0)) + bytes16(0) + bytes(column.oid) + bytes16(0xFFFF)
+                + bytes(UInt32.max) + bytes16(0)
+        }
+        return message("T", bytes16(UInt16(columns.count)) + fields)
+    }
+
+    private static func dataRows(_ rows: [[String?]]) -> [UInt8] {
+        rows.flatMap { row in
+            message("D", bytes16(UInt16(row.count)) + row.flatMap { value -> [UInt8] in
+                guard let value else { return bytes(UInt32.max) }
+                let text = Array(value.utf8)
+                return bytes(UInt32(text.count)) + text
+            })
+        }
     }
 
     private static func dataRows(_ count: Int) -> [UInt8] {

@@ -12,7 +12,7 @@
 import Foundation
 import TableProPluginKit
 
-enum CSVImportParsing {
+nonisolated enum CSVImportParsing {
     static let detectionSampleLimit = 200
 
     static func resolveDialect(in text: Data, options: CSVImportOptions) -> CSVDialect {

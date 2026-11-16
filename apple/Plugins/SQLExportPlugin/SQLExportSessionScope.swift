@@ -12,7 +12,7 @@ import Foundation
 /// one, but not in one session, so session state cannot be assumed to cross a part boundary. A
 /// scope therefore belongs to every part it spans rather than to the file: the writer re-opens it
 /// at the top of each new part and closes it at the bottom of each finished one.
-internal struct SQLExportSessionScope: Equatable {
+nonisolated internal struct SQLExportSessionScope: Equatable {
     internal let opener: String
     internal let closer: String
 

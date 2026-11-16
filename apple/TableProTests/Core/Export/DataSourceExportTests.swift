@@ -131,17 +131,17 @@ struct DataSourceExportTests {
 
     @Test("A supported list wins over an excluded list")
     func supportedListWins() {
-        #expect(ExportFormatCatalog.accepts(
+        #expect(ExportFormatOffer.accepts(
             databaseTypeId: "MongoDB",
             supportedDatabaseTypeIds: ["MongoDB"],
             excludedDatabaseTypeIds: ["MongoDB"]
         ))
-        #expect(!ExportFormatCatalog.accepts(
+        #expect(!ExportFormatOffer.accepts(
             databaseTypeId: "DataFile",
             supportedDatabaseTypeIds: ["MongoDB"],
             excludedDatabaseTypeIds: []
         ))
-        #expect(ExportFormatCatalog.accepts(
+        #expect(ExportFormatOffer.accepts(
             databaseTypeId: "DataFile",
             supportedDatabaseTypeIds: [],
             excludedDatabaseTypeIds: ["MongoDB", "Redis"]
@@ -168,6 +168,18 @@ struct DataSourceExportTests {
         #expect(dataSource.quoteIdentifier("order \"items\"") == "\"order \"\"items\"\"\"")
         #expect(dataSource.quoteIdentifier("`name`") == "\"`name`\"")
         #expect(dataSource.escapeStringLiteral("O'Brien\\n") == "O''Brien\\n")
+    }
+
+    @Test("Held rows pass a SQL export's snapshot BEGIN and COMMIT as no-ops and refuse any other statement")
+    func heldRowsPassSnapshotStatements() async throws {
+        let dataSource = QueryResultExportDataSource(detachedRows: tableRows(), databaseTypeId: "PostgreSQL")
+        for statement in ["BEGIN", "START TRANSACTION READ ONLY", "COMMIT", "/* snapshot */ ROLLBACK"] {
+            let result = try await dataSource.execute(query: statement)
+            #expect(result.rows.isEmpty)
+        }
+        await #expect(throws: (any Error).self) {
+            _ = try await dataSource.execute(query: "SELECT 1")
+        }
     }
 
     @Test("A detached data source streams every row, or only the rows it was given in that order")

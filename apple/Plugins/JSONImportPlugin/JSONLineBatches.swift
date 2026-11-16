@@ -12,7 +12,7 @@ import TableProPluginKit
 /// A batch ends after a set number of lines, not rows. The runner checks for a stop between
 /// batches, so a batch that waited for its rows read on through a run of lines holding none, up
 /// to a whole chunk of the file, before a stop was seen.
-struct JSONLineBatches {
+nonisolated struct JSONLineBatches {
     private var lines: JSONLineReader
     private let linesPerBatch: Int
     private let skipsUnreadableLines: Bool

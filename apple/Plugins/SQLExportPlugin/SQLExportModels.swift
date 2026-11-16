@@ -5,7 +5,22 @@
 
 import Foundation
 
-public struct SQLExportOptions: Equatable, Codable {
+nonisolated public struct SQLExportOptions: Equatable, Codable {
+    public static let batchSizeChoices = [1, 100, 500, 1_000]
+
+    public static let splitSizeChoices = [0, 8, 32, 128, 512]
+
+    // Past the first, each is a `max_allowed_packet` default a MySQL or MariaDB release shipped, so an untuned server takes it.
+    public static let statementSizeChoices = [0, 262_144, 1_048_576, 4_194_304, 16_777_216, 67_108_864]
+
+    public static func statementSizeLabel(_ bytes: Int) -> String {
+        guard bytes > 0 else { return String(localized: "No limit", bundle: .main) }
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .binary
+        formatter.allowedUnits = [.useKB, .useMB]
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+
     public var compressWithGzip: Bool = false
     public var batchSize: Int = 500
     public var excludeAutoIncrementValue: Bool = true
@@ -64,7 +79,7 @@ public struct SQLExportOptions: Equatable, Codable {
 /// `CustomStringConvertible` as well as `LocalizedError`, because the warning the export writes
 /// into the dump interpolates the error value itself. Without it the comment read
 /// `failed to fetch DDL for table orders: emptyDefinition`, the case name.
-internal enum SQLExportObjectError: LocalizedError, CustomStringConvertible {
+nonisolated internal enum SQLExportObjectError: LocalizedError, CustomStringConvertible {
     case emptyDefinition
 
     internal var errorDescription: String? {

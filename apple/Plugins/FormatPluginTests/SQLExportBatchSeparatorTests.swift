@@ -12,34 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-/// Holds an export inside its first table definition fetch until the test lets it go, so a second export can run to
-/// its end on the same plugin in between.
-private actor ExportPause {
-    private var reached = false
-    private var arrival: CheckedContinuation<Void, Never>?
-    private var released = false
-    private var release: CheckedContinuation<Void, Never>?
-
-    func hold() async {
-        reached = true
-        arrival?.resume()
-        arrival = nil
-        guard !released else { return }
-        await withCheckedContinuation { release = $0 }
-    }
-
-    func untilReached() async {
-        guard !reached else { return }
-        await withCheckedContinuation { arrival = $0 }
-    }
-
-    func resume() {
-        released = true
-        release?.resume()
-        release = nil
-    }
-}
-
 struct SQLExportBatchSeparatorTests {
     private enum Engine: String {
         case sqlServer = "SQL Server"
@@ -164,7 +136,8 @@ struct SQLExportBatchSeparatorTests {
         #expect(batches.contains("SET IDENTITY_INSERT [orders] ON;"))
         #expect(batches.contains("SET IDENTITY_INSERT [orders] OFF;"))
         #expect(batches.contains { $0.hasPrefix("INSERT INTO [orders]") && $0.hasSuffix(";") })
-        #expect(batches.filter { $0.hasPrefix("DROP ") }.count == 3)
+        // The routine gets no drop: the source writes none, and SQL Server has no DROP ROUTINE.
+        #expect(batches.filter { $0.hasPrefix("DROP ") }.count == 2)
     }
 
     @Test("A SQL Server dump ends each statement on a GO line, as SQL Server Management Studio writes one")
@@ -204,7 +177,7 @@ struct SQLExportBatchSeparatorTests {
                     on: plugin, tables: tables, dataSource: ServerDataSource(engine: otherEngine)
                 )
                 await pause.resume()
-                return (try await held, other)
+                return (try await held.text, other.text)
             }
             #expect(goLines(in: held) == expectedGoLines[heldEngine], "\(heldEngine.rawValue) held while another ran")
             #expect(goLines(in: other) == expectedGoLines[otherEngine], "\(otherEngine.rawValue) run during another")

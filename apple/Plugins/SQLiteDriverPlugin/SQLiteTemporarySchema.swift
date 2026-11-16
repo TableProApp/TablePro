@@ -9,7 +9,7 @@ import TableProPluginKit
 // A connection's `temp` schema is its own: another connection to the same file sees none of it. SQLite resolves a bare
 // name in `temp` before `main`, so a catalog read that looks at `sqlite_master` alone misses a temporary table, or
 // answers with the main table it hides.
-enum SQLiteTemporarySchema {
+nonisolated enum SQLiteTemporarySchema {
     static let tablesQuery = """
         SELECT name, type FROM sqlite_temp_master
         WHERE type IN ('table', 'view')

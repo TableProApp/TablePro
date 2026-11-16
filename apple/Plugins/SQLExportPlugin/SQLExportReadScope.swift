@@ -9,7 +9,7 @@ import TableProPluginKit
 
 /// The driver pins the read session, such as MySQL's `time_zone`, so the dump's values read back the same on the
 /// server that loads it. The export reads on the user's own session, so every exit puts it back.
-internal struct SQLExportReadScope {
+nonisolated internal struct SQLExportReadScope {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLExportReadScope")
 
     private var scope: PluginSessionScope?

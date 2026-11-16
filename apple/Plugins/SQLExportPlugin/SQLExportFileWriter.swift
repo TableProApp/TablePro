@@ -19,7 +19,7 @@ import TableProPluginKit
 /// published part back would leave neither the file the user had nor the one just written. This
 /// used to claim it prevented half a dump, while `rollback()` removed temps only and left every
 /// already-renamed part in place unmentioned (#2533).
-internal final class SQLExportFileWriter {
+nonisolated internal final class SQLExportFileWriter {
     /// The name a part takes: `dump.sql` becomes `dump.part1.sql`, and a compound extension like
     /// `dump.sql.gz` becomes `dump.part1.sql.gz`.
     internal static func partURL(for destination: URL, part: Int) -> URL {
@@ -211,7 +211,7 @@ internal final class SQLExportFileWriter {
 /// the earlier parts on disk. Naming them is the whole point of this error: the alert that reports
 /// the failure is the only place the user hears which files the export did write, and they cannot
 /// be taken back, because `replaceItemAt` keeps no backup of what stood at the path.
-internal struct SQLExportPublishFailure: LocalizedError {
+nonisolated internal struct SQLExportPublishFailure: LocalizedError {
     internal let published: [URL]
     internal let failed: URL
     internal let underlying: any Error

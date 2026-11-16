@@ -77,7 +77,7 @@ paths:
   - "apple/TablePro/Core/RoutineDebugging/RoutineDebugOptionStore.swift"
   - "apple/TablePro/Core/RowGeneration/RowGenerationModel.swift"
   - "apple/TablePro/Core/SSH/HostKeyStore.swift"
-  - "apple/TablePro/Core/Services/Export/ImportColumnMatcher.swift"
+  - "apple/TablePro/Core/Transfer/Shared/ImportColumnMatcher.swift"
   - "apple/TablePro/Core/Services/Formatting/ValueDisplayFormat.swift"
   - "apple/TablePro/Core/Services/TeamLibrary/TeamLibraryState.swift"
   - "apple/TablePro/Core/Services/Account/*Store.swift"

@@ -10,12 +10,8 @@ import TableProTabularIO
 
 // MARK: - Import Encoding Options
 
-/// The text encodings the SQL import dialog offers.
-///
-/// The raw value is the key the last choice is stored under, so it stays put; `label` is what the
-/// menu shows. Latin-1 and Windows-1252 are both here because they disagree over 0x80 to 0x9F,
-/// which is where a dump written by MySQL keeps its curly quotes, en dashes and euro sign: read
-/// as Latin-1 they arrive as C1 control characters instead.
+// The raw value is the key the last choice is stored under. Latin-1 and Windows-1252 disagree over 0x80 to 0x9F, where
+// a MySQL dump keeps its curly quotes, en dashes and euro sign.
 enum ImportEncoding: String, CaseIterable, Identifiable {
     case utf8 = "UTF-8"
     case utf16 = "UTF-16"
@@ -35,15 +31,6 @@ enum ImportEncoding: String, CaseIterable, Identifiable {
     init?(detected: TabularTextEncoding) {
         guard let match = Self.allCases.first(where: { $0.tabularEncoding == detected }) else { return nil }
         self = match
-    }
-
-    var canHideABackslashInsideACharacter: Bool {
-        switch self {
-        case .shiftJIS, .gb18030, .big5:
-            return true
-        case .utf8, .utf16, .utf16LittleEndian, .utf16BigEndian, .latin1, .windows1252, .ascii, .eucJP, .eucKR:
-            return false
-        }
     }
 
     var label: String {
