@@ -19,6 +19,7 @@ internal sealed class Workbench : IDisposable
         Folder = folder;
         _settings = new SettingsStore(Path.Combine(folder, "settings.json"));
         Sessions = new SessionStore(Path.Combine(folder, "session.json"));
+        TableFilters = new TableFilterMemory(Path.Combine(folder, "table-filters.json"));
         Settings = _settings.Load();
         DisplaySettings.Update(Settings);
     }
@@ -43,6 +44,9 @@ internal sealed class Workbench : IDisposable
     public IReadOnlyList<DatabaseEngine> Engines => Core.Engines;
 
     public SessionStore Sessions { get; }
+
+    // The last filter of each table, read when the table opens again.
+    public TableFilterMemory TableFilters { get; }
 
     public AppSettings Settings { get; private set; }
 

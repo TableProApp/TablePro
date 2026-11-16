@@ -18,7 +18,8 @@ public sealed class ExportTests
         Assert.IsType<QueryOutcome.Completed>(await run.Completion);
         using var set = run.GetResultSet(0) ?? throw new InvalidOperationException("The read held no set.");
 
-        var rows = await database.Session.ExportRowsAsync(set, 3, ExportFormat.Csv, null, path, cancellationToken);
+        var rows = await database.Session.ExportRowsAsync(
+            set, 3, ExportFormat.Csv, null, path, cancellationToken: cancellationToken);
 
         Assert.Equal(3, rows);
         Assert.Equal(
@@ -43,27 +44,84 @@ public sealed class ExportTests
         Assert.True(set.GetColumns().Count > page.VisibleColumns, "A table with no key pages by its row address.");
 
         var rows = await database.Session.ExportRowsAsync(
-            set, page.VisibleColumns, ExportFormat.Csv, notes, path, cancellationToken);
+            set, page.VisibleColumns, ExportFormat.Csv, notes, path, cancellationToken: cancellationToken);
 
         Assert.Equal(2, rows);
         Assert.Equal("body\nfirst\nsecond\n", await File.ReadAllTextAsync(path, cancellationToken));
     }
 
     [Fact]
-    public async Task SqlInsertWithoutATableIsRefusedBeforeAnyFile()
+    public async Task SqlInsertOfAResultWritesIntoTheTableItsColumnsCameFrom()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var database = await SqliteDatabase.CreateAsync();
         var path = Beside(database, "people.sql");
-        using var run = database.Editor.Run("SELECT id, name FROM people", cancellationToken: cancellationToken);
+        using var run = database.Editor.Run("SELECT id, name FROM people ORDER BY id", cancellationToken: cancellationToken);
         Assert.IsType<QueryOutcome.Completed>(await run.Completion);
         using var set = run.GetResultSet(0) ?? throw new InvalidOperationException("The read held no set.");
 
-        var error = await Assert.ThrowsAsync<TableProException>(
-            () => database.Session.ExportRowsAsync(set, 2, ExportFormat.SqlInsert, null, path, cancellationToken));
+        var rows = await database.Session.ExportRowsAsync(
+            set, 2, ExportFormat.SqlInsert, null, path, cancellationToken: cancellationToken);
 
-        Assert.Equal("ffi.export_needs_table", error.Code);
-        Assert.Empty(Named(database, "people.sql"));
+        Assert.Equal(3, rows);
+        var first = (await File.ReadAllLinesAsync(path, cancellationToken))[0];
+        Assert.Equal("INSERT INTO \"people\" (\"id\", \"name\") VALUES (1, 'Ada');", first);
+    }
+
+    [Fact]
+    public async Task SqlInsertOfAComputedResultWritesIntoQueryResults()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var database = await SqliteDatabase.CreateAsync();
+        var path = Beside(database, "loud.sql");
+        using var run = database.Editor.Run(
+            "SELECT id, upper(name) AS loud FROM people ORDER BY id", cancellationToken: cancellationToken);
+        Assert.IsType<QueryOutcome.Completed>(await run.Completion);
+        using var set = run.GetResultSet(0) ?? throw new InvalidOperationException("The read held no set.");
+
+        await database.Session.ExportRowsAsync(
+            set, 2, ExportFormat.SqlInsert, null, path, cancellationToken: cancellationToken);
+
+        var first = (await File.ReadAllLinesAsync(path, cancellationToken))[0];
+        Assert.Equal("INSERT INTO \"query_results\" (\"id\", \"loud\") VALUES (1, 'ADA');", first);
+    }
+
+    [Fact]
+    public async Task AnExportReportsTheRowsWrittenWhileItRuns()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var database = await SqliteDatabase.CreateAsync();
+        await database.ExecuteAsync(
+            "CREATE VIEW endless AS WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT x FROM c");
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var progress = new LatestRows();
+        var export = database.Session.ExportTableAsync(
+            new TableName(null, "endless"),
+            null,
+            null,
+            ExportFormat.Csv,
+            Beside(database, "endless.csv"),
+            progress,
+            cancel.Token);
+
+        var waited = Stopwatch.StartNew();
+        while (progress.Rows < 2)
+        {
+            Assert.False(export.IsCompleted, "The export ended before it reported.");
+            Assert.True(waited.Elapsed < TimeSpan.FromSeconds(10), "The export reported no rows.");
+            await Task.Delay(5, cancellationToken);
+        }
+
+        var first = progress.Rows;
+        while (progress.Rows == first)
+        {
+            Assert.True(waited.Elapsed < TimeSpan.FromSeconds(10), "The count stayed where it was.");
+            await Task.Delay(5, cancellationToken);
+        }
+
+        await cancel.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => export);
+        Assert.True(progress.Rows > first);
     }
 
     [Fact]
@@ -74,7 +132,7 @@ public sealed class ExportTests
         var path = Beside(database, "people.sql");
 
         var rows = await database.Session.ExportTableAsync(
-            People, null, null, ExportFormat.SqlInsert, path, cancellationToken);
+            People, null, null, ExportFormat.SqlInsert, path, cancellationToken: cancellationToken);
 
         Assert.Equal(3, rows);
         var first = (await File.ReadAllLinesAsync(path, cancellationToken))[0];
@@ -93,7 +151,7 @@ public sealed class ExportTests
             null);
 
         var rows = await database.Session.ExportTableAsync(
-            People, new ColumnSort(0, false), filter, ExportFormat.Csv, path, cancellationToken);
+            People, new ColumnSort(0, false), filter, ExportFormat.Csv, path, cancellationToken: cancellationToken);
 
         Assert.Equal(2, rows);
         Assert.Equal(
@@ -111,7 +169,7 @@ public sealed class ExportTests
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var path = Beside(database, "endless.csv");
         var export = database.Session.ExportTableAsync(
-            new TableName(null, "endless"), null, null, ExportFormat.Csv, path, cancel.Token);
+            new TableName(null, "endless"), null, null, ExportFormat.Csv, path, cancellationToken: cancel.Token);
 
         var waited = Stopwatch.StartNew();
         while (Named(database, "endless.csv").Count == 0)
@@ -139,4 +197,14 @@ public sealed class ExportTests
             .Select(file => Path.GetFileName(file))
             .Where(name => name.Contains(part, StringComparison.Ordinal)),
     ];
+
+    // Reported on the thread pool, which a test reads from another thread.
+    private sealed class LatestRows : IProgress<long>
+    {
+        private long _rows;
+
+        public long Rows => Interlocked.Read(ref _rows);
+
+        public void Report(long value) => Interlocked.Exchange(ref _rows, value);
+    }
 }

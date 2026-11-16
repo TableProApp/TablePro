@@ -24,8 +24,15 @@ public sealed record CellValue(string Column, string? Text, bool TextCut, ReadOn
     public bool IsWholeBinary => Bytes is { } bytes && bytes.Length == ByteLength;
 
     // The grid's text with its pending edit, and the server's value otherwise. A deleted row still shows what it
-    // holds; a new row and a changed cell show the text typed.
-    public static CellValue? Read(IGridData data, ResultSet? rows, int row, int column)
+    // holds; a new row and a changed cell show the text typed. A caller that only asks what kind of value it is reads
+    // less of it.
+    public static CellValue? Read(
+        IGridData data,
+        ResultSet? rows,
+        int row,
+        int column,
+        int maxCharacters = MaximumShownCharacters,
+        long maxBytes = MaximumPictureBytes)
     {
         ArgumentNullException.ThrowIfNull(data);
         if (row < 0 || row >= data.RowCount || column < 0 || column >= data.ColumnCount)
@@ -55,12 +62,12 @@ public sealed record CellValue(string Column, string? Text, bool TextCut, ReadOn
             return Of(name, reader.ReadWhole(row, column));
         }
 
-        if (rows.GetCellBytes(row, column, MaximumPictureBytes) is { } binary)
+        if (rows.GetCellBytes(row, column, maxBytes) is { } binary)
         {
             return new CellValue(name, null, false, binary.Bytes, binary.Length, IsDefault: false);
         }
 
-        return rows.GetCellTextHead(row, column, MaximumShownCharacters) is { } head
+        return rows.GetCellTextHead(row, column, maxCharacters) is { } head
             ? new CellValue(name, head.Text, head.Cut, null, 0, IsDefault: false)
             : new CellValue(name, null, false, null, 0, IsDefault: false);
     }

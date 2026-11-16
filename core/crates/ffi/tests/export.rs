@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 
 use secrecy::SecretString;
 use tablepro_ffi::{
-    CancelToken, ColumnSort, CombinatorTag, Core, CoreError, DatabaseSession, ExportFormatTag, FileOpenRequest,
-    FilterOpTag, FilterRuleArg, FilterValueArg, HostConfig, HostSecretError, HostSecrets, ResultSet, RunListener,
-    RunOutcome, RunSettings, SecretItemTag, SecretKindTag, TableFilterArg, TableName,
+    CancelToken, ColumnSort, CombinatorTag, Core, CoreError, DatabaseSession, ExportFormatTag, ExportProgress,
+    FileOpenRequest, FilterOpTag, FilterRuleArg, FilterValueArg, HostConfig, HostSecretError, HostSecrets, ResultSet,
+    RunListener, RunOutcome, RunSettings, SecretItemTag, SecretKindTag, TableFilterArg, TableName,
 };
 
 struct NoSecrets;
@@ -129,11 +129,20 @@ async fn csv_and_json_of_a_result_set_hold_exactly_its_rows() {
     std::fs::write(&csv, "an older export").unwrap();
 
     let csv_rows = session
-        .export_rows(set.clone(), 4, ExportFormatTag::Csv, None, spelled(&csv), None)
+        .export_rows(
+            set.clone(),
+            4,
+            ExportFormatTag::Csv,
+            None,
+            None,
+            spelled(&csv),
+            None,
+            None,
+        )
         .await
         .unwrap();
     let json_rows = session
-        .export_rows(set, 4, ExportFormatTag::Json, None, spelled(&json), None)
+        .export_rows(set, 4, ExportFormatTag::Json, None, None, spelled(&json), None, None)
         .await
         .unwrap();
 
@@ -165,7 +174,7 @@ async fn an_excel_export_is_a_workbook() {
     let path = dir.path().join("people.xlsx");
 
     let rows = session
-        .export_rows(set, 4, ExportFormatTag::Excel, None, spelled(&path), None)
+        .export_rows(set, 4, ExportFormatTag::Excel, None, None, spelled(&path), None, None)
         .await
         .unwrap();
 
@@ -206,7 +215,9 @@ async fn a_page_exports_only_its_visible_columns() {
             visible,
             ExportFormatTag::Csv,
             Some(table("notes")),
+            None,
             spelled(&path),
+            None,
             None,
         )
         .await
@@ -237,6 +248,7 @@ async fn sql_insert_of_a_table_names_it_and_leaves_out_what_the_server_computes(
             ExportFormatTag::SqlInsert,
             spelled(&path),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -250,19 +262,92 @@ async fn sql_insert_of_a_table_names_it_and_leaves_out_what_the_server_computes(
 }
 
 #[tokio::test]
-async fn sql_insert_without_a_table_is_refused_before_any_file() {
+async fn sql_insert_of_a_query_result_writes_into_the_table_its_columns_came_from() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, session) = fixture(dir.path()).await;
-    let set = run(&session, "SELECT id, name FROM people").await.unwrap();
+    let set = run(&session, "SELECT id, name FROM people ORDER BY id").await.unwrap();
     let path = dir.path().join("people.sql");
 
-    let error = session
-        .export_rows(set, 2, ExportFormatTag::SqlInsert, None, spelled(&path), None)
+    let rows = session
+        .export_rows(
+            set,
+            2,
+            ExportFormatTag::SqlInsert,
+            None,
+            None,
+            spelled(&path),
+            None,
+            None,
+        )
         .await
-        .unwrap_err();
+        .unwrap();
 
-    assert_eq!(error.code(), "ffi.export_needs_table");
-    assert_eq!(named(dir.path(), "people.sql"), Vec::<String>::new());
+    assert_eq!(rows, 2);
+    assert_eq!(
+        text(&path),
+        "INSERT INTO \"people\" (\"id\", \"name\") VALUES (1, 'Ada');\n\
+         INSERT INTO \"people\" (\"id\", \"name\") VALUES (2, 'Grace, \"Amazing\"');\n"
+    );
+}
+
+#[tokio::test]
+async fn sql_insert_of_an_aliased_result_names_the_tables_columns() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session) = fixture(dir.path()).await;
+    let set = run(&session, "SELECT id, name AS label FROM people ORDER BY id")
+        .await
+        .unwrap();
+    let path = dir.path().join("aliased.sql");
+
+    session
+        .export_rows(
+            set,
+            2,
+            ExportFormatTag::SqlInsert,
+            None,
+            None,
+            spelled(&path),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        text(&path).starts_with("INSERT INTO \"people\" (\"id\", \"name\") VALUES (1, 'Ada');"),
+        "{}",
+        text(&path)
+    );
+}
+
+#[tokio::test]
+async fn sql_insert_of_a_computed_result_writes_into_query_results() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session) = fixture(dir.path()).await;
+    let set = run(&session, "SELECT id, upper(name) AS loud FROM people ORDER BY id")
+        .await
+        .unwrap();
+    let path = dir.path().join("loud.sql");
+
+    session
+        .export_rows(
+            set,
+            2,
+            ExportFormatTag::SqlInsert,
+            None,
+            None,
+            spelled(&path),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        text(&path).starts_with("INSERT INTO \"query_results\" (\"id\", \"loud\") VALUES (1, 'ADA');"),
+        "{}",
+        text(&path)
+    );
 }
 
 #[tokio::test]
@@ -292,6 +377,7 @@ async fn a_table_export_writes_every_row_the_filter_selects_in_the_sort_order() 
         ascending: false,
     };
     let path = dir.path().join("numbers.csv");
+    let progress = ExportProgress::new();
 
     let rows = session
         .export_table(
@@ -300,6 +386,7 @@ async fn a_table_export_writes_every_row_the_filter_selects_in_the_sort_order() 
             Some(filter),
             ExportFormatTag::Csv,
             spelled(&path),
+            Some(progress.clone()),
             None,
         )
         .await
@@ -308,6 +395,7 @@ async fn a_table_export_writes_every_row_the_filter_selects_in_the_sort_order() 
     let written = text(&path);
     let lines: Vec<&str> = written.lines().collect();
     assert_eq!(rows, 2_000);
+    assert_eq!(progress.rows(), 2_000);
     assert_eq!(lines.len(), 2_001);
     assert_eq!(lines[0], "n,label");
     assert_eq!(lines[1], "3000,n3000");
@@ -331,6 +419,7 @@ async fn a_cancelled_export_leaves_no_file_and_no_part_file() {
         None,
         ExportFormatTag::Csv,
         path,
+        None,
         Some(cancel.clone()),
     );
     // Cancelled once its part file is on disk, so the cancel lands mid-write.
@@ -359,7 +448,7 @@ async fn a_failed_export_keeps_the_file_it_would_have_replaced() {
     std::fs::write(&path, "an older export").unwrap();
 
     let error = session
-        .export_rows(set, 2, ExportFormatTag::Xml, None, spelled(&path), None)
+        .export_rows(set, 2, ExportFormatTag::Xml, None, None, spelled(&path), None, None)
         .await
         .unwrap_err();
 
@@ -394,7 +483,7 @@ async fn rows_still_arriving_are_not_exported() {
     let path = spelled(&dir.path().join("endless.csv"));
 
     let refused = session
-        .export_rows(set, 1, ExportFormatTag::Csv, None, path, None)
+        .export_rows(set, 1, ExportFormatTag::Csv, None, None, path, None, None)
         .await
         .unwrap_err();
     run.cancel();

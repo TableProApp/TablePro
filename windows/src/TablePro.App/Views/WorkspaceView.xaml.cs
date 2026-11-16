@@ -481,6 +481,13 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         return true;
     }
 
+    // Per connection and the database it is in, as macOS keys a table's filter.
+    private ITableFilters TableFilters =>
+        _workbench.TableFilters.For(FilterConnection, _session?.Database);
+
+    private string FilterConnection =>
+        TableFilterMemory.ConnectionKey(_connection.ConnectionId, _connection.Origin.FilePath);
+
     // The open tab of the table is brought forward rather than a second one opened.
     private TableTabView? OpenTable(ObjectEntry entry)
     {
@@ -504,7 +511,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
 
         // Its first page is read when the tab first shows, so a restored session reads only the tab it shows.
-        var table = new TableTabView(_workbench, _share, schema, name, kind, restore);
+        var table = new TableTabView(_workbench, _share, schema, name, kind, restore, TableFilters);
         AddTab(table, IconOf(kind), index);
         return table;
     }
@@ -861,19 +868,32 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
         // Read now, since the dialogs left the tab free to run again or page meanwhile.
         using var exporting = new CancellationTokenSource();
+        var name = Path.GetFileName(request.Path);
         Task<long> export;
+        long? total = null;
+        // Reported on this thread, so the bar counts the rows written as they go.
+        var progress = new Progress<long>(rows => ShowExportRows(name, rows, total));
         if (request.Scope == ExportScope.EntireTable && tab is TableTabView whole)
         {
             var sort = results.Sort is { Direction: not SortDirection.None } shown
                 ? new ColumnSort(shown.Column, shown.Direction == SortDirection.Ascending)
                 : null;
+            total = whole.Model.Page.Total;
             export = share.Session.ExportTableAsync(
-                whole.Model.Table, sort, whole.Model.Filter, request.Format, request.Path, exporting.Token);
+                whole.Model.Table, sort, whole.Model.Filter, request.Format, request.Path, progress, exporting.Token);
         }
         else if (results.ShownSet is { } rows)
         {
+            total = rows.RowCount;
             export = share.Session.ExportRowsAsync(
-                rows, results.Columns.Count, request.Format, table, request.Path, exporting.Token);
+                rows,
+                results.Columns.Count,
+                request.Format,
+                table,
+                request.Path,
+                (tab as QueryTabView)?.Database,
+                progress,
+                exporting.Token);
         }
         else
         {
@@ -881,7 +901,6 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             return;
         }
 
-        var name = Path.GetFileName(request.Path);
         _exporting = exporting;
         ShowExport(InfoBarSeverity.Informational, Strings.Format("ExportRunning", name), running: true);
         CommandsChanged?.Invoke(this, EventArgs.Empty);
@@ -972,12 +991,34 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         ExportBar.Message = message;
         ExportBar.IsClosable = !running;
         ExportProgress.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        ExportProgress.IsIndeterminate = true;
         CancelExportButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         // A closed InfoBar keeps its margin, so the bar is collapsed while it is closed.
         ExportBar.Visibility = Visibility.Visible;
         // Narrator reads an InfoBar when it opens, not when its text changes.
         ExportBar.IsOpen = false;
         ExportBar.IsOpen = true;
+    }
+
+    // Only the text and the bar change, so Narrator is not read the bar again for every count.
+    private void ShowExportRows(string name, long rows, long? total)
+    {
+        if (_exporting is null || !ExportBar.IsOpen)
+        {
+            return;
+        }
+
+        if (total is { } all && all > 0)
+        {
+            ExportBar.Message = Strings.Format("ExportRunningRowsOf", name, rows, all);
+            ExportProgress.IsIndeterminate = false;
+            ExportProgress.Maximum = all;
+            ExportProgress.Value = Math.Min(rows, all);
+        }
+        else
+        {
+            ExportBar.Message = Strings.Format("ExportRunningRows", name, rows);
+        }
     }
 
     private void OnExportBarClosed(InfoBar sender, InfoBarClosedEventArgs args) =>
@@ -1681,7 +1722,10 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         _loadingTree = loading;
         try
         {
-            var schemas = await session.GetSchemasAsync(loading.Token).ConfigureAwait(true);
+            // A refresh reads the schemas again too, so one made or dropped in the editor shows.
+            var schemas = refresh
+                ? await session.RefreshSchemasAsync(loading.Token).ConfigureAwait(true)
+                : await session.GetSchemasAsync(loading.Token).ConfigureAwait(true);
             loading.Token.ThrowIfCancellationRequested();
             var shown = schemas.Where(schema => !schema.IsSystem).ToList();
             if (shown.Count == 0)
@@ -1936,10 +1980,23 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
     private void OnObjectRowContextRequested(UIElement sender, ContextRequestedEventArgs args)
     {
-        if (sender is TreeViewItem row && ObjectTree.ItemFromContainer(row) is ObjectNode { Entry: { } entry })
+        if (sender is not TreeViewItem row)
         {
-            args.Handled = true;
-            ShowObjectMenu(row, entry, args);
+            return;
+        }
+
+        switch (ObjectTree.ItemFromContainer(row))
+        {
+            case ObjectNode { Entry: { } entry }:
+                args.Handled = true;
+                ShowObjectMenu(row, entry, args);
+                break;
+            case ObjectNode { Kind: ObjectNodeKind.Schema, Schema: { } schema }:
+                args.Handled = true;
+                ShowSchemaMenu(row, schema, args);
+                break;
+            default:
+                break;
         }
     }
 
@@ -1973,7 +2030,10 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         {
             menu.Items.Add(ObjectMenuItem("ObjectMenuOpen", Symbol.OpenFile, () => OpenTable(entry)));
             menu.Items.Add(ObjectMenuItem(
+                "ObjectMenuOpenInNewTab", Symbol.NewWindow, () => AddTable(entry.Schema, entry.Name, entry.Kind, null, null)));
+            menu.Items.Add(ObjectMenuItem(
                 "ObjectMenuShowStructure", Symbol.List, () => OpenTable(entry)?.ShowStructure()));
+            menu.Items.Add(ObjectMenuItem("ObjectMenuShowDdl", Symbol.Preview, () => OpenTable(entry)?.ShowDdl()));
             if (entry.Kind is ObjectKind.Table or ObjectKind.PartitionedTable)
             {
                 menu.Items.Add(ObjectMenuItem("ObjectMenuImportCsv", Symbol.Import, async () => await ImportCsvAsync(entry).ConfigureAwait(true)));
@@ -1993,6 +2053,77 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
 
         menu.Items.Add(ObjectMenuItem("ObjectMenuCopyName", Symbol.Copy, () => CopyText(entry.Name)));
+        if (CanTruncate(entry) || CanDrop(entry))
+        {
+            menu.Items.Add(new MenuFlyoutSeparator());
+            if (CanTruncate(entry))
+            {
+                menu.Items.Add(ObjectMenuItem("ObjectMenuTruncate", Symbol.Clear, async () => await TruncateAsync(entry).ConfigureAwait(true)));
+            }
+
+            if (CanDrop(entry))
+            {
+                menu.Items.Add(ObjectMenuItem("ObjectMenuDrop", Symbol.Delete, async () => await DropTableAsync(entry).ConfigureAwait(true)));
+            }
+        }
+
+        ShowMenu(menu, row, args);
+    }
+
+    // A schema row is a database where the server's databases are its schemas, as MySQL's are.
+    private void ShowSchemaMenu(FrameworkElement row, string schema, ContextRequestedEventArgs args)
+    {
+        var menu = new MenuFlyout();
+        var abilities = Abilities;
+        if (_session is { Layout: DatabaseLayout.AsSchemas } session)
+        {
+            if (abilities.CreateDatabase)
+            {
+                menu.Items.Add(ObjectMenuItem(
+                    abilities.Keyspaces ? "ObjectMenuNewKeyspace" : "ObjectMenuNewDatabase",
+                    Symbol.Add,
+                    async () => await NewDatabaseAsync().ConfigureAwait(true)));
+            }
+
+            if (abilities.DropDatabase && Droppable(session, schema))
+            {
+                menu.Items.Add(NamedMenuItem(
+                    abilities.Keyspaces ? "ObjectMenuDropKeyspace" : "ObjectMenuDropDatabase",
+                    schema,
+                    async () => await DropDatabaseAsync(schema).ConfigureAwait(true)));
+            }
+        }
+        else if (_session is { } other)
+        {
+            if (abilities.CreateSchema)
+            {
+                menu.Items.Add(ObjectMenuItem("ObjectMenuNewSchema", Symbol.Add, async () => await NewSchemaAsync().ConfigureAwait(true)));
+            }
+
+            if (abilities.DropSchema && !other.ProtectsSchema(schema))
+            {
+                menu.Items.Add(NamedMenuItem(
+                    "ObjectMenuDropSchema", schema, async () => await DropSchemaAsync(schema).ConfigureAwait(true)));
+            }
+        }
+
+        if (menu.Items.Count > 0)
+        {
+            menu.Items.Add(new MenuFlyoutSeparator());
+        }
+
+        menu.Items.Add(ObjectMenuItem("ObjectMenuCopyName", Symbol.Copy, () => CopyText(schema)));
+        ShowMenu(menu, row, args);
+    }
+
+    // Never the engine's own, nor the one this window is in, as macOS offers a drop.
+    private bool Droppable(DatabaseSession session, string database) =>
+        !session.ProtectsDatabase(database)
+        && !string.Equals(database, CurrentDatabase, StringComparison.Ordinal)
+        && !string.Equals(database, session.Database ?? _listedOwnDatabase, StringComparison.Ordinal);
+
+    private static void ShowMenu(MenuFlyout menu, FrameworkElement row, ContextRequestedEventArgs args)
+    {
         if (args.TryGetPosition(row, out var point))
         {
             menu.ShowAt(row, new FlyoutShowOptions { Position = point });
@@ -2001,6 +2132,13 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         {
             menu.ShowAt(row);
         }
+    }
+
+    private static MenuFlyoutItem NamedMenuItem(string text, string name, Action invoke)
+    {
+        var item = new MenuFlyoutItem { Text = Strings.Format(text, name), Icon = new SymbolIcon(Symbol.Delete) };
+        item.Click += (_, _) => invoke();
+        return item;
     }
 
     private static MenuFlyoutItem ObjectMenuItem(string text, Symbol icon, Action invoke)
@@ -2276,7 +2414,48 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             menu.Items.Add(new MenuFlyoutItem { Text = Strings.Get("DatabaseNoneListed"), IsEnabled = false });
         }
 
+        AddDatabaseCommands(menu, session, databases);
         menu.ShowAt(DatabaseButton, new FlyoutShowOptions { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft });
+    }
+
+    // New database at the foot of the list, as macOS has it, and a drop of any but the engine's own and this one.
+    private void AddDatabaseCommands(MenuFlyout menu, DatabaseSession session, IReadOnlyList<SchemaEntry> databases)
+    {
+        var abilities = Abilities;
+        var droppable = abilities.DropDatabase
+            ? databases.Where(database => !database.IsSystem && Droppable(session, database.Name)).ToList()
+            : [];
+        if (!abilities.CreateDatabase && droppable.Count == 0)
+        {
+            return;
+        }
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        if (abilities.CreateDatabase)
+        {
+            menu.Items.Add(ObjectMenuItem(
+                abilities.Keyspaces ? "ObjectMenuNewKeyspace" : "ObjectMenuNewDatabase",
+                Symbol.Add,
+                async () => await NewDatabaseAsync().ConfigureAwait(true)));
+        }
+
+        if (droppable.Count > 0)
+        {
+            var drop = new MenuFlyoutSubItem
+            {
+                Text = Strings.Get(abilities.Keyspaces ? "DatabaseMenuDropKeyspace" : "DatabaseMenuDropDatabase"),
+                Icon = new SymbolIcon(Symbol.Delete),
+            };
+            foreach (var database in droppable)
+            {
+                var name = database.Name;
+                var item = new MenuFlyoutItem { Text = name };
+                item.Click += async (_, _) => await DropDatabaseAsync(name).ConfigureAwait(true);
+                drop.Items.Add(item);
+            }
+
+            menu.Items.Add(drop);
+        }
     }
 
     // Where each database holds schemas of its own, another one is another session, opened beside this one.

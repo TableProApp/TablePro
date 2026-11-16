@@ -146,6 +146,21 @@ impl TableKeys {
         })
     }
 
+    // The other tables whose foreign keys point at this one, each once; a key of the table on itself goes with it.
+    pub fn referencing_tables(&self) -> Vec<TableName> {
+        let mut tables: Vec<TableName> = Vec::new();
+        for key in self.inbound.iter().filter(|key| key.table != self.table) {
+            let table = TableName {
+                schema: key.table.schema.clone(),
+                name: key.table.name.clone(),
+            };
+            if !tables.contains(&table) {
+                tables.push(table);
+            }
+        }
+        tables
+    }
+
     // The filter of one key `row_references` offered, built from the row's stored values.
     pub fn follow_reference(
         &self,

@@ -5,28 +5,40 @@ namespace TablePro.Interop;
 // A file appears whole or not at all: the core writes beside it and renames once the last row is in.
 public sealed partial class DatabaseSession
 {
-    // Only the first visibleColumns columns, since a table page carries row addresses after them.
+    private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
+
+    // Only the first visibleColumns columns, since a table page carries row addresses after them. SqlInsert with no
+    // table writes into the one table every column was read from, else into query_results; database names where the
+    // rows were read when that is not the session's own.
     public async Task<long> ExportRowsAsync(
         ResultSet rows,
         int visibleColumns,
         ExportFormat format,
         TableName? table,
         string path,
+        string? database = null,
+        IProgress<long>? progress = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(rows);
         ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);
         ArgumentException.ThrowIfNullOrEmpty(path);
         var target = table is null ? null : Mapping.Table(table);
-        var written = await CoreCall.RunAsync(
-                token => Handle.ExportRows(
-                    rows.Handle,
-                    checked((uint)visibleColumns),
-                    NativeFormat(format),
-                    target,
-                    path,
-                    token),
-                cancellationToken)
+        using var counter = new Native.ExportProgress();
+        var written = await Reporting(
+                counter,
+                progress,
+                CoreCall.RunAsync(
+                    token => Handle.ExportRows(
+                        rows.Handle,
+                        checked((uint)visibleColumns),
+                        NativeFormat(format),
+                        target,
+                        database,
+                        path,
+                        counter,
+                        token),
+                    cancellationToken))
             .ConfigureAwait(false);
         return Mapping.Count(written);
     }
@@ -38,23 +50,54 @@ public sealed partial class DatabaseSession
         TableFilter? filter,
         ExportFormat format,
         string path,
+        IProgress<long>? progress = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(table);
         ArgumentException.ThrowIfNullOrEmpty(path);
         var nativeSort = sort is null ? null : new Native.ColumnSort(checked((uint)sort.Column), sort.Ascending);
         var nativeFilter = filter is null ? null : Mapping.Filter(filter);
-        var written = await CoreCall.RunAsync(
-                token => Handle.ExportTable(
-                    Mapping.Table(table),
-                    nativeSort,
-                    nativeFilter,
-                    NativeFormat(format),
-                    path,
-                    token),
-                cancellationToken)
+        using var counter = new Native.ExportProgress();
+        var written = await Reporting(
+                counter,
+                progress,
+                CoreCall.RunAsync(
+                    token => Handle.ExportTable(
+                        Mapping.Table(table),
+                        nativeSort,
+                        nativeFilter,
+                        NativeFormat(format),
+                        path,
+                        counter,
+                        token),
+                    cancellationToken))
             .ConfigureAwait(false);
         return Mapping.Count(written);
+    }
+
+    // The core counts the rows as it writes them, and the count is read a few times a second until the export ends.
+    private static async Task<ulong> Reporting(Native.ExportProgress counter, IProgress<long>? progress, Task<ulong> export)
+    {
+        if (progress is null)
+        {
+            return await export.ConfigureAwait(false);
+        }
+
+        using var timer = new PeriodicTimer(ProgressInterval);
+        var reported = -1L;
+        while (!export.IsCompleted)
+        {
+            var tick = timer.WaitForNextTickAsync().AsTask();
+            await Task.WhenAny(export, tick).ConfigureAwait(false);
+            var rows = Mapping.Count(counter.Rows());
+            if (rows != reported)
+            {
+                reported = rows;
+                progress.Report(rows);
+            }
+        }
+
+        return await export.ConfigureAwait(false);
     }
 
     private static Native.ExportFormatTag NativeFormat(ExportFormat format) => format switch

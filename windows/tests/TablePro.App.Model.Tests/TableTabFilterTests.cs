@@ -350,7 +350,65 @@ public sealed class TableTabFilterTests
         Assert.Equal("catalog.columns_unavailable", Assert.Single(_view.ChoicesFailures).Code);
     }
 
-    private TableTab New(SessionTab? restore = null, ObjectKind kind = ObjectKind.Table)
+    [Fact]
+    public async Task ATableOpenedAgainReadsWithTheFilterItLastHadAndClearForgetsIt()
+    {
+        var memory = new MemoryFilters();
+        var first = New(filters: memory);
+        await first.ApplyFilterAsync(ByName);
+
+        var again = New(filters: memory);
+        await again.RunAsync();
+
+        Assert.Same(ByName, again.Filter);
+        Assert.Same(ByName, _session.PageFilters[^1]);
+
+        await again.ApplyFilterAsync(null);
+
+        Assert.Null(New(filters: memory).Filter);
+    }
+
+    [Fact]
+    public async Task AFilterTheCoreRefusesIsNotKeptForTheTable()
+    {
+        var memory = new MemoryFilters();
+        var tab = New(filters: memory);
+        await tab.RunAsync();
+        _session.RefusesFilter = true;
+
+        await tab.ApplyFilterAsync(ByName);
+
+        Assert.Null(New(filters: memory).Filter);
+    }
+
+    [Fact]
+    public void ARestoredTabKeepsItsOwnFilterOverTheTablesLast()
+    {
+        var memory = new MemoryFilters();
+        memory.Remember(new TableName(null, "Artist"), ByName);
+
+        var restored = New(new SessionTab { Kind = TabKind.Table, Table = "Artist" }, filters: memory);
+
+        Assert.Null(restored.Filter);
+    }
+
+    [Fact]
+    public async Task ACellsRuleJoinsTheRulesRunningAndOneRunningAlreadyReadsNothing()
+    {
+        await _tab.RunAsync();
+        await _tab.ApplyFilterAsync(ByName);
+        var reads = _session.Queries.Count;
+        var notAc = new FilterRule("Name", FilterOperator.NotEqual, new FilterValue.One("AC/DC"));
+
+        Assert.True(await _tab.FilterByAsync(notAc));
+        Assert.False(await _tab.FilterByAsync(notAc));
+
+        Assert.Equal(FilterCombinator.And, _tab.Filter?.Combinator);
+        Assert.Equal<FilterRule>([ByName.Rules[0], notAc], _tab.Filter!.Rules);
+        Assert.Equal(reads + 1, _session.Queries.Count);
+    }
+
+    private TableTab New(SessionTab? restore = null, ObjectKind kind = ObjectKind.Table, ITableFilters? filters = null)
     {
         var tab = new TableTab(
             _session,
@@ -359,13 +417,32 @@ public sealed class TableTabFilterTests
             new TableName(null, "Artist"),
             kind,
             () => new AppSettings(),
-            restore);
+            restore,
+            filters);
         _view.Tab = tab;
         return tab;
     }
+
+    private sealed class MemoryFilters : ITableFilters
+    {
+        private readonly Dictionary<TableName, TableFilter> _kept = [];
+
+        public TableFilter? Recall(TableName table) => _kept.GetValueOrDefault(table);
+
+        public void Remember(TableName table, TableFilter? filter)
+        {
+            if (filter is null)
+            {
+                _kept.Remove(table);
+            }
+            else
+            {
+                _kept[table] = filter;
+            }
+        }
+    }
 }
 
-// A filter as one line, since its records hold their lists by reference.
 internal static class FilterText
 {
     public static string Of(TableFilter? filter)

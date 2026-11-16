@@ -1,13 +1,13 @@
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
 use tablepro_core::browse::{DeclaredPrecisionSink, ExportFields, ExportRequest, SortKey, build_export};
 use tablepro_core::column::{ColumnKind, ColumnType, ResultColumn};
-use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dialect::{DatabaseLayout, SqlDialect};
 use tablepro_core::edit::parse_filter_text;
 use tablepro_core::export::{
     CsvEncoder, CsvOptions, EncodeError, HtmlEncoder, JsonArrayEncoder, MarkdownEncoder, RenderError, RowEncoder,
@@ -35,6 +35,28 @@ const CHUNK_BYTES: usize = 64 * 1024;
 // Held rows encoded between two looks at the cancel.
 const ROWS_PER_BATCH: u64 = 1_024;
 
+// The rows an export has written so far, which the app reads while it runs.
+#[derive(Debug, Default, uniffi::Object)]
+pub struct ExportProgress(AtomicU64);
+
+#[uniffi::export]
+impl ExportProgress {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    pub fn rows(&self) -> u64 {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+impl ExportProgress {
+    fn add(&self, rows: u64) {
+        self.0.fetch_add(rows, Ordering::Relaxed);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum ExportFormatTag {
     Csv,
@@ -48,14 +70,22 @@ pub enum ExportFormatTag {
 
 #[uniffi::export]
 impl DatabaseSession {
-    // Only the first `visible_columns` columns, since a table page carries row addresses after them.
+    // Only the first `visible_columns` columns, since a table page carries row addresses after them. SQL INSERT with no
+    // table writes into the one table every column was read from, else into `query_results`. `database` is where the
+    // rows were read when that is not the session's own, as after a USE.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the rows, their format, table, database and file, and the app's progress and cancel"
+    )]
     pub async fn export_rows(
         &self,
         rows: Arc<ResultSet>,
         visible_columns: u32,
         format: ExportFormatTag,
         table: Option<TableName>,
+        database: Option<String>,
         path: String,
+        progress: Option<Arc<ExportProgress>>,
         cancel: Option<Arc<CancelToken>>,
     ) -> Result<u64, CoreError> {
         let session = self.session().clone();
@@ -74,26 +104,44 @@ impl DatabaseSession {
             if format == ExportFormatTag::Excel && rows.row_count() > XLSX_MAX_DATA_ROWS as u64 {
                 return Err(sheet_full());
             }
+            let held = rows.result_columns();
+            let visible = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
+            let mut columns: Arc<[ResultColumn]> = held.iter().take(visible).cloned().collect();
             let insert = match (format, &table) {
-                (ExportFormatTag::SqlInsert, None) => return Err(needs_table()),
                 (ExportFormatTag::SqlInsert, Some(table)) => {
-                    let columns = tokio::select! {
+                    let catalog = tokio::select! {
                         biased;
                         () = cancel.cancelled() => return Err(CoreError::Cancelled),
                         columns = session.columns(table.clone()) => columns?,
                     };
-                    Some(InsertTarget::of(table, &columns))
+                    Some(InsertTarget::of(table, &catalog))
                 }
+                (ExportFormatTag::SqlInsert, None) => match source_table(&columns) {
+                    Some((source, named)) => {
+                        // Read only to leave out what the server computes; a table that cannot be read leaves none out.
+                        let layout = session.current_dialect().map(|dialect| dialect.database_layout());
+                        let elsewhere = !catalog_describes(database.as_deref(), layout);
+                        let catalog = match elsewhere {
+                            true => None,
+                            false => tokio::select! {
+                                biased;
+                                () = cancel.cancelled() => return Err(CoreError::Cancelled),
+                                columns = session.columns(source.clone()) => columns.ok(),
+                            },
+                        };
+                        columns = named;
+                        Some(InsertTarget::of(&source, catalog.as_deref().unwrap_or_default()))
+                    }
+                    None => Some(InsertTarget::of(&TableRef::unqualified(RESULT_TABLE), &[])),
+                },
                 _ => None,
             };
             let recipe = Recipe {
                 format,
                 title: title(table.as_ref(), &target),
                 insert,
+                progress,
             };
-            let held = rows.result_columns();
-            let visible = usize::try_from(visible_columns).unwrap_or(usize::MAX).min(held.len());
-            let columns: Arc<[ResultColumn]> = held.iter().take(visible).cloned().collect();
             let part = Arc::new(PartFile::beside(target)?);
             let ending = Ending::default();
             let mut sink = FileSink::new(
@@ -111,6 +159,10 @@ impl DatabaseSession {
     }
 
     // Every row the filter selects, in the sort's order, streamed to the file on a connection of the read's own.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the table's sort and filter, the format and file, and the app's progress and cancel"
+    )]
     pub async fn export_table(
         &self,
         table: TableName,
@@ -118,6 +170,7 @@ impl DatabaseSession {
         filter: Option<TableFilterArg>,
         format: ExportFormatTag,
         path: String,
+        progress: Option<Arc<ExportProgress>>,
         cancel: Option<Arc<CancelToken>>,
     ) -> Result<u64, CoreError> {
         let session = self.session().clone();
@@ -143,6 +196,7 @@ impl DatabaseSession {
                 format,
                 title: title(Some(&table), &target),
                 insert: (format == ExportFormatTag::SqlInsert).then(|| InsertTarget::of(&table, &columns)),
+                progress,
             };
             let read = Arc::new(TableRead {
                 table,
@@ -199,11 +253,15 @@ impl TableRead {
     }
 }
 
+// The table a query result's INSERT statements write into when its columns name no one table.
+const RESULT_TABLE: &str = "query_results";
+
 #[derive(Clone)]
 struct Recipe {
     format: ExportFormatTag,
     title: String,
     insert: Option<InsertTarget>,
+    progress: Option<Arc<ExportProgress>>,
 }
 
 #[derive(Clone)]
@@ -348,6 +406,7 @@ impl FileSink {
                 .await?;
                 self.writer = Some(Writer::Sheet(sheet));
                 self.rows += count;
+                self.written(count);
                 Ok(())
             }
             None => Err(CoreError::failed(
@@ -358,14 +417,25 @@ impl FileSink {
     }
 
     async fn encode(&mut self, encoder: &mut dyn RowEncoder, rows: &[Vec<Value>]) -> Result<(), CoreError> {
+        let mut unreported = 0;
         for row in rows {
             encoder.row(&mut self.buffer, &mut row.iter()).map_err(encode_error)?;
             self.rows += 1;
+            unreported += 1;
             if self.buffer.len() >= CHUNK_BYTES {
                 self.flush().await?;
+                self.written(std::mem::take(&mut unreported));
             }
         }
+        self.written(unreported);
         Ok(())
+    }
+
+    // Counted as encoded, which is a chunk ahead of the disk at most.
+    fn written(&self, rows: u64) {
+        if let Some(progress) = &self.recipe.progress {
+            progress.add(rows);
+        }
     }
 
     async fn flush(&mut self) -> Result<(), CoreError> {
@@ -434,6 +504,30 @@ impl ResultSink for FileSink {
             }
         }
     }
+}
+
+// Where each database holds schemas of its own, an origin names no database, so the session's catalog describes the
+// table only when the rows were read in the session's own database. `read_in` is None there.
+fn catalog_describes(read_in: Option<&str>, layout: Option<DatabaseLayout>) -> bool {
+    read_in.is_none() || layout != Some(DatabaseLayout::WithSchemas)
+}
+
+// The table every column was read from, as the driver traced it, with each column under the name the table gives it,
+// so an alias is written as the column it reads. A column it could not trace, or one read twice, names none.
+fn source_table(columns: &[ResultColumn]) -> Option<(TableRef, Arc<[ResultColumn]>)> {
+    let table = &columns.first()?.origin.as_ref()?.table;
+    let mut named: Vec<ResultColumn> = Vec::with_capacity(columns.len());
+    for column in columns {
+        let origin = column.origin.as_ref().filter(|origin| origin.table == *table)?;
+        if named.iter().any(|seen| seen.name == origin.column) {
+            return None;
+        }
+        named.push(ResultColumn {
+            name: origin.column.clone(),
+            ..column.clone()
+        });
+    }
+    Some((table.clone(), named.into()))
 }
 
 // The rows a set holds, through the same sink a streamed read feeds, so both write the same bytes.
@@ -736,6 +830,54 @@ mod tests {
             width: IntegerWidth::W64,
             signed: true,
         })
+    }
+
+    #[test]
+    fn a_result_read_after_a_move_to_another_database_with_schemas_of_its_own_reads_no_catalog() {
+        assert!(catalog_describes(None, Some(DatabaseLayout::WithSchemas)));
+        assert!(!catalog_describes(Some("sales"), Some(DatabaseLayout::WithSchemas)));
+        assert!(catalog_describes(Some("sales"), Some(DatabaseLayout::AsSchemas)));
+        assert!(catalog_describes(Some("sales"), Some(DatabaseLayout::Single)));
+    }
+
+    #[test]
+    fn a_result_writes_into_its_one_traced_table_under_the_tables_column_names() {
+        let traced = |name: &str, table: &str| {
+            array_of(name, bigint()).with_origin(Some(tablepro_core::column::ColumnOrigin::new(
+                TableRef::new(Some("public".to_owned()), table),
+                name,
+            )))
+        };
+        let orders = TableRef::new(Some("public".to_owned()), "orders");
+
+        let mut aliased = traced("total", "orders");
+        aliased.name = "amount".to_owned();
+        let names = |found: Option<(TableRef, Arc<[ResultColumn]>)>| {
+            found.map(|(table, columns)| {
+                (
+                    table,
+                    columns.iter().map(|column| column.name.clone()).collect::<Vec<_>>(),
+                )
+            })
+        };
+
+        assert_eq!(
+            names(source_table(&[traced("id", "orders"), aliased])),
+            Some((orders, vec!["id".to_owned(), "total".to_owned()]))
+        );
+        assert_eq!(
+            names(source_table(&[traced("id", "orders"), traced("name", "people")])),
+            None
+        );
+        assert_eq!(
+            names(source_table(&[traced("id", "orders"), array_of("sum", bigint())])),
+            None
+        );
+        assert_eq!(
+            names(source_table(&[traced("id", "orders"), traced("id", "orders")])),
+            None
+        );
+        assert_eq!(names(source_table(&[])), None);
     }
 
     #[test]

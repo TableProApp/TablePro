@@ -688,7 +688,7 @@ fn same_plan(left: &SavePlan, right: &SavePlan) -> bool {
 }
 
 // Ask the server what became of a commit whose acknowledgement was lost, where the engine left a way to ask.
-async fn resolve_commit(
+pub(crate) async fn resolve_commit(
     session: &Session,
     written: &Result<WriteReport, OperationError>,
 ) -> Option<Result<CommitResolution, OperationError>> {

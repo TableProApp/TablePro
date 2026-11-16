@@ -111,6 +111,26 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         }
     }
 
+    // The focused cell as far as a filter by its value reads it: NULL or binary, and its text up to the longest a
+    // filter takes. Null when there is no cell or it cannot be read.
+    internal CellValue? FocusedCellForFilter()
+    {
+        if (!CanViewValue || ResultGrid.Data is not { } data)
+        {
+            return null;
+        }
+
+        try
+        {
+            return CellValue.Read(
+                data, ShownSet, ResultGrid.FocusedRow, ResultGrid.FocusedColumn, CellFilters.MaximumValueLength, 1);
+        }
+        catch (TableProException)
+        {
+            return null;
+        }
+    }
+
     // About the rows, not a failure of the run, so the status keeps what the run said.
     internal void ShowNotice(string message)
     {

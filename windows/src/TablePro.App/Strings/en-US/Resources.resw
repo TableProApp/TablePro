@@ -4014,4 +4014,271 @@ New fingerprint: {2}</value>
   <data name="TabUnsavedStatus" xml:space="preserve">
     <value>Unsaved changes</value>
   </data>
+  <data name="MenuNewDatabase.Text" xml:space="preserve">
+    <value>New database...</value>
+  </data>
+  <data name="MenuNewSchema.Text" xml:space="preserve">
+    <value>New schema...</value>
+  </data>
+  <data name="ObjectMenuOpenInNewTab" xml:space="preserve">
+    <value>Open in new tab</value>
+  </data>
+  <data name="ObjectMenuTruncate" xml:space="preserve">
+    <value>Truncate...</value>
+  </data>
+  <data name="ObjectMenuDrop" xml:space="preserve">
+    <value>Drop...</value>
+  </data>
+  <data name="ObjectMenuNewSchema" xml:space="preserve">
+    <value>New schema...</value>
+  </data>
+  <data name="ObjectMenuNewDatabase" xml:space="preserve">
+    <value>New database...</value>
+  </data>
+  <data name="ObjectMenuNewKeyspace" xml:space="preserve">
+    <value>New keyspace...</value>
+  </data>
+  <data name="ObjectMenuDropSchema" xml:space="preserve">
+    <value>Drop schema “{0}”...</value>
+  </data>
+  <data name="ObjectMenuDropDatabase" xml:space="preserve">
+    <value>Drop database “{0}”...</value>
+  </data>
+  <data name="ObjectMenuDropKeyspace" xml:space="preserve">
+    <value>Drop keyspace “{0}”...</value>
+  </data>
+  <data name="DatabaseMenuDropDatabase" xml:space="preserve">
+    <value>Drop database</value>
+  </data>
+  <data name="DatabaseMenuDropKeyspace" xml:space="preserve">
+    <value>Drop keyspace</value>
+  </data>
+  <data name="TruncateTitle" xml:space="preserve">
+    <value>Truncate table '{0}'</value>
+  </data>
+  <data name="TruncateMessage" xml:space="preserve">
+    <value>Every row of the table will be deleted. This can't be undone.</value>
+  </data>
+  <data name="TruncateAction" xml:space="preserve">
+    <value>Truncate</value>
+  </data>
+  <data name="TruncateCascade" xml:space="preserve">
+    <value>Cascade</value>
+  </data>
+  <data name="TruncateCascadeDetail" xml:space="preserve">
+    <value>Also empty the tables whose foreign keys point at this one</value>
+  </data>
+  <data name="TruncateRestartIdentity" xml:space="preserve">
+    <value>Restart identity</value>
+  </data>
+  <data name="TruncateRestartIdentityDetail" xml:space="preserve">
+    <value>Start the table's numbering again</value>
+  </data>
+  <data name="TruncateRefusedTitle" xml:space="preserve">
+    <value>Cannot truncate table</value>
+  </data>
+  <data name="TruncateRefusedMessage" xml:space="preserve">
+    <value>Foreign keys on other tables point at {0}: {1}. Drop those foreign keys first, or delete the rows in a query.</value>
+  </data>
+  <data name="TruncateFailed" xml:space="preserve">
+    <value>Truncate failed</value>
+  </data>
+  <data name="DropTableTitle" xml:space="preserve">
+    <value>Drop table '{0}'</value>
+  </data>
+  <data name="DropTableMessage" xml:space="preserve">
+    <value>All rows and the table definition will be removed. This can't be undone.</value>
+  </data>
+  <data name="DropAction" xml:space="preserve">
+    <value>Drop</value>
+  </data>
+  <data name="DropCascade" xml:space="preserve">
+    <value>Cascade</value>
+  </data>
+  <data name="DropTableCascadeDetail" xml:space="preserve">
+    <value>Drop all tables that depend on this table</value>
+  </data>
+  <data name="DropTableCascadeNamed" xml:space="preserve">
+    <value>Drop all tables that depend on this table: {0}</value>
+  </data>
+  <data name="DropTableRefusedTitle" xml:space="preserve">
+    <value>Cannot drop table</value>
+  </data>
+  <data name="DropTableRefusedMessage" xml:space="preserve">
+    <value>Foreign keys on other tables point at {0}: {1}. Drop those foreign keys first.</value>
+  </data>
+  <data name="DropTableFailed" xml:space="preserve">
+    <value>Drop failed</value>
+  </data>
+  <data name="DropSchemaTitle" xml:space="preserve">
+    <value>Drop schema “{0}”?</value>
+  </data>
+  <data name="DropSchemaCascadeDetail" xml:space="preserve">
+    <value>Drop everything the schema holds with it</value>
+  </data>
+  <data name="DropSchemaFailed" xml:space="preserve">
+    <value>Drop failed</value>
+  </data>
+  <data name="DropDatabaseTitle" xml:space="preserve">
+    <value>Drop database “{0}”?</value>
+  </data>
+  <data name="DropKeyspaceTitle" xml:space="preserve">
+    <value>Drop keyspace “{0}”?</value>
+  </data>
+  <data name="DropContainerMessage" xml:space="preserve">
+    <value>All tables and data will be permanently deleted.</value>
+  </data>
+  <data name="DropDatabaseForce" xml:space="preserve">
+    <value>Close other connections first</value>
+  </data>
+  <data name="DropDatabaseForceDetail" xml:space="preserve">
+    <value>End every other session on the database before it is dropped</value>
+  </data>
+  <data name="DropDatabaseFailed" xml:space="preserve">
+    <value>Drop failed</value>
+  </data>
+  <data name="DropKeyspaceFailed" xml:space="preserve">
+    <value>Drop failed</value>
+  </data>
+  <data name="NewSchemaTitle" xml:space="preserve">
+    <value>New schema</value>
+  </data>
+  <data name="NewDatabaseTitle" xml:space="preserve">
+    <value>New database</value>
+  </data>
+  <data name="NewKeyspaceTitle" xml:space="preserve">
+    <value>New keyspace</value>
+  </data>
+  <data name="CreateAction" xml:space="preserve">
+    <value>Create</value>
+  </data>
+  <data name="CreateSchemaFailed" xml:space="preserve">
+    <value>Could not create schema</value>
+  </data>
+  <data name="CreateDatabaseFailed" xml:space="preserve">
+    <value>Could not create database</value>
+  </data>
+  <data name="CreateKeyspaceFailed" xml:space="preserve">
+    <value>Could not create keyspace</value>
+  </data>
+  <data name="CatalogName" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="CatalogOwner" xml:space="preserve">
+    <value>Owner</value>
+  </data>
+  <data name="CatalogTemplate" xml:space="preserve">
+    <value>Template</value>
+  </data>
+  <data name="CatalogEncoding" xml:space="preserve">
+    <value>Encoding</value>
+  </data>
+  <data name="CatalogLocale" xml:space="preserve">
+    <value>Locale</value>
+  </data>
+  <data name="CatalogCharacterSet" xml:space="preserve">
+    <value>Character set</value>
+  </data>
+  <data name="CatalogCollation" xml:space="preserve">
+    <value>Collation</value>
+  </data>
+  <data name="CatalogDurableWrites" xml:space="preserve">
+    <value>Durable writes</value>
+  </data>
+  <data name="CatalogDurableWritesDetail" xml:space="preserve">
+    <value>Write each change to the commit log before it is acknowledged</value>
+  </data>
+  <data name="CatalogTablets" xml:space="preserve">
+    <value>Tablets</value>
+  </data>
+  <data name="CatalogFirstCollection" xml:space="preserve">
+    <value>First collection</value>
+  </data>
+  <data name="CatalogCluster" xml:space="preserve">
+    <value>Run on</value>
+  </data>
+  <data name="CatalogClusterNone" xml:space="preserve">
+    <value>This server only</value>
+  </data>
+  <data name="CatalogDefault" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="CatalogDefaultNamed" xml:space="preserve">
+    <value>Default ({0})</value>
+  </data>
+  <data name="CatalogReplication" xml:space="preserve">
+    <value>Replication</value>
+  </data>
+  <data name="CatalogReplicationFactor" xml:space="preserve">
+    <value>Replication factor</value>
+  </data>
+  <data name="CatalogReplicationSimple" xml:space="preserve">
+    <value>Simple</value>
+  </data>
+  <data name="CatalogReplicationTopology" xml:space="preserve">
+    <value>Network topology</value>
+  </data>
+  <data name="CatalogReplicasIn" xml:space="preserve">
+    <value>Replicas in {0}</value>
+  </data>
+  <data name="CatalogChangeUnknown" xml:space="preserve">
+    <value>It may have run in part, so the objects are read again.</value>
+  </data>
+  <data name="On" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="Off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="Error_catalog_unsupported" xml:space="preserve">
+    <value>This database engine can't do that.</value>
+  </data>
+  <data name="Error_catalog_invalid_name" xml:space="preserve">
+    <value>Enter a name the server can take.</value>
+  </data>
+  <data name="Error_catalog_invalid_option" xml:space="preserve">
+    <value>The server can't take one of these options.</value>
+  </data>
+  <data name="Error_catalog_refused" xml:space="preserve">
+    <value>This change can't be written for this database.</value>
+  </data>
+  <data name="Error_catalog_not_confirmed" xml:space="preserve">
+    <value>Safe Mode asks before this change. Try again to answer it.</value>
+  </data>
+  <data name="Error_catalog_already_run" xml:space="preserve">
+    <value>This change already ran.</value>
+  </data>
+  <data name="Error_catalog_not_as_planned" xml:space="preserve">
+    <value>The connection would run other statements than the ones shown. Try again.</value>
+  </data>
+  <data name="Error_catalog_safe_mode_changed" xml:space="preserve">
+    <value>The connection's Safe Mode changed. Try again to see what it asks.</value>
+  </data>
+  <data name="ExportRunningRows" xml:space="preserve">
+    <value>Exporting to {0}... {1:N0} rows</value>
+  </data>
+  <data name="ExportRunningRowsOf" xml:space="preserve">
+    <value>Exporting to {0}... {1:N0} of {2:N0} rows</value>
+  </data>
+  <data name="GridMenuFilter" xml:space="preserve">
+    <value>Filter</value>
+  </data>
+  <data name="CellFilter_Equal" xml:space="preserve">
+    <value>{0} = “{1}”</value>
+  </data>
+  <data name="CellFilter_NotEqual" xml:space="preserve">
+    <value>{0} != “{1}”</value>
+  </data>
+  <data name="CellFilter_Greater" xml:space="preserve">
+    <value>{0} &gt; “{1}”</value>
+  </data>
+  <data name="CellFilter_Less" xml:space="preserve">
+    <value>{0} &lt; “{1}”</value>
+  </data>
+  <data name="CellFilter_IsNull" xml:space="preserve">
+    <value>{0} is NULL</value>
+  </data>
+  <data name="CellFilter_IsNotNull" xml:space="preserve">
+    <value>{0} is not NULL</value>
+  </data>
 </root>

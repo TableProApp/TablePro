@@ -28,15 +28,25 @@ internal static class GridMenus
         Item("GridMenuViewValue", results.CanViewValue, async () => await results.ViewValueAsync().ConfigureAwait(true));
 
     // From the keyboard the menu opens at the cell it acts on, not over the editor; a pointer's opens where it was.
-    public static void Show(MenuFlyout menu, DataGridView grid, ContextRequestedEventArgs args)
+    public static void Show(MenuFlyout menu, DataGridView grid, ContextRequestedEventArgs args) =>
+        Show(menu, grid, Place(grid, args));
+
+    // Read while the request is raised, for a menu built after an await.
+    public static FlyoutShowOptions? Place(DataGridView grid, ContextRequestedEventArgs args)
     {
         if (args.TryGetPosition(grid, out var point))
         {
-            menu.ShowAt(grid, new FlyoutShowOptions { Position = point });
+            return new FlyoutShowOptions { Position = point };
         }
-        else if (grid.FocusedCellMenuPoint() is { } cell)
+
+        return grid.FocusedCellMenuPoint() is { } cell ? new FlyoutShowOptions { Position = cell } : null;
+    }
+
+    public static void Show(MenuFlyout menu, DataGridView grid, FlyoutShowOptions? options)
+    {
+        if (options is not null)
         {
-            menu.ShowAt(grid, new FlyoutShowOptions { Position = cell });
+            menu.ShowAt(grid, options);
         }
         else
         {

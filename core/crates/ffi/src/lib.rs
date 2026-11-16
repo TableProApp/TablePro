@@ -3,6 +3,7 @@
 mod account;
 mod cancel_token;
 mod catalog;
+mod catalog_change;
 mod cloud;
 mod connection_url;
 mod core_handle;
@@ -49,6 +50,10 @@ pub use account::{
 };
 pub use cancel_token::CancelToken;
 pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, SchemaEntry, TableName};
+pub use catalog_change::{
+    CatalogAbilities, CatalogChange, CatalogChangeOutcome, CatalogOperation, CharacterSetInfo, DataCenterReplicas,
+    DatabaseChoicesInfo, DatabaseDraftArg, DatabaseFieldsInfo, ReplicationArg,
+};
 pub use cloud::{CloudConnectionFields, CloudGroupFields, CloudLibraryPull, CloudLibraryRecords};
 pub use connection_url::{ParsedConnectionUrl, parse_connection_url};
 pub use core_handle::{Core, FileOpenRequest};
@@ -56,7 +61,7 @@ pub use definition::ObjectSource;
 pub use drivers::{DataModelTag, DriverInfo, EndpointInfo, EngineCategoryTag, ServerNameOverrideTag};
 pub use editor::{QueryEditor, RunSettings};
 pub use error::{BoxedErrorInfo, CoreError, ErrorInfo, HostKeyFailure, ServerMessage, TlsFailureTag};
-pub use export::ExportFormatTag;
+pub use export::{ExportFormatTag, ExportProgress};
 pub use favourites::{DatabaseEnvironmentTag, FavouriteDatabaseInfo, FavouriteStore, FavouriteTableInfo};
 pub use filter::{
     CombinatorTag, FilterChoices, FilterColumn, FilterOpTag, FilterRuleArg, FilterValueArg, TableFilterArg,

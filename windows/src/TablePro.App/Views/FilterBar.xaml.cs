@@ -93,6 +93,17 @@ public sealed partial class FilterBar : UserControl
 
     internal void ShowChoicesFailed(CoreError failure) => ShowMessage(Strings.Error(failure), retry: true);
 
+    // A filter applied from elsewhere, such as a cell's menu, replaces the rows typed; before the choices are read,
+    // LoadAsync shows it.
+    internal void ShowApplied()
+    {
+        if (_draft is { } draft)
+        {
+            MessageBar.IsOpen = false;
+            ShowDraft(Fresh(_tab.Filter, draft.Choices));
+        }
+    }
+
     // An empty filter shows one row to fill in.
     private static TableFilterDraft Fresh(TableFilter? filter, FilterChoices choices)
     {
