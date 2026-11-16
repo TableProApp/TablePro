@@ -623,6 +623,8 @@ public sealed partial class ConnectionFormWindow : Window
         {
             SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
             SuggestedFileName = Strings.Get("NewDatabaseFileName"),
+            // A file that is there already is opened as it is, never replaced, so the picker does not ask to replace it.
+            ShowOverwritePrompt = false,
         };
         if (suffixes.Count > 0)
         {
@@ -633,8 +635,8 @@ public sealed partial class ConnectionFormWindow : Window
         if (result is not null)
         {
             FileBox.Text = result.Path;
-            _createFile = true;
-            SetStatus(Strings.Get("NewFileOnConnect"), null);
+            _createFile = !File.Exists(result.Path);
+            SetStatus(Strings.Get(_createFile ? "NewFileOnConnect" : "NewFileExists"), null);
         }
     }
 
