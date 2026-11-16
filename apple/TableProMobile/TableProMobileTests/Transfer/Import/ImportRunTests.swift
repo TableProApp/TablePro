@@ -91,11 +91,12 @@ struct ImportRunTests {
     }
 
     private func request(
-        _ file: StagedImportFile, formatId: String, target: RowImportTarget? = nil, connectionId: UUID = UUID()
+        _ file: StagedImportFile, formatId: String, target: RowImportTarget? = nil, connectionId: UUID = UUID(),
+        database: String? = nil
     ) -> ImportRequest {
         ImportRequest(
             formatId: formatId, file: file, connectionId: connectionId, connectionName: "Local", databaseType: .sqlite,
-            database: nil, safeModeLevel: .off, target: target
+            database: database, safeModeLevel: .off, target: target
         )
     }
 
@@ -333,6 +334,22 @@ struct ImportRunTests {
 
         #expect(await host.catalogHolds == (changesDatabases ? 1 : 0))
         #expect(await host.catalogReleases == (changesDatabases ? 1 : 0))
+    }
+
+    @Test("A SQL file opened on one database is refused after the session moved to another, before any statement runs")
+    func sqlFileRefusedAfterTheSessionMoved() async throws {
+        let driver = try await database()
+        let host = await FakeSessionHost(driver: driver)
+        await MainActor.run { host.transferDatabase = "other" }
+        let file = try staged("run.sql", "CREATE TABLE t (a INTEGER);\n")
+        let run = ImportRun(
+            request: request(file, formatId: "sql", database: "shop"), plugin: MobileImportFormats.sql, host: host
+        )
+
+        await #expect(throws: MobileTransferRefusal.self) {
+            _ = try await run.run { _ in }
+        }
+        #expect(try await driver.fetchTables(schema: nil).isEmpty)
     }
 
     @Test("An import the session cannot take now is refused with why, before it writes anything", arguments: [

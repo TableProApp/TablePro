@@ -68,6 +68,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     // Read statement by statement: a COMMIT, ROLLBACK or DDL statement in the file that ended the import's own
     // transaction, and rows that stay whatever the import's end does, committed by the file or written after that end.
     private var fileEndedTransaction = false
+    private var fileRolledBack = false
     private var keptWrites = false
     private var disabledForeignKeys = false
     private var restoresForeignKeysAtFinish = false
@@ -159,7 +160,12 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
     func transactionEnding() async -> ImportTransactionEnding {
         let recorded = lock.withLock { () -> ImportTransactionEnding? in
             if keptWrites, ending == .rolledBack { return .partlyCommitted }
-            if joinedTransaction { return .leftInOpenTransaction }
+            if joinedTransaction {
+                // The file's own COMMIT, ROLLBACK or implicitly committing DDL ended the user's transaction too.
+                guard fileEndedTransaction else { return .leftInOpenTransaction }
+                guard fileRolledBack else { return .committed }
+                return keptWrites ? .partlyCommitted : .rolledBack
+            }
             return ending
         }
         if let recorded { return recorded }
@@ -376,7 +382,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
         if keyword == "SET" {
             _ = await driver.sessionLexicalFacts()
         }
-        guard holdsOwnTransaction else { return }
+        guard holdsOwnTransaction || joinsUserTransaction else { return }
         let endedBefore = lock.withLock { fileEndedTransaction }
         let mayEnd = Self.transactionEndKeywords.contains(keyword) || Self.ddlKeywords.contains(keyword)
         let writes = endedBefore && SQLWriteClassifier.isWriteQuery(statement, databaseType: databaseType)
@@ -386,6 +392,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
                 keptWrites = keptWrites || writes
             } else {
                 fileEndedTransaction = true
+                fileRolledBack = keyword == "ROLLBACK"
                 if keyword != "ROLLBACK" { keptWrites = true }
             }
         }

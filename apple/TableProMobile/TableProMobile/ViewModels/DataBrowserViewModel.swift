@@ -691,7 +691,7 @@ final class DataBrowserViewModel {
         let searchText = hasActiveSearch ? activeSearchText : nil
         let searchColumns = searchableColumns()
         let sortState = sortState
-        return ExportSelect { driver in
+        return ExportSelect(relation: ExportRelation(table: name, schema: schema)) { driver in
             SQLBuilder.buildExportSelect(
                 table: name, schema: schema, database: database, type: type,
                 filters: filters, logicMode: logicMode, columns: columns,
@@ -731,7 +731,7 @@ final class DataBrowserViewModel {
         keys: [[(column: String, value: String)]],
         columns: [ColumnInfo]
     ) -> ExportSelect {
-        ExportSelect { driver in
+        ExportSelect(relation: ExportRelation(table: table, schema: schema)) { driver in
             SQLBuilder.buildRowsSelect(
                 table: table, schema: schema, database: database, type: type, keys: keys, columns: columns, driver: driver
             )

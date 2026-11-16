@@ -103,7 +103,7 @@ nonisolated struct DataImportOutcome: Sendable {
 
     var summaryLines: [String] {
         if let tally {
-            return tally.summaryLines(failed: errors.count)
+            return tally.summaryLines(failed: skippedStatements)
         }
         var lines = [String(format: String(localized: "Statements run: %@"), executedStatements.formatted())]
         if skippedStatements > 0 {
@@ -526,10 +526,11 @@ nonisolated final class ImportRun: @unchecked Sendable {
     }
 
     // The sheet named its database, and another window can have moved the session since. Rows that name the database
-    // land there anyway; anything that does not, a new table among them, is refused rather than written elsewhere.
+    // land there anyway; anything that does not, a new table or a SQL file's unqualified statements among them, is
+    // refused rather than written elsewhere.
     private func refuseIfSessionMoved(on driver: any DatabaseDriver, dialect: (any MobileWriteDialect)?) async throws {
-        guard let target = request.target, let wanted = request.database, !wanted.isEmpty else { return }
-        if dialect?.namesDatabase == true, target.newTable == nil { return }
+        guard let wanted = request.database, !wanted.isEmpty else { return }
+        if let target = request.target, dialect?.namesDatabase == true, target.newTable == nil { return }
         let current: String?
         if let reporting = driver as? any SessionDatabaseReporting {
             current = try? await reporting.sessionDatabase()
@@ -537,11 +538,15 @@ nonisolated final class ImportRun: @unchecked Sendable {
             current = await host.transferDatabase
         }
         guard let current, !current.isEmpty, current != wanted else { return }
-        throw MobileTransferRefusal(reason: Self.sessionMovedMessage)
+        throw MobileTransferRefusal(reason: request.target == nil ? Self.sqlFileSessionMovedMessage : Self.sessionMovedMessage)
     }
 
     static var sessionMovedMessage: String {
         String(localized: "The connection moved to another database or schema. Choose the table again.")
+    }
+
+    static var sqlFileSessionMovedMessage: String {
+        String(localized: "The connection moved to another database. Open the SQL file again from that database.")
     }
 
     nonisolated private struct NewTablePreparation {

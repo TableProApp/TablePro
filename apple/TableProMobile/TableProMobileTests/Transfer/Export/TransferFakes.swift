@@ -163,6 +163,7 @@ final class StubExportCatalog: MobileExportCatalog, @unchecked Sendable {
     var objects: [PluginExportTable] = []
     var customRowsQuery: String?
     var dropStatements: [String: String] = [:]
+    var columns: [String: [PluginColumnInfo]] = [:]
 
     init(databaseTypeId: String = "PostgreSQL") {
         self.databaseTypeId = databaseTypeId
@@ -174,6 +175,8 @@ final class StubExportCatalog: MobileExportCatalog, @unchecked Sendable {
     func escapeStringLiteral(_ value: String) -> String { SQLEscaping.ansiStringLiteral(value) }
     func fetchTableDDL(table: String, databaseName: String) async throws -> String { "CREATE TABLE \(table) ()" }
     func dropStatement(for object: PluginExportTable) -> String? { dropStatements[object.name] }
+    func fetchColumns(table: String, databaseName: String) async throws -> [PluginColumnInfo] { columns[table] ?? [] }
+    func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] { columns }
 }
 
 // A provider that hands out one driver and says whether it is the window's session.

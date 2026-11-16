@@ -7,15 +7,25 @@ import TableProPluginKit
 
 // A read the app builds, written for the connection that runs it: an export reads on a connection of its own, whose
 // literal rules (MySQL's NO_BACKSLASH_ESCAPES, PostgreSQL's standard_conforming_strings) can differ from the window's.
+// The table a filtered or keyed read comes from, so a SQL file writes its INSERTs into that table and knows its
+// generated and identity columns.
+nonisolated struct ExportRelation: Sendable, Equatable {
+    let table: String
+    let schema: String?
+}
+
 nonisolated struct ExportSelect: Sendable, ExpressibleByStringLiteral {
     private let render: @Sendable (any DatabaseDriver) -> String
+    let relation: ExportRelation?
 
-    init(render: @escaping @Sendable (any DatabaseDriver) -> String) {
+    init(relation: ExportRelation? = nil, render: @escaping @Sendable (any DatabaseDriver) -> String) {
+        self.relation = relation
         self.render = render
     }
 
     init(stringLiteral sql: String) {
         render = { _ in sql }
+        relation = nil
     }
 
     func statement(on driver: any DatabaseDriver) -> String {
@@ -399,14 +409,27 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
             return (source, objects, total)
         case .query(let select):
             guard let lease else { throw CancellationError() }
+            // A catalog that cannot be read leaves the rows to export; the format warns that it has no column metadata.
+            var columnCatalog: Result<any MobileExportCatalog, any Error>?
+            if let relation = select.relation {
+                do {
+                    columnCatalog = .success(try await ExportObjectListing.catalog(
+                        on: lease.driver, databaseType: request.databaseType, database: request.database,
+                        schema: relation.schema
+                    ))
+                } catch {
+                    columnCatalog = .failure(error)
+                }
+            }
             let source = MobileQueryExportDataSource(
                 query: select.statement(on: lease.driver),
                 driver: lease.driver,
                 databaseType: request.databaseType,
                 readOnly: readOnly,
-                skipsSnapshotStatements: lease.isSessionDriver
+                skipsSnapshotStatements: lease.isSessionDriver,
+                columnCatalog: columnCatalog
             )
-            return (source, [queryTable], nil)
+            return (source, [select.relation.map(relationTable) ?? queryTable], nil)
         case .rerun(let query):
             guard let lease else { throw CancellationError() }
             guard lease.driver.enforcesReadOnlyMode else {
@@ -431,6 +454,20 @@ nonisolated final class ExportRun: ExportRunning, @unchecked Sendable {
     }
 
     // A result has no structure behind it, so a query export asks only for data, as macOS `QueryExportOptions` does.
+    private func relationTable(_ relation: ExportRelation) -> PluginExportTable {
+        PluginExportTable(
+            name: relation.table,
+            databaseName: request.database ?? "",
+            tableType: "table",
+            optionValues: QueryExportOptions.dataOnly(
+                columns: type(of: plugin).perTableOptionColumns,
+                defaults: plugin.defaultTableOptionValues()
+            ),
+            schema: relation.schema,
+            kind: .table
+        )
+    }
+
     private var queryTable: PluginExportTable {
         PluginExportTable(
             name: request.fileName,

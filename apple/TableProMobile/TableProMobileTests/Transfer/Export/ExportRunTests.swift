@@ -103,6 +103,38 @@ struct ExportRunTests {
         TransferFiles.remove(root)
     }
 
+    @Test("Rows read from a table go into that table, not the file's name, and leave its generated column out")
+    func tableQueryKeepsItsRelation() async throws {
+        let root = try TransferTestFolders.make("export-relation")
+        let driver = RecordingTransferDriver()
+        let catalog = StubExportCatalog()
+        catalog.columns = ["orders": [
+            PluginColumnInfo(name: "id", dataType: "int4", isPrimaryKey: true),
+            PluginColumnInfo(name: "total", dataType: "numeric", isGenerated: true)
+        ]]
+        driver.exportCatalog = catalog
+        driver.scriptedRows["SELECT id, total FROM orders WHERE id > 1"] = (
+            PluginStreamHeader(columns: ["id", "total"], columnTypeNames: ["int4", "numeric"]), [[.text("2"), .text("9")]]
+        )
+        let select = ExportSelect(relation: ExportRelation(table: "orders", schema: "public")) { _ in
+            "SELECT id, total FROM orders WHERE id > 1"
+        }
+        let run = ExportRun(
+            request: request(.query(select), name: "my rows"), plugin: MobileExportFormats.sql,
+            drivers: FixedDriverProvider(driver: driver), exportsRoot: root
+        )
+
+        let outcome = try await run.run { _ in }
+
+        let text = try String(contentsOf: try #require(outcome.files.first), encoding: .utf8)
+        #expect(text.contains("\"orders\""))
+        #expect(text.contains("(\"id\")"))
+        #expect(!text.contains("\"total\""))
+        #expect(!text.contains("my rows"))
+        outcome.discard()
+        TransferFiles.remove(root)
+    }
+
     @Test("The session's own connection is never closed by the export")
     func sessionLeaseStaysOpen() async throws {
         let root = try TransferTestFolders.make("export-session")

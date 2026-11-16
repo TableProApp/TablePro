@@ -208,6 +208,20 @@ struct MobileImportDataSinkTests {
         #expect(await sink.transactionEnding() == .partlyCommitted)
     }
 
+    @Test("A file's own COMMIT or ROLLBACK ends the user's transaction the import joined, and the outcome says how",
+          arguments: [("COMMIT", ImportTransactionEnding.committed), ("ROLLBACK", .rolledBack)])
+    func fileEndsTheJoinedTransaction(_ statement: String, _ expected: ImportTransactionEnding) async throws {
+        let driver = try await people()
+        _ = try await driver.execute(query: "BEGIN")
+        let sink = sink(on: driver)
+        try await sink.beginTransaction()
+        #expect(sink.joinsUserTransaction)
+        try await sink.execute(statement: "INSERT INTO people (id, name) VALUES (1, 'Ada')")
+        try await sink.execute(statement: statement)
+
+        #expect(await sink.transactionEnding() == expected)
+    }
+
     // Critic M8: the import never commits or rolls back the user's transaction, and says the rows wait in it.
     @Test("An import into the user's open transaction joins it and leaves the rows there")
     func joinsTheUsersTransaction() async throws {

@@ -15,14 +15,17 @@ nonisolated final class MobileQueryExportDataSource: PluginExportDataSource, @un
     private let databaseType: DatabaseType
     private let readOnly: Bool
     private let skipsSnapshotStatements: Bool
+    private let columnCatalog: Result<any MobileExportCatalog, any Error>?
 
     init(
         query: String,
         driver: any DatabaseDriver,
         databaseType: DatabaseType,
         readOnly: Bool,
-        skipsSnapshotStatements: Bool = false
+        skipsSnapshotStatements: Bool = false,
+        columnCatalog: Result<any MobileExportCatalog, any Error>? = nil
     ) {
+        self.columnCatalog = columnCatalog
         self.query = query
         self.driver = driver
         self.databaseType = databaseType
@@ -47,6 +50,16 @@ nonisolated final class MobileQueryExportDataSource: PluginExportDataSource, @un
 
     func fetchTableDDL(table: String, databaseName: String) async throws -> String {
         ""
+    }
+
+    func fetchColumns(table: String, databaseName: String) async throws -> [PluginColumnInfo] {
+        guard let columnCatalog else { return [] }
+        return try await columnCatalog.get().fetchColumns(table: table, databaseName: databaseName)
+    }
+
+    func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] {
+        guard let columnCatalog else { return [:] }
+        return try await columnCatalog.get().fetchAllColumns(databaseName: databaseName)
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
