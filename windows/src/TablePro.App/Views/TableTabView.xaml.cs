@@ -638,10 +638,16 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         args.Handled = true;
         var place = GridMenus.Place(grid, args);
         var (row, column) = (grid.FocusedRow, grid.FocusedColumn);
+        var rows = Results.ShownSet;
         var cellRules = grid.RowCount > 0 && !_model.IsDeleted(row)
             ? await CellRulesAsync(row, column).ConfigureAwait(true)
             : [];
-        if (XamlRoot is null || _model.IsClosed)
+        // The first read of the choices can outlast a page change or another click, and the menu acts on its cell.
+        if (XamlRoot is null
+            || _model.IsClosed
+            || !ReferenceEquals(rows, Results.ShownSet)
+            || grid.FocusedRow != row
+            || grid.FocusedColumn != column)
         {
             return;
         }

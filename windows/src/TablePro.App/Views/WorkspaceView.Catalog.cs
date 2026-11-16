@@ -8,9 +8,10 @@ namespace TablePro.App.Views;
 // through Safe Mode, then the tree and the tabs follow (core/docs/decisions/0013-catalog-operations.md).
 public sealed partial class WorkspaceView
 {
-    // Read-only, by the connection or its Safe Mode, offers none of them.
+    // Read-only, by the connection or its Safe Mode, offers none of them, nor does a window whose bar is busy with an
+    // export, an import or another change.
     private CatalogAbilities Abilities =>
-        _session is { IsReadOnly: false } session ? session.CatalogAbilities : CatalogAbilities.None;
+        _session is { IsReadOnly: false } session && _exporting is null ? session.CatalogAbilities : CatalogAbilities.None;
 
     public bool CanCreateDatabase => Abilities.CreateDatabase;
 
@@ -273,10 +274,20 @@ public sealed partial class WorkspaceView
             }
         }
 
+        if (_exporting is not null)
+        {
+            return false;
+        }
+
+        // The bar's Cancel stops a change waiting on a lock, and leaving the window stops it too.
+        using var running = new CancellationTokenSource();
+        _exporting = running;
+        ShowExport(InfoBarSeverity.Informational, Strings.Format("CatalogChangeRunning", session.Name), running: true);
+        CommandsChanged?.Invoke(this, EventArgs.Empty);
         CatalogChangeOutcome outcome;
         try
         {
-            outcome = await change.RunAsync(confirmed: true).ConfigureAwait(true);
+            outcome = await change.RunAsync(confirmed: true, running.Token).ConfigureAwait(true);
         }
         catch (TableProException exception)
         {
@@ -284,10 +295,31 @@ public sealed partial class WorkspaceView
                 .ConfigureAwait(true);
             return false;
         }
-        catch (Exception exception) when (exception is OperationCanceledException or ObjectDisposedException)
+        catch (OperationCanceledException)
         {
-            // Stopped, or the window let go of its session while the change waited.
+            // A statement stopped once sent may have run, so the tree is read again and nothing closes.
+            if (Holds(session))
+            {
+                ShowExport(InfoBarSeverity.Informational, Strings.Get("CatalogChangeStopped"), running: false);
+                await RefreshAsync().ConfigureAwait(true);
+            }
+
             return false;
+        }
+        catch (ObjectDisposedException)
+        {
+            // The window let go of its session while the change waited.
+            return false;
+        }
+        finally
+        {
+            _exporting = null;
+            if (ExportBar.Severity == InfoBarSeverity.Informational && !ExportBar.IsClosable)
+            {
+                ExportBar.IsOpen = false;
+            }
+
+            CommandsChanged?.Invoke(this, EventArgs.Empty);
         }
 
         switch (outcome)

@@ -4284,4 +4284,10 @@ New fingerprint: {2}</value>
   <data name="Error_ffi_export_duplicate_columns" xml:space="preserve">
     <value>SQL INSERT names each column once. Name the columns apart with AS and run the query again.</value>
   </data>
+  <data name="CatalogChangeRunning" xml:space="preserve">
+    <value>Running the change on {0}...</value>
+  </data>
+  <data name="CatalogChangeStopped" xml:space="preserve">
+    <value>The change was stopped. It may have run in part, so the objects are read again.</value>
+  </data>
 </root>
