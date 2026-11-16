@@ -82,7 +82,7 @@ internal static class CatalogDialogs
         FrameworkElement owner,
         DatabaseSession session,
         CatalogAbilities abilities,
-        DatabaseChoices choices)
+        NewDatabaseChoices choices)
     {
         var form = new Form(Strings.Get("NewSchemaTitle"), null, "CreateAction");
         var name = form.Name();
@@ -97,7 +97,7 @@ internal static class CatalogDialogs
         FrameworkElement owner,
         DatabaseSession session,
         CatalogAbilities abilities,
-        DatabaseChoices choices)
+        NewDatabaseChoices choices)
     {
         var fields = abilities.DatabaseFields;
         var form = new Form(Strings.Get(abilities.Keyspaces ? "NewKeyspaceTitle" : "NewDatabaseTitle"), null, "CreateAction");

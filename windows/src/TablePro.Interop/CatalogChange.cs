@@ -44,7 +44,7 @@ public sealed record DatabaseFields(
 public sealed record CharacterSet(string Name, string DefaultCollation, IReadOnlyList<string> Collations);
 
 // What the server offers for a new database's options; an empty list leaves only the server's default.
-public sealed record DatabaseChoices(
+public sealed record NewDatabaseChoices(
     IReadOnlyList<string> Owners,
     IReadOnlyList<string> Templates,
     IReadOnlyList<string> Encodings,
@@ -59,7 +59,7 @@ public sealed record DatabaseChoices(
     string? DefaultCharacterSet,
     string? DefaultCollation)
 {
-    public static DatabaseChoices None { get; } = new([], [], [], [], [], [], [], [], null, null, null, null, null);
+    public static NewDatabaseChoices None { get; } = new([], [], [], [], [], [], [], [], null, null, null, null, null);
 }
 
 public sealed record DataCenterReplicas(string DataCenter, int Replicas);
@@ -197,7 +197,7 @@ public sealed partial class DatabaseSession
         return _session.ProtectsSchema(name);
     }
 
-    public async Task<DatabaseChoices> GetDatabaseChoicesAsync(CancellationToken cancellationToken = default)
+    public async Task<NewDatabaseChoices> GetDatabaseChoicesAsync(CancellationToken cancellationToken = default)
     {
         var choices = await CoreCall.RunAsync(token => _session.DatabaseChoices(token), cancellationToken)
             .ConfigureAwait(false);
@@ -254,7 +254,7 @@ internal static class Catalog
             abilities.OnCluster);
     }
 
-    public static DatabaseChoices Choices(Native.DatabaseChoicesInfo choices) => new(
+    public static NewDatabaseChoices Choices(Native.DatabaseChoicesInfo choices) => new(
         choices.Owners,
         choices.Templates,
         choices.Encodings,

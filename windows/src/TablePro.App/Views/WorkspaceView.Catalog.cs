@@ -29,7 +29,7 @@ public sealed partial class WorkspaceView
         }
 
         var abilities = Abilities;
-        var choices = abilities.SchemaOwner ? await ChoicesAsync(session).ConfigureAwait(true) : DatabaseChoices.None;
+        var choices = abilities.SchemaOwner ? await ChoicesAsync(session).ConfigureAwait(true) : NewDatabaseChoices.None;
         if (!Holds(session))
         {
             return;
@@ -367,7 +367,7 @@ public sealed partial class WorkspaceView
     }
 
     // A server that lists none leaves every picker with only its own default.
-    private static async Task<DatabaseChoices> ChoicesAsync(DatabaseSession session)
+    private static async Task<NewDatabaseChoices> ChoicesAsync(DatabaseSession session)
     {
         try
         {
@@ -375,7 +375,7 @@ public sealed partial class WorkspaceView
         }
         catch (Exception exception) when (exception is TableProException or ObjectDisposedException)
         {
-            return DatabaseChoices.None;
+            return NewDatabaseChoices.None;
         }
     }
 
