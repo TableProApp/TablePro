@@ -92,6 +92,47 @@ public sealed class TableFilterMemory
         ForgetPrefix(Part(connection) + "." + Part(database) + ".");
     }
 
+    // The schemas holding a kept filter under the connection and database; null for a table named with no schema.
+    public IReadOnlyList<string?> SchemasWithFilters(string connection, string? database)
+    {
+        var prefix = Part(connection) + "." + Part(database) + ".";
+        lock (_lock)
+        {
+            return [.. Tables().Keys
+                .Where(key => key.StartsWith(prefix, StringComparison.Ordinal))
+                .Select(key => key[prefix.Length..].Split('.')[0])
+                .Distinct(StringComparer.Ordinal)
+                .Select(part => part.Length == 0 ? null : Uri.UnescapeDataString(part))];
+        }
+    }
+
+    // A drop can take tables no tab showed, such as a partitioned table's partitions, so the schema's kept filters are
+    // matched against what it lists now.
+    public void ForgetMissing(string connection, string? database, string? schema, IReadOnlySet<string> present)
+    {
+        ArgumentNullException.ThrowIfNull(present);
+        var prefix = Part(connection) + "." + Part(database) + "." + Part(schema) + ".";
+        lock (_lock)
+        {
+            var tables = Tables();
+            var gone = tables.Keys
+                .Where(key => key.StartsWith(prefix, StringComparison.Ordinal)
+                    && !present.Contains(Uri.UnescapeDataString(key[prefix.Length..])))
+                .ToList();
+            if (gone.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var key in gone)
+            {
+                tables.Remove(key);
+            }
+
+            Write(tables);
+        }
+    }
+
     private void ForgetPrefix(string prefix)
     {
         lock (_lock)

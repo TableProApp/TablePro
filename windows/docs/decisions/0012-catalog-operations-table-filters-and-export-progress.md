@@ -12,7 +12,7 @@ A table's filter lived only with its tab ([0007](0007-browsing-a-connection.md))
 ### Filters
 
 - The filter a table's rows were last read with is kept per saved connection (or opened file), database, schema and table in `table-filters.json` beside the session file (`TableFilterMemory`), as macOS keys it. A table opened again reads with it and shows it in the bar. Clear forgets it; a filter the core or the server refused is not kept. A restored tab and a followed foreign key keep their own filter.
-- A dropped table forgets its filter, and a dropped schema or database every filter under it.
+- A dropped table forgets its filter, and a dropped schema or database every filter under it; after a drop, a kept filter of a table its schema no longer lists, as a partition, goes too.
 - A table tab's cell menu has Filter, with `col = “value”` and `col != “value”`, `>` and `<` where the column orders, and `is NULL` and `is not NULL` for a NULL cell, each only where the engine offers the operator (`CellFilters`). The value is the core's filter text for the cell (`ResultSet.GetFilterText`), the text that binds back to the value stored, as a followed foreign key's filter is built; a value no text binds back to, such as 'true' in a SQLite BOOLEAN column, offers none. None either for a binary value, a value over 10,000 characters, one with a blank at either end or one that reads as NULL, a new row or an edited cell. The rule joins the rules under Match all and applies at once; under Match any of two clauses it runs alone; a rule already running does nothing. A query result has no Filter, as on macOS.
 
 ### Export

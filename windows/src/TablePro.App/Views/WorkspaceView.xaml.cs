@@ -2122,11 +2122,13 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
     }
 
-    // Never the engine's own, nor the one this window is in, as macOS offers a drop.
+    // Never the engine's own, nor the one this window is in, as macOS offers a drop. A server can resolve the name the
+    // connection gave in another case, so case is ignored.
     private bool Droppable(DatabaseSession session, string database) =>
         !session.ProtectsDatabase(database)
-        && !string.Equals(database, CurrentDatabase, StringComparison.Ordinal)
-        && !string.Equals(database, session.Database ?? _listedOwnDatabase, StringComparison.Ordinal);
+        && !string.Equals(database, CurrentDatabase, StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(database, session.Database, StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(database, _listedOwnDatabase, StringComparison.OrdinalIgnoreCase);
 
     private static void ShowMenu(MenuFlyout menu, FrameworkElement row, ContextRequestedEventArgs args)
     {

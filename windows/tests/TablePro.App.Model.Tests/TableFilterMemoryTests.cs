@@ -64,4 +64,24 @@ public sealed class TableFilterMemoryTests : IDisposable
         memory.ForgetDatabase(connection, "crm");
         Assert.Null(new TableFilterMemory(Path).Recall(connection, "crm", Artist));
     }
+
+    [Fact]
+    public void AFilterOfATableTheSchemaNoLongerListsIsForgotten()
+    {
+        var memory = new TableFilterMemory(Path);
+        var connection = TableFilterMemory.ConnectionKey(Guid.NewGuid(), null);
+        var kept = new TableName("sales", "orders");
+        var partition = new TableName("sales", "orders.2026");
+        memory.Remember(connection, "shop", kept, ByName);
+        memory.Remember(connection, "shop", partition, ByName);
+        memory.Remember(connection, "shop", Artist, ByName);
+
+        Assert.Equal<string?>(["public", "sales"], [.. memory.SchemasWithFilters(connection, "shop").Order()]);
+
+        memory.ForgetMissing(connection, "shop", "sales", new HashSet<string>(["orders"]));
+
+        Assert.NotNull(memory.Recall(connection, "shop", kept));
+        Assert.Null(memory.Recall(connection, "shop", partition));
+        Assert.NotNull(memory.Recall(connection, "shop", Artist));
+    }
 }
