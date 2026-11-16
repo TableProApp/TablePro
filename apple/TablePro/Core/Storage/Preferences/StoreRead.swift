@@ -66,10 +66,24 @@ internal enum StoreLog {
     static let logger = Logger(subsystem: "com.TablePro", category: "Store")
 
     static func unreadable(_ name: String, _ error: any Error) {
-        logger.error("Unreadable \(name, privacy: .public): \(error.publicLogShape, privacy: .public)")
+        logger.error(
+            "Unreadable \(publicPart(of: name), privacy: .public) (\(name, privacy: .private)): \(error.publicLogShape, privacy: .public)"
+        )
     }
 
     static func unwritable(_ name: String, _ error: any Error) {
-        logger.error("Could not save \(name, privacy: .public): \(error.publicLogShape, privacy: .public)")
+        logger.error(
+            "Could not save \(publicPart(of: name), privacy: .public) (\(name, privacy: .private)): \(error.publicLogShape, privacy: .public)"
+        )
+    }
+
+    // A key or file name continues past a connection id with database, schema and table names, which are user data.
+    static func publicPart(of name: String) -> String {
+        let components = name.split(separator: ".", omittingEmptySubsequences: false)
+        let scoped = components.firstIndex { component in
+            UUID(uuidString: String(component).removingPercentEncoding ?? String(component)) != nil
+        }
+        guard let scoped else { return name }
+        return (components[..<scoped] + ["*"]).joined(separator: ".")
     }
 }

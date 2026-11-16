@@ -135,3 +135,19 @@ struct JSONFileStoreTests {
         #expect(!store.exists)
     }
 }
+
+struct StoreLogTests {
+    @Test
+    func publicPartStopsAtTheConnectionId() {
+        let scope = TableScope(connectionId: UUID(), database: "shop", schema: "public", table: "orders")
+        let name = PreferenceKeys.columnDisplayFormats(scope).name
+
+        #expect(StoreLog.publicPart(of: name) == "com.TablePro.columns.displayFormat.*")
+    }
+
+    @Test
+    func publicPartKeepsANameWithNoConnectionId() {
+        #expect(StoreLog.publicPart(of: "com.TablePro.favoriteDatabases") == "com.TablePro.favoriteDatabases")
+        #expect(StoreLog.publicPart(of: "AgentSessions.json") == "AgentSessions.json")
+    }
+}
