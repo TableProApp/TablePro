@@ -37,9 +37,11 @@ public sealed partial class ShellTests
         app.Screenshot($"109-new-{engine}-file-named", form);
 
         app.Find("ConnectButton", form).AsButton().Invoke();
-        Assert.True(
-            Retry.WhileFalse(() => !app.HasWindow("New connection"), AppSession.Wait, throwOnTimeout: false).Success,
-            "The form stayed open: " + AppSession.TextOf(status));
+        // The status is read only while the form is still open, since a closed form's elements are gone.
+        if (!Retry.WhileFalse(() => !app.HasWindow("New connection"), AppSession.Wait, throwOnTimeout: false).Success)
+        {
+            Assert.Fail("The form stayed open: " + AppSession.TextOf(status));
+        }
 
         Assert.True(File.Exists(file));
         Assert.False(app.Find($"Rail_{name}").IsOffscreen);
