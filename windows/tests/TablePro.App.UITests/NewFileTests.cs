@@ -29,8 +29,11 @@ public sealed partial class ShellTests
         app.Find("NameBox", form).AsTextBox().Text = name;
         app.Click(app.Find("NewFileButton", form), () => SaveDialog(app, form) is not null, form);
         SaveInFileDialog(app, form, file);
-        // The picker hands back the long form of a folder typed with an 8.3 name, as the runner's temp folder can be.
-        Assert.Equal(Path.GetFileName(file), Path.GetFileName(app.Find("FileBox", form).AsTextBox().Text));
+        // The path reaches the form after the dialog closes, with a folder typed by its 8.3 name in its long form.
+        var fileBox = app.Find("FileBox", form).AsTextBox();
+        Assert.True(
+            Retry.WhileFalse(() => Path.GetFileName(fileBox.Text) == Path.GetFileName(file), AppSession.Wait, throwOnTimeout: false).Success,
+            "The form shows " + fileBox.Text);
         Assert.False(File.Exists(file), "the picker made the file before Connect");
         var status = app.Find("FormStatus", form);
         Assert.Equal("The file is made when you connect", AppSession.WaitForText(status, text => text.Length > 0));
