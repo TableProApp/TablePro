@@ -15,13 +15,13 @@ Each one works as the macOS app's does, with its words in Windows sentence case,
 
 - A `SelectorBar` at the top of a table tab switches between Data and Structure.
 - Data reads its page through `ReadTablePageAsync` on the session's pooled connections; the tab opens no editor connection of its own (amends 0004).
-- The filter bar (Filter in the tab's command bar, Query > Filter rows, Ctrl+Shift+F) holds one row per rule: a column, an operator the engine offers for it, and its value, two for between, a comma-separated list for in list. A Raw SQL row takes a WHERE condition where the engine reads SQL. Match all or Match any shows once there are two conditions, Any only where the engine has OR. Apply reads the first page and counts the rows the filter picks; Clear reads the whole table. A rule missing its value is refused before anything is sent. A filter the core refuses keeps the rows and the filter shown. One the server refuses, or a read that is stopped or times out, keeps the filter, sort and page the rows were read with, and the grid is empty until Refresh reads them again. The results pane says why from the core's code (`filter.*`, down to a value's own `edit.*`), without naming the rule. Changing the filter asks before it discards pending edits, as a sort does. The filter is kept with the tab in the session.
+- The filter bar (Filter in the tab's command bar, Query > Filter rows, Ctrl+Shift+F) holds one row per rule: a column, an operator the engine offers for it, and its value, two for between, a comma-separated list for in list. A Raw SQL row takes a WHERE condition where the engine reads SQL. Match all or Match any shows once there are two conditions, Any only where the engine has OR. Apply reads the first page and counts the rows the filter picks; Clear reads the whole table. A rule missing its value is refused before anything is sent. A filter the core refuses keeps the rows and the filter shown. One the server refuses, or a read that is stopped or times out, keeps the filter, sort and page the rows were read with, and the grid is empty until Refresh reads them again. The results pane says why from the core's code (`filter.*`, down to a value's own `edit.*`), without naming the rule. Changing the filter asks before it discards pending edits, as a sort does. The filter is kept with the tab in the session, and per table ([0012](0012-catalog-operations-table-filters-and-export-progress.md)).
 - Structure shows Columns, Indexes, Foreign keys and DDL (`GetStructureAsync`). The lists are the read-only data grid over `TextGridData`, with the macOS headers and YES or NO; DDL is the engine's CREATE script in a read-only text box with Copy, and none for a view, whose CREATE TABLE some engines would build from its columns. Structure is read once and again on Refresh.
 
 ### Objects without rows
 
 - A function, procedure, trigger or sequence opens a definition tab: its source read only (`GetObjectDefinitionAsync`), Reload, Copy, and Open in editor, which opens a query tab with the text and is hidden where the core says running it would not make the object as it is. A definition whose text names no database, as MySQL's, opens a query tab that moves its connection to that database before its first run (`QueryEditor.UseDatabaseAsync`), and refuses to run where the move fails. "Source unavailable" says why, or that the object is gone or the login cannot read it, with Try again.
-- The tree's context menu offers Open, Show structure and Copy name for objects with rows, and Show DDL and Copy name for the others.
+- The tree's context menu offers Open, Show structure and Copy name for objects with rows, and Show DDL and Copy name for the others; 0012 adds the rest.
 - Definition tabs are not kept in session.json: an older build reads an unknown tab kind as a damaged file and starts empty, and the tree brings one back in a click.
 
 ### Grid menus, values and foreign keys
@@ -33,7 +33,7 @@ Each one works as the macOS app's does, with its words in Windows sentence case,
 
 ### Export
 
-- File > Export results (Ctrl+Shift+E) asks for a format, CSV, JSON, Excel, Markdown, HTML, XML, or SQL INSERT from a table, and on a table tab for Current page or Entire table, then for a file with the system save picker. The core writes the file (`ExportRowsAsync`, `ExportTableAsync`): the rows held, or every row the tab's filter and sort select, streamed. A file appears only once complete.
+- File > Export results (Ctrl+Shift+E) asks for a format, CSV, JSON, Excel, Markdown, HTML, XML or SQL INSERT (0012), and on a table tab for Current page or Entire table, then for a file with the system save picker. The core writes the file (`ExportRowsAsync`, `ExportTableAsync`): the rows held, or every row the tab's filter and sort select, streamed. A file appears only once complete.
 
 ### Query history
 

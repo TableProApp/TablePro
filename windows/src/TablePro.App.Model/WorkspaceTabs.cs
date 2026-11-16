@@ -107,6 +107,35 @@ public sealed class WorkspaceTabs<TItem>
         }
     }
 
+    // The table the tab shows was dropped: nothing is asked, since its changes have nowhere to go, and the tab is not
+    // kept to reopen.
+    public async Task DiscardAsync(TItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (!_closing.Add(item))
+        {
+            return;
+        }
+
+        try
+        {
+            if (_view.ContentOf(item) is { } content)
+            {
+                await content.CloseAsync().ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            _closing.Remove(item);
+        }
+
+        _view.Remove(item);
+        if (_view.Items.Count == 0)
+        {
+            Emptied?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     // A held transaction or unsaved changes not answered for yet.
     public bool HasUnconfirmed(ISet<IWorkspaceTab> confirmed)
     {

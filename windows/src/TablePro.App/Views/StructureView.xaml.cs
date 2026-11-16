@@ -106,6 +106,9 @@ public sealed partial class StructureView : UserControl
     }
 
     // What was shown before stays under the bar.
+    // The object menu's Show DDL opens the CREATE statement itself.
+    internal void ShowDdl() => DdlItem.IsSelected = true;
+
     internal void ShowFailure(CoreError failure)
     {
         ShowLoading(false);

@@ -1538,6 +1538,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             or KeyTabView { IsRunning: true };
         var editor = tab?.Editor is not null;
         MenuSwitchDatabase.IsEnabled = workspace?.CanSwitchDatabase ?? false;
+        MenuNewDatabase.IsEnabled = workspace?.CanCreateDatabase ?? false;
+        MenuNewSchema.IsEnabled = workspace?.CanCreateSchema ?? false;
         foreach (var item in new[] { MenuUndo, MenuRedo, MenuCut, MenuPaste, MenuFind, MenuReplace })
         {
             item.IsEnabled = editor;
@@ -1635,6 +1637,22 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private void OnReplace(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.H);
 
     private void OnSwitchDatabase(object sender, RoutedEventArgs e) => Workspace?.OpenDatabaseMenu();
+
+    private async void OnNewDatabase(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.NewDatabaseAsync().ConfigureAwait(true);
+        }
+    }
+
+    private async void OnNewSchema(object sender, RoutedEventArgs e)
+    {
+        if (Workspace is { } workspace)
+        {
+            await workspace.NewSchemaAsync().ConfigureAwait(true);
+        }
+    }
 
     // The menu sends the editor the key it already answers, so a menu command and its shortcut cannot differ.
     private void EditorKey(VirtualKey key)

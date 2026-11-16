@@ -128,6 +128,7 @@ public sealed class SettingsStore(string path)
     UseStringEnumConverter = true)]
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(SessionState))]
+[JsonSerializable(typeof(TableFilterFile))]
 internal sealed partial class ModelJson : JsonSerializerContext;
 
 internal static class JsonFile

@@ -34,5 +34,9 @@ public sealed class TableKeys : IDisposable
             _keys.FollowReference(rows.Handle, checked((ulong)row), choice.Referencing, checked((uint)choice.Key))));
     }
 
+    // The other tables whose foreign keys point at this one, each once.
+    public IReadOnlyList<TableName> ReferencingTables =>
+        [.. _keys.ReferencingTables().Select(table => new TableName(table.Schema, table.Name))];
+
     public void Dispose() => _keys.Dispose();
 }

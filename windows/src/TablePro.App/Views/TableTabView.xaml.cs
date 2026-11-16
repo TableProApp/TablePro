@@ -27,7 +27,8 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         string? schema,
         string table,
         ObjectKind kind,
-        SessionTab? restore = null)
+        SessionTab? restore = null,
+        ITableFilters? filters = null)
     {
         InitializeComponent();
         Results.ShowsEdits = true;
@@ -43,7 +44,8 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             new TableName(schema, table),
             restore?.ObjectKindOr(kind) ?? kind,
             () => workbench.Settings,
-            restore);
+            restore,
+            filters);
         _model.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
         Results.StatusChanged += (_, status) => StatusText.Text = status;
         Results.RowsStatus = (rows, milliseconds, truncated) =>
@@ -172,6 +174,12 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     public void ShowStructure() => ShowView(structure: true);
 
     public void ShowData() => ShowView(structure: false);
+
+    public void ShowDdl()
+    {
+        ShowView(structure: true);
+        _structure?.ShowDdl();
+    }
 
     // The menu's Filter rows, as the command bar's toggle; from Structure it brings the rows back with the bar open.
     public void ToggleFilter()
@@ -618,7 +626,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     }
 
     // Built when asked for, since a menu keeps the window it first opened in and a tab can move to another.
-    private void OnGridContextRequested(UIElement sender, ContextRequestedEventArgs args)
+    private async void OnGridContextRequested(UIElement sender, ContextRequestedEventArgs args)
     {
         var grid = Results.GridView;
         // The editor's TextBox shows its own menu; a right-click on another cell keeps the edit first.
@@ -628,7 +636,22 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         }
 
         args.Handled = true;
+        var place = GridMenus.Place(grid, args);
         var (row, column) = (grid.FocusedRow, grid.FocusedColumn);
+        var rows = Results.ShownSet;
+        var cellRules = grid.RowCount > 0 && !_model.IsDeleted(row)
+            ? await CellRulesAsync(row, column).ConfigureAwait(true)
+            : [];
+        // The first read of the choices can outlast a page change or another click, and the menu acts on its cell.
+        if (XamlRoot is null
+            || _model.IsClosed
+            || !ReferenceEquals(rows, Results.ShownSet)
+            || grid.FocusedRow != row
+            || grid.FocusedColumn != column)
+        {
+            return;
+        }
+
         var menu = new MenuFlyout();
         // A row marked for delete offers only to keep it, as macOS does.
         if (grid.RowCount > 0 && _model.IsDeleted(row))
@@ -651,6 +674,11 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(GridMenus.Copy(grid));
         menu.Items.Add(GridMenus.ViewValue(Results));
+        if (cellRules.Count > 0)
+        {
+            menu.Items.Add(FilterMenu(cellRules));
+        }
+
         AddReferences(menu, _model.ReferencesAt(row, column));
         menu.Items.Add(new MenuFlyoutSeparator());
         var finished = !IsRunning && Results.ShownSet is { IsFinished: true };
@@ -660,7 +688,79 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             finished && !_model.HasUnsavedChanges,
             () => ShareRequested?.Invoke(this, ShareKind.Result),
             Symbol.Share));
-        GridMenus.Show(menu, grid, args);
+        GridMenus.Show(menu, grid, place);
+    }
+
+    // The cell's value read before the choices, which can take a read the first time, so a later focus is not used.
+    private async Task<IReadOnlyList<FilterRule>> CellRulesAsync(int row, int column)
+    {
+        var value = Results.FocusedCellForFilter();
+        var pending = _model.Edits is { } edits && (edits.IsAdded(row) || edits.GetCell(row, column) is not null);
+        if (value is null || pending)
+        {
+            return [];
+        }
+
+        // The core reads the whole stored value, so a value the menu would refuse anyway is never read whole.
+        var filterText = value is { IsNull: false, Bytes: null, TextCut: false } ? FilterTextAt(row, column) : null;
+        // Kept until a refresh makes them stale, so this reads them only the first time and after a refresh.
+        var choices = await _model.LoadFilterChoicesAsync().ConfigureAwait(true);
+        var offered = choices?.Columns
+            .FirstOrDefault(choice => string.Equals(choice.Name, value.Column, StringComparison.Ordinal))?.Operators ?? [];
+        return CellFilters.For(value.Column, offered, value, filterText, pending);
+    }
+
+    private string? FilterTextAt(int row, int column)
+    {
+        try
+        {
+            return Results.ShownSet is { } rows && row < rows.RowCount ? rows.GetFilterText(row, column) : null;
+        }
+        catch (TableProException)
+        {
+            return null;
+        }
+    }
+
+    // As macOS titles them: the column, the operator and the value the rule compares with.
+    private MenuFlyoutSubItem FilterMenu(IReadOnlyList<FilterRule> rules)
+    {
+        var filter = new MenuFlyoutSubItem { Text = Strings.Get("GridMenuFilter"), Icon = new SymbolIcon(Symbol.Filter) };
+        AutomationProperties.SetAutomationId(filter, "FilterByCell");
+        foreach (var rule in rules)
+        {
+            var shown = rule.Value is FilterValue.One one ? MenuValue(one.Value) : string.Empty;
+            var item = new MenuFlyoutItem
+            {
+                Text = Strings.Format("CellFilter_" + Enum.GetName(rule.Operator), rule.Column, shown),
+            };
+            AutomationProperties.SetAutomationId(item, "FilterByCell_" + Enum.GetName(rule.Operator));
+            item.Click += async (_, _) => await FilterByAsync(rule).ConfigureAwait(true);
+            filter.Items.Add(item);
+        }
+
+        return filter;
+    }
+
+    // On one line and cut, since the rule itself carries the whole value.
+    private static string MenuValue(string value)
+    {
+        const int Shown = 40;
+        var line = value.ReplaceLineEndings(" ");
+        return line.Length <= Shown ? line : string.Concat(line.AsSpan(0, Shown), "…");
+    }
+
+    // The rule applies at once and shows in the bar, as one typed there would.
+    private async Task FilterByAsync(FilterRule rule)
+    {
+        if (!await _model.FilterByAsync(rule).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        ShowView(structure: false);
+        ShowFilter(true, focus: false);
+        _filters?.ShowApplied();
     }
 
     // One key the cell's column is in opens from the menu itself; several, and every key pointing at the row, are
@@ -834,6 +934,13 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     private async void OnRefresh(object sender, RoutedEventArgs e) => await RefreshRowsAsync().ConfigureAwait(true);
 
     // As Refresh does, for rows written from outside the tab, such as an import.
+    // The rows and their edits stay; a structure or filter bar on screen reads again.
+    internal async Task ForgetCatalogAsync()
+    {
+        _model.ForgetCatalog();
+        await ReloadShownAsync().ConfigureAwait(true);
+    }
+
     internal async Task RefreshRowsAsync()
     {
         await _model.RefreshAsync().ConfigureAwait(true);

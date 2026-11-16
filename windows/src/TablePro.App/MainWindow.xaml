@@ -173,6 +173,10 @@
                         <KeyboardAccelerator Modifiers="Control" Key="K" />
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuNewDatabase" x:Name="MenuNewDatabase" Click="OnNewDatabase" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Add" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuNewSchema" x:Name="MenuNewSchema" Click="OnNewSchema" IsEnabled="False" />
                 <MenuFlyoutItem x:Uid="MenuEditConnection" x:Name="MenuEditConnection" Click="OnEditConnection" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Edit" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>

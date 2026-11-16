@@ -148,6 +148,7 @@ public sealed class TableTab : IWorkspaceTab
     private readonly TabWork _work = new();
     private readonly KeptRead<TableStructure> _structure;
     private readonly KeptRead<FilterChoices> _choices;
+    private readonly ITableFilters? _filters;
 
     // Where each page of a server-paged table resumes, by its offset: a paging state only goes forward.
     private readonly Dictionary<long, IPageResume> _resumes = [];
@@ -200,7 +201,8 @@ public sealed class TableTab : IWorkspaceTab
         TableName table,
         ObjectKind kind,
         Func<AppSettings> settings,
-        SessionTab? restore = null)
+        SessionTab? restore = null,
+        ITableFilters? filters = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(view);
@@ -216,8 +218,10 @@ public sealed class TableTab : IWorkspaceTab
         _chosenSize = restore?.PageSize is { } size ? Math.Clamp(size, 1, TablePage.LargestSize) : null;
         var first = TablePage.First(PageSize);
         _page = first.At((restore?.Offset ?? 0) / first.Size * first.Size);
-        // A restored filter stays until the user changes it, even when the first read refuses it.
-        Filter = restore?.Filter?.ToFilter();
+        _filters = filters;
+        // A restored filter stays until the user changes it, even when the first read refuses it. A table opened again
+        // reads with the filter it last had, as macOS restores and applies it.
+        Filter = restore is null ? filters?.Recall(table) : restore.Filter?.ToFilter();
         _shownFilter = Filter;
         _recovered = restore?.Edits is { Changes: > 0 } recovered ? recovered : null;
         _structure = new KeptRead<TableStructure>(
@@ -248,6 +252,8 @@ public sealed class TableTab : IWorkspaceTab
     public bool IsRunning { get; private set; }
 
     public bool IsSaving { get; private set; }
+
+    public bool IsClosed => _work.IsClosed;
 
     // A page is read on one of the session's pooled connections, and a save commits before it returns.
     public TransactionState Transaction => TransactionState.Idle;
@@ -515,6 +521,23 @@ public sealed class TableTab : IWorkspaceTab
         }
     }
 
+    // Another table's drop can take a foreign key of this one with it: its keys, structure and filter choices are read
+    // again, and the rows and their edits stay.
+    public void ForgetCatalog()
+    {
+        _reopenTableEditor = true;
+        _keysVersion++;
+        _keysStale = true;
+        _keys?.Dispose();
+        _keys = null;
+        _structure.MarkStale();
+        _choices.MarkStale();
+        if (!IsRunning && !IsSaving && _shown)
+        {
+            ReadKeysIfNeeded();
+        }
+    }
+
     // From the first page, counting the rows the filter picks; a filter the core refuses leaves the one shown.
     public async Task ApplyFilterAsync(TableFilter? filter)
     {
@@ -525,6 +548,21 @@ public sealed class TableTab : IWorkspaceTab
 
         Filter = filter is { Rules.Count: 0 } && string.IsNullOrWhiteSpace(filter.RawSql) ? null : filter;
         await LoadAsync(0, recount: true).ConfigureAwait(true);
+    }
+
+    // A cell's rule joins the filter and the table reads again; false when it was already running, the user kept their
+    // edits instead, or the filter was refused.
+    public async Task<bool> FilterByAsync(FilterRule rule)
+    {
+        ArgumentNullException.ThrowIfNull(rule);
+        var filter = CellFilters.With(Filter, rule);
+        if (ReferenceEquals(filter, Filter))
+        {
+            return false;
+        }
+
+        await ApplyFilterAsync(filter).ConfigureAwait(true);
+        return ReferenceEquals(Filter, filter);
     }
 
     // Read once per tab, and again after a refresh, since the table's columns can change.
@@ -977,6 +1015,7 @@ public sealed class TableTab : IWorkspaceTab
 
             _shownSort = _sort;
             _shownFilter = filter;
+            _filters?.Remember(Table, filter);
             var next = read.NextPage?.Invoke();
             KeepResume(page.NextOffset, next);
             _page = _page with { Rows = _results.RowCount, EndsTable = !read.CanSeek && next is null };

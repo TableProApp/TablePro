@@ -5,7 +5,7 @@ namespace TablePro.App.Model.Tests;
 public sealed class ExportPlanTests
 {
     [Fact]
-    public void AQueryResultExportsTheRowsShownInEveryFormatButSqlInsert()
+    public void AQueryResultExportsTheRowsShownInEveryFormat()
     {
         var plan = ExportPlan.For(null, "Results");
 
@@ -18,6 +18,7 @@ public sealed class ExportPlanTests
                 ExportFormat.Markdown,
                 ExportFormat.Html,
                 ExportFormat.Xml,
+                ExportFormat.SqlInsert,
             ],
             plan.Formats);
         Assert.Equal("Results", plan.FileName);

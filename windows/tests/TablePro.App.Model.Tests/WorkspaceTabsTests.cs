@@ -52,6 +52,23 @@ public sealed class WorkspaceTabsTests
     }
 
     [Fact]
+    public async Task ATabOfADroppedTableClosesWithoutAskingAndIsNotKeptToReopen()
+    {
+        var edited = new FakeTab("Artist", TabKind.Table) { HasUnsavedChanges = true, ClosesUnsaved = false };
+        _strip.Tabs.Add(edited);
+        var emptied = 0;
+        _tabs.Emptied += (_, _) => emptied++;
+
+        await _tabs.DiscardAsync(edited);
+
+        Assert.Equal(1, edited.Closes);
+        Assert.Empty(_strip.Asked);
+        Assert.Empty(_strip.Tabs);
+        Assert.Equal(0, _tabs.ClosedCount);
+        Assert.Equal(1, emptied);
+    }
+
+    [Fact]
     public async Task ASecondCloseWhileTheFirstIsClosingTheTabDoesNothing()
     {
         var closing = new Gate();

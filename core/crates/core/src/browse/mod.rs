@@ -36,6 +36,6 @@ pub use paging_mode::{PagingMode, paging_mode};
 pub use read_page::{PageRead, read_page};
 pub use reference_error::ReferenceError;
 pub use row_key_layout::RowKeyLayout;
-pub use row_reference::RowReference;
+pub use row_reference::{RowReference, filter_text};
 pub use sort_key::SortKey;
 pub use split_page::split_page;
