@@ -10595,6 +10595,26 @@ msgstr ""
 "Không bao giờ gửi tên máy chủ, mật khẩu, truy vấn hay dòng dữ liệu."
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "The fourth beta of TablePro for Linux."
+msgstr "Bản beta thứ tư của TablePro cho Linux."
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "A tablepro command runs queries and lists, describes and exports tables"
+msgstr "Lệnh tablepro chạy truy vấn, liệt kê, mô tả và xuất bảng"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Share a query or a result as a public link, with sensitive columns masked first"
+msgstr "Chia sẻ truy vấn hoặc kết quả qua liên kết công khai, che các cột nhạy cảm trước"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Highlight Rules, Open Quickly, saved query folders, and a reworked sidebar and row details"
+msgstr "Quy tắc tô sáng, Mở nhanh, thư mục truy vấn đã lưu, cùng thanh bên và Chi tiết dòng được làm lại"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Safer handling of crafted SQLite and DuckDB files"
+msgstr "Xử lý an toàn hơn các tệp SQLite và DuckDB được tạo có chủ đích"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
 msgid "The third beta of TablePro for Linux."
 msgstr "Bản beta thứ ba của TablePro cho Linux."
 
