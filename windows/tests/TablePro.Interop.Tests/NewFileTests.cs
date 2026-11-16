@@ -36,7 +36,7 @@ public sealed class NewFileTests : IDisposable
         Assert.Equal(engine, session.EngineId);
         Assert.Empty(await session.RefreshObjectsAsync(ObjectScope.DefaultSchema, cancellationToken));
         await using var editor = await session.OpenEditorAsync(cancellationToken);
-        using var run = editor.Run("CREATE TABLE notes (body TEXT)");
+        using var run = editor.Run("CREATE TABLE notes (body TEXT)", cancellationToken: cancellationToken);
         Assert.IsType<QueryOutcome.Completed>(await run.Completion);
     }
 }

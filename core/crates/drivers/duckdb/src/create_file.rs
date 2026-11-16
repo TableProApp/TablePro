@@ -78,7 +78,10 @@ fn build_empty(temporary: &Path, target: &Path) -> Result<(), DriverError> {
         std::fs::set_permissions(temporary, std::fs::Permissions::from_mode(0o600))
             .map_err(|error| file_error(error.kind(), target))?;
     }
-    File::open(temporary)
+    // Windows flushes only a handle opened for writing.
+    OpenOptions::new()
+        .write(true)
+        .open(temporary)
         .and_then(|file| file.sync_all())
         .map_err(|error| file_error(error.kind(), target))
 }

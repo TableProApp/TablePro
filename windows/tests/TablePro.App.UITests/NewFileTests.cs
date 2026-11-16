@@ -32,10 +32,11 @@ public sealed partial class ShellTests
         // The picker hands back the long form of a folder typed with an 8.3 name, as the runner's temp folder can be.
         Assert.Equal(Path.GetFileName(file), Path.GetFileName(app.Find("FileBox", form).AsTextBox().Text));
         Assert.False(File.Exists(file), "the picker made the file before Connect");
+        var status = app.Find("FormStatus", form);
+        Assert.Equal("The file is made when you connect", AppSession.WaitForText(status, text => text.Length > 0));
         app.Screenshot($"109-new-{engine}-file-named", form);
 
         app.Find("ConnectButton", form).AsButton().Invoke();
-        var status = app.Find("FormStatus", form);
         Assert.True(
             Retry.WhileFalse(() => !app.HasWindow("New connection"), AppSession.Wait, throwOnTimeout: false).Success,
             "The form stayed open: " + AppSession.TextOf(status));
@@ -44,6 +45,28 @@ public sealed partial class ShellTests
         Assert.False(app.Find($"Rail_{name}").IsOffscreen);
         app.Find("ObjectTree");
         app.Screenshot($"110-new-{engine}-file-connected");
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void AnExistingFileNamedForANewOneOpensAsItIsWithoutAReplaceQuestion(string theme)
+    {
+        using var app = AppSession.Launch(theme);
+        var file = AppSession.SampleDatabase(app.DataFolder);
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
+        var form = app.WaitForWindow("New connection");
+        app.Click(app.Find("Engine_sqlite", form), () => app.TryFind("FileBox", form) is not null, form);
+        app.Find("NameBox", form).AsTextBox().Text = "Kept";
+        app.Click(app.Find("NewFileButton", form), () => SaveDialog(app, form) is not null, form);
+        SaveInFileDialog(app, form, file);
+        Assert.Equal(
+            "This file exists, so it opens as it is",
+            AppSession.WaitForText(app.Find("FormStatus", form), text => text.Length > 0));
+        app.Screenshot("111-new-file-exists", form);
+
+        app.Find("ConnectButton", form).AsButton().Invoke();
+        app.WaitForClose("New connection");
+        app.FindByName("Album", app.Find("ObjectTree"));
     }
 
     // The form owns its picker, so UI Automation lists it under the form, the app's window or the desktop.
