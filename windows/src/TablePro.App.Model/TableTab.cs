@@ -533,7 +533,8 @@ public sealed class TableTab : IWorkspaceTab
         await LoadAsync(0, recount: true).ConfigureAwait(true);
     }
 
-    // A cell's rule joins the filter and the table reads again; false when it was already running.
+    // A cell's rule joins the filter and the table reads again; false when it was already running, the user kept their
+    // edits instead, or the filter was refused.
     public async Task<bool> FilterByAsync(FilterRule rule)
     {
         ArgumentNullException.ThrowIfNull(rule);
@@ -544,7 +545,7 @@ public sealed class TableTab : IWorkspaceTab
         }
 
         await ApplyFilterAsync(filter).ConfigureAwait(true);
-        return true;
+        return ReferenceEquals(Filter, filter);
     }
 
     // Read once per tab, and again after a refresh, since the table's columns can change.

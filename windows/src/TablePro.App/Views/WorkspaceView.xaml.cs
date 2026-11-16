@@ -1986,7 +1986,13 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 break;
             case ObjectNode { Kind: ObjectNodeKind.Schema, Schema: { } schema }:
                 args.Handled = true;
-                ShowSchemaMenu(row, schema, args);
+                ShowSchemaMenu(row, schema, args, copyName: true);
+                break;
+
+            // With one schema the tree shows its folders with no row of its own, so they carry its commands.
+            case ObjectNode { Kind: ObjectNodeKind.Folder, Schema: { } schema } when _singleSchema:
+                args.Handled = true;
+                ShowSchemaMenu(row, schema, args, copyName: false);
                 break;
             default:
                 break;
@@ -2064,7 +2070,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     }
 
     // A schema row is a database where the server's databases are its schemas, as MySQL's are.
-    private void ShowSchemaMenu(FrameworkElement row, string schema, ContextRequestedEventArgs args)
+    private void ShowSchemaMenu(FrameworkElement row, string schema, ContextRequestedEventArgs args, bool copyName)
     {
         var menu = new MenuFlyout();
         var abilities = Abilities;
@@ -2100,13 +2106,20 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             }
         }
 
-        if (menu.Items.Count > 0)
+        if (copyName)
         {
-            menu.Items.Add(new MenuFlyoutSeparator());
+            if (menu.Items.Count > 0)
+            {
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
+
+            menu.Items.Add(ObjectMenuItem("ObjectMenuCopyName", Symbol.Copy, () => CopyText(schema)));
         }
 
-        menu.Items.Add(ObjectMenuItem("ObjectMenuCopyName", Symbol.Copy, () => CopyText(schema)));
-        ShowMenu(menu, row, args);
+        if (menu.Items.Count > 0)
+        {
+            ShowMenu(menu, row, args);
+        }
     }
 
     // Never the engine's own, nor the one this window is in, as macOS offers a drop.

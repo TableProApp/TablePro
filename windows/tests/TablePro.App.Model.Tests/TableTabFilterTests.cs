@@ -408,6 +408,20 @@ public sealed class TableTabFilterTests
         Assert.Equal(reads + 1, _session.Queries.Count);
     }
 
+    [Fact]
+    public async Task ACellsRuleTheUserKeptTheirEditsOverIsNotReportedApplied()
+    {
+        await _tab.RunAsync();
+        _tab.CommitEdit(0, 1, "changed");
+        _view.DiscardsForReload = false;
+
+        var applied = await _tab.FilterByAsync(new FilterRule("Name", FilterOperator.Equal, new FilterValue.One("AC/DC")));
+
+        Assert.False(applied);
+        Assert.Null(_tab.Filter);
+        Assert.True(_tab.HasUnsavedChanges);
+    }
+
     private TableTab New(SessionTab? restore = null, ObjectKind kind = ObjectKind.Table, ITableFilters? filters = null)
     {
         var tab = new TableTab(
