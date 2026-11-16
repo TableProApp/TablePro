@@ -1,8 +1,10 @@
+using System.Globalization;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
+using TablePro.Testing;
 
 namespace TablePro.App.UITests;
 
@@ -107,72 +109,57 @@ public sealed partial class ShellTests
     [MemberData(nameof(Themes))]
     public void ASchemaIsCreatedAndDroppedFromTheDatabaseMenuAndItsRow(string theme)
     {
+        Assert.SkipUnless(SshTestEnvironment.Available, "Requires the Windows PostgreSQL fixture.");
         using var app = AppSession.Launch(theme);
-        var file = Path.Combine(app.DataFolder, "catalog.duckdb");
         app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
         var form = app.WaitForWindow("New connection");
-        app.Click(app.Find("Engine_duckdb", form), () => app.TryFind("FileBox", form) is not null, form);
-        app.Find("NameBox", form).AsTextBox().Text = "Catalog";
-        app.Click(app.Find("NewFileButton", form), () => SaveDialog(app, form) is not null, form);
-        SaveInFileDialog(app, form, file);
+        app.Click(app.Find("Engine_postgres", form), () => app.TryFind("HostBox", form) is not null, form);
+        app.Find("NameBox", form).AsTextBox().Text = "PostgreSQL schemas";
+        app.Find("HostBox", form).AsTextBox().Text = "127.0.0.1";
+        app.Find("PortBox", form).AsTextBox().Text = SshTestEnvironment.DatabasePort.ToString(CultureInfo.InvariantCulture);
+        app.Find("UserBox", form).AsTextBox().Text = "tablepro_ssh";
+        app.Find("DatabaseBox", form).AsTextBox().Text = "tablepro_ssh";
+        app.Find("PasswordInput", form).Patterns.Value.Pattern.SetValue(SshTestEnvironment.DatabasePassword);
         app.Find("ConnectButton", form).AsButton().Invoke();
         app.WaitForClose("New connection");
         var tree = app.Find("ObjectTree");
+        app.FindByName("ssh_proof", tree);
+
+        // The dialog shows the options PostgreSQL names for a new database, each starting on the server's own.
+        app.Click(app.Find("DatabaseMenu"), () => app.TryFindMenuItem("New database...") is not null);
+        app.Click(app.FindMenuItem("New database..."), () => app.TryFind("CatalogName") is not null);
+        Assert.NotNull(app.TryFind("CatalogOwner"));
+        Assert.NotNull(app.TryFind("CatalogEncoding"));
+        app.Find("CatalogName").AsTextBox().Text = "tablepro_shop";
+        Assert.Equal(
+            "CREATE DATABASE \"tablepro_shop\";",
+            AppSession.WaitForText(app.Find("CatalogStatements"), text => text.Length > 0));
+        app.Screenshot("106-new-database");
+        app.CloseDialog();
+        Assert.True(Retry.WhileTrue(() => app.TryFind("CatalogName") is not null, AppSession.Wait, throwOnTimeout: false).Success);
 
         app.Click(app.Find("DatabaseMenu"), () => app.TryFindMenuItem("New schema...") is not null);
         app.Click(app.FindMenuItem("New schema..."), () => app.TryFind("CatalogName") is not null);
-        app.Find("CatalogName").AsTextBox().Text = "sales";
+        app.Find("CatalogName").AsTextBox().Text = "tablepro_sales";
         Assert.Equal(
-            "CREATE SCHEMA \"sales\";",
+            "CREATE SCHEMA \"tablepro_sales\";",
             AppSession.WaitForText(app.Find("CatalogStatements"), text => text.Length > 0));
-        app.Screenshot("106-new-schema");
+        app.Screenshot("107-new-schema");
         app.PressDialogButton("Create");
         var sales = Retry.WhileNull(
-                () => tree.FindFirstDescendant(condition => condition.ByName("sales")),
+                () => tree.FindFirstDescendant(condition => condition.ByName("tablepro_sales")),
                 AppSession.Wait,
                 throwOnTimeout: false).Result
             ?? throw new InvalidOperationException("The new schema did not show.");
 
-        app.RightClick(sales, () => app.TryFindMenuItem("Drop schema “sales”...") is not null);
-        app.Click(app.FindMenuItem("Drop schema “sales”..."), () => app.TryFind("CatalogStatements") is not null);
-        Assert.Equal("DROP SCHEMA \"sales\";", app.Find("CatalogStatements").Name);
-        app.Screenshot("107-drop-schema");
+        app.RightClick(sales, () => app.TryFindMenuItem("Drop schema “tablepro_sales”...") is not null);
+        app.Click(app.FindMenuItem("Drop schema “tablepro_sales”..."), () => app.TryFind("CatalogStatements") is not null);
+        Assert.Equal("DROP SCHEMA \"tablepro_sales\";", app.Find("CatalogStatements").Name);
+        app.Screenshot("108-drop-schema");
         app.PressDialogButton("Drop");
         Assert.True(Retry.WhileFalse(
-            () => tree.FindFirstDescendant(condition => condition.ByName("sales")) is null,
+            () => tree.FindFirstDescendant(condition => condition.ByName("tablepro_sales")) is null,
             AppSession.Wait,
             throwOnTimeout: false).Success);
-    }
-
-    // The form owns its picker, so UI Automation lists it under the form, the app's window or the desktop.
-    private static Window? SaveDialog(AppSession app, Window form) =>
-        form.FindFirstChild(condition => condition.ByClassName("#32770"))?.AsWindow() ?? FileDialog(app);
-
-    // The Save dialog's File name box is control 1001, and Enter saves to the path typed there.
-    private static void SaveInFileDialog(AppSession app, Window form, string path)
-    {
-        var dialog = Retry.WhileNull(() => SaveDialog(app, form), AppSession.Wait, throwOnTimeout: false).Result
-            ?? throw new InvalidOperationException("The Save dialog did not appear.");
-        var name = Retry.WhileNull(
-                () => dialog.FindFirstDescendant(condition =>
-                    condition.ByAutomationId("1001").And(condition.ByControlType(ControlType.Edit))),
-                AppSession.Wait,
-                throwOnTimeout: false).Result
-            ?? throw new InvalidOperationException("The Save dialog has no File name box.");
-        // The Save dialog keeps its suggested name when the box's value is set without typing, so the path is typed.
-        dialog.SetForeground();
-        name.Focus();
-        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
-        Keyboard.Type(path);
-        if (!Retry.WhileFalse(() => name.AsTextBox().Text == path, AppSession.Wait, throwOnTimeout: false).Success)
-        {
-            throw new InvalidOperationException("The Save dialog did not take the path typed.");
-        }
-
-        Keyboard.Type(VirtualKeyShort.RETURN);
-        if (!Retry.WhileFalse(() => SaveDialog(app, form) is null, AppSession.Wait, throwOnTimeout: false).Success)
-        {
-            throw new InvalidOperationException("The Save dialog did not take the path.");
-        }
     }
 }
