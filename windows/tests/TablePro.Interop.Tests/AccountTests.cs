@@ -246,15 +246,8 @@ public sealed class AccountTests : IAsyncDisposable
     private static string Problem(int status, string code) =>
         $$"""{"type":"about:blank","title":"Refused","status":{{status}},"code":"{{code}}"}""";
 
-    // Nothing listens once the listener is stopped, so every request is refused.
-    private static string Unreachable()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return $"http://127.0.0.1:{port}";
-    }
+    // Port 1 is below every system's ephemeral range, so no test's listener takes it and every request is refused.
+    private static string Unreachable() => "http://127.0.0.1:1";
 
     private Task<TableProAccount> OpenAsync(string cloud, IAccountBrowser browser) =>
         _core.OpenAccountAsync(Configuration(cloud), browser);

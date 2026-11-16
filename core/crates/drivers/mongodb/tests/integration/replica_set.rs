@@ -13,6 +13,9 @@ use crate::support::{CALL, DATABASE, connect_to, direct, editor, first_page, pas
 /// The name the set's one member gives itself.
 const MEMBER: &str = "localhost.test.build.10gen.cc:27017";
 
+// Port 1 is below every system's ephemeral range, so no test's listener takes it and the seed is refused.
+const CLOSED_PORT: u16 = 1;
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker, public DNS and host port 27017"]
 async fn a_replica_set_is_found_from_its_seeds_and_read_through_its_primary() {
@@ -22,7 +25,7 @@ async fn a_replica_set_is_found_from_its_seeds_and_read_through_its_primary() {
     let liveness = test_liveness();
     // Only the second seed reaches the set, so the set is found from the host list or not at all.
     let target = NetworkTarget {
-        transport: direct("127.0.0.1", closed_port(), &liveness),
+        transport: direct("127.0.0.1", CLOSED_PORT, &liveness),
         credentials: password(&fixture.password_credentials()),
         database: Some(DATABASE.to_owned()),
         tls: TlsConfig::disabled(),
@@ -58,10 +61,4 @@ async fn a_replica_set_is_found_from_its_seeds_and_read_through_its_primary() {
     assert_eq!(ids, [&Value::Int32(1), &Value::Int32(2)]);
     session.close().await;
     connection.close().await.expect("a clean close");
-}
-
-/// A port on this host that nothing listens on.
-fn closed_port() -> u16 {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
-    listener.local_addr().expect("the port bound").port()
 }
