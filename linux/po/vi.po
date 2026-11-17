@@ -10595,6 +10595,14 @@ msgstr ""
 "Không bao giờ gửi tên máy chủ, mật khẩu, truy vấn hay dòng dữ liệu."
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "The fifth beta of TablePro for Linux."
+msgstr "Bản beta thứ năm của TablePro cho Linux."
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "The tablepro command no longer refuses the running app on Linux kernels before 6.17"
+msgstr "Lệnh tablepro không còn từ chối ứng dụng đang chạy trên nhân Linux trước 6.17"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
 msgid "The fourth beta of TablePro for Linux."
 msgstr "Bản beta thứ tư của TablePro cho Linux."
 
