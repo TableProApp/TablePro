@@ -187,10 +187,8 @@ impl DatabaseFileRow {
             return FileOpenMode::CreateNew;
         };
         let probe = path.to_path_buf();
-        match tasks
-            .spawn_blocking_task(move || std::fs::symlink_metadata(&probe).is_ok())
-            .await
-        {
+        let taken = tasks.spawn_blocking_task(move || file_location::is_taken_blocking(&probe));
+        match taken.await {
             Ok(true) => FileOpenMode::Replace,
             _ => FileOpenMode::CreateNew,
         }
