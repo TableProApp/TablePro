@@ -51,6 +51,16 @@ mod tests {
         drop(client);
     }
 
+    // The command line's question: the server's end, before the server accepts it.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_connection_waiting_to_be_accepted_is_its_own() {
+        let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let client = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+
+        assert!(loopback_peer_is_ours(client.peer_addr().unwrap(), client.local_addr().unwrap()).unwrap());
+    }
+
     #[cfg(not(any(target_os = "linux", windows)))]
     #[test]
     fn other_systems_name_no_owner() {
