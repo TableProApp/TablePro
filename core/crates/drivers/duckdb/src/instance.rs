@@ -21,7 +21,7 @@ use duckdb::{AccessMode, Config, InterruptHandle};
 use tablepro_core::{BusyReason, DriverError, FileClaim, FileEndpoint, FileIdentity, FileOpenMode, LossPhase};
 use tokio_util::sync::CancellationToken;
 
-use crate::create_file::create_or_replace;
+use crate::create_file::{create_new, replace};
 use crate::driver::ENGINE;
 use crate::errors::{map_error, map_open_error};
 
@@ -155,12 +155,7 @@ impl Link {
 }
 
 impl Instance {
-    /// Open the file the endpoint names, or join the instance this
-    /// process already has on it. Blocks: DuckDB reads the file and
-    /// replays its log here, and a file still closing is waited for.
-    /// `given_up` is the connect's own stop: the blocking open outlives a
-    /// caller that went while it waited, and must not then replace the
-    /// file.
+    // `given_up` is the connect's own stop: this blocking open outlives a caller that went while it waited.
     pub(crate) fn open(
         endpoint: &FileEndpoint,
         read_only: bool,
@@ -183,15 +178,22 @@ impl Instance {
                 }
                 // Replacing a file this process has open would pull it
                 // out from under the windows using it.
-                (Some(true), FileOpenMode::CreateNew) => return Err(DriverError::Busy(BusyReason::FileLocked)),
-                (None, FileOpenMode::CreateNew) => {
+                (Some(true), FileOpenMode::Replace) => return Err(DriverError::Busy(BusyReason::FileLocked)),
+                (None, FileOpenMode::Replace) => {
                     if FileIdentity::of(path).is_some_and(|id| attached(&open, id, None)) {
                         return Err(DriverError::Busy(BusyReason::FileLocked));
                     }
                     if given_up.is_cancelled() {
                         return Err(DriverError::Cancelled);
                     }
-                    create_or_replace(path, given_up)?;
+                    replace(path, given_up)?;
+                }
+                // A file there, open in this process or not, is refused by the create itself.
+                (_, FileOpenMode::CreateNew) => {
+                    if given_up.is_cancelled() {
+                        return Err(DriverError::Cancelled);
+                    }
+                    create_new(path, given_up)?;
                 }
                 (_, FileOpenMode::OpenExisting) => {}
             }
@@ -500,7 +502,7 @@ mod tests {
         assert!(weak.upgrade().is_none());
         assert!(
             Instance::open(
-                &created(directory.path(), "kept.duckdb"),
+                &FileEndpoint::replace(directory.path().join("kept.duckdb")).unwrap(),
                 false,
                 &CancellationToken::new()
             )
@@ -509,8 +511,7 @@ mod tests {
         );
     }
 
-    /// A connect given up while its open waited does not go on to
-    /// replace the file.
+    // A connect given up while its open waited does not go on to replace the file.
     #[test]
     fn a_given_up_create_leaves_the_file_alone() {
         let directory = tempfile::tempdir().unwrap();
@@ -519,7 +520,7 @@ mod tests {
         let given_up = CancellationToken::new();
         given_up.cancel();
 
-        let opened = Instance::open(&FileEndpoint::create_new(path.clone()).unwrap(), false, &given_up);
+        let opened = Instance::open(&FileEndpoint::replace(path.clone()).unwrap(), false, &given_up);
 
         assert_eq!(opened.unwrap_err(), DriverError::Cancelled);
         assert_eq!(std::fs::read(&path).unwrap(), b"what the user had");
@@ -551,6 +552,17 @@ mod tests {
 
         assert_eq!(
             Instance::open(&endpoint, false, &CancellationToken::new()).unwrap_err(),
+            DriverError::FileExists {
+                path: endpoint.path().to_path_buf()
+            }
+        );
+        assert_eq!(
+            Instance::open(
+                &FileEndpoint::replace(endpoint.path().to_path_buf()).unwrap(),
+                false,
+                &CancellationToken::new()
+            )
+            .unwrap_err(),
             DriverError::Busy(BusyReason::FileLocked)
         );
     }

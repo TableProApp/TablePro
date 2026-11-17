@@ -762,15 +762,18 @@ public sealed partial class ConnectionFormWindow : Window
     private async Task CreateFileAsync(ConnectionDraft draft)
     {
         var path = draft.Database.Trim();
-        if (File.Exists(path))
+        try
         {
-            _createFile = false;
-            return;
+            var session = await _workbench.Core.OpenFileAsync(new FileOpenOptions(path, draft.EngineId, Create: true)).ConfigureAwait(true);
+            await session.DisposeAsync().ConfigureAwait(true);
+            SetStatus(Strings.Format("FileCreated", Path.GetFileName(path)), true);
+        }
+        catch (TableProException exception) when (exception.Code == "driver.file_exists")
+        {
+            // A file made there since it was named opens as it is, as one there when it was named does.
+            SetStatus(Strings.Get("NewFileExists"), null);
         }
 
-        var session = await _workbench.Core.OpenFileAsync(new FileOpenOptions(path, draft.EngineId, Create: true)).ConfigureAwait(true);
-        await session.DisposeAsync().ConfigureAwait(true);
         _createFile = false;
-        SetStatus(Strings.Format("FileCreated", Path.GetFileName(path)), true);
     }
 }

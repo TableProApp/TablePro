@@ -74,6 +74,30 @@ public sealed partial class ShellTests
         app.FindByName("Album", app.Find("ObjectTree"));
     }
 
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void AFileMadeAfterTheNewNameWasChosenOpensAsItIs(string theme)
+    {
+        using var app = AppSession.Launch(theme);
+        var file = Path.Combine(app.DataFolder, "chinook-copy.sqlite");
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
+        var form = app.WaitForWindow("New connection");
+        app.Click(app.Find("Engine_sqlite", form), () => app.TryFind("FileBox", form) is not null, form);
+        app.Find("NameBox", form).AsTextBox().Text = "Made elsewhere";
+        app.Click(app.Find("NewFileButton", form), () => SaveDialog(app, form) is not null, form);
+        SaveInFileDialog(app, form, file);
+        Assert.Equal(
+            "The file is made when you connect",
+            AppSession.WaitForText(app.Find("FormStatus", form), text => text.Length > 0));
+
+        // Another program makes the file between the form's check and Connect.
+        Assert.Equal(file, AppSession.SampleDatabase(app.DataFolder));
+        app.Find("ConnectButton", form).AsButton().Invoke();
+
+        app.WaitForClose("New connection");
+        app.FindByName("Album", app.Find("ObjectTree"));
+    }
+
     // The form owns its picker, so UI Automation lists it under the form, the app's window or the desktop.
     private static Window? SaveDialog(AppSession app, Window form) =>
         form.FindFirstChild(condition => condition.ByClassName("#32770"))?.AsWindow() ?? FileDialog(app);

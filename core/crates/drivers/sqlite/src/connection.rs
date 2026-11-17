@@ -23,7 +23,7 @@ use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
 use crate::catalog::{SqliteVersion, check_runtime_version};
-use crate::create_file::create_or_replace;
+use crate::create_file::make_file;
 use crate::deadline;
 use crate::dialect::SqliteDialect;
 use crate::driver::WORKSPACE_POOL_MAX_SIZE;
@@ -56,8 +56,6 @@ pub(crate) struct SqliteConnection {
 }
 
 impl SqliteConnection {
-    /// Open the file the endpoint names, creating it first when the
-    /// user asked for a new database.
     pub(crate) async fn open(
         endpoint: &FileEndpoint,
         settings: WorkspaceSettings,
@@ -72,9 +70,10 @@ impl SqliteConnection {
         if tablepro_core::claimed_by_another(&path, crate::driver::ENGINE) {
             return Err(DriverError::Busy(tablepro_core::BusyReason::FileLocked));
         }
-        if endpoint.mode() == FileOpenMode::CreateNew {
+        let mode = endpoint.mode();
+        if mode != FileOpenMode::OpenExisting {
             let target = path.clone();
-            tokio::task::spawn_blocking(move || create_or_replace(&target))
+            tokio::task::spawn_blocking(move || make_file(&target, mode))
                 .await
                 .map_err(|error| DriverError::Protocol(format!("creating the database file stopped: {error}")))??;
         }

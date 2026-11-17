@@ -492,6 +492,51 @@ fn new_database_sets_create_new_endpoint() {
     assert!(harness.dialog.imp().connect_button.is_sensitive());
 }
 
+// The save chooser asked only about a file there when it closed; a free name must not replace one made later.
+#[gtk4::test]
+fn a_new_name_replaces_only_a_file_the_chooser_asked_about() {
+    let harness = dialog();
+    select(&harness.dialog, "sqlite");
+    let root = tempfile::tempdir().expect("tempdir");
+    let there = root.path().join("there.sqlite3");
+    std::fs::write(&there, b"").expect("a file");
+    let free = root.path().join("free.sqlite3");
+    let modes = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+
+    let found = modes.clone();
+    let asked = harness.dialog.imp().file_row.get();
+    glib::spawn_future_local(async move {
+        for path in [there, free] {
+            let mode = asked.new_file_mode(&path).await;
+            found.borrow_mut().push(mode);
+        }
+    });
+    wait_until(WAIT, || modes.borrow().len() == 2).expect("both answers");
+
+    assert_eq!(*modes.borrow(), [FileOpenMode::Replace, FileOpenMode::CreateNew]);
+}
+
+#[gtk4::test]
+fn a_tested_new_file_is_opened_by_connect() {
+    let harness = open(Options {
+        connector: FakeConnector::new([FakeEstablish::Connect(ConnectionScript::default())]),
+        ..Options::default()
+    });
+    select(&harness.dialog, "sqlite");
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("tested.sqlite3");
+    let imp = harness.dialog.imp();
+    imp.file_row.adopt_choice(path.clone(), FileOpenMode::CreateNew);
+
+    imp.test_button.emit_clicked();
+    wait_until(WAIT, || !imp.toasts.borrow().is_empty()).expect("the test result");
+
+    assert_eq!(imp.toasts.borrow().as_slice(), ["Connection works"]);
+    let file = imp.file_row.endpoint().expect("a file");
+    assert_eq!(file.path(), path);
+    assert_eq!(file.mode(), FileOpenMode::OpenExisting);
+}
+
 #[gtk4::test]
 fn mysql_requires_database() {
     let harness = dialog();

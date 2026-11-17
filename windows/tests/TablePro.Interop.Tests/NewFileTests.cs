@@ -39,4 +39,23 @@ public sealed class NewFileTests : IDisposable
         using var run = editor.Run("CREATE TABLE notes (body TEXT)", cancellationToken: cancellationToken);
         Assert.IsType<QueryOutcome.Completed>(await run.Completion);
     }
+
+    // The form found the path free, then another program made a file there before Connect.
+    [Theory]
+    [InlineData("duckdb", "taken.duckdb")]
+    [InlineData("sqlite", "taken.sqlite")]
+    public async Task AFileMadeAfterThePathWasCheckedIsNeverReplaced(string engine, string name)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var path = Path.Combine(_directory, name);
+        await File.WriteAllTextAsync(path, "another program's data", cancellationToken);
+
+        var error = await Assert.ThrowsAsync<TableProException>(
+            () => _core.OpenFileAsync(new FileOpenOptions(path, engine, Create: true), cancellationToken));
+
+        Assert.Equal("driver.file_exists", error.Code);
+        Assert.Equal(name, Path.GetFileName(error.Error.Path));
+        Assert.Equal("another program's data", await File.ReadAllTextAsync(path, cancellationToken));
+        Assert.Equal(path, Assert.Single(Directory.GetFiles(_directory)));
+    }
 }
