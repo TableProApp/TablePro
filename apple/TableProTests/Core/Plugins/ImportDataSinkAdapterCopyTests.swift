@@ -7,6 +7,7 @@ import Foundation
 import os
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLFile
 import TableProTestSupport
 import Testing
 

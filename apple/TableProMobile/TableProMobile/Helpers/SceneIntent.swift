@@ -4,6 +4,7 @@ import Foundation
 nonisolated enum SceneIntent: Hashable, Sendable {
     case openConnection(UUID, table: String?)
     case importConnections(URL)
+    case importData(URL)
 
     static let viewConnectionActivity = "com.TablePro.viewConnection"
     static let viewTableActivity = "com.TablePro.viewTable"
@@ -11,8 +12,11 @@ nonisolated enum SceneIntent: Hashable, Sendable {
 
     static func parse(url: URL) -> SceneIntent? {
         if url.isFileURL {
-            guard url.pathExtension.lowercased() == connectionFileExtension else { return nil }
-            return .importConnections(url)
+            if url.pathExtension.lowercased() == connectionFileExtension {
+                return .importConnections(url)
+            }
+            guard MobileImportFormats.acceptedFileExtensions.contains(url.pathExtension.lowercased()) else { return nil }
+            return .importData(url)
         }
         guard url.scheme?.lowercased() == "tablepro",
               url.host(percentEncoded: false)?.lowercased() == "connect" else { return nil }

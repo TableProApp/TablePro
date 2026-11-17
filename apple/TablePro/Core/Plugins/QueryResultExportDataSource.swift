@@ -234,8 +234,12 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         ""
     }
 
+    // Held rows have no session to snapshot, so a format's BEGIN or COMMIT passes as a no-op.
     func execute(query: String) async throws -> PluginQueryResult {
-        throw ExportError.exportFailed("Execute is not supported for in-memory query result export")
+        guard ExportSnapshotStatements.isTransactionStatement(query) else {
+            throw ExportError.exportFailed("Execute is not supported for in-memory query result export")
+        }
+        return ExportSnapshotStatements.noResult
     }
 
     func fetchDependentSequences(table: String, databaseName: String) async throws -> [PluginSequenceInfo] {

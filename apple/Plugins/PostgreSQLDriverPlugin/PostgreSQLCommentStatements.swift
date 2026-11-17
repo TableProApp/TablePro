@@ -8,7 +8,7 @@
 
 import Foundation
 
-public enum PostgreSQLCommentStatements {
+nonisolated public enum PostgreSQLCommentStatements {
     /// The relation's own comment first, then one row per commented column in `attnum` order, which
     /// is the order `pg_dump` writes them in.
     ///

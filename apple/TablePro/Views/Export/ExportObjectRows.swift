@@ -6,39 +6,8 @@
 import SwiftUI
 import TableProPluginKit
 
-/// How each object kind names and draws itself in the export tree. One table rather than a switch
-/// per call site, so a kind added later cannot pick up a different icon in one of them.
+// The kind's title and symbol are `ExportObjectKindLabel`'s; this adds what only the Mac's tree draws.
 internal enum ExportObjectKindPresentation {
-    internal static func groupTitle(for kind: PluginExportObjectKind) -> String {
-        switch kind {
-        case .table: return String(localized: "Tables")
-        case .view: return String(localized: "Views")
-        case .materializedView: return String(localized: "Materialized Views")
-        case .foreignTable: return String(localized: "Foreign Tables")
-        case .sequence: return String(localized: "Sequences")
-        case .userType: return String(localized: "Types")
-        case .routine: return String(localized: "Routines")
-        case .trigger: return String(localized: "Triggers")
-        case .event: return String(localized: "Events")
-        case .grant: return String(localized: "Privileges")
-        @unknown default: return String(localized: "Objects")
-        }
-    }
-
-    internal static func iconName(for kind: PluginExportObjectKind) -> String {
-        switch kind {
-        case .table, .foreignTable: return "tablecells"
-        case .view, .materializedView: return "eye"
-        case .sequence: return "number"
-        case .userType: return "curlybraces"
-        case .routine: return "function"
-        case .trigger: return "bolt"
-        case .event: return "clock"
-        case .grant: return "key"
-        @unknown default: return "shippingbox"
-        }
-    }
-
     internal static func checkboxValue(for state: TristateCheckbox.State) -> String {
         switch state {
         case .checked: String(localized: "Selected")
@@ -114,7 +83,7 @@ internal struct ExportTreeObjectRow: View {
                 .labelsHidden()
                 .frame(width: 18)
 
-            Image(systemName: ExportObjectKindPresentation.iconName(for: object.kind))
+            Image(systemName: ExportObjectKindLabel.systemImage(for: object.kind))
                 .foregroundStyle(ExportObjectKindPresentation.iconColor(for: object.kind))
                 .font(.body)
                 .accessibilityHidden(true)

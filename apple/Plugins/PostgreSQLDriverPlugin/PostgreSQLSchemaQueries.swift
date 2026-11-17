@@ -11,13 +11,13 @@ import TableProPluginKit
 import TableProPostgreSQLCore
 import TableProSQLQuoting
 
-enum PostgreSQLSchemaProbe: Equatable {
+nonisolated enum PostgreSQLSchemaProbe: Equatable {
     case schema(String)
     case empty
     case failed
 }
 
-enum PostgreSQLSchemaQueries {
+nonisolated enum PostgreSQLSchemaQueries {
     /// Returns the first schema on the effective search path, or SQL NULL
     /// when the path is empty (neither `$user` nor `public` exists).
     static let currentSchema = "SELECT pg_catalog.current_schema()"
@@ -679,9 +679,8 @@ enum PostgreSQLSchemaQueries {
             """
     }
 
-    /// The order `PostgreSQLPluginDriver.mapPgColumnRow` reads the row in. It maps by position, so
-    /// this list is the contract between the two arms of `columnsQuery` and the mapper.
-    /// `ordinal_position` stays inside the derived table, named only by the outer `ORDER BY`.
+    // The order `PostgreSQLCatalogExport.column` reads the row in, by position: the contract between both arms of
+    // `columnsQuery` and the mapper. `ordinal_position` stays inside the derived table, named only by the `ORDER BY`.
     private static func columnsOuterProjection(includesTableName: Bool) -> String {
         let columns = (includesTableName ? ["cols.table_name"] : []) + [
             "cols.column_name",
@@ -743,14 +742,14 @@ enum PostgreSQLSchemaQueries {
     }
 }
 
-struct PostgreSQLColumnSpelling: Equatable {
+nonisolated struct PostgreSQLColumnSpelling: Equatable {
     let defaultValue: String?
     let generationExpression: String?
     let declaredType: String?
 }
 
 /// One column's clauses as the server spells them, read under a narrowed `search_path`.
-struct PostgreSQLCatalogColumnDDL: Equatable {
+nonisolated struct PostgreSQLCatalogColumnDDL: Equatable {
     let typeSpelling: String
     let defaultExpression: String?
     let generationExpression: String?

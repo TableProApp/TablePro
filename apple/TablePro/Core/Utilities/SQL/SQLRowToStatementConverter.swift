@@ -1,22 +1,13 @@
-//
-//  SQLRowToStatementConverter.swift
-//  TablePro
-
 import Foundation
 import TableProAutocomplete
 import TableProPluginKit
 
-/// Writes grid rows as INSERT and UPDATE text for the user to run, with the values written in.
-///
-/// The statements follow the rules the grid's own save does: a column the server owns is never assigned, every key
-/// column identifies the row, a row with no key is matched on every column it has through the same row-match policy,
-/// and the WHERE clause names the row as it is stored, not as it has been edited.
+// Grid rows as INSERT and UPDATE text to run, by the rules the grid's own save follows: a server-owned column is never
+// assigned, a row with no key is matched on every column through the row-match policy, and the WHERE clause names the
+// row as stored, not as edited.
 internal struct SQLRowToStatementConverter {
-    /// One row of the grid, as it is shown and as the server has it.
-    ///
-    /// `defaultedColumns` names the cells the grid staged as left to the server's default. The grid stages that as the
-    /// keyword DEFAULT marked as SQL, and a stored value can read the same, so only a cell named here is the default.
-    /// `expressionColumns` names the cells staged as SQL, which go out unquoted; text anywhere else is a literal.
+    // The grid stages a default as the keyword DEFAULT marked as SQL, and a stored value can read the same, so only a
+    // cell in `defaultedColumns` is the default. A cell in `expressionColumns` goes out unquoted; other text is a literal.
     internal struct SourceRow {
         internal let values: [PluginCellValue]
         internal let storedValues: [PluginCellValue]
@@ -109,8 +100,7 @@ internal struct SQLRowToStatementConverter {
         rows.prefix(Self.maxRows).compactMap(insertStatement).joined(separator: "\n")
     }
 
-    /// A column the server owns, or one the row leaves to its default, stays out of the list, so the copied statement
-    /// inserts what a save of the same row would.
+    // A column the server owns, or one the row leaves to its default, stays out, so the copy inserts what a save would.
     private func insertStatement(row: SourceRow) -> String? {
         let written = zip(columns.indices, zip(columns, row.values)).filter { index, cell in
             !unwritableColumns.contains(cell.0) && !row.defaultedColumns.contains(index)
@@ -118,7 +108,7 @@ internal struct SQLRowToStatementConverter {
         guard !written.isEmpty else {
             let firstWritable = columns.first { !unwritableColumns.contains($0) }.map(quoteIdentifierFn)
             return AllDefaultsInsert.sql(
-                into: qualifiedTable, databaseType: databaseType, firstWritableColumn: firstWritable
+                into: qualifiedTable, databaseTypeId: databaseType.rawValue, firstWritableColumn: firstWritable
             ).map { "\($0);" }
         }
         let columnList = written.map { quoteIdentifierFn($0.1.0) }.joined(separator: ", ")
@@ -152,9 +142,8 @@ internal struct SQLRowToStatementConverter {
         rows.prefix(Self.maxRows).compactMap(updateStatement).joined(separator: "\n")
     }
 
-    /// Nothing for a row the table does not hold yet, for a key that is NULL (which identifies no row), for a row with
-    /// nothing left to assign, and for a table without a key that has a column no match can compare: leaving that
-    /// column out would let the statement change rows that differ only in it.
+    // Nothing for a row the table does not hold yet, a NULL key, a row with nothing to assign, or a keyless table with a
+    // column no match can compare: leaving it out would change rows that differ only in it.
     private func updateStatement(row: SourceRow) -> String? {
         guard !row.isPendingInsert, let whereClause = rowMatch(storedValues: row.storedValues) else { return nil }
         let assignments = assignments(for: row).joined(separator: ", ")
@@ -168,8 +157,7 @@ internal struct SQLRowToStatementConverter {
         !primaryKeyColumns.isEmpty && primaryKeyColumns.allSatisfy(columns.contains)
     }
 
-    /// A key column is assigned only when its value was edited, so a changed natural key is carried and an unchanged
-    /// one is not restated.
+    // A key column is assigned only when its value was edited, so an unchanged natural key is not restated.
     private func assignments(for row: SourceRow) -> [String] {
         let keys = keyColumnsPresent ? Set(primaryKeyColumns) : []
         return (settableColumns ?? columns).compactMap { column -> String? in
@@ -208,7 +196,7 @@ internal struct SQLRowToStatementConverter {
 
     // MARK: - Literals
 
-    /// A marked cell is written raw only when the engine's vocabulary holds its text exactly.
+    // A marked cell is written raw only when the engine's vocabulary holds its text exactly.
     private func formatValue(_ value: PluginCellValue, isExpression: Bool) -> String {
         if isExpression, case .text(let sql) = value, CellExpressionVocabulary.isCanonical(sql, for: databaseType) {
             return sql

@@ -59,22 +59,22 @@ internal actor SQLExportHarness {
         return try await body(plugin)
     }
 
-    /// One export on `plugin`, read back as text. Only for a plugin `withPlugin` hands out, which holds known settings.
+    // Only for a plugin `withPlugin` hands out, which holds known settings.
     internal static func dump(
         on plugin: SQLExportPlugin,
         tables: [PluginExportTable],
         dataSource: any PluginExportDataSource
-    ) async throws -> String {
+    ) async throws -> (text: String, result: ExportFormatResult) {
         let destination = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(UUID().uuidString).sql")
         defer { try? FileManager.default.removeItem(at: destination) }
-        _ = try await plugin.export(
+        let result = try await plugin.export(
             tables: tables,
             dataSource: dataSource,
             destination: destination,
             progress: PluginExportProgress(progress: Progress(totalUnitCount: 1))
         )
-        return try String(contentsOf: destination, encoding: .utf8)
+        return (try String(contentsOf: destination, encoding: .utf8), result)
     }
 
     /// The parts a split export wrote, in restore order, and the whole dump as one part when it did

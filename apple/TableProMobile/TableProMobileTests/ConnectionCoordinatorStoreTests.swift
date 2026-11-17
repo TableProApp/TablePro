@@ -1,8 +1,10 @@
 import Foundation
 import SwiftUI
+import TableProDatabase
 @testable import TableProMobile
 @testable import TableProModels
 import TableProSSHTransport
+import TableProTestSupport
 import Testing
 
 @Suite("Connection redial detection")
@@ -237,6 +239,32 @@ struct ConnectionCoordinatorStoreTests {
         #expect(store.coordinator(for: rehosted, appState: appState) !== firstCoordinator)
         #expect(store.generation(for: second.id) == 0)
         #expect(store.coordinator(for: second, appState: appState) === secondCoordinator)
+    }
+
+    @Test("A connection edited or deleted while an import holds its session drops the session once the import ends")
+    func dropWaitsForTheImport() async throws {
+        let factory = StubDriverFactory()
+        let state = fixture.makeState(syncEnabled: false, driverFactory: factory)
+        let store = ConnectionCoordinatorStore(connectionManager: state.connectionManager)
+        let original = connection("A")
+        let driver = MockDatabaseDriver()
+        driver.scriptedTransactionState = .idle
+        factory.queue(driver)
+        let coordinator = store.coordinator(for: original, appState: state)
+        await coordinator.connect()
+        let gate = TestGate()
+        let importRun = Task {
+            try await state.sessionTransactions.track(original.id, importing: true) { await gate.enter() }
+        }
+        await gate.waitUntilEntered()
+
+        store.reconcile(from: [original], to: [])
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(state.connectionManager.session(for: original.id) != nil)
+
+        await gate.open()
+        try await importRun.value
+        try await waitUntil { state.connectionManager.session(for: original.id) == nil }
     }
 
     @Test("A deleted connection keeps its screen up until the cover goes, and never reconnects")

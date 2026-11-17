@@ -9,7 +9,7 @@ import Foundation
 import TableProMSSQLCore
 import TableProPluginKit
 
-public enum MSSQLObjectQueries {
+nonisolated public enum MSSQLObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
         MSSQLStringLiteral.escaped(value)
     }

@@ -8,7 +8,7 @@ import TableProJavaScriptText
 import TableProNumberFormatting
 import TableProPluginKit
 
-enum MQLExportHelpers {
+nonisolated enum MQLExportHelpers {
     /// Spelled by the export's own rules rather than `MongoCollectionAccessor`'s, because this
     /// plugin can be released for an app that shipped an older copy of that helper.
     static func collectionAccessor(for name: String) -> String {
@@ -75,7 +75,7 @@ enum MQLExportHelpers {
 }
 
 // A command has a BSON size limit too; reserving space keeps its array keys and metadata outside the document budget.
-struct MQLDocumentBatch {
+nonisolated struct MQLDocumentBatch {
     static let documentByteLimit = 15 * 1_024 * 1_024
 
     private let countLimit: Int

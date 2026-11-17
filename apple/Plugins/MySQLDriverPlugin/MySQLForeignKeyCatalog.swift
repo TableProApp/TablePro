@@ -8,7 +8,7 @@
 import Foundation
 import TableProPluginKit
 
-internal enum MySQLForeignKeyCatalog {
+nonisolated internal enum MySQLForeignKeyCatalog {
     /// One `KEY_COLUMN_USAGE` row: a single column of a single foreign key.
     struct ColumnRow {
         let table: String

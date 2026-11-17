@@ -5,10 +5,9 @@
 
 import Combine
 import Foundation
-import SwiftUI
 import TableProPluginKit
 
-final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+nonisolated final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "MQL Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to MongoDB Query Language format"
@@ -28,7 +27,9 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
     typealias Settings = MQLExportOptions
     static let settingsStorageId = "mql"
 
-    @Published var settings = MQLExportOptions() {
+    // A nonisolated class cannot hold an @Published property, so the change is announced by hand.
+    var settings = MQLExportOptions() {
+        willSet { objectWillChange.send() }
         didSet { saveSettings() }
     }
 
@@ -45,11 +46,6 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
     // Without it, Data off still counts every collection's rows and the progress sits at 0 of N.
     func readsRows(optionValues: [Bool], kind: PluginExportObjectKind) -> Bool {
         optionValues.count <= 2 || optionValues[2]
-    }
-
-    @MainActor
-    func settingsView() -> AnyView? {
-        AnyView(MQLExportOptionsView(plugin: self))
     }
 
     func resetSettingsToDefaults() {

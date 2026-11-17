@@ -44,10 +44,14 @@ struct SQLBuilderDefaultValuesTests {
         #expect(SQLBuilder.supportsAllDefaultsInsert(type))
     }
 
-    @Test("Oracle has no all-defaults statement")
-    func oracleHasNoForm() {
-        #expect(SQLBuilder.buildAllDefaultsInsert(qualifiedTable: "\"t\"", for: .oracle) == nil)
-        #expect(!SQLBuilder.supportsAllDefaultsInsert(.oracle))
+    // D12: the macOS spelling through the shared `AllDefaultsInsert`; it needs a column to name, so none without one.
+    @Test("Oracle names its first writable column with VALUES (DEFAULT)")
+    func oracleNamesAColumn() {
+        #expect(SQLBuilder.buildAllDefaultsInsert(qualifiedTable: "\"T\"", for: .oracle, firstWritableColumn: "ID")
+            == "INSERT INTO \"T\" (\"ID\") VALUES (DEFAULT)")
+        #expect(SQLBuilder.buildAllDefaultsInsert(qualifiedTable: "\"T\"", for: .oracle) == nil)
+        #expect(SQLBuilder.supportsAllDefaultsInsert(.oracle))
+        #expect(SQLBuilder.buildAllDefaultsInsert(qualifiedTable: "t", for: .clickhouse, firstWritableColumn: "id") == nil)
     }
 
     @Test("an empty column list routes through the all-defaults form")
@@ -59,5 +63,8 @@ struct SQLBuilderDefaultValuesTests {
         #expect(SQLBuilder.buildInsert(
             table: "people", schema: nil, type: .oracle, driver: driver, columns: [], values: []
         ) == nil)
+        #expect(SQLBuilder.buildInsert(
+            table: "PEOPLE", schema: nil, type: .oracle, driver: driver, columns: [], values: [], firstWritableColumn: "ID"
+        ) == "INSERT INTO \"PEOPLE\" (\"ID\") VALUES (DEFAULT)")
     }
 }

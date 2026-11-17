@@ -863,23 +863,18 @@ final class LibPQPluginConnection: @unchecked Sendable {
             guard state == .inTransaction else {
                 return try executeParameterizedQuerySync(statementToRun, parameters: params)
             }
-            _ = try executeQuerySync(Self.sessionSettingSavepoint)
+            _ = try executeQuerySync(PostgreSQLSessionScopeSQL.settingSavepoint)
             let result: LibPQPluginQueryResult
             do {
                 result = try executeParameterizedQuerySync(statementToRun, parameters: params)
             } catch {
-                _ = try? executeQuerySync(Self.sessionSettingRollback)
+                _ = try? executeQuerySync(PostgreSQLSessionScopeSQL.settingRollback)
                 throw error
             }
-            _ = try executeQuerySync(Self.sessionSettingRelease)
+            _ = try executeQuerySync(PostgreSQLSessionScopeSQL.settingRelease)
             return result
         }
     }
-
-    private static let sessionSettingSavepoint = "SAVEPOINT tablepro_session_setting"
-    private static let sessionSettingRelease = "RELEASE SAVEPOINT tablepro_session_setting"
-    private static let sessionSettingRollback =
-        "ROLLBACK TO SAVEPOINT tablepro_session_setting; RELEASE SAVEPOINT tablepro_session_setting"
 
     // Whether the session is inside a transaction block, including one a failed statement has
     // aborted, so a statement sent now joins it. Called on the connection's queue only: one `PGconn`

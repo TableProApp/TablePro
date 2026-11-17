@@ -49,6 +49,22 @@ struct MarkdownExportEscapingTests {
         #expect(MarkdownTableRenderer.row(["abcdef"], widths: [2]) == "| abcdef |")
     }
 
+    @Test("Aligned cells keep emoji, flags and combining marks whole and pad them by Character")
+    func alignedCellsKeepGraphemes() {
+        let rows = [["😀😀😀", "Cafe\u{301}"], ["🇻🇳", "x"]]
+        let widths = MarkdownTableRenderer.widths(header: ["e", "name"], sample: rows)
+        #expect(widths == [3, 4])
+        #expect(MarkdownTableRenderer.row(rows[0], widths: widths) == "| 😀😀😀 | Cafe\u{301} |")
+        #expect(MarkdownTableRenderer.row(rows[1], widths: widths) == "| 🇻🇳   | x    |")
+    }
+
+    @Test("A header wider in UTF-16 than in Characters is written whole")
+    func wideHeaderKeepsItsEmoji() {
+        let widths = MarkdownTableRenderer.widths(header: ["👩‍👩‍👧"], sample: [["ab"]])
+        #expect(widths == [2])
+        #expect(MarkdownTableRenderer.row(["👩‍👩‍👧"], widths: widths) == "| 👩‍👩‍👧  |")
+    }
+
     @Test("The separator is at least three dashes per column")
     func separatorMinimumWidth() {
         #expect(MarkdownTableRenderer.separator(columnCount: 2, widths: nil) == "| --- | --- |")

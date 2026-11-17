@@ -48,10 +48,6 @@ extension MySQLPluginDriver {
     }
 
     private func grantBuilder(for principal: PluginPrincipalRef) -> PluginGrantSQLBuilder {
-        PluginGrantSQLBuilder(
-            grantee: grantAccount(principal),
-            quoteIdentifier: { self.quoteIdentifier($0) },
-            target: { self.grantTarget(for: $0) }
-        )
+        MySQLExportCatalog.grantBuilder(for: principal, quote: { [self] in self.quoteIdentifier($0) })
     }
 }

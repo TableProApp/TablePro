@@ -42,6 +42,11 @@ nonisolated public enum ClickHouseObjectQueries {
     public static func functionDefinition(name: String) -> String {
         "SELECT create_query FROM system.functions WHERE name = '\(escapeLiteral(name))'"
     }
+
+    // A user function belongs to no database, so the name is never qualified.
+    public static func dropFunction(name: String) -> String {
+        "DROP FUNCTION IF EXISTS \(quoteIdentifier(name))"
+    }
 }
 
 nonisolated extension ClickHousePluginDriver {
@@ -84,5 +89,9 @@ nonisolated extension ClickHousePluginDriver {
             throw PluginObjectSourceError.notFound(routine.name)
         }
         return ddl
+    }
+
+    func generateDropRoutineSQL(name: String, signature: String?, schema: String?, isFunction: Bool) -> String? {
+        ClickHouseObjectQueries.dropFunction(name: name)
     }
 }

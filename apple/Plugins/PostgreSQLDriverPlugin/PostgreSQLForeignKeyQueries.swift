@@ -7,7 +7,7 @@ import Foundation
 import TableProPluginKit
 import TableProPostgreSQLCore
 
-enum PostgreSQLForeignKeyQueries {
+nonisolated enum PostgreSQLForeignKeyQueries {
     static func foreignKeyList(schema: String, table: String?, capabilities: PostgreSQLCapabilities) -> String {
         let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
         // The namespace comes from the constraint, so the whole-schema read never joins `pg_class` for
@@ -65,7 +65,7 @@ enum PostgreSQLForeignKeyQueries {
     }
 }
 
-struct PostgreSQLForeignKeyRow {
+nonisolated struct PostgreSQLForeignKeyRow {
     let table: String
     let foreignKey: PluginForeignKeyInfo
 

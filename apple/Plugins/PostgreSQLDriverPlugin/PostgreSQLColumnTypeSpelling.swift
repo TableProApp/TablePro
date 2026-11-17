@@ -9,7 +9,7 @@
 import Foundation
 import TableProPluginKit
 
-enum PostgreSQLColumnTypeSpelling {
+nonisolated enum PostgreSQLColumnTypeSpelling {
     struct Resolution: Equatable {
         let dataType: String
         let classificationTypeName: String?

@@ -925,6 +925,8 @@ mod tests {
 
     /// Measured against DuckDB 1.5: a missing part is passed by its text,
     /// a link is followed before the `..` after it.
+    // Windows makes a symbolic link only in Developer Mode or with an administrator's right.
+    #[cfg(unix)]
     #[test]
     fn a_path_is_resolved_as_duckdb_opens_it() {
         let root = tempfile::tempdir().unwrap();

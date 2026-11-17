@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLGrammar
 
 /// One `name = value` element of a `SET` statement, as it was written.
 ///

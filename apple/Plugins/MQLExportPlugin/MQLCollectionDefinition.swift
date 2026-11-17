@@ -20,7 +20,7 @@ import TableProJavaScriptText
 /// validator only as the first, where the driver writes it. A statement that fails to read is left
 /// out up to the next line, not one token at a time: stepping through it found a statement a name
 /// had spelled inside it and wrote that out as one of the driver's own.
-enum MQLCollectionDefinition {
+nonisolated enum MQLCollectionDefinition {
     static let skippedStatementComment = "// Skipped a statement that is not an index or a validator"
 
     static func script(fromDDL ddl: String, collection: String) -> String {

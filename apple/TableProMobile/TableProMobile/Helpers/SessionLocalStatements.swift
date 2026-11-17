@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProQuery
 import TableProSQLGrammar
 
 // What a run leaves on its own session that a catalog connection beside it never sees. Read from every statement the
@@ -56,6 +57,31 @@ nonisolated enum SessionLocalStatements {
         ).execution
         return SQLCatalogEffectClassifier.effect(of: text, grammar: grammar).runsUnseenStatements
     }
+
+    // A statement that leaves the session as a fresh connection would not have it: a write (the classifier counts SET,
+    // USE, CREATE TEMPORARY, CALL and DECLARE as writes), a transaction statement, or anything `effect` sees.
+    static func changesSession(_ statements: [String], databaseType: DatabaseType) -> Bool {
+        statements.contains { statement in
+            SQLWriteClassifier.isWriteQuery(statement, databaseType: databaseType)
+                || sessionKeywords.contains(ExportSnapshotStatements.leadingKeyword(of: statement))
+                || effect(of: [statement], databaseType: databaseType) != Effect()
+                || assignsSessionState(statement, databaseType: databaseType)
+        }
+    }
+
+    // A read can still set session state: MySQL's `SELECT @v := 7`, PostgreSQL's `SELECT set_config(...)`.
+    private static func assignsSessionState(_ statement: String, databaseType: DatabaseType) -> Bool {
+        let grammar = SQLLexicalReadings.resolve(
+            databaseTypeId: databaseType.rawValue, declared: nil, session: nil
+        ).execution
+        let code = SQLCodeProjection.code(of: statement, grammar: grammar, revealingExecutableComments: true)
+        return code.range(of: ":=", options: .literal) != nil
+            || code.range(of: "set_config", options: [.caseInsensitive, .literal]) != nil
+    }
+
+    private static let sessionKeywords: Set<String> = [
+        "BEGIN", "START", "COMMIT", "END", "ROLLBACK", "SAVEPOINT", "RELEASE", "SET", "USE", "RESET"
+    ]
 
     static func effect(of statements: [String], databaseType: DatabaseType) -> Effect {
         let grammar = SQLLexicalReadings.resolve(

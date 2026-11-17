@@ -16,10 +16,8 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ExportDataSourceAdapter")
 
-    /// The same capability the sidebar's drop prompt reads, so the engines whose dumps carry a
-    /// `CASCADE` are exactly the engines that offer the user a Cascade checkbox. Resolved once at
-    /// construction, on the main actor, because the registry lives there and this is asked for from
-    /// the export plugin's own thread.
+    // The sidebar drop prompt's capability, so a dump carries `CASCADE` exactly where the user is offered one. Read
+    // at construction on the main actor, where the registry lives; the export plugin asks from its own thread.
     let supportsCascadeDrop: Bool
     let lexicalFeatures: SQLLexicalFeatures
     private let implicitSchemaName: String?
@@ -101,8 +99,8 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         return streamLeadingRows(query: query, table: table)
     }
 
-    /// An engine that caps its rows answers a statement with no LIMIT with a smaller default of its
-    /// own, so every read here states a limit, and a limit past the ceiling is lowered to it.
+    // An engine that caps its rows answers a statement with no LIMIT with a smaller default of its own, so every read
+    // states a limit, lowered to the ceiling.
     private func leadingRowsQuery(
         columns: String,
         from source: String,
@@ -124,8 +122,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         requested.map(pagination.clampedRowCount) ?? pagination.maximumRows
     }
 
-    /// Streams through the adapter rather than the plugin, so the statement text is validated the
-    /// way every other statement is: a row scope carries a filter the user typed.
+    // Through the adapter, so the text is validated like every other statement: a row scope carries a typed filter.
     private func streamLeadingRows(
         query: String,
         table: String
@@ -186,14 +183,9 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         guard let context = driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly) else {
             return mapToPluginResult(try await driver.execute(query: query))
         }
-        let keyword = QueryClassifier.leadingKeyword(of: query, grammar: dbType.lexicalGrammar)
-        guard !Self.transactionKeywords.contains(keyword) else {
-            return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-        }
+        guard !ExportSnapshotStatements.isTransactionStatement(query) else { return ExportSnapshotStatements.noResult }
         return mapToPluginResult(try await driver.execute(query: query, context: context))
     }
-
-    private static let transactionKeywords: Set<String> = ["BEGIN", "START", "COMMIT", "END", "ROLLBACK"]
 
     func quoteIdentifier(_ identifier: String) -> String {
         driver.quoteIdentifier(identifier)
@@ -291,9 +283,8 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
 
     // MARK: - Object DDL
 
-    /// A driver addresses a routine, trigger or type through the info object it handed out, which
-    /// carries an opaque identity the export item cannot reproduce. So the list is fetched once per
-    /// database and the item is matched back onto its own info object rather than a rebuilt one.
+    // A driver addresses a routine, trigger or type through the info object it handed out, whose identity the export
+    // item cannot rebuild, so the list is read once per database and the item matched back onto it.
     func fetchObjectDDL(_ object: PluginExportTable) async throws -> String {
         guard let pluginDriver else {
             return try await driver.fetchTableDDL(table: object.name)
@@ -305,11 +296,8 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         case .view:
             return try await pluginDriver.fetchViewDefinition(view: object.name, schema: schema)
         case .materializedView:
-            /// No fallback to `fetchTableDDL`. It succeeds on a materialized view on several
-            /// engines and returns a `CREATE TABLE`, so the dump carried a `DROP MATERIALIZED
-            /// VIEW` followed by a table definition, reported success, and restored an empty
-            /// ordinary table where the view had been. A driver that cannot produce the definition
-            /// now says so and the export names the object it could not write.
+            // No fallback to `fetchTableDDL`: on several engines it answers a materialized view with a `CREATE TABLE`,
+            // and the dump restored an empty table where the view had been.
             return try await pluginDriver.fetchViewDefinition(view: object.name, schema: schema)
         case .routine:
             let routine = try await matchedRoutine(object, schema: schema)
@@ -343,8 +331,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         }
     }
 
-    /// Matched to its info object the way `fetchObjectDDL` matches it, so the settings wrap the definition the dump
-    /// writes.
+    // Matched the way `fetchObjectDDL` matches, so the settings wrap the definition the dump writes.
     func fetchCreationScope(_ object: PluginExportTable) async throws -> PluginStatementScope? {
         guard let pluginDriver else { return nil }
         let schema = exportSchema(for: object.databaseName)
@@ -363,9 +350,15 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         }
     }
 
+    // The kind is part of the match: MySQL keeps functions and procedures apart, so `f()` can name one of each.
     private func matchedRoutine(_ object: PluginExportTable, schema: String?) async throws -> PluginRoutineInfo {
+        let kind = Self.routineKind(of: object)
         guard let routine = try await cachedRoutines(schema: schema, databaseName: object.databaseName)
-            .first(where: { $0.name == object.name && ($0.argumentSignature ?? "") == (object.identity ?? "") })
+            .first(where: { candidate in
+                candidate.name == object.name
+                    && (candidate.argumentSignature ?? "") == (object.identity ?? "")
+                    && (kind == nil || candidate.kind == kind)
+            })
         else {
             throw PluginObjectSourceError.unsupported(object.name)
         }
@@ -400,9 +393,8 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         try await driver.closeSessionScope(scope)
     }
 
-    /// The engine renders its own GRANT text, because only the driver knows how it spells a
-    /// grantee and a privilege target. `principal` is the name and `host` the MySQL-style host
-    /// part, which is what separates two principals that share a name.
+    // Only the driver knows how it spells a grantee and a privilege target. `host` is the MySQL-style host part that
+    // separates two principals of one name.
     func fetchGrantStatements(principal: String, host: String?) async throws -> [String] {
         guard let management = pluginDriver as? any PluginPrincipalManagement else { return [] }
         let ref = PluginPrincipalRef(name: principal, host: host)
@@ -413,8 +405,8 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         ) ?? []
     }
 
-    /// Through the same owner Compare & Sync saves its scripts with, so a dump ends an Oracle unit on a `/` line and
-    /// puts a MySQL routine in a `DELIMITER` block exactly as a saved sync script does.
+    // The owner Compare & Sync saves its scripts with, so a dump ends an Oracle unit on a `/` line and wraps a MySQL
+    // routine in a `DELIMITER` block as a saved sync script does.
     func scriptText(for ddl: String) -> String {
         SQLScriptText(
             databaseType: dbType,
@@ -422,26 +414,33 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         ).scriptText(forDriverText: ddl)
     }
 
-    /// `tableType` carries the routine's own kind for a `.routine`, because `DROP FUNCTION` and
-    /// `DROP PROCEDURE` are different statements on every engine that has both and MySQL has no
-    /// `DROP ROUTINE` to fall back on.
     func dropStatement(for object: PluginExportTable) -> String? {
         guard let pluginDriver else { return nil }
         let schema = exportSchema(for: object.databaseName)
         switch object.kind {
+        case .table, .view, .materializedView:
+            return pluginDriver.generateDropRelationSQL(name: object.name, kind: object.kind, schema: schema)
         case .trigger:
             guard let parent = object.parentTable else { return nil }
             return pluginDriver.generateDropTriggerSQL(name: object.name, table: parent, schema: schema)
         case .routine:
+            // No guess without the kind: PostgreSQL refuses `DROP FUNCTION` on a procedure.
+            guard let kind = Self.routineKind(of: object) else { return nil }
             return pluginDriver.generateDropRoutineSQL(
                 name: object.name,
                 signature: object.identity,
                 schema: schema,
-                isFunction: object.tableType.lowercased() != "procedure"
+                isFunction: kind == .function
             )
         default:
             return nil
         }
+    }
+
+    // A routine's `tableType` is its `PluginRoutineKind` raw value; nil when the caller passed the export kind instead.
+    static func routineKind(of object: PluginExportTable) -> PluginRoutineKind? {
+        guard object.kind == .routine else { return nil }
+        return PluginRoutineKind(rawValue: object.tableType.lowercased())
     }
 
     private func cachedEvents(schema: String?, databaseName: String) async throws -> [PluginEventInfo] {
@@ -476,13 +475,9 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
 
     // MARK: - Helpers
 
-    /// The export tree names every group after a schema on a schema-aware engine and after a
-    /// database everywhere else. Either way the name is the container the driver has to read in,
-    /// which is what `schema:` means to a driver with no schema layer of its own: withholding it
-    /// there left a MySQL dump reading its DDL and column metadata from whichever database the
-    /// connection happened to be on while `streamRows` qualified the rows by the name the export
-    /// actually named. An empty name means the engine's implicit schema where it has one, and the
-    /// driver's own container everywhere else.
+    // A group's name is the container the driver reads in, which is what `schema:` means to a driver without schemas:
+    // withheld, a MySQL dump read its DDL from whichever database the connection was on. An empty name is the engine's
+    // implicit schema where it has one, else the driver's own container.
     func exportSchema(for databaseName: String) -> String? {
         guard let pluginDriver else { return nil }
         guard !databaseName.isEmpty else {

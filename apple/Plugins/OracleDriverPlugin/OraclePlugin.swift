@@ -325,11 +325,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try ensureAlive(connection)
     }
 
-    /// A probe that only failed to answer is survivable, and both have a fallback. One that killed the
-    /// connection is not: the core is left disconnected, so the next call silently redials with the full
-    /// login budget while the caller's own, shorter deadline blames whatever step it happened to be on.
-    /// Checked after each optional probe, because a redial inside the next one would mask the
-    /// previous probe's failure.
+    // A probe that killed the connection leaves the core disconnected, and the next call would redial with the full
+    // login budget under the caller's shorter deadline. Checked after each probe, so a redial cannot mask its failure.
     private func ensureAlive(_ connection: OracleCoreConnection) throws {
         guard connection.isConnected else {
             core = nil
@@ -442,8 +439,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    /// An anonymous block reports no row count of its own; whatever oracle-nio counted belongs to the statements
-    /// inside it.
+    // An anonymous block reports no row count of its own; what oracle-nio counted belongs to the statements inside it.
     private func pluginResult(
         of query: String,
         _ result: OracleRawResult,
@@ -454,8 +450,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .toPluginResult(executionTime: executionTime)
     }
 
-    /// At most this many lines are read after one statement. A loop that prints more is reported as truncated
-    /// rather than read into memory, and the rest of its buffer is discarded on the server.
+    // Lines read after one statement. More is reported as truncated, and the rest is discarded on the server.
     static let serverOutputLineLimit = 10_000
 
     func fetchServerOutput() async throws -> PluginServerOutput {
@@ -468,11 +463,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    /// Turns a `CREATE` that stored an INVALID unit into the failure it is.
-    ///
-    /// Oracle accepts the statement and flags the compile failure only as a warning, which oracle-nio drops, so the
-    /// unit's own errors are read back from `ALL_ERRORS`. A unit the header does not name, or one that compiled, adds
-    /// nothing.
+    // Oracle stores an INVALID unit with only a warning, which oracle-nio drops, so its errors are read from
+    // `ALL_ERRORS`. A unit the header does not name, or one that compiled, adds nothing.
     func reportCompilationErrors(of query: String) async throws {
         guard let unit = OraclePLSQLUnit.definition(in: query) else { return }
         let errors = try await rawQuery(unit.errorsQuery).rows.compactMap(OracleCompilationError.init(row:))
@@ -589,10 +581,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let result = try await rawQuery(
-            OracleSchemaQueries.columns(schema: effectiveSchema(schema), table: table, release: serverRelease())
-        )
-        return result.rows.compactMap(OracleSchemaQueries.parseColumnRow).map(\.pluginColumnInfo)
+        try await exportCatalog.fetchColumns(table: table, schema: schema)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -619,42 +608,15 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
-        let owner = effectiveSchema(schema)
-        let result = try await rawQuery(OracleIndexStatements.query(schema: owner, table: table))
-        let indexes = OracleIndexStatements.render(
-            rows: result.rows.map { row in row.map { $0.stringValue } },
-            schema: owner,
-            table: table,
-            quote: quoteIdentifier)
-        let constraints = try await rawQuery(
-            OracleSchemaQueries.tableConstraints(schema: owner, table: table, release: serverRelease())
-        )
-        return indexes + (try OracleTableDDL.afterRowsStatements(
-            qualifiedTable: "\(quoteIdentifier(owner)).\(quoteIdentifier(table))",
-            constraints: OracleSchemaQueries.parseTableConstraints(constraints.rows),
-            quote: quoteIdentifier
-        ))
+        try await exportCatalog.fetchIndexDDL(table: table, schema: schema)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let result = try await rawQuery(
-            OracleSchemaQueries.foreignKeys(schema: effectiveSchema(schema), table: table)
-        )
-        return result.rows.compactMap(OracleSchemaQueries.parseForeignKeyRow).map {
-            PluginForeignKeyInfo(
-                name: $0.constraintName,
-                column: $0.columnName,
-                referencedTable: $0.referencedTable,
-                referencedColumn: $0.referencedColumn,
-                referencedSchema: $0.referencedSchema,
-                onDelete: $0.deleteRule,
-                onUpdate: "NO ACTION"
-            )
-        }
+        try await exportCatalog.fetchForeignKeys(table: table, schema: schema)
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        try await triggerList(schema: effectiveSchema(schema), table: table)
+        try await exportCatalog.fetchTriggers(table: table, schema: schema)
     }
 
     var triggerEditUsesReplace: Bool { true }
@@ -675,47 +637,33 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        OracleObjectQueries.dropTrigger(name: name, schema: schema, currentSchema: currentSchema)
+        OracleExportCatalog.dropTriggerStatement(
+            name: name, schema: schema, currentSchema: currentSchema, release: core?.serverRelease
+        )
+    }
+
+    func generateDropRoutineSQL(name: String, signature: String?, schema: String?, isFunction: Bool) -> String? {
+        OracleExportCatalog.dropRoutineStatement(
+            name: name, schema: schema, currentSchema: currentSchema, isFunction: isFunction
+        )
+    }
+
+    func generateDropRelationSQL(name: String, kind: PluginExportObjectKind, schema: String?) -> String? {
+        OracleExportCatalog.dropRelationStatement(
+            kind: kind, name: name, schema: schema, currentSchema: currentSchema, release: core?.serverRelease
+        )
     }
 
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let result = try await rawQuery(
-            OracleSchemaQueries.allColumns(schema: effectiveSchema(schema), release: serverRelease())
-        )
-        var columnsByTable: [String: [PluginColumnInfo]] = [:]
-        for (table, column) in result.rows.compactMap(OracleSchemaQueries.parseTableColumnRow) {
-            columnsByTable[table, default: []].append(column.pluginColumnInfo)
-        }
-        return columnsByTable
+        try await exportCatalog.fetchAllColumns(schema: schema)
     }
 
     var providesBulkForeignKeyFetch: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let sql = OracleSchemaQueries.allForeignKeys(schema: effectiveSchema(schema))
-        let result = try await execute(query: sql)
-        var fksByTable: [String: [PluginForeignKeyInfo]] = [:]
-        for row in result.rows {
-            guard let tableName = row[safe: 0]?.asText,
-                  let constraintName = row[safe: 1]?.asText,
-                  let columnName = row[safe: 2]?.asText,
-                  let refTable = row[safe: 3]?.asText,
-                  let refColumn = row[safe: 4]?.asText else { continue }
-            let deleteRule = (row[safe: 5]?.asText) ?? "NO ACTION"
-            let fk = PluginForeignKeyInfo(
-                name: constraintName,
-                column: columnName,
-                referencedTable: refTable,
-                referencedColumn: refColumn,
-                referencedSchema: row[safe: 6]?.asText,
-                onDelete: deleteRule,
-                onUpdate: "NO ACTION"
-            )
-            fksByTable[tableName, default: []].append(fk)
-        }
-        return fksByTable
+        try await exportCatalog.fetchAllForeignKeys(schema: schema)
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
@@ -728,9 +676,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    /// The per-schema segment sizes, or an empty map when the reader lacks the DBA privilege the view needs. It is a
-    /// separate best-effort read because a non-DBA cannot query `DBA_SEGMENTS` and joining it would fail the whole
-    /// summary; `ALL_SEGMENTS` cannot stand in for it because Oracle has no such view.
+    // A separate best-effort read: a non-DBA cannot query `DBA_SEGMENTS`, joining it would fail the whole summary, and
+    // Oracle has no `ALL_SEGMENTS`. Empty without the privilege.
     private func schemaSegmentSizes() async -> [String: Int64] {
         guard let result = try? await execute(query: OracleSchemaQueries.schemaSegmentSizes) else { return [:] }
         var sizes: [String: Int64] = [:]
@@ -743,56 +690,12 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return sizes
     }
 
-    /// `ALL_TAB_COLS` lists a view's columns as it lists a table's, so a view is looked up first:
-    /// without it Show DDL rebuilt a view as a `CREATE TABLE` of its columns.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let owner = effectiveSchema(schema)
-        let view = try await execute(query: OracleSchemaQueries.viewDefinition(schema: owner, view: table))
-        if !view.rows.isEmpty {
-            return try await viewStatement(from: view, schema: owner, view: table)
-        }
-        let columns = try await fetchColumns(table: table, schema: schema)
-        let constraints = try await rawQuery(
-            OracleSchemaQueries.tableConstraints(schema: owner, table: table, release: serverRelease())
-        )
-        return try OracleTableDDL.createTable(
-            qualifiedTable: "\(quoteIdentifier(owner)).\(quoteIdentifier(table))",
-            columns: columns,
-            constraints: OracleSchemaQueries.parseTableConstraints(constraints.rows),
-            quote: quoteIdentifier
-        )
+        try await exportCatalog.fetchTableDDL(table: table, schema: schema)
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        // ALL_VIEWS.TEXT is LONG (crashes OracleNIO). TEXT_VC is VARCHAR2(4000), safe.
-        // Do NOT use DBMS_METADATA.GET_DDL: the wrong object type triggers ORA-31603,
-        // which corrupts OracleNIO's connection state machine.
-        let owner = effectiveSchema(schema)
-        let result = try await execute(query: OracleSchemaQueries.viewDefinition(schema: owner, view: view))
-        return try await viewStatement(from: result, schema: owner, view: view)
-    }
-
-    /// `TEXT_VC` is the view's `SELECT` and nothing else, so it needs the header a dump replays.
-    /// Written bare it made the restore run a query and create no view.
-    private func viewStatement(from result: PluginQueryResult, schema: String, view: String) async throws -> String {
-        guard let row = result.rows.first, let body = row.first?.asText,
-              !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw OraclePluginError(core: .queryFailed(
-                String(format: String(localized: "Oracle returned no definition for view '%@'."), view)))
-        }
-        guard !OracleSchemaQueries.isViewTextTruncated(
-            storedLength: row[safe: 1]?.asText, returnedLength: row[safe: 2]?.asText
-        ) else {
-            throw OraclePluginError(core: .queryFailed(String(
-                localized: "Oracle returns only the first 4000 bytes of this view's definition, so the full text cannot be read."
-            )))
-        }
-        return OracleTableDDL.createView(
-            qualifiedView: "\(quoteIdentifier(schema)).\(quoteIdentifier(view))",
-            columns: try await fetchColumns(table: view, schema: schema).map(\.name),
-            query: body,
-            quote: quoteIdentifier
-        )
+        try await exportCatalog.fetchViewDefinition(view: view, schema: schema)
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
@@ -821,11 +724,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return PluginTableMetadata(tableName: table)
     }
 
-    /// The segment bytes of a table, or of the whole schema when `table` is nil, best-effort.
-    ///
-    /// The reader's own schema always answers through `USER_SEGMENTS`; another schema needs `DBA_SEGMENTS`, which a
-    /// non-DBA cannot read, so a refusal returns nil rather than failing the metadata read. `ALL_SEGMENTS` is never
-    /// used because Oracle has no such view (ORA-00942 even as `SYSTEM`).
+    // The reader's own schema answers through `USER_SEGMENTS`; another needs `DBA_SEGMENTS`, so a non-DBA gets nil.
+    // Oracle has no `ALL_SEGMENTS` (ORA-00942 even as `SYSTEM`).
     private func segmentSize(schema: String, table: String?) async -> Int64? {
         let ownedByCurrentSchema = schema.caseInsensitiveCompare(effectiveSchema(nil)) == .orderedSame
         let sql = OracleSchemaQueries.segmentSize(
@@ -920,8 +820,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    /// Nothing to write is nil, never an empty list: a non-nil answer to an empty update is how a driver claims the
-    /// restore of deleted rows, and this one has no identity-preserving insert to restore them with.
+    // Nothing to write is nil, never an empty list: a non-nil answer to an empty update claims the restore of deleted
+    // rows, and this driver has no identity-preserving insert to restore them with.
     func generateRowWrites(
         table: String,
         schema: String?,
@@ -957,14 +857,11 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Create Table DDL
 
-    /// Oracle runs one statement per call, and sent as one text the table and its indexes fail with ORA-03405 and
-    /// create nothing.
+    // Oracle runs one statement per call: sent as one text, the table and its indexes fail with ORA-03405.
     func generateCreateTableStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]? {
-        guard let statements = createTableAndIndexStatements(definition: definition, schema: schema) else { return nil }
-        let comments = OracleColumnStatements.commentStatements(
-            qualifiedTable: oracleQualifiedTable(definition.tableName, schema: schema), columns: definition.columns
+        OracleCreateTableSQL.statements(
+            definition: definition, schema: effectiveSchema(schema), supportsIdentity: supportsIdentityColumns
         )
-        return statements + comments
     }
 
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
@@ -981,30 +878,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let defaultValue = column.defaultValue,
               !defaultValue.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         return String(localized: "An auto-increment column takes its values from a sequence, so it cannot also have a default.")
-    }
-
-    private func createTableAndIndexStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]? {
-        guard !definition.columns.isEmpty else { return nil }
-
-        let qualifiedTable = oracleQualifiedTable(definition.tableName, schema: schema)
-        let pkColumns = definition.columns.filter { $0.isPrimaryKey }
-        let inlinePK = pkColumns.count == 1
-        var parts: [String] = definition.columns.map { oracleColumnDefinition($0, inlinePK: inlinePK) }
-
-        if pkColumns.count > 1 {
-            let pkCols = pkColumns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
-            parts.append("PRIMARY KEY (\(pkCols))")
-        }
-
-        for fk in definition.foreignKeys {
-            parts.append(oracleForeignKeyConstraint(fk))
-        }
-
-        let createTable = "CREATE TABLE \(qualifiedTable) (\n  " +
-            parts.joined(separator: ",\n  ") +
-            "\n)"
-        let indexStatements = definition.indexes.map { oracleIndexDefinition($0, qualifiedTable: qualifiedTable) }
-        return [createTable] + indexStatements
     }
 
     // MARK: - Definition SQL (clipboard copy)
@@ -1048,18 +921,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "ALTER TABLE \(oracleQualifiedTable(table, schema: schema)) DROP COLUMN \(quoteIdentifier(columnName))"
     }
 
-    /// Oracle has no positional clause, but making a column invisible and visible again moves it to
-    /// the end of the visible order, so any order is reachable by appending the right suffix.
-    ///
-    /// Measured against Oracle Free 23: the cycle works on the primary key, on an identity column
-    /// and on a virtual column; the rows, the default, the NOT NULL, the comment, the identity
-    /// sequence, the constraints, the indexes and the foreign keys pointing at the table all
-    /// survive it, and no data is read or written. Needs 12.1, where invisible columns arrived; an
-    /// older server rejects the statement and the error is reported as it is.
-    ///
-    /// The two halves of a cycle are separate statements because Oracle commits each DDL on its
-    /// own, so a column is invisible for the width of one statement. Cycling one column at a time
-    /// keeps that window as small as it can be.
+    // Making a column invisible and visible again moves it to the end, so any order is reachable. Measured on Oracle
+    // Free 23: works on a primary key, identity and virtual column, keeps rows, defaults, NOT NULL, comments, identity
+    // sequences, constraints, indexes and incoming foreign keys, and reads no data. Needs 12.1. One column at a time,
+    // since Oracle commits each DDL on its own and the column is invisible between the two statements.
     func generateColumnReorderPlan(
         table: String,
         schema: String?,
@@ -1078,11 +943,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         guard !statements.isEmpty else { return nil }
 
-        /// Oracle commits each DDL statement on its own, so there is no transaction to roll back:
-        /// a cycle whose `VISIBLE` half fails, on a dropped connection or a server error, leaves
-        /// that column hidden for good. Every cycled column gets a compensating `VISIBLE` that the
-        /// executor runs on any mid-plan failure, which is idempotent on a column that is already
-        /// visible and puts back the one that is not.
+        // No transaction to roll back: a failed `VISIBLE` half leaves the column hidden, so every cycled column gets a
+        // compensating `VISIBLE`, idempotent on one already visible, that the executor runs on a mid-plan failure.
         return PluginColumnReorderPlan(
             statements: statements,
             compensation: cycled.map { "ALTER TABLE \(qt) MODIFY (\(quoteIdentifier($0)) VISIBLE)" },
@@ -1108,44 +970,25 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - DDL Helpers
 
-    private func oracleQualifiedTable(_ table: String, schema: String?) -> String {
-        "\(quoteIdentifier(effectiveSchema(schema))).\(quoteIdentifier(table))"
+    // An unknown release writes the identity: `schemaOperationRefusal` stops auto-increment on a known 11g.
+    private var supportsIdentityColumns: Bool {
+        core?.serverRelease?.hasIdentityColumns ?? true
     }
 
-    /// An unknown release writes the identity: `schemaOperationRefusal` stops auto-increment on a known 11g.
+    private func oracleQualifiedTable(_ table: String, schema: String?) -> String {
+        OracleCreateTableSQL.qualifiedTable(table, schema: effectiveSchema(schema))
+    }
+
     private func oracleColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        OracleColumnStatements.definition(
-            col,
-            inlinePrimaryKey: inlinePK,
-            supportsIdentity: core?.serverRelease?.hasIdentityColumns ?? true,
-            quote: quoteIdentifier
-        )
+        OracleCreateTableSQL.columnDefinition(col, inlinePrimaryKey: inlinePK, supportsIdentity: supportsIdentityColumns)
     }
 
     private func oracleIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let unique = index.isUnique ? "UNIQUE " : ""
-        return "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable) (\(cols))"
+        OracleCreateTableSQL.indexDefinition(index, qualifiedTable: qualifiedTable)
     }
 
     private func oracleForeignKeyConstraint(_ fk: PluginForeignKeyDefinition) -> String {
-        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refTable: String
-        if let schema = fk.referencedSchema, !schema.isEmpty {
-            refTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(fk.referencedTable))"
-        } else {
-            refTable = quoteIdentifier(fk.referencedTable)
-        }
-        let constraint = fk.name.isEmpty ? "" : "CONSTRAINT \(quoteIdentifier(fk.name)) "
-        var def = "\(constraint)FOREIGN KEY (\(cols)) REFERENCES \(refTable)"
-        if !refCols.isEmpty {
-            def += " (\(refCols))"
-        }
-        if fk.onDelete != "NO ACTION" {
-            def += " ON DELETE \(fk.onDelete)"
-        }
-        return def
+        OracleCreateTableSQL.foreignKeyConstraint(fk)
     }
 
     // MARK: - Schema Switching
@@ -1161,9 +1004,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         core.noteSessionSchema(schema)
     }
 
-    /// Oracle has no real database concept; "switch database" is a schema switch.
-    /// Aliases to keep `coordinator.switchDatabase` working from tab restore paths
-    /// without relying on a manager-side kludge.
+    // Oracle has no database apart from its schemas, so tab restore's database switch is a schema switch.
     func switchDatabase(to database: String) async throws {
         try await switchSchema(to: database)
     }
@@ -1278,10 +1119,24 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Private Helpers
 
-    /// Set at login before `core` is, so a driver with a core always has it.
+    // Set at login before `core` is, so a driver with a core always has it.
     func serverRelease() throws -> OracleServerRelease {
         guard let release = core?.serverRelease else { throw OraclePluginError(core: .notConnected) }
         return release
+    }
+
+    // Without a core every read fails as not connected, so building the catalog fails the same way.
+    var exportCatalog: OracleExportCatalog {
+        get throws {
+            OracleExportCatalog(
+                run: { [self] query in try await rawQuery(query) },
+                currentSchema: currentSchema,
+                fallbackSchema: config.username.uppercased(),
+                release: try serverRelease(),
+                principalState: principalState,
+                coreError: { ($0 as? OraclePluginError)?.core }
+            )
+        }
     }
 
     func effectiveSchema(_ schema: String?) -> String {

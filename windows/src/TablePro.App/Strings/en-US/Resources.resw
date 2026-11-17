@@ -1002,6 +1002,9 @@
   <data name="NewFileOnConnect" xml:space="preserve">
     <value>The file is made when you connect</value>
   </data>
+  <data name="NewFileExists" xml:space="preserve">
+    <value>This file exists, so it opens as it is</value>
+  </data>
   <data name="Testing" xml:space="preserve">
     <value>Testing...</value>
   </data>

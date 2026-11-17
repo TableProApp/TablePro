@@ -6,18 +6,24 @@
 import Foundation
 import TableProPluginKit
 
-internal struct PostgreSQLBoundStatement: Equatable, Sendable {
+nonisolated internal struct PostgreSQLBoundStatement: Equatable, Sendable {
     let sql: String
     let parameters: [PluginCellValue]
 }
 
-internal enum PostgreSQLSessionScopeError: Error, Equatable {
+nonisolated internal enum PostgreSQLSessionScopeError: Error, Equatable {
     case abortedTransaction
     case sessionNotIdle
     case restoreRefused([String])
 }
 
-internal enum PostgreSQLSessionScopeSQL {
+nonisolated internal enum PostgreSQLSessionScopeSQL {
+    // A setting sent inside the user's transaction runs under this savepoint, so a refusal leaves the transaction open.
+    static let settingSavepoint = "SAVEPOINT tablepro_session_setting"
+    static let settingRelease = "RELEASE SAVEPOINT tablepro_session_setting"
+    static let settingRollback =
+        "ROLLBACK TO SAVEPOINT tablepro_session_setting; RELEASE SAVEPOINT tablepro_session_setting"
+
     /// Every `SET` a pg_dump 17.11 plain file runs and never puts back, the settings a value's text form depends on,
     /// and `session_replication_role`, which the import's foreign key switch sets.
     static let preservedNames = [

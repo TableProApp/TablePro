@@ -249,13 +249,13 @@ struct RowInsertPlannerTests {
         #expect(statements == [#"INSERT INTO "people" DEFAULT VALUES"#])
     }
 
-    @Test("an all-default row produces nothing on Oracle, which has no such statement")
+    @Test("an all-default row on Oracle names its first writable column, as the Mac writes it")
     func allDefaultsOnOracle() throws {
         let statements = try RowInsertPlanner.statements(
             table: "people", schema: nil, type: .oracle, driver: ansiDriver(),
             columns: defaultsColumns, rows: [PayloadRow(values: [:])], allowAllDefaults: true
         )
-        #expect(statements.isEmpty)
+        #expect(statements == [#"INSERT INTO "people" ("id") VALUES (DEFAULT)"#])
     }
 
     @Test("a caller that distinguishes omission writes an explicitly empty primary key")

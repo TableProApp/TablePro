@@ -79,7 +79,7 @@ struct ConnectionCoordinatorBackgroundTests {
     func backgroundCloseDuringWorkIsAmbiguous() async throws {
         let coordinator = try await connectedCoordinator(on: fileDriver(.explicitTransaction))
         let gate = TestGate()
-        let work = Task { await coordinator.track { await gate.enter() } }
+        let work = Task { try? await coordinator.track { await gate.enter() } }
         await gate.waitUntilEntered()
 
         await releaseForTheBackground()
@@ -99,7 +99,7 @@ struct ConnectionCoordinatorBackgroundTests {
         await releaseForTheBackground()
 
         let gate = TestGate()
-        let work = Task { await coordinator.track { await gate.enter() } }
+        let work = Task { try? await coordinator.track { await gate.enter() } }
         await gate.waitUntilEntered()
         factory.queue(fileDriver(.idle))
         await coordinator.reconnectIfNeeded()

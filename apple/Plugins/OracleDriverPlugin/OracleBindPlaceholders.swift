@@ -18,7 +18,7 @@ import TableProSQLQuoting
 // Only a `?` that is a placeholder is replaced. One inside a string literal, an alternative-quoted `q'[...]'` literal
 // (any delimiter, with or without the national `n` prefix), a double-quoted name such as `"Paid?"`, or a `--` or
 // `/* */` comment is text, and replacing it would change the statement and shift every value after it.
-internal enum OracleBindPlaceholders {
+nonisolated internal enum OracleBindPlaceholders {
     /// The longest string literal Oracle parses, in bytes of the value it holds rather than of its doubled quotes
     /// (measured on 23ai with `MAX_STRING_SIZE = STANDARD`: 4,000 bytes parse, 4,001 fail with ORA-01704).
     static let maxLiteralBytes = 4_000
@@ -46,7 +46,7 @@ internal enum OracleBindPlaceholders {
                     return ":\(binds.count)"
                 }
             ) else {
-                throw OraclePluginError(core: .queryFailed(OracleValueKind.unwritableBFileReason))
+                throw OracleStatementError(message: OracleValueKind.unwritableBFileReason)
             }
             return written
         }

@@ -7,6 +7,7 @@ public enum GzipError: Error, Equatable, Sendable, LocalizedError {
     case truncated
     case expandsTooFar
     case needsMoreDiskSpace
+    case compressionFailed
 
     public var errorDescription: String? {
         switch self {
@@ -18,6 +19,8 @@ public enum GzipError: Error, Equatable, Sendable, LocalizedError {
             return String(localized: "The compressed data expands to far more than it holds, so it was not read.")
         case .needsMoreDiskSpace:
             return String(localized: "The decompressed file needs more free disk space than this Mac has.")
+        case .compressionFailed:
+            return String(localized: "The data could not be compressed.")
         }
     }
 }

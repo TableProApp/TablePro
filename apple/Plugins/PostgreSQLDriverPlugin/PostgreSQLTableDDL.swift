@@ -9,7 +9,7 @@ import TableProPostgreSQLCore
 // What a table's CREATE statement says outside its column list. The table listing hides the partitions of a
 // partitioned table, so the parent's script creates them, with what each holds of its own: without them a restore has
 // nowhere to put a row, and a partition's own check, key, default and index would be lost.
-enum PostgreSQLTableDDL {
+nonisolated enum PostgreSQLTableDDL {
     struct Shape: Equatable {
         var isUnlogged = false
         var partitionKey: String?

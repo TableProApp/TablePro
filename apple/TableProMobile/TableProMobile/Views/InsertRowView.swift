@@ -321,6 +321,10 @@ struct InsertRowView: View {
             hapticSuccess.toggle()
             onInserted?()
             dismiss()
+        } catch let held as SessionHeldByImport {
+            operationError = held.appError
+            showOperationError = true
+            hapticError.toggle()
         } catch let unavailable as AppError {
             operationError = unavailable
             showOperationError = true

@@ -76,10 +76,7 @@ fn file_error(kind: ErrorKind, path: &Path) -> DriverError {
 }
 
 #[cfg(test)]
-#[cfg(unix)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt;
-
     use super::*;
 
     #[test]
@@ -92,7 +89,12 @@ mod tests {
 
         let metadata = std::fs::metadata(&path).unwrap();
         assert_eq!(metadata.len(), 0);
-        assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+        }
         let leftovers: Vec<_> = std::fs::read_dir(directory.path())
             .unwrap()
             .map(|entry| entry.unwrap().file_name())

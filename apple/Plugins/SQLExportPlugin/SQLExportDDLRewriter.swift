@@ -24,7 +24,7 @@ import TableProPluginKit
 /// Only the clause forms carry `=`. The column-level `AUTO_INCREMENT` attribute and
 /// `SQL SECURITY DEFINER` do not, so both survive: dropping the latter, as `mysqlpump --skip-definer`
 /// does, would turn a view declared `SQL SECURITY INVOKER` into a definer-rights view.
-internal struct SQLExportDDLRewriter {
+nonisolated internal struct SQLExportDDLRewriter {
     internal let dialect: SqlDialect
     internal let excludesAutoIncrementValue: Bool
     internal let excludesDefiner: Bool

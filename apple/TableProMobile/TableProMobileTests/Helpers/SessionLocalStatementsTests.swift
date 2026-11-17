@@ -4,6 +4,22 @@ import TableProModels
 import Testing
 
 struct SessionLocalStatementsTests {
+    @Test("A write, a SET, a USE, a temporary table or a transaction statement changes the session; a read does not")
+    func changesSession() {
+        for statement in [
+            "SET @v = 7", "USE shop", "CREATE TEMPORARY TABLE scratch (id int)", "BEGIN", "COMMIT",
+            "INSERT INTO t VALUES (1)", "CALL refresh()"
+        ] {
+            #expect(SessionLocalStatements.changesSession([statement], databaseType: .mysql), "\(statement)")
+        }
+        #expect(SessionLocalStatements.changesSession(["SELECT @v", "SELECT * FROM t"], databaseType: .mysql) == false)
+        #expect(SessionLocalStatements.changesSession(["SELECT @v := 7"], databaseType: .mysql))
+        #expect(SessionLocalStatements.changesSession(
+            ["SELECT set_config('search_path', 'app', false)"], databaseType: .postgresql
+        ))
+        #expect(SessionLocalStatements.changesSession(["SELECT ':=' AS text"], databaseType: .mysql) == false)
+    }
+
     @Test("A temporary table a statement creates is noted, by its unquoted lowercased name")
     func createdTables() {
         let mysql = SessionLocalStatements.effect(

@@ -7,7 +7,7 @@ import Foundation
 
 // Splits incoming rows across sheets of at most `limit` rows, the header included. A batch can be a whole in-memory
 // result, so one overflow can need several new sheets.
-struct XLSXSheetRows {
+nonisolated struct XLSXSheetRows {
     struct Chunk: Equatable {
         let rows: Range<Int>
         let startsNewSheet: Bool

@@ -13,7 +13,7 @@ import TableProPluginKit
 extension MySQLPluginDriver {
     var providesBulkForeignKeyFetch: Bool { true }
 
-    var tableDDLIncludesForeignKeys: Bool { true }
+    var tableDDLIncludesForeignKeys: Bool { MySQLExportCatalog.tableDDLIncludesForeignKeys }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         guard flavor.hasMySQLObjectCatalogs else { return [] }
@@ -26,10 +26,11 @@ extension MySQLPluginDriver {
         guard await !resolvesToTemporaryTable(table, schema: schema) else {
             return try await ddlForeignKeys(table: table, database: database, omittedAction: omittedAction)
         }
+        let reader = exportCatalog
         let byTable = try await catalogOrShow(
             database: database,
-            catalogExists: hasForeignKeyCatalog,
-            catalog: { try await self.catalogForeignKeys(database: database, table: table) },
+            catalogExists: reader.hasForeignKeyCatalog,
+            catalog: { try await reader.catalogForeignKeys(database: database, table: table) },
             show: {
                 let keys = try await self.ddlForeignKeys(
                     table: table, database: database, omittedAction: omittedAction
@@ -43,69 +44,12 @@ extension MySQLPluginDriver {
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         guard flavor.hasMySQLObjectCatalogs else { return [:] }
         let database = effectiveSchema(schema)
+        let reader = exportCatalog
         return try await catalogOrShow(
             database: database,
-            catalogExists: hasForeignKeyCatalog,
-            catalog: { try await self.catalogForeignKeys(database: database, table: nil) },
+            catalogExists: reader.hasForeignKeyCatalog,
+            catalog: { try await reader.catalogForeignKeys(database: database, table: nil) },
             show: { try await self.showForeignKeysByTable(database: database) }
-        )
-    }
-
-    /// The catalog read needs `REFERENTIAL_CONSTRAINTS` as well as `KEY_COLUMN_USAGE`, and 5.0 has
-    /// only the second: measured `1109` on 5.0.96.
-    private var hasForeignKeyCatalog: Bool {
-        serverHasInformationSchema
-            && holdsForServer(MySQLServerVersion.hasReferentialConstraintsCatalog(banner:flavor:))
-    }
-
-    /// Two single-catalog reads merged here rather than one join run by the server.
-    ///
-    /// The join answered nothing at all through ShardingSphere-Proxy 5.5.3, which returns an OK
-    /// packet with no columns for any join of two `information_schema` tables while answering each
-    /// of these two reads with the same rows a direct server does.
-    private func catalogForeignKeys(
-        database: String,
-        table: String?
-    ) async throws -> [String: [PluginForeignKeyInfo]] {
-        let columns = try await execute(ownStatement: MySQLObjectQueries.foreignKeyColumns(schema: database, table: table))
-        let columnRows = columns.rows.compactMap { row -> MySQLForeignKeyCatalog.ColumnRow? in
-            guard let tableName = row[safe: 0]?.asText,
-                  let constraint = row[safe: 1]?.asText,
-                  let column = row[safe: 2]?.asText,
-                  let referencedTable = row[safe: 4]?.asText,
-                  let referencedColumn = row[safe: 5]?.asText
-            else { return nil }
-            return MySQLForeignKeyCatalog.ColumnRow(
-                table: tableName,
-                constraint: constraint,
-                column: column,
-                referencedSchema: row[safe: 3]?.asText,
-                referencedTable: referencedTable,
-                referencedColumn: referencedColumn
-            )
-        }
-        guard !columnRows.isEmpty else { return [:] }
-
-        let actions = try await execute(ownStatement: MySQLObjectQueries.referentialActions(schema: database, table: table))
-        let actionRows = actions.rows.compactMap { row -> MySQLForeignKeyCatalog.ActionRow? in
-            guard let tableName = row[safe: 0]?.asText,
-                  let constraint = row[safe: 1]?.asText
-            else { return nil }
-            return MySQLForeignKeyCatalog.ActionRow(
-                table: tableName,
-                constraint: constraint,
-                onDelete: row[safe: 2]?.asText ?? "",
-                onUpdate: row[safe: 3]?.asText ?? ""
-            )
-        }
-
-        return MySQLForeignKeyCatalog.group(
-            columnRows: columnRows,
-            actionRows: actionRows.filter { !$0.onDelete.isEmpty && !$0.onUpdate.isEmpty },
-            defaultAction: MySQLServerVersion.omittedForeignKeyAction(
-                banner: serverIdentity.banner,
-                flavor: serverIdentity.flavor
-            )
         )
     }
 }

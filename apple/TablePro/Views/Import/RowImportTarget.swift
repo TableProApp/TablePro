@@ -125,14 +125,3 @@ internal extension NewTableNameProblem {
         }
     }
 }
-
-internal extension NewTableColumnProblem {
-    var message: String {
-        switch self {
-        case .unnamedColumn:
-            return String(localized: "Every included column needs a name.")
-        case .duplicateName:
-            return String(localized: "Column names must be unique.")
-        }
-    }
-}

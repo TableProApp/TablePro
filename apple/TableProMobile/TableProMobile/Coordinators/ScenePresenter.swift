@@ -14,6 +14,7 @@ enum SceneSheet: Identifiable {
     case settings
     case importFile(URL)
     case export
+    case importData(URL)
 
     var id: String {
         switch self {
@@ -28,6 +29,7 @@ enum SceneSheet: Identifiable {
         case .settings: "settings"
         case .importFile(let url): "importFile-\(url.absoluteString)"
         case .export: "export"
+        case .importData(let url): "importData-\(url.absoluteString)"
         }
     }
 
@@ -42,6 +44,11 @@ enum SceneSheet: Identifiable {
 nonisolated struct PendingTableRequest: Hashable, Sendable {
     let connectionId: UUID
     let tableName: String
+}
+
+nonisolated struct PendingDataImport: Hashable, Sendable {
+    let connectionId: UUID
+    let fileURL: URL
 }
 
 @MainActor @Observable
@@ -60,6 +67,7 @@ final class ScenePresenter {
     private(set) var editingConnectionId: UUID?
     private(set) var pendingIntent: SceneIntent?
     private(set) var pendingTable: PendingTableRequest?
+    private(set) var pendingDataImport: PendingDataImport?
     private(set) var restoreHolds: Set<RestoreHold> = []
     private(set) var editorHolds: Set<UUID> = []
     private(set) var heldImportFile: URL?
@@ -214,5 +222,31 @@ final class ScenePresenter {
         guard let pendingTable, pendingTable.connectionId == connectionId else { return nil }
         self.pendingTable = nil
         return pendingTable.tableName
+    }
+
+    // An opened file goes to the connection on screen, which keeps its session; the import sheet over it asks for
+    // the table and offers another connection.
+    func requestDataImport(_ url: URL, in connectionId: UUID) {
+        pendingDataImport = PendingDataImport(connectionId: connectionId, fileURL: url)
+    }
+
+    func takeDataImport(for connectionId: UUID) -> URL? {
+        guard let pendingDataImport, pendingDataImport.connectionId == connectionId else { return nil }
+        self.pendingDataImport = nil
+        return pendingDataImport.fileURL
+    }
+
+    // A file waiting for a connection that is no longer the one on screen was never asked about, so it is dropped
+    // rather than shown the next time that connection opens.
+    func discardDataImport(unlessFor connectionId: UUID?) {
+        guard let pendingDataImport, pendingDataImport.connectionId != connectionId else { return }
+        self.pendingDataImport = nil
+    }
+
+    // Choosing another connection for an opened file: the file waits for that connection, which opens the way a
+    // link to it does.
+    func moveDataImport(_ url: URL, to connectionId: UUID) {
+        requestDataImport(url, in: connectionId)
+        receive(.openConnection(connectionId, table: nil))
     }
 }

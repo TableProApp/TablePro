@@ -1,4 +1,5 @@
 import Foundation
+import TableProTabularIO
 
 internal enum TextPrefixDecoder {
     struct Decoded {

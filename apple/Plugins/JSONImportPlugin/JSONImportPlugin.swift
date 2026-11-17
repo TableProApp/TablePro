@@ -5,10 +5,9 @@
 
 import Combine
 import Foundation
-import SwiftUI
 import TableProPluginKit
 
-final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
+nonisolated final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "JSON Import"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Import data from JSON files"
@@ -21,25 +20,22 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     typealias Settings = JSONImportOptions
     static let settingsStorageId = "json-import"
 
-    @Published var settings = JSONImportOptions() {
+    // A nonisolated class cannot hold an @Published property, so the change is announced by hand.
+    var settings = JSONImportOptions() {
+        willSet { objectWillChange.send() }
         didSet { saveSettings() }
     }
 
     required init() { loadSettings() }
 
-    var rowImportConfiguration: RowImportRunner.Configuration? { runConfiguration }
+    var rowImportConfiguration: RowImportRunner.Configuration? { Self.runConfiguration(settings) }
 
-    private var runConfiguration: RowImportRunner.Configuration {
+    private static func runConfiguration(_ options: JSONImportOptions) -> RowImportRunner.Configuration {
         RowImportRunner.Configuration(
-            errorHandling: settings.errorHandling,
-            wrapInTransaction: settings.wrapInTransaction,
-            deleteExistingRows: settings.deleteExistingRows
+            errorHandling: options.errorHandling,
+            wrapInTransaction: options.wrapInTransaction,
+            deleteExistingRows: options.deleteExistingRows
         )
-    }
-
-    @MainActor
-    func settingsView() -> AnyView? {
-        AnyView(JSONImportOptionsView(plugin: self))
     }
 
     func resetSettingsToDefaults() {
@@ -61,7 +57,9 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     ) async throws -> PluginImportResult {
         let startTime = Date()
         let url = source.fileURL()
-        let configuration = runConfiguration
+        // One plugin instance serves every window, so a dialog in another window can change `settings` mid-import.
+        let options = settings
+        let configuration = Self.runConfiguration(options)
 
         let outcome: RowImportRunner.Outcome
         var unreadableLines: [PluginImportResult.ImportStatementError] = []
@@ -71,7 +69,7 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
             var batches = JSONLineBatches(
                 lines: try JSONLineReader(url: url, checkCancellation: progress.checkCancellation),
                 linesPerBatch: Self.batchSize,
-                skipsUnreadableLines: settings.errorHandling == .skipAndContinue,
+                skipsUnreadableLines: options.errorHandling == .skipAndContinue,
                 maxRecordedErrors: Self.maxRecordedErrors
             )
             defer { batches.close() }
@@ -90,7 +88,7 @@ final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
             var batches = JSONElementBatches(
                 elements: document.elements,
                 elementsPerBatch: Self.batchSize,
-                skipsUnreadableElements: settings.errorHandling == .skipAndContinue,
+                skipsUnreadableElements: options.errorHandling == .skipAndContinue,
                 maxRecordedErrors: Self.maxRecordedErrors
             )
             defer { batches.close() }

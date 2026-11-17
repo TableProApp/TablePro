@@ -8,13 +8,13 @@ import TableProPluginKit
 
 // The values of a `.json` file that become rows. A value `JSONSerialization` cannot read throws in
 // every error mode, as it failed the whole-file parse the import used to run.
-protocol JSONElementSequence {
+nonisolated protocol JSONElementSequence {
     mutating func next() throws -> Any?
     func close()
 }
 
 // The elements of one array of the file, each read and parsed as it is reached.
-struct JSONStreamedElements: JSONElementSequence {
+nonisolated struct JSONStreamedElements: JSONElementSequence {
     private var reader: JSONDocumentReader
     private var hasMore: Bool
 
@@ -40,7 +40,7 @@ struct JSONStreamedElements: JSONElementSequence {
 }
 
 // A file whose top-level object is the one row, built member by member.
-struct JSONSingleRow: JSONElementSequence {
+nonisolated struct JSONSingleRow: JSONElementSequence {
     private var row: [String: PluginCellValue]?
 
     init(_ row: [String: PluginCellValue]) {
@@ -57,7 +57,7 @@ struct JSONSingleRow: JSONElementSequence {
 
 // Hands a `.json` file's rows to `RowImportRunner` a batch at a time, numbered by their place in the
 // array, and keeps the elements that are not objects, which Skip and Continue passes over.
-struct JSONElementBatches {
+nonisolated struct JSONElementBatches {
     private var elements: any JSONElementSequence
     private let elementsPerBatch: Int
     private let skipsUnreadableElements: Bool

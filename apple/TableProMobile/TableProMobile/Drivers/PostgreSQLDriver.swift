@@ -54,6 +54,9 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, SessionSchemaReporting
 
     var effectiveSchema: String { currentSchema ?? "public" }
 
+    // Redshift's svv_external_* views carry rows for every database on the cluster.
+    var connectedDatabase: String { database }
+
     init(
         host: String,
         port: Int,
@@ -152,6 +155,71 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, SessionSchemaReporting
     /// has no user-defined operators and was never measured with that path, so its statements run as they are.
     func catalogRead(_ statement: String) async throws -> QueryResult {
         Self.queryResult(from: try await actor.executeCatalogRead(statement, pinsSearchPath: databaseType != .redshift))
+    }
+
+    // What the shared catalog and an export read: every row, bytes kept. `schema` puts that schema after pg_catalog on
+    // the path, for a read the server deparses names in.
+    func catalogCells(
+        _ statement: String,
+        parameters: [PluginCellValue] = [],
+        namesRelativeTo schema: String? = nil
+    ) async throws -> PluginQueryResult {
+        let path = databaseType == .redshift
+            ? nil
+            : schema.map(PostgreSQLCatalogSearchPath.relative(to:)) ?? PostgreSQLCatalogSearchPath.pinned
+        return try await actor.catalogCells(statement, parameters: parameters, searchPath: path).pluginResult
+    }
+
+    func executeParameterized(query: String, parameters: [PluginCellValue], typeNames: [String?]?) async throws
+        -> QueryResult {
+        let raw = try await actor.executeParameterized(query, parameters: parameters)
+        await settleLexicalFacts()
+        return Self.queryResult(from: raw)
+    }
+
+    func foreignKeyCheckStatements(enabled: Bool) -> [String] {
+        guard databaseType == .postgresql else { return [] }
+        return enabled ? PostgreSQLForeignKeyChecks.enableStatements : PostgreSQLForeignKeyChecks.disableStatements
+    }
+
+    // An export's session-scope statement, as the Mac's `executeSessionSetting` sends it.
+    func executeSessionSetting(
+        _ statement: String,
+        parameters: [PluginCellValue],
+        requiresIdleSession: Bool
+    ) async throws -> [[PluginCellValue]] {
+        let rows = try await actor.executeSessionSetting(
+            statement, parameters: parameters, requiresIdleSession: requiresIdleSession
+        )
+        await settleLexicalFacts()
+        return rows
+    }
+
+    // Redshift's COPY reads only its cloud sources, as on the Mac.
+    func copyFromStandardInput(statement: String, rows: PluginCopyData) async throws -> QueryResult {
+        guard databaseType == .postgresql else { throw PluginDriverUnsupportedOperation.copyFromStandardInput }
+        let actor = self.actor
+        let cancelHandle = actor.cancelHandle
+        let id = cancelHandle.reserveQuery()
+        let raw = try await withTaskCancellationHandler {
+            try await actor.copyFromStandardInput(statement, rows: rows, id: id)
+        } onCancel: {
+            cancelHandle.cancel(id)
+        }
+        await settleLexicalFacts()
+        return Self.queryResult(from: raw)
+    }
+
+    // Pulled a batch at a time; a consumer that cancels stops the statement on the server, and one that lets the
+    // stream go cancels the rows it never read.
+    func exportRows(query: String, readOnly: Bool) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let cursor = PostgreSQLExportCursor(
+            actor: actor,
+            query: query,
+            readsOnly: !SQLWriteClassifier.isWriteQuery(query, databaseType: databaseType),
+            inReadOnlyTransaction: readOnly && enforcesReadOnlyMode
+        )
+        return AsyncThrowingStream(unfolding: { try await cursor.next() })
     }
 
     private static func queryResult(from raw: RawPGResult) -> QueryResult {
@@ -537,109 +605,263 @@ private actor PostgreSQLActor {
         return "\(major).\(minor).\(patch)"
     }
 
-    /// The search path lasts only as long as the read: outside a transaction block the pair is one implicit
-    /// transaction, and inside one a savepoint rolled back straight after scopes it. One actor call, so no other
-    /// statement on this session runs between the savepoint and its rollback.
     func executeCatalogRead(_ statement: String, pinsSearchPath: Bool) throws -> RawPGResult {
         guard pinsSearchPath else { return try execute(statement) }
-        endLeftoverStream()
-        let scoped = PostgreSQLCatalogSearchPath.pinned + statement
-        guard let conn, PostgreSQLSessionTransaction.isInsideBlock(PQtransactionStatus(conn)) else {
-            return try execute(scoped)
+        return try scopingSearchPath(PostgreSQLCatalogSearchPath.pinned, sendsPathAlone: false) { path in
+            try execute(path + statement)
         }
-        _ = try execute(Self.catalogReadSavepoint)
-        let result: RawPGResult
+    }
+
+    func catalogCells(_ statement: String, parameters: [PluginCellValue], searchPath: String?) throws -> PGCellResult {
+        let bound = parameters.isEmpty ? nil : parameters
+        guard let searchPath else { return try cells(statement, parameters: bound) }
+        return try scopingSearchPath(searchPath, sendsPathAlone: bound != nil) { path in
+            try cells(path + statement, parameters: bound)
+        }
+    }
+
+    /// The search path lasts only as long as the read: outside a transaction block the pair is one implicit
+    /// transaction, and inside one a savepoint rolled back straight after scopes it. One actor call, so no other
+    /// statement on this session runs between the savepoint and its rollback. The extended protocol takes one
+    /// statement, so a read with parameters sets the path on its own first, in a block it opens when there is none.
+    private func scopingSearchPath<T>(
+        _ path: String,
+        sendsPathAlone: Bool,
+        _ read: (_ pathPrefix: String) throws -> T
+    ) throws -> T {
+        endLeftoverStream()
+        guard let conn else { throw PostgreSQLError.notConnected }
+        let insideBlock = PostgreSQLSessionTransaction.isInsideBlock(PQtransactionStatus(conn))
+        guard insideBlock || sendsPathAlone else { return try read(path) }
+        _ = try execute(insideBlock ? Self.catalogReadSavepoint : Self.catalogReadBegin)
+        let closing = insideBlock ? Self.catalogReadRollback : Self.catalogReadEnd
+        let result: T
         do {
-            result = try execute(scoped)
+            if sendsPathAlone { _ = try execute(path) }
+            result = try read(sendsPathAlone ? "" : path)
         } catch {
-            _ = try? execute(Self.catalogReadRollback)
+            _ = try? execute(closing)
             throw error
         }
-        _ = try execute(Self.catalogReadRollback)
+        _ = try execute(closing)
         return result
     }
 
     private static let catalogReadSavepoint = "SAVEPOINT tablepro_catalog_read"
     private static let catalogReadRollback =
         "ROLLBACK TO SAVEPOINT tablepro_catalog_read; RELEASE SAVEPOINT tablepro_catalog_read"
+    private static let catalogReadBegin = "BEGIN"
+    private static let catalogReadEnd = "ROLLBACK"
 
     func execute(_ query: String) throws -> RawPGResult {
+        let start = Date()
+        let result = try sendStatement(query, parameters: nil)
+        defer { PQclear(result) }
+        return Self.textResult(of: result, since: start)
+    }
+
+    func executeParameterized(_ query: String, parameters: [PluginCellValue]) throws -> RawPGResult {
+        let start = Date()
+        let result = try sendStatement(query, parameters: parameters)
+        defer { PQclear(result) }
+        return Self.textResult(of: result, since: start)
+    }
+
+    // Every row, unlike `execute`, and each value as the Mac's driver reads it.
+    func cells(_ query: String, parameters: [PluginCellValue]?) throws -> PGCellResult {
+        let start = Date()
+        let result = try sendStatement(query, parameters: parameters)
+        defer { PQclear(result) }
+        return Self.cellResult(of: result, since: start)
+    }
+
+    // Inside a transaction a savepoint holds the statement, so a refusal leaves the user's transaction open. The idle
+    // check and the statement go out in this one call, so no transaction opens between them.
+    func executeSessionSetting(
+        _ statement: String,
+        parameters: [PluginCellValue],
+        requiresIdleSession: Bool
+    ) throws -> [[PluginCellValue]] {
+        endLeftoverStream()
+        guard let conn else { throw PostgreSQLError.notConnected }
+        let status = PQtransactionStatus(conn)
+        if requiresIdleSession, status != PQTRANS_IDLE { throw PostgreSQLSessionScopeError.sessionNotIdle }
+        guard status == PQTRANS_INTRANS else { return try cells(statement, parameters: parameters).rows }
+        _ = try execute(PostgreSQLSessionScopeSQL.settingSavepoint)
+        let rows: [[PluginCellValue]]
+        do {
+            rows = try cells(statement, parameters: parameters).rows
+        } catch {
+            _ = try? execute(PostgreSQLSessionScopeSQL.settingRollback)
+            throw error
+        }
+        _ = try execute(PostgreSQLSessionScopeSQL.settingRelease)
+        return rows
+    }
+
+    /// The statement's result once it succeeded: a COPY is refused and a failure thrown here. The caller clears it.
+    /// With `parameters` the statement goes through the extended protocol, which takes one statement.
+    private func sendStatement(_ query: String, parameters: [PluginCellValue]?) throws -> OpaquePointer {
         endLeftoverStream()
         guard let conn else { throw PostgreSQLError.notConnected }
 
-        let start = Date()
         let cancelsOutput = cancelsAbandonedOutput(conn)
         let id = cancelHandle.reserveQuery()
         cancelHandle.waitForPendingCancels()
         cancelHandle.querySent(id)
         defer { cancelHandle.queryFinished(id) }
-        let result = PQexec(conn, query)
-        defer {
-            if result != nil { PQclear(result) }
+        let result: OpaquePointer?
+        if let parameters {
+            result = try LibPQParameterBuffers.with(parameters) { values, lengths, formats in
+                PQexecParams(conn, query, Int32(parameters.count), nil, values, lengths, formats, 0)
+            }
+        } else {
+            result = PQexec(conn, query)
         }
+        return try succeeded(result, conn: conn, cancelsOutput: cancelsOutput, id: id)
+    }
 
-        let status = PQresultStatus(result)
-
+    private func succeeded(
+        _ result: OpaquePointer?,
+        conn: OpaquePointer,
+        cancelsOutput: Bool,
+        id: UInt64
+    ) throws -> OpaquePointer {
         if let copy = result.flatMap(LibPQCopyState.copy(of:)) {
+            PQclear(result)
             _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
             throw PostgreSQLError.unsupported(copy.direction.mobileUnsupportedMessage)
         }
-
-        if status == PGRES_FATAL_ERROR {
-            if cancelHandle.isCancelled(id) { throw CancellationError() }
-            let msg = result.flatMap { String(cString: PQresultErrorMessage($0)) } ?? "Unknown error"
-            throw PostgreSQLError.queryFailed(msg)
+        let status = PQresultStatus(result)
+        guard let result, status == PGRES_COMMAND_OK || status == PGRES_TUPLES_OK else {
+            let message = result.map { String(cString: PQresultErrorMessage($0)) }
+            if result != nil { PQclear(result) }
+            if status == PGRES_FATAL_ERROR, cancelHandle.isCancelled(id) { throw CancellationError() }
+            throw PostgreSQLError.queryFailed(
+                message ?? (status == PGRES_FATAL_ERROR ? "Unknown error" : "Unexpected result status")
+            )
         }
+        return result
+    }
 
-        if status == PGRES_COMMAND_OK {
-            let affectedStr = result.flatMap { String(cString: PQcmdTuples($0)) } ?? "0"
-            let affected = Int(affectedStr) ?? 0
+    private static func textResult(of result: OpaquePointer, since start: Date) -> RawPGResult {
+        guard PQresultStatus(result) == PGRES_TUPLES_OK else {
             return RawPGResult(
                 columns: [], columnTypes: [], rows: [],
-                rowsAffected: affected, executionTime: Date().timeIntervalSince(start), isTruncated: false
+                rowsAffected: Int(String(cString: PQcmdTuples(result))) ?? 0,
+                executionTime: Date().timeIntervalSince(start), isTruncated: false
             )
         }
 
-        guard status == PGRES_TUPLES_OK else {
-            let msg = result.flatMap { String(cString: PQresultErrorMessage($0)) } ?? "Unexpected result status"
-            throw PostgreSQLError.queryFailed(msg)
-        }
-
         let rowCount = Int(PQntuples(result))
-        let colCount = Int(PQnfields(result))
+        let colCount = Int32(PQnfields(result))
+        let oids = (0..<colCount).map { PQftype(result, $0) }
+        let columns = (0..<colCount).map { i in PQfname(result, i).map { String(cString: $0) } ?? "col_\(i)" }
+        let columnTypes = oids.map(pgTypeName)
+        // A text result keeps a bytea's `\x` form.
+        let keepsText = columnTypes.map { $0 == "bytea" }
 
-        var columns: [String] = []
-        var columnTypes: [String] = []
-
-        for i in 0..<Int32(colCount) {
-            let name = PQfname(result, i).map { String(cString: $0) } ?? "col_\(i)"
-            columns.append(name)
-            let oid = PQftype(result, i)
-            columnTypes.append(pgOidToTypeName(oid))
-        }
-
-        var rows: [[String?]] = []
         let maxRows = min(rowCount, 100_000)
-        let isTruncated = rowCount > 100_000
-
-        for r in 0..<Int32(maxRows) {
-            var rowData: [String?] = []
-            for c in 0..<Int32(colCount) {
-                if PQgetisnull(result, r, c) == 1 {
-                    rowData.append(nil)
-                } else if let value = PQgetvalue(result, r, c) {
-                    rowData.append(String(cString: value))
-                } else {
-                    rowData.append(nil)
-                }
+        let rows: [[String?]] = (0..<Int32(maxRows)).map { r in
+            (0..<colCount).map { c -> String? in
+                guard PQgetisnull(result, r, c) == 0, let value = PQgetvalue(result, r, c) else { return nil }
+                let bytes = UnsafeRawBufferPointer(start: value, count: Int(PQgetlength(result, r, c)))
+                guard !keepsText[Int(c)] else { return LibPQCellDecoding.text(from: bytes) }
+                return LibPQCellDecoding.value(from: bytes, oid: oids[Int(c)]).asText
             }
-            rows.append(rowData)
         }
 
         return RawPGResult(
             columns: columns, columnTypes: columnTypes, rows: rows,
-            rowsAffected: 0, executionTime: Date().timeIntervalSince(start), isTruncated: isTruncated
+            rowsAffected: 0, executionTime: Date().timeIntervalSince(start), isTruncated: rowCount > 100_000
         )
+    }
+
+    private static func cellResult(of result: OpaquePointer, since start: Date) -> PGCellResult {
+        guard PQresultStatus(result) == PGRES_TUPLES_OK else {
+            return PGCellResult(
+                columns: [], columnTypeNames: [], rows: [],
+                rowsAffected: Int(String(cString: PQcmdTuples(result))) ?? 0,
+                executionTime: Date().timeIntervalSince(start)
+            )
+        }
+        let colCount = Int32(PQnfields(result))
+        let oids = (0..<colCount).map { PQftype(result, $0) }
+        let rows = (0..<PQntuples(result)).map { r in
+            (0..<colCount).map { c in Self.cell(in: result, row: r, column: c, oid: oids[Int(c)]) }
+        }
+        return PGCellResult(
+            columns: (0..<colCount).map { i in PQfname(result, i).map { String(cString: $0) } ?? "col_\(i)" },
+            columnTypeNames: oids.map(pgTypeName),
+            rows: rows,
+            rowsAffected: 0,
+            executionTime: Date().timeIntervalSince(start)
+        )
+    }
+
+    static func cell(in result: OpaquePointer, row: Int32, column: Int32, oid: UInt32) -> PluginCellValue {
+        guard PQgetisnull(result, row, column) == 0, let value = PQgetvalue(result, row, column) else { return .null }
+        let bytes = UnsafeRawBufferPointer(start: value, count: Int(PQgetlength(result, row, column)))
+        return LibPQCellDecoding.value(from: bytes, oid: oid)
+    }
+
+    // MARK: - COPY FROM STDIN
+
+    /// One actor call holds the connection from the COPY to its last result, as on the Mac: a statement sent between
+    /// them would end the copy. `id` is reserved by the caller, so a Stop reaches the copy while this call runs.
+    func copyFromStandardInput(_ statement: String, rows: PluginCopyData, id: UInt64) throws -> RawPGResult {
+        endLeftoverStream()
+        guard let conn else { throw PostgreSQLError.notConnected }
+
+        let start = Date()
+        let cancelsOutput = cancelsAbandonedOutput(conn)
+        let handle = cancelHandle
+        handle.waitForPendingCancels()
+        handle.querySent(id)
+        defer { handle.queryFinished(id) }
+        let stop = LibPQCopyIn.Stop(
+            requested: { handle.isCancelled(id) },
+            closing: { false },
+            sendCancelRequest: { Self.cancelAndWait(conn) }
+        )
+        if Task.isCancelled || handle.isCancelled(id) { throw CancellationError() }
+        guard let begun = LibPQCopyIn.begin(statement, conn: conn, stop: stop) else {
+            throw PostgreSQLError.queryFailed(Self.message(from: conn))
+        }
+        // A statement that is not a copy-in, the server's refusal of the COPY among them, reads as any other result.
+        guard let copy = LibPQCopyState.copy(of: begun), copy.direction == .copyIn else {
+            let result = try succeeded(begun, conn: conn, cancelsOutput: cancelsOutput, id: id)
+            defer { PQclear(result) }
+            return Self.textResult(of: result, since: start)
+        }
+        PQclear(begun)
+
+        let sent = LibPQCopyIn.send(rows, format: copy.format, conn: conn, stop: stop)
+        guard let result = sent.result else { throw PostgreSQLError.queryFailed(Self.message(from: conn)) }
+        defer { PQclear(result) }
+        switch sent.interruption {
+        case .cancelled:
+            throw CancellationError()
+        case .source(let error):
+            throw error
+        case .binaryFormat:
+            throw PostgreSQLError.unsupported(LibPQCopyIn.binaryRefusal)
+        case .connection, nil:
+            break
+        }
+        guard PQresultStatus(result) == PGRES_COMMAND_OK else {
+            if cancelHandle.isCancelled(id) { throw CancellationError() }
+            throw PostgreSQLError.queryFailed(String(cString: PQresultErrorMessage(result)))
+        }
+        return Self.textResult(of: result, since: start)
+    }
+
+    // From the copy's own thread, so the cancel has reached the server before the copy's results are read.
+    private static func cancelAndWait(_ conn: OpaquePointer) {
+        guard let cancel = PQgetCancel(conn) else { return }
+        defer { PQfreeCancel(cancel) }
+        var errbuf = [CChar](repeating: 0, count: 256)
+        PQcancel(cancel, &errbuf, Int32(errbuf.count))
     }
 
     // MARK: - Streaming
@@ -790,6 +1012,29 @@ private actor PostgreSQLActor {
         return cells(of: result, options: options, columns: columns)
     }
 
+    // Up to `limit` rows of an export stream, nil at its end. A failure behind the rows ends the stream with it.
+    func fetchExportRows(stream id: UInt64, limit: Int) throws -> [[PluginCellValue]]? {
+        guard let state = stream, state.id == id else { throw CancellationError() }
+        guard let conn else { throw PostgreSQLError.notConnected }
+        var rows: [[PluginCellValue]] = []
+        while rows.count < limit, !state.isDrained {
+            let readAhead = state.pendingResult
+            state.pendingResult = nil
+            guard let result = readAhead ?? PQgetResult(conn) else {
+                markDrained(state)
+                break
+            }
+            guard PQresultStatus(result) == PGRES_SINGLE_TUPLE else {
+                state.pendingResult = result
+                if let error = drainFailure(state) { throw error }
+                break
+            }
+            rows.append((0..<PQnfields(result)).map { c in Self.cell(in: result, row: 0, column: c, oid: PQftype(result, c)) })
+            PQclear(result)
+        }
+        return rows.isEmpty ? nil : rows
+    }
+
     /// An error after a cancel is the cancel's own, so it ends the stream without a failure.
     func endStream(_ id: UInt64) throws {
         guard let state = stream, state.id == id else { return }
@@ -909,26 +1154,13 @@ private actor PostgreSQLActor {
     private static let sqlStateField = Int32(UInt8(ascii: "C"))
 
     private func cells(of result: OpaquePointer, options: StreamOptions, columns: [ColumnInfo]) -> [Cell] {
-        var cells: [Cell] = []
-        cells.reserveCapacity(columns.count)
-        for c in 0..<columns.count {
+        columns.indices.map { c -> Cell in
             let col = Int32(c)
-            if PQgetisnull(result, 0, col) == 1 {
-                cells.append(.null)
-            } else if let value = PQgetvalue(result, 0, col) {
-                let str = String(cString: value)
-                let ref = makeCellRef(column: columns[c].name, columns: columns, result: result, options: options)
-                cells.append(Cell.from(
-                    legacyValue: str,
-                    columnTypeName: columns[c].typeName,
-                    options: options,
-                    ref: ref
-                ))
-            } else {
-                cells.append(.null)
-            }
+            let value = Self.cell(in: result, row: 0, column: col, oid: PQftype(result, col))
+            guard !value.isNull else { return .null }
+            let ref = makeCellRef(column: columns[c].name, columns: columns, result: result, options: options)
+            return PostgreSQLDriver.cell(from: value, columnTypeName: columns[c].typeName, options: options, ref: ref)
         }
-        return cells
     }
 
     private func finishPendingResults(_ conn: OpaquePointer, cancellingOutput: Bool) -> LibPQDrainOutcome {
@@ -961,7 +1193,7 @@ private actor PostgreSQLActor {
             let oid = PQftype(result, Int32(i))
             cols.append(ColumnInfo(
                 name: name,
-                typeName: pgOidToTypeName(oid),
+                typeName: pgTypeName(oid),
                 isPrimaryKey: false,
                 isNullable: true,
                 defaultValue: nil,
@@ -1247,38 +1479,8 @@ nonisolated enum PostgreSQLStreamDrain {
     }
 }
 
-// MARK: - PostgreSQL OID Type Names
-
-nonisolated private func pgOidToTypeName(_ oid: UInt32) -> String {
-    switch oid {
-    case 16: return "boolean"
-    case 17: return "bytea"
-    case 18: return "char"
-    case 19: return "name"
-    case 20: return "bigint"
-    case 21: return "smallint"
-    case 23: return "integer"
-    case 25: return "text"
-    case 26: return "oid"
-    case 114: return "json"
-    case 142: return "xml"
-    case 700: return "real"
-    case 701: return "double precision"
-    case 869: return "inet"
-    // PostgreSQL OID constants: separators would obscure the wire-protocol values
-    // swiftlint:disable number_separator
-    case 1042: return "char"
-    case 1043: return "varchar"
-    case 1082: return "date"
-    case 1083: return "time"
-    case 1114: return "timestamp"
-    case 1184: return "timestamptz"
-    case 1700: return "numeric"
-    case 2950: return "uuid"
-    case 3802: return "jsonb"
-    // swiftlint:enable number_separator
-    default: return "unknown"
-    }
+nonisolated private func pgTypeName(_ oid: UInt32) -> String {
+    PostgreSQLCatalogTypeNames.builtinTypeName(for: oid) ?? PostgreSQLCatalogTypeNames.unresolved
 }
 
 nonisolated private struct RawPGResult: Sendable {
@@ -1288,6 +1490,118 @@ nonisolated private struct RawPGResult: Sendable {
     let rowsAffected: Int
     let executionTime: TimeInterval
     let isTruncated: Bool
+}
+
+nonisolated private struct PGCellResult: Sendable {
+    let columns: [String]
+    let columnTypeNames: [String]
+    let rows: [[PluginCellValue]]
+    let rowsAffected: Int
+    let executionTime: TimeInterval
+
+    var pluginResult: PluginQueryResult {
+        PluginQueryResult(
+            columns: columns,
+            columnTypeNames: columnTypeNames,
+            rows: rows,
+            rowsAffected: rowsAffected,
+            executionTime: executionTime
+        )
+    }
+}
+
+nonisolated extension PostgreSQLDriver {
+    // The grid's cell for a value decoded as the Mac decodes it: a boolean reads `true`, a bytea is its bytes.
+    static func cell(from value: PluginCellValue, columnTypeName: String, options: StreamOptions, ref: CellRef?) -> Cell {
+        switch value {
+        case .null:
+            return .null
+        case .bytes(let data):
+            return .binary(byteCount: data.count, ref: ref)
+        case .text(let text):
+            return Cell.from(legacyValue: text, columnTypeName: columnTypeName, options: options, ref: ref)
+        }
+    }
+}
+
+// One consumer pulls it, so one call at a time reaches it.
+nonisolated private final class PostgreSQLExportCursor: @unchecked Sendable {
+    private enum Phase {
+        case pending
+        case streaming
+        case finished
+    }
+
+    // Rows per actor call: single-row mode hands over one row per result.
+    private static let rowsPerBatch = 1_000
+
+    private let actor: PostgreSQLActor
+    private let query: String
+    private let readsOnly: Bool
+    private let inReadOnlyTransaction: Bool
+    private let id: UInt64
+    private var phase = Phase.pending
+
+    init(actor: PostgreSQLActor, query: String, readsOnly: Bool, inReadOnlyTransaction: Bool) {
+        self.actor = actor
+        self.query = query
+        self.readsOnly = readsOnly
+        self.inReadOnlyTransaction = inReadOnlyTransaction
+        self.id = actor.cancelHandle.reserveQuery()
+    }
+
+    // A stream let go before its end: the rows it never read are cancelled where that cannot abort a transaction.
+    deinit {
+        guard phase == .streaming else { return }
+        let actor = actor
+        let id = id
+        Task { try? await actor.endStreamAtRowCap(id) }
+    }
+
+    func next() async throws -> PluginStreamElement? {
+        do {
+            switch phase {
+            case .finished:
+                return nil
+            case .pending:
+                let begun = try await cancellingOnStop {
+                    try await $0.beginStream(
+                        query: self.query,
+                        id: self.id,
+                        readsOnly: self.readsOnly,
+                        inReadOnlyTransaction: self.inReadOnlyTransaction
+                    )
+                }
+                guard case .tuples(let columns) = begun else {
+                    phase = .finished
+                    return .header(PluginStreamHeader(columns: [], columnTypeNames: []))
+                }
+                phase = .streaming
+                return .header(PluginStreamHeader(columns: columns.map(\.name), columnTypeNames: columns.map(\.typeName)))
+            case .streaming:
+                if let rows = try await cancellingOnStop({ try await $0.fetchExportRows(stream: self.id, limit: Self.rowsPerBatch) }) {
+                    return .rows(rows)
+                }
+                phase = .finished
+                try await actor.endStream(id)
+                return nil
+            }
+        } catch {
+            phase = .finished
+            try? await actor.endStream(id)
+            throw error
+        }
+    }
+
+    private func cancellingOnStop<T: Sendable>(_ body: @Sendable (PostgreSQLActor) async throws -> T) async throws -> T {
+        let actor = actor
+        let id = id
+        return try await withTaskCancellationHandler {
+            try await body(actor)
+        } onCancel: {
+            actor.cancelHandle.cancel(id)
+        }
+    }
 }
 
 // MARK: - Errors

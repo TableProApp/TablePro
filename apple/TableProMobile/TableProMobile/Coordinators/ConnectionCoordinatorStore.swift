@@ -76,18 +76,29 @@ final class ConnectionCoordinatorStore {
         retired?.retire()
         generations[id, default: 0] += 1
         guard droppingSession else { return }
-        retired?.dropSession()
-        disconnect(id)
+        dropSession(of: retired, id)
     }
 
     private func remove(_ id: UUID) {
         heldRebuilds[id] = nil
-        if let retired = coordinators.removeValue(forKey: id) {
+        let retired = coordinators.removeValue(forKey: id)
+        if let retired {
             removedRecords[id] = retired.connection
             retired.retire()
-            retired.dropSession()
         }
-        disconnect(id)
+        dropSession(of: retired, id)
+    }
+
+    // An import holding the session ends its own transaction first; the edit's drop lands once it has.
+    private func dropSession(of retired: ConnectionCoordinator?, _ id: UUID) {
+        guard let retired else {
+            disconnect(id)
+            return
+        }
+        retired.afterImport { [weak self] in
+            retired.dropSession()
+            self?.disconnect(id)
+        }
     }
 
     private func disconnect(_ id: UUID) {
