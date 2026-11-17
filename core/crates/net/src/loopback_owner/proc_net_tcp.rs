@@ -2,6 +2,8 @@
 
 use std::net::{Ipv4Addr, SocketAddrV4};
 
+const ESTABLISHED: &str = "01";
+const SYN_RECV: &str = "03";
 const LISTEN: &str = "0A";
 
 struct Row<'a> {
@@ -18,6 +20,10 @@ pub(super) fn owner(table: &str, peer: SocketAddrV4, local: SocketAddrV4) -> Opt
     let connection = rows().find(|row| row.from == peer && row.to == local)?;
     if connection.inode != 0 {
         return Some(connection.uid);
+    }
+    // A closing socket also has no inode, and another user's could share its address with a later listener.
+    if connection.state != ESTABLISHED && connection.state != SYN_RECV {
+        return None;
     }
     // No process holds it, as while it waits to be accepted: the listener's. Before 6.17 it is listed as root's.
     rows()
@@ -97,5 +103,11 @@ mod tests {
         assert_eq!(owner(&table(&listener(2001)), server, client), Some(2001));
         assert_eq!(owner(&table(&listener(1234)), server, client), Some(1234));
         assert_eq!(owner(&table(""), server, client), None);
+
+        // Another user's client that sent data and closed, at an address a listener of ours took later.
+        let closed = row(&client_hex, &server_hex, "05", 0, 0);
+        let ours = row(&client_hex, "00000000:0000", "0A", 2001, 541);
+        let reused = format!("  sl  local_address rem_address   st\n{ours}{closed}");
+        assert_eq!(owner(&reused, client, server), None);
     }
 }
