@@ -10,19 +10,7 @@ import TableProSQLQuoting
 
 // An in-memory DuckDB that only encodes Parquet. It never opens the user's database.
 final class DuckDBStagingDatabase {
-    enum StagingError: LocalizedError {
-        case openFailed
-        case queryFailed(String)
-
-        var errorDescription: String? {
-            switch self {
-            case .openFailed:
-                return String(localized: "Could not start the Parquet writer.")
-            case .queryFailed(let message):
-                return String(format: String(localized: "Parquet writer failed: %@"), message)
-            }
-        }
-    }
+    typealias StagingError = ParquetStaging.StagingError
 
     struct TextFallback: Equatable {
         let column: String
@@ -41,8 +29,9 @@ final class DuckDBStagingDatabase {
 
     // An in-memory database keeps the staged table in RAM unless it has somewhere to spill.
     private let spillDirectory: URL
+    private var isMemoryLimited: Bool
 
-    init() throws {
+    init(memoryLimit: UInt64?) throws {
         var db: duckdb_database?
         guard duckdb_open(nil, &db) == DuckDBSuccess, db != nil else { throw StagingError.openFailed }
         var conn: duckdb_connection?
@@ -52,12 +41,16 @@ final class DuckDBStagingDatabase {
         }
         database = db
         connection = conn
+        isMemoryLimited = memoryLimit != nil
 
         spillDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-parquet-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: spillDirectory, withIntermediateDirectories: true)
         try run("SET temp_directory = \(SQLQuoting.stringLiteral(spillDirectory.path(percentEncoded: false)))")
         try run("SET preserve_insertion_order = false")
+        if let memoryLimit {
+            try run("SET memory_limit = \(SQLQuoting.stringLiteral(ParquetStaging.memoryLimitSetting(bytes: memoryLimit)))")
+        }
     }
 
     deinit {
@@ -95,6 +88,19 @@ final class DuckDBStagingDatabase {
     @discardableResult
     func copyToParquet(fileURL: URL, compression: String, rowGroupSize: Int) throws -> [TextFallback] {
         try closeAppender()
+        do {
+            return try writeParquet(fileURL: fileURL, compression: compression, rowGroupSize: rowGroupSize)
+        } catch StagingError.memoryExhausted where isMemoryLimited {
+            // A row group of wide values cannot spill. The rows are staged, so only the limit is in the way.
+            isMemoryLimited = false
+            try run("RESET memory_limit")
+            return try writeParquet(fileURL: fileURL, compression: compression, rowGroupSize: rowGroupSize)
+        }
+    }
+
+    // MARK: - Private
+
+    private func writeParquet(fileURL: URL, compression: String, rowGroupSize: Int) throws -> [TextFallback] {
         let table = SQLQuoting.identifier(Self.stagingTable)
         let rejected = try rejectedValueCounts(in: table)
         let projection = columns.indices.map { index -> String in
@@ -112,8 +118,6 @@ final class DuckDBStagingDatabase {
         }
     }
 
-    // MARK: - Private
-
     private func rejectedValueCounts(in table: String) throws -> [Int: Int] {
         let castColumns = columns.indices.filter { ParquetStaging.isCast(targetTypes[$0]) }
         guard !castColumns.isEmpty else { return [:] }
@@ -127,8 +131,7 @@ final class DuckDBStagingDatabase {
         defer { duckdb_destroy_result(&result) }
         guard duckdb_query(connection, "SELECT \(counts.joined(separator: ", ")) FROM \(table)", &result)
             == DuckDBSuccess else {
-            throw StagingError.queryFailed(
-                duckdb_result_error(&result).map { String(cString: $0) } ?? "unknown error")
+            throw Self.error(in: &result)
         }
         var rejected: [Int: Int] = [:]
         for (position, index) in castColumns.enumerated() {
@@ -163,8 +166,12 @@ final class DuckDBStagingDatabase {
 
     private func check(_ state: duckdb_state, _ appender: duckdb_appender) throws {
         guard state != DuckDBSuccess else { return }
-        throw StagingError.queryFailed(
-            duckdb_appender_error(appender).map { String(cString: $0) } ?? "unknown error")
+        var details = duckdb_appender_error_data(appender)
+        defer { duckdb_destroy_error_data(&details) }
+        throw Self.stagingError(
+            duckdb_error_data_error_type(details),
+            message: duckdb_error_data_message(details).map { String(cString: $0) } ?? "unknown error"
+        )
     }
 
     private func append(_ value: PluginCellValue, isBinary: Bool, to appender: duckdb_appender) -> duckdb_state {
@@ -204,11 +211,24 @@ final class DuckDBStagingDatabase {
     private func run(_ sql: String) throws {
         guard let connection else { throw StagingError.openFailed }
         var result = duckdb_result()
+        defer { duckdb_destroy_result(&result) }
         guard duckdb_query(connection, sql, &result) == DuckDBSuccess else {
-            let message = duckdb_result_error(&result).map { String(cString: $0) } ?? "unknown error"
-            duckdb_destroy_result(&result)
-            throw StagingError.queryFailed(message)
+            throw Self.error(in: &result)
         }
-        duckdb_destroy_result(&result)
+    }
+
+    private static func error(in result: inout duckdb_result) -> StagingError {
+        stagingError(
+            duckdb_result_error_type(&result),
+            message: duckdb_result_error(&result).map { String(cString: $0) } ?? "unknown error"
+        )
+    }
+
+    private static func stagingError(_ type: duckdb_error_type, message: String) -> StagingError {
+        switch type {
+        case DUCKDB_ERROR_OUT_OF_MEMORY: return .memoryExhausted(message)
+        case DUCKDB_ERROR_FATAL: return .stagingLost(message)
+        default: return .queryFailed(message)
+        }
     }
 }

@@ -55,15 +55,20 @@ public extension PluginCellValue {
         case .null: return ""
         case .text(let s): return s
         case .bytes(let d):
-            var hex = ""
-            hex.reserveCapacity(d.count * 2)
-            for byte in d {
-                hex += String(format: "%02X", byte)
+            return String(unsafeUninitializedCapacity: d.count * 2) { hex in
+                var length = 0
+                for byte in d {
+                    hex[length] = hexDigits[Int(byte >> 4)]
+                    hex[length + 1] = hexDigits[Int(byte & 0x0F)]
+                    length += 2
+                }
+                return length
             }
-            return hex
         }
     }
 }
+
+private let hexDigits = Array("0123456789ABCDEF".utf8)
 
 extension PluginCellValue: Codable {
     private enum CodingKeys: String, CodingKey {

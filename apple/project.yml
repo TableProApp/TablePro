@@ -129,6 +129,12 @@ targetTemplates:
         Release:
           DEPLOYMENT_POSTPROCESSING: YES
 
+  # What every export format shares for writing its file.
+  ExportOutput:
+    sources:
+      - Plugins/Shared/PluginExportOutputBuffer.swift
+      - Plugins/Shared/PluginHexText.swift
+
   # A bundled plugin's folder compiled again with its tests and no host app. It links the same
   # TableProPluginKit framework the plugin does: a package product that depended on the package's
   # TableProPluginKit would give the plugin code its own copy of PluginKit's types.
@@ -667,7 +673,7 @@ targets:
       principalClass: RedisPlugin
 
   CSVExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportOutput]
     templateAttributes:
       folder: CSVExportPlugin
       principalClass: CSVExportPlugin
@@ -676,7 +682,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.CSVExportPlugin
 
   JSONExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportOutput]
     templateAttributes:
       folder: JSONExportPlugin
       principalClass: JSONExportPlugin
@@ -685,7 +691,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.JSONExportPlugin
 
   MarkdownExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportOutput]
     templateAttributes:
       folder: MarkdownExportPlugin
       principalClass: MarkdownExportPlugin
@@ -715,7 +721,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XLSXImportPlugin
 
   ParquetExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportOutput]
     templateAttributes:
       folder: ParquetExportPlugin
       principalClass: ParquetExportPlugin
@@ -739,7 +745,7 @@ targets:
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/DuckDBDriverPlugin/CDuckDB
 
   SQLExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportOutput]
     templateAttributes:
       folder: SQLExportPlugin
       principalClass: SQLExportPlugin
@@ -751,7 +757,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.SQLExportPlugin
 
   XLSXExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportOutput]
     templateAttributes:
       folder: XLSXExportPlugin
       principalClass: XLSXExportPlugin
@@ -893,6 +899,7 @@ targets:
       - path: Plugins/XLSXImportPlugin
         excludes:
           - Info.plist
+      - Plugins/ParquetExportPlugin/ParquetStaging.swift
       - Plugins/Shared
       - Plugins/FormatPluginTests
     dependencies:

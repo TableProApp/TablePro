@@ -144,7 +144,7 @@ nonisolated final class MarkdownExportPlugin: ObservableObject, ExportFormatPlug
         case .null:
             return MarkdownTableRenderer.cell(nullPlaceholder)
         case .bytes(let data):
-            return MarkdownTableRenderer.cell("0x\(data.map { String(format: "%02X", $0) }.joined())")
+            return MarkdownTableRenderer.cell("0x\(PluginHexText.uppercase(data))")
         case .text(let text):
             return MarkdownTableRenderer.cell(text)
         }
