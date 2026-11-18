@@ -136,9 +136,9 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
                 return _structure?.TextTarget;
             }
 
-            if (_detailsTarget is { IsLoaded: true } field && DetailsHost.Visibility == Visibility.Visible)
+            if (_detailsTarget is { IsLoaded: true } detailsField && DetailsHost.Visibility == Visibility.Visible)
             {
-                return field;
+                return detailsField;
             }
 
             return _messagesIsTarget && Results.MessagesBox.Visibility == Visibility.Visible
