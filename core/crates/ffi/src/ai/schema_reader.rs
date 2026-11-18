@@ -80,18 +80,42 @@ async fn default_schema(session: &Session) -> Option<String> {
 }
 
 // The objects whose names stand in `text` as words, ignoring case, in the order the catalog lists them. A question
-// in words names tables as words too, so one rule serves a statement and a question.
+// in words names tables as words too, so one rule serves a statement and a question. A name a statement has to quote,
+// as `order-items`, is found where it stands whole.
 fn named_in<'a>(text: &str, objects: &[&'a ObjectInfo]) -> Vec<&'a ObjectInfo> {
-    let words: HashSet<String> = text
-        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+    let lowered = text.to_lowercase();
+    let words: HashSet<&str> = lowered
+        .split(|c: char| !is_word(c))
         .filter(|word| !word.is_empty())
-        .map(str::to_lowercase)
         .collect();
     objects
         .iter()
         .copied()
-        .filter(|object| words.contains(&object.name.to_lowercase()))
+        .filter(|object| {
+            let name = object.name.to_lowercase();
+            if name.chars().all(is_word) {
+                words.contains(name.as_str())
+            } else {
+                stands_whole(&lowered, &name)
+            }
+        })
         .collect()
+}
+
+fn is_word(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+// `name` occurs in `text` with no word character joined to either end.
+fn stands_whole(text: &str, name: &str) -> bool {
+    if name.trim().is_empty() {
+        return false;
+    }
+    text.match_indices(name).any(|(start, found)| {
+        let before = text[..start].chars().next_back();
+        let after = text[start + found.len()..].chars().next();
+        !before.is_some_and(is_word) && !after.is_some_and(is_word)
+    })
 }
 
 #[cfg(test)]
@@ -129,6 +153,29 @@ mod tests {
         assert_eq!(
             statement.iter().map(|object| object.name.as_str()).collect::<Vec<_>>(),
             ["orders", "items"]
+        );
+    }
+
+    #[test]
+    fn a_name_that_needs_quotes_is_found_where_it_stands_whole() {
+        let objects = [
+            object("order-items", ObjectKind::Table),
+            object("Line Items", ObjectKind::Table),
+            object("price$", ObjectKind::View),
+            object("order", ObjectKind::Table),
+        ];
+        let listed: Vec<&ObjectInfo> = objects.iter().collect();
+
+        let named = named_in("SELECT * FROM \"order-items\" JOIN [line items] ON true", &listed);
+        let partial = named_in("SELECT * FROM \"order-items2\", price$s", &listed);
+
+        assert_eq!(
+            named.iter().map(|object| object.name.as_str()).collect::<Vec<_>>(),
+            ["order-items", "Line Items", "order"]
+        );
+        assert_eq!(
+            partial.iter().map(|object| object.name.as_str()).collect::<Vec<_>>(),
+            ["order"]
         );
     }
 }

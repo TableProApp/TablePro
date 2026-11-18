@@ -152,11 +152,12 @@ public sealed partial class SettingsView
         AiKeySaveButton.IsEnabled = false;
         AiKeyRemoveButton.IsEnabled = false;
         string status;
+        var saved = false;
         try
         {
             await _workbench.Core.Assistant.SetKeyAsync(provider, key).ConfigureAwait(true);
             status = Strings.Get(key.Length == 0 ? "AiKeyRemoved" : "AiKeySaved");
-            AiKeyBox.Password = string.Empty;
+            saved = true;
         }
         catch (TableProException exception)
         {
@@ -167,8 +168,14 @@ public sealed partial class SettingsView
             AiKeyRemoveButton.IsEnabled = true;
         }
 
+        // A key typed for another provider, or after this save began, stays in the box.
         if (read == _keyRead && ChosenProvider == provider)
         {
+            if (saved && AiKeyBox.Password == key)
+            {
+                AiKeyBox.Password = string.Empty;
+            }
+
             AiStatusText.Text = status;
             ReadKeyState(provider);
         }
