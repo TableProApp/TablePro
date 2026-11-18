@@ -1,6 +1,8 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use tablepro_core::{DriverError, EditorSessionState, LossPhase};
+use crate::editor_session::EditorSessionState;
+use crate::error::DriverError;
+use crate::loss_phase::LossPhase;
 
 const READY: u8 = 0;
 const RUNNING: u8 = 1;
@@ -8,18 +10,18 @@ const LOST: u8 = 2;
 
 /// What an editor session handle answers without waiting for a run.
 #[derive(Debug)]
-pub(crate) struct SessionStatus {
+pub struct EditorSessionStatus {
     state: AtomicU8,
 }
 
-impl SessionStatus {
-    pub(crate) fn new() -> Self {
+impl EditorSessionStatus {
+    pub fn new() -> Self {
         Self {
             state: AtomicU8::new(READY),
         }
     }
 
-    pub(crate) fn state(&self) -> EditorSessionState {
+    pub fn state(&self) -> EditorSessionState {
         match self.state.load(Ordering::SeqCst) {
             READY => EditorSessionState::Ready,
             RUNNING => EditorSessionState::Running,
@@ -27,9 +29,8 @@ impl SessionStatus {
         }
     }
 
-    /// Claim the session for one run: a reply read for one run must not
-    /// be taken by another on the same link.
-    pub(crate) fn begin(&self) -> Result<(), DriverError> {
+    /// Claim the session for one run: a session runs one at a time.
+    pub fn begin(&self) -> Result<(), DriverError> {
         match self
             .state
             .compare_exchange(READY, RUNNING, Ordering::SeqCst, Ordering::SeqCst)
@@ -42,14 +43,21 @@ impl SessionStatus {
         }
     }
 
-    pub(crate) fn finish(&self) {
+    // A session lost while it ran stays lost.
+    pub fn finish(&self) {
         let _ = self
             .state
             .compare_exchange(RUNNING, READY, Ordering::SeqCst, Ordering::SeqCst);
     }
 
-    pub(crate) fn lose(&self) {
+    pub fn lose(&self) {
         self.state.store(LOST, Ordering::SeqCst);
+    }
+}
+
+impl Default for EditorSessionStatus {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -59,7 +67,7 @@ mod tests {
 
     #[test]
     fn a_second_run_is_busy_and_a_lost_session_refuses_runs() {
-        let status = SessionStatus::new();
+        let status = EditorSessionStatus::new();
         assert!(status.begin().is_ok());
         assert_eq!(status.begin(), Err(DriverError::EditorSessionBusy));
 
@@ -69,6 +77,10 @@ mod tests {
         status.lose();
         assert!(matches!(status.begin(), Err(DriverError::ConnectionLost { .. })));
         status.finish();
-        assert_eq!(status.state(), EditorSessionState::Lost);
+        assert_eq!(
+            status.state(),
+            EditorSessionState::Lost,
+            "a finished run revived a lost session"
+        );
     }
 }

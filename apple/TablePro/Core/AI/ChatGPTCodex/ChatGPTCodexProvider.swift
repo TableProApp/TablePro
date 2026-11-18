@@ -28,9 +28,10 @@ final class ChatGPTCodexProvider: ChatTransport {
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         let sessionID = UUID().uuidString
-        return ResponsesEventStream.make(
+        return SSEEventStream.make(
             session: session,
             treatForbiddenAsAuthFailure: true,
+            wire: ResponsesStreamWire(),
             buildRequest: { [self] in
                 try await buildRequest(turns: turns, options: options, stream: true, sessionID: sessionID)
             },

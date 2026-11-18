@@ -9,7 +9,7 @@ import Testing
 
 struct OpenAIResponsesProviderParserTests {
     private func parse(_ json: [String: Any], state: inout ResponsesStreamState) throws -> [ChatStreamEvent] {
-        try OpenAIResponsesProvider.parseEvent(json, state: &state)
+        try ResponsesStreamWire().events(from: json, state: &state)
     }
 
     @Test("output_text.delta yields textDelta")
@@ -216,20 +216,20 @@ struct OpenAIResponsesProviderParserTests {
     func responseFailedThrows() throws {
         var state = ResponsesStreamState()
         #expect(throws: AIProviderError.self) {
-            _ = try OpenAIResponsesProvider.parseEvent([
+            _ = try ResponsesStreamWire().events(from: [
                 "type": "response.failed",
                 "response": ["error": ["message": "rate limit exceeded"]]
             ], state: &state)
         }
     }
 
-    @Test("decodeStreamLine handles data prefix and DONE sentinel")
+    @Test("The line decoder handles the data prefix and the DONE sentinel")
     func decodeStreamLineFraming() {
-        let json = OpenAIResponsesProvider.decodeStreamLine(
+        let json = ResponsesStreamWire().decodeLine(
             #"data: {"type":"response.created","response":{"id":"r1"}}"#
         )
         #expect(json?["type"] as? String == "response.created")
-        #expect(OpenAIResponsesProvider.decodeStreamLine("data: [DONE]") == nil)
-        #expect(OpenAIResponsesProvider.decodeStreamLine(": comment line") == nil)
+        #expect(ResponsesStreamWire().decodeLine("data: [DONE]") == nil)
+        #expect(ResponsesStreamWire().decodeLine(": comment line") == nil)
     }
 }

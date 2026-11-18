@@ -14,14 +14,20 @@ enum SSEEventStream {
         return String(value.first == " " ? value.dropFirst() : value)
     }
 
-    static func make<State>(
+    static func jsonPayload(_ line: String) -> [String: Any]? {
+        guard let payload = dataPayload(line),
+              payload != "[DONE]",
+              let data = payload.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return json
+    }
+
+    static func make<Wire: ChatStreamWire>(
         session: URLSession,
         treatForbiddenAsAuthFailure: Bool = false,
+        wire: Wire,
         buildRequest: @escaping @Sendable () async throws -> URLRequest,
-        decodeLine: @escaping @Sendable (String) -> [String: Any]?,
-        makeState: @escaping @Sendable () -> State,
-        parse: @escaping @Sendable ([String: Any], inout State) throws -> [ChatStreamEvent],
-        finalEvents: @escaping @Sendable (State) throws -> [ChatStreamEvent] = { _ in [] },
         refreshOnUnauthorized: (@Sendable () async throws -> Void)? = nil
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -48,14 +54,15 @@ enum SSEEventStream {
                         )
                     }
 
-                    var state = makeState()
+                    var state = Wire.State()
                     for try await line in bytes.lines {
                         if Task.isCancelled { break }
-                        guard let json = decodeLine(line) else { continue }
-                        let events = try parse(json, &state)
-                        for event in events { continuation.yield(event) }
+                        guard let json = wire.decodeLine(line) else { continue }
+                        for event in try wire.events(from: json, state: &state) {
+                            continuation.yield(event)
+                        }
                     }
-                    for final in try finalEvents(state) {
+                    for final in try wire.finalEvents(state) {
                         continuation.yield(final)
                     }
                     continuation.finish()

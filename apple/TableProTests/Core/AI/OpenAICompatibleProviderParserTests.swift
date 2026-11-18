@@ -9,17 +9,18 @@ import TableProPluginKit
 import Testing
 
 struct OpenAICompatibleProviderParserTests {
+    private let wire = ChatCompletionsStreamWire(ollama: false)
+
     @Test("delta.content yields textDelta")
     func textDelta() {
         var state = OpenAIStreamState()
-        let result = OpenAICompatibleProvider.parseChunk([
+        let events = wire.parse([
             "choices": [[
                 "delta": ["content": "hello"]
             ]]
         ], state: &state)
-        #expect(result.shouldBreak == false)
-        guard case .textDelta(let text) = result.events.first else {
-            Issue.record("expected textDelta; got \(result.events)")
+        guard case .textDelta(let text) = events.first else {
+            Issue.record("expected textDelta; got \(events)")
             return
         }
         #expect(text == "hello")
@@ -28,7 +29,7 @@ struct OpenAICompatibleProviderParserTests {
     @Test("First tool_calls chunk emits toolUseStart with id and name")
     func toolUseStart() {
         var state = OpenAIStreamState()
-        let result = OpenAICompatibleProvider.parseChunk([
+        let events = wire.parse([
             "choices": [[
                 "delta": [
                     "tool_calls": [[
@@ -40,22 +41,21 @@ struct OpenAICompatibleProviderParserTests {
                 ]
             ]]
         ], state: &state)
-        #expect(result.events.count == 1)
-        if case .toolUseStart(let id, let name, _) = result.events.first {
+        #expect(events.count == 1)
+        if case .toolUseStart(let id, let name, _) = events.first {
             #expect(id == "call_abc")
             #expect(name == "list_tables")
         } else {
-            Issue.record("expected toolUseStart; got \(result.events)")
+            Issue.record("expected toolUseStart; got \(events)")
         }
-        #expect(state.toolCallIndexToId[0] == "call_abc")
+        #expect(state.toolCalls.id(for: 0) == "call_abc")
     }
 
     @Test("Subsequent tool_calls chunks emit toolUseDelta only")
     func toolUseDelta() {
         var state = OpenAIStreamState()
-        state.toolCallIndexToId[0] = "call_abc"
-        state.toolCallOrder = [0]
-        let result = OpenAICompatibleProvider.parseChunk([
+        _ = state.toolCalls.start(0, id: "call_abc", name: "list_tables")
+        let events = wire.parse([
             "choices": [[
                 "delta": [
                     "tool_calls": [[
@@ -65,36 +65,35 @@ struct OpenAICompatibleProviderParserTests {
                 ]
             ]]
         ], state: &state)
-        #expect(result.events.count == 1)
-        if case .toolUseDelta(let id, let delta) = result.events.first {
+        #expect(events.count == 1)
+        if case .toolUseDelta(let id, let delta) = events.first {
             #expect(id == "call_abc")
             #expect(delta == #"{"foo":"#)
         } else {
-            Issue.record("expected toolUseDelta; got \(result.events)")
+            Issue.record("expected toolUseDelta; got \(events)")
         }
     }
 
     @Test("finish_reason: tool_calls flushes toolUseEnds for all tracked calls")
     func finishReasonTriggersFlush() {
         var state = OpenAIStreamState()
-        state.toolCallIndexToId = [0: "call_a", 1: "call_b"]
-        state.toolCallOrder = [0, 1]
-        let result = OpenAICompatibleProvider.parseChunk([
+        _ = state.toolCalls.start(0, id: "call_a", name: "list_tables")
+        _ = state.toolCalls.start(1, id: "call_b", name: "describe_table")
+        let events = wire.parse([
             "choices": [["finish_reason": "tool_calls"]]
         ], state: &state)
-        let endIds = result.events.compactMap { event -> String? in
+        let endIds = events.compactMap { event -> String? in
             if case .toolUseEnd(let id) = event { return id }
             return nil
         }
         #expect(endIds == ["call_a", "call_b"])
-        #expect(state.toolCallIndexToId.isEmpty)
-        #expect(state.toolCallOrder.isEmpty)
+        #expect(state.toolCalls.isEmpty)
     }
 
     @Test("Ollama message.tool_calls with arguments-as-object encodes to JSON string")
     func ollamaArgumentsAsObject() {
         var state = OpenAIStreamState()
-        let result = OpenAICompatibleProvider.parseChunk([
+        let events = wire.parse([
             "message": [
                 "tool_calls": [[
                     "function": [
@@ -104,7 +103,7 @@ struct OpenAICompatibleProviderParserTests {
                 ]]
             ]
         ], state: &state)
-        let deltaPayload = result.events.compactMap { event -> String? in
+        let deltaPayload = events.compactMap { event -> String? in
             if case .toolUseDelta(_, let s) = event { return s }
             return nil
         }.first
@@ -115,7 +114,7 @@ struct OpenAICompatibleProviderParserTests {
     @Test("Ollama message.tool_calls with arguments-as-string passes through verbatim")
     func ollamaArgumentsAsString() {
         var state = OpenAIStreamState()
-        let result = OpenAICompatibleProvider.parseChunk([
+        let events = wire.parse([
             "message": [
                 "tool_calls": [[
                     "function": [
@@ -125,25 +124,24 @@ struct OpenAICompatibleProviderParserTests {
                 ]]
             ]
         ], state: &state)
-        let delta = result.events.compactMap { event -> String? in
+        let delta = events.compactMap { event -> String? in
             if case .toolUseDelta(_, let s) = event { return s }
             return nil
         }.first
         #expect(delta == #"{"connection_id":"abc"}"#)
     }
 
-    @Test("Ollama done: true sets shouldBreak and flushes pending tool ends")
+    @Test("Ollama done: true ends the response and flushes pending tool ends")
     func ollamaDoneFlushesAndBreaks() {
         var state = OpenAIStreamState()
-        state.toolCallIndexToId[0] = "call_a"
-        state.toolCallOrder = [0]
-        let result = OpenAICompatibleProvider.parseChunk([
+        _ = state.toolCalls.start(0, id: "call_a", name: "list_tables")
+        let events = wire.parse([
             "done": true,
             "prompt_eval_count": 50,
             "eval_count": 200
         ], state: &state)
-        #expect(result.shouldBreak == true)
-        #expect(result.events.contains(where: { event in
+        #expect(state.receivedOutput)
+        #expect(events.contains(where: { event in
             if case .toolUseEnd(let id) = event { return id == "call_a" }
             return false
         }))
@@ -154,7 +152,7 @@ struct OpenAICompatibleProviderParserTests {
     @Test("usage object populates state token counters")
     func usageTokens() {
         var state = OpenAIStreamState()
-        _ = OpenAICompatibleProvider.parseChunk([
+        _ = wire.parse([
             "usage": ["prompt_tokens": 30, "completion_tokens": 90]
         ], state: &state)
         #expect(state.inputTokens == 30)
@@ -164,11 +162,11 @@ struct OpenAICompatibleProviderParserTests {
     @Test("message.content path yields textDelta (Ollama non-stream + final-message OpenAI)")
     func messageContentPathYieldsTextDelta() {
         var state = OpenAIStreamState()
-        let result = OpenAICompatibleProvider.parseChunk([
+        let events = wire.parse([
             "message": ["content": "hi"]
         ], state: &state)
-        guard case .textDelta(let text) = result.events.first else {
-            Issue.record("expected textDelta from message.content; got \(result.events)")
+        guard case .textDelta(let text) = events.first else {
+            Issue.record("expected textDelta from message.content; got \(events)")
             return
         }
         #expect(text == "hi")
@@ -177,18 +175,18 @@ struct OpenAICompatibleProviderParserTests {
     @Test("delta.reasoning_content on first chunk emits reasoningStart then reasoningDelta")
     func reasoningContentFirstChunk() {
         var state = OpenAIStreamState()
-        let result = OpenAICompatibleProvider.parseChunk([
+        let events = wire.parse([
             "choices": [[
                 "delta": ["reasoning_content": "Let me think..."]
             ]]
         ], state: &state)
-        #expect(result.events.count == 2)
-        guard case .reasoningStart(let id) = result.events[0] else {
-            Issue.record("expected reasoningStart; got \(result.events[0])")
+        #expect(events.count == 2)
+        guard case .reasoningStart(let id) = events[0] else {
+            Issue.record("expected reasoningStart; got \(events[0])")
             return
         }
-        guard case .reasoningDelta(let deltaID, let text) = result.events[1] else {
-            Issue.record("expected reasoningDelta; got \(result.events[1])")
+        guard case .reasoningDelta(let deltaID, let text) = events[1] else {
+            Issue.record("expected reasoningDelta; got \(events[1])")
             return
         }
         #expect(deltaID == id)
@@ -200,14 +198,14 @@ struct OpenAICompatibleProviderParserTests {
     func reasoningContentSubsequentChunk() {
         var state = OpenAIStreamState()
         state.reasoningBlockID = "reasoning_abc"
-        let result = OpenAICompatibleProvider.parseChunk([
+        let events = wire.parse([
             "choices": [[
                 "delta": ["reasoning_content": " more thinking"]
             ]]
         ], state: &state)
-        #expect(result.events.count == 1)
-        guard case .reasoningDelta(let id, let text) = result.events[0] else {
-            Issue.record("expected reasoningDelta; got \(result.events)")
+        #expect(events.count == 1)
+        guard case .reasoningDelta(let id, let text) = events[0] else {
+            Issue.record("expected reasoningDelta; got \(events)")
             return
         }
         #expect(id == "reasoning_abc")
@@ -218,12 +216,12 @@ struct OpenAICompatibleProviderParserTests {
     func finishReasonStopClosesReasoningBlock() {
         var state = OpenAIStreamState()
         state.reasoningBlockID = "reasoning_xyz"
-        let result = OpenAICompatibleProvider.parseChunk([
+        let events = wire.parse([
             "choices": [["finish_reason": "stop"]]
         ], state: &state)
-        #expect(result.events.count == 1)
-        guard case .reasoningEnd(let id, let opaque) = result.events[0] else {
-            Issue.record("expected reasoningEnd; got \(result.events)")
+        #expect(events.count == 1)
+        guard case .reasoningEnd(let id, let opaque) = events[0] else {
+            Issue.record("expected reasoningEnd; got \(events)")
             return
         }
         #expect(id == "reasoning_xyz")
@@ -234,13 +232,13 @@ struct OpenAICompatibleProviderParserTests {
     @Test("reasoning_content followed by finish_reason in same chunk emits start, delta, end")
     func reasoningContentWithFinishReason() {
         var state = OpenAIStreamState()
-        let result = OpenAICompatibleProvider.parseChunk([
+        let events = wire.parse([
             "choices": [[
                 "delta": ["reasoning_content": "final thought"],
                 "finish_reason": "stop"
             ]]
         ], state: &state)
-        let kinds = result.events.map { event -> String in
+        let kinds = events.map { event -> String in
             switch event {
             case .reasoningStart: return "start"
             case .reasoningDelta: return "delta"
@@ -255,15 +253,15 @@ struct OpenAICompatibleProviderParserTests {
     @Test("delta.reasoning_content: null is ignored and does not emit reasoningStart")
     func reasoningContentNullIgnored() {
         var state = OpenAIStreamState()
-        let result = OpenAICompatibleProvider.parseChunk([
+        let events = wire.parse([
             "choices": [[
                 "delta": ["content": "hello", "reasoning_content": NSNull()]
             ]]
         ], state: &state)
         #expect(state.reasoningBlockID == nil)
-        #expect(result.events.count == 1)
-        guard case .textDelta = result.events[0] else {
-            Issue.record("expected only textDelta; got \(result.events)")
+        #expect(events.count == 1)
+        guard case .textDelta = events[0] else {
+            Issue.record("expected only textDelta; got \(events)")
             return
         }
     }
@@ -271,46 +269,40 @@ struct OpenAICompatibleProviderParserTests {
     @Test("finish_reason: stop does not flush pending tool calls")
     func finishReasonStopLeavesToolCallsIntact() {
         var state = OpenAIStreamState()
-        state.toolCallIndexToId = [0: "call_a"]
-        state.toolCallOrder = [0]
-        let result = OpenAICompatibleProvider.parseChunk([
+        _ = state.toolCalls.start(0, id: "call_a", name: "list_tables")
+        let events = wire.parse([
             "choices": [["finish_reason": "stop"]]
         ], state: &state)
-        #expect(result.events.isEmpty)
-        #expect(state.toolCallIndexToId[0] == "call_a")
+        #expect(events.isEmpty)
+        #expect(state.toolCalls.id(for: 0) == "call_a")
     }
 
-    @Test("Empty chunk yields no events and doesn't break")
+    @Test("Empty chunk yields no events and doesn't end the response")
     func emptyChunk() {
         var state = OpenAIStreamState()
-        let result = OpenAICompatibleProvider.parseChunk([:], state: &state)
-        #expect(result.events.isEmpty)
-        #expect(result.shouldBreak == false)
+        let events = wire.parse([:], state: &state)
+        #expect(events.isEmpty)
+        #expect(!state.receivedOutput)
     }
 
-    @Test("done: true with no pending tool calls breaks without emitting")
+    @Test("done: true with no pending tool calls ends the response without emitting")
     func doneWithNoPendingTools() {
         var state = OpenAIStreamState()
-        let result = OpenAICompatibleProvider.parseChunk(["done": true], state: &state)
-        #expect(result.shouldBreak == true)
-        #expect(result.events.isEmpty)
+        let events = wire.parse(["done": true], state: &state)
+        #expect(state.receivedOutput)
+        #expect(events.isEmpty)
     }
 
-    @Test("decodeStreamLine respects providerType (SSE vs NDJSON)")
+    @Test("The line decoder follows the framing (SSE vs NDJSON)")
     func decodeStreamLineFraming() {
-        let openAIParsed = OpenAICompatibleProvider.decodeStreamLine(
-            #"data: {"choices":[]}"#,
-            providerType: .openAI
-        )
+        let openAIParsed = wire.decodeLine(#"data: {"choices":[]}"#)
         #expect(openAIParsed != nil)
-        let openAIDone = OpenAICompatibleProvider.decodeStreamLine("data: [DONE]", providerType: .openAI)
+        let openAIDone = wire.decodeLine("data: [DONE]")
         #expect(openAIDone == nil)
-        let ollamaParsed = OpenAICompatibleProvider.decodeStreamLine(
-            #"{"done":true}"#,
-            providerType: .ollama
-        )
+        let ollama = ChatCompletionsStreamWire(ollama: true)
+        let ollamaParsed = ollama.decodeLine(#"{"done":true}"#)
         #expect(ollamaParsed != nil)
-        let ollamaEmpty = OpenAICompatibleProvider.decodeStreamLine("", providerType: .ollama)
+        let ollamaEmpty = ollama.decodeLine("")
         #expect(ollamaEmpty == nil)
     }
 
@@ -328,10 +320,10 @@ struct OpenAICompatibleProviderParserTests {
         var state = OpenAIStreamState()
         var events: [ChatStreamEvent] = []
         for line in lines {
-            guard let json = OpenAICompatibleProvider.decodeStreamLine(line, providerType: .custom) else { continue }
-            events += try OpenAICompatibleProvider.streamEvents(from: json, state: &state)
+            guard let json = wire.decodeLine(line) else { continue }
+            events += try wire.events(from: json, state: &state)
         }
-        events += try OpenAICompatibleProvider.finalStreamEvents(state)
+        events += try wire.finalEvents(state)
 
         guard events.count == 5 else {
             Issue.record("expected 5 events; got \(events)")

@@ -1,48 +1,30 @@
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU8, Ordering};
 
-use tablepro_core::{DriverError, EditorSessionState, LossPhase, TransactionState};
-
-const READY: u8 = 0;
-const RUNNING: u8 = 1;
-const LOST: u8 = 2;
+use tablepro_core::{DriverError, EditorSessionState, EditorSessionStatus, TransactionState};
 
 /// What the session handle can answer without asking the actor, which
 /// may be busy running a script.
 #[derive(Debug)]
 pub(crate) struct SessionStatus {
-    state: AtomicU8,
+    status: EditorSessionStatus,
     transaction: Mutex<TransactionState>,
 }
 
 impl SessionStatus {
     pub(crate) fn new() -> Self {
         Self {
-            state: AtomicU8::new(READY),
+            status: EditorSessionStatus::new(),
             transaction: Mutex::new(TransactionState::Idle),
         }
     }
 
     pub(crate) fn state(&self) -> EditorSessionState {
-        match self.state.load(Ordering::SeqCst) {
-            READY => EditorSessionState::Ready,
-            RUNNING => EditorSessionState::Running,
-            _ => EditorSessionState::Lost,
-        }
+        self.status.state()
     }
 
     /// Claim the session for one run.
     pub(crate) fn begin(&self) -> Result<(), DriverError> {
-        match self
-            .state
-            .compare_exchange(READY, RUNNING, Ordering::SeqCst, Ordering::SeqCst)
-        {
-            Ok(_) => Ok(()),
-            Err(RUNNING) => Err(DriverError::EditorSessionBusy),
-            Err(_) => Err(DriverError::ConnectionLost {
-                during: LossPhase::Idle,
-            }),
-        }
+        self.status.begin()
     }
 
     pub(crate) fn finish(&self, transaction: TransactionState) {
@@ -50,13 +32,11 @@ impl SessionStatus {
             .transaction
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = transaction;
-        let _ = self
-            .state
-            .compare_exchange(RUNNING, READY, Ordering::SeqCst, Ordering::SeqCst);
+        self.status.finish();
     }
 
     pub(crate) fn lose(&self) {
-        self.state.store(LOST, Ordering::SeqCst);
+        self.status.lose();
     }
 
     pub(crate) fn transaction(&self) -> TransactionState {

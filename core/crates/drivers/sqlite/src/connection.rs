@@ -17,7 +17,7 @@ use tablepro_core::{
     CallOptions, ColumnInfo, CommitResolution, CommitToken, Connection, DriverError, EditorSession,
     EditorSessionOptions, FileEndpoint, FileOpenMode, ForeignKeyInfo, LinkState, LinkWatch, LivenessPolicy, LossPhase,
     OwnedCalls, QueryResult, ReadOnlyRefusal, ReadStatement, ResultSink, RowLimit, ServerInfo, StreamSummary,
-    TimeoutPhase, WorkspaceSettings, WriteAtomicity, WriteBatch, WriteKind, WriteLedger, WriteReport,
+    TimeoutPhase, WorkspaceSettings, WriteAtomicity, WriteBatch, WriteKind, WriteLedger, WriteReport, deadline_elapsed,
 };
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
@@ -159,7 +159,7 @@ impl SqliteConnection {
         tokio::select! {
             biased;
             () = options.cancel().cancelled() => Err(DriverError::Cancelled),
-            () = deadline::elapsed(options.deadline()) => Err(DriverError::Timeout {
+            () = deadline_elapsed(options.deadline()) => Err(DriverError::Timeout {
                 phase: TimeoutPhase::Statement,
                 server_cancelled: false,
             }),
@@ -232,7 +232,7 @@ impl SqliteConnection {
         tokio::select! {
             biased;
             () = options.cancel().cancelled() => Err(DriverError::Cancelled),
-            () = deadline::elapsed(options.deadline()) => Err(DriverError::Timeout {
+            () = deadline_elapsed(options.deadline()) => Err(DriverError::Timeout {
                 phase: TimeoutPhase::Probe,
                 server_cancelled: false,
             }),
@@ -245,7 +245,7 @@ impl SqliteConnection {
         tokio::select! {
             biased;
             () = options.cancel().cancelled() => Err(DriverError::Cancelled),
-            () = deadline::elapsed(options.deadline()) => Err(DriverError::Timeout {
+            () = deadline_elapsed(options.deadline()) => Err(DriverError::Timeout {
                 phase: TimeoutPhase::Statement,
                 server_cancelled: false,
             }),

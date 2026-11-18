@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 @testable import TablePro
 import Testing
@@ -12,7 +13,7 @@ struct GeminiProviderParserTests {
     private let stableID = "stable-id"
 
     private func parse(_ json: [String: Any], state: inout GeminiStreamState) -> [ChatStreamEvent] {
-        GeminiProvider.parseChunk(json, state: &state, idGenerator: { self.stableID })
+        GeminiStreamWire(idGenerator: { stableID }).parse(json, state: &state)
     }
 
     @Test("Text part yields textDelta")
@@ -140,8 +141,14 @@ struct GeminiProviderParserTests {
     @Test("Multiple functionCall parts in one chunk get distinct ids")
     func multipleFunctionCallsGetDistinctIds() {
         var state = GeminiStreamState()
-        var counter = 0
-        let events = GeminiProvider.parseChunk([
+        let counter = OSAllocatedUnfairLock(initialState: 0)
+        let wire = GeminiStreamWire(idGenerator: {
+            counter.withLock { count in
+                defer { count += 1 }
+                return "id-\(count)"
+            }
+        })
+        let events = wire.parse([
             "candidates": [[
                 "content": [
                     "parts": [
@@ -150,10 +157,7 @@ struct GeminiProviderParserTests {
                     ]
                 ]
             ]]
-        ], state: &state, idGenerator: {
-            defer { counter += 1 }
-            return "id-\(counter)"
-        })
+        ], state: &state)
         let starts = events.compactMap { event -> String? in
             if case .toolUseStart(let id, _, _) = event { return id }
             return nil

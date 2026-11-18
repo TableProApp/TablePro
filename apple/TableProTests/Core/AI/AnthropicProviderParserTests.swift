@@ -10,7 +10,7 @@ import Testing
 
 struct AnthropicProviderParserTests {
     private func parse(_ json: [String: Any], state: inout AnthropicStreamState) throws -> [ChatStreamEvent] {
-        try AnthropicProvider.parseChunk(json, state: &state)
+        try AnthropicStreamWire().events(from: json, state: &state)
     }
 
     @Test("text_delta yields textDelta")
@@ -46,13 +46,13 @@ struct AnthropicProviderParserTests {
         } else {
             Issue.record("expected toolUseStart; got \(events)")
         }
-        #expect(state.toolUseIdsByIndex[1] == "toolu_abc")
+        #expect(state.toolCalls.id(for: 1) == "toolu_abc")
     }
 
     @Test("input_json_delta resolves index back to id from state")
     func inputJSONDelta() throws {
         var state = AnthropicStreamState()
-        state.toolUseIdsByIndex[1] = "toolu_abc"
+        _ = state.toolCalls.start(1, id: "toolu_abc", name: "list_tables")
         let events = try parse([
             "type": "content_block_delta",
             "index": 1,
@@ -80,7 +80,7 @@ struct AnthropicProviderParserTests {
     @Test("content_block_stop yields toolUseEnd and clears the index mapping")
     func toolUseEnd() throws {
         var state = AnthropicStreamState()
-        state.toolUseIdsByIndex[1] = "toolu_abc"
+        _ = state.toolCalls.start(1, id: "toolu_abc", name: "list_tables")
         let events = try parse([
             "type": "content_block_stop",
             "index": 1
@@ -90,7 +90,7 @@ struct AnthropicProviderParserTests {
         } else {
             Issue.record("expected toolUseEnd; got \(events)")
         }
-        #expect(state.toolUseIdsByIndex[1] == nil)
+        #expect(state.toolCalls.id(for: 1) == nil)
     }
 
     @Test("Fragmented input_json_delta concatenates correctly via state")
@@ -167,37 +167,37 @@ struct AnthropicProviderParserTests {
     func errorEvent() {
         var state = AnthropicStreamState()
         #expect(throws: AIProviderError.self) {
-            _ = try AnthropicProvider.parseChunk(
-                ["type": "error", "error": ["message": "rate limited"]],
+            _ = try AnthropicStreamWire().events(
+            from:                 ["type": "error", "error": ["message": "rate limited"]],
                 state: &state
             )
         }
     }
 
-    @Test("decodeStreamLine returns nil for non-data lines and [DONE]")
+    @Test("The line decoder returns nil for non-data lines and [DONE]")
     func framingDecode() {
-        #expect(AnthropicProvider.decodeStreamLine("event: message_stop") == nil)
-        #expect(AnthropicProvider.decodeStreamLine("data: [DONE]") == nil)
-        #expect(AnthropicProvider.decodeStreamLine("data: {\"type\":\"x\"}") != nil)
+        #expect(AnthropicStreamWire().decodeLine("event: message_stop") == nil)
+        #expect(AnthropicStreamWire().decodeLine("data: [DONE]") == nil)
+        #expect(AnthropicStreamWire().decodeLine("data: {\"type\":\"x\"}") != nil)
     }
 
     @Test("Unknown event types yield no events and don't throw")
     func unknownEventType() throws {
         var state = AnthropicStreamState()
-        let events = try AnthropicProvider.parseChunk(
-            ["type": "ping", "extra": "ignored"],
+        let events = try AnthropicStreamWire().events(
+            from:             ["type": "ping", "extra": "ignored"],
             state: &state
         )
         #expect(events.isEmpty)
         // State should be unchanged.
-        #expect(state.toolUseIdsByIndex.isEmpty)
+        #expect(state.toolCalls.isEmpty)
         #expect(state.inputTokens == 0)
     }
 
     @Test("Chunk with no type field yields no events and doesn't throw")
     func chunkWithoutType() throws {
         var state = AnthropicStreamState()
-        let events = try AnthropicProvider.parseChunk(["random": "data"], state: &state)
+        let events = try AnthropicStreamWire().events(from: ["random": "data"], state: &state)
         #expect(events.isEmpty)
     }
 }

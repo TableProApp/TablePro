@@ -3,15 +3,14 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_core::{
-    CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LossPhase,
-    ResultSink, RunOptions, RunSummary, TransactionState, UserSql,
+    CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState,
+    EditorSessionStatus, LossPhase, ResultSink, RunOptions, RunSummary, TransactionState, UserSql,
 };
 use tokio_util::sync::CancellationToken;
 
 use crate::editor_run::EditorRun;
 use crate::endpoint::RedisEndpoint;
 use crate::link::Link;
-use crate::session_status::SessionStatus;
 
 /// One editor tab's own link to the server.
 ///
@@ -22,7 +21,7 @@ pub(crate) struct RedisEditorSession {
     id: EditorSessionId,
     endpoint: Arc<RedisEndpoint>,
     link: Arc<Mutex<Option<Link>>>,
-    status: Arc<SessionStatus>,
+    status: Arc<EditorSessionStatus>,
     transaction: Arc<Mutex<TransactionState>>,
     read_only: bool,
     statement_timeout: Option<Duration>,
@@ -44,7 +43,7 @@ impl RedisEditorSession {
             id: EditorSessionId::new(),
             endpoint,
             link: Arc::new(Mutex::new(Some(link))),
-            status: Arc::new(SessionStatus::new()),
+            status: Arc::new(EditorSessionStatus::new()),
             transaction: Arc::new(Mutex::new(TransactionState::Idle)),
             read_only,
             statement_timeout: options.statement_timeout,

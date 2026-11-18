@@ -5,7 +5,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tablepro_core::{
     CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LivenessPolicy,
-    LossPhase, ResultSink, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql,
+    LossPhase, ResultSink, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql, deadline_elapsed,
 };
 use tokio::sync::OwnedMutexGuard;
 use tokio::time::Instant;
@@ -198,7 +198,7 @@ impl Shared {
         let stop = tokio::select! {
             biased;
             () = options.cancel.cancelled() => Stop::Cancelled,
-            () = elapsed(deadline) => Stop::DeadlineElapsed,
+            () = deadline_elapsed(deadline) => Stop::DeadlineElapsed,
             outcome = &mut running => {
                 return match outcome {
                     Ok(outcome) if outcome.halted => Ok(halted_end(self.stop_due(options, deadline))),
@@ -278,13 +278,6 @@ impl Drop for LoseOnDrop<'_> {
     }
 }
 
-async fn elapsed(deadline: Option<Instant>) {
-    match deadline {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
-    }
-}
-
 fn finished(outcome: Result<StreamOutcome, DriverError>) -> Result<RunEnd, DriverError> {
     match outcome {
         Ok(outcome) => Ok(completed(outcome)),
@@ -359,7 +352,7 @@ impl EditorSession for DuckDbEditorSession {
         let mut held = tokio::select! {
             biased;
             () = options.cancel().cancelled() => return Err(DriverError::Cancelled),
-            () = elapsed(options.deadline()) => {
+            () = deadline_elapsed(options.deadline()) => {
                 return Err(DriverError::Timeout { phase: TimeoutPhase::Statement, server_cancelled: false });
             }
             held = shared.call.lock() => held,

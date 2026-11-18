@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tablepro_core::DriverError;
+use tablepro_core::{DriverError, deadline_elapsed};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use tokio_postgres::CancelToken;
@@ -71,16 +71,10 @@ impl StopWatch {
 
     /// Resolves when the run should stop.
     pub(crate) async fn triggered(&self) -> Interrupt {
-        let deadline = async {
-            match self.statement_deadline {
-                Some(at) => tokio::time::sleep_until(at).await,
-                None => std::future::pending().await,
-            }
-        };
         tokio::select! {
             () = self.cancel.cancelled() => Interrupt::Cancelled,
             () = self.shutdown.cancelled() => Interrupt::Cancelled,
-            () = deadline => Interrupt::DeadlineElapsed,
+            () = deadline_elapsed(self.statement_deadline) => Interrupt::DeadlineElapsed,
         }
     }
 
@@ -110,10 +104,7 @@ impl StopWatch {
     /// Resolves once the grace after the stop has run out: a statement
     /// still running then never answered its cancel.
     pub(crate) async fn gave_up(&self) {
-        match self.give_up {
-            Some(at) => tokio::time::sleep_until(at).await,
-            None => std::future::pending().await,
-        }
+        deadline_elapsed(self.give_up).await;
     }
 
     /// Wait for an outstanding cancel request before anything else goes

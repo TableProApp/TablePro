@@ -2,9 +2,7 @@
 //! around them.
 
 use tablepro_core::statement::{GuardedStatement, RowGuard, Statement};
-use tablepro_core::{
-    DriverError, ReadOnlyRefusal, ServerCode, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport,
-};
+use tablepro_core::{DriverError, ServerCode, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport};
 
 use crate::call::{stoppable, stopped};
 use crate::rows::applied;
@@ -16,10 +14,7 @@ use crate::session::CqlLink;
 /// the fact, so a guard that expects no row cannot be held: the row it
 /// finds is already written.
 pub(crate) fn precheck(batch: &WriteBatch, read_only: bool) -> Result<(), DriverError> {
-    if read_only {
-        return Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard));
-    }
-    batch.foreign_keys.require_enforced()?;
+    batch.precheck(read_only)?;
     let unprovable = batch.steps.iter().position(|step| match step.guard {
         RowGuard::AffectedExactly(rows) => rows != 1 || !reports_applied(&step.statement),
         RowGuard::None | RowGuard::ProbeExactly { .. } => false,
@@ -136,7 +131,9 @@ fn may_have_applied(error: &DriverError) -> bool {
 mod tests {
     use tablepro_core::meta::TableRef;
     use tablepro_core::statement::StatementBuilder;
-    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, LossPhase, ServerDiagnostics, UnsupportedFeature, WriteKind};
+    use tablepro_core::{
+        ForeignKeyCheck, ForeignKeyMode, LossPhase, ReadOnlyRefusal, ServerDiagnostics, UnsupportedFeature, WriteKind,
+    };
 
     use super::*;
 

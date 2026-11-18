@@ -4,7 +4,7 @@ use std::time::Duration;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::{
     DriverError, ErrorCategory, LossPhase, ResultEvent, ResultSink, RowBatch, RowLimit, RunEnd, RunOptions, RunSummary,
-    SinkFlow, TimeoutPhase, TransactionState, Truncation, UserSql, Value,
+    SinkFlow, TimeoutPhase, TransactionState, Truncation, UserSql, Value, deadline_elapsed,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -167,7 +167,7 @@ impl EditorRun {
                     tracing::debug!(%error, "waiting for a stopped editor query to end failed");
                 }
             }
-            () = reached(give_up) => {
+            () = deadline_elapsed(give_up) => {
                 tracing::debug!("a stopped editor query did not end within the cancel grace");
             }
         }
@@ -274,14 +274,6 @@ async fn kill_within(control: &clickhouse::Client, query_id: Uuid, grace: Durati
     }
 }
 
-/// Ends at `at`, or never without one.
-async fn reached(at: Option<Instant>) {
-    match at {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
-    }
-}
-
 /// What stops a run, and when the stop was sent.
 struct Stop {
     cancel: CancellationToken,
@@ -308,7 +300,7 @@ impl Stop {
         tokio::select! {
             () = self.cancel.cancelled() => Interrupt::Cancelled,
             () = self.shutdown.cancelled() => Interrupt::Cancelled,
-            () = reached(self.deadline) => Interrupt::DeadlineElapsed,
+            () = deadline_elapsed(self.deadline) => Interrupt::DeadlineElapsed,
         }
     }
 
@@ -323,7 +315,7 @@ impl Stop {
     }
 
     async fn gave_up(&self) {
-        reached(self.give_up).await;
+        deadline_elapsed(self.give_up).await;
     }
 
     /// How a stopped run ends. The server's 394 or its own timeout is the
