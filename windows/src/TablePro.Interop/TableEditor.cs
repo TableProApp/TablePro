@@ -21,7 +21,8 @@ public sealed class TableEditor : IDisposable
             column.TakesDefault,
             Mapping.Kind(column.Kind),
             column.Labels,
-            column.Multiple))];
+            column.Multiple,
+            column.NeedsOffset))];
     }
 
     // Read again on each call, since a reconnect can make the connection read-only.

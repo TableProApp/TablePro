@@ -24,17 +24,17 @@ The app opened only `tablepro://share` links and only the files File > Open pick
 
 ### Type editors
 
-- The core's edit columns say what each holds and an enum's or a set's labels (`EditColumnInfo.kind`, `labels`, `multiple`), so the table tab picks an editor per column (`CellEditors`), as macOS does:
+- The core's edit columns say what each holds, an enum's or a set's labels and whether a typed time needs its offset (`EditColumnInfo.kind`, `labels`, `multiple`, `needs_offset`), so the table tab picks an editor per column (`CellEditors`), as macOS does:
   - a boolean toggles where it is on Enter, F2 or a double-click: NULL and false become true, true becomes false, in the spelling the value had (`1`/`0` or `true`/`false`);
   - an enum with 1 to 100 labels opens a menu of them with the value checked; a MySQL SET opens one with a check per label, and each pick adds or takes out that label;
-  - a date opens a calendar, a time a time picker with Set, a timestamp both. They replace the date or the hour and minute and keep the seconds, the fraction and the offset the value had; a new value in a column that keeps an offset takes this machine's.
+  - a date opens a calendar, a time a time picker with Set, a timestamp both. They replace the date or the hour and minute and keep the seconds, the fraction and the offset the value had; a new value in a column the core says needs an offset takes this machine's on the day and hour picked, and one in a named zone, as ClickHouse's `DateTime('UTC')`, takes none.
 - Each menu and flyout has Edit as text, and Tab or a new row opens the text box as before (`GridEditStartingEventArgs.InPlace`, `DataGridView.BeginTextEdit`). Escape or a click elsewhere changes nothing, and a pick after the page or the focused cell changed is dropped.
 - JSON is checked by the core when the edit is kept (`edit.invalid_json`), shown on the editor as any refused value is.
 
 ### JSON results
 
 - Every results pane, a query's and a table tab's, has Data and JSON at the leading edge of its bottom bar, as macOS's result view switcher; the selection summary stays at the trailing edge. The choice is the pane's own, and the grid keeps its rows, selection and edits under the JSON.
-- JSON shows the rows the grid shows (`RowsJson`): its columns in its order with hidden ones left out, rows marked for deletion left out, a pending edit's text in place of the value. NULL is null, booleans and numbers are bare with their exact digits, a JSON value (a MongoDB document's nested field included, read by each cell's own kind) nests as written, and anything else is its text. Rows picked on the row numbers narrow it. It stops at 1,000 rows or about 1 MB and says so; within a row, a document whose indented form would pass what is left goes out as its text, a cell read past the grid's window stops at 100,000 characters, and past the cap the rest of the row goes out as the grid shows it.
+- JSON shows the rows the grid shows (`RowsJson`): its columns in its order with hidden ones left out, rows marked for deletion left out, a pending edit's text in place of the value, read by the column's kind. NULL is null, booleans and numbers are bare with their exact digits, a JSON value (a MongoDB document's nested field included, read by each cell's own kind) nests as written, and anything else is its text. Rows picked on the row numbers narrow it. It stops at 1,000 rows or about 1 MB and says so; within a row, a document whose indented form would pass what is left goes out as its text, a cell read past the grid's window stops at 100,000 characters, and past the cap the rest of the row goes out as the grid shows it.
 - Text is the pretty-printed array; Tree is a TreeView with a node per row whose children are made as it opens. Copy JSON copies the text. It is written off the UI thread and again after each change to the rows shown.
 
 ## Rationale

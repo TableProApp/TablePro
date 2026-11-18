@@ -113,7 +113,9 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
                     for (var column = 0; column < width; column++)
                     {
                         writer.WritePropertyName(names[column]);
-                        var kind = row < dataRows
+                        // A pending edit is text the column will read, so it takes the column's kind, not the old value's.
+                        var typed = (block.Get(row, column).State & (CellState.Modified | CellState.Inserted)) != 0;
+                        var kind = row < dataRows && !typed
                             ? kinds?.Kind(row, sources[column]) ?? columnKinds[column]
                             : columnKinds[column];
                         cancellationToken.ThrowIfCancellationRequested();

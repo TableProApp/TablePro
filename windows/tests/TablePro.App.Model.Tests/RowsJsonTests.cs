@@ -136,6 +136,24 @@ public sealed class RowsJsonTests
     }
 
     [Fact]
+    public void AnEditedCellTakesItsColumnsKindNotTheOldValues()
+    {
+        var rows = new TextGridData(["n"], [["old"], ["7"]]);
+        var edits = new GridEdits(
+            new Dictionary<(int Row, int Column), PendingCell> { [(0, 0)] = new(PendingKind.Value, "42") },
+            new HashSet<int>(),
+            []);
+        var edited = new EditedGridData(rows, edits);
+
+        var json = Write(edited, null, [Column("n", ValueKind.Integer)], new Kinds([ValueKind.Text], [ValueKind.Integer]));
+
+        using var parsed = JsonDocument.Parse(json.Text);
+        Assert.Equal(JsonValueKind.Number, parsed.RootElement[0].GetProperty("n").ValueKind);
+        Assert.Equal(42, parsed.RootElement[0].GetProperty("n").GetInt32());
+        Assert.Equal(7, parsed.RootElement[1].GetProperty("n").GetInt32());
+    }
+
+    [Fact]
     public void ATableTabsLayoutAndPendingEditsAreWrittenAsTheGridShowsThem()
     {
         var rows = new TextGridData(["id", "name", "note"], [["1", "a", "x"], ["2", "b", "y"], ["3", "c", "z"]]);

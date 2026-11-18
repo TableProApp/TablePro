@@ -47,7 +47,7 @@ public abstract record RowEdit
     public sealed record Delete(long Row) : RowEdit;
 }
 
-// A saved row's key and a server-filled column are locked; Labels are an enum's or a set's (Multiple), else empty.
+// A saved row's key and a server-filled column lock; Labels: an enum's or a SET's; NeedsOffset: typed times need one.
 public sealed record EditColumn(
     string Name,
     bool Editable,
@@ -59,7 +59,8 @@ public sealed record EditColumn(
     bool TakesDefault,
     ValueKind Kind = ValueKind.Other,
     IReadOnlyList<string>? Labels = null,
-    bool Multiple = false)
+    bool Multiple = false,
+    bool NeedsOffset = false)
 {
     public IReadOnlyList<string> Labels { get; init; } = Labels ?? [];
 }

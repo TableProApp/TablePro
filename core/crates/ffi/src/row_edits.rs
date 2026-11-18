@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tablepro_core::column::{ColumnInfo, ColumnKind, ResultColumn};
+use tablepro_core::column::{ColumnInfo, ColumnKind, ResultColumn, TemporalZone};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dml::BuildSqlError;
 use tablepro_core::edit::{
@@ -81,6 +81,8 @@ pub struct EditColumnInfo {
     pub labels: Vec<String>,
     // A MySQL SET: the value is any combination of the labels.
     pub multiple: bool,
+    // A typed time or timestamp is refused without its offset, as for PostgreSQL's timestamptz.
+    pub needs_offset: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -439,6 +441,14 @@ impl TableEditor {
                     _ => Vec::new(),
                 },
                 multiple: matches!(column.column_type.kind, ColumnKind::Enum { multiple: true, .. }),
+                needs_offset: matches!(
+                    column.column_type.kind,
+                    ColumnKind::Time { with_offset: true, .. }
+                        | ColumnKind::Timestamp {
+                            zone: TemporalZone::Offset,
+                            ..
+                        }
+                ),
             })
             .collect()
     }

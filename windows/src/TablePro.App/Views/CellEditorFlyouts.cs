@@ -148,7 +148,7 @@ internal static class CellEditorFlyouts
 
     // A new value with an offset takes this machine's on the day and hour picked; a skipped or repeated hour, standard.
     private static TimeSpan? LocalOffset(CellEditRequest request, DateOnly day, TimeSpan time) =>
-        request.Column.Kind is ValueKind.TimeWithOffset or ValueKind.TimestampWithOffset
+        request.Column.NeedsOffset
             ? TimeZoneInfo.Local.GetUtcOffset(
                 day.ToDateTime(new TimeOnly(time.Hours, time.Minutes), DateTimeKind.Local))
             : null;

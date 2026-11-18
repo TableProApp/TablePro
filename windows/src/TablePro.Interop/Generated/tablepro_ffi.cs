@@ -14422,7 +14422,8 @@ internal record EditColumnInfo (
     bool TakesDefault, 
     ValueKind Kind, 
     string[] Labels, 
-    bool Multiple
+    bool Multiple, 
+    bool NeedsOffset
 ) {
 }
 
@@ -14441,7 +14442,8 @@ class FfiConverterTypeEditColumnInfo: FfiConverterRustBuffer<EditColumnInfo> {
             TakesDefault: FfiConverterBoolean.INSTANCE.Read(stream),
             Kind: FfiConverterTypeValueKind.INSTANCE.Read(stream),
             Labels: FfiConverterSequenceString.INSTANCE.Read(stream),
-            Multiple: FfiConverterBoolean.INSTANCE.Read(stream)
+            Multiple: FfiConverterBoolean.INSTANCE.Read(stream),
+            NeedsOffset: FfiConverterBoolean.INSTANCE.Read(stream)
         );
     }
 
@@ -14457,7 +14459,8 @@ class FfiConverterTypeEditColumnInfo: FfiConverterRustBuffer<EditColumnInfo> {
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.TakesDefault)
             + FfiConverterTypeValueKind.INSTANCE.AllocationSize(value.Kind)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Labels)
-            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Multiple);
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Multiple)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.NeedsOffset);
     }
 
     public override void Write(EditColumnInfo value, BigEndianStream stream) {
@@ -14472,6 +14475,7 @@ class FfiConverterTypeEditColumnInfo: FfiConverterRustBuffer<EditColumnInfo> {
             FfiConverterTypeValueKind.INSTANCE.Write(value.Kind, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.Labels, stream);
             FfiConverterBoolean.INSTANCE.Write(value.Multiple, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.NeedsOffset, stream);
     }
 }
 

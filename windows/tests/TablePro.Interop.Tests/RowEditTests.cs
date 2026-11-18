@@ -181,6 +181,7 @@ public sealed class RowEditTests
             Assert.Equal(["sad", "ok", "happy"], columns[1].Labels);
             Assert.False(columns[1].Multiple);
             Assert.All(columns.Where(column => column.Name != "feeling"), column => Assert.Empty(column.Labels));
+            Assert.All(columns, column => Assert.False(column.NeedsOffset));
         }
         finally
         {

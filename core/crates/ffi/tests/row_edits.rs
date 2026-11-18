@@ -607,4 +607,33 @@ async fn a_column_says_what_it_holds_and_an_enum_names_its_labels() {
             .filter(|column| column.name != "feeling")
             .all(|column| column.labels.is_empty())
     );
+    assert!(columns.iter().all(|column| !column.needs_offset));
+}
+
+#[tokio::test]
+async fn a_timestamp_with_a_time_zone_needs_its_offset_typed() {
+    let dir = tempfile::tempdir().unwrap();
+    let request = FileOpenRequest {
+        path: dir.path().join("stamps.duckdb").display().to_string(),
+        driver_id: Some("duckdb".to_owned()),
+        read_only: false,
+        create: true,
+    };
+    let core = core(dir.path());
+    let session = core.open_file(request, None).await.unwrap();
+    run(
+        &session,
+        "CREATE TABLE stamps (id INTEGER PRIMARY KEY, zoned TIMESTAMPTZ, plain TIMESTAMP)",
+    )
+    .await;
+    let stamps = TableName {
+        schema: None,
+        name: "stamps".to_owned(),
+    };
+
+    let columns = session.table_editor(stamps, false, None).await.unwrap().columns();
+
+    let needs: Vec<_> = columns.iter().map(|column| column.needs_offset).collect();
+    assert_eq!(needs, [false, true, false]);
+    assert_eq!(columns[1].kind, ValueKind::TimestampWithOffset);
 }
