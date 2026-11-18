@@ -72,6 +72,18 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
 
     public void SetTags(IReadOnlyList<ConnectionTag> tags) => Tags = tags;
 
+    // What the assistant may send from it, read from the library; a file opened without saving is asked about.
+    public AiPolicy AiPolicy { get; private set; } = AiPolicy.Ask;
+
+    public void SetAiPolicy(AiPolicy policy)
+    {
+        if (policy != AiPolicy)
+        {
+            AiPolicy = policy;
+            View.AssistantChanged();
+        }
+    }
+
     // The engine's artwork in the connection's colour, as the macOS rail marks it.
     public void Mark(string engineId, string? color)
     {
@@ -114,6 +126,7 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
         var adopted = new OpenConnection(_workbench, Origin with { Tabs = [], SelectedTab = 0 });
         adopted.Mark(Origin.EngineId, Color);
         adopted.SetTags(Tags);
+        adopted.SetAiPolicy(AiPolicy);
         adopted._life.Adopt(_life);
         return adopted;
     }

@@ -166,6 +166,7 @@ async fn saved(core: &Core, path: &Path, safe_mode: SafeModeTag) -> Arc<Database
         group_id: None,
         last_opened_ms: None,
         tags: Vec::new(),
+        ai_policy: None,
     };
     let saved = core
         .library()

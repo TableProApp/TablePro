@@ -7964,6 +7964,7 @@ dependencies = [
  "secrecy",
  "serde_json",
  "tablepro-account",
+ "tablepro-ai",
  "tablepro-core",
  "tablepro-driver-cassandra",
  "tablepro-driver-clickhouse",

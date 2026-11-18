@@ -99,6 +99,7 @@ public sealed partial class SettingsView : UserControl
         FillChoices(NotifyAfterBox, AppSettings.NotifyAfterChoices, settings.NotifyAfterSeconds, NotifyAfterLabel);
         NotifyAfterCard.IsEnabled = settings.NotifyLongWork;
         ShowNotificationState();
+        LoadAssistant();
         _loading = false;
     }
 

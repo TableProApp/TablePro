@@ -25,6 +25,7 @@ internal static partial class Mapping
             : null)
     {
         TlsFailure = info.TlsFailure is { } failure ? TlsFailureKind(failure) : null,
+        Ai = info.Ai is { } ai ? Failure(ai) : null,
     };
 
     private static TlsFailure TlsFailureKind(Native.TlsFailureTag failure) => failure switch
@@ -447,7 +448,8 @@ internal static partial class Mapping
         connection.Color,
         connection.GroupId?.ToString(),
         connection.LastOpened?.ToUnixTimeMilliseconds(),
-        [.. connection.Tags.Select(tag => tag.ToString())]);
+        [.. connection.Tags.Select(tag => tag.ToString())],
+        connection.AiPolicy is { } policy ? Policy(policy) : null);
 
     public static SavedConnection Connection(Native.ConnectionRecord record) => new(
         Guid.Parse(record.Id),
@@ -492,6 +494,7 @@ internal static partial class Mapping
         record.LastOpenedMs is { } opened ? DateTimeOffset.FromUnixTimeMilliseconds(opened) : null)
     {
         Tags = [.. record.Tags.Select(Guid.Parse)],
+        AiPolicy = Policy(record.AiPolicy ?? Native.AiPolicyTag.Ask),
     };
 
     public static ConnectionGroup Group(Native.GroupRecord group) => new(

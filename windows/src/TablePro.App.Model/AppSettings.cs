@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using TablePro.Interop;
 
 namespace TablePro.App.Model;
 
@@ -52,6 +53,11 @@ public sealed record AppSettings
     // As macOS offers them, in seconds: 5, 10, 20 or 30 seconds, or 1, 2, 5 or 10 minutes.
     public static IReadOnlyList<int> NotifyAfterChoices { get; } = [5, 10, 20, 30, 60, 120, 300, 600];
 
+    // The Linux app's default, so a key is all a new user needs.
+    public const string DefaultAnthropicModel = "claude-opus-5-5";
+
+    public const string DefaultCompatibleAddress = "http://localhost:11434/v1";
+
     public AppTheme Theme { get; set; } = AppTheme.System;
 
     // A query that ran at least NotifyAfterSeconds and finished where the user is not looking posts a notification.
@@ -94,6 +100,41 @@ public sealed record AppSettings
     // Results with rows a run keeps, the newest; 0 keeps them all.
     public int ResultSetsKeptPerRun { get; set; }
 
+    // Who answers the AI assistant; null while it is off, which is how it starts, so nothing is sent anywhere.
+    public AiProvider? AiProvider { get; set; }
+
+    public string AnthropicModel { get; set; } = DefaultAnthropicModel;
+
+    public string OpenAIModel { get; set; } = string.Empty;
+
+    public string CompatibleModel { get; set; } = string.Empty;
+
+    // An Ollama or other OpenAI-compatible server, version path included; the hosted providers' are fixed.
+    public string CompatibleAddress { get; set; } = DefaultCompatibleAddress;
+
+    // What the chosen provider's requests take, or null while the assistant is off.
+    [JsonIgnore]
+    public AiSettings? Assistant => AiProvider is { } provider ? AssistantFor(provider) : null;
+
+    public AiSettings AssistantFor(AiProvider provider) => new(
+        provider,
+        ModelOf(provider),
+        provider == Interop.AiProvider.OpenAICompatible ? CompatibleAddress : null);
+
+    public string ModelOf(AiProvider provider) => provider switch
+    {
+        Interop.AiProvider.Anthropic => AnthropicModel,
+        Interop.AiProvider.OpenAI => OpenAIModel,
+        _ => CompatibleModel,
+    };
+
+    public AppSettings WithModel(AiProvider provider, string model) => provider switch
+    {
+        Interop.AiProvider.Anthropic => this with { AnthropicModel = model },
+        Interop.AiProvider.OpenAI => this with { OpenAIModel = model },
+        _ => this with { CompatibleModel = model },
+    };
+
     public AppSettings Normalized() => this with
     {
         Theme = Enum.IsDefined(Theme) ? Theme : AppTheme.System,
@@ -112,6 +153,13 @@ public sealed record AppSettings
         CountRowsIfEstimateLessThan = Math.Max(0, CountRowsIfEstimateLessThan),
         ResultSetsKeptPerRun = Math.Max(0, ResultSetsKeptPerRun),
         NotifyAfterSeconds = NotifyAfterChoices.Contains(NotifyAfterSeconds) ? NotifyAfterSeconds : DefaultNotifyAfterSeconds,
+        AiProvider = AiProvider is { } provider && Enum.IsDefined(provider) ? provider : null,
+        AnthropicModel = (AnthropicModel ?? string.Empty).Trim(),
+        OpenAIModel = (OpenAIModel ?? string.Empty).Trim(),
+        CompatibleModel = (CompatibleModel ?? string.Empty).Trim(),
+        CompatibleAddress = string.IsNullOrWhiteSpace(CompatibleAddress)
+            ? DefaultCompatibleAddress
+            : CompatibleAddress.Trim(),
     };
 }
 
