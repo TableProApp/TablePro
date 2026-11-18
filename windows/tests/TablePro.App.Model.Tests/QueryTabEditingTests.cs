@@ -287,6 +287,20 @@ public sealed class QueryTabEditingTests
     }
 
     [Fact]
+    public async Task ARowWhoseValuesWouldNotCopyExactlyIsNotDuplicated()
+    {
+        Editor.Copies = row => row != 1;
+        await _tab.RunAsync();
+
+        Assert.Equal(EditRefusal.NotCopyable.Instance, _tab.DuplicateRows([0, 1], out var none));
+        Assert.Null(_tab.DuplicateRows([0], out var last));
+
+        Assert.Equal(-1, none);
+        Assert.Equal(3, last);
+        Assert.Equal(1, _tab.ResultEdits!.AddedRows);
+    }
+
+    [Fact]
     public async Task RowsSavedForACloseTheFileThenKeepsOpenAreReadAgain()
     {
         var directory = Directory.CreateTempSubdirectory("tablepro-result-close-").FullName;

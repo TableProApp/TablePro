@@ -509,6 +509,15 @@ impl TableEditor {
         }
     }
 
+    // Whether a copy of the row holds its values exactly. PostgreSQL's server text for a float, a time or money may not
+    // name the stored value (core ADR 0015), so such a query result row is not duplicated; a table page's are typed.
+    pub fn copies_exactly(&self, rows: Arc<ResultSet>, row: u64) -> bool {
+        match &self.layout {
+            Layout::Page => true,
+            Layout::Result { read, .. } => copies_exactly(read, &self.columns, &rows, row),
+        }
+    }
+
     // The table a save writes, as the result's driver named it; None while a query result is locked.
     pub fn table(&self) -> Option<TableName> {
         (!self.table.name.is_empty()).then(|| TableName {
@@ -734,6 +743,20 @@ pub(crate) fn save_gate(level: SafeModeLevel) -> SaveGate {
     }
 }
 
+// The values a copy takes, as Duplicate copies them: every column but the key and what the server fills.
+fn copies_exactly(read: &[ResultColumn], columns: &[ColumnInfo], rows: &ResultSet, row: u64) -> bool {
+    columns
+        .iter()
+        .enumerate()
+        .filter(|(_, column)| !column.primary_key && editable_in_new_row(column))
+        .all(|(index, column)| match rows.stored_value(row, index) {
+            None | Some(Value::Null) => true,
+            Some(value) => read
+                .get(index)
+                .is_some_and(|read| value_for_column(&value, &read.column_type, &column.column_type).is_some()),
+        })
+}
+
 // A NUL cannot be in an identifier, so no key lookup by name ever lands on this column, and no statement names it.
 fn unwritable(index: usize, column: &ResultColumn) -> ColumnInfo {
     ColumnInfo {
@@ -956,4 +979,60 @@ fn parse_error(error: EditParseError) -> CoreError {
 
 fn build_error(error: BuildSqlError) -> CoreError {
     CoreError::failed(error.code(), error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::column::{ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm};
+
+    use super::*;
+    use crate::results::ResultStore;
+
+    fn catalog(name: &str, kind: ColumnKind) -> ColumnInfo {
+        ColumnInfo {
+            name: name.to_owned(),
+            column_type: ColumnType {
+                name: name.to_owned(),
+                kind,
+                catalog: None,
+                dynamic_storage: false,
+                read_form: ReadForm::Native,
+            },
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            is_generated: false,
+            partition_scoped: false,
+            default: ColumnDefault::None,
+            comment: None,
+        }
+    }
+
+    #[test]
+    fn server_text_for_a_float_does_not_copy_and_an_integer_s_does() {
+        let read: Arc<[ResultColumn]> = vec![
+            ResultColumn::new("amount", ColumnType::untyped_text("float8")),
+            ResultColumn::new("count", ColumnType::untyped_text("int4")),
+        ]
+        .into();
+        let columns = [
+            catalog("amount", ColumnKind::Float(FloatWidth::F64)),
+            catalog(
+                "count",
+                ColumnKind::Integer(IntegerKind {
+                    width: IntegerWidth::W32,
+                    signed: true,
+                }),
+            ),
+        ];
+        let store = Arc::new(ResultStore::new(read.clone()));
+        store.append(&[
+            vec![Value::Text("0.1".to_owned()), Value::Text("7".to_owned())],
+            vec![Value::Null, Value::Text("8".to_owned())],
+        ]);
+        let rows = ResultSet::new(0, store);
+
+        assert!(!copies_exactly(&read, &columns, &rows, 0));
+        assert!(copies_exactly(&read, &columns, &rows, 1));
+    }
 }

@@ -22,6 +22,7 @@ The importers ([0008](0008-importers-from-other-apps.md)) and the rules for edit
 - `DatabaseSession::result_editor(sql, rows)` gives a `TableEditor` over a run's result set. A read-only connection, a statement `edit::result_source` refuses and a result `edit::result_target` refuses each give an editor locked with the reason, as new `EditLock` variants: `NotOneSelect`, `MoreThanOneTable`, `Collapsed`, `Untraced`, `KeyNotShown`, and `NoPrimaryKey` and `ColumnsChanged` as before.
 - The table's columns are read again from the server first, so a result read before the table changed locks rather than writes by an old place.
 - The editor has one column per result column. A traced column is the catalog's; a second copy of a column and an untraced one are generated columns with a name no statement can hold, so they are locked to typing, left out of an insert and never named by an update. The key is read from the result's own columns, through `value_for_column`.
+- `copies_exactly(rows, row)` says whether a row's copied values read back as the catalog's types, so an app refuses a duplicate that would write PostgreSQL's server text for a float, a time or money, as 0015 asks. A table page's values are typed, so its rows always copy.
 - Planning, the Safe Mode gate and the save are the table tab's: `plan_save` over the traced table, planned again on the writing lease. Edits name rows of the editor's own result set, sorted or not: rows of any other set, the same statement run again included, refuse with `edit.columns_changed`.
 
 ## Rationale

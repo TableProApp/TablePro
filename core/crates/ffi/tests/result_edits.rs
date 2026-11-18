@@ -137,6 +137,7 @@ async fn a_result_of_one_keyed_table_saves_an_update_an_insert_and_a_delete() {
         .await
         .unwrap();
     let columns = editor.columns();
+    let copies = editor.copies_exactly(shown.clone(), 0);
 
     let save = editor
         .plan(
@@ -162,6 +163,7 @@ async fn a_result_of_one_keyed_table_saves_an_update_an_insert_and_a_delete() {
     session.close().await.unwrap();
 
     assert_eq!(editor.lock(), None);
+    assert!(copies);
     assert_eq!(editor.table().map(|table| table.name).as_deref(), Some("people"));
     assert_eq!(
         columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),

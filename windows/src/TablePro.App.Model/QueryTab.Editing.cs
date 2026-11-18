@@ -156,7 +156,12 @@ public sealed partial class QueryTab
             return refused;
         }
 
-        last = _editing!.DuplicateRows(rows);
+        if (_editing!.CopyRefusal(rows) is { } copy)
+        {
+            return copy;
+        }
+
+        last = _editing.DuplicateRows(rows);
         return null;
     }
 

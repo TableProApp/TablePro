@@ -897,6 +897,10 @@ internal sealed class FakeTableEditor : ITableEditor
 
     public EditStart GetEditStart(ResultSet? rows, long row, int column) => Start(row, column);
 
+    public Func<long, bool> Copies { get; set; } = _ => true;
+
+    public bool CopiesExactly(ResultSet? rows, long row) => Copies(row);
+
     public IReadOnlyList<StoredValue> GetStoredValues(ResultSet? rows, int column, long firstRow, int rowCount) =>
         [.. Enumerable.Range(0, rowCount).Select(row => Values(firstRow + row, column))];
 

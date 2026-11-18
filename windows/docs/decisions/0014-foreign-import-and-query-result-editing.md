@@ -21,6 +21,7 @@ Each works as the macOS app's does, in Windows sentence case, over the core's re
 ### Editing a query result
 
 - A query tab's result edits as a table tab's page does, with the same commands, marks and questions, when the run returned one result set, left no transaction open, ran in the session's own database, and the core proves the result is one keyed table's rows. Otherwise the grid stays read only and trying to edit says why.
+- Duplicate refuses a row whose values were read as text that may not name them exactly, as PostgreSQL's for a float, and says so.
 - Save writes through the table tab's path, then runs the statement again for what the table holds; the run is not added to the history. A save whose outcome is unknown holds Save back until the changes are discarded, which runs the statement again.
 - Save changes, Discard changes and Preview SQL show in the query tab's command bar while its result edits, and the menus' Save, Discard changes, Preview SQL, Add row, Duplicate row and Delete act on it as on a table tab. Ctrl+S in the result grid saves the rows, never the file.
 - A new run, a sort, another database or Commit and Roll back ask before they replace rows with pending changes, and closing the tab asks Save, Don't save or Cancel. A switch of database ends the edits, since the statement would be read again elsewhere.

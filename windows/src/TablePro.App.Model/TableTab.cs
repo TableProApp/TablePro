@@ -84,6 +84,12 @@ public abstract record EditRefusal
 
     // A query result the app refuses before it asks the core, as one read inside a transaction.
     public sealed record ResultBlocked(ResultEditBlock Block) : EditRefusal;
+
+    // A row whose values were read as text that may not name them, so a copy could change them.
+    public sealed record NotCopyable : EditRefusal
+    {
+        public static NotCopyable Instance { get; } = new();
+    }
 }
 
 // What a table tab shows and asks; the view words the pager from the tab's Page.

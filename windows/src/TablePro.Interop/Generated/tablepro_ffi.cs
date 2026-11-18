@@ -1331,6 +1331,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -2980,6 +2982,17 @@ static class _UniFFILib {
     public static extern
 #endif
      RustBuffer uniffi_tablepro_ffi_fn_method_tableeditor_columns(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     sbyte uniffi_tablepro_ffi_fn_method_tableeditor_copies_exactly(ulong @ptr,ulong @rows,ulong @row,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -5839,6 +5852,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_tableeditor_copies_exactly(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_tableeditor_edit_start(
     );
 
@@ -7476,6 +7500,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tableeditor_columns();
             if (checksum != 6588) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tableeditor_columns` checksum `6588`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tableeditor_copies_exactly();
+            if (checksum != 55910) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tableeditor_copies_exactly` checksum `55910`, library returned `{checksum}`");
             }
         }
         {
@@ -13385,6 +13415,7 @@ internal interface ITableEditor {
     /// <exception cref="CoreException"></exception>
     void Check(uint @column, CellEdit @edit, bool @newRow);
     EditColumnInfo[] Columns();
+    bool CopiesExactly(ResultSet @rows, ulong @row);
     /// <exception cref="CoreException"></exception>
     EditStart EditStart(ResultSet @rows, ulong @row, uint @column);
     EditLock? Lock();
@@ -13496,6 +13527,14 @@ internal class TableEditor : ITableEditor, IDisposable {
         return CallWithPointer(thisPtr => FfiConverterSequenceTypeEditColumnInfo.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_method_tableeditor_columns(thisPtr,  ref _status)
+)));
+    }
+    
+    
+    public bool CopiesExactly(ResultSet @rows, ulong @row) {
+        return CallWithPointer(thisPtr => FfiConverterBoolean.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_tableeditor_copies_exactly(thisPtr, FfiConverterTypeResultSet.INSTANCE.Lower(@rows), FfiConverterUInt64.INSTANCE.Lower(@row), ref _status)
 )));
     }
     

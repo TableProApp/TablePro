@@ -94,6 +94,9 @@ public interface ITableEditor : IDisposable
 
     EditStart GetEditStart(ResultSet? rows, long row, int column);
 
+    // False for a query result row whose values would not copy exactly, as PostgreSQL's text for a float.
+    bool CopiesExactly(ResultSet? rows, long row);
+
     // One column's stored values with their kinds, for rowCount rows from firstRow, as a key names a row in the file.
     IReadOnlyList<StoredValue> GetStoredValues(ResultSet? rows, int column, long firstRow, int rowCount);
 
@@ -288,6 +291,8 @@ internal sealed class CoreTableEditor(TableEditor editor) : ITableEditor
 
     public EditStart GetEditStart(ResultSet? rows, long row, int column) =>
         rows is null ? EditStart.Locked.Instance : editor.GetEditStart(rows, row, column);
+
+    public bool CopiesExactly(ResultSet? rows, long row) => rows is null || editor.CopiesExactly(rows, row);
 
     // A window holds the kinds; the text is the whole value, which a window cuts.
     public IReadOnlyList<StoredValue> GetStoredValues(ResultSet? rows, int column, long firstRow, int rowCount)

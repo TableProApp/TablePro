@@ -4572,6 +4572,9 @@ New fingerprint: {2}</value>
   <data name="ResultEditDiscardDatabase" xml:space="preserve">
     <value>Switching the database will discard all unsaved changes.</value>
   </data>
+  <data name="ResultEditNotCopyable" xml:space="preserve">
+    <value>Rows of this result can't be duplicated, since some values were read as text that may not name them exactly.</value>
+  </data>
   <data name="ResultEditSaveUnknown" xml:space="preserve">
     <value>The save may have been written. Discard the changes to read the rows again before you save again.</value>
   </data>

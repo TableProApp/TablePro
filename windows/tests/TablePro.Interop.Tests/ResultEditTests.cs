@@ -12,6 +12,7 @@ public sealed class ResultEditTests
         Assert.IsType<QueryOutcome.Completed>(await run.Completion);
         using var rows = run.GetResultSet(0) ?? throw new InvalidOperationException("The run held no set.");
         using var editor = await database.Session.OpenResultEditorAsync(sql, rows, cancellationToken);
+        var copies = editor.CopiesExactly(rows, 0);
 
         using var save = editor.Plan(rows,
         [
@@ -24,6 +25,7 @@ public sealed class ResultEditTests
         using var notes = after.GetResultSet(0) ?? throw new InvalidOperationException("The read held no set.");
 
         Assert.Null(editor.Lock);
+        Assert.True(copies);
         Assert.Equal(new TableName(null, "people"), editor.Table);
         Assert.Equal(["note", "id"], editor.Columns.Select(column => column.Name));
         Assert.True(editor.Columns[0].Editable);

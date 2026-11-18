@@ -789,6 +789,7 @@ public sealed partial class QueryTabView
         EditRefusal.ResultBlocked blocked => BlockText(blocked.Block),
         EditRefusal.CellLocked => Strings.Get("EditCellReadOnly"),
         EditRefusal.SaveBlocked => Strings.Get("ResultEditSaveBlocked"),
+        EditRefusal.NotCopyable => Strings.Get("ResultEditNotCopyable"),
         EditRefusal.Invalid invalid => Strings.Error(invalid.Failure),
         _ => null,
     };

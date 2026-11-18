@@ -148,6 +148,22 @@ internal sealed class EditedRows(ITableEditor editor, TableEdits edits, ResultSe
     // Each copy starts its key and the columns the server computes as a new row would, as on macOS.
     public int DuplicateRows(IReadOnlyList<int> rows) => edits.DuplicateRows(rows, StoredEdit);
 
+    // A data row copies only when its values do exactly; a new row holds what was typed.
+    public EditRefusal? CopyRefusal(IReadOnlyList<int> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        try
+        {
+            return rows.Any(row => row >= 0 && row < edits.DataRows && !editor.CopiesExactly(source, row))
+                ? EditRefusal.NotCopyable.Instance
+                : null;
+        }
+        catch (TableProException exception)
+        {
+            return new EditRefusal.Invalid(exception.Error);
+        }
+    }
+
     // A data row's edit back to its stored value is no change; a new row has none to compare with.
     public EditRefusal? Apply(int row, int column, CellEdit edit)
     {
