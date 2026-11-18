@@ -78,6 +78,7 @@ public sealed class CellEditorsTests
         Assert.Equal(string.Empty, CellEditors.ToggledMember("large", Sizes, "large"));
         Assert.Equal("small,medium", CellEditors.ToggledMember("small, huge", Sizes, "medium"));
         Assert.Throws<ArgumentException>(() => CellEditors.ToggledMember("small", Sizes, "huge"));
+        Assert.Equal(" a,b", CellEditors.ToggledMember(" a", ["a", " a", "b"], "b"));
     }
 
     [Theory]

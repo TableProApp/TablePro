@@ -75,12 +75,8 @@ public static class CellEditors
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(labels);
-        var named = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var part in text.Split(','))
-        {
-            named.Add(part);
-            named.Add(part.Trim());
-        }
+        // Exact, as a label's own spaces tell it from another label.
+        var named = new HashSet<string>(text.Split(','), StringComparer.Ordinal);
 
         return labels.Where(named.Contains).ToHashSet(StringComparer.Ordinal);
     }

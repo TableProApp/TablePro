@@ -18,6 +18,8 @@ public sealed class ActivationRequestTests
     [InlineData("TablePro://connect/x", true)]
     [InlineData("mongodb+srv://cluster.example.com", true)]
     [InlineData("jdbc:postgresql://db.example.com/shop", true)]
+    [InlineData("sqlite:/C:/data/app.db", true)]
+    [InlineData("DuckDB:/C:/data/app.duckdb", true)]
     [InlineData("C://data/app.sqlite", false)]
     [InlineData("C:\\data\\app.sqlite", false)]
     [InlineData("schema.sql", false)]

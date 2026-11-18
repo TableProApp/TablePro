@@ -94,7 +94,9 @@ public sealed partial record ActivationRequest(IReadOnlyList<string> Links, IRea
     public static bool IsLink(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        return text.StartsWith("tablepro:", StringComparison.OrdinalIgnoreCase) || UrlStart().IsMatch(text);
+        return text.StartsWith("tablepro:", StringComparison.OrdinalIgnoreCase)
+            || UrlStart().IsMatch(text)
+            || FileEngineUrlStart().IsMatch(text);
     }
 
     // As CommandLineToArgvW splits one: quotes group, 2n backslashes before a quote give n, 2n+1 give n and the quote.
@@ -217,4 +219,8 @@ public sealed partial record ActivationRequest(IReadOnlyList<string> Links, IRea
 
     [GeneratedRegex("^[A-Za-z][A-Za-z0-9+.-]+:(?:[A-Za-z][A-Za-z0-9+.-]*:)?//", RegexOptions.CultureInvariant)]
     private static partial Regex UrlStart();
+
+    // The core also reads a file engine's URL with one slash, as sqlite:/C:/data/app.db.
+    [GeneratedRegex("^(?:sqlite3?|duckdb):/", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex FileEngineUrlStart();
 }
