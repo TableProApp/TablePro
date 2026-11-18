@@ -23,7 +23,14 @@ public sealed class ForeignImportTests : IDisposable
     public void Dispose()
     {
         _core.Dispose();
-        Directory.Delete(_directory, recursive: true);
+        try
+        {
+            Directory.Delete(_directory, recursive: true);
+        }
+        catch (IOException)
+        {
+            // The history database closes on the core's own threads, which can still hold it here on Windows.
+        }
     }
 
     [Fact]
