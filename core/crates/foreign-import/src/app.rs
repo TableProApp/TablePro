@@ -203,7 +203,11 @@ impl ForeignImporter {
             ForeignApp::TablePlus => Box::new(apps::tableplus::TablePlus::locate(&self.dirs, keychain)),
             ForeignApp::SequelAce => Box::new(apps::sequel_ace::SequelAce::locate(&self.dirs, keychain)),
             ForeignApp::DBeaver => Box::new(apps::dbeaver::DBeaver::locate(&self.dirs)),
-            ForeignApp::DataGrip => Box::new(apps::datagrip::DataGrip::locate(&self.dirs, keychain)),
+            ForeignApp::DataGrip => Box::new(apps::datagrip::DataGrip::locate(
+                &self.dirs,
+                keychain,
+                self.host.data_protection(),
+            )),
             ForeignApp::BeekeeperStudio => Box::new(apps::beekeeper::Beekeeper::locate(&self.dirs)),
             ForeignApp::Navicat => Box::new(apps::navicat::Navicat::new(self.picked_file.clone())),
             ForeignApp::Dbx => Box::new(apps::dbx::Dbx::locate(&self.dirs)),

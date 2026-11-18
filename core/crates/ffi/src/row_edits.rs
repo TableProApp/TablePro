@@ -2,12 +2,12 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tablepro_core::column::{ColumnInfo, ResultColumn};
+use tablepro_core::column::{ColumnDefault, ColumnInfo, ResultColumn};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dml::BuildSqlError;
 use tablepro_core::edit::{
-    CellInput, EditContext, EditParseError, is_unchanged, new_draft_cell, parse_edit_text, read_only_reason,
-    value_for_column,
+    CellInput, EditContext, EditParseError, ResultLock, is_unchanged, new_draft_cell, parse_edit_text,
+    read_only_reason, result_source, result_target, value_for_column,
 };
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{RowIdentity, TableRef};
@@ -51,7 +51,7 @@ pub enum RowEdit {
     Delete { row: u64 },
 }
 
-// Why no row of the table, or of the page, can be changed.
+// Why no row of the table, of the page or of the query result can be changed.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum EditLock {
     ReadOnlyConnection,
@@ -60,6 +60,30 @@ pub enum EditLock {
     KeyUnreadable { column: String },
     // The page was read with other columns than the editor's catalog.
     ColumnsChanged,
+    // A query result's statement is not one SELECT (core ADR 0015).
+    NotOneSelect,
+    // A join, a subquery or a CTE.
+    MoreThanOneTable,
+    // DISTINCT, GROUP BY or an aggregate, so a row is not one row of the table.
+    Collapsed,
+    // The driver traced no column to the statement's table: a view, a temporary table, or an engine that reports none.
+    Untraced,
+    // The result leaves out part of the table's primary key.
+    KeyNotShown,
+}
+
+impl From<ResultLock> for EditLock {
+    fn from(lock: ResultLock) -> Self {
+        match lock {
+            ResultLock::NotOneSelect => Self::NotOneSelect,
+            ResultLock::MoreThanOneTable => Self::MoreThanOneTable,
+            ResultLock::Collapsed => Self::Collapsed,
+            ResultLock::Untraced => Self::Untraced,
+            ResultLock::NoPrimaryKey => Self::NoPrimaryKey,
+            ResultLock::KeyNotShown => Self::KeyNotShown,
+            ResultLock::ColumnsChanged => Self::ColumnsChanged,
+        }
+    }
 }
 
 // The Linux grid's rules: a saved row's key and a column the server fills are locked, a new row may set its key.
@@ -108,15 +132,24 @@ pub enum RowSaveOutcome {
     Unknown { error: BoxedErrorInfo, edit: Option<u32> },
 }
 
-// A table tab's rows as the save sees them: the catalog's columns, keyed by the primary key, as the Linux tracker keys
+// A table tab's rows, or a query result's, as the save sees them: keyed by the primary key, as the Linux tracker keys
 // them.
 #[derive(uniffi::Object)]
 pub struct TableEditor {
     session: Arc<Session>,
     tasks: Tasks,
     table: TableRef,
+    // The columns a save writes, one per column of the rows; a query result's column that writes none is generated.
     columns: Arc<[ColumnInfo]>,
     lock: Option<EditLock>,
+    layout: Layout,
+}
+
+enum Layout {
+    // A table tab's page holds the catalog's columns first, in the table's order.
+    Page,
+    // A query result keeps the columns it was read with; each writes the catalog column it traced to (core ADR 0015).
+    Result { read: Arc<[ResultColumn]> },
 }
 
 impl TableEditor {
@@ -155,6 +188,69 @@ impl TableEditor {
                 table,
                 columns,
                 lock,
+                layout: Layout::Page,
+            }))
+        })
+        .await
+    }
+
+    // `sql` is the statement the result was read with. The table's columns are read again, so a result read after the
+    // table changed locks rather than writes a column by its old place.
+    pub(crate) async fn open_result(
+        session: Arc<Session>,
+        tasks: Tasks,
+        sql: String,
+        rows: Arc<ResultSet>,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<Arc<Self>, CoreError> {
+        let cancel = token(cancel);
+        let runtime = tasks.clone();
+        on_runtime(&runtime, async move {
+            let read = rows.result_columns();
+            let locked = |session, tasks, read, lock: EditLock| {
+                Arc::new(Self {
+                    session,
+                    tasks,
+                    table: TableRef::new(None, String::new()),
+                    columns: Arc::from([]),
+                    lock: Some(lock),
+                    layout: Layout::Result { read },
+                })
+            };
+            if session.read_only() {
+                return Ok(locked(session, tasks, read, EditLock::ReadOnlyConnection));
+            }
+            let source = match result_source(&sql, session.grammar(), &read) {
+                Ok(source) => source,
+                Err(lock) => return Ok(locked(session, tasks, read, lock.into())),
+            };
+            let catalog = tokio::select! {
+                biased;
+                () = cancel.cancelled() => return Err(CoreError::Cancelled),
+                columns = session.refresh_columns(source.table.clone()) => columns?,
+            };
+            let target = match result_target(&source, &read, &catalog) {
+                Ok(target) => target,
+                Err(lock) => return Ok(locked(session, tasks, read, lock.into())),
+            };
+            let columns = read
+                .iter()
+                .zip(&target.positions)
+                .enumerate()
+                .map(
+                    |(index, (column, position))| match position.and_then(|position| catalog.get(position)) {
+                        Some(info) => info.clone(),
+                        None => unwritable(index, column),
+                    },
+                )
+                .collect();
+            Ok(Arc::new(Self {
+                session,
+                tasks,
+                table: target.table,
+                columns,
+                lock: None,
+                layout: Layout::Result { read },
             }))
         })
         .await
@@ -175,14 +271,22 @@ impl TableEditor {
         }
     }
 
-    // The result set holds the page's columns first, which build_page lays out in the catalog's order.
+    // A page holds the catalog's columns first, which build_page lays out in the catalog's order; a query result is
+    // the one the editor was opened on.
     fn check_layout(&self, rows: &[ResultColumn]) -> Result<(), CoreError> {
-        let same = rows.len() >= self.columns.len()
-            && self
-                .columns
-                .iter()
-                .zip(rows)
-                .all(|(catalog, read)| catalog.name == read.name);
+        let same = match &self.layout {
+            Layout::Page => {
+                rows.len() >= self.columns.len()
+                    && self
+                        .columns
+                        .iter()
+                        .zip(rows)
+                        .all(|(catalog, read)| catalog.name == read.name)
+            }
+            Layout::Result { read } => {
+                rows.len() == read.len() && read.iter().zip(rows).all(|(opened, now)| opened.name == now.name)
+            }
+        };
         match same {
             true => Ok(()),
             false => Err(CoreError::failed(
@@ -415,8 +519,12 @@ impl TableEditor {
         let dialect = self.session.current_dialect();
         self.columns
             .iter()
-            .map(|column| EditColumnInfo {
-                name: column.name.clone(),
+            .enumerate()
+            .map(|(index, column)| EditColumnInfo {
+                name: match &self.layout {
+                    Layout::Result { read } => read.get(index).map_or_else(String::new, |read| read.name.clone()),
+                    Layout::Page => column.name.clone(),
+                },
                 editable: editable(column),
                 editable_in_new_row: editable_in_new_row(column),
                 new_row: match new_draft_cell(column) {
@@ -608,7 +716,22 @@ pub(crate) fn save_gate(level: SafeModeLevel) -> SaveGate {
     }
 }
 
-// The primary key columns in the table's order, the order a key is read in.
+// A NUL cannot be in an identifier, so no key lookup by name ever lands on this column, and no statement names it.
+fn unwritable(index: usize, column: &ResultColumn) -> ColumnInfo {
+    ColumnInfo {
+        name: format!("\0{index}"),
+        column_type: column.column_type.clone(),
+        nullable: true,
+        primary_key: false,
+        is_auto_increment: false,
+        is_generated: true,
+        partition_scoped: false,
+        default: ColumnDefault::None,
+        comment: None,
+    }
+}
+
+// The primary key columns in the editor's order, the order a key is read in.
 fn pk_identity(columns: &[ColumnInfo]) -> RowIdentity {
     RowIdentity::UniqueKey {
         columns: columns
@@ -792,6 +915,19 @@ fn lock_error(lock: &EditLock) -> CoreError {
         EditLock::ColumnsChanged => CoreError::failed(
             "edit.columns_changed",
             "the rows were read with other columns than the table has now",
+        ),
+        EditLock::NotOneSelect => CoreError::failed("edit.not_one_select", "only the rows of one SELECT can be edited"),
+        EditLock::MoreThanOneTable => CoreError::failed(
+            "edit.more_than_one_table",
+            "rows from more than one table, a subquery or a CTE cannot be edited",
+        ),
+        EditLock::Collapsed => {
+            CoreError::failed("edit.collapsed", "grouped, distinct or computed rows cannot be edited")
+        }
+        EditLock::Untraced => CoreError::failed("edit.untraced", "only rows read straight from a table can be edited"),
+        EditLock::KeyNotShown => CoreError::failed(
+            "edit.key_not_shown",
+            "the result leaves out part of the table's primary key",
         ),
     }
 }

@@ -48,6 +48,32 @@ public sealed class TableProCore : IDisposable
         return Mapping.Url(CoreCall.Run(() => Native.CoreMethods.ParseConnectionUrl(url)));
     }
 
+    // The other apps Windows has, each looked for where it keeps its files; nothing is decrypted yet.
+    public async Task<IReadOnlyList<ForeignSource>> GetForeignSourcesAsync(ForeignAppDirs dirs)
+    {
+        ArgumentNullException.ThrowIfNull(dirs);
+        var sources = await CoreCall.RunAsync(() => _core.ForeignSources(Mapping.Dirs(dirs))).ConfigureAwait(false);
+        return [.. sources.Select(Mapping.Source)];
+    }
+
+    // File is the export the user picked, for an app imported from one. Throws foreign_import.* codes.
+    public async Task<ForeignImportReview> ReadForeignAsync(
+        ForeignApp app,
+        ForeignAppDirs dirs,
+        string? file,
+        ForeignImportRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(dirs);
+        ArgumentNullException.ThrowIfNull(request);
+        var native = new Native.ForeignImportRequest(request.IncludePasswords, request.IncludeSavedQueries);
+        var review = await CoreCall.RunAsync(
+                token => _core.ReadForeign(Mapping.ForeignApp(app), Mapping.Dirs(dirs), file, native, token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return new ForeignImportReview(review);
+    }
+
     // Opened once per core and shared. Throws TableProException with code ffi.no_storage without a storage directory.
     public async Task<QueryHistory> OpenHistoryAsync(CancellationToken cancellationToken = default)
     {

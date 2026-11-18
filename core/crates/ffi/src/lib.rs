@@ -18,6 +18,7 @@ mod error;
 mod export;
 mod favourites;
 mod filter;
+mod foreign_import;
 mod history;
 mod host;
 mod host_key;
@@ -65,6 +66,12 @@ pub use export::{ExportFormatTag, ExportProgress};
 pub use favourites::{DatabaseEnvironmentTag, FavouriteDatabaseInfo, FavouriteStore, FavouriteTableInfo};
 pub use filter::{
     CombinatorTag, FilterChoices, FilterColumn, FilterOpTag, FilterRuleArg, FilterValueArg, TableFilterArg,
+};
+pub use foreign_import::{
+    ExistingConnectionInfo, ForeignAppDirsArg, ForeignAppTag, ForeignConnectionChoice, ForeignConnectionRow,
+    ForeignImportChoices, ForeignImportOutcome, ForeignImportRequest, ForeignImportReview, ForeignQueryChoice,
+    ForeignQueryRow, ForeignSourceInfo, ForeignSslModeTag, PasswordOutcomeTag, PasswordSourceTag, QueryAvailabilityTag,
+    ResolutionTag, RowNoteInfo, SavedQuerySupportTag, TlsFileReasonTag,
 };
 pub use history::{
     HistoryCursorArg, HistoryEntryInfo, HistoryExportFormat, HistoryOutcomeTag, HistoryPageInfo, HistoryRun,

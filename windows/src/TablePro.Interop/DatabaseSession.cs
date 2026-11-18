@@ -232,6 +232,22 @@ public sealed partial class DatabaseSession : IAsyncDisposable
         return new TableEditor(editor);
     }
 
+    // A query result's rows as a save sees them; Lock says why not when the result is not one keyed table's rows.
+    // Rows is the run's only set, read outside a transaction in the session's database, which the caller checks.
+    public async Task<TableEditor> OpenResultEditorAsync(
+        string sql,
+        ResultSet rows,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sql);
+        ArgumentNullException.ThrowIfNull(rows);
+        var editor = await CoreCall.RunAsync(
+                token => _session.ResultEditor(sql, rows.Handle, token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return new TableEditor(editor);
+    }
+
     // The table's foreign keys and the other tables' keys that point at it, read in one operation.
     public async Task<TableKeys> ReadTableKeysAsync(TableName table, CancellationToken cancellationToken = default)
     {
