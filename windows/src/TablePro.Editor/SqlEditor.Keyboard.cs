@@ -158,6 +158,13 @@ public sealed partial class SqlEditor
             case (VirtualKey)191:
                 Edit(_model.ToggleLineComment);
                 return true;
+            // VS Code's Fold and Unfold.
+            case (VirtualKey)219 when shift:
+                FoldAtCaret();
+                return true;
+            case (VirtualKey)221 when shift:
+                UnfoldAtCaret();
+                return true;
             case (VirtualKey)221:
                 Edit(_model.Indent);
                 return true;

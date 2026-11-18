@@ -352,6 +352,24 @@ async fn a_cursor_error_points_into_the_users_own_statement() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
+async fn an_error_in_a_later_statement_counts_from_the_start_of_the_script() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let session = session(connection.as_ref()).await;
+    let script = "SELECT 'é';\nSELECT nope FROM pg_class";
+
+    let (summary, _) = run(session.as_ref(), script).await;
+
+    let RunEnd::Failed(DriverError::Server(diagnostics)) = &summary.end else {
+        panic!("a missing column ended {:?}", summary.end);
+    };
+    assert_eq!(diagnostics.sqlstate(), Some("42703"));
+    let position = usize::try_from(diagnostics.position.expect("a position")).expect("a small position");
+    assert_eq!(script.chars().skip(position - 1).take(4).collect::<String>(), "nope");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
 async fn call_procedure_with_commit_probes_status() {
     let fixture = start().await;
     let connection = connect(&fixture, false).await;

@@ -379,4 +379,115 @@ public sealed class QueryTabTests
             _tab.Snapshot());
         Assert.False(_tab.HasUnsavedChanges);
     }
+
+    [Fact]
+    public void TheSnapshotKeepsTheFoldedLinesAndNoneWhenNothingIsFolded()
+    {
+        Assert.Null(_tab.Snapshot().FoldedLines);
+
+        _view.FoldedLines = [2, 9];
+
+        Assert.Equal<int>([2, 9], _tab.Snapshot().FoldedLines!);
+    }
+
+    // The server counts code points from 1; the document keeps "\r\n" and a lone '\r' as one '\n'.
+    [Theory]
+    [InlineData(10, "select nope", 8, 17)]
+    [InlineData(5, "select '\U0001F600', nope", 13, 18)]
+    [InlineData(0, "select 1;\r\nselect nope", 19, 17)]
+    [InlineData(0, "select 1;\rselect nope", 18, 17)]
+    [InlineData(4, "select", 99, 10)]
+    public void AServerErrorPlaceBecomesTheOffsetTheDocumentHoldsIt(int start, string sent, int position, int offset) =>
+        Assert.Equal<int?>(offset, QueryTab.ErrorOffset(start, sent, position));
+
+    [Fact]
+    public void AServerErrorPlaceBeforeTheFirstCharacterIsNone()
+    {
+        Assert.Null(QueryTab.ErrorOffset(10, "select nope", 0));
+        Assert.Null(QueryTab.ErrorOffset(10, "select nope", -3));
+    }
+
+    [Fact]
+    public async Task RunStatementThatFailsAtAPlaceOffersItCountedFromTheStatementsStart()
+    {
+        _view.WholeText = "select 1;\nselect nope";
+        _view.Caret = 15;
+        _session.Statement = (_, caret) => caret >= 10 ? new Range(10, 21) : new Range(0, 9);
+        _session.Script = _ => FakeRun.Ending(new QueryOutcome.Failed(FailedAt(8)));
+
+        await _tab.RunStatementAsync();
+
+        Assert.Equal<string>(["select nope"], Assert.Single(_session.Editors).Runs);
+        Assert.Contains("error at 17", _view.Shown);
+    }
+
+    [Fact]
+    public async Task ASelectionThatFailsAtAPlaceOffersItCountedFromWhereTheSelectionStarts()
+    {
+        _view.WholeText = "select 1;\nselect nope";
+        _view.SelectedText = "select nope";
+        _view.SelectedTextStart = 10;
+        _session.Script = _ => FakeRun.Ending(new QueryOutcome.Failed(FailedAt(8)));
+
+        await _tab.RunAsync();
+
+        Assert.Contains("error at 17", _view.Shown);
+    }
+
+    // The whole text is sent with the file's own line breaks, which the document keeps as one '\n' each.
+    [Fact]
+    public async Task TheWholeTextThatFailsAtAPlaceOffersTheOffsetTheDocumentHoldsIt()
+    {
+        _view.WholeText = "select 1;\r\nselect nope";
+        _session.Script = _ => FakeRun.Ending(new QueryOutcome.Failed(FailedAt(19)));
+
+        await _tab.RunAsync();
+
+        Assert.Contains("error at 17", _view.Shown);
+    }
+
+    [Fact]
+    public async Task ARunOfSeveralSelectionsOffersNoPlace()
+    {
+        _view.SelectedText = "select nope\nselect 2";
+        _view.SelectedTextStart = null;
+        _session.Script = _ => FakeRun.Ending(new QueryOutcome.Failed(FailedAt(8)));
+
+        await _tab.RunAsync();
+
+        Assert.Equal<string>(["select nope\nselect 2"], Assert.Single(_session.Editors).Runs);
+        Assert.DoesNotContain(_view.Shown, shown => shown.StartsWith("error at", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ARunThatCompletesOffersNoPlace()
+    {
+        _view.SelectedText = "select 2";
+        _view.SelectedTextStart = 4;
+
+        await _tab.RunAsync();
+
+        Assert.Single(Assert.Single(_session.Editors).Runs);
+        Assert.DoesNotContain(_view.Shown, shown => shown.StartsWith("error at", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ASortTheServerFailsAtAPlaceOffersNoPlace()
+    {
+        _session.Sorted = (sql, _, _, _) => sql + " ORDER BY 1";
+        await _tab.RunAsync();
+        _session.Script = _ => FakeRun.Ending(new QueryOutcome.Failed(FailedAt(8)));
+
+        await _tab.SortAsync(new GridSort(0, SortDirection.Ascending));
+
+        Assert.Equal(2, Assert.Single(_session.Editors).Runs.Count);
+        Assert.DoesNotContain(_view.Shown, shown => shown.StartsWith("error at", StringComparison.Ordinal));
+    }
+
+    private static CoreError FailedAt(int position) => new(
+        "driver.server",
+        ["driver.server"],
+        "column \"nope\" does not exist",
+        new ServerMessage("column \"nope\" does not exist", null, "42703", null, null, position),
+        null);
 }
