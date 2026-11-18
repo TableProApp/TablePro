@@ -36,6 +36,14 @@ final class LibPQDriverCore: @unchecked Sendable {
     private var selectedSchema: String? { schemaState.withLock { $0.selected } }
 
     var onPostConnect: (@Sendable () async throws -> Void)?
+    var connectPlan: LibPQConnectPlan?
+    var directTLSMemory: LibPQDirectTLSMemory?
+
+    // Guarded by `connectionLock`. Answers the connect's first flight already carries, for `onPostConnect` to read.
+    private var connectAnswers: [String: Result<PluginQueryResult, Error>] = [:]
+    // Guarded by `connectionLock`. Set by a connect whose first flight applied the host's timeout, spent by the host's
+    // first `applyQueryTimeout`.
+    private var connectAppliedTimeoutMilliseconds: Int?
 
     /// Set by `LibPQBackedDriver` for the span of one connect, so every driver built on this
     /// core reports its handshake steps without having to thread a parameter through its own
@@ -109,8 +117,14 @@ final class LibPQDriverCore: @unchecked Sendable {
             connectTimeout: LibPQConnectTimeout(milliseconds: timeout.milliseconds - elapsedMilliseconds),
             kerberos: kerberos,
             serverName: config.tunneledServerName,
-            pinsCatalogSearchPath: pinsCatalogSearchPath
+            pinsCatalogSearchPath: pinsCatalogSearchPath,
+            directTLS: directTLSMemory
         )
+        connectionLock.withLock {
+            connectAnswers = [:]
+            connectAppliedTimeoutMilliseconds = nil
+        }
+        defer { connectionLock.withLock { connectAnswers = [:] } }
 
         do {
             try await withTaskCancellationHandler {
@@ -122,7 +136,13 @@ final class LibPQDriverCore: @unchecked Sendable {
                     _lostConnection = false
                 }
 
-                switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
+                let sessionSchema: PostgreSQLSchemaProbe
+                if let connectPlan {
+                    sessionSchema = await runConnectPlan(connectPlan, on: pqConn)
+                } else {
+                    sessionSchema = await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema)
+                }
+                switch sessionSchema {
                 case .schema(let schema):
                     schemaState.withLock { $0.current = schema }
                 case .empty:
@@ -154,6 +174,61 @@ final class LibPQDriverCore: @unchecked Sendable {
             pqConn.disconnect()
             throw error
         }
+    }
+
+    // The settings go last: a statement that fails rolls back every `SET` before it in the implicit transaction, and
+    // the reads have answered by then.
+    private func runConnectPlan(_ plan: LibPQConnectPlan, on pqConn: LibPQPluginConnection) async -> PostgreSQLSchemaProbe {
+        var settings: [String] = []
+        if let milliseconds = plan.statementTimeoutMilliseconds {
+            settings.append(LibPQConnectPlan.statementTimeout(milliseconds: milliseconds))
+        }
+        let scanSetting = plan.stabilizesBrowseScans
+            ? LibPQConnectPlan.browseScanSetting(backendProcessID: pqConn.backendProcessID)
+            : nil
+        if let scanSetting { settings.append(scanSetting) }
+
+        let batch = LibPQCatalogBatch(
+            leading: [PostgreSQLSchemaQueries.currentSchema],
+            reads: plan.reads,
+            trailing: settings
+        )
+        let startTime = Date()
+        guard let answered = try? await pqConn.executeStatementBatch(batch.text) else { return .failed }
+        let executionTime = Date().timeIntervalSince(startTime)
+
+        var answers: [String: Result<PluginQueryResult, Error>] = [:]
+        for (read, index) in zip(plan.reads, batch.readResultIndexes) where index < answered.count {
+            answers[read.statement] = answered[index].map { Self.pluginResult($0, executionTime: executionTime) }
+        }
+        let committed = answered.count == batch.statementCount && answered.allSatisfy { (try? $0.get()) != nil }
+        connectionLock.withLock {
+            connectAnswers = answers
+            connectAppliedTimeoutMilliseconds = committed ? plan.statementTimeoutMilliseconds : nil
+        }
+
+        if let scanSetting {
+            await finishBrowseScanSetting(scanSetting, answered: answered, batch: batch, on: pqConn)
+        }
+        let schemaRows = answered.first.flatMap { try? $0.get().rows }
+        return PostgreSQLSchemaQueries.probe(rows: schemaRows)
+    }
+
+    // A read that failed ended the Query before the setting, so it goes alone. One the server refused stays refused.
+    private func finishBrowseScanSetting(
+        _ statement: String,
+        answered: [Result<LibPQPluginQueryResult, Error>],
+        batch: LibPQCatalogBatch,
+        on pqConn: LibPQPluginConnection
+    ) async {
+        let rows: [[PluginCellValue]]?
+        if answered.count == batch.statementCount {
+            rows = answered.last.flatMap { try? $0.get().rows }
+        } else {
+            rows = (try? await pqConn.executeQuery(statement))?.rows
+        }
+        guard rows?.isEmpty == false else { return }
+        await pqConn.noteDirectBackend()
     }
 
     private func firstFallbackSchema(_ pqConn: LibPQPluginConnection) async -> String? {
@@ -257,47 +332,77 @@ final class LibPQDriverCore: @unchecked Sendable {
         return try await executeTransactionScopedRead(path + statement)
     }
 
-    // The server runs one Query's statements as one implicit transaction, so one `SET LOCAL` covers every read.
-    func executeCatalogReads(_ statements: [String]) async -> [Result<PluginQueryResult, Error>] {
-        guard pinsCatalogSearchPath, statements.count > 1, let pqConn = libpqConnection else {
-            return await catalogReadsOneByOne(statements)
+    func makeConnectPlan(reads: [PostgreSQLCatalogRead], stabilizesBrowseScans: Bool) -> LibPQConnectPlan {
+        let options = config.additionalFields["connectionOptions"] ?? ""
+        let namesScanSetting = LibPQConnectionString.settingNames(in: options).contains("synchronize_seqscans")
+        return LibPQConnectPlan(
+            reads: reads,
+            statementTimeoutMilliseconds: config.additionalFields["queryTimeoutSeconds"]
+                .flatMap { Int($0) }
+                .map(PluginQueryTimeout.milliseconds),
+            stabilizesBrowseScans: stabilizesBrowseScans && !namesScanSetting
+        )
+    }
+
+    // The server runs one Query's statements as one implicit transaction, so one `SET LOCAL` covers every read up to
+    // the next. A read the batch never reached is sent alone, unless the caller stops at the first failure anyway.
+    func executeCatalogReads(
+        _ reads: [PostgreSQLCatalogRead],
+        stopsAtFirstFailure: Bool = false
+    ) async -> [Result<PluginQueryResult, Error>] {
+        let prefetched = connectionLock.withLock { connectAnswers }
+        if !prefetched.isEmpty {
+            var answers: [Result<PluginQueryResult, Error>] = []
+            for read in reads {
+                if let answer = prefetched[read.statement] {
+                    answers.append(answer)
+                } else {
+                    answers.append(await catalogReadResult(read))
+                }
+            }
+            return answers
         }
+        guard pinsCatalogSearchPath, reads.count > 1, let pqConn = libpqConnection else {
+            return await catalogReadsOneByOne(reads)
+        }
+
+        let batch = LibPQCatalogBatch(reads: reads)
         let startTime = Date()
         let answered: [Result<LibPQPluginQueryResult, Error>]
         do {
-            let text = PostgreSQLCatalogSearchPath.pinned + statements.joined(separator: ";\n")
-            guard let batch = try await pqConn.executeConnectStatements(text) else {
-                return await catalogReadsOneByOne(statements)
+            guard let results = try await pqConn.executeStatementBatch(batch.text) else {
+                return await catalogReadsOneByOne(reads)
             }
-            // The first result is the pinned path's own.
-            answered = Array(batch.dropFirst())
+            answered = results
         } catch {
-            // A round trip that failed fails the connect in `finishConnecting`, so no read is sent again.
-            return statements.map { _ in .failure(error) }
+            return reads.map { _ in .failure(error) }
         }
         let executionTime = Date().timeIntervalSince(startTime)
-        var reads: [Result<PluginQueryResult, Error>] = []
-        for (index, statement) in statements.enumerated() {
-            guard index < answered.count else {
-                reads.append(await catalogReadResult(statement))
-                continue
+
+        var answers: [Result<PluginQueryResult, Error>] = []
+        for (read, index) in zip(reads, batch.readResultIndexes) {
+            if index < answered.count {
+                answers.append(answered[index].map { Self.pluginResult($0, executionTime: executionTime) })
+            } else if stopsAtFirstFailure, let failed = answers.first(where: { (try? $0.get()) == nil }) {
+                answers.append(failed)
+            } else {
+                answers.append(await catalogReadResult(read))
             }
-            reads.append(answered[index].map { Self.pluginResult($0, executionTime: executionTime) })
         }
-        return reads
+        return answers
     }
 
-    private func catalogReadsOneByOne(_ statements: [String]) async -> [Result<PluginQueryResult, Error>] {
-        var reads: [Result<PluginQueryResult, Error>] = []
-        for statement in statements {
-            reads.append(await catalogReadResult(statement))
+    private func catalogReadsOneByOne(_ reads: [PostgreSQLCatalogRead]) async -> [Result<PluginQueryResult, Error>] {
+        var answers: [Result<PluginQueryResult, Error>] = []
+        for read in reads {
+            answers.append(await catalogReadResult(read))
         }
-        return reads
+        return answers
     }
 
-    private func catalogReadResult(_ statement: String) async -> Result<PluginQueryResult, Error> {
+    private func catalogReadResult(_ read: PostgreSQLCatalogRead) async -> Result<PluginQueryResult, Error> {
         do {
-            return .success(try await executeCatalogRead(statement))
+            return .success(try await executeCatalogRead(read.statement, namesRelativeTo: read.namesRelativeTo))
         } catch {
             return .failure(error)
         }
@@ -486,7 +591,12 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     func applyQueryTimeout(_ seconds: Int) async throws {
         let ms = PluginQueryTimeout.milliseconds(seconds)
-        _ = try await execute(query: "SET statement_timeout = \(ms)")
+        let alreadyApplied = connectionLock.withLock {
+            defer { connectAppliedTimeoutMilliseconds = nil }
+            return connectAppliedTimeoutMilliseconds == ms
+        }
+        guard !alreadyApplied else { return }
+        _ = try await execute(query: LibPQConnectPlan.statementTimeout(milliseconds: ms))
     }
 
     func executeSessionSetting(

@@ -14,6 +14,8 @@ final class KingbaseESPluginDriver: PostgreSQLPluginDriver, @unchecked Sendable 
         )
     }
 
+    override var tunesCommunitySession: Bool { false }
+
     // Not measured against a KingbaseES catalog yet, so no Extensions group.
     override var serverObjectKinds: [PluginServerObjectKind] { [] }
 

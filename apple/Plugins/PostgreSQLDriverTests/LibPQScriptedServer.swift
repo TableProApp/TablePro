@@ -36,6 +36,8 @@ final class LibPQScriptedServer: @unchecked Sendable {
         // After the rows, wait for a cancel request and fail with 57014. A statement nobody cancels completes.
         var waitsForCancel = false
         var failure: Failure?
+        // Sent after the rows in place of the completion, as a statement that fails part way through its result.
+        var failureAfterRows: Failure?
         var copyIn: CopyIn?
     }
 
@@ -48,6 +50,7 @@ final class LibPQScriptedServer: @unchecked Sendable {
         var takesNoDataUntilCancelled = false
     }
 
+    static let backendProcessID: Int32 = 4_242
     static let idle = UInt8(ascii: "I")
     static let inTransaction = UInt8(ascii: "T")
     static let failedTransaction = UInt8(ascii: "E")
@@ -232,6 +235,10 @@ final class LibPQScriptedServer: @unchecked Sendable {
             return send(client, Self.errorResponse(failure))
         }
         guard send(client, answer.rows.flatMap(Self.dataRow)) else { return false }
+        if let failure = answer.failureAfterRows {
+            failed = true
+            return send(client, Self.errorResponse(failure))
+        }
         if answer.waitsForCancel, cancelArrived.wait(timeout: .now() + Self.cancelWait) == .success {
             failed = true
             return send(client, Self.errorResponse(Failure(
@@ -348,7 +355,7 @@ final class LibPQScriptedServer: @unchecked Sendable {
             for (name, value) in Self.parameters {
                 reply += Self.message("S", Array(name.utf8) + [0] + Array(value.utf8) + [0])
             }
-            reply += Self.message("K", Self.bytes(UInt32(4_242)) + Self.bytes(UInt32(7_777)))
+            reply += Self.message("K", Self.bytes(UInt32(Self.backendProcessID)) + Self.bytes(UInt32(7_777)))
             reply += Self.message("Z", [Self.idle])
             return send(client, reply)
         }

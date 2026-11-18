@@ -9,11 +9,18 @@ import TableProLogRedaction
 import TableProPluginKit
 import TableProPostgreSQLCore
 
+nonisolated struct PostgreSQLCatalogRead: Equatable, Sendable {
+    let statement: String
+    var namesRelativeTo: String?
+}
+
 // The catalog reads and statements an export needs, over whichever connection runs them. The plugin driver and the
 // iOS driver each build one with their own read.
 nonisolated struct PostgreSQLCatalogExport: Sendable {
     // `namesRelativeTo` nil runs the read with only pg_catalog on the path; a schema puts that schema first.
     typealias Read = @Sendable (_ statement: String, _ namesRelativeTo: String?) async throws -> [[PluginCellValue]]
+    // Answers in the order asked, and throws what the first read that failed threw.
+    typealias ReadAll = @Sendable (_ reads: [PostgreSQLCatalogRead]) async throws -> [[[PluginCellValue]]]
 
     static let tableDDLIncludesForeignKeys = false
 
@@ -21,6 +28,7 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
     private static let sequenceLogger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "Sequences")
 
     let read: Read
+    let readAll: ReadAll?
     let currentSchema: String
     // The server version the session resolved: what the reads' column choices follow.
     let capabilities: PostgreSQLCapabilities
@@ -30,12 +38,14 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
 
     init(
         read: @escaping Read,
+        readAll: ReadAll? = nil,
         currentSchema: String,
         capabilities: PostgreSQLCapabilities,
         catalogCapabilities: PostgreSQLCapabilities,
         catalogPresence: PostgreSQLCatalogPresence?
     ) {
         self.read = read
+        self.readAll = readAll
         self.currentSchema = currentSchema
         self.capabilities = capabilities
         self.catalogCapabilities = catalogCapabilities
@@ -293,41 +303,23 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
     // MARK: - Columns
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let resolvedSchema = schema ?? currentSchema
-        let catalog = try await fetchTypeCatalog(schema: resolvedSchema, table: table)
-        let query = PostgreSQLSchemaQueries.columnsQuery(
-            schema: resolvedSchema,
-            table: table,
-            capabilities: capabilities,
-            includeMaterializedViews: includesMaterializedViews
-        )
-        let result = try await rows(query)
-        let spellings = try await fetchColumnSpellings(schema: resolvedSchema, table: table)[table] ?? [:]
-        let columnDDL = try await fetchColumnDDL(schema: resolvedSchema, table: table)[table] ?? [:]
-        return result.compactMap { row in
-            Self.column(row, tableNameOffset: 0, catalog: catalog, spellings: spellings, columnDDL: columnDDL)
+        let answers = try await columnCatalog(schema: schema ?? currentSchema, table: table)
+        let spellings = answers.spellings[table] ?? [:]
+        let columnDDL = answers.columnDDL[table] ?? [:]
+        return answers.columns.compactMap { row in
+            Self.column(row, tableNameOffset: 0, catalog: answers.types, spellings: spellings, columnDDL: columnDDL)
         }
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let resolvedSchema = schema ?? currentSchema
-        let catalog = try await fetchTypeCatalog(schema: resolvedSchema, table: nil)
-        let query = PostgreSQLSchemaQueries.columnsQuery(
-            schema: resolvedSchema,
-            table: nil,
-            capabilities: capabilities,
-            includeMaterializedViews: includesMaterializedViews
-        )
-        let result = try await rows(query)
-        let spellings = try await fetchColumnSpellings(schema: resolvedSchema, table: nil)
-        let columnDDL = try await fetchColumnDDL(schema: resolvedSchema, table: nil)
+        let answers = try await columnCatalog(schema: schema ?? currentSchema, table: nil)
         var allColumns: [String: [PluginColumnInfo]] = [:]
-        for row in result {
+        for row in answers.columns {
             guard row.count >= 5, let tableName = row[0].asText else { continue }
-            let tableDDL = columnDDL[tableName] ?? [:]
-            let tableSpellings = spellings[tableName] ?? [:]
+            let tableDDL = answers.columnDDL[tableName] ?? [:]
+            let tableSpellings = answers.spellings[tableName] ?? [:]
             if let column = Self.column(
-                row, tableNameOffset: 1, catalog: catalog, spellings: tableSpellings, columnDDL: tableDDL
+                row, tableNameOffset: 1, catalog: answers.types, spellings: tableSpellings, columnDDL: tableDDL
             ) {
                 allColumns[tableName, default: []].append(column)
             }
@@ -335,25 +327,54 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
         return allColumns
     }
 
-    private func fetchColumnSpellings(
-        schema: String,
-        table: String?
-    ) async throws -> [String: [String: PostgreSQLColumnSpelling]] {
-        let query = PostgreSQLSchemaQueries.columnSpellingQuery(schema: schema, table: table, capabilities: capabilities)
-        return PostgreSQLSchemaQueries.columnSpellings(rows: try await rows(query, namesRelativeTo: schema))
+    private struct ColumnCatalog {
+        let types: PostgresTypeCatalog
+        let columns: [[PluginCellValue]]
+        let spellings: [String: [String: PostgreSQLColumnSpelling]]
+        let columnDDL: [String: [String: PostgreSQLCatalogColumnDDL]]
     }
 
-    private func fetchColumnDDL(
-        schema: String,
-        table: String?
-    ) async throws -> [String: [String: PostgreSQLCatalogColumnDDL]] {
-        let query = PostgreSQLSchemaQueries.columnDDLQuery(schema: schema, table: table, capabilities: capabilities)
-        return PostgreSQLSchemaQueries.columnDDL(rows: try await rows(query))
+    private func columnCatalog(schema: String, table: String?) async throws -> ColumnCatalog {
+        let answers = try await allRows([
+            PostgreSQLCatalogRead(statement: PostgreSQLSchemaQueries.enumLabelQuery(schema: schema, table: table)),
+            PostgreSQLCatalogRead(statement: PostgreSQLSchemaQueries.arrayTypeQuery(schema: schema, table: table)),
+            PostgreSQLCatalogRead(statement: PostgreSQLSchemaQueries.columnsQuery(
+                schema: schema,
+                table: table,
+                capabilities: capabilities,
+                includeMaterializedViews: includesMaterializedViews
+            )),
+            PostgreSQLCatalogRead(
+                statement: PostgreSQLSchemaQueries.columnSpellingQuery(schema: schema, table: table, capabilities: capabilities),
+                namesRelativeTo: schema
+            ),
+            PostgreSQLCatalogRead(
+                statement: PostgreSQLSchemaQueries.columnDDLQuery(schema: schema, table: table, capabilities: capabilities)
+            )
+        ])
+        return ColumnCatalog(
+            types: PostgresTypeCatalog(
+                enumLabels: Self.enumLabelMap(rows: answers[0]),
+                arrayTypes: Self.arrayTypeMap(rows: answers[1])
+            ),
+            columns: answers[2],
+            spellings: PostgreSQLSchemaQueries.columnSpellings(rows: answers[3]),
+            columnDDL: PostgreSQLSchemaQueries.columnDDL(rows: answers[4])
+        )
     }
 
-    private func fetchEnumLabelMap(schema: String, table: String?) async throws -> [String: [String]] {
+    private func allRows(_ reads: [PostgreSQLCatalogRead]) async throws -> [[[PluginCellValue]]] {
+        if let readAll { return try await readAll(reads) }
+        var answers: [[[PluginCellValue]]] = []
+        for read in reads {
+            answers.append(try await rows(read.statement, namesRelativeTo: read.namesRelativeTo))
+        }
+        return answers
+    }
+
+    private static func enumLabelMap(rows: [[PluginCellValue]]) -> [String: [String]] {
         var map: [String: [String]] = [:]
-        for row in try await rows(PostgreSQLSchemaQueries.enumLabelQuery(schema: schema, table: table)) {
+        for row in rows {
             guard let schemaName = row[safe: 0]?.asText,
                   let typeName = row[safe: 1]?.asText else { continue }
             let key = PostgresColumnTypeResolver.qualifiedName(schema: schemaName, name: typeName)
@@ -366,9 +387,9 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
         return map
     }
 
-    private func fetchArrayTypeMap(schema: String, table: String?) async throws -> [String: PostgresArrayTypeInfo] {
+    private static func arrayTypeMap(rows: [[PluginCellValue]]) -> [String: PostgresArrayTypeInfo] {
         var map: [String: PostgresArrayTypeInfo] = [:]
-        for row in try await rows(PostgreSQLSchemaQueries.arrayTypeQuery(schema: schema, table: table)) {
+        for row in rows {
             guard let schemaName = row[safe: 0]?.asText,
                   let arrayTypeName = row[safe: 1]?.asText,
                   let elementTypeName = row[safe: 2]?.asText,
@@ -381,8 +402,8 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
 
     // Scoped to the types the read's own columns use and read fresh: a cache goes stale on the next `CREATE TYPE`.
     private func fetchTypeCatalog(schema: String, table: String?) async throws -> PostgresTypeCatalog {
-        let enumLabels = try await fetchEnumLabelMap(schema: schema, table: table)
-        let arrayTypes = try await fetchArrayTypeMap(schema: schema, table: table)
+        let enumLabels = Self.enumLabelMap(rows: try await rows(PostgreSQLSchemaQueries.enumLabelQuery(schema: schema, table: table)))
+        let arrayTypes = Self.arrayTypeMap(rows: try await rows(PostgreSQLSchemaQueries.arrayTypeQuery(schema: schema, table: table)))
         return PostgresTypeCatalog(enumLabels: enumLabels, arrayTypes: arrayTypes)
     }
 

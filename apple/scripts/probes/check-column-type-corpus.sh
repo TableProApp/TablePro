@@ -65,7 +65,7 @@ READY=()
 case "$ENGINE" in
     postgresql)
         FOLDER=PostgreSQLDriverPlugin CLASS=PostgreSQLPlugin C_MODULE=CLibPQ
-        PRODUCTS="TableProCoreTypes TableProKerberos TableProLogRedaction TableProPostgreSQLCore TableProSQLVocabulary"
+        PRODUCTS="TableProCoreTypes TableProGeometry TableProKerberos TableProLogRedaction TableProPostgreSQLCore TableProSQLVocabulary TableProTLSClientIdentity"
         LINK="$ROOT/Libs/libpq.a $ROOT/Libs/libpgcommon.a $ROOT/Libs/libpgport.a -lssl.3 -lcrypto.3 -lz -framework GSS -lcom_err"
         IMAGE=postgres:17-alpine PORT_IN=5432 PORT=15467 USER_DEFAULT=postgres DATABASE_DEFAULT=postgres
         DOCKER_ENV=(-e "POSTGRES_PASSWORD=$PASSWORD_DEFAULT")
@@ -192,6 +192,7 @@ for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox; d
 done
 
 dependencies='.product(name: "TableProPluginKit", package: "TableProCore"),
+                .product(name: "TableProGzip", package: "TableProCore"),
                 .product(name: "TableProSQLGrammar", package: "TableProCore"),
                 .product(name: "TableProProcess", package: "TableProCore"),'
 for product in $PRODUCTS; do

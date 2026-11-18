@@ -87,7 +87,7 @@ build_libpq() {
     # not have. Only the server's credential delegation uses them; libpq includes gssapi.h alone.
     MACOSX_DEPLOYMENT_TARGET=$DEPLOY_TARGET \
     CPPFLAGS="-I$gss_include -I$openssl_prefix/include" \
-    CFLAGS="-arch $arch -mmacosx-version-min=$DEPLOY_TARGET -Wno-unguarded-availability-new -I$openssl_prefix/include" \
+    CFLAGS="-O2 -arch $arch -mmacosx-version-min=$DEPLOY_TARGET -Wno-unguarded-availability-new -I$openssl_prefix/include" \
     LDFLAGS="-arch $arch -L$openssl_prefix/lib" \
     PKG_CONFIG_PATH="$openssl_prefix/lib64/pkgconfig:$openssl_prefix/lib/pkgconfig" \
     ac_cv_func_strchrnul=yes \

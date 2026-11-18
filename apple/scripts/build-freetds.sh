@@ -126,7 +126,7 @@ build_slice() {
             --with-openssl="$OPENSSL_PREFIX" \
             ${KRB5_FLAG} \
             CC="$CC_BIN" \
-            CFLAGS="-arch ${ARCH} -isysroot ${SDKPATH} ${VERSION_FLAG} -I${OPENSSL_PREFIX}/include" \
+            CFLAGS="-O2 -arch ${ARCH} -isysroot ${SDKPATH} ${VERSION_FLAG} -I${OPENSSL_PREFIX}/include" \
             LDFLAGS="-arch ${ARCH} -isysroot ${SDKPATH} -L${OPENSSL_PREFIX}/lib"
 
     # Build only the libraries we need (skip src/apps which require readline + native exec).
