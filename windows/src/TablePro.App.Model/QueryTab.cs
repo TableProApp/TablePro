@@ -217,10 +217,27 @@ public sealed class QueryTab : IWorkspaceTab
         }
 
         var text = _view.DocumentText;
-        return _session.StatementAt(text, _view.Caret) is { } statement
-            && text[statement].Trim() is { Length: > 0 } found
-                ? found
-                : null;
+        if (_session.StatementAt(text, _view.Caret) is not { } statement)
+        {
+            return null;
+        }
+
+        // The range stops before its terminator, which the assistant sees as the user wrote it.
+        var (start, length) = statement.GetOffsetAndLength(text.Length);
+        var end = start + length;
+        var after = end;
+        while (after < text.Length && text[after] is ' ' or '\t')
+        {
+            after++;
+        }
+
+        if (after < text.Length && text[after] == ';')
+        {
+            end = after + 1;
+        }
+
+        var found = text[start..end].Trim();
+        return found.Length > 0 ? found : null;
     }
 
     // A scratch tab's text is kept in the session, so only a file tab's unsaved text is asked about.

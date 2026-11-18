@@ -87,9 +87,12 @@ public sealed class QueryTabHistoryTests
         _session.Statement = (_, caret) => caret >= 10 ? new Range(10, 18) : new Range(0, 8);
 
         var atCaret = _tab.AssistantStatement();
+        _view.Caret = 3;
+        var withItsTerminator = _tab.AssistantStatement();
         _view.SelectedText = " select 1 ";
 
         Assert.Equal("select 2", atCaret);
+        Assert.Equal("select 1;", withItsTerminator);
         Assert.Equal("select 1", _tab.AssistantStatement());
     }
 

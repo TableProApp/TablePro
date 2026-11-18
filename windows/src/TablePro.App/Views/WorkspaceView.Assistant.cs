@@ -17,9 +17,7 @@ public sealed partial class WorkspaceView
 
     // Off with no provider, Blocked under the connection's Never; the Query menu's AI commands follow it.
     public AssistantAvailability AssistantAvailability =>
-        _workbench.Settings.Assistant is null ? AssistantAvailability.Off
-        : _connection.AiPolicy == AiPolicy.Never ? AssistantAvailability.Blocked
-        : AssistantAvailability.Ready;
+        new AssistantAccess(() => _workbench.Settings.Assistant, () => _connection.AiPolicy).Availability;
 
     // A command engine, as Redis or MongoDB, has no statement to explain.
     public bool CanAskAssistant =>
