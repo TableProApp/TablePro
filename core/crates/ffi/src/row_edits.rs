@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Weak};
 
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ResultColumn};
 use tablepro_core::dialect::SqlDialect;
@@ -24,7 +24,7 @@ use tablepro_session::{OperationError, OperationKind, Session};
 use crate::cancel_token::{CancelToken, token};
 use crate::catalog::TableName;
 use crate::error::{BoxedErrorInfo, CoreError};
-use crate::results::{ResultSet, ValueKind};
+use crate::results::{ResultSet, ResultStore, ValueKind};
 use crate::runtime::on_runtime;
 
 // What the user put in a cell. An empty text means what `parse_edit_text` says it means for the column.
@@ -149,7 +149,11 @@ enum Layout {
     // A table tab's page holds the catalog's columns first, in the table's order.
     Page,
     // A query result keeps the columns it was read with; each writes the catalog column it traced to (core ADR 0015).
-    Result { read: Arc<[ResultColumn]> },
+    // Edits name rows of that one result, so rows of another statement can never be keyed against this table.
+    Result {
+        read: Arc<[ResultColumn]>,
+        rows: Weak<ResultStore>,
+    },
 }
 
 impl TableEditor {
@@ -207,6 +211,7 @@ impl TableEditor {
         let runtime = tasks.clone();
         on_runtime(&runtime, async move {
             let read = rows.result_columns();
+            let held = Arc::downgrade(rows.store());
             let locked = |session, tasks, read, lock: EditLock| {
                 Arc::new(Self {
                     session,
@@ -214,7 +219,10 @@ impl TableEditor {
                     table: TableRef::new(None, String::new()),
                     columns: Arc::from([]),
                     lock: Some(lock),
-                    layout: Layout::Result { read },
+                    layout: Layout::Result {
+                        read,
+                        rows: held.clone(),
+                    },
                 })
             };
             if session.read_only() {
@@ -250,7 +258,7 @@ impl TableEditor {
                 table: target.table,
                 columns,
                 lock: None,
-                layout: Layout::Result { read },
+                layout: Layout::Result { read, rows: held },
             }))
         })
         .await
@@ -272,8 +280,8 @@ impl TableEditor {
     }
 
     // A page holds the catalog's columns first, which build_page lays out in the catalog's order; a query result is
-    // the one the editor was opened on.
-    fn check_layout(&self, rows: &[ResultColumn]) -> Result<(), CoreError> {
+    // the one the editor was opened on, sorted or not.
+    fn check_layout(&self, set: &ResultSet, rows: &[ResultColumn]) -> Result<(), CoreError> {
         let same = match &self.layout {
             Layout::Page => {
                 rows.len() >= self.columns.len()
@@ -283,8 +291,10 @@ impl TableEditor {
                         .zip(rows)
                         .all(|(catalog, read)| catalog.name == read.name)
             }
-            Layout::Result { read } => {
-                rows.len() == read.len() && read.iter().zip(rows).all(|(opened, now)| opened.name == now.name)
+            Layout::Result { read, rows: held } => {
+                std::ptr::eq(held.as_ptr(), Arc::as_ptr(set.store()))
+                    && rows.len() == read.len()
+                    && read.iter().zip(rows).all(|(opened, now)| opened.name == now.name)
             }
         };
         match same {
@@ -350,7 +360,7 @@ impl TableEditor {
         let read = rows.result_columns();
         let reads_rows = edits.iter().any(|edit| !matches!(edit, RowEdit::Insert { .. }));
         if reads_rows {
-            self.check_layout(&read)?;
+            self.check_layout(rows, &read)?;
         }
         let deleted: HashSet<u64> = edits
             .iter()
@@ -505,7 +515,7 @@ impl TableEditor {
             return Some(lock);
         }
         let read = rows.result_columns();
-        if self.check_layout(&read).is_err() {
+        if self.check_layout(&rows, &read).is_err() {
             return Some(EditLock::ColumnsChanged);
         }
         if rows.row_count() == 0 {
@@ -522,7 +532,7 @@ impl TableEditor {
             .enumerate()
             .map(|(index, column)| EditColumnInfo {
                 name: match &self.layout {
-                    Layout::Result { read } => read.get(index).map_or_else(String::new, |read| read.name.clone()),
+                    Layout::Result { read, .. } => read.get(index).map_or_else(String::new, |read| read.name.clone()),
                     Layout::Page => column.name.clone(),
                 },
                 editable: editable(column),

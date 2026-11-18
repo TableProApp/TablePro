@@ -251,7 +251,7 @@ async fn a_result_that_is_not_one_keyed_table_s_rows_says_why() {
 }
 
 #[tokio::test]
-async fn edits_against_another_result_are_refused() {
+async fn edits_name_rows_of_the_editor_s_own_result_sorted_or_not() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("people.sqlite");
     let core = core(dir.path());
@@ -259,12 +259,25 @@ async fn edits_against_another_result_are_refused() {
     let session = core.open_file(file(&path, false), None).await.unwrap();
     let sql = "SELECT id, name FROM people";
     let shown = run(&session, sql).await.unwrap();
-    let editor = session.result_editor(sql.to_owned(), shown, None).await.unwrap();
+    let editor = session
+        .result_editor(sql.to_owned(), shown.clone(), None)
+        .await
+        .unwrap();
+    let sorted = shown.sorted(1, false).unwrap();
+    let again = run(&session, sql).await.unwrap();
     let other = run(&session, "SELECT id, age FROM people").await.unwrap();
-    let lock = editor.lock_for(other.clone());
-    let refused = editor.plan(other, vec![RowEdit::Delete { row: 0 }]).err().unwrap();
+    let sorted_lock = editor.lock_for(sorted.clone());
+    let again_lock = editor.lock_for(again.clone());
+    let other_lock = editor.lock_for(other.clone());
+    let refused = editor.plan(again, vec![RowEdit::Delete { row: 0 }]).err().unwrap();
+    let save = editor.plan(sorted, vec![RowEdit::Delete { row: 0 }]).unwrap();
+    let statements = save.statements();
     session.close().await.unwrap();
 
-    assert_eq!(lock, Some(EditLock::ColumnsChanged));
+    assert_eq!(sorted_lock, None);
+    assert_eq!(again_lock, Some(EditLock::ColumnsChanged));
+    assert_eq!(other_lock, Some(EditLock::ColumnsChanged));
     assert_eq!(refused.code(), "edit.columns_changed");
+    // Linus sorts first by name, descending.
+    assert_eq!(statements[0].values, ["3"]);
 }
