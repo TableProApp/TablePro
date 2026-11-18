@@ -162,6 +162,7 @@ async fn a_result_of_one_keyed_table_saves_an_update_an_insert_and_a_delete() {
     session.close().await.unwrap();
 
     assert_eq!(editor.lock(), None);
+    assert_eq!(editor.table().map(|table| table.name).as_deref(), Some("people"));
     assert_eq!(
         columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),
         ["name", "id", "age"]
@@ -248,6 +249,21 @@ async fn a_result_that_is_not_one_keyed_table_s_rows_says_why() {
     assert_eq!(view, Some(EditLock::Untraced));
     assert_eq!(pragma, Some(EditLock::NotOneSelect));
     assert_eq!(locked, Some(EditLock::ReadOnlyConnection));
+}
+
+#[tokio::test]
+async fn a_locked_result_names_no_table() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("people.sqlite");
+    let core = core(dir.path());
+    seeded(&core, &path).await;
+    let session = core.open_file(file(&path, false), None).await.unwrap();
+    let sql = "SELECT count(*) FROM people";
+    let set = run(&session, sql).await.unwrap();
+    let editor = session.result_editor(sql.to_owned(), set, None).await.unwrap();
+    session.close().await.unwrap();
+
+    assert_eq!(editor.table(), None);
 }
 
 #[tokio::test]

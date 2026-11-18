@@ -40,6 +40,7 @@
                 <MenuFlyoutItem x:Uid="MenuImport" x:Name="MenuImport" Click="OnImport">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Import" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="ImportAppMenu" x:Name="MenuImportFromApp" AutomationProperties.AutomationId="MenuImportFromApp" Click="OnImportFromApp" />
                 <MenuFlyoutItem x:Uid="MenuExportConnections" x:Name="MenuExportConnections" Click="OnExportConnections" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuNewQueryTab" x:Name="MenuNewQueryTab" Click="OnNewQueryTab" IsEnabled="False">

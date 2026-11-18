@@ -1323,6 +1323,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -3005,6 +3007,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_tableeditor_plan(ulong @ptr,ulong @rows,RustBuffer @edits,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_tableeditor_table(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -5809,6 +5822,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_tableeditor_table(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_queryrun_cancel(
     );
 
@@ -7392,6 +7416,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tableeditor_plan();
             if (checksum != 7349) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tableeditor_plan` checksum `7349`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tableeditor_table();
+            if (checksum != 44578) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tableeditor_table` checksum `44578`, library returned `{checksum}`");
             }
         }
         {
@@ -13227,6 +13257,7 @@ internal interface ITableEditor {
     EditLock? LockFor(ResultSet @rows);
     /// <exception cref="CoreException"></exception>
     RowSave Plan(ResultSet @rows, RowEdit[] @edits);
+    TableName? Table();
 }
 internal class TableEditor : ITableEditor, IDisposable {
     protected ulong pointer;
@@ -13365,6 +13396,14 @@ internal class TableEditor : ITableEditor, IDisposable {
         return CallWithPointer(thisPtr => FfiConverterTypeRowSave.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_method_tableeditor_plan(thisPtr, FfiConverterTypeResultSet.INSTANCE.Lower(@rows), FfiConverterSequenceTypeRowEdit.INSTANCE.Lower(@edits), ref _status)
+)));
+    }
+    
+    
+    public TableName? Table() {
+        return CallWithPointer(thisPtr => FfiConverterOptionalTypeTableName.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_tableeditor_table(thisPtr,  ref _status)
 )));
     }
     

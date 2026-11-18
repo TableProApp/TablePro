@@ -509,6 +509,14 @@ impl TableEditor {
         }
     }
 
+    // The table a save writes, as the result's driver named it; None while a query result is locked.
+    pub fn table(&self) -> Option<TableName> {
+        (!self.table.name.is_empty()).then(|| TableName {
+            schema: self.table.schema.clone(),
+            name: self.table.name.clone(),
+        })
+    }
+
     // The page's own locks too: a lock here leaves every row of `rows` as it is.
     pub fn lock_for(&self, rows: Arc<ResultSet>) -> Option<EditLock> {
         if let Some(lock) = self.lock() {

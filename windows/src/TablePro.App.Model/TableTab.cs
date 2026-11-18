@@ -66,6 +66,9 @@ public abstract record EditRefusal
     }
 
     public sealed record Invalid(CoreError Failure) : EditRefusal;
+
+    // A query result the app refuses before it asks the core, as one read inside a transaction.
+    public sealed record ResultBlocked(ResultEditBlock Block) : EditRefusal;
 }
 
 // What a table tab shows and asks; the view words the pager from the tab's Page.
@@ -130,17 +133,6 @@ public interface ITableTabView
 // A sort and a filter are the page's ORDER BY and WHERE, so they order and pick from the whole table.
 public sealed class TableTab : IWorkspaceTab
 {
-    // The refusals the core makes before it sends anything, so a save after one cannot write twice.
-    private static readonly HashSet<string> NothingSent = new(StringComparer.Ordinal)
-    {
-        "edit.not_confirmed",
-        "edit.safe_mode_changed",
-        "edit.not_as_planned",
-        "edit.already_saved",
-        "edit.read_only_connection",
-        "ffi.not_connected",
-    };
-
     private readonly ITabSession _session;
     private readonly ITableTabView _view;
     private readonly IResultsView _results;
@@ -306,28 +298,7 @@ public sealed class TableTab : IWorkspaceTab
 
     public bool CanPreview => HasUnsavedChanges && _tableEditor is not null && !IsSaving;
 
-    // A new row's editor opens on the first column the server does not fill.
-    public int FirstColumnToFill
-    {
-        get
-        {
-            if (_tableEditor is not { } editor)
-            {
-                return 0;
-            }
-
-            var columns = editor.Columns;
-            for (var column = 0; column < columns.Count; column++)
-            {
-                if (columns[column] is { EditableInNewRow: true, NewRow: not CellEdit.ServerDefault })
-                {
-                    return column;
-                }
-            }
-
-            return 0;
-        }
-    }
+    public int FirstColumnToFill => _tableEditor is { } editor ? EditedRows.FirstColumnToFill(editor.Columns) : 0;
 
     public bool Shows(string? schema, string table) =>
         string.Equals(Table.Name, table, StringComparison.Ordinal)
@@ -631,25 +602,7 @@ public sealed class TableTab : IWorkspaceTab
             return refused;
         }
 
-        var edits = Edits!;
-        if (CellRefusal(edits, row, column) is { } cell)
-        {
-            return cell;
-        }
-
-        if (edits.GetCell(row, column) is { } pending)
-        {
-            text = pending is CellEdit.Text typed ? typed.Value : string.Empty;
-            return null;
-        }
-
-        if (ReadStored(row, column, out var stored) is { } unreadable)
-        {
-            return unreadable;
-        }
-
-        text = stored ?? string.Empty;
-        return null;
+        return Rows(Edits!).StartEdit(row, column, out text);
     }
 
     // Read as the save will read it, so a cell the user leaves says why it would not save.
@@ -661,26 +614,11 @@ public sealed class TableTab : IWorkspaceTab
             return refused;
         }
 
-        var edits = Edits!;
-        return CellRefusal(edits, row, column) ?? Apply(edits, row, column, new CellEdit.Text(text));
+        return Rows(Edits!).CommitEdit(row, column, text);
     }
 
-    // As the core says the column takes each; in a new row, Default is where the server fills the column.
-    public bool CanSetValue(int row, int column, CellValueKind kind)
-    {
-        if (!CanEdit || Edits is not { } edits || CellRefusal(edits, row, column) is not null)
-        {
-            return false;
-        }
-
-        var info = edits.Columns[column];
-        return kind switch
-        {
-            CellValueKind.Empty => info.TakesEmpty,
-            CellValueKind.Null => info.Nullable,
-            _ => edits.IsAdded(row) ? info.NewRow is CellEdit.ServerDefault : info.TakesDefault,
-        };
-    }
+    public bool CanSetValue(int row, int column, CellValueKind kind) =>
+        CanEdit && Edits is { } edits && EditedRows.CanSetValue(edits, row, column, kind);
 
     public EditRefusal? SetValue(int row, int column, CellValueKind kind)
     {
@@ -689,18 +627,7 @@ public sealed class TableTab : IWorkspaceTab
             return refused;
         }
 
-        if (!CanSetValue(row, column, kind))
-        {
-            return EditRefusal.CellLocked.Instance;
-        }
-
-        CellEdit edit = kind switch
-        {
-            CellValueKind.Empty => new CellEdit.Text(string.Empty),
-            CellValueKind.Null => CellEdit.Null.Instance,
-            _ => CellEdit.ServerDefault.Instance,
-        };
-        return Apply(Edits!, row, column, edit);
+        return Rows(Edits!).SetValue(row, column, kind);
     }
 
     // A new row holds the server's value where it has one, else NULL, until the user types.
@@ -726,7 +653,7 @@ public sealed class TableTab : IWorkspaceTab
             return refused;
         }
 
-        last = Edits!.DuplicateRows(rows, StoredEdit);
+        last = Rows(Edits!).DuplicateRows(rows);
         return null;
     }
 
@@ -776,19 +703,8 @@ public sealed class TableTab : IWorkspaceTab
             return;
         }
 
-        IReadOnlyList<PlannedStatement> statements;
-        try
-        {
-            using var save = _tableEditor!.Plan(_editsRows, edits.ToRowEdits().Edits);
-            statements = save.Statements;
-        }
-        catch (TableProException exception)
-        {
-            await _view.ShowPreviewAsync([], exception.Error).ConfigureAwait(true);
-            return;
-        }
-
-        await _view.ShowPreviewAsync(statements, null).ConfigureAwait(true);
+        var (statements, failure) = Rows(edits).Preview();
+        await _view.ShowPreviewAsync(statements, failure).ConfigureAwait(true);
     }
 
     // True once every change is written, or there was nothing to write.
@@ -1131,8 +1047,9 @@ public sealed class TableTab : IWorkspaceTab
             return;
         }
 
+        var rows = Rows(edits);
         var (restored, uncertain, waiting) = recovered.RestoreTo(edits, ReadStoredValues, (row, column, edit) =>
-            CellRefusal(edits, row, column) is null && Apply(edits, row, column, edit) is null);
+            CellRefusal(edits, row, column) is null && rows.Apply(row, column, edit) is null);
         _recovered = waiting;
         // Changes a save may have written wait for a reload or a discard before the next save, as here after one.
         if (uncertain)
@@ -1213,71 +1130,11 @@ public sealed class TableTab : IWorkspaceTab
         return Lock is { } locked ? new EditRefusal.TableLocked(locked) : null;
     }
 
-    private static EditRefusal? CellRefusal(TableEdits edits, int row, int column)
-    {
-        if (row < 0 || row >= edits.RowCount || column < 0 || column >= edits.Columns.Count)
-        {
-            return EditRefusal.CellLocked.Instance;
-        }
+    private static EditRefusal? CellRefusal(TableEdits edits, int row, int column) =>
+        EditedRows.CellRefusal(edits, row, column);
 
-        if (edits.IsDeleted(row))
-        {
-            return EditRefusal.RowDeleted.Instance;
-        }
-
-        // A saved row's key stays as it is; a new row leaves to the server what it fills.
-        var info = edits.Columns[column];
-        return (edits.IsAdded(row) ? info.EditableInNewRow : info.Editable) ? null : EditRefusal.CellLocked.Instance;
-    }
-
-    private EditRefusal? Apply(TableEdits edits, int row, int column, CellEdit edit)
-    {
-        var newRow = edits.IsAdded(row);
-        string? stored = null;
-        if (!newRow && ReadStored(row, column, out stored) is { } unreadable)
-        {
-            return unreadable;
-        }
-
-        if (_tableEditor!.Check(column, edit, newRow) is { } failure)
-        {
-            return new EditRefusal.Invalid(failure);
-        }
-
-        edits.SetCell(row, column, edit, stored);
-        return null;
-    }
-
-    // The stored value as text, null for NULL; a value with no text that writes it back is refused.
-    private EditRefusal? ReadStored(int row, int column, out string? stored)
-    {
-        stored = null;
-        try
-        {
-            if (_tableEditor!.GetEditStart(_editsRows, row, column) is not EditStart.Editable editable)
-            {
-                return EditRefusal.CellLocked.Instance;
-            }
-
-            stored = editable.IsNull ? null : editable.Text;
-            return null;
-        }
-        catch (TableProException exception)
-        {
-            return new EditRefusal.Invalid(exception.Error);
-        }
-    }
-
-    // What a copy of a data row holds where it was not edited, or null where its value has no text to copy.
-    private CellEdit? StoredEdit(int row, int column)
-    {
-        if (ReadStored(row, column, out var stored) is not null)
-        {
-            return null;
-        }
-
-        return stored is null ? CellEdit.Null.Instance : new CellEdit.Text(stored);
-    }
+    // The page's edits over the set they were made on, read and checked by the table's editor.
+    private EditedRows Rows(TableEdits edits) => new(_tableEditor!, edits, _editsRows);
 
     private async Task<bool> SaveEditsAsync(bool reload)
     {
@@ -1364,16 +1221,7 @@ public sealed class TableTab : IWorkspaceTab
             {
                 // On disk before the first statement: an end while it runs leaves the edits blocked, not saved twice.
                 _view.WriteSessionNow();
-                outcome = await save.RunAsync(confirmed, CancellationToken.None).ConfigureAwait(true);
-            }
-            catch (TableProException exception) when (exception.Error.Codes.Any(NothingSent.Contains))
-            {
-                failure = exception.Error;
-            }
-            catch (TableProException exception)
-            {
-                // Any other failure may have come after the batch was sent, so saving again could write it twice.
-                outcome = new RowSaveOutcome.Unknown(exception.Error, null);
+                (outcome, failure) = await EditedRows.RunSaveAsync(save, confirmed).ConfigureAwait(true);
             }
             finally
             {
@@ -1435,9 +1283,9 @@ public sealed class TableTab : IWorkspaceTab
     // The row of the change the engine said the save stopped at.
     private void FocusEdit(PlannedEdits planned, int? edit)
     {
-        if (edit is { } index && index >= 0 && index < planned.Rows.Count)
+        if (EditedRows.RowOf(planned, edit) is { } row)
         {
-            _view.FocusRow(planned.Rows[index]);
+            _view.FocusRow(row);
         }
     }
 

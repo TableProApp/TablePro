@@ -1,6 +1,6 @@
 # 0006: Editing a table's rows
 
-- **Status**: Accepted
+- **Status**: Accepted; query results amended by 0014
 - **Date**: 2026-11-11
 
 ## Context

@@ -24,6 +24,7 @@ public sealed class ResultEditTests
         using var notes = after.GetResultSet(0) ?? throw new InvalidOperationException("The read held no set.");
 
         Assert.Null(editor.Lock);
+        Assert.Equal(new TableName(null, "people"), editor.Table);
         Assert.Equal(["note", "id"], editor.Columns.Select(column => column.Name));
         Assert.True(editor.Columns[0].Editable);
         Assert.True(editor.Columns[1].PrimaryKey);
@@ -48,6 +49,7 @@ public sealed class ResultEditTests
         using var editor = await database.Session.OpenResultEditorAsync(sql, rows, cancellationToken);
 
         Assert.Equal(expected, editor.Lock);
+        Assert.Null(editor.Table);
         Assert.Empty(editor.Columns);
     }
 }

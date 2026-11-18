@@ -33,6 +33,9 @@ public sealed class TableEditor : IDisposable
 
     public IReadOnlyList<EditColumn> Columns { get; }
 
+    // The table a save writes; null while a query result is locked.
+    public TableName? Table => _editor.Table() is { } table ? new TableName(table.Schema, table.Name) : null;
+
     public EditStart GetEditStart(ResultSet rows, long row, int column)
     {
         ArgumentNullException.ThrowIfNull(rows);
