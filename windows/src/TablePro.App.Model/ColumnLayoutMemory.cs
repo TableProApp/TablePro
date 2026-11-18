@@ -89,6 +89,48 @@ public sealed class ColumnLayoutMemory
         ForgetPrefix(TableMemoryKey.Part(connection) + "." + TableMemoryKey.Part(database) + ".");
     }
 
+    // The schemas holding a kept layout under the connection and database; null for a table named with no schema.
+    public IReadOnlyList<string?> SchemasWithLayouts(string connection, string? database)
+    {
+        var prefix = TableMemoryKey.Part(connection) + "." + TableMemoryKey.Part(database) + ".";
+        lock (_lock)
+        {
+            return [.. Tables().Keys
+                .Where(key => key.StartsWith(prefix, StringComparison.Ordinal))
+                .Select(key => key[prefix.Length..].Split('.')[0])
+                .Distinct(StringComparer.Ordinal)
+                .Select(part => part.Length == 0 ? null : Uri.UnescapeDataString(part))];
+        }
+    }
+
+    // A drop can take tables no tab showed, as a partitioned table's partitions, so the schema's kept layouts are
+    // matched against what it lists now.
+    public void ForgetMissing(string connection, string? database, string? schema, IReadOnlySet<string> present)
+    {
+        ArgumentNullException.ThrowIfNull(present);
+        var prefix = TableMemoryKey.Part(connection) + "." + TableMemoryKey.Part(database) + "."
+            + TableMemoryKey.Part(schema) + ".";
+        lock (_lock)
+        {
+            var tables = Tables();
+            var gone = tables.Keys
+                .Where(key => key.StartsWith(prefix, StringComparison.Ordinal)
+                    && !present.Contains(Uri.UnescapeDataString(key[prefix.Length..])))
+                .ToList();
+            if (gone.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var key in gone)
+            {
+                tables.Remove(key);
+            }
+
+            Write(tables);
+        }
+    }
+
     private static bool Same(ColumnLayout left, ColumnLayout right) =>
         left.Frozen == right.Frozen
         && left.Order.SequenceEqual(right.Order, StringComparer.Ordinal)

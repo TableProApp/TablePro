@@ -247,7 +247,15 @@ internal sealed partial class DetailsPane : UserControl
 
         box.TextChanged += (_, _) => DraftChanged?.Invoke(this, EventArgs.Empty);
         box.GotFocus += (_, _) => FieldFocused?.Invoke(this, box);
-        box.LostFocus += (_, _) => Commit(entry);
+        // As the grid's editor on a focus loss: a refused value goes back, with the reason left under the field and in
+        // the status, so at most the focused field holds text not kept.
+        box.LostFocus += (_, _) =>
+        {
+            if (!Commit(entry))
+            {
+                entry.Show(entry.Field);
+            }
+        };
         box.KeyDown += (_, e) =>
         {
             if (e.Key == VirtualKey.Escape && !box.IsReadOnly && entry.Changed)

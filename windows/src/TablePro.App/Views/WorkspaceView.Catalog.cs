@@ -389,13 +389,14 @@ public sealed partial class WorkspaceView
     // A read can outlast the window's session: a disconnect replaces it, and the last holder disposes it.
     private bool Holds(DatabaseSession session) => ReferenceEquals(_session, session);
 
-    // The objects of each schema a table or definition tab shows or a kept filter names, read again: what the catalog
-    // no longer lists loses its tabs and its filter. A schema that cannot be read changes nothing.
+    // The objects of each schema a table or definition tab shows or a kept filter or layout names, read again: what the
+    // catalog no longer lists loses its tabs, its filter and its layout. A schema that cannot be read changes nothing.
     private async Task DiscardGoneTabsAsync(DatabaseSession session, string? dropped)
     {
         HashSet<ShownObject> gone = [];
         var schemas = ObjectTabs().Select(shown => shown.Schema)
             .Concat(_workbench.TableFilters.SchemasWithFilters(FilterConnection, session.Database))
+            .Concat(_workbench.ColumnLayouts.SchemasWithLayouts(FilterConnection, session.Database))
             .Append(dropped)
             .Distinct()
             .ToList();
@@ -421,8 +422,9 @@ public sealed partial class WorkspaceView
                 return;
             }
 
-            _workbench.TableFilters.ForgetMissing(
-                FilterConnection, session.Database, schema, objects.Select(entry => entry.Name).ToHashSet(StringComparer.Ordinal));
+            var present = objects.Select(entry => entry.Name).ToHashSet(StringComparer.Ordinal);
+            _workbench.TableFilters.ForgetMissing(FilterConnection, session.Database, schema, present);
+            _workbench.ColumnLayouts.ForgetMissing(FilterConnection, session.Database, schema, present);
 
             // A tab opened from the tree and one restored can spell the default schema apart, so a name with no
             // schema on either side is the same object; a trigger is its table's.

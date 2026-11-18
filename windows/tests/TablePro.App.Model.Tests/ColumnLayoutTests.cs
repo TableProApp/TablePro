@@ -102,4 +102,21 @@ public sealed class ColumnLayoutTests : IDisposable
         Assert.False(memory.Recall("id:a", "shop", new TableName("public", "people")).IsDefault);
         Assert.True(memory.Recall("id:a", "crm", new TableName("public", "leads")).IsDefault);
     }
+
+    [Fact]
+    public void LayoutsOfTablesASchemaNoLongerListsAreForgotten()
+    {
+        var memory = new ColumnLayoutMemory(Path.Combine(_directory, "table-columns.json"));
+        var layout = ColumnLayout.Default.Hide(Columns, 1);
+        memory.Remember("id:a", "shop", new TableName("public", "orders"), layout);
+        memory.Remember("id:a", "shop", new TableName("public", "orders_2025"), layout);
+        memory.Remember("id:a", "shop", new TableName(null, "people"), layout);
+
+        Assert.Equal(["public", null], memory.SchemasWithLayouts("id:a", "shop"));
+        memory.ForgetMissing("id:a", "shop", "public", new HashSet<string>(["orders"], StringComparer.Ordinal));
+
+        Assert.False(memory.Recall("id:a", "shop", new TableName("public", "orders")).IsDefault);
+        Assert.True(memory.Recall("id:a", "shop", new TableName("public", "orders_2025")).IsDefault);
+        Assert.False(memory.Recall("id:a", "shop", new TableName(null, "people")).IsDefault);
+    }
 }
