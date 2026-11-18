@@ -216,7 +216,7 @@ public sealed class QueryTabEditingTests
     }
 
     [Fact]
-    public async Task ACloseAsksAboutPendingRowsAndSavesThemWithoutReadingThemAgain()
+    public async Task ACloseAsksAboutPendingRowsAndSavesThenReadsThem()
     {
         await _tab.RunAsync();
 
@@ -234,9 +234,10 @@ public sealed class QueryTabEditingTests
         _edits.CloseAnswer = SaveBeforeClose.Save;
         Assert.True(await _tab.ConfirmCloseAsync(offerSave: true));
 
+        // Another tab's Cancel can keep this one open, so the rows show what the save wrote.
         Assert.True(_edits.OffersSave);
         Assert.Equal(1, Assert.Single(Editor.Saves).Runs);
-        Assert.Single(Assert.Single(_session.Editors).Runs);
+        Assert.Equal(2, Assert.Single(_session.Editors).Runs.Count);
         Assert.False(_tab.HasUnsavedChanges);
         Assert.Equal(3, _edits.ClosesAsked);
     }
@@ -252,6 +253,37 @@ public sealed class QueryTabEditingTests
 
         Assert.True(_edits.EditsShown > shown);
         Assert.True(_tab.ResultAcceptsEdits);
+    }
+
+    [Fact]
+    public async Task AHeldSortAfterAnUnknownOutcomeKeepsSaveBlocked()
+    {
+        Editor.Outcome = () => new RowSaveOutcome.Unknown(Errors.Of("driver.commit_outcome_unknown"), 0);
+        await _tab.RunAsync();
+        _tab.CommitEdit(0, 1, "changed");
+        Assert.False(await _tab.SaveRowsAsync());
+
+        await _tab.SortAsync(new GridSort(1, SortDirection.Ascending));
+        Assert.Null(_tab.CommitEdit(0, 1, "again"));
+
+        Assert.False(_tab.CanSaveRows);
+        Assert.False(await _tab.SaveRowsAsync());
+        Assert.IsType<EditRefusal.SaveBlocked>(Assert.Single(_edits.Refusals));
+        Assert.Single(Editor.Saves);
+    }
+
+    [Fact]
+    public async Task ASaveReadsTheRowsAgainAndSortsThemAsTheyWereShown()
+    {
+        await _tab.RunAsync();
+        await _tab.SortAsync(new GridSort(1, SortDirection.Descending));
+        _tab.CommitEdit(0, 1, "changed");
+
+        Assert.True(await _tab.SaveRowsAsync());
+
+        Assert.Equal(2, Assert.Single(_session.Editors).Runs.Count);
+        Assert.Equal(2, _results.Shown.Count(shown => shown == "sort held"));
+        Assert.Equal(new GridSort(1, SortDirection.Descending), _results.Sort);
     }
 
     [Fact]

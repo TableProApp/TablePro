@@ -277,7 +277,7 @@ public sealed partial class QueryTab
             _confirming = false;
         }
 
-        _saveBlocked = false;
+        // A save that may have landed stays blocked until rows are read again, which a held sort does not do.
         _editing?.Edits.Discard();
         return true;
     }
@@ -413,7 +413,9 @@ public sealed partial class QueryTab
         {
             editing.Edits.Changed -= OnResultEditsChanged;
             _editing = null;
+            var blocked = _saveBlocked;
             Bind(editing.Editor, sorted);
+            _saveBlocked = blocked;
             return;
         }
 
@@ -436,8 +438,13 @@ public sealed partial class QueryTab
             return;
         }
 
+        // A sort the rows took here rather than in the statement is applied again to the rows read.
+        var held = _sort != _ranSort ? _sort : GridSort.None;
         _sort = _ranSort;
-        await RunSqlAsync(sql, record: false).ConfigureAwait(true);
+        if (await RunSqlAsync(sql, record: false).ConfigureAwait(true) && held != GridSort.None && !_work.IsClosed)
+        {
+            await _work.RunAsync(_ => SortHeldRowsAsync(held)).ConfigureAwait(true);
+        }
     }
 
     private async Task<bool> SaveRowsOnceAsync(bool reread)

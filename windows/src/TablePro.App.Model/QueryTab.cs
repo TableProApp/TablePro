@@ -233,25 +233,15 @@ public sealed partial class QueryTab : IWorkspaceTab
             : await _files!.AskSaveBeforeCloseAsync(Title, offerSave: true).ConfigureAwait(true);
         switch (answer)
         {
+            // The rows are read again after their save: the file's save, or another tab's answer, can keep this one open.
             case SaveBeforeClose.Save when saves:
-                if (rows && !await TrackRowSave(SaveRowsOnceAsync(reread: false)).ConfigureAwait(true))
+                if (rows && !await TrackRowSave(SaveRowsOnceAsync(reread: true)).ConfigureAwait(true))
                 {
                     return false;
                 }
 
                 // Text typed while the file was written is still unsaved, so the tab stays.
-                if (!file || (await SaveAsync().ConfigureAwait(true) && !FileUnsaved))
-                {
-                    return true;
-                }
-
-                // The tab stays open, so the rows the save wrote are read again rather than shown as they were.
-                if (rows)
-                {
-                    await RereadAsync().ConfigureAwait(true);
-                }
-
-                return false;
+                return !file || (await SaveAsync().ConfigureAwait(true) && !FileUnsaved);
             case SaveBeforeClose.DontSave:
                 return true;
             default:
