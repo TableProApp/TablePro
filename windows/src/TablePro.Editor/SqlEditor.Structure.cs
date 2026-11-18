@@ -180,6 +180,14 @@ public sealed partial class SqlEditor
 
     private void StructureEdited(TextChange change)
     {
+        // Past the limit a text has no statements or folds at all, as a read of it would give.
+        if (Document.Length > DocumentStructure.SizeLimit)
+        {
+            _structure = DocumentStructure.Empty;
+            _analyzeTimer?.Stop();
+            _model.Rows.Folds.Clear();
+            return;
+        }
         if (_structure.Statements.Count > 0 || _structure.Regions.Count > 0)
         {
             _structure = _structure.Map(change);

@@ -488,11 +488,19 @@ public sealed partial class SqlEditor
         {
             return [];
         }
-        // Range by range, so a fold between the rows on screen is never searched.
+        // Range by range, so a fold between the rows on screen is never searched. A match that starts on a wrapped row
+        // above the first one on screen still shows on it, so each range is searched from a little before.
         var matches = new List<(int Start, int Length)>();
         foreach (var (start, end) in RowRanges(firstRow, lastRow))
         {
-            matches.AddRange(TextSearch.InRange(Document, _findBar.Query, start, end));
+            var from = Math.Max(Document.GetLineStart(Document.GetLineFromOffset(start)), start - 4096);
+            foreach (var match in TextSearch.InRange(Document, _findBar.Query, from, end))
+            {
+                if (match.Start + match.Length > start || match.Start >= start)
+                {
+                    matches.Add(match);
+                }
+            }
         }
         return matches;
     }
