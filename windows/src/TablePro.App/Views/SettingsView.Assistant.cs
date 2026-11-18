@@ -117,7 +117,7 @@ public sealed partial class SettingsView
         {
             true => Strings.Get("AiKeyKept"),
             false => Strings.Get(provider == AiProvider.OpenAICompatible ? "AiKeyNoneOptional" : "AiKeyNone"),
-            null => problem,
+            null => problem ?? string.Empty,
         };
         AiKeyRemoveButton.Visibility = kept == true ? Visibility.Visible : Visibility.Collapsed;
     }
