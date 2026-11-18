@@ -270,7 +270,9 @@ mod tests {
     #[test]
     fn a_plus_in_the_sql_stays_a_plus() {
         assert_eq!(
-            parse(&format!("tablepro://connect/{ID}/query?x=1&sql=SELECT%201+2%2B3&sql=ignored")),
+            parse(&format!(
+                "tablepro://connect/{ID}/query?x=1&sql=SELECT%201+2%2B3&sql=ignored"
+            )),
             Ok(AppLink::OpenQuery {
                 connection: id(),
                 sql: "SELECT 1+2+3".to_owned(),
