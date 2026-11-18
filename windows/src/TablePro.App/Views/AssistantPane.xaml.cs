@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -39,7 +38,7 @@ public sealed partial class AssistantPane : UserControl
     private readonly Workbench _workbench;
     private readonly AssistantHooks _hooks;
     private readonly AssistantAccess _access;
-    private readonly DispatcherQueueTimer _painter;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _painter;
     private AssistantConversation? _conversation;
     private CancellationTokenSource? _work;
     private AiReply? _reply;
