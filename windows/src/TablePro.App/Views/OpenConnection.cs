@@ -126,6 +126,7 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
         var adopted = new OpenConnection(_workbench, Origin with { Tabs = [], SelectedTab = 0 });
         adopted.Mark(Origin.EngineId, Color);
         adopted.SetTags(Tags);
+        adopted.SetAiPolicy(AiPolicy);
         adopted._life.Adopt(_life);
         return adopted;
     }

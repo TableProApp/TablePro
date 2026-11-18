@@ -42,6 +42,9 @@ public sealed partial class AssistantPane : UserControl
     private AssistantConversation? _conversation;
     private CancellationTokenSource? _work;
     private AiReply? _reply;
+
+    // Where the reply on its way was sent, so a change of provider or address stops it.
+    private AiSettings? _replySettings;
     private TurnView? _streaming;
     private TurnView? _lastTurn;
     private bool _busy;
@@ -69,10 +72,10 @@ public sealed partial class AssistantPane : UserControl
     public void Refresh()
     {
         var availability = _access.Availability;
-        // A reply on its way stops as Stop stops it, so its turn keeps what came.
-        if (availability != AssistantAvailability.Ready)
+        // A reply on its way stops as Stop stops it, so its turn keeps what came, once it may no longer go where it went.
+        if (_reply is not null && (_replySettings is null || !_access.MaySendTo(_replySettings)))
         {
-            _reply?.Cancel();
+            _reply.Cancel();
         }
 
         OffPanel.Visibility = availability == AssistantAvailability.Off ? Visibility.Visible : Visibility.Collapsed;
@@ -102,8 +105,12 @@ public sealed partial class AssistantPane : UserControl
         }
     }
 
-    // The session ends: whatever is on its way stops.
-    public void Shutdown() => StopWork();
+    // The session ends: whatever is on its way stops, and work that lands after is dropped.
+    public void Shutdown()
+    {
+        _generation++;
+        StopWork();
+    }
 
     private void OnClose(object sender, RoutedEventArgs e) => CloseRequested?.Invoke(this, EventArgs.Empty);
 
@@ -176,6 +183,7 @@ public sealed partial class AssistantPane : UserControl
         _work = null;
         _reply?.Dispose();
         _reply = null;
+        _replySettings = null;
         _painter.Stop();
         _streaming = null;
         _busy = false;
@@ -310,8 +318,11 @@ public sealed partial class AssistantPane : UserControl
             return;
         }
 
+        // A stop that came while this was asked starts no request.
+        cancellationToken.ThrowIfCancellationRequested();
         var reply = _workbench.Core.Assistant.Reply(_hooks.Session, settings, conversation.Request());
         _reply = reply;
+        _replySettings = settings;
         _streaming = turn;
         SyncControls();
         await foreach (var replyEvent in reply.ReadEventsAsync(cancellationToken).ConfigureAwait(true))
@@ -410,6 +421,7 @@ public sealed partial class AssistantPane : UserControl
 
         _reply?.Dispose();
         _reply = null;
+        _replySettings = null;
         _streaming = null;
         _busy = false;
         SyncControls();

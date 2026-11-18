@@ -185,7 +185,6 @@ public sealed partial class SettingsView
         _listingModels?.Cancel();
         using var listing = new CancellationTokenSource();
         _listingModels = listing;
-        var typed = AiModelBox.Text;
         IReadOnlyList<string> models;
         try
         {
@@ -221,6 +220,8 @@ public sealed partial class SettingsView
         }
 
         AiStatusText.Text = models.Count == 0 ? Strings.Get("AiModelsNone") : string.Empty;
+        // Read after the wait, so a model typed or picked while the list loaded stays.
+        var typed = AiModelBox.Text;
         _loading = true;
         AiModelBox.Items.Clear();
         foreach (var model in models)

@@ -19,10 +19,12 @@ public sealed partial class WorkspaceView
     public AssistantAvailability AssistantAvailability =>
         new AssistantAccess(() => _workbench.Settings.Assistant, () => _connection.AiPolicy).Availability;
 
-    // A command engine, as Redis or MongoDB, has no statement to explain.
-    public bool CanAskAssistant =>
+    // The Query menu's AI commands act on the query tab in front.
+    public bool CanAskAssistant => ActiveTab is QueryTabView && AssistantTakesStatements;
+
+    // A command engine, as Redis or MongoDB, has no statement to explain. Each query tab's Fix reads it, in front or not.
+    private bool AssistantTakesStatements =>
         _session is { } session
-        && ActiveTab is QueryTabView
         && Grammars.For(session.EngineId) is not (SqlGrammar.Redis or SqlGrammar.Mongo)
         && AssistantAvailability == AssistantAvailability.Ready;
 
@@ -63,9 +65,13 @@ public sealed partial class WorkspaceView
 
     private void OnSettingsChanged(object? sender, EventArgs e) => AssistantChanged();
 
+    // Subscribed for the pane's life, not the workspace's time on screen: a reply on its way while Settings shows must
+    // still stop when the provider is turned off or moved.
+    private void OnPaneSettingsChanged(object? sender, EventArgs e) => _assistantPane?.Refresh();
+
     private void AttachAssistant(QueryTabView query)
     {
-        query.AssistantReady = () => CanAskAssistant;
+        query.AssistantReady = () => AssistantTakesStatements;
         query.AssistantRequested += OnAssistantRequested;
         query.OfferFix();
     }
@@ -107,6 +113,8 @@ public sealed partial class WorkspaceView
         }
 
         _assistantPane?.Shutdown();
+        _workbench.SettingsChanged -= OnPaneSettingsChanged;
+        _workbench.SettingsChanged += OnPaneSettingsChanged;
         var pane = new AssistantPane(_workbench, new AssistantHooks(
             session,
             _connection.Name,
@@ -134,6 +142,7 @@ public sealed partial class WorkspaceView
             HideSidePane();
         }
 
+        _workbench.SettingsChanged -= OnPaneSettingsChanged;
         _assistantPane?.Shutdown();
         _assistantPane = null;
         _assistantSession = null;
