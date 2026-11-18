@@ -69,6 +69,22 @@ struct CassandraPreparedCacheTests {
         #expect(cache.handle(for: key("SELECT a FROM t")) == nil)
     }
 
+    @Test("A read leaves the session's browse state alone", arguments: ["SELECT a FROM t", "  select a from t", "(SELECT a FROM t)"])
+    func readsKeepBrowseState(cql: String) {
+        #expect(CassandraPreparedReuse.isRead(cql: cql))
+    }
+
+    @Test("A statement that can change the keyspace or the rows is not a read", arguments: [
+        "USE other",
+        "use \"other\"",
+        "/* switch */ USE other",
+        "INSERT INTO t (a) VALUES (1)",
+        "ALTER TABLE t ADD b int"
+    ])
+    func othersResetBrowseState(cql: String) {
+        #expect(!CassandraPreparedReuse.isRead(cql: cql))
+    }
+
     @Test("A select list that names its columns is reused", arguments: [
         "SELECT \"a\", \"b\" FROM \"ks\".\"t\"",
         "select a from t",

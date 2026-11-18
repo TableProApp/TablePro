@@ -253,7 +253,7 @@ actor CassandraConnectionActor {
         guard let session else {
             throw CassandraPluginError.notConnected
         }
-        forgetResumePointsUnlessRead(cql)
+        forgetBrowseStateUnlessRead(cql)
 
         let startTime = Date()
         do {
@@ -320,7 +320,7 @@ actor CassandraConnectionActor {
         }
 
         let startTime = Date()
-        forgetResumePointsUnlessRead(cql)
+        forgetBrowseStateUnlessRead(cql)
         try cancellation?.check()
         let prepared = try prepare(cql, on: session, cancellation: cancellation)
         defer { cass_prepared_free(prepared) }
@@ -474,11 +474,11 @@ actor CassandraConnectionActor {
     }
 
     /// A statement that is not a read can change the rows a walk counted, so the points it left no longer mark
-    /// the rows they did.
-    private func forgetResumePointsUnlessRead(_ cql: String) {
-        let leading = cql.drop { $0.isWhitespace || $0 == "(" }.prefix(6).uppercased()
-        guard leading != "SELECT" else { return }
+    /// the rows they did. A `USE` among them also moves what an unqualified prepared browse reads.
+    private func forgetBrowseStateUnlessRead(_ cql: String) {
+        guard !CassandraPreparedReuse.isRead(cql: cql) else { return }
         resumePoints.removeAll()
+        preparedBrowses.removeAll().forEach { cass_prepared_free($0) }
     }
 
     // The cache owns a statement it holds, and nothing evicts one during a browse: this actor runs one at a time.
@@ -1024,7 +1024,7 @@ actor CassandraConnectionActor {
         }
 
         guard !abort.isAborted else { return }
-        forgetResumePointsUnlessRead(cql)
+        forgetBrowseStateUnlessRead(cql)
 
         let pageSize: Int32 = 5_000
         let statement = cass_statement_new(cql, 0)

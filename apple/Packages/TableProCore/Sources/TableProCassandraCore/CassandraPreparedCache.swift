@@ -71,6 +71,11 @@ public struct CassandraPreparedCache<Handle> {
 }
 
 public enum CassandraPreparedReuse {
+    // Anything else can change the rows a browse counted or, through USE, the keyspace an unqualified table reads.
+    public static func isRead(cql: String) -> Bool {
+        cql.drop { $0.isWhitespace || $0 == "(" }.prefix(6).uppercased() == "SELECT"
+    }
+
     // A reused statement decodes rows with the columns it was prepared with, so a select list that follows the table
     // (`*`) is prepared again for each read: a column added since would shift every value after it.
     public static func isReusable(cql: String) -> Bool {
