@@ -129,6 +129,7 @@ public sealed class SettingsStore(string path)
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(SessionState))]
 [JsonSerializable(typeof(TableFilterFile))]
+[JsonSerializable(typeof(ColumnLayoutFile))]
 internal sealed partial class ModelJson : JsonSerializerContext;
 
 internal static class JsonFile

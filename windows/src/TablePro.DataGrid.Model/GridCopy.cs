@@ -8,7 +8,8 @@ public static class GridCopy
     // The window's cap; a value the core cut there is read whole.
     public const int WindowCharacters = 4096;
 
-    private const int CellsPerRead = 16_384;
+    // A summary reads in blocks of the same size.
+    internal const int CellsPerRead = 16_384;
 
     public static string Tsv(IGridReader reader, CellRange range, CancellationToken cancellationToken = default)
     {

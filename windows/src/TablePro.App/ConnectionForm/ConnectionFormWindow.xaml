@@ -177,6 +177,9 @@
                             <toolkit:SettingsCard x:Uid="SshPasswordCard" x:Name="SshPasswordCard">
                                 <PasswordBox x:Name="SshPasswordInput" AutomationProperties.AutomationId="SshPasswordInput" x:Uid="SshPasswordInput" MinWidth="240" />
                             </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="SshJumpHostsCard">
+                                <TextBox x:Name="SshJumpHostsBox" AutomationProperties.AutomationId="SshJumpHostsBox" x:Uid="SshJumpHostsBox" MinWidth="240" TextChanged="OnSshSummaryChanged" />
+                            </toolkit:SettingsCard>
                         </toolkit:SettingsExpander.Items>
                     </toolkit:SettingsExpander>
 

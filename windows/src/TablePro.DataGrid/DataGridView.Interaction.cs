@@ -220,6 +220,7 @@ public sealed partial class DataGridView
         _columns.SetWidth(column, width);
         _sizedByUser[column] = true;
         ColumnsChanged();
+        ColumnResized?.Invoke(this, column);
     }
 
     // Fits a column to its header and the rows in view; a result set may hold far more rows than can be read here.
@@ -236,18 +237,24 @@ public sealed partial class DataGridView
         {
             return false;
         }
-        var rows = Math.Min(RowCount, ColumnCount > ContentSampleWideColumns ? ContentSampleRowsWide : ContentSampleRows);
+        var rows = ContentSampleRowCount;
         for (var column = 0; column < ColumnCount; column++)
         {
             if (!_sizedByUser[column])
             {
-                _columns.SetWidth(column, Math.Clamp(ContentWidth(column, 0, rows - 1, ContentSampleCharacters),
-                    ContentMinimumWidth, Math.Max(ContentMinimumWidth, MaximumContentColumnWidth)));
+                SizeColumnToContent(column, rows);
             }
         }
         _sizedToRows = rows > 0;
         return true;
     }
+
+    private int ContentSampleRowCount =>
+        Math.Min(RowCount, ColumnCount > ContentSampleWideColumns ? ContentSampleRowsWide : ContentSampleRows);
+
+    private void SizeColumnToContent(int column, int rows) =>
+        _columns.SetWidth(column, Math.Clamp(ContentWidth(column, 0, rows - 1, ContentSampleCharacters),
+            ContentMinimumWidth, Math.Max(ContentMinimumWidth, MaximumContentColumnWidth)));
 
     private double ContentWidth(int column, int firstRow, int lastRow, int maxCharacters)
     {
@@ -346,6 +353,12 @@ public sealed partial class DataGridView
         if (e.Handled || (_editor is not null && ReferenceEquals(e.OriginalSource, _editor)))
         {
             base.OnKeyDown(e);
+            return;
+        }
+        if (e.Key == VirtualKey.Escape && IsMovingColumn)
+        {
+            CancelColumnMove();
+            e.Handled = true;
             return;
         }
         if (HandleKey(e.Key, IsDown(VirtualKey.Control), IsDown(VirtualKey.Shift)))
@@ -546,6 +559,7 @@ public sealed partial class DataGridView
         {
             peer.Cell(_selection.FocusRow, _selection.FocusColumn).RaiseAutomationEvent(AutomationEvents.SelectionItemPatternOnElementSelected);
         }
+        SelectedCellsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void RaiseFocusChanged()

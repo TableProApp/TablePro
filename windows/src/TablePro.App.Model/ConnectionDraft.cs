@@ -11,6 +11,7 @@ public enum FormField
     SshHost,
     SshPort,
     SshKey,
+    JumpHosts,
     ClientKey,
     Timeout,
 }
@@ -21,6 +22,9 @@ public enum FieldProblem
     NotANumber,
     OutOfRange,
     NotAbsolute,
+
+    // The core refused the text, as a connect would.
+    Invalid,
 }
 
 public sealed record FieldError(FormField Field, FieldProblem Problem);
@@ -68,6 +72,9 @@ public sealed class ConnectionDraft
     public string SshKeyPath { get; set; } = string.Empty;
 
     public string SshPassword { get; set; } = string.Empty;
+
+    // As OpenSSH's -J takes them, user@host:port separated by commas, and saved as one entry the way Linux saves it.
+    public string JumpHosts { get; set; } = string.Empty;
 
     public TlsMode TlsMode { get; set; } = TlsMode.Disable;
 
@@ -121,6 +128,14 @@ public sealed class ConnectionDraft
         };
     }
 
+    // A new connection with what the URL names, the way the engine chooser's From connection URL fills one.
+    public static ConnectionDraft FromUrl(ParsedConnectionUrl url, DatabaseEngine engine)
+    {
+        var draft = New(engine);
+        draft.Apply(url, engine);
+        return draft;
+    }
+
     public static ConnectionDraft From(SavedConnection connection, DatabaseEngine engine)
     {
         ArgumentNullException.ThrowIfNull(connection);
@@ -145,6 +160,7 @@ public sealed class ConnectionDraft
             SshUserName = connection.Ssh?.UserName ?? string.Empty,
             SshAuth = connection.Ssh?.Auth ?? SshAuthMethod.Agent,
             SshKeyPath = connection.Ssh?.KeyPath ?? string.Empty,
+            JumpHosts = string.Join(", ", connection.Ssh?.JumpHosts ?? []),
             TlsMode = connection.Tls.Mode,
             TlsModeChosen = true,
             CaFile = connection.Tls.CaFile ?? string.Empty,
@@ -302,7 +318,7 @@ public sealed class ConnectionDraft
                     SshHost.Trim(),
                     ParsePort(SshPort),
                     Blank(SshUserName),
-                    _savedSsh?.JumpHosts ?? [],
+                    JumpHostList(),
                     SshAuth,
                     SshAuth == SshAuthMethod.PrivateKey ? Blank(SshKeyPath) : null,
                     SshAuth == SshAuthMethod.PrivateKey && _savedSsh is { KeyHasPassphrase: true }
@@ -349,6 +365,18 @@ public sealed class ConnectionDraft
             ? SshPassword
             : null;
         return new ConnectionSecrets(password, sshPassword);
+    }
+
+    // A list left as it was shown keeps its stored entries, so an import's several entries are not counted as an edit.
+    private IReadOnlyList<string> JumpHostList()
+    {
+        if (_savedSsh is { } saved
+            && string.Equals(string.Join(", ", saved.JumpHosts), JumpHosts, StringComparison.Ordinal))
+        {
+            return saved.JumpHosts;
+        }
+
+        return Blank(JumpHosts) is { } list ? [list] : [];
     }
 
     private static void CheckPort(List<FieldError> errors, FormField field, string text, bool required)

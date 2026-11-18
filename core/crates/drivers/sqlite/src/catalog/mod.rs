@@ -14,6 +14,7 @@ use tablepro_core::column::{
     BoolStorage, CatalogType, ColumnDefault, ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm,
     SqlExpression, SqlTypeExpr, TemporalZone, TextLength, TimeRange, classify_type_name,
 };
+use tablepro_core::meta::TableInfo;
 use tablepro_core::sql_syntax::{LiteralToken, MAX_EXPRESSION_LEN, SqlGrammar, parse_expression};
 use tablepro_core::value::{SqlDecimal, Value};
 
@@ -145,6 +146,37 @@ pub(crate) fn schema_row_sql(schema_sql: &str) -> String {
 /// checked before it is read.
 pub(crate) fn has_table_sql(schema_sql: &str) -> String {
     format!("SELECT count(*) FROM {schema_sql}.sqlite_schema WHERE type = 'table' AND name = ?1")
+}
+
+/// The bytes `dbstat` counts for the table's own b-tree and for its
+/// indexes together, automatic ones included, by `sqlite_schema` type.
+pub(crate) fn table_pages_sql(schema_sql: &str) -> String {
+    format!(
+        "SELECT s.type, sum(d.pgsize) FROM {schema_sql}.sqlite_schema s \
+         JOIN dbstat d ON d.schema = ?1 AND d.name = s.name \
+         WHERE s.tbl_name = ?2 AND s.type IN ('table', 'index') GROUP BY s.type"
+    )
+}
+
+/// The sizes from what `table_pages_sql` read. Without a b-tree of its
+/// own the object is a view or a virtual table, which has none.
+pub(crate) fn table_sizes(bytes: &[(String, i64)]) -> TableInfo {
+    let of = |kind: &str| {
+        bytes
+            .iter()
+            .find(|(found, _)| found == kind)
+            .and_then(|(_, bytes)| u64::try_from(*bytes).ok())
+    };
+    let Some(data) = of("table") else {
+        return TableInfo::default();
+    };
+    let index = of("index").unwrap_or(0);
+    TableInfo {
+        comment: None,
+        data_bytes: Some(data),
+        index_bytes: Some(index),
+        total_bytes: data.checked_add(index),
+    }
 }
 
 /// The first number of a `sqlite_stat1` row is the row count ANALYZE
@@ -381,6 +413,22 @@ fn number_value(number: &SqlDecimal) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_table_adds_its_indexes_and_a_view_has_no_sizes() {
+        let bytes = [("index".to_owned(), 8192), ("table".to_owned(), 4096)];
+        assert_eq!(
+            table_sizes(&bytes),
+            TableInfo {
+                comment: None,
+                data_bytes: Some(4096),
+                index_bytes: Some(8192),
+                total_bytes: Some(12288),
+            }
+        );
+        assert_eq!(table_sizes(&[("table".to_owned(), 4096)]).index_bytes, Some(0));
+        assert_eq!(table_sizes(&[]), TableInfo::default());
+    }
 
     #[test]
     fn sqlite_affinity_rules_and_strict() {

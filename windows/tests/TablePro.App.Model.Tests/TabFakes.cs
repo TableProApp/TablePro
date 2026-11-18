@@ -288,6 +288,20 @@ internal sealed class FakeSession : ITabSession
             : Task.FromResult(Choices);
     }
 
+    public TableInfo Info { get; set; } = new(null, null, null, null, null);
+
+    public CoreError? InfoFailure { get; set; }
+
+    public int InfoReads { get; private set; }
+
+    public Task<TableInfo> GetTableInfoAsync(TableName table, CancellationToken cancellationToken)
+    {
+        InfoReads++;
+        return InfoFailure is { } failure
+            ? Task.FromException<TableInfo>(new TableProException(failure))
+            : Task.FromResult(Info);
+    }
+
     // A new structure each read, so a test tells a kept one from one read again.
     public async Task<TableStructure> GetStructureAsync(
         TableName table,
@@ -757,6 +771,10 @@ internal sealed class FakeTableView : ITableTabView
 
     public Task<bool> ConfirmDiscardAsync() => Task.FromResult(Discards);
 
+    public int OpenEditsDiscarded { get; private set; }
+
+    public void DiscardOpenEdit() => OpenEditsDiscarded++;
+
     public Task<SaveBeforeClose> AskSaveBeforeCloseAsync(string tab, bool offerSave)
     {
         ClosesAsked++;
@@ -791,6 +809,10 @@ internal sealed class FakeTableView : ITableTabView
     public void ShowStructureFailed(CoreError failure) => StructureFailures.Add(failure);
 
     public void ShowFilterChoicesFailed(CoreError failure) => ChoicesFailures.Add(failure);
+
+    public List<CoreError> InfoFailures { get; } = [];
+
+    public void ShowTableInfoFailed(CoreError failure) => InfoFailures.Add(failure);
 
     public void ShowRecovered(int restored, int waiting, bool saveBlocked) =>
         Recovered.Add((restored, waiting, saveBlocked));

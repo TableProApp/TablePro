@@ -10,7 +10,7 @@ use tablepro_core::ddl::{
     plan_truncate_table,
 };
 use tablepro_core::filter::FilterSet;
-use tablepro_core::meta::{ObjectScope, PagePosition, SchemaInfo, TableRef};
+use tablepro_core::meta::{ObjectScope, PagePosition, SchemaInfo, TableInfo, TableRef};
 use tablepro_core::{ColumnInfo, Connection, RunEnd, Value};
 
 use crate::support::{CALL, DATABASE, connect, editor, rows, run, start, unique, within};
@@ -122,6 +122,52 @@ async fn deleting_every_document_keeps_the_collection_and_its_indexes() {
         .await
         .expect("the database's collections");
     assert!(objects.iter().any(|object| object.name == collection), "{objects:?}");
+}
+
+/// A collection's sizes come from `$collStats`, and a view and a missing
+/// collection have none.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn table_info_reports_a_collections_sizes_and_none_for_a_view() {
+    let fixture = start().await;
+    let connection = connect(&fixture).await;
+    let session = editor(connection.as_ref()).await;
+    let (collection, view) = (unique("sized"), unique("sized_view"));
+    let (filled, _) = run(
+        session.as_ref(),
+        &format!(
+            "db.getCollection('{collection}').insertMany([{{_id: 1, label: 'a'}}, {{_id: 2, label: 'b'}}])\n\
+             db.getCollection('{collection}').createIndex({{label: 1}})\n\
+             db.createView('{view}', '{collection}', [])"
+        ),
+    )
+    .await;
+    assert_eq!(filled.end, RunEnd::Completed);
+    let in_database = |name: &str| TableRef::new(Some(DATABASE.to_owned()), name.to_owned());
+
+    let sized = connection
+        .table_info(&in_database(&collection), within(CALL))
+        .await
+        .expect("the collection's info");
+    let viewed = connection
+        .table_info(&in_database(&view), within(CALL))
+        .await
+        .expect("the view's info");
+    let missing = connection
+        .table_info(&in_database(&unique("missing")), within(CALL))
+        .await
+        .expect("no info");
+
+    assert_eq!(sized.comment, None);
+    let (data, index, total) = (
+        sized.data_bytes.expect("data"),
+        sized.index_bytes.expect("indexes"),
+        sized.total_bytes.expect("total"),
+    );
+    assert!(data > 0 && index > 0, "{sized:?}");
+    assert!(total >= data + index, "{sized:?}");
+    assert_eq!(viewed, TableInfo::default());
+    assert_eq!(missing, TableInfo::default());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -231,7 +231,7 @@ public sealed partial class DataGridView
         {
             RowMark.Deleted => DeletedStatus,
             RowMark.Inserted => NewRowStatus,
-            RowMark.Modified when _edited.Edits.TryGetCell(row, column, out _) => EditedStatus,
+            RowMark.Modified when _edited.IsCellEdited(row, column) => EditedStatus,
             _ => string.Empty,
         };
     }

@@ -1,10 +1,13 @@
+using System.Globalization;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.DataGrid;
 using TablePro.DataGrid.Model;
 using TablePro.Interop;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace TablePro.App.Views;
 
@@ -25,6 +28,11 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     private ResultsView _view;
     private ResultsView? _pickedView;
     private bool _messagesQueued;
+    private GridSort _sort = GridSort.None;
+    private CancellationTokenSource? _summing;
+    private SelectionSummary? _summary;
+
+    private static readonly TimeSpan SummaryDelay = TimeSpan.FromMilliseconds(150);
 
     public ResultsPane()
     {
@@ -34,7 +42,13 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         ResultGrid.ShowsCellTips = true;
         ResultGrid.SortedAscendingStatus = Strings.Get("GridSortedAscending");
         ResultGrid.SortedDescendingStatus = Strings.Get("GridSortedDescending");
-        ResultGrid.SortRequested += (_, sort) => SortRequested?.Invoke(this, sort);
+        ResultGrid.SortRequested += (_, sort) =>
+        {
+            _sort = ToData(sort);
+            SortRequested?.Invoke(this, _sort);
+        };
+        ResultGrid.FocusedCellChanged += (_, _) => QueueSummary();
+        ResultGrid.SelectedCellsChanged += (_, _) => QueueSummary();
         DisplaySettings.Follow(ResultGrid);
     }
 
@@ -72,11 +86,62 @@ public sealed partial class ResultsPane : UserControl, IResultsView
 
     public long? RowsAffected { get; private set; }
 
+    // In the set's own columns, kept here since a hidden column's sort still orders the rows; the grid shows it on the
+    // column where the table tab's layout put it.
     public GridSort Sort
     {
-        get => ResultGrid.Sort;
-        set => ResultGrid.Sort = value;
+        get => _sort;
+        set
+        {
+            _sort = value;
+            ResultGrid.Sort = ToDisplay(value);
+        }
     }
+
+    // A table tab's own order for the columns of each set it shows: the shown ones and how many are frozen.
+    internal Func<IReadOnlyList<ResultColumn>, ArrangedColumns>? Arrangement { get; set; }
+
+    // The grid's column at a display position, as the set numbers it.
+    internal int DataColumn(int column) =>
+        ResultGrid.Data is EditedGridData edited && column >= 0 && column < edited.ColumnCount
+            ? edited.DataColumn(column)
+            : column;
+
+    // Where the grid shows a column of the set; -1 for one the layout hides.
+    internal int DisplayColumn(int column) =>
+        ResultGrid.Data is EditedGridData edited ? edited.DisplayColumn(column) : column;
+
+    // The layout changed: the grid takes the new order and keeps the rows, the widths and the sort it shows.
+    internal void Rearrange()
+    {
+        if (ResultGrid.Data is not EditedGridData edited || Arrangement is not { } arrange)
+        {
+            return;
+        }
+
+        var arranged = arrange(Columns);
+        var before = edited.ColumnOrder.ToList();
+        if (!before.SequenceEqual(arranged.Order))
+        {
+            edited.Arrange(arranged.Order);
+            ResultGrid.RearrangeColumns([.. arranged.Order.Select(column => before.IndexOf(column))]);
+        }
+
+        ResultGrid.FrozenColumnCount = arranged.Frozen;
+        ResultGrid.Sort = ToDisplay(_sort);
+        QueueSummary();
+    }
+
+    private GridSort ToData(GridSort sort) =>
+        sort.Column >= 0 && ResultGrid.Data is EditedGridData edited && sort.Column < edited.ColumnCount
+            ? sort with { Column = edited.DataColumn(sort.Column) }
+            : sort;
+
+    // A sort on a hidden column still orders the rows; only its header mark has nowhere to show.
+    private GridSort ToDisplay(GridSort sort) =>
+        sort.Column >= 0 && ResultGrid.Data is EditedGridData edited
+            ? edited.DisplayColumn(sort.Column) is var column and >= 0 ? sort with { Column = column } : GridSort.None
+            : sort;
 
     public ResultSet? ShownSet => _sorted ?? _picked?.Set;
 
@@ -158,8 +223,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
 
         var previous = _sorted;
         _sorted = sorted;
-        ResultGrid.SetData(GridData(sorted, Columns));
-        ResultGrid.Sort = sort;
+        ShowData(sorted, Columns, sort);
         previous?.Dispose();
         ShownMayHaveChanged();
         return true;
@@ -337,8 +401,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         _leaving = null;
         _sorted = null;
         Columns = first.Result.Columns;
-        ResultGrid.SetData(GridData(first.Set, first.Result.Columns));
-        ResultGrid.Sort = sort;
+        ShowData(first.Set, first.Result.Columns, sort);
         ResultGrid.Visibility = Visibility.Visible;
         Placeholder.Visibility = Visibility.Collapsed;
         // The grid disposed the old set's cursor in SetData.
@@ -353,8 +416,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         _picked = held;
         _sorted = null;
         Columns = held.Result.Columns;
-        ResultGrid.SetData(GridData(held.Set, held.Result.Columns));
-        ResultGrid.Sort = GridSort.None;
+        ShowData(held.Set, held.Result.Columns, GridSort.None);
         sorted?.Dispose();
         ShownMayHaveChanged();
         if (_milliseconds is { } milliseconds)
@@ -429,6 +491,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     {
         var (held, sorted) = (_held, _sorted);
         ResultGrid.SetData(null);
+        _sort = GridSort.None;
+        QueueSummary();
         ResultGrid.Visibility = Visibility.Collapsed;
         Placeholder.Visibility = Visibility.Visible;
         _held = [];
@@ -451,15 +515,34 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         }
     }
 
-    private IGridData GridData(ResultSet set, IReadOnlyList<ResultColumn> columns)
+    // Each set shows in the table tab's layout from its first draw, so its widths fit the columns it shows.
+    private void ShowData(ResultSet set, IReadOnlyList<ResultColumn> columns, GridSort sort)
     {
         var data = new ResultSetData(set, columns);
+        var frozen = 0;
         if (ShowsEdits)
         {
-            return new EditedGridData(data, GridEdits.None);
+            var edited = new EditedGridData(data, GridEdits.None);
+            if (Arrangement?.Invoke(columns) is { } arranged)
+            {
+                if (!arranged.IsIdentity(columns.Count))
+                {
+                    edited.Arrange(arranged.Order);
+                }
+
+                frozen = arranged.Frozen;
+            }
+
+            ResultGrid.SetData(edited);
+        }
+        else
+        {
+            ResultGrid.SetData(data);
         }
 
-        return data;
+        ResultGrid.FrozenColumnCount = frozen;
+        Sort = sort;
+        QueueSummary();
     }
 
     private static void DisposeSets(List<HeldSet> held, ResultSet? sorted)
@@ -623,7 +706,187 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         ViewBar.SelectedItem = view == ResultsView.Messages ? MessagesItem : ResultsItem;
         ResultsArea.Visibility = view == ResultsView.Results ? Visibility.Visible : Visibility.Collapsed;
         MessagesText.Visibility = view == ResultsView.Messages ? Visibility.Visible : Visibility.Collapsed;
+        QueueSummary();
     }
+
+    // A table tab's edits change what the selected cells hold.
+    internal void RefreshSummary() => QueueSummary();
+
+    // One cell says no more than itself, so the readout waits for two; each change stops the count before it.
+    private void QueueSummary()
+    {
+        _summing?.Cancel();
+        _summing = null;
+        var range = ResultGrid.SelectionRange;
+        if (_view != ResultsView.Results || ResultGrid.Data is not { } data || range.CellCount < 2)
+        {
+            ShowSummary(null);
+            return;
+        }
+
+        var cancel = new CancellationTokenSource();
+        _summing = cancel;
+        _ = SumAsync(data, (data as EditedGridData)?.Edits, range, Rules(data), cancel);
+    }
+
+    private async Task SumAsync(
+        IGridData data, GridEdits? edits, CellRange range, SummaryRule[] rules, CancellationTokenSource cancel)
+    {
+        try
+        {
+            // A drag or Shift+arrow moves the selection many times a second; only where it stops is counted.
+            await Task.Delay(SummaryDelay, cancel.Token).ConfigureAwait(true);
+            var summary = await Task.Run(() =>
+            {
+                using var reader = data is EditedGridData edited && edits is not null
+                    ? edited.OpenReader(edits)
+                    : data.OpenReader();
+                return SelectionSummaries.Summarize(reader, range, rules, cancel.Token);
+            }, cancel.Token).ConfigureAwait(true);
+            if (ReferenceEquals(_summing, cancel))
+            {
+                ShowSummary(summary);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException) when (cancel.IsCancellationRequested)
+        {
+            // The host let go of the set while this read it.
+        }
+        catch (TableProException)
+        {
+            if (ReferenceEquals(_summing, cancel))
+            {
+                ShowSummary(null);
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_summing, cancel))
+            {
+                _summing = null;
+            }
+
+            cancel.Dispose();
+        }
+    }
+
+    // Numeric columns are summed, a column the engine could not type only where its text reads as a number.
+    private SummaryRule[] Rules(IGridData data)
+    {
+        var rules = new SummaryRule[data.ColumnCount];
+        for (var column = 0; column < rules.Length; column++)
+        {
+            var source = data is EditedGridData edited ? edited.DataColumn(column) : column;
+            rules[column] = source < Columns.Count ? Rule(Columns[source].ValueKind) : SummaryRule.CountOnly;
+        }
+
+        return rules;
+    }
+
+    private static SummaryRule Rule(ValueKind kind) => kind switch
+    {
+        ValueKind.Integer or ValueKind.UnsignedInteger or ValueKind.WideInteger or ValueKind.Float or ValueKind.Decimal
+            => SummaryRule.Numeric,
+        ValueKind.Other => SummaryRule.NumericIfParsable,
+        _ => SummaryRule.CountOnly,
+    };
+
+    private void ShowSummary(SelectionSummary? summary)
+    {
+        _summary = summary;
+        if (summary is null)
+        {
+            SummaryFlyout.Hide();
+            SummaryBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var count = Number(summary.Values);
+        var text = summary.Sum is { } sum
+            ? Strings.Format("SummarySentence", Figure(sum), Figure(summary.Average), count)
+            : Strings.Format("SummaryCountOnly", count);
+        SummaryButton.Content = text;
+        AutomationProperties.SetName(SummaryButton, text);
+        ToolTipService.SetToolTip(SummaryButton, text);
+        SummaryBar.Visibility = Visibility.Visible;
+    }
+
+    // Built as it opens, with a Copy for each figure, so a figure copies the digits it shows.
+    private void OnSummaryOpening(object? sender, object e)
+    {
+        SummaryFigures.Children.Clear();
+        SummaryFigures.RowDefinitions.Clear();
+        SummaryFigures.ColumnDefinitions.Clear();
+        if (_summary is not { } summary)
+        {
+            return;
+        }
+
+        SummaryFigures.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        SummaryFigures.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        SummaryFigures.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        List<(string Label, string Value)> figures =
+        [
+            ("SummaryCount", Number(summary.Values)),
+            ("SummaryNumbers", Number(summary.Numbers)),
+            ("SummaryEmpty", Number(summary.Empty)),
+            ("SummaryNotANumber", Number(summary.NotANumber)),
+        ];
+        if (summary.Sum is not null)
+        {
+            figures.Add(("SummarySum", Figure(summary.Sum)));
+            figures.Add(("SummaryAverage", Figure(summary.Average)));
+            figures.Add(("SummaryMinimum", Figure(summary.Minimum)));
+            figures.Add(("SummaryMaximum", Figure(summary.Maximum)));
+        }
+
+        foreach (var (label, value) in figures)
+        {
+            var row = SummaryFigures.RowDefinitions.Count;
+            SummaryFigures.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var title = new TextBlock
+            {
+                Text = Strings.Get(label),
+                Style = (Style)Application.Current.Resources["SecondaryTextBlockStyle"],
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            var shown = new TextBlock
+            {
+                Text = value,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsTextSelectionEnabled = true,
+            };
+            AutomationProperties.SetAutomationId(shown, label + "Value");
+            AutomationProperties.SetName(shown, $"{title.Text}: {value}");
+            var copy = new Button { Content = new SymbolIcon(Symbol.Copy), Padding = new Thickness(6) };
+            AutomationProperties.SetName(copy, Strings.Format("SummaryCopy", title.Text));
+            ToolTipService.SetToolTip(copy, Strings.Format("SummaryCopy", title.Text));
+            copy.Click += (_, _) =>
+            {
+                var package = new DataPackage();
+                package.SetText(value);
+                Clipboard.SetContent(package);
+                Clipboard.Flush();
+            };
+            Grid.SetRow(title, row);
+            Grid.SetRow(shown, row);
+            Grid.SetColumn(shown, 1);
+            Grid.SetRow(copy, row);
+            Grid.SetColumn(copy, 2);
+            SummaryFigures.Children.Add(title);
+            SummaryFigures.Children.Add(shown);
+            SummaryFigures.Children.Add(copy);
+        }
+    }
+
+    private static string Number(long value) => value.ToString("N0", CultureInfo.CurrentCulture);
+
+    private static string Figure(ExactDecimal? value) =>
+        value is { } number ? number.Format(CultureInfo.CurrentCulture.NumberFormat, groupDigits: true) : string.Empty;
 
     private void OnViewChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {

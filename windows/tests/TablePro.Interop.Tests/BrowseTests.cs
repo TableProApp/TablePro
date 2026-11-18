@@ -127,6 +127,23 @@ public sealed class BrowseTests
     }
 
     [Fact]
+    public async Task ATablesInfoHasItsEstimateAndSizesButSqliteKeepsNoComment()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var database = await SqliteDatabase.CreateAsync();
+        await database.ExecuteAsync("CREATE INDEX people_by_name ON people (name)");
+        await database.ExecuteAsync("ANALYZE");
+
+        var info = await database.Session.GetTableInfoAsync(People, cancellationToken);
+
+        Assert.Equal(new RowEstimate(SqliteDatabase.PeopleRows, IsExact: false), info.Rows);
+        Assert.Null(info.Comment);
+        Assert.True(info.DataBytes > 0);
+        Assert.True(info.IndexBytes > 0);
+        Assert.Equal(info.DataBytes + info.IndexBytes, info.TotalBytes);
+    }
+
+    [Fact]
     public async Task TheChoicesAreWhatTheEngineEvaluatesOnEachColumn()
     {
         await using var database = await SqliteDatabase.CreateAsync();

@@ -15,7 +15,7 @@ use crate::foreign_key_info::ForeignKeyInfo;
 use crate::keyspace::{KeyListing, KeyPage, KeyScan, KeyWindow};
 use crate::link_watch::LinkState;
 use crate::meta::{
-    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
 };
 use crate::query_result::QueryResult;
 use crate::read_statement::ReadStatement;
@@ -147,6 +147,13 @@ pub trait Connection: Send + Sync {
     async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError>;
 
     async fn table_estimate(&self, table: &TableRef, options: CallOptions) -> Result<TableEstimate, DriverError>;
+
+    /// The table's comment and size, as far as the engine keeps them. An
+    /// engine that keeps neither says nothing rather than failing, so a
+    /// caller shows what there is.
+    async fn table_info(&self, _table: &TableRef, _options: CallOptions) -> Result<TableInfo, DriverError> {
+        Ok(TableInfo::default())
+    }
 
     /// Run a generated read and keep at most `limit` rows, marking the
     /// result truncated when there were more.

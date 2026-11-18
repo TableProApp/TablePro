@@ -5,7 +5,9 @@ use async_trait::async_trait;
 use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dump::{DumpCatalog, DumpScope};
-use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
+use tablepro_core::meta::{
+    IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
+};
 use tablepro_core::statement::Statement;
 use tablepro_core::{
     CallOptions, CatalogBudget, ColumnInfo, CommitResolution, CommitToken, Connection, DriverError, EditorSession,
@@ -391,6 +393,12 @@ impl Connection for DuckDbConnection {
             catalog::table_estimate(link, catalog, &table)
         })
         .await
+    }
+
+    async fn table_info(&self, table: &TableRef, options: CallOptions) -> Result<TableInfo, DriverError> {
+        let table = table.clone();
+        self.read(options, move |link, catalog| catalog::table_info(link, catalog, &table))
+            .await
     }
 
     async fn query_bound(

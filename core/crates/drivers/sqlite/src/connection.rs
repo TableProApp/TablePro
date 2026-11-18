@@ -10,7 +10,7 @@ use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition}
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
-    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
 };
 use tablepro_core::statement::Statement;
 use tablepro_core::{
@@ -479,6 +479,14 @@ impl Connection for SqliteConnection {
         let table = table.clone();
         self.read_catalog(options, move |connection| {
             Box::pin(async move { metadata::table_estimate(connection, &table).await })
+        })
+        .await
+    }
+
+    async fn table_info(&self, table: &TableRef, options: CallOptions) -> Result<TableInfo, DriverError> {
+        let table = table.clone();
+        self.read_catalog(options, move |connection| {
+            Box::pin(async move { metadata::table_info(connection, &table).await })
         })
         .await
     }

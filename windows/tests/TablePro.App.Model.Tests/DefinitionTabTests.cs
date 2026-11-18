@@ -262,6 +262,9 @@ internal sealed class DefinitionSession : ITabSession
     public Task<FilterChoices> GetFilterChoicesAsync(TableName table, CancellationToken cancellationToken) =>
         throw new NotSupportedException();
 
+    public Task<TableInfo> GetTableInfoAsync(TableName table, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
     public Task<TableStructure> GetStructureAsync(
         TableName table,
         ObjectKind kind,

@@ -1,6 +1,6 @@
 # 0003: TablePro's own data grid control
 
-- **Status**: Accepted
+- **Status**: Accepted; column order amended by [0013](0013-row-details-column-layout-and-selection-summary.md)
 - **Date**: 2026-11-03
 
 ## Context
@@ -122,7 +122,8 @@
 - The grid raises `SortRequested` and the host sorts: on the server, or with the core's sort of the rows held.
 - A UI in a right-to-left language would need the grid mirrored; only values read right to left today.
 - The gate runs WARP on hosted runners; no machine with a GPU is measured yet.
-- Not yet: column reorder and find.
+- The host owns the column order: a dragged header raises `ColumnMoveRequested`, the host arranges its data and calls `RearrangeColumns`, which keeps each column's width ([0013](0013-row-details-column-layout-and-selection-summary.md)).
+- Not yet: find.
 
 ## Alternatives considered
 
