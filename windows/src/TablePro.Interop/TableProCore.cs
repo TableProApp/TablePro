@@ -13,18 +13,23 @@ public sealed class TableProCore : IDisposable
 {
     private readonly Native.Core _core;
     private readonly Lazy<ConnectionLibrary> _library;
+    private readonly Lazy<AiAssistant> _assistant;
 
     private TableProCore(Native.Core core)
     {
         _core = core;
         Engines = [.. core.Drivers().Select(Mapping.Engine)];
         _library = new Lazy<ConnectionLibrary>(() => new ConnectionLibrary(CoreCall.Run(_core.Library)));
+        _assistant = new Lazy<AiAssistant>(() => new AiAssistant(_core.AiAssistant()));
     }
 
     public IReadOnlyList<DatabaseEngine> Engines { get; }
 
     // Throws TableProException with code ffi.no_storage when the configuration named no storage directory.
     public ConnectionLibrary Library => _library.Value;
+
+    // Its keys go to the store the core was given, Credential Manager for the app.
+    public AiAssistant Assistant => _assistant.Value;
 
     public static TableProCore Create(HostConfiguration configuration, ISecretStore secrets)
     {

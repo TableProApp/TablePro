@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="TablePro.App.Views.AssistantPane"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    AutomationProperties.AutomationId="AssistantPane">
+
+    <!-- Theme resources resolve per element through these, which a brush read in code would not. -->
+    <UserControl.Resources>
+        <Style x:Key="AssistantCaptionStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="IsTextSelectionEnabled" Value="True" />
+        </Style>
+        <Style x:Key="AssistantErrorStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="IsTextSelectionEnabled" Value="True" />
+        </Style>
+        <Style x:Key="AssistantTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}" />
+        <Style x:Key="AssistantQuestionStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="12" />
+        </Style>
+        <Style x:Key="AssistantCodeStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="8" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <CommandBar
+            x:Uid="AssistantCommands"
+            AutomationProperties.AutomationId="AssistantCommands"
+            DefaultLabelPosition="Collapsed"
+            OverflowButtonVisibility="Collapsed"
+            VerticalContentAlignment="Center">
+            <CommandBar.Content>
+                <StackPanel Margin="12,0" VerticalAlignment="Center">
+                    <TextBlock x:Uid="AssistantHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock
+                        x:Name="ModelText"
+                        AutomationProperties.AutomationId="AssistantModel"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </CommandBar.Content>
+            <AppBarButton x:Uid="AssistantNewButton" x:Name="NewButton" AutomationProperties.AutomationId="AssistantNewButton" Icon="Add" Click="OnNewConversation" IsEnabled="False" />
+            <AppBarButton x:Uid="AssistantCloseButton" AutomationProperties.AutomationId="AssistantCloseButton" Icon="Cancel" Click="OnClose" />
+        </CommandBar>
+
+        <StackPanel x:Name="OffPanel" Grid.Row="1" Margin="16" Spacing="12" Visibility="Collapsed">
+            <TextBlock x:Uid="AssistantOffText" AutomationProperties.AutomationId="AssistantOffText" TextWrapping="Wrap" />
+            <Button x:Uid="AssistantSettingsButton" AutomationProperties.AutomationId="AssistantSettingsButton" Click="OnOpenSettings" />
+        </StackPanel>
+
+        <StackPanel x:Name="BlockedPanel" Grid.Row="1" Margin="16" Spacing="12" Visibility="Collapsed">
+            <TextBlock x:Uid="AssistantBlockedText" AutomationProperties.AutomationId="AssistantBlockedText" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Grid x:Name="ChatPanel" Grid.Row="1" Visibility="Collapsed">
+            <TextBlock
+                x:Name="EmptyText"
+                Margin="16"
+                AutomationProperties.AutomationId="AssistantEmptyText"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextWrapping="Wrap" />
+            <ScrollViewer x:Name="Scroller" AutomationProperties.AutomationId="AssistantScroller" Visibility="Collapsed">
+                <StackPanel x:Name="Messages" Margin="12,4,12,12" Spacing="16" />
+            </ScrollViewer>
+        </Grid>
+
+        <Grid x:Name="ComposerBar" Grid.Row="2" Margin="8" ColumnSpacing="8" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox
+                x:Name="Composer"
+                x:Uid="AssistantComposer"
+                AcceptsReturn="True"
+                AutomationProperties.AutomationId="AssistantComposer"
+                MaxHeight="160"
+                PreviewKeyDown="OnComposerKeyDown"
+                ScrollViewer.VerticalScrollBarVisibility="Auto"
+                TextChanged="OnComposerChanged"
+                TextWrapping="Wrap" />
+            <Button
+                x:Uid="AssistantSendButton"
+                x:Name="SendButton"
+                Grid.Column="1"
+                VerticalAlignment="Bottom"
+                AutomationProperties.AutomationId="AssistantSendButton"
+                Click="OnSend"
+                IsEnabled="False"
+                Style="{StaticResource AccentButtonStyle}">
+                <SymbolIcon Symbol="Send" />
+            </Button>
+            <Button
+                x:Uid="AssistantStopButton"
+                x:Name="StopButton"
+                Grid.Column="1"
+                VerticalAlignment="Bottom"
+                AutomationProperties.AutomationId="AssistantStopButton"
+                Click="OnStop"
+                Visibility="Collapsed">
+                <SymbolIcon Symbol="Stop" />
+            </Button>
+        </Grid>
+    </Grid>
+</UserControl>

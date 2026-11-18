@@ -128,6 +128,7 @@ fn record(name: &str) -> ConnectionRecord {
         group_id: None,
         last_opened_ms: None,
         tags: Vec::new(),
+        ai_policy: None,
     }
 }
 

@@ -201,6 +201,7 @@ public sealed partial class ConnectionFormWindow : Window
         ClientCertificateBox.Text = draft.ClientCertificate;
         ClientKeyBox.Text = draft.ClientKey;
         SafeModeBox.SelectedIndex = (int)draft.SafeMode;
+        AiPolicyBox.SelectedIndex = (int)draft.AiPolicy;
         TimeoutBox.Text = draft.Timeout;
         ColorBox.SelectedIndex = Math.Max(0, Array.IndexOf(Colors, draft.Color ?? string.Empty));
         NameBox.PlaceholderText = draft.SuggestedName();
@@ -244,6 +245,7 @@ public sealed partial class ConnectionFormWindow : Window
         }
 
         draft.SafeMode = (SafeMode)Math.Max(0, SafeModeBox.SelectedIndex);
+        draft.AiPolicy = (AiPolicy)Math.Max(0, AiPolicyBox.SelectedIndex);
         draft.Timeout = TimeoutBox.Text;
         draft.Color = ColorBox.SelectedItem is ComboBoxItem { Tag: string color } && color.Length > 0 ? color : null;
         draft.GroupId = GroupBox.SelectedItem is ComboBoxItem { Tag: Guid group } ? group : null;
@@ -494,6 +496,15 @@ public sealed partial class ConnectionFormWindow : Window
         var group = (GroupBox.SelectedItem as ComboBoxItem)?.Content as string ?? string.Empty;
         AppearanceExpander.Description = Strings.Format("AppearanceSummary", color, group);
     }
+
+    // The card says what the chosen policy sends, as the Linux connection dialog does.
+    private void OnAiPolicyChanged(object sender, SelectionChangedEventArgs e) =>
+        AiPolicyCard.Description = Strings.Get(AiPolicyBox.SelectedIndex switch
+        {
+            1 => "AiPolicyAllowDescription",
+            2 => "AiPolicyNeverDescription",
+            _ => "AiPolicyAskDescription",
+        });
 
     private void OnSummaryChanged(object sender, SelectionChangedEventArgs e)
     {

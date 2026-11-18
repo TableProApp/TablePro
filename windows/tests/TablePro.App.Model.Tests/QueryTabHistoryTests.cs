@@ -65,6 +65,35 @@ public sealed class QueryTabHistoryTests
     }
 
     [Fact]
+    public async Task ARefusedTypedRunIsWhatFixWithAiSendsUntilTheNextRun()
+    {
+        _view.WholeText = "selec 1";
+        _session.Script = _ => Ending(new QueryOutcome.Failed(Errors.Of("query.syntax")));
+        await _tab.RunAsync();
+        var failure = _tab.LastFailure;
+
+        _session.Script = _ => Ending(new QueryOutcome.Completed(TimeSpan.FromMilliseconds(1)));
+        await _tab.RunAsync();
+
+        Assert.Equal(new RunFailure("selec 1", "worded query.syntax"), failure);
+        Assert.Null(_tab.LastFailure);
+    }
+
+    [Fact]
+    public void TheAssistantTakesTheSelectionElseTheStatementAtTheCaret()
+    {
+        _view.WholeText = "select 1; select 2";
+        _view.Caret = 12;
+        _session.Statement = (_, caret) => caret >= 10 ? new Range(10, 18) : new Range(0, 8);
+
+        var atCaret = _tab.AssistantStatement();
+        _view.SelectedText = " select 1 ";
+
+        Assert.Equal("select 2", atCaret);
+        Assert.Equal("select 1", _tab.AssistantStatement());
+    }
+
+    [Fact]
     public async Task AStoppedRunIsKeptAsCancelled()
     {
         var reading = new Gate();

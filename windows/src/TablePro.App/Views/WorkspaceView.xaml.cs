@@ -100,10 +100,17 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         {
             _workbench.HistoryCleared -= OnHistoryRecorded;
             _workbench.HistoryCleared += OnHistoryRecorded;
+            _workbench.SettingsChanged -= OnSettingsChanged;
+            _workbench.SettingsChanged += OnSettingsChanged;
             // A clear while another page showed reached no handler here, so the pane reads the history again.
             OnHistoryRecorded(this, EventArgs.Empty);
+            AssistantChanged();
         };
-        Unloaded += (_, _) => _workbench.HistoryCleared -= OnHistoryRecorded;
+        Unloaded += (_, _) =>
+        {
+            _workbench.HistoryCleared -= OnHistoryRecorded;
+            _workbench.SettingsChanged -= OnSettingsChanged;
+        };
         Tabs.LayoutUpdated += OnTabsLayoutUpdated;
     }
 
@@ -372,6 +379,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         // A pending individual close must not create a replacement while disconnect is awaiting it.
         _share = null;
         _session = null;
+        EndAssistant();
         _exporting?.Cancel();
         Tabs.CanTearOutTabs = false;
         _watching?.Cancel();
@@ -1213,6 +1221,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             query.SaveQueryRequested += OnSaveQueryRequested;
             query.OpenFilesRequested += OnOpenFilesRequested;
             query.FileSaved += OnFileSaved;
+            AttachAssistant(query);
         }
         else if (item.Content is DefinitionTabView definition)
         {
@@ -1274,6 +1283,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             query.SaveQueryRequested -= OnSaveQueryRequested;
             query.OpenFilesRequested -= OnOpenFilesRequested;
             query.FileSaved -= OnFileSaved;
+            DetachAssistant(query);
         }
         else if (item.Content is DefinitionTabView definition)
         {

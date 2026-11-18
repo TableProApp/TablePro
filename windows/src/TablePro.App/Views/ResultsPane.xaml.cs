@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using TablePro.App.Model;
 using TablePro.App.Services;
@@ -166,6 +167,21 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     }
 
     public void ShowError(CoreError failure) => ShowError(Strings.Error(failure));
+
+    // Fix with AI on the error bar while a refused run's error shows; null takes it away.
+    internal void OfferFix(Action? fix)
+    {
+        if (fix is null)
+        {
+            ErrorBar.ActionButton = null;
+            return;
+        }
+
+        var button = new Button { Content = Strings.Get("AiFix") };
+        AutomationProperties.SetAutomationId(button, "FixWithAiButton");
+        button.Click += (_, _) => fix();
+        ErrorBar.ActionButton = button;
+    }
 
     public void ShowError(string message)
     {

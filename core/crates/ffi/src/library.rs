@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use secrecy::SecretString;
 use tablepro_core::credentials::{SecretKind, SecretLookup, SecretVault};
 use tablepro_core::{
-    AuthMode, ClientIdentity, ConfigError, DriverError, NetworkOptions, SafeModeLevel, TlsConfig, TlsMode,
+    AiPolicy, AuthMode, ClientIdentity, ConfigError, DriverError, NetworkOptions, SafeModeLevel, TlsConfig, TlsMode,
 };
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{
@@ -68,6 +68,34 @@ impl From<SafeModeTag> for SafeModeLevel {
     }
 }
 
+// What the AI assistant may send from the connection (core AiPolicy).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AiPolicyTag {
+    Ask,
+    Allow,
+    Never,
+}
+
+impl From<AiPolicyTag> for AiPolicy {
+    fn from(tag: AiPolicyTag) -> Self {
+        match tag {
+            AiPolicyTag::Ask => Self::Ask,
+            AiPolicyTag::Allow => Self::Allow,
+            AiPolicyTag::Never => Self::Never,
+        }
+    }
+}
+
+impl From<AiPolicy> for AiPolicyTag {
+    fn from(policy: AiPolicy) -> Self {
+        match policy {
+            AiPolicy::Ask => Self::Ask,
+            AiPolicy::Allow => Self::Allow,
+            AiPolicy::Never => Self::Never,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct TlsSettings {
     pub mode: TlsModeTag,
@@ -116,6 +144,9 @@ pub struct ConnectionRecord {
     pub last_opened_ms: Option<i64>,
     // Read only: a save keeps the stored tags, which change through tag_connections.
     pub tags: Vec<String>,
+    // Always set on a record read back; None on a save keeps the stored policy, Ask for a new connection.
+    #[uniffi(default = None)]
+    pub ai_policy: Option<AiPolicyTag>,
 }
 
 // Each secret as the form holds it: None keeps what is stored, an empty string is stored as one.
@@ -856,6 +887,9 @@ pub(crate) fn apply(
     saved.query_timeout_secs = record.query_timeout_secs;
     saved.color = record.color.as_deref().and_then(ConnectionColor::from_id);
     saved.group_id = group_id;
+    if let Some(policy) = record.ai_policy {
+        saved.ai_policy = policy.into();
+    }
 }
 
 fn path(text: Option<&String>) -> Option<PathBuf> {
@@ -966,6 +1000,7 @@ impl From<&SavedConnection> for ConnectionRecord {
             group_id: saved.group_id.map(|id| id.to_string()),
             last_opened_ms: saved.last_opened_at.map(|at: DateTime<Utc>| at.timestamp_millis()),
             tags: saved.tags.iter().map(Uuid::to_string).collect(),
+            ai_policy: Some(saved.ai_policy.into()),
         }
     }
 }
