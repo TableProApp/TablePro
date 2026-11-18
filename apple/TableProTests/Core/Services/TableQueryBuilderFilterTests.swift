@@ -216,16 +216,36 @@ struct TableQueryBuilderFilteredCountTests {
     }
 }
 
+private final class PageWritingPlugin: PluginDriverStub, @unchecked Sendable {}
+
 struct TableQueryBuilderCappedCountTests {
-    private static func builder(_ style: SQLDialectDescriptor.PaginationStyle, orderBy: String = "ORDER BY (SELECT NULL)") -> TableQueryBuilder {
+    private static func builder(
+        _ style: SQLDialectDescriptor.PaginationStyle,
+        orderBy: String = "ORDER BY (SELECT NULL)",
+        plugin: (any PluginDatabaseDriver)? = nil
+    ) -> TableQueryBuilder {
         let dialect = SQLDialectDescriptor(
             identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
             regexSyntax: .regexp, booleanLiteralStyle: .numeric,
             likeEscapeStyle: .implicit, paginationStyle: style, offsetFetchOrderBy: orderBy
         )
         return TableQueryBuilder(
-            databaseType: .postgresql, dialect: dialect, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier
+            databaseType: .postgresql, pluginDriver: plugin, dialect: dialect, pagination: .offset,
+            dialectQuote: SQLEscaping.quoteIdentifier
         )
+    }
+
+    @Test("A plugin that writes its own pages gets no LIMIT it may not speak")
+    func pageWritingPluginWithLimitDialect() {
+        let builder = Self.builder(.limit, plugin: PageWritingPlugin())
+        #expect(builder.buildCappedCountQuery(tableName: "orders", filters: [], limit: 11) == nil)
+    }
+
+    @Test("A plugin whose dialect states OFFSET FETCH keeps the capped count")
+    func pageWritingPluginWithOffsetFetchDialect() throws {
+        let builder = Self.builder(.offsetFetch, orderBy: "", plugin: PageWritingPlugin())
+        let query = try #require(builder.buildCappedCountQuery(tableName: "orders", filters: [], limit: 11))
+        #expect(query.contains("OFFSET 0 ROWS FETCH NEXT 11 ROWS ONLY"))
     }
 
     private func filter(_ column: String, _ value: String) -> TableFilter {

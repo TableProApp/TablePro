@@ -230,6 +230,7 @@ struct TableQueryBuilder {
     }
 
     // Reads at most `limit` rows, so a view or an unanalyzed table costs a bounded read. The alias has no AS: Oracle refuses one.
+    // A plugin that writes its own pages may not speak LIMIT (Teradata), so only OFFSET FETCH is taken as its syntax.
     func buildCappedCountQuery(
         tableName: String,
         schemaName: String? = nil,
@@ -239,6 +240,7 @@ struct TableQueryBuilder {
         columnTypes: [ColumnType] = [],
         limit: Int
     ) -> String? {
+        guard pluginDriver == nil || dialect?.paginationStyle == .offsetFetch else { return nil }
         guard let whereClause = countWhereClause(
             filters: filters, logicMode: logicMode, columns: columns, columnTypes: columnTypes
         ) else { return nil }

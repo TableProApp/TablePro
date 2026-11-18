@@ -702,7 +702,7 @@ extension QueryExecutionCoordinator {
                 }
                 let scope = parent.scope(for: tab)
                 let countScope = tab.rowCountScope(table: tableName)
-                let plan = Self.rowCountPlan(
+                var plan = Self.rowCountPlan(
                     isNonSQL: isNonSQL,
                     filterState: tab.filterState,
                     // An exact total describes the filters it was counted under, not the table's size.
@@ -717,9 +717,8 @@ extension QueryExecutionCoordinator {
                 let rerun = tab.filterState.rerunFilters
                 let filters = request.filtered ? rerun.filters : []
                 let logicMode = rerun.logicMode
-                let sql: String?
-                if let limit = request.limit {
-                    sql = parent.queryBuilder.buildCappedCountQuery(
+                var sql = request.limit.flatMap { limit in
+                    parent.queryBuilder.buildCappedCountQuery(
                         tableName: tableName,
                         schemaName: tab.tableContext.schemaName,
                         filters: filters,
@@ -728,7 +727,10 @@ extension QueryExecutionCoordinator {
                         columnTypes: queryColumns.columnTypes,
                         limit: limit
                     )
-                } else {
+                }
+                if sql == nil {
+                    // An engine with no capped form it can run still gets the count it always had.
+                    plan = .exactCount(filtered: request.filtered)
                     sql = parent.queryBuilder.buildFilteredCountQuery(
                         tableName: tableName,
                         schemaName: tab.tableContext.schemaName,
