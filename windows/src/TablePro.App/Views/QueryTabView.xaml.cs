@@ -68,6 +68,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         SqlText.GotFocus += (_, _) => _target = EditTarget.Editor;
         Results.GridView.GotFocus += (_, _) => _target = EditTarget.Grid;
         Results.MessagesBox.GotFocus += (_, _) => _target = EditTarget.Messages;
+        Results.JsonTextBox.GotFocus += (_, _) => _target = EditTarget.Messages;
         Results.GridView.ContextRequested += OnGridContextRequested;
         SqlText.ContextMenuOpening += OnEditorMenuOpening;
         SqlText.TextChanged += OnTextChanged;
@@ -141,10 +142,9 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
 
     public DataGridView? Grid => Results.GridView;
 
-    public bool GridIsTarget => _target == EditTarget.Grid;
+    public bool GridIsTarget => _target == EditTarget.Grid && Results.ShowsGrid;
 
-    public TextBox? MessagesTarget =>
-        _target == EditTarget.Messages && Results.MessagesBox.Visibility == Visibility.Visible ? Results.MessagesBox : null;
+    public TextBox? MessagesTarget => _target == EditTarget.Messages ? Results.ShownText : null;
 
     internal ResultsPane ResultsView => Results;
 

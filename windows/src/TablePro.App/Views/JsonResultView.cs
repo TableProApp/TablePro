@@ -96,6 +96,11 @@ internal sealed partial class JsonResultView : UserControl
 
     private bool ShowsTree => ReferenceEquals(_modes.SelectedItem, _treeItem);
 
+    // For the Edit menu's Copy and Select All while the text shows.
+    internal TextBox TextBox => _text;
+
+    internal bool ShowsText => Visibility == Visibility.Visible && !ShowsTree;
+
     // The view owns the tree from here, and lets go of the one it showed.
     public void Show(RowsJson json, JsonTree tree)
     {

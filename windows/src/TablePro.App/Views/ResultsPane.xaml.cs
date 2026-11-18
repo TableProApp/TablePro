@@ -74,6 +74,17 @@ public sealed partial class ResultsPane : UserControl, IResultsView
 
     public TextBox MessagesBox => MessagesText;
 
+    internal TextBox JsonTextBox => _jsonView.TextBox;
+
+    // The text the Edit menu's Copy and Select All reach once text had focus: the messages or the JSON, whichever shows.
+    internal TextBox? ShownText =>
+        MessagesText.Visibility == Visibility.Visible ? MessagesText
+        : _jsonView.ShowsText ? _jsonView.TextBox
+        : null;
+
+    // JSON hides the grid, so Copy and Select All must not reach its selection.
+    internal bool ShowsGrid => ResultGrid.Visibility == Visibility.Visible;
+
     // The columns of the set the grid shows.
     public IReadOnlyList<ResultColumn> Columns { get; private set; } = [];
 

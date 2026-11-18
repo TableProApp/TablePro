@@ -83,6 +83,11 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             _messagesIsTarget = true;
             _detailsTarget = null;
         };
+        Results.JsonTextBox.GotFocus += (_, _) =>
+        {
+            _messagesIsTarget = true;
+            _detailsTarget = null;
+        };
         grid.CellEditStarting += OnCellEditStarting;
         grid.CellEditCommitting += OnCellEditCommitting;
         grid.DeleteRequested += (_, _) => DeleteRows();
@@ -125,7 +130,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     // Copy and Select All reach the grid shown, the structure's while Structure shows.
     public DataGridView? Grid => _showsStructure && _structure is { } structure ? structure.Grid : Results.GridView;
 
-    public bool GridIsTarget => true;
+    public bool GridIsTarget => _showsStructure || Results.ShowsGrid;
 
     public TextBox? MessagesTarget
     {
@@ -141,9 +146,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
                 return detailsField;
             }
 
-            return _messagesIsTarget && Results.MessagesBox.Visibility == Visibility.Visible
-                ? Results.MessagesBox
-                : null;
+            return _messagesIsTarget ? Results.ShownText : null;
         }
     }
 
