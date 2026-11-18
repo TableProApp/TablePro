@@ -100,11 +100,11 @@ final class DuckDBStagingDatabase {
         } catch StagingError.memoryExhausted where isMemoryLimited {
             // A value larger than the limit cannot be staged under it. An automatic flush may already hold the first rows.
             discardAppender()
+            try liftMemoryLimit()
             let staged = try stagedRowsInTable() - stagedRowCount
             guard (0 ... rows.count).contains(staged) else {
                 throw StagingError.queryFailed("the staging table lost rows")
             }
-            try liftMemoryLimit()
             try append(rows[staged...])
         }
         stagedRowCount += rows.count
