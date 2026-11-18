@@ -191,7 +191,8 @@ public sealed partial class AssistantPane : UserControl
         _busy = true;
         SyncControls();
         var generation = _generation;
-        using var work = _work = new CancellationTokenSource();
+        using var work = new CancellationTokenSource();
+        _work = work;
         try
         {
             var allowed = await _access.PermitAsync(settings => ConfirmAsync(settings, work.Token)).ConfigureAwait(true);
@@ -426,7 +427,8 @@ public sealed partial class AssistantPane : UserControl
         turn.Clear();
         SyncControls();
         var generation = _generation;
-        using var work = _work = new CancellationTokenSource();
+        using var work = new CancellationTokenSource();
+        _work = work;
         try
         {
             await ReplyAsync(turn, generation, work.Token).ConfigureAwait(true);
@@ -624,7 +626,7 @@ public sealed partial class AssistantPane : UserControl
             }
         }
 
-        private FrameworkElement Question(AssistantAsk asked)
+        private Border Question(AssistantAsk asked)
         {
             var card = new StackPanel { Spacing = 6 };
             switch (asked)

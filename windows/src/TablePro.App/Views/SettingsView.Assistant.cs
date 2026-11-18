@@ -183,7 +183,8 @@ public sealed partial class SettingsView
         }
 
         _listingModels?.Cancel();
-        using var listing = _listingModels = new CancellationTokenSource();
+        using var listing = new CancellationTokenSource();
+        _listingModels = listing;
         var typed = AiModelBox.Text;
         IReadOnlyList<string> models;
         try
