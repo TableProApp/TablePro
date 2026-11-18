@@ -115,6 +115,20 @@ public sealed class FoldTests
     }
 
     [Fact]
+    public void DownFromAFoldOverTheLastLinesKeepsItShut()
+    {
+        var model = Carets.Model("x;\nselect a,\n  b;");
+        model.Rows.Folds.Fold(new FoldRegion(1, 2));
+        model.SetCaret(4);
+
+        model.Move(CaretMove.Down, extend: false);
+        model.Move(CaretMove.PageDown, extend: false, pageLines: 10);
+
+        Assert.True(model.Rows.Folds.IsFolded(1));
+        Assert.Equal(model.Document.GetLineEnd(1), model.Primary.Active);
+    }
+
+    [Fact]
     public void ACaretSentIntoAFoldOpensIt()
     {
         var model = Carets.Model(Script);

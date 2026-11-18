@@ -66,6 +66,7 @@ public sealed class WrapTests
         Assert.Equal(8, LineWrap.Columns("ab\tc".AsSpan(0, 3), 8));
         Assert.Equal(9, LineWrap.Columns("ab\tc", 8));
         Assert.Equal(3, LineWrap.OffsetAtColumn("ab\tcd", 8, 8));
+        Assert.Equal(2, LineWrap.OffsetAtColumn(new string([(char)0x915, (char)0x93E, 'x']), 2, 4));
     }
 
     [Fact]

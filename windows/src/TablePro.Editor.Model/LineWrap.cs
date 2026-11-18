@@ -79,18 +79,20 @@ public static class LineWrap
         while (i < row.Length && current < column)
         {
             var c = row[i];
-            var length = c == '\t' ? 1 : UnitLength(row, i);
-            var next = c == '\t' ? current + tabSize - current % tabSize : current + Width(row, i, length);
+            var end = i + (c == '\t' ? 1 : UnitLength(row, i));
+            var next = c == '\t' ? current + tabSize - current % tabSize : current + Width(row, i, end - i);
+            // A letter and the marks after it are one step, their columns counted together.
+            while (end < row.Length && IsMark(row[end]))
+            {
+                next += Width(row, end, 1);
+                end++;
+            }
             if (next > column && next - column > column - current)
             {
                 break;
             }
             current = next;
-            i += length;
-            while (i < row.Length && IsMark(row[i]))
-            {
-                i++;
-            }
+            i = end;
         }
         return i;
     }

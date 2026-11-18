@@ -488,8 +488,13 @@ public sealed partial class SqlEditor
         {
             return [];
         }
-        var rows = _model.Rows;
-        return TextSearch.InRange(Document, _findBar.Query, rows.RowSpan(firstRow).Start, rows.RowSpan(lastRow).End);
+        // Range by range, so a fold between the rows on screen is never searched.
+        var matches = new List<(int Start, int Length)>();
+        foreach (var (start, end) in RowRanges(firstRow, lastRow))
+        {
+            matches.AddRange(TextSearch.InRange(Document, _findBar.Query, start, end));
+        }
+        return matches;
     }
 
     private static ulong StyleKey(List<StyleRun> runs)

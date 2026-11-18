@@ -272,10 +272,14 @@ public sealed partial class SqlEditor
     // Each run of rows on screen whose lines follow one another, so a fold between them splits the ranges.
     internal List<(int Start, int End)> VisibleRanges()
     {
+        var first = Math.Min(FirstVisibleRow, _model.Rows.RowCount - 1);
+        return RowRanges(first, Math.Min(_model.Rows.RowCount - 1, first + VisibleLineCount));
+    }
+
+    private List<(int Start, int End)> RowRanges(int first, int last)
+    {
         var ranges = new List<(int Start, int End)>();
         var rows = _model.Rows;
-        var first = Math.Min(FirstVisibleRow, rows.RowCount - 1);
-        var last = Math.Min(rows.RowCount - 1, first + VisibleLineCount);
         var previousLine = -1;
         for (var row = first; row <= last; row++)
         {

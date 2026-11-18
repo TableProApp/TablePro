@@ -110,7 +110,10 @@ public sealed partial class EditorModel
         {
             return (0, column);
         }
-        return target >= Rows.RowCount ? (Document.Length, column) : (Rows.OffsetAt(target, column), column);
+        // Past the last row the caret stops at its end, so a fold over the last lines stays shut.
+        return target >= Rows.RowCount
+            ? (Rows.RowSpan(Rows.RowCount - 1).End, column)
+            : (Rows.OffsetAt(target, column), column);
     }
 
     // A wrapped row's Home and End stay on that row, as a wrapping Windows text box has them; the first row keeps smart Home.
