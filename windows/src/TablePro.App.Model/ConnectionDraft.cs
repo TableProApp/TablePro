@@ -36,6 +36,7 @@ public sealed class ConnectionDraft
 
     // The record's own, which a save leaves as it was unless the form changed it.
     private AiPolicy? _savedAiPolicy;
+    private ExternalAccess? _savedExternalAccess;
 
     public Guid? Id { get; set; }
 
@@ -96,6 +97,9 @@ public sealed class ConnectionDraft
 
     // What the AI assistant may send from the connection; a new one starts at Ask, as the core saves it.
     public AiPolicy AiPolicy { get; set; } = AiPolicy.Ask;
+
+    // What MCP clients and the tablepro command may do with it; a new one starts at ReadOnly, as the core saves it.
+    public ExternalAccess ExternalAccess { get; set; } = ExternalAccess.ReadOnly;
     public string Timeout { get; set; } = string.Empty;
 
     public string? Color { get; set; }
@@ -175,6 +179,8 @@ public sealed class ConnectionDraft
             SafeMode = connection.SafeMode,
             AiPolicy = connection.AiPolicy ?? AiPolicy.Ask,
             _savedAiPolicy = connection.AiPolicy,
+            ExternalAccess = connection.ExternalAccess ?? ExternalAccess.ReadOnly,
+            _savedExternalAccess = connection.ExternalAccess,
             Timeout = connection.QueryTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
             Color = connection.Color,
             GroupId = connection.GroupId,
@@ -304,6 +310,7 @@ public sealed class ConnectionDraft
                 SafeMode, Color: Color, GroupId: GroupId, LastOpened: LastOpened)
             {
                 AiPolicy = ChosenAiPolicy(),
+                ExternalAccess = ChosenExternalAccess(),
             };
         }
 
@@ -342,10 +349,14 @@ public sealed class ConnectionDraft
             LastOpened: LastOpened)
         {
             AiPolicy = ChosenAiPolicy(),
+            ExternalAccess = ChosenExternalAccess(),
         };
     }
 
     private AiPolicy? ChosenAiPolicy() => AiPolicy == (_savedAiPolicy ?? AiPolicy.Ask) ? _savedAiPolicy : AiPolicy;
+
+    private ExternalAccess? ChosenExternalAccess() =>
+        ExternalAccess == (_savedExternalAccess ?? ExternalAccess.ReadOnly) ? _savedExternalAccess : ExternalAccess;
 
     // A rename, a colour, a group or the AI policy is nothing a connect reads, so a connect under way goes on.
     public static bool ChangesConnect(SavedConnection before, SavedConnection after)
@@ -364,6 +375,7 @@ public sealed class ConnectionDraft
             LastOpened = before.LastOpened,
             Tags = before.Tags,
             AiPolicy = before.AiPolicy,
+            ExternalAccess = before.ExternalAccess,
             Ssh = ssh,
         } != before;
     }

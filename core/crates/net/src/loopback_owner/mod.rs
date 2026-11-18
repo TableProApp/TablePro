@@ -5,12 +5,41 @@ use std::net::{SocketAddr, SocketAddrV4};
 mod proc_net_tcp;
 #[cfg(any(windows, test))]
 mod tcp_table;
+#[cfg(windows)]
+mod token_user;
 
 // Ours is this user's on Linux and this process's on Windows, the owner each socket table records. Blocks.
 pub fn loopback_peer_is_ours(peer: SocketAddr, local: SocketAddr) -> io::Result<bool> {
     let (SocketAddr::V4(peer), SocketAddr::V4(local)) = (peer, local) else {
         return Ok(false);
     };
+    owned_here(peer, local)
+}
+
+// Run by this user, whatever the process: Linux's socket uid, or the Windows owning process's token user. Blocks.
+pub fn loopback_peer_is_this_user(peer: SocketAddr, local: SocketAddr) -> io::Result<bool> {
+    let (SocketAddr::V4(peer), SocketAddr::V4(local)) = (peer, local) else {
+        return Ok(false);
+    };
+    this_users(peer, local)
+}
+
+#[cfg(target_os = "linux")]
+fn this_users(peer: SocketAddrV4, local: SocketAddrV4) -> io::Result<bool> {
+    owned_here(peer, local)
+}
+
+#[cfg(windows)]
+fn this_users(peer: SocketAddrV4, local: SocketAddrV4) -> io::Result<bool> {
+    let table = tcp_table::connections()?;
+    match tcp_table::owner(&table, peer, local) {
+        Some(pid) => token_user::runs_as_this_user(pid),
+        None => Ok(false),
+    }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
+fn this_users(peer: SocketAddrV4, local: SocketAddrV4) -> io::Result<bool> {
     owned_here(peer, local)
 }
 
@@ -61,6 +90,28 @@ mod tests {
         assert!(loopback_peer_is_ours(client.peer_addr().unwrap(), client.local_addr().unwrap()).unwrap());
     }
 
+    // The client's end, as a server checks it, and the server's before it accepts, as the command line checks it.
+    #[cfg(any(target_os = "linux", windows))]
+    #[test]
+    fn both_ends_of_a_connection_this_process_opens_are_this_users() {
+        let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let client = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+
+        assert!(loopback_peer_is_this_user(client.peer_addr().unwrap(), client.local_addr().unwrap()).unwrap());
+        let (_server, peer) = listener.accept().unwrap();
+        assert!(loopback_peer_is_this_user(peer, listener.local_addr().unwrap()).unwrap());
+        drop(client);
+    }
+
+    #[cfg(any(target_os = "linux", windows))]
+    #[test]
+    fn a_peer_no_table_lists_is_not_this_users() {
+        let peer = SocketAddr::from((Ipv4Addr::LOCALHOST, 9));
+        let local = SocketAddr::from((Ipv4Addr::LOCALHOST, 7));
+
+        assert!(!loopback_peer_is_this_user(peer, local).unwrap());
+    }
+
     #[cfg(not(any(target_os = "linux", windows)))]
     #[test]
     fn other_systems_name_no_owner() {
@@ -68,8 +119,10 @@ mod tests {
         let local = SocketAddr::from((Ipv4Addr::LOCALHOST, 8080));
 
         let error = loopback_peer_is_ours(peer, local).unwrap_err();
+        let user = loopback_peer_is_this_user(peer, local).unwrap_err();
 
         assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+        assert_eq!(user.kind(), io::ErrorKind::Unsupported);
     }
 
     #[test]
@@ -78,5 +131,6 @@ mod tests {
         let local = SocketAddr::from((Ipv4Addr::LOCALHOST, 8080));
 
         assert!(!loopback_peer_is_ours(peer, local).unwrap());
+        assert!(!loopback_peer_is_this_user(peer, local).unwrap());
     }
 }

@@ -449,7 +449,8 @@ internal static partial class Mapping
         connection.GroupId?.ToString(),
         connection.LastOpened?.ToUnixTimeMilliseconds(),
         [.. connection.Tags.Select(tag => tag.ToString())],
-        connection.AiPolicy is { } policy ? Policy(policy) : null);
+        connection.AiPolicy is { } policy ? Policy(policy) : null,
+        connection.ExternalAccess is { } access ? Access(access) : null);
 
     public static SavedConnection Connection(Native.ConnectionRecord record) => new(
         Guid.Parse(record.Id),
@@ -495,6 +496,7 @@ internal static partial class Mapping
     {
         Tags = [.. record.Tags.Select(Guid.Parse)],
         AiPolicy = Policy(record.AiPolicy ?? Native.AiPolicyTag.Ask),
+        ExternalAccess = Access(record.ExternalAccess ?? Native.ExternalAccessTag.ReadOnly),
     };
 
     public static ConnectionGroup Group(Native.GroupRecord group) => new(

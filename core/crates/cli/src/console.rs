@@ -3,18 +3,28 @@ use std::io::{self, Write};
 
 use crate::command_error::CommandError;
 use crate::exit::Exit;
-use crate::host::Terminal;
+use crate::host::{Places, Terminal};
 use crate::output::{OutputFormat, Table, escape_lines, render};
 
 pub(crate) struct Console<'a> {
     out: &'a mut dyn Write,
     err: &'a mut dyn Write,
     terminal: Terminal,
+    places: Places,
 }
 
 impl<'a> Console<'a> {
     pub(crate) fn new(out: &'a mut dyn Write, err: &'a mut dyn Write, terminal: Terminal) -> Self {
-        Self { out, err, terminal }
+        Self {
+            out,
+            err,
+            terminal,
+            places: Places::PREFERENCES,
+        }
+    }
+
+    pub(crate) fn naming(self, places: Places) -> Self {
+        Self { places, ..self }
     }
 
     pub(crate) fn terminal(&self) -> Terminal {
@@ -41,6 +51,11 @@ impl<'a> Console<'a> {
         self.text(&text)
     }
 
+    // Not failing: `status` reports what a command would meet and goes on.
+    pub(crate) fn report(&mut self, error: &CommandError) {
+        self.note(&error.message(self.places));
+    }
+
     pub(crate) fn note(&mut self, text: &str) {
         self.line(&format!("tablepro: {text}"));
     }
@@ -63,7 +78,7 @@ impl<'a> Console<'a> {
         {
             return Exit::Success;
         }
-        self.note(&error.to_string());
+        self.note(&error.message(self.places));
         error.exit()
     }
 

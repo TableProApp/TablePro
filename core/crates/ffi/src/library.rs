@@ -5,7 +5,8 @@ use chrono::{DateTime, Utc};
 use secrecy::SecretString;
 use tablepro_core::credentials::{SecretKind, SecretLookup, SecretVault};
 use tablepro_core::{
-    AiPolicy, AuthMode, ClientIdentity, ConfigError, DriverError, NetworkOptions, SafeModeLevel, TlsConfig, TlsMode,
+    AiPolicy, AuthMode, ClientIdentity, ConfigError, DriverError, ExternalAccess, NetworkOptions, SafeModeLevel,
+    TlsConfig, TlsMode,
 };
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{
@@ -96,6 +97,34 @@ impl From<AiPolicy> for AiPolicyTag {
     }
 }
 
+// What MCP clients and the tablepro command may do with the connection (core ExternalAccess).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ExternalAccessTag {
+    Blocked,
+    ReadOnly,
+    ReadWrite,
+}
+
+impl From<ExternalAccessTag> for ExternalAccess {
+    fn from(tag: ExternalAccessTag) -> Self {
+        match tag {
+            ExternalAccessTag::Blocked => Self::Blocked,
+            ExternalAccessTag::ReadOnly => Self::ReadOnly,
+            ExternalAccessTag::ReadWrite => Self::ReadWrite,
+        }
+    }
+}
+
+impl From<ExternalAccess> for ExternalAccessTag {
+    fn from(access: ExternalAccess) -> Self {
+        match access {
+            ExternalAccess::Blocked => Self::Blocked,
+            ExternalAccess::ReadOnly => Self::ReadOnly,
+            ExternalAccess::ReadWrite => Self::ReadWrite,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct TlsSettings {
     pub mode: TlsModeTag,
@@ -147,6 +176,9 @@ pub struct ConnectionRecord {
     // Always set on a record read back; None on a save keeps the stored policy, Ask for a new connection.
     #[uniffi(default = None)]
     pub ai_policy: Option<AiPolicyTag>,
+    // Always set on a record read back; None on a save keeps the stored level, Read Only for a new connection.
+    #[uniffi(default = None)]
+    pub external_access: Option<ExternalAccessTag>,
 }
 
 // Each secret as the form holds it: None keeps what is stored, an empty string is stored as one.
@@ -898,6 +930,9 @@ pub(crate) fn apply(
     saved.query_timeout_secs = record.query_timeout_secs;
     saved.color = record.color.as_deref().and_then(ConnectionColor::from_id);
     saved.group_id = group_id;
+    if let Some(access) = record.external_access {
+        saved.external_access = access.into();
+    }
     if let Some(policy) = record.ai_policy {
         saved.ai_policy = policy.into();
     }
@@ -1020,6 +1055,7 @@ impl From<&SavedConnection> for ConnectionRecord {
             last_opened_ms: saved.last_opened_at.map(|at: DateTime<Utc>| at.timestamp_millis()),
             tags: saved.tags.iter().map(Uuid::to_string).collect(),
             ai_policy: Some(saved.ai_policy.into()),
+            external_access: Some(saved.external_access.into()),
         }
     }
 }

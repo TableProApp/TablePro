@@ -217,6 +217,7 @@ public sealed partial class ConnectionFormWindow : Window
         ClientKeyBox.Text = draft.ClientKey;
         SafeModeBox.SelectedIndex = (int)draft.SafeMode;
         AiPolicyBox.SelectedIndex = (int)draft.AiPolicy;
+        ExternalAccessBox.SelectedIndex = (int)draft.ExternalAccess;
         TimeoutBox.Text = draft.Timeout;
         ColorBox.SelectedIndex = Math.Max(0, Array.IndexOf(Colors, draft.Color ?? string.Empty));
         NameBox.PlaceholderText = draft.SuggestedName();
@@ -262,6 +263,9 @@ public sealed partial class ConnectionFormWindow : Window
 
         draft.SafeMode = (SafeMode)Math.Max(0, SafeModeBox.SelectedIndex);
         draft.AiPolicy = (AiPolicy)Math.Max(0, AiPolicyBox.SelectedIndex);
+        draft.ExternalAccess = ExternalAccessBox.SelectedIndex < 0
+            ? ExternalAccess.ReadOnly
+            : (ExternalAccess)ExternalAccessBox.SelectedIndex;
         draft.Timeout = TimeoutBox.Text;
         draft.Color = ColorBox.SelectedItem is ComboBoxItem { Tag: string color } && color.Length > 0 ? color : null;
         draft.GroupId = GroupBox.SelectedItem is ComboBoxItem { Tag: Guid group } ? group : null;
@@ -539,6 +543,14 @@ public sealed partial class ConnectionFormWindow : Window
             1 => "AiPolicyAllowDescription",
             2 => "AiPolicyNeverDescription",
             _ => "AiPolicyAskDescription",
+        });
+
+    private void OnExternalAccessChanged(object sender, SelectionChangedEventArgs e) =>
+        ExternalAccessCard.Description = Strings.Get(ExternalAccessBox.SelectedIndex switch
+        {
+            0 => "ExternalAccessBlockedDescription",
+            2 => "ExternalAccessReadWriteDescription",
+            _ => "ExternalAccessReadOnlyDescription",
         });
 
     private void OnSummaryChanged(object sender, SelectionChangedEventArgs e)

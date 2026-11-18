@@ -53,6 +53,12 @@ public sealed record AppSettings
 
     public const string DefaultCompatibleAddress = "http://localhost:11434/v1";
 
+    // The MCP server's, as the other apps listen on: McpServer.DefaultPort.
+    public const int DefaultMcpServerPort = 23508;
+
+    // Ports below are the system's, as the Linux app's settings schema keeps them out.
+    public const int LowestMcpServerPort = 1024;
+
     public AppTheme Theme { get; set; } = AppTheme.System;
 
     public bool ReopenSession { get; set; } = true;
@@ -102,6 +108,11 @@ public sealed record AppSettings
     // An Ollama or other OpenAI-compatible server, version path included; the hosted providers' are fixed.
     public string CompatibleAddress { get; set; } = DefaultCompatibleAddress;
 
+    // Off until the user turns it on, as on macOS and Linux. The tablepro command reads both names from this file.
+    public bool McpServerEnabled { get; set; }
+
+    public int McpServerPort { get; set; } = DefaultMcpServerPort;
+
     // What the chosen provider's requests take, or null while the assistant is off.
     [JsonIgnore]
     public AiSettings? Assistant => AiProvider is { } provider ? AssistantFor(provider) : null;
@@ -149,6 +160,7 @@ public sealed record AppSettings
         CompatibleAddress = string.IsNullOrWhiteSpace(CompatibleAddress)
             ? DefaultCompatibleAddress
             : CompatibleAddress.Trim(),
+        McpServerPort = Math.Clamp(McpServerPort, LowestMcpServerPort, ushort.MaxValue),
     };
 }
 

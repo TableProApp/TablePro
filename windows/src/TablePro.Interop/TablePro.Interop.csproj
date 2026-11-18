@@ -27,6 +27,9 @@
     <CargoTargetDirectory>$(CARGO_TARGET_DIR)</CargoTargetDirectory>
     <CargoTargetDirectory Condition="'$(CargoTargetDirectory)' == ''">$(RepositoryRoot)target</CargoTargetDirectory>
     <CoreLibraryPath>$([MSBuild]::NormalizePath('$(CargoTargetDirectory)', '$(CargoTriple)', '$(CargoProfileDirectory)', '$(CoreLibraryName)'))</CoreLibraryPath>
+    <!-- The tablepro command, which the same cargo build links beside the library (core/crates/ffi/src/command_line). -->
+    <CommandLineName Condition="$(CoreRuntimeIdentifier.StartsWith('win-'))">tablepro-cli.exe</CommandLineName>
+    <CommandLinePath Condition="'$(CommandLineName)' != ''">$([MSBuild]::NormalizePath('$(CargoTargetDirectory)', '$(CargoTriple)', '$(CargoProfileDirectory)', '$(CommandLineName)'))</CommandLinePath>
     <!-- The hybrid CRT, as Native AOT and the Windows App SDK link it: no VC++ redistributable on the machine (docs/decisions/0005-distribution.md). -->
     <CoreRustFlags Condition="$(CargoTriple.EndsWith('-windows-msvc'))">-C target-feature=+crt-static -C link-arg=/NODEFAULTLIB:libucrt.lib -C link-arg=/DEFAULTLIB:ucrt.lib</CoreRustFlags>
     <CoreBuildEnvironment Condition="'$(CoreRustFlags)' != ''">RUSTFLAGS=$(RUSTFLAGS) $(CoreRustFlags)</CoreBuildEnvironment>
@@ -35,6 +38,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="TablePro.Interop.Tests" />
     <None Include="$(CoreLibraryPath)" Link="$(CoreLibraryName)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(CommandLinePath)" Condition="'$(CommandLinePath)' != ''" Link="$(CommandLineName)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
   <!-- Cargo reports its own errors and exits non-zero; its output is not MSBuild's error format. -->

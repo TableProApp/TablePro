@@ -41,6 +41,8 @@ public sealed class ConnectionDraftTests
             GroupId = Guid.NewGuid(),
             LastOpened = DateTimeOffset.UnixEpoch,
             Tags = [Guid.NewGuid()],
+            AiPolicy = AiPolicy.Never,
+            ExternalAccess = ExternalAccess.Blocked,
             Ssh = before.Ssh! with { JumpHosts = ["jump"] },
         };
 
@@ -195,6 +197,30 @@ public sealed class ConnectionDraftTests
         Assert.Equal(saved.Ssh.Port, back.Ssh.Port);
         Assert.Equal(saved.Ssh.KeyPath, back.Ssh.KeyPath);
         Assert.Equal(SshAuthMethod.PrivateKey, back.Ssh.Auth);
+    }
+
+    [Fact]
+    public void TheExternalClientsLevelIsSavedOnlyWhenTheFormChangesIt()
+    {
+        var stored = new SavedConnection(
+            Guid.NewGuid(), "prod", "postgres", "db.example.com", 5432, "shop", "app", TlsSettings.Disabled)
+        {
+            ExternalAccess = ExternalAccess.ReadWrite,
+        };
+        var fresh = ConnectionDraft.New(Postgres);
+
+        var untouched = ConnectionDraft.From(stored, Postgres);
+        var changed = ConnectionDraft.From(stored, Postgres);
+        changed.ExternalAccess = ExternalAccess.Blocked;
+        var unread = ConnectionDraft.From(stored with { ExternalAccess = null }, Postgres);
+
+        Assert.Equal(ExternalAccess.ReadWrite, untouched.ExternalAccess);
+        Assert.Equal(ExternalAccess.ReadWrite, untouched.ToConnection().ExternalAccess);
+        Assert.Equal(ExternalAccess.Blocked, changed.ToConnection().ExternalAccess);
+        Assert.Equal(ExternalAccess.ReadOnly, unread.ExternalAccess);
+        Assert.Null(unread.ToConnection().ExternalAccess);
+        Assert.Equal(ExternalAccess.ReadOnly, fresh.ExternalAccess);
+        Assert.Null(fresh.ToConnection().ExternalAccess);
     }
 
     [Fact]

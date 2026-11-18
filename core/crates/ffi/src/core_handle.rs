@@ -31,6 +31,8 @@ use crate::library::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, LibraryWrites, apply, blank, keep_proved_secrets, parse_id,
     tls_config,
 };
+use crate::mcp::HistoryAccess;
+use crate::mcp::open_sessions::OpenSessions;
 use crate::prompter::{HostPrompter, HostPrompterBridge};
 use crate::runtime::{self, on_runtime};
 use crate::session::DatabaseSession;
@@ -55,6 +57,8 @@ pub struct Core {
     client_version: String,
     // One AI client for the app, built on first use.
     ai_client: Arc<OnceCell<AiClient>>,
+    // The saved connections' sessions `connect_saved` opened, which the MCP server reaches.
+    open_sessions: Arc<OpenSessions>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -213,6 +217,7 @@ impl Core {
         let tasks = self.tasks.clone();
         let prompter = self.prompter(prompter);
         let cancel = token(cancel);
+        let open_sessions = self.open_sessions.clone();
         on_runtime(&self.tasks, async move {
             let reader = store.clone();
             let saved = tasks
@@ -233,7 +238,8 @@ impl Core {
                 CredentialDemand::default(),
             )
             .await?;
-            let request = match database.as_deref().filter(|name| !name.is_empty()) {
+            let database = database.filter(|name| !name.is_empty());
+            let request = match database.as_deref() {
                 Some(database) => refreshed
                     .request
                     .in_database(database)
@@ -264,6 +270,7 @@ impl Core {
                     prompter,
                 },
             );
+            open_sessions.add(id, database, &session);
             let stamped = tasks
                 .spawn_blocking_task(move || store.touch_last_opened_blocking(id))
                 .await;
@@ -360,6 +367,7 @@ impl Core {
             ssh,
             client_version,
             ai_client: Arc::default(),
+            open_sessions: Arc::default(),
         })
     }
 
@@ -377,6 +385,25 @@ impl Core {
 
     pub(crate) fn refresh_tokens(&self) -> RefreshTokens {
         self.refresh_tokens.clone()
+    }
+
+    pub(crate) fn connection_store(&self) -> Result<ConnectionStore, CoreError> {
+        self.store.clone().ok_or_else(no_storage)
+    }
+
+    pub(crate) fn open_sessions(&self) -> Arc<OpenSessions> {
+        self.open_sessions.clone()
+    }
+
+    pub(crate) fn history_access(&self) -> HistoryAccess {
+        HistoryAccess {
+            paths: self.paths.clone(),
+            store: self.history.clone(),
+        }
+    }
+
+    pub(crate) fn client_version(&self) -> String {
+        self.client_version.clone()
     }
 }
 
@@ -415,7 +442,7 @@ struct SystemSecrets {
 #[cfg(windows)]
 fn system_secrets(tasks: &Tasks) -> Result<SystemSecrets, CoreError> {
     let manager = Arc::new(crate::credential_manager::CredentialManager::new(
-        "TablePro",
+        crate::credential_manager::PREFIX,
         tasks.clone(),
     ));
     Ok(SystemSecrets {

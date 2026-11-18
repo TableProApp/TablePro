@@ -19,6 +19,9 @@ use crate::credential_parts::{self, Layout, PartStore, Stored};
 
 static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+// Every credential the app keeps is named under it, so Credential Manager lists TablePro's together.
+pub(crate) const PREFIX: &str = "TablePro";
+
 // CredWriteW refuses a larger blob, which an Entra or RDS IAM token passes.
 const PART_SIZE: usize = CRED_MAX_CREDENTIAL_BLOB_SIZE as usize;
 
@@ -91,6 +94,12 @@ impl std::fmt::Debug for CredentialManager {
             .field("prefix", &self.prefix)
             .finish_non_exhaustive()
     }
+}
+
+// The tablepro command's read, on its own thread with no runtime, under the same prefix the app's core keeps it.
+pub(crate) fn read_item(prefix: &str, item: SecretItem) -> Result<Option<SecretString>, SecretError> {
+    let _held = STORE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    read(&format!("{prefix}/{}", item_name(item)))
 }
 
 fn kind_name(kind: SecretKind) -> &'static str {

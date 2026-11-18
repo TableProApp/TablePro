@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr};
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, PoisonError, RwLock};
 use std::time::Duration;
@@ -240,7 +240,36 @@ async fn same_account(stream: &TcpStream, tasks: &Tasks) -> bool {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+// Credential Manager keeps the token per user, so another account's program is refused here as on Linux.
+#[cfg(windows)]
+async fn same_account(stream: &TcpStream, tasks: &Tasks) -> bool {
+    static UNKNOWN_LOGGED: AtomicBool = AtomicBool::new(false);
+    let (Ok(server), Ok(peer)) = (stream.local_addr(), stream.peer_addr()) else {
+        return false;
+    };
+    let checked = tasks
+        .spawn_blocking_task(move || tablepro_net::loopback_peer_is_this_user(peer, server))
+        .await;
+    match checked {
+        Ok(Ok(true)) => true,
+        Ok(Ok(false)) => {
+            tracing::debug!("refused an MCP connection from another user");
+            false
+        }
+        Ok(Err(error)) => {
+            if !UNKNOWN_LOGGED.swap(true, Ordering::Relaxed) {
+                tracing::warn!(%error, "refused an MCP connection whose user could not be read");
+            }
+            false
+        }
+        Err(failure) => {
+            tracing::warn!(%failure, "the check of an MCP connection's user stopped");
+            false
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 async fn same_account(_stream: &TcpStream, _tasks: &Tasks) -> bool {
     true
 }

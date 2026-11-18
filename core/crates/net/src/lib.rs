@@ -13,6 +13,6 @@ pub use direct_tcp::DirectTcpTransport;
 #[cfg(unix)]
 pub use local_socket::LocalSocketTransport;
 pub use loopback_listener::LoopbackListener;
-pub use loopback_owner::loopback_peer_is_ours;
+pub use loopback_owner::{loopback_peer_is_ours, loopback_peer_is_this_user};
 pub use private_dir::private_dir;
 pub use private_listener::{PrivateAddress, PrivateListener};

@@ -68,6 +68,9 @@ public sealed record SavedConnection(
 
     // Always set on a connection read back; null on a save keeps the stored one, Ask for a new connection.
     public AiPolicy? AiPolicy { get; init; }
+
+    // Always set on a connection read back; null on a save keeps the stored one, ReadOnly for a new connection.
+    public ExternalAccess? ExternalAccess { get; init; }
 }
 
 // A null secret keeps what is stored; an empty one is stored as empty, for a server that takes none.

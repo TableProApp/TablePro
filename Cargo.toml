@@ -173,13 +173,18 @@ url = "2"
 percent-encoding = "2"
 # The Windows Credential Manager, where the core keeps secrets on Windows, the
 # owning process of a loopback connection, from GetExtendedTcpTable, and the
-# MachineGuid the TablePro account derives the machine ID from.
+# user its token names, the MachineGuid the TablePro account derives the
+# machine ID from, and the package and version the tablepro command reads.
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_NetworkManagement_IpHelper",
     "Win32_Networking_WinSock",
+    "Win32_Security",
     "Win32_Security_Credentials",
+    "Win32_Storage_FileSystem",
+    "Win32_Storage_Packaging_Appx",
     "Win32_System_Registry",
+    "Win32_System_Threading",
 ] }
 # What other apps' saved connections are kept in: binary and XML property
 # lists, XML, and the fixed-key ciphers those apps use for passwords.

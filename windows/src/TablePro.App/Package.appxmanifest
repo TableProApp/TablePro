@@ -44,17 +44,32 @@
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
       <Extensions>
-        <uap5:Extension Category="windows.appExecutionAlias">
-          <uap5:AppExecutionAlias>
-            <uap5:ExecutionAlias Alias="tablepro.exe" />
-          </uap5:AppExecutionAlias>
-        </uap5:Extension>
         <!-- tablepro://share?token=... opens a shared link's SQL in a new query tab (docs/decisions/0009-share-links.md). -->
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="tablepro">
             <uap:DisplayName>TablePro</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
+      </Extensions>
+    </Application>
+    <!-- The tablepro command: a console program, so a terminal waits for it and reads its output; files and links it
+         hands to the app (docs/decisions/0019-mcp-server-and-command-line.md). -->
+    <Application Id="Command"
+      Executable="tablepro-cli.exe"
+      EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="TablePro command"
+        Description="The tablepro command for terminals and scripts"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"
+        AppListEntry="none" />
+      <Extensions>
+        <uap5:Extension Category="windows.appExecutionAlias">
+          <uap5:AppExecutionAlias>
+            <uap5:ExecutionAlias Alias="tablepro.exe" />
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
       </Extensions>
     </Application>
   </Applications>
