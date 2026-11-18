@@ -2,7 +2,7 @@
 
 use tablepro_core::column::ColumnDefault;
 use tablepro_core::dump::DumpScope;
-use tablepro_core::meta::{IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef};
+use tablepro_core::meta::{IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableInfo, TableRef};
 use tablepro_core::{RunEnd, Value};
 
 use crate::support::{TestFile, apply, call, query, run, session};
@@ -385,6 +385,55 @@ async fn the_estimate_is_the_storage_count() {
         .unwrap();
 
     assert_eq!(estimate.rows, RowCountEstimate::Approximate(1234));
+    connection.close().await.unwrap();
+}
+
+/// DuckDB keeps a table's or a view's comment and no sizes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn table_info_is_the_comment_alone() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE t (a INTEGER)",
+            "CREATE INDEX t_a ON t (a)",
+            "INSERT INTO t SELECT range FROM range(100)",
+            "COMMENT ON TABLE t IS 'the table'",
+            "CREATE VIEW v AS SELECT a FROM t",
+            "COMMENT ON VIEW v IS 'the view'",
+            "CREATE TABLE plain (a INTEGER)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let table = connection
+        .table_info(&TableRef::unqualified("t"), call())
+        .await
+        .unwrap();
+    let view = connection
+        .table_info(&TableRef::unqualified("v"), call())
+        .await
+        .unwrap();
+    let plain = connection
+        .table_info(&TableRef::unqualified("plain"), call())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        table,
+        TableInfo {
+            comment: Some("the table".to_owned()),
+            ..TableInfo::default()
+        }
+    );
+    assert_eq!(view.comment.as_deref(), Some("the view"));
+    assert_eq!(
+        (view.data_bytes, view.index_bytes, view.total_bytes),
+        (None, None, None)
+    );
+    assert_eq!(plain, TableInfo::default());
     connection.close().await.unwrap();
 }
 

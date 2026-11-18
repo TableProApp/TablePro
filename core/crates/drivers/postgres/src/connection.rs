@@ -8,7 +8,7 @@ use tablepro_core::ddl::{DatabaseChoices, InboundForeignKey, OutboundForeignKey,
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
-    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
 };
 use tablepro_core::statement::Statement;
 use tablepro_core::{
@@ -477,6 +477,15 @@ impl Connection for PgConnection {
         let relation = self.relation(table);
         self.catalog_relation_read(options, relation, move |client, relation| {
             Box::pin(async move { metadata::table_estimate(client, &relation).await })
+        })
+        .await
+    }
+
+    async fn table_info(&self, table: &TableRef, options: CallOptions) -> Result<TableInfo, DriverError> {
+        let relation = self.relation(table);
+        let partition_tree = self.server.at_least(12, 0, 0);
+        self.catalog_relation_read(options, relation, move |client, relation| {
+            Box::pin(async move { metadata::table_info(client, &relation, partition_tree).await })
         })
         .await
     }

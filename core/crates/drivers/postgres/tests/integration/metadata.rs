@@ -536,6 +536,64 @@ async fn estimate_heap_blocks_matches_relation_size() {
     );
 }
 
+/// A table's comment and sizes, a partitioned table's summed over its
+/// partitions, and a view's comment without sizes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn table_info_reports_comment_and_sizes() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE sized (id int PRIMARY KEY, label text)",
+            "CREATE INDEX sized_label ON sized (label)",
+            "INSERT INTO sized SELECT n, repeat('x', 100) FROM generate_series(1, 1000) AS n",
+            "COMMENT ON TABLE sized IS 'the sized one'",
+            "CREATE TABLE parted (id int, label text) PARTITION BY RANGE (id)",
+            "CREATE TABLE parted_low PARTITION OF parted FOR VALUES FROM (0) TO (500)",
+            "CREATE TABLE parted_high PARTITION OF parted FOR VALUES FROM (500) TO (1000)",
+            "CREATE INDEX parted_label ON parted (label)",
+            "INSERT INTO parted SELECT n, 'x' FROM generate_series(0, 999) AS n",
+            "CREATE VIEW seen AS SELECT id FROM sized",
+            "COMMENT ON VIEW seen IS 'a view'",
+        ],
+    )
+    .await;
+
+    let sized = connection
+        .table_info(&table("sized"), within(CALL))
+        .await
+        .expect("the table's info");
+    let parted = connection
+        .table_info(&table("parted"), within(CALL))
+        .await
+        .expect("the partitioned table's info");
+    let seen = connection
+        .table_info(&table("seen"), within(CALL))
+        .await
+        .expect("the view's info");
+    let missing = connection.table_info(&table("missing"), within(CALL)).await;
+
+    assert_eq!(sized.comment.as_deref(), Some("the sized one"));
+    assert_eq!(parted.comment, None);
+    for info in [&sized, &parted] {
+        let (data, index, total) = (
+            info.data_bytes.expect("data"),
+            info.index_bytes.expect("indexes"),
+            info.total_bytes.expect("total"),
+        );
+        assert!(data > 0 && index > 0, "{info:?}");
+        assert!(total >= data + index, "{info:?}");
+    }
+    assert_eq!(seen.comment.as_deref(), Some("a view"));
+    assert_eq!(
+        (seen.data_bytes, seen.index_bytes, seen.total_bytes),
+        (None, None, None)
+    );
+    assert!(missing.is_err(), "{missing:?}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn fetch_table_definition_reports_pk_name_collation_comment_and_inbound_keys() {
@@ -1083,6 +1141,7 @@ async fn lookalikes_in_public_never_run_in_a_catalog_read() {
             .unwrap();
         connection.row_identity(&table(name), within(CALL)).await.unwrap();
         connection.table_estimate(&table(name), within(CALL)).await.unwrap();
+        connection.table_info(&table(name), within(CALL)).await.unwrap();
     }
     let unqualified = TableRef::new(None, "orders");
     let columns = connection.fetch_columns(&unqualified, within(CALL)).await.unwrap();
@@ -1153,6 +1212,7 @@ async fn read_table_catalog(connection: &dyn Connection, target: &TableRef) {
         .table_estimate(target, within(CALL))
         .await
         .expect("row estimate");
+    connection.table_info(target, within(CALL)).await.expect("table info");
 }
 
 /// The login's own search_path puts exact copies of built-ins ahead of

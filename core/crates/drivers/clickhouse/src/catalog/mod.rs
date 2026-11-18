@@ -6,7 +6,7 @@ mod table_definition;
 use clickhouse::query::Query;
 use tablepro_core::DriverError;
 use tablepro_core::ddl::ddl_sql::parenthesized;
-use tablepro_core::meta::{IndexInfo, RowIdentity, TableEstimate};
+use tablepro_core::meta::{IndexInfo, RowIdentity, TableEstimate, TableInfo};
 
 pub(crate) use clickhouse_column_row::ClickHouseColumnRow;
 pub(crate) use table_definition::fetch_table_definition;
@@ -137,4 +137,51 @@ pub(crate) async fn table_estimate(calls: &CallClient, table: &CatalogTable) -> 
             .map_or(RowCountEstimate::Unknown, RowCountEstimate::Exact),
         heap_blocks: None,
     })
+}
+
+/// `system.tables` keeps one figure: a MergeTree table's bytes on disk,
+/// NULL for an engine that keeps none, with no split into data and
+/// indexes.
+pub(crate) async fn table_info(calls: &CallClient, table: &CatalogTable) -> Result<TableInfo, DriverError> {
+    let sql = "SELECT comment, total_bytes FROM system.tables \
+               WHERE database = {db:String} AND name = {tbl:String}";
+    let result = read_table(table.bind(calls.raw(sql)?), None).await?;
+    match result.rows.first() {
+        Some(row) => table_info_of(&CatalogRow(row)),
+        None => Ok(TableInfo::default()),
+    }
+}
+
+fn table_info_of(row: &CatalogRow<'_>) -> Result<TableInfo, DriverError> {
+    Ok(TableInfo {
+        total_bytes: row.optional_u64(1)?,
+        ..TableInfo::default()
+    }
+    .with_comment(Some(row.text(0)?)))
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::Value;
+
+    use super::*;
+
+    #[test]
+    fn a_row_gives_the_total_and_a_blank_comment_is_none() {
+        let sized = [Value::Text("orders".to_owned()), Value::UInt(4096)];
+        let view = [Value::Text(String::new()), Value::Null];
+
+        assert_eq!(
+            table_info_of(&CatalogRow(&sized)).expect("the info"),
+            TableInfo {
+                comment: Some("orders".to_owned()),
+                total_bytes: Some(4096),
+                ..TableInfo::default()
+            }
+        );
+        assert_eq!(
+            table_info_of(&CatalogRow(&view)).expect("the info"),
+            TableInfo::default()
+        );
+    }
 }

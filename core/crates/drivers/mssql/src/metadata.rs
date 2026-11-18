@@ -7,7 +7,7 @@ use tablepro_core::ddl::{DatabaseChoices, DatabaseDefaults, InboundForeignKey, R
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
     EditorRefusal, IndexInfo, IndexKey, ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate,
-    RowIdentity, SchemaInfo, TableEstimate, TableRef,
+    RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
 };
 use tablepro_core::sql_syntax::{SqlGrammar, holds_client_directive, qualify_created_name};
 use tablepro_core::{ColumnInfo, DriverError, ForeignKeyInfo, UnsupportedFeature, Value};
@@ -18,6 +18,7 @@ use crate::catalog::{
     inbound_foreign_keys, primary_key,
 };
 use crate::dialect::MssqlDialect;
+use crate::errors::permission_denied;
 use crate::in_band_request::{Interrupt, Watch};
 use crate::index_statements::fetch_index_statements;
 use crate::physical::MssqlClient;
@@ -144,6 +145,20 @@ const IDENTITY_SQL: &str = "SELECT i.index_id, c.name \
 /// counts from the last statistics update.
 const ESTIMATE_SQL: &str = "SELECT CAST(SUM(p.rows) AS bigint) \
     FROM sys.partitions p WHERE p.object_id = OBJECT_ID(@P1) AND p.index_id IN (0, 1)";
+
+const TABLE_COMMENT_SQL: &str = "SELECT CAST(p.value AS nvarchar(max)) FROM sys.extended_properties p \
+    WHERE p.class = 1 AND p.major_id = OBJECT_ID(@P1) AND p.minor_id = 0 AND p.name = N'MS_Description'";
+
+/// The pages `sp_spaceused` counts: every reserved one, the data pages
+/// of the heap or clustered index with their LOB and row-overflow pages,
+/// and every used one.
+const TABLE_PAGES_SQL: &str = "SELECT SUM(s.reserved_page_count), \
+        SUM(CASE WHEN s.index_id < 2 \
+            THEN s.in_row_data_page_count + s.lob_used_page_count + s.row_overflow_used_page_count ELSE 0 END), \
+        SUM(s.used_page_count) \
+    FROM sys.dm_db_partition_stats s WHERE s.object_id = OBJECT_ID(@P1)";
+
+const PAGE_BYTES: u64 = 8192;
 
 pub(crate) async fn list_schemas(client: &mut MssqlClient, watch: &Watch) -> Result<Vec<SchemaInfo>, Interrupt> {
     let rows = catalogue_rows(client, watch, SCHEMAS_SQL, &[]).await?;
@@ -544,6 +559,50 @@ pub(crate) async fn table_estimate(
     })
 }
 
+/// The comment and the sizes, the sizes in a statement of their own:
+/// their DMV needs VIEW DATABASE STATE, which a login that reads the
+/// table may lack.
+pub(crate) async fn table_info(
+    client: &mut MssqlClient,
+    watch: &Watch,
+    relation: &str,
+) -> Result<TableInfo, Interrupt> {
+    let comment = catalogue_rows(client, watch, TABLE_COMMENT_SQL, &[text_param(relation)])
+        .await?
+        .first()
+        .and_then(|row| Cells::new(row, "sys.extended_properties").text(0));
+    let pages = match catalogue_rows(client, watch, TABLE_PAGES_SQL, &[text_param(relation)]).await {
+        Ok(rows) => rows,
+        Err(Interrupt::Failed(error)) if permission_denied(&error) => Vec::new(),
+        Err(interrupt) => return Err(interrupt),
+    };
+    let info = match pages.first() {
+        Some(row) => {
+            let cells = Cells::new(row, "sys.dm_db_partition_stats");
+            sizes(cells.int(0), cells.int(1), cells.int(2))
+        }
+        None => TableInfo::default(),
+    };
+    Ok(info.with_comment(comment))
+}
+
+// sp_spaceused's arithmetic: the indexes are the used pages that are not
+// data. An object with no partitions, such as a view, sums to NULL.
+fn sizes(reserved: Option<i64>, data: Option<i64>, used: Option<i64>) -> TableInfo {
+    let bytes = |pages: Option<i64>| {
+        pages
+            .and_then(|pages| u64::try_from(pages).ok())
+            .and_then(|pages| pages.checked_mul(PAGE_BYTES))
+    };
+    let data = bytes(data);
+    TableInfo {
+        comment: None,
+        data_bytes: data,
+        index_bytes: bytes(used).zip(data).map(|(used, data)| used.saturating_sub(data)),
+        total_bytes: bytes(reserved),
+    }
+}
+
 /// The table as a structure change plans against it, read in one call
 /// on one connection.
 pub(crate) async fn fetch_table_definition(
@@ -758,5 +817,20 @@ mod tests {
         assert_eq!(keys[0].ref_columns, ["id", "tenant"]);
         assert_eq!(keys[0].on_delete, Some(ReferentialAction::Cascade));
         assert!(keys[0].references(Some("dbo"), "orders"));
+    }
+
+    #[test]
+    fn sizes_follow_sp_spaceused() {
+        assert_eq!(
+            sizes(Some(10), Some(4), Some(7)),
+            TableInfo {
+                comment: None,
+                data_bytes: Some(4 * 8192),
+                index_bytes: Some(3 * 8192),
+                total_bytes: Some(10 * 8192),
+            }
+        );
+        assert_eq!(sizes(Some(2), Some(3), Some(1)).index_bytes, Some(0));
+        assert_eq!(sizes(None, None, None), TableInfo::default());
     }
 }

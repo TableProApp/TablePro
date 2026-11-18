@@ -143,6 +143,17 @@ public sealed partial class DatabaseSession : IAsyncDisposable
         return Mapping.Estimate(estimate);
     }
 
+    // The row estimate with the table's comment and sizes, read in one metadata call.
+    public async Task<TableInfo> GetTableInfoAsync(TableName table, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        var info = await CoreCall.RunAsync(
+                token => _session.TableInfo(Mapping.Table(table), token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return Mapping.Info(info);
+    }
+
     // Kind decides whether a CREATE script belongs: a view gets none.
     public async Task<TableStructure> GetStructureAsync(
         TableName table,

@@ -635,6 +635,17 @@ impl ConnectionLibrary {
             .await
     }
 
+    // None takes the colour off; the id is one ConnectionColor names, as a tag's is.
+    pub async fn set_group_color(&self, id: String, color: Option<String>) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
+        let color = color
+            .filter(|color| !color.trim().is_empty())
+            .map(|color| tag_color(&color))
+            .transpose()?;
+        self.blocking(move |store| Ok(store.set_group_color_blocking(id, color)?))
+            .await
+    }
+
     pub async fn delete_group(&self, id: String) -> Result<(), CoreError> {
         let id = parse_id(&id)?;
         self.blocking(move |store| {
@@ -883,6 +894,14 @@ pub(crate) fn tls_config(settings: &TlsSettings) -> Result<TlsConfig, CoreError>
         .map(|name| name.trim().to_owned())
         .filter(|name| !name.is_empty());
     Ok(config)
+}
+
+// The form's jump hosts as OpenSSH's -J takes them, checked as a connect would read them; the list is saved as typed.
+#[uniffi::export]
+pub fn check_jump_hosts(list: String) -> Result<(), CoreError> {
+    tablepro_ssh::SshDestination::parse_jump_list(&list)
+        .map(|_| ())
+        .map_err(|problem| DriverError::from(tablepro_core::TransportError::Ssh(problem.into())).into())
 }
 
 pub(crate) fn saved_ssh(settings: &SshSettings) -> SavedSshConfig {

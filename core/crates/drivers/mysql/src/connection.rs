@@ -9,7 +9,7 @@ use tablepro_core::ddl::{CharacterSet, DatabaseChoices, InboundForeignKey, Outbo
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
-    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
 };
 use tablepro_core::statement::Statement;
 use tablepro_core::{
@@ -469,6 +469,17 @@ impl Connection for MysqlConnection {
             options,
             read_op(move |connection, flavour| {
                 Box::pin(async move { metadata::table_estimate(connection, flavour, &table).await })
+            }),
+        )
+        .await
+    }
+
+    async fn table_info(&self, table: &TableRef, options: CallOptions) -> Result<TableInfo, DriverError> {
+        let table = table.clone();
+        self.read(
+            options,
+            read_op(move |connection, flavour| {
+                Box::pin(async move { metadata::table_info(connection, flavour, &table).await })
             }),
         )
         .await

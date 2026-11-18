@@ -47,7 +47,7 @@ public sealed partial class LibraryItem : INotifyPropertyChanged
     // A recycled container binds again and needs an icon of its own.
     public IconElement Glyph => Node.Connection is { } connection
         ? EngineIcons.Mark(connection.EngineId, connection.Color)
-        : new SymbolIcon(_symbol);
+        : GroupGlyph();
 
     public string AccessibleName
     {
@@ -89,4 +89,16 @@ public sealed partial class LibraryItem : INotifyPropertyChanged
     public Visibility RenameVisibility => _isRenaming ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility TagsVisibility => Tags.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+
+    // A group's folder takes its colour, as on macOS.
+    private SymbolIcon GroupGlyph()
+    {
+        var icon = new SymbolIcon(_symbol);
+        if (Node.Group is { Color: { } color })
+        {
+            EngineIcons.Tint(icon, color);
+        }
+
+        return icon;
+    }
 }

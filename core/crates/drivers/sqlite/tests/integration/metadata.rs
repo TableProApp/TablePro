@@ -2,7 +2,8 @@
 
 use tablepro_core::ddl::{IdentityStyle, ReferentialAction};
 use tablepro_core::meta::{
-    EngineRowId, IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef,
+    EngineRowId, IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableInfo,
+    TableRef,
 };
 use tablepro_core::{Connection, DriverError, RowLimit, Value};
 
@@ -454,6 +455,84 @@ async fn table_estimate_reads_sqlite_stat1() {
 
     assert_eq!(before.rows, RowCountEstimate::Unknown);
     assert_eq!(after.rows, RowCountEstimate::Approximate(5));
+    connection.close().await.unwrap();
+}
+
+/// `dbstat` counts the table's own b-tree and every index on it, a
+/// UNIQUE constraint's automatic one too, in the schema that holds it.
+#[tokio::test]
+async fn table_info_counts_the_table_and_its_indexes() {
+    let file = TestFile::new().await;
+    let other = file.directory().join("other.sqlite3");
+    create_database(&other).await.unwrap();
+    let connection = file.open().await;
+    let names: Vec<String> = (1..=2000).map(|n| n.to_string()).collect();
+    for statement in [
+        format!("ATTACH DATABASE '{}' AS archive", other.display()),
+        "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)".to_owned(),
+        "CREATE VIEW people_view AS SELECT id FROM people".to_owned(),
+        "CREATE TABLE archive.people (id INTEGER PRIMARY KEY, name TEXT UNIQUE)".to_owned(),
+        "CREATE INDEX archive.by_name ON people (name)".to_owned(),
+        format!(
+            "INSERT INTO archive.people (name) SELECT 'person ' || value FROM json_each('[{}]')",
+            names.join(",")
+        ),
+    ] {
+        query(connection.as_ref(), &statement).await;
+    }
+    let compiled = query(
+        connection.as_ref(),
+        "SELECT count(*) FROM pragma_compile_options WHERE compile_options = 'ENABLE_DBSTAT_VTAB'",
+    )
+    .await;
+
+    let archived = connection
+        .table_info(&TableRef::new(Some("archive".to_owned()), "people"), call())
+        .await
+        .unwrap();
+    let main = connection.table_info(&table("people"), call()).await.unwrap();
+    let view = connection.table_info(&table("people_view"), call()).await.unwrap();
+    let missing = connection.table_info(&table("missing"), call()).await.unwrap();
+
+    assert_eq!(view, TableInfo::default());
+    assert_eq!(missing, TableInfo::default());
+    if compiled.rows != [vec![Value::Int(1)]] {
+        // A system SQLite built without dbstat has no sizes to give.
+        assert_eq!(archived, TableInfo::default());
+        assert_eq!(main, TableInfo::default());
+        connection.close().await.unwrap();
+        return;
+    }
+    // The empty table is its root page alone, and its INTEGER PRIMARY KEY
+    // is the rowid, not an index.
+    let page = main.data_bytes.expect("the root page");
+    assert_eq!((main.index_bytes, main.total_bytes), (Some(0), Some(page)));
+    let (data, index, total) = (
+        archived.data_bytes.expect("data"),
+        archived.index_bytes.expect("indexes"),
+        archived.total_bytes.expect("total"),
+    );
+    assert!(data > page && index > 2 * page, "{archived:?}");
+    assert_eq!(total, data + index);
+    connection.close().await.unwrap();
+}
+
+/// A table the user named dbstat hides SQLite's own, so sizes are not known
+/// rather than every table's info failing.
+#[tokio::test]
+async fn a_table_named_dbstat_leaves_the_sizes_unknown() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    for statement in [
+        "CREATE TABLE dbstat (id INTEGER)",
+        "CREATE TABLE people (id INTEGER PRIMARY KEY)",
+    ] {
+        query(connection.as_ref(), statement).await;
+    }
+
+    let info = connection.table_info(&table("people"), call()).await.unwrap();
+
+    assert_eq!(info, TableInfo::default());
     connection.close().await.unwrap();
 }
 

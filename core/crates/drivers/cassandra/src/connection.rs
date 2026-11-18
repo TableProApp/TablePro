@@ -8,7 +8,7 @@ use tablepro_core::column::ColumnInfo;
 use tablepro_core::ddl::{DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
-    IndexInfo, ObjectInfo, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+    IndexInfo, ObjectInfo, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
 };
 use tablepro_core::statement::Statement;
 use tablepro_core::{
@@ -352,6 +352,16 @@ impl Connection for CqlConnection {
             rows: RowCountEstimate::Unknown,
             heap_blocks: None,
         })
+    }
+
+    /// CQL keeps a comment. A table's size is each node's own, kept in
+    /// its metrics rather than in a table a client reads.
+    async fn table_info(&self, table: &TableRef, options: CallOptions) -> Result<TableInfo, DriverError> {
+        let table = self.catalog_table(table)?;
+        self.read(options, move |link, _| async move {
+            catalog::table_info(&link, &table).await
+        })
+        .await
     }
 
     async fn query_bound(

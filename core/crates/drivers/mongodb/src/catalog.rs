@@ -6,12 +6,15 @@ use bson::{Binary, Bson, Document, doc};
 use mongodb::{Client, ClientSession};
 use tablepro_core::column::ColumnKind;
 use tablepro_core::document::NUMBER_TYPE;
-use tablepro_core::meta::{IndexInfo, IndexKey, ObjectInfo, ObjectKind, RowCountEstimate, SchemaInfo, TableEstimate};
+use tablepro_core::meta::{
+    IndexInfo, IndexKey, ObjectInfo, ObjectKind, RowCountEstimate, SchemaInfo, TableEstimate, TableInfo,
+};
 use tablepro_core::{ColumnInfo, DriverError, LossPhase};
 
 use crate::call::ReadStop;
 use crate::cursor_rows::Read;
 use crate::endpoint::MongoEndpoint;
+use crate::errors::{UNAUTHORIZED, server_code};
 use crate::field_types::{field_column, type_alias};
 use crate::shell_command::Plan;
 
@@ -189,6 +192,63 @@ impl Reader<'_> {
             rows,
             heap_blocks: None,
         })
+    }
+
+    /// The collection's sizes from `$collStats`. A view and a missing
+    /// collection store nothing, and a login may read a collection
+    /// without the `collStats` action.
+    pub(crate) async fn table_info(&mut self, database: &str, collection: &str) -> Result<TableInfo, DriverError> {
+        let listed = self
+            .documents(
+                database,
+                doc! { "listCollections": 1_i32, "filter": { "name": collection }, "nameOnly": true, "authorizedCollections": true },
+            )
+            .await?;
+        match listed.first() {
+            Some(entry) if entry.get_str("type").ok() != Some("view") => {}
+            _ => return Ok(TableInfo::default()),
+        }
+        let pipeline = vec![doc! { "$collStats": { "storageStats": {} } }];
+        let command = doc! { "aggregate": collection, "pipeline": pipeline, "cursor": {} };
+        match self.documents(database, command).await {
+            Ok(stats) => Ok(collection_sizes(&stats)),
+            Err(error) if server_code(&error) == Some(UNAUTHORIZED) => Ok(TableInfo::default()),
+            Err(error) => Err(error),
+        }
+    }
+}
+
+/// `$collStats` answers once for each shard that holds the collection.
+/// Where a shard's answer has no `totalSize`, its data and indexes
+/// together are its total.
+fn collection_sizes(stats: &[Document]) -> TableInfo {
+    let field = |storage: &Document, name: &str| bytes(storage.get(name));
+    TableInfo {
+        comment: None,
+        data_bytes: summed(stats, |storage| field(storage, "storageSize")),
+        index_bytes: summed(stats, |storage| field(storage, "totalIndexSize")),
+        total_bytes: summed(stats, |storage| {
+            field(storage, "totalSize")
+                .or_else(|| field(storage, "storageSize")?.checked_add(field(storage, "totalIndexSize")?))
+        }),
+    }
+}
+
+fn summed(stats: &[Document], read: impl Fn(&Document) -> Option<u64>) -> Option<u64> {
+    if stats.is_empty() {
+        return None;
+    }
+    stats.iter().try_fold(0_u64, |sum, shard| {
+        sum.checked_add(read(shard.get_document("storageStats").ok()?)?)
+    })
+}
+
+fn bytes(value: Option<&Bson>) -> Option<u64> {
+    match value? {
+        Bson::Int32(number) => u64::try_from(*number).ok(),
+        Bson::Int64(number) => u64::try_from(*number).ok(),
+        Bson::Double(number) if number.is_finite() && *number >= 0.0 => Some(*number as u64),
+        _ => None,
     }
 }
 
@@ -416,6 +476,25 @@ fn index_info(entry: &Document) -> Option<IndexInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sizes_sum_over_shards_and_a_total_falls_back_to_data_and_indexes() {
+        let stats = [
+            doc! { "storageStats": { "storageSize": 4096_i32, "totalIndexSize": 8192_i64, "totalSize": 12288_i64 } },
+            doc! { "storageStats": { "storageSize": 1000.0, "totalIndexSize": 24_i32 } },
+        ];
+
+        assert_eq!(
+            collection_sizes(&stats),
+            TableInfo {
+                comment: None,
+                data_bytes: Some(5096),
+                index_bytes: Some(8216),
+                total_bytes: Some(13312),
+            }
+        );
+        assert_eq!(collection_sizes(&[]), TableInfo::default());
+    }
 
     fn tally(name: &str, kind: &str, position: i64) -> Document {
         doc! { "_id": { "name": name, "type": kind }, "position": position }
