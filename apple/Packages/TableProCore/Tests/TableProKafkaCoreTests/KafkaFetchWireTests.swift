@@ -140,6 +140,13 @@ struct KafkaFetchWireFirstReadsTests {
         #expect(reads.map(\.partition) == [0, 2])
     }
 
+    @Test("A browse of thousands of partitions holds 64 first pages, the lowest partitions")
+    func firstPagesAreBoundedAcrossLeaders() {
+        let start = Dictionary(uniqueKeysWithValues: (0 ..< 5_000).map { (Int32($0), Int64(0)) })
+        let reads = KafkaFetchWire.firstReads(start: start, tail: [:], wanted: 1)
+        #expect(reads.map(\.partition) == Array(0 ..< 64))
+    }
+
     @Test("One partition has nothing to share a request with")
     func onePartitionIsReadAsBefore() {
         #expect(KafkaFetchWire.firstReads(start: [0: 5], tail: [:], wanted: 100).isEmpty)

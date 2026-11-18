@@ -23,8 +23,10 @@ public enum KafkaFetchWire {
     // Read uncommitted would show records of transactions that later aborted, and their markers.
     private static let readCommitted: Int8 = 1
     private static let maximumWaitMilliseconds: Int32 = 500
-    // A reply this large already holds a first page for 64 partitions at the default budget.
     static let maximumResponseBytes: Int32 = 64 * 1_024 * 1_024
+    // Replies wait in memory until their partition's turn, so a browse holds at most this many first pages,
+    // whichever leaders they come from. Any other partition is read on its own.
+    static let maximumFirstReads = 64
 
     // Past the response limit a broker returns later partitions empty, and each is then read on its own.
     public static func responseBytes(partitions: Int, partitionBytes: Int32) -> Int32 {
@@ -44,7 +46,7 @@ public enum KafkaFetchWire {
             .filter { partition, offset in tail[partition].map { offset < $0 } ?? true }
             .map { KafkaFetchTarget(partition: $0.key, startOffset: $0.value) }
             .sorted { $0.partition < $1.partition }
-        return open.count > 1 ? open : []
+        return open.count > 1 ? Array(open.prefix(maximumFirstReads)) : []
     }
 
     public static func writeRequest(
