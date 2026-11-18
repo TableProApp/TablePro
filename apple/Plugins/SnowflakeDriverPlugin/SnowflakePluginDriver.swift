@@ -8,6 +8,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSnowflakeCore
 
 final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
@@ -385,6 +386,21 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let primaryKeys = try await fetchPrimaryKeyColumns(table: table, schema: targetSchema, database: database)
 
+        if let shown = try await shownColumns(table: table, schema: targetSchema, database: database) {
+            let columns = shown.map { column in
+                PluginColumnInfo(
+                    name: column.name,
+                    dataType: column.dataType,
+                    isNullable: column.isNullable,
+                    isPrimaryKey: primaryKeys.contains(column.name.uppercased()),
+                    defaultValue: column.defaultValue,
+                    comment: column.comment
+                )
+            }
+            cacheColumnTypes(table: table, schema: targetSchema, columns: columns)
+            return columns
+        }
+
         let sql = """
             SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT, COMMENT,
                    NUMERIC_PRECISION, NUMERIC_SCALE, CHARACTER_MAXIMUM_LENGTH
@@ -479,14 +495,39 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func clusteringKeyColumns(table: String, schema: String, database: String) async -> [String]? {
-        guard let result = try? await rawQuery(
-            SnowflakeSchemaQueries.showTablesLike(database: database, schema: schema, table: table)
-        ) else { return nil }
-        guard let clusterIdx = columnIndex(of: "cluster_by", in: result),
-              let row = result.rows.first,
-              let clusterBy = Self.text(row, clusterIdx),
-              !clusterBy.isEmpty else { return nil }
+        guard let shown = try? await shownTable(table: table, schema: schema, database: database),
+              let clusterBy = shown.clusterBy else { return nil }
         return SnowflakeSchemaQueries.parseClusterBy(clusterBy)
+    }
+
+    // A statement the server refuses, such as SHOW past its 10,000 rows, leaves the read to INFORMATION_SCHEMA.
+    private func shownColumns(table: String, schema: String, database: String) async throws -> [SnowflakeShownColumn]? {
+        do {
+            let result = try await rawQuery(
+                SnowflakeSchemaQueries.showColumns(database: database, schema: schema, table: table)
+            )
+            return SnowflakeShowMetadata.columns(from: Self.showRows(result))
+        } catch SnowflakeError.queryFailed {
+            return nil
+        }
+    }
+
+    private func shownTable(table: String, schema: String, database: String) async throws -> SnowflakeShownTable? {
+        do {
+            let result = try await rawQuery(
+                SnowflakeSchemaQueries.showTablesLike(database: database, schema: schema, table: table)
+            )
+            return SnowflakeShowMetadata.table(named: table, in: Self.showRows(result))
+        } catch SnowflakeError.queryFailed {
+            return nil
+        }
+    }
+
+    private static func showRows(_ result: SnowflakeQueryResult) -> SnowflakeShowRows {
+        SnowflakeShowRows(
+            columns: result.columns.map(\.name),
+            rows: result.rows.map { row in row.indices.map { text(row, $0) } }
+        )
     }
 
     var tableDDLIncludesForeignKeys: Bool { true }
@@ -531,6 +572,9 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             targetSchema = resolved
         }
         guard let database, let targetSchema else { return nil }
+        if let shown = try await shownTable(table: table, schema: targetSchema, database: database) {
+            return shown.rowCount.flatMap { Int(exactly: $0) }
+        }
         let sql = """
             SELECT ROW_COUNT
             FROM \(quoteIdentifier(database)).INFORMATION_SCHEMA.TABLES
@@ -547,6 +591,15 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let targetSchema = schema ?? connection?.currentSchema
         guard let database, let targetSchema else {
             return PluginTableMetadata(tableName: table)
+        }
+        if let shown = try await shownTable(table: table, schema: targetSchema, database: database) {
+            return PluginTableMetadata(
+                tableName: table,
+                dataSize: shown.bytes,
+                totalSize: shown.bytes,
+                rowCount: shown.rowCount,
+                comment: shown.comment
+            )
         }
         let sql = """
             SELECT ROW_COUNT, BYTES, COMMENT

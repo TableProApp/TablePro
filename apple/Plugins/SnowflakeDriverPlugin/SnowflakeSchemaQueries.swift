@@ -26,6 +26,10 @@ enum SnowflakeSchemaQueries {
         "SHOW IMPORTED KEYS IN TABLE \(qualified(database, schema, table))"
     }
 
+    static func showColumns(database: String, schema: String, table: String) -> String {
+        "SHOW COLUMNS IN TABLE \(qualified(database, schema, table))"
+    }
+
     static func showTablesLike(database: String, schema: String, table: String) -> String {
         "SHOW TABLES LIKE '\(escapeLikePattern(table))' IN SCHEMA \(qualified(database, schema))"
     }
