@@ -216,6 +216,95 @@ struct TableQueryBuilderFilteredCountTests {
     }
 }
 
+private final class PageWritingPlugin: PluginDriverStub, @unchecked Sendable {}
+
+struct TableQueryBuilderCappedCountTests {
+    private static func builder(
+        _ style: SQLDialectDescriptor.PaginationStyle,
+        orderBy: String = "ORDER BY (SELECT NULL)",
+        plugin: (any PluginDatabaseDriver)? = nil
+    ) -> TableQueryBuilder {
+        let dialect = SQLDialectDescriptor(
+            identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+            regexSyntax: .regexp, booleanLiteralStyle: .numeric,
+            likeEscapeStyle: .implicit, paginationStyle: style, offsetFetchOrderBy: orderBy
+        )
+        return TableQueryBuilder(
+            databaseType: .postgresql, pluginDriver: plugin, dialect: dialect, pagination: .offset,
+            dialectQuote: SQLEscaping.quoteIdentifier
+        )
+    }
+
+    @Test("A plugin that writes its own pages gets no LIMIT it may not speak")
+    func pageWritingPluginWithLimitDialect() {
+        let builder = Self.builder(.limit, plugin: PageWritingPlugin())
+        #expect(builder.buildCappedCountQuery(tableName: "orders", filters: [], limit: 11) == nil)
+    }
+
+    @Test("A plugin whose dialect states OFFSET FETCH keeps the capped count")
+    func pageWritingPluginWithOffsetFetchDialect() throws {
+        let builder = Self.builder(.offsetFetch, orderBy: "", plugin: PageWritingPlugin())
+        let query = try #require(builder.buildCappedCountQuery(tableName: "orders", filters: [], limit: 11))
+        #expect(query.contains("OFFSET 0 ROWS FETCH NEXT 11 ROWS ONLY"))
+    }
+
+    private func filter(_ column: String, _ value: String) -> TableFilter {
+        var filter = TableFilter()
+        filter.columnName = column
+        filter.filterOperator = .equal
+        filter.value = value
+        filter.isEnabled = true
+        return filter
+    }
+
+    @Test("A capped count stops reading at its limit")
+    func limitDialect() throws {
+        let query = try #require(Self.builder(.limit).buildCappedCountQuery(tableName: "orders", filters: [], limit: 100_001))
+        #expect(query.hasPrefix("SELECT COUNT(*) FROM (SELECT 1 AS row_marker FROM "))
+        #expect(query.contains("LIMIT 100001 OFFSET 0"))
+        #expect(query.hasSuffix(") capped_rows"))
+        #expect(!query.contains(" AS capped_rows"))
+    }
+
+    @Test("An OFFSET FETCH engine gets the order its window requires")
+    func offsetFetchDialect() throws {
+        let query = try #require(Self.builder(.offsetFetch).buildCappedCountQuery(tableName: "orders", filters: [], limit: 11))
+        #expect(query.contains("ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 11 ROWS ONLY"))
+    }
+
+    @Test("An engine whose window needs no order gets none")
+    func offsetFetchWithoutOrder() throws {
+        let query = try #require(
+            Self.builder(.offsetFetch, orderBy: "").buildCappedCountQuery(tableName: "orders", filters: [], limit: 11)
+        )
+        #expect(!query.contains("ORDER BY"))
+        #expect(query.contains("OFFSET 0 ROWS FETCH NEXT 11 ROWS ONLY"))
+    }
+
+    @Test("The filters go inside the capped rows, before the limit")
+    func filtersStayInsideTheCap() throws {
+        let query = try #require(Self.builder(.limit).buildCappedCountQuery(
+            tableName: "orders", filters: [filter("status", "open")], limit: 11
+        ))
+        let whereRange = try #require(query.range(of: "WHERE"))
+        let limitRange = try #require(query.range(of: "LIMIT 11"))
+        #expect(whereRange.lowerBound < limitRange.lowerBound)
+        #expect(query.contains("'open'"))
+    }
+
+    @Test("A raw condition that could leave its parentheses builds no capped count")
+    func refusedRawConditionBuildsNothing() {
+        let raw = TableFilter.rawCondition("1=1) capped_rows; DROP TABLE orders --")
+        #expect(Self.builder(.limit).buildCappedCountQuery(tableName: "orders", filters: [raw], limit: 11) == nil)
+    }
+
+    @Test("No dialect builds no capped count")
+    func noDialectBuildsNothing() {
+        let noDialect = TableQueryBuilder(databaseType: .mysql, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier)
+        #expect(noDialect.buildCappedCountQuery(tableName: "orders", filters: [], limit: 11) == nil)
+    }
+}
+
 struct TableQueryBuilderPaginationTests {
     private static let trinoDialect = SQLDialectDescriptor(
         identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],

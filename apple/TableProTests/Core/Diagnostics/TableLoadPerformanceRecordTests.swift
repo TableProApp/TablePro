@@ -221,6 +221,66 @@ struct TableLoadPerformanceRecordTests {
         #expect(decoded == record)
     }
 
+    private static let lineWithoutLeaseStages = """
+        {"anomalies":[],"appBuild":"1","appVersion":"0.84.0","databaseTypeId":"MySQL","driverFetchMs":12.5,\
+        "openTabBucket":"1","origin":"sidebar","osVersion":"macOS 15.2.0","outcome":"completed",\
+        "recordedAt":"2026-11-01T10:00:00.000Z","totalMs":40,"usesSSH":false}
+        """
+
+    @Test("A line an older build wrote still decodes, with the newer phases absent")
+    func decodesALineFromAnOlderBuild() throws {
+        let data = try #require(Self.lineWithoutLeaseStages.data(using: .utf8))
+        let record = try TableLoadHistoryStore.makeDecoder().decode(TableLoadPerformanceRecord.self, from: data)
+
+        #expect(record.driverFetchMs == 12.5)
+        #expect(record.leaseWaitMs == nil)
+        #expect(record.pinMs == nil)
+        #expect(record.firstRowMs == nil)
+        #expect(record.phase2Ms == nil)
+    }
+
+    private struct PreviousStableRecord: Decodable {
+        let recordedAt: Date
+        let appVersion: String
+        let appBuild: String
+        let osVersion: String
+        let origin: String
+        let outcome: String
+        let anomalies: [String]
+        let databaseTypeId: String
+        let usesSSH: Bool
+        let totalMs: Double
+        let preparationMs: Double?
+        let driverFetchMs: Double?
+        let resultApplyMs: Double?
+        let gridReloadMs: Double?
+        let mainRunLoopIdleMs: Double?
+        let rowBucket: String?
+        let columnBucket: String?
+        let resultSizeBucket: String?
+        let openTabBucket: String
+    }
+
+    @Test("The previous stable reads a line this build writes")
+    func previousStableReadsANewLine() throws {
+        var traced = summary()
+        traced.leaseWait = .milliseconds(30)
+        traced.pin = .milliseconds(200)
+        traced.firstRow = .milliseconds(205)
+        traced.phase2 = .milliseconds(1_200)
+        let record = TableLoadPerformanceRecord(summary: traced, stamp: Self.stamp, recordedAt: .now)
+        #expect(record.leaseWaitMs == 30)
+        #expect(record.pinMs == 200)
+        #expect(record.firstRowMs == 205)
+        #expect(record.phase2Ms == 1_200)
+
+        let line = try TableLoadHistoryStore.makeEncoder().encode(record)
+        let read = try TableLoadHistoryStore.makeDecoder().decode(PreviousStableRecord.self, from: line)
+
+        #expect(read.totalMs == 1_250)
+        #expect(read.outcome == TableLoadOutcome.completed.rawValue)
+    }
+
     /// The trace this record comes from knows a table name and the connection behind it knows a host,
     /// a port and a username. None of them may survive into a file that accumulates for a week.
     @Test("Nothing identifying the query, the table or the server survives into the record")

@@ -451,7 +451,7 @@ extension DatabaseManager {
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         try await withSessionDriverTurn(scope: scope, sessionWork: sessionWork, readsOnly: readsOnly) { driver in
-            try await pin(driver, to: scope)
+            try await tracedPin(driver, to: scope)
             return try await body(driver)
         }
     }
@@ -466,7 +466,7 @@ extension DatabaseManager {
         try await withSessionDriverTurn(scope: scope, sessionWork: .independent, readsOnly: true) { driver in
             let route = tableReadRoute(for: scope)
             guard route == .sessionDriver else { return .moved(route) }
-            try await pin(driver, to: scope)
+            try await tracedPin(driver, to: scope)
             return .ran(try await body(driver))
         }
     }
@@ -765,6 +765,12 @@ extension DatabaseManager {
             ),
             database
         )
+    }
+
+    private func tracedPin(_ driver: DatabaseDriver, to scope: DatabaseScope) async throws {
+        TableLoadLeaseTiming.current?.noteLeaseAcquired()
+        try await pin(driver, to: scope)
+        TableLoadLeaseTiming.current?.notePinFinished()
     }
 
     /// Moves the shared driver onto the scope. It writes no session state, so the

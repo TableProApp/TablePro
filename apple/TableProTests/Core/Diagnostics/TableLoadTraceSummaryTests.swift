@@ -57,6 +57,104 @@ struct TableLoadTraceSummaryTests {
         #expect(summary.origin == .sidebar)
     }
 
+    @Test("The lease wait, the pin, the first row and phase 2 are each measured between their stages")
+    func measuresLeasePinFirstRowAndPhase2() throws {
+        var recorder = TableLoadTraceRecorder()
+        let token = recorder.begin(tabId: UUID(), table: "users", origin: .sidebar, at: instant(0)).token
+        _ = recorder.record(.driverFetchBegin, token: token, at: instant(10))
+        _ = recorder.record(.leaseAcquired, token: token, at: instant(40))
+        _ = recorder.record(.pinFinished, token: token, at: instant(240))
+        _ = recorder.record(.firstRow, token: token, at: instant(445))
+        _ = recorder.record(.driverFetchEnd, token: token, at: instant(450))
+        _ = recorder.beginPhase2(token: token, at: instant(500))
+        _ = recorder.endPhase2(token: token, at: instant(1_700))
+        _ = recorder.finish(token: token, outcome: .completed, at: instant(1_800))
+
+        let summary = try #require(recorder.takeCompletedSummaries().first)
+        #expect(summary.leaseWait == .milliseconds(30))
+        #expect(summary.pin == .milliseconds(200))
+        #expect(summary.firstRow == .milliseconds(205))
+        #expect(summary.phase2 == .milliseconds(1_200))
+    }
+
+    @Test("A load that took no lease of its own reports none of the new phases")
+    func newPhasesStayAbsentWithoutTheirStages() throws {
+        let staged = fullyStagedRecorder()
+        var recorder = staged.recorder
+        _ = recorder.finish(token: staged.token, outcome: .completed, at: instant(420))
+
+        let summary = try #require(recorder.takeCompletedSummaries().first)
+        #expect(summary.leaseWait == nil)
+        #expect(summary.pin == nil)
+        #expect(summary.firstRow == nil)
+        #expect(summary.phase2 == nil)
+    }
+
+    @Test("A load that ends while phase 2 reads is summarized when phase 2 ends, with the load's own total")
+    func summaryWaitsForPhase2() throws {
+        var recorder = TableLoadTraceRecorder()
+        let token = recorder.begin(tabId: UUID(), table: "users", origin: .sidebar, at: instant(0)).token
+        _ = recorder.beginPhase2(token: token, at: instant(100))
+        _ = recorder.finish(token: token, outcome: .completed, at: instant(150))
+        #expect(recorder.takeCompletedSummaries().isEmpty)
+
+        _ = recorder.endPhase2(token: token, at: instant(900))
+
+        let summaries = recorder.takeCompletedSummaries()
+        #expect(summaries.count == 1)
+        let summary = try #require(summaries.first)
+        #expect(summary.outcome == .completed)
+        #expect(summary.total == .milliseconds(150))
+        #expect(summary.phase2 == .milliseconds(800))
+    }
+
+    @Test("A phase 2 that never ends cannot hold its summary past the retained window")
+    func evictionReleasesAHeldSummary() throws {
+        var recorder = TableLoadTraceRecorder()
+        let token = recorder.begin(tabId: UUID(), table: "users", origin: .sidebar, at: instant(0)).token
+        _ = recorder.beginPhase2(token: token, at: instant(100))
+        _ = recorder.finish(token: token, outcome: .completed, at: instant(150))
+
+        for index in 0..<(TableLoadTraceRecorder.retainedTraceLimit + 1) {
+            _ = recorder.begin(tabId: UUID(), table: "t\(index)", origin: .sidebar, at: instant(200 + index))
+        }
+
+        let held = recorder.takeCompletedSummaries().filter { $0.outcome == .completed }
+        #expect(held.count == 1)
+        let summary = try #require(held.first)
+        #expect(summary.total == .milliseconds(150))
+        #expect(summary.phase2 == nil)
+    }
+
+    @Test("Ending a phase 2 that never began records nothing")
+    func endingAnUnstartedPhase2IsIgnored() throws {
+        var recorder = TableLoadTraceRecorder()
+        let token = recorder.begin(tabId: UUID(), table: "users", origin: .sidebar, at: instant(0)).token
+        #expect(recorder.endPhase2(token: token, at: instant(10)) == nil)
+        _ = recorder.finish(token: token, outcome: .completed, at: instant(20))
+
+        let summary = try #require(recorder.takeCompletedSummaries().first)
+        #expect(summary.phase2 == nil)
+    }
+
+    @Test("The lease keeps the first instant of each stage, and a pooled lease is ready at once")
+    func leaseTimingKeepsTheFirstInstant() {
+        let pooled = TableLoadLeaseTiming()
+        pooled.noteQueryStarted(at: instant(5))
+        pooled.noteQueryStarted(at: instant(9))
+        #expect(pooled.instants.leaseAcquired == instant(5))
+        #expect(pooled.instants.pinFinished == instant(5))
+        #expect(pooled.instants.queryStarted == instant(5))
+
+        let session = TableLoadLeaseTiming()
+        session.noteLeaseAcquired(at: instant(20))
+        session.notePinFinished(at: instant(220))
+        session.noteQueryStarted(at: instant(221))
+        #expect(session.instants.leaseAcquired == instant(20))
+        #expect(session.instants.pinFinished == instant(220))
+        #expect(session.instants.queryStarted == instant(221))
+    }
+
     @Test("A phase whose stages never fired is absent rather than zero")
     func absentPhasesStayNil() throws {
         var recorder = TableLoadTraceRecorder()

@@ -34,6 +34,7 @@ extension PluginMetadataRegistry {
                     supportsDropDatabase: true,
                     supportsDropSchema: true,
                     supportsOpportunisticTLS: false,
+                    exactRowCountIsFullScan: true,
                     // The statements that make, change and remove records (SurrealQL statements reference, 2.x and 3.x).
                     // CREATE makes records only: `CREATE TABLE` does not parse.
                     dataCommands: ["CREATE", "INSERT", "UPDATE", "UPSERT", "DELETE", "RELATE"]

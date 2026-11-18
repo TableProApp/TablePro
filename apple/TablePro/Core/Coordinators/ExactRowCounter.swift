@@ -72,6 +72,15 @@ internal enum ExactRowCounter {
         }
     }
 
+    // The statement stops reading at its own limit, so this runs where the driver's own unbounded count would not.
+    internal static func cappedCount(
+        on driver: DatabaseDriver,
+        countSQL: String,
+        safeModeIsReadOnly: Bool = false
+    ) async throws -> Int? {
+        try await hostCount(countSQL, on: driver, safeModeIsReadOnly: safeModeIsReadOnly)
+    }
+
     private static func driverCountAllowingFallback(
         on driver: DatabaseDriver,
         table: String,

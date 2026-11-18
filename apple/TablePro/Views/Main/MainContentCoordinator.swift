@@ -329,6 +329,8 @@ final class MainContentCoordinator: ObservableObject {
     // Tab id to the user-requested exact count that owns its counting indicator.
     internal var exactCountOwners: [UUID: UUID] = [:]
     internal var tableLoadTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
+    internal var phase2Works: [UUID: [Phase2Work]] = [:]
+    internal var firstLoadColumnReads: [UUID: FirstLoadColumnRead] = [:]
 
     // Not on `QueryTab`: that is the persisted shape, and staying out of its `Equatable` keeps a push from re-publishing tabs.
     internal var navigationHistories: [UUID: TabNavigationHistory] = [:]
@@ -869,6 +871,7 @@ final class MainContentCoordinator: ObservableObject {
         for entry in tableLoadTasks.values { entry.task.cancel() }
         tableLoadTasks.removeAll()
         cancelAllRowCountTasks()
+        cancelAllPhase2Work()
         periodicSaveTask?.cancel()
         periodicSaveTask = nil
         draftSaveTask?.cancel()

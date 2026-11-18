@@ -698,6 +698,13 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await exportCatalog.fetchViewDefinition(view: view, schema: schema)
     }
 
+    // NUM_ROWS is the last statistics gather, and NULL on a table that never had one.
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        let owner = effectiveSchema(schema)
+        let result = try await execute(query: OracleSchemaQueries.tableMetadata(schema: owner, table: table))
+        return (result.rows.first?[safe: 0]?.asText).flatMap { Int($0) }
+    }
+
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         let owner = effectiveSchema(schema)
         let result = try await execute(query: OracleSchemaQueries.tableMetadata(schema: owner, table: table))

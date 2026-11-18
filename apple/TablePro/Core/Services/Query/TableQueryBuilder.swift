@@ -218,22 +218,54 @@ struct TableQueryBuilder {
         columns: [String] = [],
         columnTypes: [ColumnType] = []
     ) -> String? {
-        guard let dialect else { return nil }
+        guard let whereClause = countWhereClause(
+            filters: filters, logicMode: logicMode, columns: columns, columnTypes: columnTypes
+        ) else { return nil }
 
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
-        let activeFilters = filters.filter { $0.isEnabled }
+        guard !whereClause.isEmpty else {
+            return "SELECT COUNT(*) FROM \(quotedTable)"
+        }
+        return "SELECT COUNT(*) FROM \(quotedTable) \(whereClause)"
+    }
+
+    // Reads at most `limit` rows, so a view or an unanalyzed table costs a bounded read. The alias has no AS: Oracle refuses one.
+    // A plugin that writes its own pages may not speak LIMIT (Teradata), so only OFFSET FETCH is taken as its syntax.
+    func buildCappedCountQuery(
+        tableName: String,
+        schemaName: String? = nil,
+        filters: [TableFilter],
+        logicMode: FilterLogicMode = .and,
+        columns: [String] = [],
+        columnTypes: [ColumnType] = [],
+        limit: Int
+    ) -> String? {
+        guard pluginDriver == nil || dialect?.paginationStyle == .offsetFetch else { return nil }
+        guard let whereClause = countWhereClause(
+            filters: filters, logicMode: logicMode, columns: columns, columnTypes: columnTypes
+        ) else { return nil }
+
+        var rows = "SELECT 1 AS row_marker FROM \(qualifiedTable(tableName, schema: schemaName))"
+        if !whereClause.isEmpty {
+            rows += " \(whereClause)"
+        }
+        appendOrderAndWindow(to: &rows, sortState: nil, columns: columns, limit: limit, offset: 0, window: true)
+        return "SELECT COUNT(*) FROM (\(rows)) capped_rows"
+    }
+
+    private func countWhereClause(
+        filters: [TableFilter],
+        logicMode: FilterLogicMode,
+        columns: [String],
+        columnTypes: [ColumnType]
+    ) -> String? {
+        guard let dialect else { return nil }
         let filterGen = FilterSQLGenerator(
             dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType), databaseType: databaseType,
             stringEscapes: stringEscapes
         )
-        guard let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode) else {
-            return nil
-        }
-        guard !whereClause.isEmpty else {
-            return "SELECT COUNT(*) FROM \(quotedTable)"
-        }
-        return "SELECT COUNT(*) FROM \(quotedTable) \(whereClause)"
+        return filterGen.generateWhereClause(from: filters.filter { $0.isEnabled }, logicMode: logicMode)
     }
 
     // MARK: - Private Helpers

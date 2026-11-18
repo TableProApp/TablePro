@@ -25,6 +25,8 @@ extension MainContentCoordinator {
         }
         let viewport = restoredRowAnchor(forTab: tabId).map(GridReloadIntent.restoreRow) ?? .keepPlace
         executeTableTabQueryDirectly(onTab: tabId, trigger: trigger, viewport: viewport)
+        // A load that asked first, or never started, reads the definition itself.
+        firstLoadColumnReads[tabId] = nil
     }
 
     @discardableResult
@@ -51,7 +53,7 @@ extension MainContentCoordinator {
         let token = tracer.activeToken(for: tabId)
         let schemaName = tab.tableContext.schemaName
         if let token { tracer.stage(.schemaColumnsBegin, token: token) }
-        await loadSchemaColumns(for: tableName, scope: scope(for: tab))
+        let columnRead = await loadSchemaColumns(for: tableName, scope: scope(for: tab))
         if let token { tracer.stage(.schemaColumnsEnd, token: token) }
 
         guard !Task.isCancelled,
@@ -68,6 +70,7 @@ extension MainContentCoordinator {
         /// correct, and a tab reopened from the recently closed history carries the last *filtered*
         /// SQL it ran. When that filter comes back unapplied, nothing else drops its WHERE.
         filterCoordinator.rebuildTableQuery(at: index)
+        firstLoadColumnReads[tabId] = columnRead
         return true
     }
 
