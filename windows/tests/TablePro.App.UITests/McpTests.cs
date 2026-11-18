@@ -108,13 +108,14 @@ public sealed partial class ShellTests
         app.Click(app.Find("FileMenu"), () => app.TryFindMenuItem("Settings") is not null);
         app.FindMenuItem("Settings").Patterns.Invoke.Pattern.Invoke();
         app.Find("SettingsPage");
-        // The toolkit's outer peer is a group; its native Expander owns expansion.
+        // The expander's items are realized only once it is in view; its native Expander owns expansion.
+        app.Find("McpRegenerateButton").Focus();
         var clients = app.Find("McpClientsExpander").FindFirstDescendant(condition =>
             condition.ByControlType(ControlType.Button).And(condition.ByName("Clients")));
         Assert.NotNull(clients);
+        clients.Focus();
         clients.Patterns.ExpandCollapse.Pattern.Expand();
         app.FindByName("Command Line", app.Find("McpClientsExpander"));
-        app.Find("McpServerSwitch").Focus();
         app.Screenshot("150-settings-mcp");
     }
 
