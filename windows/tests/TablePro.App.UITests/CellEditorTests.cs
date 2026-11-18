@@ -25,9 +25,11 @@ public sealed partial class ShellTests
             () => AppSession.TextOf(app.Find("QueryStatus")).StartsWith("Done", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL,
             VirtualKeyShort.ENTER);
+        // F5 reads the tree again with the folder counting the new table; a folder it closes is opened again.
         app.Chord(
-            () => tree.FindFirstDescendant(condition => condition.ByName("flags")) is not null,
+            () => tree.FindFirstDescendant(condition => condition.ByName("Tables, 12")) is not null,
             VirtualKeyShort.F5);
+        app.FindByName("Tables, 12", tree).Patterns.ExpandCollapse.Pattern.Expand();
         app.Click(app.FindByName("flags", tree), () => app.TryFind("TableStatus") is not null);
         AppSession.WaitForText(
             app.Find("TableStatus"),
