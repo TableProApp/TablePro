@@ -44,13 +44,16 @@ public sealed partial class SqlEditor
 
     private float TextLeft => GutterWidth + 4;
 
+    // Text brought into view is never left inside a fold, as a caret sent there is not.
     public void ScrollToLine(int line)
     {
         if (_layouts is null)
         {
             return;
         }
-        SetScroll(_scrollX, _model.Rows.FirstRowOf(Math.Clamp(line, 0, Document.LineCount - 1)) * _layouts.LineHeight);
+        line = Math.Clamp(line, 0, Document.LineCount - 1);
+        _model.Rows.Folds.Reveal(line);
+        SetScroll(_scrollX, _model.Rows.FirstRowOf(line) * _layouts.LineHeight);
     }
 
     public void ScrollBy(double dx, double dy) => SetScroll(_scrollX + dx, _scrollY + dy);
@@ -304,6 +307,7 @@ public sealed partial class SqlEditor
         {
             return;
         }
+        _model.Rows.Folds.Reveal(Document.GetLineFromOffset(Math.Clamp(offset, 0, Document.Length)));
         var row = _model.Rows.RowOf(offset);
         var first = FirstVisibleRow;
         var last = first + VisibleLineCount - 1;

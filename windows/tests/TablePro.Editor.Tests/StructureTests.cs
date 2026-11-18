@@ -54,6 +54,10 @@ public sealed class StructureTests
 
             editor.GoTo(12);
             Assert.Empty(editor.Folds);
+
+            Assert.True(editor.FoldAll());
+            editor.ScrollIntoView(12, alignToTop: true);
+            Assert.Empty(editor.Folds);
         }
         finally
         {
