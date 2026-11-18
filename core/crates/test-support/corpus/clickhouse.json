@@ -1,0 +1,170 @@
+{
+  "columns": [
+    {
+      "why": "A DateTime prints the wall time of its column's zone.",
+      "column": "COLUMN v Nullable(DateTime('Asia/Kolkata'))",
+      "values": [
+        { "sql": "'2024-03-10 02:30:00'", "shows": "2024-03-10 02:30:00" },
+        { "sql": "'1970-01-01 05:30:00'", "shows": "1970-01-01 05:30:00" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "why": "Nanoseconds in an Int64 end in 2262.",
+      "column": "COLUMN v DateTime64(9, 'UTC')",
+      "values": [
+        { "sql": "'1900-01-01 00:00:00.000000001'", "shows": "1900-01-01 00:00:00.000000001" },
+        { "sql": "'2262-04-11 23:47:16.854775807'", "shows": "2262-04-11 23:47:16.854775807" },
+        { "sql": "'2024-02-29 12:00:00'", "shows": "2024-02-29 12:00:00.000000000" }
+      ]
+    },
+    {
+      "column": "COLUMN v DateTime64(3)",
+      "values": [
+        { "sql": "'2024-01-01 00:00:00.5'", "shows": "2024-01-01 00:00:00.500" },
+        { "sql": "'2299-12-31 23:59:59.999'", "shows": "2299-12-31 23:59:59.999" }
+      ]
+    },
+    {
+      "column": "COLUMN v Date",
+      "values": [
+        { "sql": "'1970-01-01'", "shows": "1970-01-01" },
+        { "sql": "'2149-06-06'", "shows": "2149-06-06" }
+      ]
+    },
+    {
+      "column": "COLUMN v Date32",
+      "values": [
+        { "sql": "'1900-01-01'", "shows": "1900-01-01" },
+        { "sql": "'2299-12-31'", "shows": "2299-12-31" }
+      ]
+    },
+    {
+      "column": "COLUMN v Decimal(76, 38)",
+      "values": [
+        { "sql": "toDecimal256('-12345678901234567890123456789012345678.12345678901234567890123456789012345678', 38)", "shows": "-12345678901234567890123456789012345678.12345678901234567890123456789012345678" },
+        { "sql": "0", "shows": "0.00000000000000000000000000000000000000" }
+      ]
+    },
+    {
+      "column": "COLUMN v Nullable(Decimal(9, 2))",
+      "values": [
+        { "sql": "-1.5", "shows": "-1.50" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "COLUMN v Int128",
+      "values": [
+        { "sql": "-170141183460469231731687303715884105728", "shows": "-170141183460469231731687303715884105728" }
+      ]
+    },
+    {
+      "column": "COLUMN v UInt256",
+      "values": [
+        { "sql": "'115792089237316195423570985008687907853269984665640564039457584007913129639935'", "shows": "115792089237316195423570985008687907853269984665640564039457584007913129639935" }
+      ]
+    },
+    {
+      "column": "COLUMN v UInt64",
+      "values": [
+        { "sql": "18446744073709551615", "shows": "18446744073709551615" }
+      ]
+    },
+    {
+      "column": "COLUMN v Float64",
+      "values": [
+        { "sql": "0.1", "shows": "0.1" },
+        { "sql": "nan", "shows": "NaN" },
+        { "sql": "-inf", "shows": "-Infinity" }
+      ]
+    },
+    {
+      "column": "COLUMN v Float32",
+      "values": [
+        { "sql": "1.5", "shows": "1.5" }
+      ]
+    },
+    {
+      "column": "COLUMN v Bool",
+      "values": [
+        { "sql": "true", "shows": "true" },
+        { "sql": "false", "shows": "false" }
+      ]
+    },
+    {
+      "column": "COLUMN v Nullable(UUID)",
+      "values": [
+        { "sql": "'123e4567-e89b-12d3-a456-426614174000'", "shows": "123e4567-e89b-12d3-a456-426614174000" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "COLUMN v IPv4",
+      "values": [
+        { "sql": "'192.168.0.1'", "shows": "192.168.0.1" }
+      ]
+    },
+    {
+      "column": "COLUMN v IPv6",
+      "values": [
+        { "sql": "'2001:db8::1'", "shows": "2001:db8::1" }
+      ]
+    },
+    {
+      "column": "COLUMN v Enum8('a' = 1, 'b c' = 2)",
+      "values": [
+        { "sql": "'b c'", "shows": "b c" }
+      ]
+    },
+    {
+      "column": "COLUMN v Nullable(String)",
+      "values": [
+        { "sql": "'naïve café'", "shows": "naïve café" },
+        { "sql": "'日本語のテキスト'", "shows": "日本語のテキスト" },
+        { "sql": "'🦀 emoji 👩‍💻'", "shows": "🦀 emoji 👩‍💻" },
+        { "sql": "''", "shows": "" },
+        { "sql": "'it\\'s'", "shows": "it's" },
+        { "sql": "'line\\nbreak'", "shows": "line\nbreak" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "COLUMN v LowCardinality(String)",
+      "values": [
+        { "sql": "'low'", "shows": "low" }
+      ]
+    },
+    {
+      "column": "COLUMN v FixedString(4)",
+      "values": [
+        { "sql": "'ab'", "shows": "ab\u0000\u0000" }
+      ]
+    },
+    {
+      "why": "A String holds bytes; ones that are not UTF-8 stay bytes.",
+      "column": "COLUMN v String",
+      "values": [
+        { "sql": "unhex('FF00FE')", "shows": "0xff00fe" }
+      ]
+    },
+    {
+      "column": "COLUMN v Array(Nullable(Int32))",
+      "values": [
+        { "sql": "[1, NULL, 3]", "shows": "[\"1\",null,\"3\"]" }
+      ]
+    },
+    {
+      "column": "COLUMN v Map(String, UInt8)",
+      "values": [
+        { "sql": "map('a', 1)", "shows": "{\"a\":1}" }
+      ]
+    },
+    {
+      "column": "COLUMN v Tuple(String, Int8)",
+      "values": [
+        { "sql": "('x', -1)", "shows": "[\"x\",-1]" }
+      ]
+    }
+  ]
+}

@@ -55,6 +55,23 @@ public sealed class CoreDataTests
         Assert.Equal("", lines[5]);
     }
 
+    // DuckDB hands an editor run a TIMETZ as the time alone, which the driver cannot read back.
+    [Fact]
+    public async Task AValueTheDriverCouldNotReadSaysSoAndCopiesAsNothing()
+    {
+        await using var database = await CoreDatabase.CreateAsync("grid.duckdb");
+        using var data = await database.QueryAsync("SELECT 1 AS id, TIMETZ '12:30:00+05:30' AS at");
+        using var cache = new CellCache(data.Data.OpenReader());
+        using var reader = data.Data.OpenReader();
+
+        var cell = cache.Get(0, 1, 64);
+        var tsv = GridCopy.Tsv(reader, new CellRange(0, 0, 0, 1), TestContext.Current.CancellationToken);
+
+        Assert.Equal("<unreadable TIME WITH TIME ZONE>", cell.Text.ToString());
+        Assert.Equal(CellState.Unreadable, cell.State);
+        Assert.Equal("1\t\r\n", tsv);
+    }
+
     // The grid's fetch path over the real core allocates nothing once its blocks are loaded.
     [Fact]
     public async Task ScrollingAMillionRowsAllocatesNothingOnceTheCacheIsFull()
@@ -104,11 +121,11 @@ internal sealed class CoreDatabase : IAsyncDisposable
         _editor = editor;
     }
 
-    public static async Task<CoreDatabase> CreateAsync()
+    public static async Task<CoreDatabase> CreateAsync(string file = "grid.sqlite")
     {
         var directory = Directory.CreateTempSubdirectory("tablepro-grid-").FullName;
         var core = TableProCore.Create(new HostConfiguration("test"), new NoSecrets());
-        var session = await core.OpenFileAsync(new FileOpenOptions(Path.Combine(directory, "grid.sqlite"), Create: true));
+        var session = await core.OpenFileAsync(new FileOpenOptions(Path.Combine(directory, file), Create: true));
         var editor = await session.OpenEditorAsync();
         return new CoreDatabase(directory, core, session, editor);
     }
@@ -126,7 +143,14 @@ internal sealed class CoreDatabase : IAsyncDisposable
         await _editor.DisposeAsync();
         await _session.DisposeAsync();
         _core.Dispose();
-        Directory.Delete(_directory, recursive: true);
+        try
+        {
+            Directory.Delete(_directory, recursive: true);
+        }
+        catch (IOException)
+        {
+            // A DuckDB file closes on the core's own threads, which can still hold it here on Windows.
+        }
     }
 
     private sealed class NoSecrets : ISecretStore

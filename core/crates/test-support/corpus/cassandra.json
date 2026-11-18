@@ -1,0 +1,161 @@
+{
+  "columns": [
+    {
+      "column": "v int",
+      "values": [
+        { "sql": "-2147483648", "shows": "-2147483648" },
+        { "sql": "2147483647", "shows": "2147483647" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v bigint",
+      "values": [
+        { "sql": "-9223372036854775808", "shows": "-9223372036854775808" },
+        { "sql": "9223372036854775807", "shows": "9223372036854775807" }
+      ]
+    },
+    {
+      "column": "v smallint",
+      "values": [
+        { "sql": "-32768", "shows": "-32768" }
+      ]
+    },
+    {
+      "column": "v tinyint",
+      "values": [
+        { "sql": "127", "shows": "127" }
+      ]
+    },
+    {
+      "column": "v varint",
+      "values": [
+        { "sql": "-123456789012345678901234567890123456789", "shows": "-123456789012345678901234567890123456789" }
+      ]
+    },
+    {
+      "column": "v decimal",
+      "values": [
+        { "sql": "-12345.6789", "shows": "-12345.6789" },
+        { "sql": "0.10", "shows": "0.10" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v float",
+      "values": [
+        { "sql": "1.5", "shows": "1.5" }
+      ]
+    },
+    {
+      "column": "v double",
+      "values": [
+        { "sql": "0.1", "shows": "0.1" },
+        { "sql": "NaN", "shows": "NaN" },
+        { "sql": "-Infinity", "shows": "-Infinity" }
+      ]
+    },
+    {
+      "column": "v boolean",
+      "values": [
+        { "sql": "true", "shows": "true" },
+        { "sql": "false", "shows": "false" }
+      ]
+    },
+    {
+      "column": "v text",
+      "values": [
+        { "sql": "'naïve café'", "shows": "naïve café" },
+        { "sql": "'日本語のテキスト'", "shows": "日本語のテキスト" },
+        { "sql": "'🦀 emoji 👩‍💻'", "shows": "🦀 emoji 👩‍💻" },
+        { "sql": "''", "shows": "" },
+        { "sql": "'it''s'", "shows": "it's" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v ascii",
+      "values": [
+        { "sql": "'plain'", "shows": "plain" }
+      ]
+    },
+    {
+      "column": "v blob",
+      "values": [
+        { "sql": "0xff00fe", "shows": "0xff00fe" },
+        { "sql": "0x", "shows": "0x" }
+      ]
+    },
+    {
+      "column": "v uuid",
+      "values": [
+        { "sql": "123e4567-e89b-12d3-a456-426614174000", "shows": "123e4567-e89b-12d3-a456-426614174000" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v timeuuid",
+      "values": [
+        { "sql": "50554d6e-29bb-11e5-b345-feff819cdc9f", "shows": "50554d6e-29bb-11e5-b345-feff819cdc9f" }
+      ]
+    },
+    {
+      "column": "v inet",
+      "values": [
+        { "sql": "'192.168.0.1'", "shows": "192.168.0.1" },
+        { "sql": "'2001:db8::1'", "shows": "2001:db8::1" }
+      ]
+    },
+    {
+      "column": "v date",
+      "values": [
+        { "sql": "'1970-01-01'", "shows": "1970-01-01" },
+        { "sql": "'2024-02-29'", "shows": "2024-02-29" }
+      ]
+    },
+    {
+      "column": "v time",
+      "values": [
+        { "sql": "'00:00:00'", "shows": "00:00:00.000000000" },
+        { "sql": "'23:59:59.999999999'", "shows": "23:59:59.999999999" }
+      ]
+    },
+    {
+      "column": "v timestamp",
+      "values": [
+        { "sql": "'2024-02-29 12:00:00.123+0000'", "shows": "2024-02-29 12:00:00.123+00:00" },
+        { "sql": "'1970-01-01 00:00:00+0000'", "shows": "1970-01-01 00:00:00.000+00:00" }
+      ]
+    },
+    {
+      "column": "v duration",
+      "values": [
+        { "sql": "1y2mo3d4h5m6s7ms", "shows": "P1Y2M3DT4H5M6.007S" }
+      ]
+    },
+    {
+      "column": "v list<int>",
+      "values": [
+        { "sql": "[1, 2, 3]", "shows": "[\"1\",\"2\",\"3\"]" }
+      ]
+    },
+    {
+      "column": "v set<text>",
+      "values": [
+        { "sql": "{'b', 'a'}", "shows": "[\"a\",\"b\"]" }
+      ]
+    },
+    {
+      "column": "v map<text, int>",
+      "values": [
+        { "sql": "{'a': 1}", "shows": "{'a': 1}" }
+      ]
+    },
+    {
+      "column": "v frozen<tuple<int, text>>",
+      "values": [
+        { "sql": "(1, 'x')", "shows": "[\"1\",\"x\"]" }
+      ]
+    }
+  ]
+}

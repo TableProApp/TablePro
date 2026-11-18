@@ -36,7 +36,7 @@ struct Read {
 /// tab's page, a table export and an editor run, as the text its entry
 /// names. A wrong text is a decoder bug, and every one is listed at once.
 pub async fn value_corpus_reads_as_the_grid_shows<E: ValueCorpusEngine>(engine: E) -> Result<(), ConformanceFailure> {
-    let corpus = engine.value_corpus();
+    let corpus = engine.value_corpus().columns()?;
     expect(CASE, !corpus.is_empty(), || "the engine lists no corpus".to_owned())?;
     let connection = connect(CASE, &engine, writable()).await?;
     let session = connection
@@ -314,6 +314,7 @@ mod tests {
     use tablepro_core::value::{SqlDecimal, UndecodableReason, UndecodedValue};
 
     use super::*;
+    use crate::conformance::CorpusValue;
 
     fn decimal(precision: u32, scale: u32) -> ColumnType {
         let mut column_type = ColumnType::unknown();
@@ -331,11 +332,30 @@ mod tests {
         }
     }
 
+    fn corpus_column(declaration: &str, values: &[(&str, Option<&str>, Option<&str>)]) -> CorpusColumn {
+        CorpusColumn {
+            setup_sql: Vec::new(),
+            declaration: declaration.to_owned(),
+            values: values
+                .iter()
+                .map(|(sql, shown, edited)| CorpusValue {
+                    sql: (*sql).to_owned(),
+                    shown: shown.map(str::to_owned),
+                    edited: edited.map(str::to_owned),
+                })
+                .collect(),
+        }
+    }
+
     fn column() -> CorpusColumn {
-        CorpusColumn::new("v numeric(10, 2)")
-            .shows("1.5", "1.50")
-            .shows_apart("2", "2.00", "2")
-            .null()
+        corpus_column(
+            "v numeric(10, 2)",
+            &[
+                ("1.5", Some("1.50"), None),
+                ("2", Some("2.00"), Some("2")),
+                ("NULL", None, None),
+            ],
+        )
     }
 
     #[test]
@@ -398,7 +418,7 @@ mod tests {
             type_name: "money".to_owned(),
             reason: UndecodableReason::OutOfRange,
         }));
-        let column = CorpusColumn::new("v money").shows_apart("1", "1", "<unreadable money>");
+        let column = corpus_column("v money", &[("1", Some("1"), Some("<unreadable money>"))]);
 
         compare(
             Path::Editor,

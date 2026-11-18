@@ -193,3 +193,62 @@ jobs:
             exit 1
           fi
 
+  live:
+    name: Windows live servers (x64)
+    # The engines the interop tests reach on a server, beside the x64 job so the budget holds
+    # (windows/docs/decisions/0016-live-server-tests.md).
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      RUSTFLAGS: -D warnings
+      AWS_LC_SYS_PREBUILT_NASM: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.98"
+          targets: x86_64-pc-windows-msvc
+      # The x64 test job's cache, which builds the same core: its key is its key input and job id, and this job only reads it.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: windows-x86_64-pc-windows-msvc-test
+          save-if: false
+      - name: Drop the emptied DuckDB sources
+        shell: bash
+        run: rm -rf target/x86_64-pc-windows-msvc/duckdb-sources target/duckdb-sources
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Start MySQL
+        run: windows/ci/live-servers.ps1 -Server MySql
+      - name: Start MongoDB
+        run: windows/ci/live-servers.ps1 -Server MongoDb
+      - name: Start Redis
+        run: windows/ci/live-servers.ps1 -Server Redis
+      - name: Start Cassandra
+        run: windows/ci/live-servers.ps1 -Server Cassandra
+      - name: Import a WSL 1 distribution
+        run: windows/ci/live-servers.ps1 -Server Wsl
+      - name: Start ClickHouse
+        run: windows/ci/live-servers.ps1 -Server ClickHouse
+      - name: Install SQL Server 2022 Express
+        run: windows/ci/live-servers.ps1 -Server SqlServer
+      # A missing server fails its tests rather than skipping them.
+      - name: Live-server tests
+        working-directory: windows
+        shell: bash
+        run: dotnet test --project tests/TablePro.Interop.Tests -- --filter-namespace TablePro.Interop.Tests.Live --fail-skips on
+      - name: The servers' logs
+        if: failure()
+        run: |
+          Get-Content (Join-Path $env:RUNNER_TEMP 'mysqld.log') -Tail 60 -ErrorAction Continue
+          Get-Content (Join-Path $env:RUNNER_TEMP 'cassandra-logs\system.log') -Tail 80 -ErrorAction Continue
+          wsl --distribution tablepro --user root -- tail -n 80 /var/lib/clickhouse/server.log
+          Get-Content "$env:ProgramFiles\MongoDB\Server\7.0\log\mongod.log" -Tail 40 -ErrorAction Continue

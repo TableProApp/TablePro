@@ -29,22 +29,22 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 
 | Section | Boxes | Done |
 |---|---|---|
-| Phase 0: Release blockers | 16 | 3 |
-| Phase 1: Core enablers | 23 | 4 |
-| Phase 2: Windows daily use | 62 | 20 |
+| Phase 0: Release blockers | 16 | 4 |
+| Phase 1: Core enablers | 23 | 5 |
+| Phase 2: Windows daily use | 62 | 28 |
 | Phase 3: Standard features both apps lack | 118 | 0 |
 | Phase 4: Advanced tier | 57 | 0 |
 | Phase 5: Engines | 27 | 0 |
 | Phase 6: Quality bars | 8 | 0 |
 | Phase 7: Sync and teams | 15 | 0 |
 | Phase 8: Beyond the market | 40 | 0 |
-| Total | 366 | 27 |
+| Total | 366 | 37 |
 
 ## Where each app stands
 
 **macOS**, the reference: 48 engine types (5 bundled driver plugins, 31 in the registry), and every survey tier up to ADV. Compare & Sync, Server Dashboard, Table Health, Query Insights, Data Rewind, EXPLAIN diagrams, charts, map mode, routine debugger, users and roles, backup and restore, an agent-mode AI with 15 providers, an MCP server with 47 tools, iCloud sync and Team features.
 
-**Linux**, 0.1.0-beta.3: 9 engines from the core. Covers most of the CORE tier: connections with SSH, TLS and sockets, filters, editing with undo, completion, formatter, snippets, Vim, history, saved queries, structure editing, ER diagram, 7 export formats, dump and SQL import, AI chat, MCP with 11 tools and client setup, a CLI, share links. Missing: all of admin and monitoring, query parameters, drawn plans, charts, schema compare, data transfer, backup through native tools, SOCKS, cloud IAM, users and roles, view and routine editing, the 10 paid features. 0.1.0 waits on [release criteria](linux/docs/releasing.md#release-criteria) 8 and 10.
+**Linux**, 0.1.0-beta.5: 9 engines from the core. Covers most of the CORE tier: connections with SSH, TLS and sockets, filters, editing with undo, completion, formatter, snippets, Vim, history, saved queries, structure editing, ER diagram, 7 export formats, dump and SQL import, AI chat, MCP with 11 tools and client setup, a CLI, share links. Missing: all of admin and monitoring, query parameters, drawn plans, charts, schema compare, data transfer, backup through native tools, SOCKS, cloud IAM, users and roles, view and routine editing, the 10 paid features. 0.1.0 waits on [release criteria](linux/docs/releasing.md#release-criteria) 8 and 10.
 
 **Windows**, unreleased: 9 engines through the FFI. Has the connection library (groups, tags, favourites), in-process SSH, TLS with remedies, paging, sort and filters, a row estimate before an optional count, table-row editing with SQL review, read-only structure and routine, trigger and sequence definitions, export to 7 formats with progress and Stop, CSV import, filters kept per table and by a cell, create and drop of databases and schemas, Truncate and Drop, query history with search and pins, saved queries in folders, value viewers, FK navigation, a production cue, database switchers, a Direct2D editor with highlighting, multiple cursors, find and replace and .sql files, run statement, selection or script with transactions, Redis key tabs, Cassandra paging, Safe Mode (3 levels), tab tear-out, session restore with pending edits, account sign-in, share links, and an MSIX build whose release dry run passes. Missing from the CORE tier: copy formats, completion, formatter, a script runner, SQL dump and import, the table designer, Truncate and Drop held until Save, undo of edits.
 
@@ -76,7 +76,7 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 - [ ] **R-04** Real hardware: Windows 10 build 17763, Native AOT, Mica on a GPU, TabView in the title bar on Windows 10, loading from a signed MSIX (ADR 0001, 0004)
 - [x] **R-05** Drop the Windows App SDK metapackage (41.8 MB of unused ONNX and DirectML per architecture): the app takes the WinUI component and prunes the metapackage the Community Toolkit names (ADR 0005): #4232
 - [ ] **R-06** Updates: an App Installer file or the Store, an in-app update check, stable and beta channels
-- [ ] **R-07** Live-server Windows tests for the 7 engines no Windows suite connects to: MySQL, SQL Server, DuckDB, ClickHouse, Cassandra, MongoDB, Redis
+- [x] **R-07** Live-server Windows tests for the 7 engines no Windows suite connects to: MySQL, SQL Server, DuckDB, ClickHouse, Cassandra, MongoDB, Redis: #4321
 - [ ] **R-08** Windows user guide on docs.tablepro.app and the download page
 - [ ] **R-09** First `windows-v0.1.0` tag, once the rest of Phase 0 and every CORE item in Phase 2 are done; no public build before it (D-04)
 
@@ -110,7 +110,7 @@ Each item ends in an FFI surface Windows needs. Linux paths are under `linux/cra
 - [ ] **C-14** ER diagram model, layout and scene into core: `ui/diagram/{layout,model,scene}.rs`; drawing and export stay per app
 - [ ] **C-15** Snippets in a neutral format: `builtin_snippets` is written in GtkSourceView syntax today; core keeps a neutral form and each app converts
 - [ ] **C-16** Foreign import through the FFI: a Windows `ForeignHost` and `ForeignAppDirs`, passwords into Credential Manager, DPAPI-held passwords read (core ADR 0008)
-- [ ] **C-17** AI through the FFI: providers, prompts, schema context, streamed replies
+- [x] **C-17** AI through the FFI: providers, prompts, schema context, streamed replies: #4319
 - [ ] **C-18** MCP server through the FFI, with a Windows host
 - [x] **C-19** Account through the FFI: the Windows `AppClient`, registered with tablepro-cloud, and the entitlement gate that every paid feature on Windows needs (core ADR 0016 and 0026, D-02): #4253
 - [ ] **C-20** CLI on Windows: a `Host`, MCP dispatch, peer verification on the pipe, PowerShell completion (core ADR 0018)
@@ -126,10 +126,10 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 - [x] **W-01** Duplicate a connection with its secrets · CORE · needs C-22: #4288
 - [x] **W-02** Export the connections file (no secrets); import of TablePro's file exists · STD · needs C-22: #4288
-- [ ] **W-03** Paste a URL on the Connections page to start a connection (today only in the engine chooser) · STD
-- [ ] **W-04** Jump hosts in the SSH section; the core and the FFI record carry them · STD
+- [x] **W-03** Paste a URL on the Connections page to start a connection (today only in the engine chooser) · STD: #4318
+- [x] **W-04** Jump hosts in the SSH section; the core and the FFI record carry them · STD: #4318
 - [ ] **W-05** Connect timeout field · STD
-- [ ] **W-06** Group colour (the record has `Color`) · STD
+- [x] **W-06** Group colour (the record has `Color`) · STD: #4318
 - [ ] **W-07** Import from TablePlus, DBeaver, DataGrip, Beekeeper, Navicat and DBX · STD · needs C-16
 - [x] **W-08** Production cue: the connection colour on the tab strip, title bar and toolbar, and an environment label · CORE: #4285
 
@@ -140,19 +140,19 @@ The first public Windows release waits for every CORE item here and the Windows 
 - [ ] **W-11** Database switcher per connection and per query tab · CORE · partly #4285: Redis numbered databases get no switcher, because the core reports a Redis server as one database
 - [x] **W-12** Open a routine, trigger or sequence: its definition read-only, with Copy and Open in Editor · STD: #4213
 - [ ] **W-13** Columns, indexes and keys under a table node · STD · needs C-05
-- [ ] **W-14** Table info: rows, size, comment · STD
+- [x] **W-14** Table info: rows, size, comment · STD: #4318
 
 ### Grid
 
 - [x] **W-15** Filters: per-column operators, raw WHERE, match any or all, kept per table · CORE · needs C-01: #4213, #4304
 - [x] **W-16** Filter by a cell's value, or exclude it · CORE · needs C-01: #4304
 - [x] **W-17** Value viewers for long text, JSON, binary (hex) and images; a tooltip on a cut cell · CORE: #4282
-- [ ] **W-18** Row details pane with editing · STD
+- [x] **W-18** Row details pane with editing · STD: #4318
 - [x] **W-19** Follow a foreign key to the referenced row, and show referencing rows · CORE: #4282
 - [ ] **W-20** Copy as CSV or TSV with headers, JSON, Markdown, INSERT, IN clause · CORE · needs C-11
-- [ ] **W-21** Reorder, hide and freeze columns, kept per table (the control has frozen columns) · STD
+- [x] **W-21** Reorder, hide and freeze columns, kept per table (the control has frozen columns) · STD: #4318
 - [x] **W-22** Context menu on query-result grids · CORE: #4253, #4282. Copy As waits on W-20, filter by value on W-16
-- [ ] **W-23** Selection summary: count, sum, average, min, max · STD
+- [x] **W-23** Selection summary: count, sum, average, min, max · STD: #4318
 - [ ] **W-24** Find in the grid · STD · needs C-12
 - [ ] **W-25** Grid display settings: NULL text, date format, grid font, row height, stripes · STD · needs C-11
 - [ ] **W-26** Highlight rules · ADV · needs C-12
@@ -199,7 +199,7 @@ The first public Windows release waits for every CORE item here and the Windows 
 ### Workspace
 
 - [ ] **W-51** Open Quickly: objects, saved and past queries, commands · STD · needs C-13
-- [ ] **W-52** Settings: editor font family, grid font, NULL display, history, AI and MCP pages · CORE · partly #4285: the AI and MCP pages wait on C-17 and C-18
+- [ ] **W-52** Settings: editor font family, grid font, NULL display, history, AI and MCP pages · CORE · partly #4285, #4319: the MCP page waits on C-18
 - [ ] **W-53** A toast when a long query finishes in a background tab · STD
 - [ ] **W-54** Every string localizable, the editor's menu and find bar included; Vietnamese first · STD
 - [ ] **W-55** Editor colour schemes · STD
@@ -207,7 +207,7 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 ### AI, MCP, account, integration
 
-- [ ] **W-57** AI assistant: providers, chat with schema context, Explain, Review, Optimize, Fix, AI policy per connection · STD · needs C-17
+- [x] **W-57** AI assistant: providers, chat with schema context, Explain, Review, Optimize, Fix, AI policy per connection · STD · needs C-17: #4319
 - [ ] **W-58** MCP server with an External Clients level per connection · ADV · needs C-18
 - [ ] **W-59** Account page, license ask, and the paid-feature gate on the macOS license (D-02) · STD · needs C-19 · partly #4253: the license ask and the gate on paid features are left
 - [ ] **W-60** `tablepro://` and database URL links · STD · partly #4253: connection links and database URLs are left

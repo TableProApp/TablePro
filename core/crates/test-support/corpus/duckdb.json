@@ -1,0 +1,229 @@
+{
+  "why": "A UNION is not here: its text names no member, so it has no SQL literal to export, and decode.rs reads it.",
+  "columns": [
+    {
+      "column": "v BOOLEAN",
+      "values": [
+        { "sql": "true", "shows": "true" },
+        { "sql": "false", "shows": "false" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v TINYINT",
+      "values": [
+        { "sql": "-128", "shows": "-128" },
+        { "sql": "127", "shows": "127" }
+      ]
+    },
+    {
+      "column": "v UTINYINT",
+      "values": [
+        { "sql": "255", "shows": "255" }
+      ]
+    },
+    {
+      "column": "v INTEGER",
+      "values": [
+        { "sql": "2147483647", "shows": "2147483647" },
+        { "sql": "-2147483648", "shows": "-2147483648" }
+      ]
+    },
+    {
+      "column": "v BIGINT",
+      "values": [
+        { "sql": "9223372036854775807", "shows": "9223372036854775807" },
+        { "sql": "-9223372036854775808", "shows": "-9223372036854775808" }
+      ]
+    },
+    {
+      "column": "v UBIGINT",
+      "values": [
+        { "sql": "18446744073709551615", "shows": "18446744073709551615" }
+      ]
+    },
+    {
+      "column": "v HUGEINT",
+      "values": [
+        { "sql": "170141183460469231731687303715884105727", "shows": "170141183460469231731687303715884105727" },
+        { "sql": "-170141183460469231731687303715884105728", "shows": "-170141183460469231731687303715884105728" }
+      ]
+    },
+    {
+      "column": "v UHUGEINT",
+      "values": [
+        { "sql": "340282366920938463463374607431768211455", "shows": "340282366920938463463374607431768211455" }
+      ]
+    },
+    {
+      "column": "v FLOAT",
+      "values": [
+        { "sql": "1.5", "shows": "1.5" },
+        { "sql": "0.1", "shows": "0.1" }
+      ]
+    },
+    {
+      "column": "v DOUBLE",
+      "values": [
+        { "sql": "0.1", "shows": "0.1" },
+        { "sql": "-2.5e-5", "shows": "-0.000025" },
+        { "sql": "'nan'::DOUBLE", "shows": "NaN" },
+        { "sql": "'-inf'::DOUBLE", "shows": "-Infinity" }
+      ]
+    },
+    {
+      "column": "v DECIMAL(18,3)",
+      "values": [
+        { "sql": "1.5", "shows": "1.500" },
+        { "sql": "-0.001", "shows": "-0.001" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v DECIMAL(38,10)",
+      "values": [
+        { "sql": "1234567890123456789012345678.1234567890", "shows": "1234567890123456789012345678.1234567890" },
+        { "sql": "-12.5", "shows": "-12.5000000000" }
+      ]
+    },
+    {
+      "column": "v VARCHAR",
+      "values": [
+        { "sql": "'naïve café'", "shows": "naïve café" },
+        { "sql": "'日本語のテキスト'", "shows": "日本語のテキスト" },
+        { "sql": "'🦀 emoji 👩‍💻'", "shows": "🦀 emoji 👩‍💻" },
+        { "sql": "''", "shows": "" },
+        { "sql": "'it''s'", "shows": "it's" },
+        { "sql": "'line' || chr(10) || 'break'", "shows": "line\nbreak" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v BLOB",
+      "values": [
+        { "sql": "'\\xDE\\xAD\\xBE\\xEF'::BLOB", "shows": "0xdeadbeef" },
+        { "sql": "''::BLOB", "shows": "0x" }
+      ]
+    },
+    {
+      "column": "v UUID",
+      "values": [
+        { "sql": "'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'", "shows": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" }
+      ]
+    },
+    {
+      "column": "v JSON",
+      "values": [
+        { "sql": "'{\"b\": 1, \"a\": [1, 2.50]}'", "shows": "{\"b\": 1, \"a\": [1, 2.50]}" }
+      ]
+    },
+    {
+      "column": "v BIT",
+      "values": [
+        { "sql": "'10101'", "shows": "10101" },
+        { "sql": "'0'", "shows": "0" }
+      ]
+    },
+    {
+      "column": "v ENUM('sad', 'ok', 'happy')",
+      "values": [
+        { "sql": "'happy'", "shows": "happy" }
+      ]
+    },
+    {
+      "column": "v DATE",
+      "values": [
+        { "sql": "'2024-02-29'", "shows": "2024-02-29" },
+        { "sql": "'0044-03-15 (BC)'", "shows": "0044-03-15 BC" },
+        { "sql": "'infinity'", "shows": "infinity" },
+        { "sql": "'-infinity'", "shows": "-infinity" }
+      ]
+    },
+    {
+      "column": "v TIME",
+      "values": [
+        { "sql": "'12:30:00.123456'", "shows": "12:30:00.123456" },
+        { "sql": "'00:00:00'", "shows": "00:00:00" }
+      ]
+    },
+    {
+      "column": "v TIMESTAMP",
+      "values": [
+        { "sql": "'2024-02-29 12:00:00.123'", "shows": "2024-02-29 12:00:00.123" },
+        { "sql": "'1999-12-31 23:59:59'", "shows": "1999-12-31 23:59:59" },
+        { "sql": "'infinity'", "shows": "infinity" }
+      ]
+    },
+    {
+      "column": "v TIMESTAMP_NS",
+      "values": [
+        { "sql": "'2024-01-01 00:00:00.123456789'", "shows": "2024-01-01 00:00:00.123456789" }
+      ]
+    },
+    {
+      "column": "v TIMESTAMP_S",
+      "values": [
+        { "sql": "'2024-01-01 00:00:01'", "shows": "2024-01-01 00:00:01" }
+      ]
+    },
+    {
+      "column": "v TIMESTAMPTZ",
+      "values": [
+        { "sql": "'2024-03-10 10:30:00+02'", "shows": "2024-03-10 08:30:00+00:00" },
+        { "sql": "'2024-07-01 00:00:00.5+00'", "shows": "2024-07-01 00:00:00.5+00:00" }
+      ]
+    },
+    {
+      "column": "v INTERVAL",
+      "values": [
+        { "sql": "INTERVAL '1 year 2 months 3 days 04:05:06.789'", "shows": "P1Y2M3DT4H5M6.789S" },
+        { "sql": "INTERVAL '-1 day'", "shows": "P-1D" }
+      ]
+    },
+    {
+      "why": "Arrow carries the time alone, so an editor run cannot read it.",
+      "column": "v TIMETZ",
+      "values": [
+        { "sql": "'12:30:00+05:30'", "shows": "12:30:00+05:30", "edited": "<unreadable TIME WITH TIME ZONE>" }
+      ]
+    },
+    {
+      "column": "v INTEGER[]",
+      "values": [
+        { "sql": "[1, 2, NULL]", "shows": "[1, 2, NULL]" },
+        { "sql": "[]", "shows": "[]" }
+      ]
+    },
+    {
+      "column": "v VARCHAR[]",
+      "values": [
+        { "sql": "['a', 'b c', '', 'it''s', 'x,y']", "shows": "[a, b c, '', 'it\\'s', 'x,y']" }
+      ]
+    },
+    {
+      "column": "v INTEGER[3]",
+      "values": [
+        { "sql": "[1, 2, 3]", "shows": "[1, 2, 3]" }
+      ]
+    },
+    {
+      "column": "v STRUCT(a INTEGER, b VARCHAR)",
+      "values": [
+        { "sql": "{'a': 1, 'b': 'x y'}", "shows": "{'a': 1, 'b': x y}" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v MAP(VARCHAR, INTEGER)",
+      "values": [
+        { "sql": "MAP {'k1': 1, 'k 2': NULL}", "shows": "{k1=1, k 2=NULL}" }
+      ]
+    },
+    {
+      "column": "v STRUCT(d DECIMAL(10,2), t TIMESTAMP, l DOUBLE[])",
+      "values": [
+        { "sql": "{'d': 1.5, 't': TIMESTAMP '2024-01-01 10:00:00', 'l': [1.0, 0.1]}", "shows": "{'d': 1.50, 't': '2024-01-01 10:00:00', 'l': [1.0, 0.1]}" }
+      ]
+    }
+  ]
+}
