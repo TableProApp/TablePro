@@ -6,6 +6,68 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.88.0-beta.1</title>
+            <pubDate>Wed, 18 Nov 2026 11:52:35 +0000</pubDate>
+            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>880001</sparkle:version>
+            <sparkle:shortVersionString>0.88.0-beta.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.88.0-beta.1
+
+### Added
+
+- Share a query, a saved query or a result as a link anyone can open in a browser. ([#4253](https://github.com/TableProApp/TablePro/pull/4253))
+- Share Result masks columns that look sensitive before upload, and lets you keep, mask or remove each column. ([#4253](https://github.com/TableProApp/TablePro/pull/4253))
+- Open a shared link in TablePro to get its SQL in a new query tab, without running it. ([#4253](https://github.com/TableProApp/TablePro/pull/4253))
+- Select several rows on iPhone and iPad to export, copy or delete them. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Import CSV, JSON and XLSX files into a table, and run SQL files, on iPhone and iPad. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Export tables, query results, selected rows or a whole database to a file on iPhone and iPad. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+
+### Changed
+
+- Typing in the query editor no longer redraws the tab strip and the rest of the window on every keystroke. ([#4286](https://github.com/TableProApp/TablePro/pull/4286))
+- Restore Dump's database picker shows favorite databases and their menu, like the toolbar switcher. ([#4303](https://github.com/TableProApp/TablePro/pull/4303))
+
+### Fixed
+
+- Switching tabs cleared the undo history of grid edits still waiting to be saved. ([#4283](https://github.com/TableProApp/TablePro/pull/4283))
+- One connection TablePro could not read emptied the whole connection list and blocked saving. ([#4283](https://github.com/TableProApp/TablePro/pull/4283))
+- After a reconnect lost a transaction, a grid save used up the warning meant for your next statement. ([#4283](https://github.com/TableProApp/TablePro/pull/4283))
+- Choosing Save when closing a tab could save another tab instead if the selection changed while the prompt was up. ([#4286](https://github.com/TableProApp/TablePro/pull/4286))
+- Query History saved the statements of a script without their schema, so reopening one ran in the default schema. ([#4286](https://github.com/TableProApp/TablePro/pull/4286))
+- Query Insights grouped statements without the engine's quoting and comment rules, such as PostgreSQL's `'C:\'`. ([#4289](https://github.com/TableProApp/TablePro/pull/4289))
+- Importing a SQL file joined the words around a dropped comment, so `a/* x */FROM t` ran as `aFROM t`. ([#4289](https://github.com/TableProApp/TablePro/pull/4289))
+- Importing a SQL file split a PostgreSQL `E'...'` string continued on the next line, or a SQLite `$name(...)` parameter. ([#4289](https://github.com/TableProApp/TablePro/pull/4289))
+- The editor flagged a bracket inside a `$$` body, a `[name]`, a MySQL `#` comment or PostgreSQL's `'C:\'` as unmatched. ([#4289](https://github.com/TableProApp/TablePro/pull/4289))
+- On iOS, a ROLLBACK after a MySQL `#` comment or a nested PostgreSQL comment left the transaction shown as open. ([#4289](https://github.com/TableProApp/TablePro/pull/4289))
+- Renaming a SQL Server column failed, or renamed the wrong one, when a schema or table name held a dot or a bracket. ([#4294](https://github.com/TableProApp/TablePro/pull/4294))
+- XLSX export dropped leading and trailing spaces in text cells. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- SQLite SQL exports dropped NUL characters inside text. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- SQL exports wrote wrong trigger or routine drops for Cassandra, Teradata, SQL Server aggregates and DuckDB macros. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Oracle triggers were left out of SQL exports, and Oracle drops failed to restore before 23ai. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- An XLSX file with one huge shared string could use up memory while it was previewed. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- A SQL export of query results failed with Read every table at one snapshot turned on. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- CSV, JSON and XLSX import was offered for MongoDB and then failed. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Inserting a row of only defaults on Oracle did nothing on iPhone and iPad. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Copy as SQL INSERT on iPhone and iPad quoted MySQL BIT values and listed generated columns. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- A small SQL file whose last characters were Latin-1 was read as UTF-8. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Stopping an XLSX or Markdown export after its last row still saved the file. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- SQL exports with Drop wrote DROP ROUTINE, which no database accepts, and dropped PostgreSQL procedures as functions. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- SQL exports from two windows at once could leave out sequences and mix up their warnings. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Markdown export cut emoji and dropped accents in aligned columns. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- PostgreSQL booleans showed as t and f on iPhone and iPad. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- A Claude, Gemini, OpenAI or xAI reply that ended with nothing in it showed an empty message instead of an error. ([#4317](https://github.com/TableProApp/TablePro/pull/4317))
+
+### Security
+
+- Opening or browsing a DuckDB file with deeply nested constraints, defaults or views could crash the app. ([#4293](https://github.com/TableProApp/TablePro/pull/4293))
+
+[View release notes](https://github.com/TableProApp/TablePro/releases/tag/v0.88.0-beta.1)
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.88.0-beta.1/TablePro-0.88.0-beta.1.tar.xz" length="55140296" type="application/octet-stream" sparkle:edSignature="PqeQK9R0aAYrAvACpa6qsMzjxSPjIhB24jRGPhGpdP/BUQrG0vpr9Nw8F2arSLI7VsbgO+BmreDY3ke2/Q1eBg=="/>
+        </item>
+        <item>
             <title>0.87.0</title>
             <pubDate>Tue, 17 Nov 2026 15:54:09 +0000</pubDate>
             <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
@@ -555,6 +617,6 @@ Settings > Plugins is now Settings > Extensions. A .sql-formatter.json saved by 
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: KVkuYO3Mrl1kPyarqq1YgyDXVmqn8mV5DSiSgjMESUvWMKfGxSes9obu10a744FRJvUzFweVbqWDPkepTmM0DA==
-length: 77348
+edSignature: A7FP3swfTXj0yKvWW+MLt+SMHpAP4v97jHh3V6Fv1OgpbU3XTyjRnsOslaMI/wGN6MBwH6zfL7ROMhnPG8JVCQ==
+length: 84026
 -->
