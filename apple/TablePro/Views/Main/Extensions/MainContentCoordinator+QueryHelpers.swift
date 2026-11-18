@@ -222,7 +222,8 @@ extension MainContentCoordinator {
         tabId: UUID,
         connectionType: DatabaseType,
         needsMetadataFetch: Bool,
-        schemaTask: Task<FetchedTableSchema, Error>?
+        schemaTask: Task<FetchedTableSchema, Error>?,
+        traceToken: TableLoadTraceToken? = nil
     ) {
         guard needsMetadataFetch else {
             launchPhase2Count(
@@ -236,7 +237,8 @@ extension MainContentCoordinator {
             tableName: tableName,
             tabId: tabId,
             connectionType: connectionType,
-            schemaTask: schemaTask
+            schemaTask: schemaTask,
+            traceToken: traceToken
         )
     }
 
@@ -245,14 +247,16 @@ extension MainContentCoordinator {
         tabId: UUID,
         connectionType: DatabaseType,
         schemaTask: Task<FetchedTableSchema, Error>?,
-        countsRows: Bool = true
+        countsRows: Bool = true,
+        traceToken: TableLoadTraceToken? = nil
     ) {
         queryExecutionCoordinator.launchPhase2Work(
             tableName: tableName,
             tabId: tabId,
             connectionType: connectionType,
             schemaTask: schemaTask,
-            countsRows: countsRows
+            countsRows: countsRows,
+            traceToken: traceToken
         )
     }
 

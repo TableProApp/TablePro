@@ -54,11 +54,13 @@ extension MainContentCoordinator {
         _ token: TableLoadTraceToken?,
         began: ContinuousClock.Instant,
         ended: ContinuousClock.Instant,
-        result: QueryFetchResult
+        result: QueryFetchResult,
+        lease: TableLoadLeaseTiming? = nil
     ) {
         guard let token else { return }
         let tracer = TableLoadTracer.shared
         tracer.stage(.driverFetchBegin, token: token, at: began)
+        traceLease(lease, token: token)
         tracer.stage(
             .driverFetchEnd,
             token: token,
@@ -77,14 +79,24 @@ extension MainContentCoordinator {
     func traceFetchCancelled(
         _ token: TableLoadTraceToken?,
         began: ContinuousClock.Instant,
-        ended: ContinuousClock.Instant
+        ended: ContinuousClock.Instant,
+        lease: TableLoadLeaseTiming? = nil
     ) {
         guard let token else { return }
         let tracer = TableLoadTracer.shared
         tracer.stage(.driverFetchBegin, token: token, at: began)
+        traceLease(lease, token: token)
         tracer.stage(.driverFetchEnd, token: token, at: ended)
         tracer.anomaly(.executionCancelled, token: token)
         tracer.finish(token: token, outcome: .cancelled)
+    }
+
+    private func traceLease(_ lease: TableLoadLeaseTiming?, token: TableLoadTraceToken) {
+        guard let instants = lease?.instants else { return }
+        let tracer = TableLoadTracer.shared
+        if let leaseAcquired = instants.leaseAcquired { tracer.stage(.leaseAcquired, token: token, at: leaseAcquired) }
+        if let pinFinished = instants.pinFinished { tracer.stage(.pinFinished, token: token, at: pinFinished) }
+        if let firstRow = instants.firstRow { tracer.stage(.firstRow, token: token, at: firstRow) }
     }
 
     func traceStaleResultDropped(_ token: TableLoadTraceToken?) {

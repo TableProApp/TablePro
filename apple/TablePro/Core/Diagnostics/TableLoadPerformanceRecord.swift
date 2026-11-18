@@ -122,6 +122,11 @@ internal struct TableLoadPerformanceRecord: Codable, Sendable, Equatable {
     internal let resultApplyMs: Double?
     internal let gridReloadMs: Double?
     internal let mainRunLoopIdleMs: Double?
+    // Optional and new: a line from an older build has none, and an older build skips the keys.
+    internal let leaseWaitMs: Double?
+    internal let pinMs: Double?
+    internal let firstRowMs: Double?
+    internal let phase2Ms: Double?
     internal let rowBucket: String?
     internal let columnBucket: String?
     internal let resultSizeBucket: String?
@@ -143,6 +148,10 @@ internal struct TableLoadPerformanceRecord: Codable, Sendable, Equatable {
         self.resultApplyMs = summary.resultApply.map(TableLoadDuration.milliseconds)
         self.gridReloadMs = summary.gridReload.map(TableLoadDuration.milliseconds)
         self.mainRunLoopIdleMs = summary.mainRunLoopIdle.map(TableLoadDuration.milliseconds)
+        self.leaseWaitMs = summary.leaseWait.map(TableLoadDuration.milliseconds)
+        self.pinMs = summary.pin.map(TableLoadDuration.milliseconds)
+        self.firstRowMs = summary.firstRow.map(TableLoadDuration.milliseconds)
+        self.phase2Ms = summary.phase2.map(TableLoadDuration.milliseconds)
         self.rowBucket = summary.resultMetrics.map { TableLoadRowBucket(rowCount: $0.rowCount).rawValue }
         self.columnBucket = summary.resultMetrics.map { TableLoadColumnBucket(columnCount: $0.columnCount).rawValue }
         self.resultSizeBucket = summary.resultMetrics.map {

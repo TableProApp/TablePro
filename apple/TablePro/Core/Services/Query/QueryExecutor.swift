@@ -287,15 +287,24 @@ final class QueryExecutor {
     // MARK: - Schema fetch + parse
 
     /// The schema read that runs beside a load's rows, when the load needs one.
-    static func schemaFetch(tableName: String?, isView: Bool, scope: DatabaseScope) -> Task<FetchedTableSchema, Error>? {
+    static func schemaFetch(
+        tableName: String?,
+        isView: Bool,
+        scope: DatabaseScope,
+        knownColumns: [ColumnInfo]? = nil
+    ) -> Task<FetchedTableSchema, Error>? {
         guard let tableName else { return nil }
-        return Task { try await fetchTableSchema(scope: scope, tableName: tableName, isView: isView) }
+        return Task {
+            try await fetchTableSchema(scope: scope, tableName: tableName, isView: isView, knownColumns: knownColumns)
+        }
     }
 
+    // Cancellation is checked between reads: the lease is what the next table's load is waiting for.
     static func fetchTableSchema(
         scope: DatabaseScope,
         tableName: String,
-        isView: Bool
+        isView: Bool,
+        knownColumns: [ColumnInfo]? = nil
     ) async throws -> FetchedTableSchema {
         queryExecutorLog.info(
             "[fk] schema fetch start table=\(tableName, privacy: .private(mask: .hash)) db=\(scope.database, privacy: .private(mask: .hash)) schema=\(scope.schema ?? "default", privacy: .private(mask: .hash))"
@@ -303,8 +312,15 @@ final class QueryExecutor {
         let (columns, approximateRowCount, viewRowEditing) = try await DatabaseManager.shared.withMetadataDriver(
             scope: scope
         ) { driver in
-            let columns = try await driver.fetchColumns(table: tableName, schema: scope.schema)
+            let columns: [ColumnInfo]
+            if let knownColumns {
+                columns = knownColumns
+            } else {
+                columns = try await driver.fetchColumns(table: tableName, schema: scope.schema)
+            }
+            try Task.checkCancellation()
             let approximateRowCount = try? await driver.fetchApproximateRowCount(table: tableName, schema: scope.schema)
+            try Task.checkCancellation()
             // A view has no key of its own; a tab that does not know its kind asks whenever none shows.
             let asksView = isView || !columns.contains { $0.isPrimaryKey }
             let viewRowEditing = asksView
@@ -312,6 +328,7 @@ final class QueryExecutor {
                 : nil
             return (columns, approximateRowCount, viewRowEditing)
         }
+        try Task.checkCancellation()
         let foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
         queryExecutorLog.info(
             "[fk] schema fetch done table=\(tableName, privacy: .private(mask: .hash)) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"

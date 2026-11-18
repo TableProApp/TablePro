@@ -79,6 +79,8 @@ extension QueryExecutionCoordinator {
 
         let needsDefinition = parent.tabSessionRegistry.needsDefinition(tabId)
         let needsMetadataFetch = tableName.map { isEditable && !isMetadataCached(tabId: tabId, tableName: $0) } ?? false
+        let knownColumns = needsMetadataFetch ? parent.takeFirstLoadColumns(tabId: tabId, tableName: tableName, scope: scope) : nil
+        parent.cancelPhase2Work(forTab: tabId, unlessReading: tableName)
         // Captured now, while the result this decision was made against is still the active one.
         let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
             rows: parent.tabSessionRegistry.tableRows(for: tabId),
@@ -105,38 +107,45 @@ extension QueryExecutionCoordinator {
                 return
             }
 
-            let schemaTask = parent.startSchemaFetch(tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope)
+            let schemaTask = parent.startSchemaFetch(
+                tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope, knownColumns: knownColumns
+            )
 
+            let leaseTiming = traceToken == nil ? nil : TableLoadLeaseTiming()
             let fetchBeganAt = ContinuousClock.now
             do {
-                let (fetchResult, tableEdits) = try await parent.withExecutionDriver(
-                    scope: scope,
-                    isTableTab: isTableTab,
-                    lease: run.lease
-                ) { [queryExecutor = parent.queryExecutor, manager = parent.services.databaseManager] driver in
-                    let fetched = try await held.running([statement.sql], on: driver) {
-                        // Before it runs, so a statement that fails or a connection lost under it is still noted.
-                        if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
-                        return try await queryExecutor.executeQuery(
-                            driver: driver,
-                            sql: statement.sql,
-                            parameters: bound?.values,
-                            rowCap: rowCap,
-                            safeModeIsReadOnly: safeModeIsReadOnly,
-                            capturingOutputInto: isTableTab ? nil : failureOutput
+                let (fetchResult, tableEdits) = try await TableLoadLeaseTiming.$current.withValue(leaseTiming) {
+                    try await parent.withExecutionDriver(
+                        scope: scope,
+                        isTableTab: isTableTab,
+                        lease: run.lease
+                    ) { [queryExecutor = parent.queryExecutor, manager = parent.services.databaseManager] driver in
+                        leaseTiming?.noteDriverReady()
+                        let fetched = try await held.running([statement.sql], on: driver) {
+                            // Before it runs, so a statement that fails or a connection lost under it is still noted.
+                            if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
+                            return try await queryExecutor.executeQuery(
+                                driver: driver,
+                                sql: statement.sql,
+                                parameters: bound?.values,
+                                rowCap: rowCap,
+                                safeModeIsReadOnly: safeModeIsReadOnly,
+                                capturingOutputInto: isTableTab ? nil : failureOutput
+                            )
+                        }
+                        leaseTiming?.noteFirstRow()
+                        let edits = isAutoLoad ? nil : await SucceededStatements.single(
+                            statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
                         )
+                        return (fetched.foldingUnloadedValues(lengthColumns: lengthColumns), edits)
                     }
-                    let edits = isAutoLoad ? nil : await SucceededStatements.single(
-                        statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
-                    )
-                    return (fetched.foldingUnloadedValues(lengthColumns: lengthColumns), edits)
                 }
                 let fetchEndedAt = ContinuousClock.now
                 if !isAutoLoad { MainContentCoordinator.postStatementRan(statement.sql, on: conn, succeeded: tableEdits) }
 
                 guard !Task.isCancelled else {
                     schemaTask?.cancel()
-                    parent.traceFetchCancelled(traceToken, began: fetchBeganAt, ended: fetchEndedAt)
+                    parent.traceFetchCancelled(traceToken, began: fetchBeganAt, ended: fetchEndedAt, lease: leaseTiming)
                     parent.resetExecutionState(claim: run.claim, executionTime: fetchResult.executionTime)
                     return
                 }
@@ -150,7 +159,7 @@ extension QueryExecutionCoordinator {
                     fetchResult, tabId: tabId, tableName: tableName, isTableTab: isTableTab
                 )
 
-                parent.traceFetchCompleted(traceToken, began: fetchBeganAt, ended: fetchEndedAt, result: fetchResult)
+                parent.traceFetchCompleted(traceToken, began: fetchBeganAt, ended: fetchEndedAt, result: fetchResult, lease: leaseTiming)
                 // Settle first: it gates every write below, and sharing a guard with the cancel check would leave the tab claimed forever.
                 guard run.settle() else {
                     parent.traceStaleResultDropped(traceToken)
@@ -227,7 +236,8 @@ extension QueryExecutionCoordinator {
                     trigger: trigger,
                     needsMetadataFetch: needsMetadataFetch,
                     schemaTask: schemaTask,
-                    claim: run.claim
+                    claim: run.claim,
+                    traceToken: traceToken
                 )
             } catch {
                 schemaTask?.cancel()

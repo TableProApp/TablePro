@@ -52,6 +52,10 @@ internal struct TableLoadTraceSummary: Sendable, Equatable {
     internal let resultApply: Duration?
     internal let gridReload: Duration?
     internal let mainRunLoopIdle: Duration?
+    internal var leaseWait: Duration?
+    internal var pin: Duration?
+    internal var firstRow: Duration?
+    internal var phase2: Duration?
 }
 
 internal enum TableLoadDuration {

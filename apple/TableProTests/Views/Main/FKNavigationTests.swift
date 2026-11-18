@@ -1043,6 +1043,46 @@ struct FKNavigationTests {
         #expect(cachedAfter)
     }
 
+    @Test("A table with no primary key keeps the definition phase 2 read")
+    @MainActor
+    func metadataCacheCoversTablesWithoutPrimaryKey() throws {
+        let connection = TestFixtures.makeConnection(database: "db")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "events",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+        let tabId = tabManager.tabs[0].id
+
+        var rows = TableRows.from(
+            queryRows: [],
+            columns: ["payload"],
+            columnTypes: [],
+            columnDefaults: ["payload": nil]
+        )
+        _ = rows.updateDisplayMetadata(columnForeignKeys: [:])
+        coordinator.setActiveTableRows(rows, for: tabId)
+        #expect(coordinator.queryExecutionCoordinator.isMetadataCached(tabId: tabId, tableName: "events") == false)
+
+        _ = rows.updateDisplayMetadata(hasAuthoritativeSchema: true)
+        coordinator.setActiveTableRows(rows, for: tabId)
+        #expect(coordinator.queryExecutionCoordinator.isMetadataCached(tabId: tabId, tableName: "events"))
+
+        coordinator.tabSessionRegistry.recordChange(
+            TableFreshness.Change(extent: .definition, at: .now),
+            for: tabId
+        )
+        #expect(coordinator.queryExecutionCoordinator.isMetadataCached(tabId: tabId, tableName: "events") == false)
+    }
+
     // MARK: - The referenced namespace
 
     /// MySQL reports `REFERENCED_TABLE_SCHEMA`, which names the referenced DATABASE, so carrying it

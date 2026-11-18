@@ -8,6 +8,13 @@ import os
 
 private let columnScopeLog = Logger(subsystem: "com.TablePro", category: "ColumnFetchScope")
 
+// The columns one open read before its rows, handed to the definition read of that same open.
+struct FirstLoadColumnRead {
+    let key: String
+    let columns: [ColumnInfo]
+    let startedAt: ContinuousClock.Instant
+}
+
 extension MainContentCoordinator {
     func selectColumns(for tab: QueryTab) -> [String]? {
         guard let schema = tableSchemaColumns(for: tab) else { return nil }
@@ -102,10 +109,14 @@ extension MainContentCoordinator {
         ColumnTypeClassifier(family: SQLTypeFamily.of(connection.type))
     }
 
-    func loadSchemaColumns(for tableName: String, scope: DatabaseScope?) async {
-        guard let scope else { return }
+    // Nil when the cache answered or another caller's read was joined: only this call's own read is known to be this fresh.
+    @discardableResult
+    func loadSchemaColumns(for tableName: String, scope: DatabaseScope?) async -> FirstLoadColumnRead? {
+        guard let scope else { return nil }
         let key = schemaColumnsKey(tableName, scope: scope)
         let classifier = schemaColumnClassifier
+        let startedAt = ContinuousClock.now
+        var read: FirstLoadColumnRead?
         await schemaColumns.load(key) { [services] in
             do {
                 let columns = try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
@@ -115,6 +126,7 @@ extension MainContentCoordinator {
                     columnScopeLog.error("loadSchemaColumns: 0 columns for table=\(tableName, privacy: .private(mask: .hash)); cannot scope")
                     return nil
                 }
+                read = FirstLoadColumnRead(key: key, columns: columns, startedAt: startedAt)
                 return SchemaColumnStore.Entry(fetchedColumns: columns, classifier: classifier)
             } catch {
                 guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return nil }
@@ -122,6 +134,17 @@ extension MainContentCoordinator {
                 return nil
             }
         }
+        return read
+    }
+
+    // Taken once, by the run this open starts. A definition change after the read began makes it the old table's.
+    func takeFirstLoadColumns(tabId: UUID, tableName: String?, scope: DatabaseScope) -> [ColumnInfo]? {
+        guard let read = firstLoadColumnReads.removeValue(forKey: tabId),
+              let tableName,
+              read.key == schemaColumnsKey(tableName, scope: scope),
+              tabSessionRegistry.definitionIsCurrent(asOf: read.startedAt, for: tabId)
+        else { return nil }
+        return read.columns
     }
 
     /// The metadata a load commits with its rows after it fetched the table's definition itself, and

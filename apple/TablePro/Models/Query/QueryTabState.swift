@@ -253,6 +253,8 @@ struct PaginationState: Equatable {
     var exactCountError: String?
     // Silent automatic count in flight, so Count Exactly is not offered; the execution claim settles before it dispatches.
     var isCountPending: Bool = false
+    // The filters the last count answered for, with a total, past its cap or with an error: a page turn does not ask again.
+    var settledRowCountScope: RowCountScope?
 
     // Result truncation state (query tabs)
     var hasMoreRows: Bool = false
@@ -385,6 +387,7 @@ struct PaginationState: Equatable {
     mutating func retireDerivedRowCount() {
         totalRowCount = nil
         isApproximateRowCount = false
+        settledRowCountScope = nil
     }
 
     mutating func reset() {

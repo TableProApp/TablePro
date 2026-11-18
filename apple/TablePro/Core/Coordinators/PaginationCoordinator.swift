@@ -229,6 +229,7 @@ final class PaginationCoordinator: ObservableObject {
             guard let count, count >= 0 else { return }
             tab.pagination.totalRowCount = count
             tab.pagination.isApproximateRowCount = false
+            tab.pagination.settledRowCountScope = tab.filterState.rowCountScope
         case .failure(let error):
             guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return }
             let message = DatabaseWriteRejectionDiagnosis.formatted(error)

@@ -369,6 +369,13 @@ extension TableFilter {
     }
 }
 
+// What a row total was counted for: the rows a page turn keeps showing under the same filters.
+struct RowCountScope: Equatable {
+    let filters: [TableFilter]
+    let logicMode: FilterLogicMode
+    let browseSearch: BrowseSearchState
+}
+
 /// Stores per-tab filter state (preserves filters when switching tabs)
 struct TabFilterState: Equatable, Hashable, Codable {
     var filters: [TableFilter]
@@ -426,6 +433,11 @@ struct TabFilterState: Equatable, Hashable, Codable {
         guard commit != nil else { return ([], filterLogicMode) }
         guard let executedLogicMode else { return (appliedFilters, filterLogicMode) }
         return (executedFilters, executedLogicMode)
+    }
+
+    var rowCountScope: RowCountScope {
+        let rerun = rerunFilters
+        return RowCountScope(filters: rerun.filters, logicMode: rerun.logicMode, browseSearch: browseSearch)
     }
 
     /// Records the draft's applied filters as the ones running, for a host that has just run them.
