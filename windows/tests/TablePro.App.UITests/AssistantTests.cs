@@ -64,7 +64,7 @@ public sealed partial class ShellTests
             throwOnTimeout: false).Success);
         model.Select("test-model");
         model.Collapse();
-        app.Screenshot("120-settings-ai");
+        app.Screenshot("140-settings-ai");
 
         Assert.Contains(server.Seen, request => request.Path == "/v1/models");
         Assert.DoesNotContain(server.Seen, request => request.Path.EndsWith("/chat/completions", StringComparison.Ordinal));
@@ -81,7 +81,7 @@ public sealed partial class ShellTests
         app.FindByName("Track", app.Find("ObjectTree"));
         ShowAssistant(app);
         Assert.StartsWith("Questions go to the server at 127.0.0.1", AppSession.TextOf(app.Find("AssistantEmptyText")), StringComparison.Ordinal);
-        app.Screenshot("121-assistant-empty");
+        app.Screenshot("141-assistant-empty");
 
         app.Find("AssistantComposer").AsTextBox().Text = "Count the rows of Track per Album.";
         app.Click(app.Find("AssistantSendButton"), () => app.TryFind("AssistantConsentText") is not null);
@@ -89,13 +89,13 @@ public sealed partial class ShellTests
         Assert.Contains("“Chinook (Sample)” to the server at 127.0.0.1", consent, StringComparison.Ordinal);
         Assert.Contains("It reads no rows.", consent, StringComparison.Ordinal);
         Assert.Empty(server.Seen);
-        app.Screenshot("122-assistant-consent");
+        app.Screenshot("142-assistant-consent");
         app.PressDialogButton("Allow");
 
         Assert.Equal(ReplyCode, WaitForCode(app).Replace("\r", string.Empty, StringComparison.Ordinal));
         app.FindByName("Sent with the structure of Album, Track", app.Find("AssistantPane"));
         app.FindByName("150 tokens", app.Find("AssistantPane"));
-        app.Screenshot("123-assistant-reply");
+        app.Screenshot("143-assistant-reply");
 
         var request = Assert.Single(server.Seen);
         var messages = JsonDocument.Parse(request.Body).RootElement.GetProperty("messages");
@@ -123,7 +123,7 @@ public sealed partial class ShellTests
         WaitForCode(app);
         Assert.Equal("SELECT Name FROM Track LIMIT 5;", AppSession.TextOf(app.Find("AssistantStatement")));
         app.FindByName("Explain with AI", app.Find("AssistantPane"));
-        app.Screenshot("124-assistant-explain");
+        app.Screenshot("144-assistant-explain");
         var asked = JsonDocument.Parse(Assert.Single(server.Seen).Body).RootElement.GetProperty("messages");
         Assert.StartsWith("Explain what this statement does", asked[1].GetProperty("content").GetString(), StringComparison.Ordinal);
 
@@ -153,7 +153,7 @@ public sealed partial class ShellTests
         Assert.Equal("Ask each time", policy.SelectedItem?.Text);
         policy.Select("Never");
         policy.Collapse();
-        app.Screenshot("125-connection-ai-policy", form);
+        app.Screenshot("145-connection-ai-policy", form);
         app.Find("ConnectButton", form).AsButton().Invoke();
         app.WaitForClose("New connection");
 
@@ -164,7 +164,7 @@ public sealed partial class ShellTests
         app.TypeInto("Query 1", "SELECT Name FROM Track LIMIT 5;");
         app.Click(app.Find("QueryMenu"), () => app.TryFindMenuItem("Explain with AI") is not null);
         Assert.False(app.FindMenuItem("Explain with AI").IsEnabled);
-        app.Screenshot("126-assistant-blocked");
+        app.Screenshot("146-assistant-blocked");
         Assert.Empty(server.Seen);
     }
 }

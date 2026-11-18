@@ -4,7 +4,13 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:TablePro.App.Views"
-    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    KeyboardAcceleratorPlacementMode="Hidden">
+
+    <!-- Not a KeyDown handler: an accelerator also fires with the focus on the rail, the title bar or nowhere. -->
+    <UserControl.KeyboardAccelerators>
+        <KeyboardAccelerator Modifiers="Control" Key="V" Invoked="OnPasteInvoked" />
+    </UserControl.KeyboardAccelerators>
 
     <Grid Padding="36,24,36,0">
         <Grid.RowDefinitions>
@@ -33,6 +39,17 @@
                 DefaultLabelPosition="Right"
                 IsDynamicOverflowEnabled="True">
                 <AppBarButton x:Uid="NewConnectionButton" x:Name="NewConnectionButton" AutomationProperties.AutomationId="NewConnectionButton" Icon="Add" Click="OnNewConnection" />
+                <AppBarButton x:Uid="NewFromUrlButton" x:Name="NewFromUrlButton" AutomationProperties.AutomationId="NewFromUrlButton">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE71B;" /></AppBarButton.Icon>
+                    <AppBarButton.Flyout>
+                        <Flyout x:Name="HomeUrlFlyout" Placement="Bottom" Opened="OnHomeUrlFlyoutOpened">
+                            <StackPanel Width="440" Spacing="12">
+                                <TextBox x:Uid="UrlBox" x:Name="HomeUrlBox" AutomationProperties.AutomationId="HomeUrlBox" KeyDown="OnHomeUrlKeyDown" />
+                                <Button x:Uid="UrlContinueButton" x:Name="HomeUrlContinueButton" AutomationProperties.AutomationId="HomeUrlContinueButton" HorizontalAlignment="Right" Click="OnHomeUrlContinue" Style="{StaticResource AccentButtonStyle}" />
+                            </StackPanel>
+                        </Flyout>
+                    </AppBarButton.Flyout>
+                </AppBarButton>
                 <AppBarButton x:Uid="OpenFileButton" x:Name="OpenFileButton" AutomationProperties.AutomationId="OpenFileButton" Icon="OpenFile" Click="OnOpenFile" />
                 <AppBarButton x:Uid="ImportButton" x:Name="ImportButton" AutomationProperties.AutomationId="ImportButton" Icon="Import" Click="OnImport" />
                 <AppBarButton x:Uid="ExportConnectionsButton" x:Name="ExportConnectionsButton" AutomationProperties.AutomationId="ExportConnectionsButton" Click="OnExportConnections">

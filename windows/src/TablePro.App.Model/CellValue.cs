@@ -62,12 +62,14 @@ public sealed record CellValue(string Column, string? Text, bool TextCut, ReadOn
             return Of(name, reader.ReadWhole(row, column));
         }
 
-        if (rows.GetCellBytes(row, column, maxBytes) is { } binary)
+        // The grid's column is a display position where a table tab's layout moved or hid columns; the set's is not.
+        var source = data is EditedGridData edited ? edited.DataColumn(column) : column;
+        if (rows.GetCellBytes(row, source, maxBytes) is { } binary)
         {
             return new CellValue(name, null, false, binary.Bytes, binary.Length, IsDefault: false);
         }
 
-        return rows.GetCellTextHead(row, column, maxCharacters) is { } head
+        return rows.GetCellTextHead(row, source, maxCharacters) is { } head
             ? new CellValue(name, head.Text, head.Cut, null, 0, IsDefault: false)
             : new CellValue(name, null, false, null, 0, IsDefault: false);
     }

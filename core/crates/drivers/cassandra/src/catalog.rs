@@ -9,7 +9,7 @@ use tablepro_core::ddl::{
     TableDefinition, TableSource,
 };
 use tablepro_core::meta::{
-    IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowIdentity, SchemaInfo, TableRef,
+    IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowIdentity, SchemaInfo, TableInfo, TableRef,
 };
 
 use scylla::value::{CqlValue, Row};
@@ -386,6 +386,24 @@ async fn view_row(link: &CqlLink, table: &CatalogTable) -> Result<Option<ViewRow
         where_clause: where_clause.unwrap_or_default(),
         include_all_columns: include_all_columns.unwrap_or(false),
     }))
+}
+
+/// A table's or a materialized view's comment, as its schema table keeps it.
+pub(crate) async fn table_info(link: &CqlLink, table: &CatalogTable) -> Result<TableInfo, DriverError> {
+    for sql in [
+        "SELECT comment FROM system_schema.tables WHERE keyspace_name = ? AND table_name = ?",
+        "SELECT comment FROM system_schema.views WHERE keyspace_name = ? AND view_name = ?",
+    ] {
+        let rows = link
+            .catalogue(sql, (table.keyspace.as_str(), table.name.as_str()))
+            .await?
+            .into_rows_result()
+            .map_err(rows_error)?;
+        if let Some((comment,)) = rows.maybe_first_row::<(Option<String>,)>().map_err(rows_error)? {
+            return Ok(TableInfo::default().with_comment(comment));
+        }
+    }
+    Ok(TableInfo::default())
 }
 
 /// The options a CREATE statement sets, in the order cqlsh's DESCRIBE

@@ -53,6 +53,14 @@ public sealed class TableProCore : IDisposable
         return Mapping.Url(CoreCall.Run(() => Native.CoreMethods.ParseConnectionUrl(url)));
     }
 
+    // Jump hosts as OpenSSH's -J takes them, user@host:port separated by commas; throws TableProException with code
+    // ssh.invalid_destination for a list a connect would refuse.
+    public static void CheckJumpHosts(string list)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        CoreCall.Run(() => Native.CoreMethods.CheckJumpHosts(list));
+    }
+
     // Opened once per core and shared. Throws TableProException with code ffi.no_storage without a storage directory.
     public async Task<QueryHistory> OpenHistoryAsync(CancellationToken cancellationToken = default)
     {

@@ -154,11 +154,9 @@ public sealed class TableFilterMemory
     }
 
     private static string Key(string connection, string? database, string? schema, string table) =>
-        $"{Part(connection)}.{Part(database)}.{Part(schema)}.{Part(table)}";
+        TableMemoryKey.Of(connection, database, schema, table);
 
-    // Escaped dots included, which EscapeDataString leaves, so a dot in a name cannot make two tables one key.
-    private static string Part(string? part) =>
-        Uri.EscapeDataString(part ?? string.Empty).Replace(".", "%2E", StringComparison.Ordinal);
+    private static string Part(string? part) => TableMemoryKey.Part(part);
 
     private Dictionary<string, SavedFilter> Tables() =>
         _tables ??= JsonFile.Read(_path, ModelJson.Default.TableFilterFile)?.Tables is { } read
@@ -183,4 +181,15 @@ public sealed class TableFilterMemory
 
         public void Remember(TableName table, TableFilter? filter) => memory.Remember(connection, database, table, filter);
     }
+}
+
+// Per connection, database, schema and table, as macOS keys what it keeps of a table.
+internal static class TableMemoryKey
+{
+    public static string Of(string connection, string? database, string? schema, string table) =>
+        $"{Part(connection)}.{Part(database)}.{Part(schema)}.{Part(table)}";
+
+    // Escaped dots included, which EscapeDataString leaves, so a dot in a name cannot make two tables one key.
+    public static string Part(string? part) =>
+        Uri.EscapeDataString(part ?? string.Empty).Replace(".", "%2E", StringComparison.Ordinal);
 }

@@ -88,6 +88,13 @@ public sealed class GridSelection
     // The focused cell stays where it was, as a spreadsheet keeps it.
     public void SelectAll() => Kind = SelectionKind.All;
 
+    // The columns moved: the anchor and the focused cell follow theirs, the rows and the kind stay.
+    public void MoveColumns(int anchorColumn, int focusColumn)
+    {
+        AnchorColumn = anchorColumn;
+        FocusColumn = focusColumn;
+    }
+
     // After the data changed shape, so no cell points past the end.
     public void Clamp(int rowCount, int columnCount)
     {

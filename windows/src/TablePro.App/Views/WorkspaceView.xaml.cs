@@ -519,7 +519,9 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
 
         // Its first page is read when the tab first shows, so a restored session reads only the tab it shows.
-        var table = new TableTabView(_workbench, _share, schema, name, kind, restore, TableFilters);
+        var table = new TableTabView(
+            _workbench, _share, schema, name, kind, restore, TableFilters,
+            _workbench.ColumnLayouts.For(FilterConnection, _session?.Database));
         AddTab(table, IconOf(kind), index);
         return table;
     }

@@ -1,4 +1,4 @@
-# 0013: The AI assistant
+# 0014: The AI assistant
 
 - **Status**: Accepted
 - **Date**: 2026-11-18

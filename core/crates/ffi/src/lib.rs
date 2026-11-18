@@ -84,7 +84,7 @@ pub use import::{
 pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
 pub use library::{
     AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, GroupRecord, ImportSummary, LibrarySnapshot,
-    SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings,
+    SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings, check_jump_hosts,
 };
 pub use masking::{
     MaskReason, MaskStyleTag, MaskSuggestionInfo, PersonalDataHitInfo, SensitiveKindTag, ShareColumnChoice,
@@ -102,7 +102,7 @@ pub use safe_mode_gate::RunGate;
 pub use saved_queries::{SavedQueriesInfo, SavedQueryDraft, SavedQueryFolderInfo, SavedQueryInfo, SavedQueryStore};
 pub use session::{
     ColumnSort, DatabaseLayoutTag, DatabaseSession, FailureCauseTag, PageResume, RowEstimate, SessionHealthTag,
-    TablePageRead,
+    TableInfoRecord, TablePageRead,
 };
 pub use statement_at::StatementSpan;
 pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableStructure};

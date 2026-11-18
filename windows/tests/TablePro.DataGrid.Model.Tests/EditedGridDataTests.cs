@@ -11,6 +11,13 @@ public sealed class EditedGridDataTests
         ["e", "f"],
     ];
 
+    private static readonly string?[][] Wide =
+    [
+        ["a0", "a1", null, "a3"],
+        ["b0", "b1", "b2", "b3"],
+        ["c0", null, "c2", "c3"],
+    ];
+
     [Fact]
     public void TheRowsAreTheDataRowsThenTheNewRows()
     {
@@ -234,6 +241,151 @@ public sealed class EditedGridDataTests
         Assert.Equal(CellState.None, block.Get(2, 1).State);
     }
 
+    [Fact]
+    public void ReorderedAndHiddenColumnsReadInDisplayOrderWithTheirMarks()
+    {
+        var edits = Edits(
+            cells: [((0, 3), Value("x3")), ((2, 1), Null())],
+            deleted: [1],
+            added: [[Value("n0"), Value("n1"), Default(), Value("n3")]]);
+        var edited = new EditedGridData(new TableData(Wide), edits);
+        edited.Arrange([3, 0, 2]);
+
+        Assert.Equal(3, edited.ColumnCount);
+        Assert.Equal(["c3", "c0", "c2"], Enumerable.Range(0, 3).Select(edited.GetColumnName));
+        var block = Read(edited, 0, 32, 0, 3);
+        Assert.Equal((4, 3), (block.RowCount, block.ColumnCount));
+        Assert.Equal("x3", block.Get(0, 0).Text.ToString());
+        Assert.Equal(CellState.Modified, block.Get(0, 0).State);
+        Assert.Equal("a0", block.Get(0, 1).Text.ToString());
+        Assert.Equal(CellState.None, block.Get(0, 1).State);
+        Assert.Equal(CellState.Null, block.Get(0, 2).State);
+        Assert.Equal("b3", block.Get(1, 0).Text.ToString());
+        Assert.Equal(CellState.Deleted, block.Get(1, 0).State);
+        Assert.Equal("b2", block.Get(1, 2).Text.ToString());
+        Assert.Equal(CellState.Deleted, block.Get(1, 2).State);
+        Assert.Equal("c3", block.Get(2, 0).Text.ToString());
+        Assert.Equal("c2", block.Get(2, 2).Text.ToString());
+        Assert.Equal("n3", block.Get(3, 0).Text.ToString());
+        Assert.Equal(CellState.Inserted, block.Get(3, 0).State);
+        Assert.Equal("n0", block.Get(3, 1).Text.ToString());
+        Assert.Equal(CellState.Default | CellState.Inserted, block.Get(3, 2).State);
+
+        var window = Read(edited, 0, 32, 1, 5);
+        Assert.Equal((1, 2), (window.FirstColumn, window.ColumnCount));
+        Assert.Equal("a0", window.Get(0, 1).Text.ToString());
+        Assert.Equal("c2", window.Get(2, 2).Text.ToString());
+        Assert.Equal(CellState.Missing, window.Get(0, 0).State);
+
+        using var reader = edited.OpenReader();
+        var tsv = GridCopy.Tsv(reader, new CellRange(0, 0, 3, 2), TestContext.Current.CancellationToken);
+        Assert.Equal("x3\ta0\t\r\nb3\tb0\tb2\r\nc3\tc0\tc2\r\nn3\tn0\t\r\n", tsv);
+    }
+
+    // The data's own order is one read, as before there was an order.
+    [Fact]
+    public void EachRunOfFollowingDataColumnsIsOneRead()
+    {
+        var data = new TableData(Wide);
+        var edited = new EditedGridData(data, GridEdits.None);
+
+        Read(edited, 0, 32, 0, 4);
+        Assert.Equal([(0, 4)], data.ColumnReads);
+
+        data.ColumnReads.Clear();
+        edited.Arrange([2, 3, 0, 1]);
+        Read(edited, 0, 32, 0, 4);
+        Assert.Equal([(2, 2), (0, 2)], data.ColumnReads);
+
+        data.ColumnReads.Clear();
+        edited.Arrange([3, 2, 1, 0]);
+        var block = Read(edited, 0, 32, 0, 4);
+        Assert.Equal([(3, 1), (2, 1), (1, 1), (0, 1)], data.ColumnReads);
+        Assert.Equal("b3", block.Get(1, 0).Text.ToString());
+        Assert.Equal("b0", block.Get(1, 3).Text.ToString());
+    }
+
+    [Fact]
+    public void ReadWholeAndEditedCellsAreInDisplayColumns()
+    {
+        var edits = Edits(
+            cells: [((0, 3), Value("x3")), ((1, 1), Value("y1"))],
+            added: [[Value("n0"), Value("n1"), Value("n2"), Value("n3")]]);
+        var edited = new EditedGridData(new TableData(Wide), edits);
+        edited.Arrange([3, 1, 0]);
+        using var reader = edited.OpenReader();
+
+        Assert.Equal("x3", reader.ReadWhole(0, 0));
+        Assert.Equal("a0", reader.ReadWhole(0, 2));
+        Assert.Equal("y1", reader.ReadWhole(1, 1));
+        Assert.Equal("n3", reader.ReadWhole(3, 0));
+        Assert.Null(reader.ReadWhole(0, 3));
+        Assert.True(edited.IsCellEdited(0, 0));
+        Assert.False(edited.IsCellEdited(0, 2));
+        Assert.True(edited.IsCellEdited(1, 1));
+        Assert.False(edited.IsCellEdited(3, 0));
+        Assert.False(edited.IsCellEdited(0, 3));
+        Assert.False(edited.IsCellEdited(-1, 0));
+    }
+
+    [Fact]
+    public void DataAndDisplayColumnsMapBothWays()
+    {
+        var edited = new EditedGridData(new TableData(Wide), GridEdits.None);
+        Assert.Equal([0, 1, 2, 3], edited.ColumnOrder);
+        Assert.Equal(2, edited.DataColumn(2));
+        Assert.Equal(2, edited.DisplayColumn(2));
+
+        edited.Arrange([3, 1]);
+
+        Assert.Equal([3, 1], edited.ColumnOrder);
+        Assert.Equal((3, 1), (edited.DataColumn(0), edited.DataColumn(1)));
+        Assert.Equal((0, 1), (edited.DisplayColumn(3), edited.DisplayColumn(1)));
+        Assert.Equal(-1, edited.DisplayColumn(0));
+        Assert.Equal(-1, edited.DisplayColumn(2));
+        Assert.Equal(-1, edited.DisplayColumn(4));
+        Assert.Equal(-1, edited.DisplayColumn(-1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => edited.DataColumn(2));
+        Assert.Throws<ArgumentOutOfRangeException>(() => edited.DataColumn(-1));
+    }
+
+    [Fact]
+    public void ArrangeRefusesAnOrderThatIsNotSomeOfTheColumnsOnce()
+    {
+        var edited = new EditedGridData(new TableData(Wide), GridEdits.None);
+
+        Assert.Throws<ArgumentException>(() => edited.Arrange([]));
+        Assert.Throws<ArgumentException>(() => edited.Arrange([0, 2, 0]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => edited.Arrange([0, 4]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => edited.Arrange([-1]));
+        Assert.Equal(4, edited.ColumnCount);
+        Assert.Equal([0, 1, 2, 3], edited.ColumnOrder);
+    }
+
+    // A copy opens its reader on a pool thread, as with the edits.
+    [Fact]
+    public void AReaderOpenedBeforeArrangeKeepsItsOrder()
+    {
+        var edited = new EditedGridData(new TableData(Wide), Edits(cells: [((0, 0), Value("x0"))]));
+        using var before = edited.OpenReader();
+
+        edited.Arrange([2, 0]);
+        using var after = edited.OpenReader();
+
+        var old = new CellBlock();
+        before.Read(0, 32, 0, 4, 256, old);
+        Assert.Equal(4, old.ColumnCount);
+        Assert.Equal("x0", old.Get(0, 0).Text.ToString());
+        Assert.Equal("a1", old.Get(0, 1).Text.ToString());
+        Assert.Equal("x0", before.ReadWhole(0, 0));
+        var now = new CellBlock();
+        after.Read(0, 32, 0, 4, 256, now);
+        Assert.Equal(2, now.ColumnCount);
+        Assert.True(now.Get(0, 0).IsNull);
+        Assert.Equal("x0", now.Get(0, 1).Text.ToString());
+        Assert.Null(after.ReadWhole(0, 0));
+    }
+
     private static PendingCell Value(string text) => new(PendingKind.Value, text);
 
     private static PendingCell Null() => new(PendingKind.Null, "");
@@ -268,6 +420,8 @@ internal sealed class TableData(string?[][] rows) : IGridData
 
     public List<(int First, int Count)> Reads { get; } = [];
 
+    public List<(int First, int Count)> ColumnReads { get; } = [];
+
     public string GetColumnName(int column) => string.Create(CultureInfo.InvariantCulture, $"c{column}");
 
     public IGridReader OpenReader() => new Reader(this, rows);
@@ -277,6 +431,7 @@ internal sealed class TableData(string?[][] rows) : IGridData
         public void Read(int firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters, CellBlock block)
         {
             data.Reads.Add((firstRow, rowCount));
+            data.ColumnReads.Add((firstColumn, columnCount));
             var count = Math.Max(0, Math.Min(rowCount, data.RowCount - firstRow));
             var columns = Math.Max(0, Math.Min(columnCount, data.ColumnCount - firstColumn));
             block.Reset(firstRow, count, firstColumn, columns, maxCharacters);

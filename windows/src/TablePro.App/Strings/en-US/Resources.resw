@@ -4293,6 +4293,171 @@ New fingerprint: {2}</value>
   <data name="CatalogChangeStopped" xml:space="preserve">
     <value>The change was stopped. It may have run in part, so the objects are read again.</value>
   </data>
+  <data name="NewFromUrlButton.Label" xml:space="preserve">
+    <value>New from URL</value>
+  </data>
+  <data name="SshJumpHostsCard.Header" xml:space="preserve">
+    <value>Jump hosts</value>
+  </data>
+  <data name="SshJumpHostsCard.Description" xml:space="preserve">
+    <value>Servers to pass through first, as user@host:port, separated by commas</value>
+  </data>
+  <data name="SshJumpHostsBox.PlaceholderText" xml:space="preserve">
+    <value>user@bastion:22</value>
+  </data>
+  <data name="SshJumpHostsBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Jump hosts</value>
+  </data>
+  <data name="FieldJumpHosts" xml:space="preserve">
+    <value>Enter each jump host as user@host:port, separated by commas</value>
+  </data>
+  <data name="SshThroughSummary" xml:space="preserve">
+    <value>{0} through {1}</value>
+  </data>
+  <data name="MenuGroupColor" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="ColumnsButton.Label" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="DetailsButton.Label" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="GridMenuHideColumn" xml:space="preserve">
+    <value>Hide column</value>
+  </data>
+  <data name="GridMenuShowAllColumns" xml:space="preserve">
+    <value>Show all columns</value>
+  </data>
+  <data name="GridMenuMoveLeft" xml:space="preserve">
+    <value>Move column left</value>
+  </data>
+  <data name="GridMenuMoveLeftKeys" xml:space="preserve">
+    <value>Alt+Left</value>
+  </data>
+  <data name="GridMenuMoveRight" xml:space="preserve">
+    <value>Move column right</value>
+  </data>
+  <data name="GridMenuMoveRightKeys" xml:space="preserve">
+    <value>Alt+Right</value>
+  </data>
+  <data name="GridMenuFreeze" xml:space="preserve">
+    <value>Freeze up to this column</value>
+  </data>
+  <data name="GridMenuFreezeTooWide" xml:space="preserve">
+    <value>These columns would leave too little room to scroll the rest.</value>
+  </data>
+  <data name="GridMenuUnfreeze" xml:space="preserve">
+    <value>Unfreeze columns</value>
+  </data>
+  <data name="GridMenuColumns" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="GridMenuResetColumns" xml:space="preserve">
+    <value>Reset columns</value>
+  </data>
+  <data name="DetailsPaneName" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="DetailsRowView" xml:space="preserve">
+    <value>Row</value>
+  </data>
+  <data name="DetailsTableView" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="DetailsNoRow" xml:space="preserve">
+    <value>No row is selected.</value>
+  </data>
+  <data name="DetailsNewRow" xml:space="preserve">
+    <value>New row</value>
+  </data>
+  <data name="DetailsDeletedRow" xml:space="preserve">
+    <value>Row marked for delete</value>
+  </data>
+  <data name="DetailsRowNumber" xml:space="preserve">
+    <value>Row {0:N0}</value>
+  </data>
+  <data name="DetailsTypeEdited" xml:space="preserve">
+    <value>{0}, edited</value>
+  </data>
+  <data name="DetailsNullText" xml:space="preserve">
+    <value>NULL</value>
+  </data>
+  <data name="DetailsTextCut" xml:space="preserve">
+    <value>Too long to edit here. Open it from the cell's View value.</value>
+  </data>
+  <data name="DetailsFieldMenu" xml:space="preserve">
+    <value>More for {0}</value>
+  </data>
+  <data name="DetailsCopyValue" xml:space="preserve">
+    <value>Copy value</value>
+  </data>
+  <data name="DetailsTableLoading" xml:space="preserve">
+    <value>Reading the table's details...</value>
+  </data>
+  <data name="DetailsTableUnavailable" xml:space="preserve">
+    <value>The table's details could not be read.</value>
+  </data>
+  <data name="DetailsNotKept" xml:space="preserve">
+    <value>Not reported</value>
+  </data>
+  <data name="DetailsBytes" xml:space="preserve">
+    <value>{0:N0} bytes</value>
+  </data>
+  <data name="DetailsRowsExact" xml:space="preserve">
+    <value>{0:N0}</value>
+  </data>
+  <data name="DetailsRowsAbout" xml:space="preserve">
+    <value>About {0:N0}</value>
+  </data>
+  <data name="DetailsRows" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="DetailsDataSize" xml:space="preserve">
+    <value>Data size</value>
+  </data>
+  <data name="DetailsIndexSize" xml:space="preserve">
+    <value>Index size</value>
+  </data>
+  <data name="DetailsTotalSize" xml:space="preserve">
+    <value>Total size</value>
+  </data>
+  <data name="DetailsComment" xml:space="preserve">
+    <value>Comment</value>
+  </data>
+  <data name="SummarySentence" xml:space="preserve">
+    <value>Sum: {0}   Average: {1}   Count: {2}</value>
+  </data>
+  <data name="SummaryCountOnly" xml:space="preserve">
+    <value>Count: {0}</value>
+  </data>
+  <data name="SummaryCount" xml:space="preserve">
+    <value>Count</value>
+  </data>
+  <data name="SummaryNumbers" xml:space="preserve">
+    <value>Numbers</value>
+  </data>
+  <data name="SummaryEmpty" xml:space="preserve">
+    <value>Empty</value>
+  </data>
+  <data name="SummaryNotANumber" xml:space="preserve">
+    <value>Not a number</value>
+  </data>
+  <data name="SummarySum" xml:space="preserve">
+    <value>Sum</value>
+  </data>
+  <data name="SummaryAverage" xml:space="preserve">
+    <value>Average</value>
+  </data>
+  <data name="SummaryMinimum" xml:space="preserve">
+    <value>Minimum</value>
+  </data>
+  <data name="SummaryMaximum" xml:space="preserve">
+    <value>Maximum</value>
+  </data>
+  <data name="SummaryCopy" xml:space="preserve">
+    <value>Copy {0}</value>
+  </data>
   <data name="AiHeader.Text" xml:space="preserve">
     <value>AI assistant</value>
   </data>

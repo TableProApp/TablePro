@@ -122,6 +122,35 @@ public sealed class GridColumns
         return (ScrollColumnAt(Math.Max(0, left)), ScrollColumnAt(Math.Max(0, left + width - 0.5)));
     }
 
+    // A dropped column goes before the nearest boundary of the pane it is dropped in, so each pane has its own.
+    public int BoundaryAt(bool frozen, double x)
+    {
+        if (frozen)
+        {
+            for (var column = 0; column < _frozenCount; column++)
+            {
+                if (x < PaneX(column) + (_widths[column] / 2))
+                {
+                    return column;
+                }
+            }
+            return _frozenCount;
+        }
+        if (_frozenCount >= Count)
+        {
+            return Count;
+        }
+        var under = ScrollColumnAt(x);
+        return x < PaneX(under) + (_widths[under] / 2) ? under : under + 1;
+    }
+
+    // A boundary's x in its pane; the last frozen one is the frozen pane's right edge.
+    public double BoundaryX(bool frozen, int boundary)
+    {
+        boundary = Math.Clamp(boundary, frozen ? 0 : _frozenCount, frozen ? _frozenCount : Count);
+        return frozen ? _rowHeaderWidth + _x[boundary] : _x[boundary] - _x[_frozenCount];
+    }
+
     private static double Clamp(double width) =>
         double.IsFinite(width) ? Math.Clamp(width, MinimumWidth, MaximumWidth) : MinimumWidth;
 

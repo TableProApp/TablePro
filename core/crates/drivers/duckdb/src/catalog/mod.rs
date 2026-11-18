@@ -17,7 +17,7 @@ use tablepro_core::ddl::{
 use tablepro_core::edit::parse_literal_text;
 use tablepro_core::meta::{
     IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo, TableEstimate,
-    TableRef,
+    TableInfo, TableRef,
 };
 use tablepro_core::sql_syntax::{LiteralToken, MAX_EXPRESSION_LEN, SqlGrammar, parse_expression};
 use tablepro_core::value::Value;
@@ -694,6 +694,22 @@ pub(crate) fn table_estimate(link: &Link, catalog: &str, table: &TableRef) -> Re
         rows: estimate.map_or(RowCountEstimate::Unknown, RowCountEstimate::Approximate),
         heap_blocks: None,
     })
+}
+
+/// DuckDB keeps a comment on a table or a view, and no figure for the
+/// bytes either takes.
+pub(crate) fn table_info(link: &Link, catalog: &str, table: &TableRef) -> Result<TableInfo, DriverError> {
+    let schema = schema_of(table);
+    let rows = text_rows(
+        link,
+        "SELECT comment FROM duckdb_tables() WHERE database_name = ? AND schema_name = ? AND table_name = ? \
+         UNION ALL \
+         SELECT comment FROM duckdb_views() WHERE database_name = ? AND schema_name = ? AND view_name = ?",
+        &[catalog, schema, &table.name, catalog, schema, &table.name],
+        &mut CatalogBudget::default(),
+    )?;
+    let comment = rows.into_iter().next().and_then(|row| row.into_iter().next().flatten());
+    Ok(TableInfo::default().with_comment(comment))
 }
 
 /// The table as structure changes plan against it.

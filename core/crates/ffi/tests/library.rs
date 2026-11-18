@@ -247,6 +247,42 @@ async fn a_saved_connection_comes_back_in_its_group_and_among_the_favourites() {
 }
 
 #[tokio::test]
+async fn a_groups_colour_is_set_taken_off_and_an_unknown_one_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let library = core.library().unwrap();
+    let group = library.create_group("Work".to_owned(), None).await.unwrap();
+
+    library
+        .set_group_color(group.id.clone(), Some("red".to_owned()))
+        .await
+        .unwrap();
+    let red = library.snapshot().await.unwrap().groups[0].color.clone();
+    let refused = library
+        .set_group_color(group.id.clone(), Some("mauve".to_owned()))
+        .await
+        .unwrap_err();
+    library.set_group_color(group.id.clone(), None).await.unwrap();
+    let none = library.snapshot().await.unwrap().groups[0].color.clone();
+
+    assert_eq!(red.as_deref(), Some("red"));
+    assert_eq!(refused.code(), "library.unknown_color");
+    assert_eq!(none, None);
+}
+
+#[test]
+fn jump_hosts_are_checked_as_a_connect_reads_them() {
+    assert!(tablepro_ffi::check_jump_hosts(String::new()).is_ok());
+    assert!(tablepro_ffi::check_jump_hosts("ops@jump1:2200, [fd00::1], bastion".to_owned()).is_ok());
+
+    let empty_hop = tablepro_ffi::check_jump_hosts("jump1,,jump2".to_owned()).unwrap_err();
+    let bad_port = tablepro_ffi::check_jump_hosts("jump1:ssh".to_owned()).unwrap_err();
+
+    assert_eq!(empty_hop.code(), "ssh.invalid_destination");
+    assert_eq!(bad_port.code(), "ssh.invalid_destination");
+}
+
+#[tokio::test]
 async fn saving_again_keeps_the_id_and_takes_the_new_fields() {
     let dir = tempfile::tempdir().unwrap();
     let core = core(dir.path(), MemorySecrets::default());

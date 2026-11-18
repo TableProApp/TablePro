@@ -9,7 +9,7 @@ use tablepro_core::ddl::{DatabaseChoices, InboundForeignKey, OutboundForeignKey,
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
-    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
 };
 use tablepro_core::statement::Statement;
 use tablepro_core::{
@@ -413,6 +413,14 @@ impl Connection for ClickHouseConnection {
         let table = self.catalog_table(table);
         self.workspace_read(options, move |calls| async move {
             catalog::table_estimate(&calls, &table).await
+        })
+        .await
+    }
+
+    async fn table_info(&self, table: &TableRef, options: CallOptions) -> Result<TableInfo, DriverError> {
+        let table = self.catalog_table(table);
+        self.workspace_read(options, move |calls| async move {
+            catalog::table_info(&calls, &table).await
         })
         .await
     }
