@@ -100,15 +100,19 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         {
             _workbench.HistoryCleared -= OnHistoryRecorded;
             _workbench.HistoryCleared += OnHistoryRecorded;
+            _workbench.SavedQueriesChanged -= OnSavedQueriesChanged;
+            _workbench.SavedQueriesChanged += OnSavedQueriesChanged;
             _workbench.SettingsChanged -= OnSettingsChanged;
             _workbench.SettingsChanged += OnSettingsChanged;
-            // A clear while another page showed reached no handler here, so the pane reads the history again.
+            // A clear or an import while another page showed reached no handler here, so the panes read again.
             OnHistoryRecorded(this, EventArgs.Empty);
+            OnSavedQueriesChanged(this, EventArgs.Empty);
             AssistantChanged();
         };
         Unloaded += (_, _) =>
         {
             _workbench.HistoryCleared -= OnHistoryRecorded;
+            _workbench.SavedQueriesChanged -= OnSavedQueriesChanged;
             _workbench.SettingsChanged -= OnSettingsChanged;
         };
         Tabs.LayoutUpdated += OnTabsLayoutUpdated;
@@ -852,6 +856,14 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     private async void OnHistoryRecorded(object? sender, EventArgs e)
     {
         if (HistoryVisible && _historyPane is { } pane)
+        {
+            await pane.RefreshAsync().ConfigureAwait(true);
+        }
+    }
+
+    private async void OnSavedQueriesChanged(object? sender, EventArgs e)
+    {
+        if (SavedQueriesVisible && _savedPane is { } pane)
         {
             await pane.RefreshAsync().ConfigureAwait(true);
         }

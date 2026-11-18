@@ -395,6 +395,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             _workbench.NotifyLibraryChanged();
         }
 
+        if (ending.Outcome is { QueriesAdded: > 0 })
+        {
+            _workbench.NotifySavedQueriesChanged();
+        }
+
         _home.ShowMessage(ImportFromAppDialog.Describe(ending), ImportFromAppDialog.Severity(ending));
     }
 
