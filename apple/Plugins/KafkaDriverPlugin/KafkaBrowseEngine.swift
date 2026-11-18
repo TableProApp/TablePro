@@ -60,6 +60,11 @@ enum KafkaBrowseEngine {
 
         let wanted = min(query.skip + query.limit, maximumOverFetch)
         let window = try await resolveWindow(query, partitions: selected, cluster: cluster)
+        let firstPages = await KafkaFetchRequest.firstPages(
+            topic: query.topic,
+            targets: KafkaFetchWire.firstReads(start: window.start, tail: window.tail, wanted: wanted),
+            cluster: cluster
+        )
 
         // Each partition contributes at most `wanted` records, because the merge cannot know
         // in advance how the messages are distributed: one partition may hold the whole page.
@@ -90,6 +95,7 @@ enum KafkaBrowseEngine {
                         endOffset: range.end,
                         keepingNewest: walk.needed,
                         byteBudget: walkBytesLeft,
+                        firstPage: firstPages[partition],
                         cluster: cluster
                     )
                     if result.stoppedAtByteBudget {
@@ -109,6 +115,7 @@ enum KafkaBrowseEngine {
                 partition: partition,
                 startOffset: start,
                 maximumRecords: wanted,
+                firstPage: firstPages[partition],
                 cluster: cluster
             )
             collected.append(contentsOf: result.records)

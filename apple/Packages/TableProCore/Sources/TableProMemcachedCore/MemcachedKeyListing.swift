@@ -5,11 +5,14 @@ public struct MemcachedKeyEntry: Equatable, Sendable {
     /// Unix time the item expires at, or nil for an item that never expires.
     public let expiresAt: Int64?
     public let flags: UInt32?
+    /// The bytes the listing reports for the item, or nil when it reports none.
+    public let size: Int?
 
-    public init(key: String, expiresAt: Int64?, flags: UInt32?) {
+    public init(key: String, expiresAt: Int64?, flags: UInt32?, size: Int? = nil) {
         self.key = key
         self.expiresAt = expiresAt
         self.flags = flags
+        self.size = size
     }
 
     // Nil for no expiry, and for a clock too far from the expiry to subtract, so the item stays listed.
@@ -60,7 +63,8 @@ public enum MemcachedKeyListing {
         return MemcachedKeyEntry(
             key: key,
             expiresAt: expiry.flatMap { $0 > 0 ? $0 : nil },
-            flags: fields["flags"].flatMap { UInt32($0) }
+            flags: fields["flags"].flatMap { UInt32($0) },
+            size: fields["size"].flatMap { Int($0) }
         )
     }
 
@@ -71,7 +75,12 @@ public enum MemcachedKeyListing {
         guard !key.isEmpty else { return nil }
         let inside = line[line.index(after: open)...].split(whereSeparator: { $0 == ";" || $0 == " " || $0 == "]" })
         let expiry = inside.count >= 3 ? Int64(inside[2]) : nil
-        return MemcachedKeyEntry(key: key, expiresAt: expiry.flatMap { $0 > 0 ? $0 : nil }, flags: nil)
+        return MemcachedKeyEntry(
+            key: key,
+            expiresAt: expiry.flatMap { $0 > 0 ? $0 : nil },
+            flags: nil,
+            size: inside.first.flatMap { Int($0) }
+        )
     }
 
     public static func slabClasses(fromItemStats lines: [String]) -> [Int] {

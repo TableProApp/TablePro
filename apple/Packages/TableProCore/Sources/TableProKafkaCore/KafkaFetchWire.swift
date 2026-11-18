@@ -1,0 +1,158 @@
+import Foundation
+
+public struct KafkaFetchTarget: Equatable, Sendable {
+    public let partition: Int32
+    public let startOffset: Int64
+
+    public init(partition: Int32, startOffset: Int64) {
+        self.partition = partition
+        self.startOffset = startOffset
+    }
+}
+
+public struct KafkaFetchedPartition: Sendable {
+    public let partition: Int32
+    public let errorCode: Int16
+    public let highWatermark: Int64
+    public let abortedTransactions: [KafkaAbortedTransaction]
+    public let recordBatches: Data?
+}
+
+/// The Fetch request and response bodies from v4 to v12, for any number of partitions of one topic.
+public enum KafkaFetchWire {
+    // Read uncommitted would show records of transactions that later aborted, and their markers.
+    private static let readCommitted: Int8 = 1
+    private static let maximumWaitMilliseconds: Int32 = 500
+    // A reply this large already holds a first page for 64 partitions at the default budget.
+    static let maximumResponseBytes: Int32 = 64 * 1_024 * 1_024
+
+    // Past the response limit a broker returns later partitions empty, and each is then read on its own.
+    public static func responseBytes(partitions: Int, partitionBytes: Int32) -> Int32 {
+        let (total, overflow) = Int32(clamping: max(partitions, 1)).multipliedReportingOverflow(by: partitionBytes)
+        guard !overflow else { return max(partitionBytes, maximumResponseBytes) }
+        return max(partitionBytes, min(total, maximumResponseBytes))
+    }
+
+    // Only partitions with something to read, and only when there are several to send at once.
+    public static func firstReads(
+        start: [Int32: Int64],
+        tail: [Int32: Int64],
+        wanted: Int
+    ) -> [KafkaFetchTarget] {
+        guard wanted > 0 else { return [] }
+        let open = start
+            .filter { partition, offset in tail[partition].map { offset < $0 } ?? true }
+            .map { KafkaFetchTarget(partition: $0.key, startOffset: $0.value) }
+            .sorted { $0.partition < $1.partition }
+        return open.count > 1 ? open : []
+    }
+
+    public static func writeRequest(
+        into writer: inout KafkaProtocolWriter,
+        version: Int16,
+        flexible: Bool,
+        topic: String,
+        targets: [KafkaFetchTarget],
+        partitionBytes: Int32,
+        responseBytes: Int32
+    ) {
+        writer.int32(-1)                                      // replicaId
+        writer.int32(maximumWaitMilliseconds)
+        writer.int32(1)                                       // minBytes
+        if version >= 3 { writer.int32(responseBytes) }
+        if version >= 4 { writer.int8(readCommitted) }
+        if version >= 7 {
+            writer.int32(0)                                   // sessionId
+            writer.int32(0)                                   // sessionEpoch
+        }
+        if flexible {
+            writer.compactArrayCount(1)
+            writer.compactString(topic)
+            writer.compactArrayCount(targets.count)
+        } else {
+            writer.legacyArrayCount(1)
+            writer.legacyString(topic)
+            writer.legacyArrayCount(targets.count)
+        }
+        for target in targets {
+            writer.int32(target.partition)
+            if version >= 9 { writer.int32(-1) }              // currentLeaderEpoch
+            writer.int64(target.startOffset)
+            if version >= 12 { writer.int32(-1) }             // lastFetchedEpoch
+            if version >= 5 { writer.int64(-1) }              // logStartOffset
+            writer.int32(partitionBytes)
+            if flexible { writer.emptyTaggedFields() }
+        }
+        if flexible { writer.emptyTaggedFields() }
+        if version >= 7 {
+            if flexible {
+                writer.compactArrayCount(0)                   // forgottenTopicsData
+            } else {
+                writer.legacyArrayCount(0)
+            }
+        }
+        if version >= 11 {
+            if flexible {
+                writer.compactString("")                      // rackId
+            } else {
+                writer.legacyString("")
+            }
+        }
+        if flexible { writer.emptyTaggedFields() }
+    }
+
+    // A partition's error stays with that partition. Only an error for the whole request throws.
+    public static func readResponse(
+        _ body: inout KafkaProtocolReader,
+        version: Int16,
+        flexible: Bool
+    ) throws -> [KafkaFetchedPartition] {
+        if version >= 1 { _ = try body.int32() }              // throttleTimeMs
+        if version >= 7 {
+            try KafkaErrorCode.check(try body.int16(), api: "Fetch")
+            _ = try body.int32()                              // sessionId
+        }
+        let topics = try body.array(compact: flexible) { reader -> [KafkaFetchedPartition] in
+            _ = flexible ? try reader.compactString() : try reader.legacyString()
+            let partitions = try reader.array(compact: flexible) { partition in
+                try readPartition(&partition, version: version, flexible: flexible)
+            }
+            if flexible { try reader.taggedFields() }
+            return partitions
+        }
+        return topics.flatMap { $0 }
+    }
+
+    private static func readPartition(
+        _ reader: inout KafkaProtocolReader,
+        version: Int16,
+        flexible: Bool
+    ) throws -> KafkaFetchedPartition {
+        let index = try reader.int32()
+        let errorCode = try reader.int16()
+        let highWatermark = try reader.int64()
+        if version >= 4 { _ = try reader.int64() }            // lastStableOffset
+        if version >= 5 { _ = try reader.int64() }            // logStartOffset
+
+        var aborted: [KafkaAbortedTransaction] = []
+        if version >= 4 {
+            aborted = try reader.array(compact: flexible) { entry in
+                let producerId = try entry.int64()
+                let firstOffset = try entry.int64()
+                if flexible { try entry.taggedFields() }
+                return KafkaAbortedTransaction(producerId: producerId, firstOffset: firstOffset)
+            }
+        }
+        if version >= 11 { _ = try reader.int32() }           // preferredReadReplica
+
+        let batches = flexible ? try reader.nullableCompactBytes() : try reader.nullableLegacyBytes()
+        if flexible { try reader.taggedFields() }
+        return KafkaFetchedPartition(
+            partition: index,
+            errorCode: errorCode,
+            highWatermark: highWatermark,
+            abortedTransactions: aborted,
+            recordBatches: batches
+        )
+    }
+}

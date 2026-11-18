@@ -8,7 +8,7 @@ struct MemcachedKeyListingTests {
         let entry = MemcachedKeyListing.metadumpEntry(
             "key=a%3A1 exp=1793500167 la=1793499867 cas=2 fetch=yes cls=1 size=71 flags=5 "
         )
-        #expect(entry == MemcachedKeyEntry(key: "a:1", expiresAt: 1_793_500_167, flags: 5))
+        #expect(entry == MemcachedKeyEntry(key: "a:1", expiresAt: 1_793_500_167, flags: 5, size: 71))
         #expect(entry?.secondsLeft(at: 1_793_499_867) == 300)
     }
 
@@ -23,17 +23,17 @@ struct MemcachedKeyListingTests {
     @Test("exp=-1 means the item never expires")
     func metadumpNeverExpires() {
         let entry = MemcachedKeyListing.metadumpEntry("key=%22sp%22 exp=-1 la=1 cas=4 fetch=no cls=1 size=64 flags=0")
-        #expect(entry == MemcachedKeyEntry(key: "\"sp\"", expiresAt: nil, flags: 0))
+        #expect(entry == MemcachedKeyEntry(key: "\"sp\"", expiresAt: nil, flags: 0, size: 64))
         #expect(entry?.isExpired(at: .max) == false)
     }
 
     @Test("A cachedump line gives the key and expiry; 0 means never")
     func cachedump() {
         #expect(MemcachedKeyListing.cachedumpEntry("ITEM k1 [2 b; 0 s]") == MemcachedKeyEntry(
-            key: "k1", expiresAt: nil, flags: nil
+            key: "k1", expiresAt: nil, flags: nil, size: 2
         ))
         #expect(MemcachedKeyListing.cachedumpEntry("ITEM user:42 [5 b; 1793500167 s]") == MemcachedKeyEntry(
-            key: "user:42", expiresAt: 1_793_500_167, flags: nil
+            key: "user:42", expiresAt: 1_793_500_167, flags: nil, size: 5
         ))
         #expect(MemcachedKeyListing.cachedumpEntry("STAT pid 1") == nil)
     }
