@@ -236,10 +236,10 @@ extension BigQueryPluginDriver {
             sql = trimmed.replacingOccurrences(of: ";\\s*\\z", with: "", options: .regularExpression)
         }
 
-        let run = try await conn.runStatement(sql, defaultDataset: currentSchema)
-        lastJobElapsed = run.statistics?.elapsed
+        let jobInfo = try await conn.executeJobAndWait(sql, defaultDataset: currentSchema)
+        lastJobElapsed = jobInfo.serverElapsed
 
-        let firstPage = run.firstPage
+        let firstPage = try await conn.getQueryResults(jobId: jobInfo.jobId, location: jobInfo.location)
         guard let schema = firstPage.schema, let fields = schema.fields, !fields.isEmpty else {
             continuation.yield(.header(PluginStreamHeader(
                 columns: ["Result"],
@@ -264,7 +264,11 @@ extension BigQueryPluginDriver {
         var pageToken = firstPage.pageToken
         while let token = pageToken {
             try Task.checkCancellation()
-            let nextPage = try await conn.nextPage(of: run, pageToken: token)
+            let nextPage = try await conn.getQueryResults(
+                jobId: jobInfo.jobId,
+                location: jobInfo.location,
+                pageToken: token
+            )
             let nextRows = BigQueryTypeMapper.flattenRows(from: nextPage, schema: schema)
             if !nextRows.isEmpty {
                 _ = await PluginRowStream.deliver(.rows(nextRows), to: continuation)
