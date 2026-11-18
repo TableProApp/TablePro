@@ -105,7 +105,8 @@ internal enum LibPQConnectionString {
         connectTimeoutSeconds: Int? = nil,
         kerberos: LibPQKerberosSignIn? = nil,
         serverName: String? = nil,
-        systemTrustAnchorsPath: String? = nil
+        systemTrustAnchorsPath: String? = nil,
+        directTLS: Bool = false
     ) throws -> String {
         var parameters: [(String, String)] = []
         if let serverName, !serverName.isEmpty, serverName != host, isAddressLiteral(host) {
@@ -139,6 +140,9 @@ internal enum LibPQConnectionString {
         parameters.append(contentsOf: keepaliveParameters)
 
         parameters.append(("sslmode", LibPQSSLMapping.sslmode(for: sslConfig.mode)))
+        if directTLS, allowsDirectTLS(sslConfig: sslConfig, kerberos: kerberos) {
+            parameters.append(("sslnegotiation", "direct"))
+        }
         if let kerberos {
             parameters.append(("gssencmode", kerberos.gssEncryptionMode))
         } else {
@@ -185,6 +189,15 @@ internal enum LibPQConnectionString {
             pairs.append("\(keyword)=\(quoted)")
         }
         return pairs.joined(separator: " ")
+    }
+
+    // libpq refuses direct TLS under a mode that may fall back to plaintext, and GSS encryption negotiates first.
+    static func allowsDirectTLS(sslConfig: SSLConfiguration, kerberos: LibPQKerberosSignIn?) -> Bool {
+        guard kerberos == nil else { return false }
+        switch sslConfig.mode {
+        case .required, .verifyCa, .verifyIdentity: return true
+        case .disabled, .preferred: return false
+        }
     }
 
     // Nothing can exist under a device file, so libpq finds no file there and says nothing.
