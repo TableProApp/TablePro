@@ -1,5 +1,5 @@
 # Starts one database server on the x64 runner for tests/TablePro.Interop.Tests/Live and names it to them in
-# TABLEPRO_TEST_LIVE_<ENGINE>_PORT, _USER and _PASSWORD. How each one runs: docs/decisions/0014-live-server-tests.md.
+# TABLEPRO_TEST_LIVE_<ENGINE>_PORT, _USER and _PASSWORD. How each one runs: docs/decisions/0016-live-server-tests.md.
 param(
     [Parameter(Mandatory)]
     [ValidateSet('MySql', 'SqlServer', 'MongoDb', 'Redis', 'Cassandra', 'Wsl', 'ClickHouse')]

@@ -40,7 +40,7 @@ paths:
 - macOS Tests runs the Unit and UI plans in full, with no shard, parallel, iteration or retry flag.
 - `core.yml` runs the core on Windows x64 and Arm64 and on macOS, where the same job builds and tests the Swift bindings, and SQL Server's integrated login on Windows x64. The SSH tunnel tests through Windows' OpenSSH Server run on x64; Arm64, whose image installs the server in about 20 minutes, runs them nightly.
 - A `v*` tag runs only `release.yml`, a `linux-v*` tag only `release-linux.yml`, a `windows-v*` tag only `release-windows.yml`. The last two also run by dispatch: `release-windows.yml` then publishes nothing (`windows/RELEASING.md`), and `release-linux.yml` publishes nothing with `dry-run` and otherwise uploads a packaging fix (`linux/docs/releasing.md`).
-- `windows.yml`'s live job runs the interop tests against MySQL, SQL Server, ClickHouse, Cassandra, MongoDB and Redis on `windows-2025`, beside the x64 job (`windows/docs/decisions/0014-live-server-tests.md`).
+- `windows.yml`'s live job runs the interop tests against MySQL, SQL Server, ClickHouse, Cassandra, MongoDB and Redis on `windows-2025`, beside the x64 job (`windows/docs/decisions/0016-live-server-tests.md`).
 - `windows-grid-gate.yml` runs only by dispatch: the Windows data grid's timing and behavior gate on `windows-2025` and `windows-11-arm`, whose numbers vary too much between hosted runners to gate a merge (`windows/docs/decisions/0003-data-grid-control.md`, Gate). `windows.yml` runs the grid's tests on every change.
 
 ## Change detector

@@ -158,6 +158,7 @@
                 </MenuFlyoutItem>
                 <ToggleMenuFlyoutItem x:Uid="MenuShowHistory" x:Name="MenuShowHistory" Click="OnToggleHistory" IsEnabled="False" />
                 <ToggleMenuFlyoutItem x:Uid="MenuShowSavedQueries" x:Name="MenuShowSavedQueries" Click="OnToggleSavedQueries" IsEnabled="False" />
+                <ToggleMenuFlyoutItem x:Uid="MenuShowAssistant" x:Name="MenuShowAssistant" Click="OnToggleAssistant" IsEnabled="False" />
             </MenuBarItem>
 
             <MenuBarItem x:Uid="DatabaseMenu" x:Name="DatabaseMenu">
@@ -208,6 +209,10 @@
                 <MenuFlyoutItem x:Uid="MenuSaveQuery" x:Name="MenuSaveQuery" Click="OnSaveQuery" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Save" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuAiReview" x:Name="MenuAiReview" Click="OnAiReview" IsEnabled="False" />
+                <MenuFlyoutItem x:Uid="MenuAiExplain" x:Name="MenuAiExplain" Click="OnAiExplain" IsEnabled="False" />
+                <MenuFlyoutItem x:Uid="MenuAiOptimize" x:Name="MenuAiOptimize" Click="OnAiOptimize" IsEnabled="False" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuFilterRows" x:Name="MenuFilterRows" Click="OnFilterRows" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Filter" /></MenuFlyoutItem.Icon>
