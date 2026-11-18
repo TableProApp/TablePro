@@ -1,7 +1,10 @@
+using Microsoft.UI.Xaml;
+using TablePro.Editor.Model;
 using Windows.Foundation;
 
 namespace TablePro.Editor;
 
+// Geometry is by row: a row is a line unless lines wrap or fold (EditorModel.Rows).
 public sealed partial class SqlEditor
 {
     private const float GutterPadding = 12;
@@ -19,7 +22,14 @@ public sealed partial class SqlEditor
 
     private double ViewWidth => _panel.ActualWidth;
 
-    // Room for at least three digits, as the macOS editor keeps, plus padding on both sides.
+    private int Digits => Math.Max(3, Document.LineCount.ToString(System.Globalization.CultureInfo.InvariantCulture).Length);
+
+    // Where the line numbers end; at least three digits, as the macOS editor keeps.
+    private float NumbersRight => _layouts is null ? 0 : GutterPadding + Digits * _layouts.CharWidth;
+
+    // The chevron column after the numbers, only while folding is on.
+    private float FoldColumnWidth => _layouts is null || !_foldingEnabled ? 0 : MathF.Round(_layouts.LineHeight * 0.9f);
+
     private float GutterWidth
     {
         get
@@ -28,8 +38,7 @@ public sealed partial class SqlEditor
             {
                 return 0;
             }
-            var digits = Math.Max(3, Document.LineCount.ToString(System.Globalization.CultureInfo.InvariantCulture).Length);
-            return GutterPadding * 2 + digits * _layouts.CharWidth;
+            return _foldingEnabled ? NumbersRight + 4 + FoldColumnWidth + 4 : NumbersRight + GutterPadding;
         }
     }
 
@@ -41,7 +50,7 @@ public sealed partial class SqlEditor
         {
             return;
         }
-        SetScroll(_scrollX, Math.Clamp(line, 0, Document.LineCount - 1) * _layouts.LineHeight);
+        SetScroll(_scrollX, _model.Rows.FirstRowOf(Math.Clamp(line, 0, Document.LineCount - 1)) * _layouts.LineHeight);
     }
 
     public void ScrollBy(double dx, double dy) => SetScroll(_scrollX + dx, _scrollY + dy);
@@ -52,9 +61,10 @@ public sealed partial class SqlEditor
         {
             return;
         }
-        var (line, column) = Document.GetPosition(_model.Primary.Active);
+        var active = _model.Primary.Active;
+        var row = _model.Rows.RowOf(active);
         var lineHeight = _layouts.LineHeight;
-        var top = line * lineHeight;
+        var top = row * lineHeight;
         var y = _scrollY;
         if (top < y)
         {
@@ -64,8 +74,13 @@ public sealed partial class SqlEditor
         {
             y = top + lineHeight - ViewHeight;
         }
+        if (_wordWrap)
+        {
+            SetScroll(0, y);
+            return;
+        }
         var x = _scrollX;
-        var caretX = CaretX(line, column);
+        var caretX = CaretX(row, active);
         var textWidth = ViewWidth - TextLeft;
         if (caretX < x)
         {
@@ -79,14 +94,45 @@ public sealed partial class SqlEditor
         SetScroll(x, y);
     }
 
-    private double CaretX(int line, int column)
+    // The offset's x in its row, from the row's start.
+    private double CaretX(int row, int offset)
     {
-        var text = LineText(line);
-        if (text.Length <= TablePro.Graphics.TextLayouts.LongLine && _layouts is not null && _brushes is not null)
+        var (_, start, end) = _model.Rows.RowSpan(row);
+        var column = Math.Clamp(offset, start, end) - start;
+        if (end - start <= TablePro.Graphics.TextLayouts.LongLine && _layouts is not null && _brushes is not null)
         {
-            return LayoutFor(line, text).XAt(column);
+            return LayoutFor(row, start, end).XAt(column);
         }
         return column * (_layouts?.CharWidth ?? 8);
+    }
+
+    // Columns a row holds once lines wrap: the text width less a column, so the caret at a row's end stays in view.
+    private void UpdateWrap()
+    {
+        if (_layouts is null)
+        {
+            return;
+        }
+        var columns = 0;
+        if (_wordWrap)
+        {
+            var width = ViewWidth - TextLeft;
+            if (width < 1)
+            {
+                return;
+            }
+            columns = Math.Max(8, (int)((width - _layouts.CharWidth) / _layouts.CharWidth));
+        }
+        if (_model.Rows.SetWrap(columns, _model.Options.TabSize))
+        {
+            _frameLayouts.Clear();
+            _frameVersion = -1;
+            if (_wordWrap)
+            {
+                _scrollX = 0;
+            }
+            Invalidate();
+        }
     }
 
     private void SetScroll(double x, double y)
@@ -95,8 +141,8 @@ public sealed partial class SqlEditor
         {
             return;
         }
-        var maxY = Math.Max(0, (Document.LineCount - 1) * _layouts.LineHeight);
-        var maxX = Math.Max(0, _widest + _layouts.CharWidth * 4 - (ViewWidth - TextLeft));
+        var maxY = Math.Max(0, (_model.Rows.RowCount - 1) * _layouts.LineHeight);
+        var maxX = _wordWrap ? 0 : Math.Max(0, _widest + _layouts.CharWidth * 4 - (ViewWidth - TextLeft));
         x = Math.Clamp(x, 0, maxX);
         y = Math.Clamp(y, 0, maxY);
         if (x == _scrollX && y == _scrollY)
@@ -119,15 +165,22 @@ public sealed partial class SqlEditor
         try
         {
             var lineHeight = _layouts.LineHeight;
+            var maxY = Math.Max(0, (_model.Rows.RowCount - 1) * lineHeight);
+            // Folding or a narrower wrap can leave the view past the last row.
+            if (_scrollY > maxY)
+            {
+                _scrollY = maxY;
+            }
             _verticalBar.Minimum = 0;
-            _verticalBar.Maximum = Math.Max(0, (Document.LineCount - 1) * lineHeight);
+            _verticalBar.Maximum = maxY;
             _verticalBar.ViewportSize = Math.Max(1, ViewHeight);
             _verticalBar.SmallChange = lineHeight;
             _verticalBar.LargeChange = Math.Max(lineHeight, ViewHeight - lineHeight);
             _verticalBar.Value = _scrollY;
+            _horizontalBar.Visibility = _wordWrap ? Visibility.Collapsed : Visibility.Visible;
             var textWidth = Math.Max(1, ViewWidth - TextLeft);
             _horizontalBar.Minimum = 0;
-            _horizontalBar.Maximum = Math.Max(0, _widest + _layouts.CharWidth * 4 - textWidth);
+            _horizontalBar.Maximum = _wordWrap ? 0 : Math.Max(0, _widest + _layouts.CharWidth * 4 - textWidth);
             _horizontalBar.ViewportSize = textWidth;
             _horizontalBar.SmallChange = _layouts.CharWidth * 4;
             _horizontalBar.LargeChange = textWidth;
@@ -155,32 +208,25 @@ public sealed partial class SqlEditor
         }
     }
 
+    private int RowAt(double y) =>
+        _layouts is null ? 0 : Math.Clamp((int)Math.Floor((y + _scrollY) / _layouts.LineHeight), 0, _model.Rows.RowCount - 1);
+
+    // Past the end of a wrapped row the caret stays on that row, one step before the next row starts.
     internal int OffsetAt(Point point)
     {
-        if (_layouts is null)
-        {
-            return 0;
-        }
-        var line = (int)Math.Floor((point.Y + _scrollY) / _layouts.LineHeight);
-        line = Math.Clamp(line, 0, Document.LineCount - 1);
-        return Document.GetLineStart(line) + ColumnAt(line, point.X);
-    }
-
-    internal int ColumnAt(int line, double x)
-    {
-        var text = LineText(line);
-        var local = (float)(x - TextLeft + _scrollX);
         if (_layouts is null || _brushes is null)
         {
             return 0;
         }
-        return Math.Clamp(LayoutFor(line, text).ColumnAt(local), 0, text.Length);
-    }
-
-    internal int VisualColumnAt(int line, double x)
-    {
-        var offset = Document.GetLineStart(line) + ColumnAt(line, x);
-        return _model.VisualColumn(offset);
+        var row = RowAt(point.Y);
+        var (_, start, end) = _model.Rows.RowSpan(row);
+        var local = (float)(point.X - TextLeft + _scrollX);
+        var offset = start + Math.Clamp(LayoutFor(row, start, end).ColumnAt(local), 0, end - start);
+        if (offset >= end && end > start && !_model.Rows.IsLastRowOfLine(row))
+        {
+            offset = TextUnits.PreviousCaretStop(Document, end);
+        }
+        return offset;
     }
 
     internal Rect CaretRect(int offset)
@@ -189,12 +235,13 @@ public sealed partial class SqlEditor
         {
             return default;
         }
-        var (line, column) = Document.GetPosition(offset);
-        var x = TextLeft - _scrollX + CaretX(line, column);
-        var y = line * _layouts.LineHeight - _scrollY;
+        var row = _model.Rows.RowOf(offset);
+        var x = TextLeft - _scrollX + CaretX(row, offset);
+        var y = row * _layouts.LineHeight - _scrollY;
         return new Rect(x, y, 1, _layouts.LineHeight);
     }
 
+    // One rectangle per row on screen, so a wrapped line gives several and a folded one none.
     internal List<Rect> RangeRects(int start, int end)
     {
         var rects = new List<Rect>();
@@ -202,25 +249,64 @@ public sealed partial class SqlEditor
         {
             return rects;
         }
-        var first = Math.Max(Document.GetLineFromOffset(start), FirstVisibleLine);
-        var last = Math.Min(Document.GetLineFromOffset(end), FirstVisibleLine + VisibleLineCount);
-        for (var line = first; line <= last && line < Document.LineCount; line++)
+        var rows = _model.Rows;
+        var first = Math.Max(rows.RowOf(start), FirstVisibleRow);
+        var last = Math.Min(rows.RowOf(end), FirstVisibleRow + VisibleLineCount);
+        for (var row = first; row <= last && row < rows.RowCount; row++)
         {
-            var lineStart = Document.GetLineStart(line);
-            var lineEnd = Document.GetLineEnd(line);
-            var from = Math.Max(start, lineStart) - lineStart;
-            var to = Math.Min(end, lineEnd) - lineStart;
-            var x1 = TextLeft - _scrollX + CaretX(line, from);
-            var x2 = TextLeft - _scrollX + CaretX(line, to);
-            var y = line * _layouts.LineHeight - _scrollY;
+            var (_, rowStart, rowEnd) = rows.RowSpan(row);
+            var from = Math.Max(start, rowStart);
+            var to = Math.Min(end, rowEnd);
+            if (to < from)
+            {
+                continue;
+            }
+            var x1 = TextLeft - _scrollX + CaretX(row, from);
+            var x2 = TextLeft - _scrollX + CaretX(row, to);
+            var y = row * _layouts.LineHeight - _scrollY;
             rects.Add(new Rect(x1, y, Math.Max(1, x2 - x1), _layouts.LineHeight));
         }
         return rects;
     }
 
-    internal (int First, int Last) VisibleLines()
+    // Each run of rows on screen whose lines follow one another, so a fold between them splits the ranges.
+    internal List<(int Start, int End)> VisibleRanges()
     {
-        var first = FirstVisibleLine;
-        return (first, Math.Min(Document.LineCount - 1, first + VisibleLineCount));
+        var ranges = new List<(int Start, int End)>();
+        var rows = _model.Rows;
+        var first = Math.Min(FirstVisibleRow, rows.RowCount - 1);
+        var last = Math.Min(rows.RowCount - 1, first + VisibleLineCount);
+        var previousLine = -1;
+        for (var row = first; row <= last; row++)
+        {
+            var (line, start, end) = rows.RowSpan(row);
+            if (ranges.Count > 0 && (line == previousLine || line == previousLine + 1))
+            {
+                ranges[^1] = (ranges[^1].Start, end);
+            }
+            else
+            {
+                ranges.Add((start, end));
+            }
+            previousLine = line;
+        }
+        return ranges;
+    }
+
+    // For UIA's ScrollIntoView: the offset's row at the top, or brought into view only when off screen.
+    internal void ScrollIntoView(int offset, bool alignToTop)
+    {
+        if (_layouts is null)
+        {
+            return;
+        }
+        var row = _model.Rows.RowOf(offset);
+        var first = FirstVisibleRow;
+        var last = first + VisibleLineCount - 1;
+        if (alignToTop || row < first || row > last)
+        {
+            var top = alignToTop ? row : Math.Max(0, row - VisibleLineCount + 1);
+            SetScroll(_scrollX, top * _layouts.LineHeight);
+        }
     }
 }

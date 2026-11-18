@@ -44,13 +44,13 @@ public sealed partial class EditorModel
         switch (move)
         {
             case CaretMove.Left:
-                return selection.WithActive(TextUnits.PreviousCaretStop(Document, active), extend);
+                return selection.WithActive(Rows.SkipHidden(TextUnits.PreviousCaretStop(Document, active), forward: false), extend);
             case CaretMove.Right:
-                return selection.WithActive(TextUnits.NextCaretStop(Document, active), extend);
+                return selection.WithActive(Rows.SkipHidden(TextUnits.NextCaretStop(Document, active), forward: true), extend);
             case CaretMove.WordLeft:
-                return selection.WithActive(TextUnits.PreviousWordStart(Document, active), extend);
+                return selection.WithActive(Rows.SkipHidden(TextUnits.PreviousWordStart(Document, active), forward: false), extend);
             case CaretMove.WordRight:
-                return selection.WithActive(TextUnits.NextWordStart(Document, active), extend);
+                return selection.WithActive(Rows.SkipHidden(TextUnits.NextWordStart(Document, active), forward: true), extend);
             case CaretMove.Up:
                 return Vertical(selection, -1, extend);
             case CaretMove.Down:
@@ -60,9 +60,9 @@ public sealed partial class EditorModel
             case CaretMove.PageDown:
                 return Vertical(selection, pageLines, extend);
             case CaretMove.LineStart:
-                return selection.WithActive(SmartHome(active), extend);
+                return selection.WithActive(RowHome(active), extend);
             case CaretMove.LineEnd:
-                return selection.WithActive(Document.GetLineEnd(Document.GetLineFromOffset(active)), extend);
+                return selection.WithActive(RowEnd(active), extend);
             case CaretMove.DocumentStart:
                 return selection.WithActive(0, extend);
             case CaretMove.DocumentEnd:
@@ -82,24 +82,57 @@ public sealed partial class EditorModel
 
     private Selection Vertical(Selection selection, int lines, bool extend)
     {
-        var (line, _) = Document.GetPosition(selection.Active);
-        var column = selection.PreferredColumn >= 0 ? selection.PreferredColumn : VisualColumn(selection.Active);
-        var target = line + lines;
-        int offset;
-        if (target < 0)
-        {
-            offset = 0;
-        }
-        else if (target >= Document.LineCount)
-        {
-            offset = Document.Length;
-        }
-        else
-        {
-            offset = OffsetAtVisualColumn(target, column);
-        }
+        var (offset, column) = VerticalTarget(selection, lines);
         var anchor = extend ? selection.Anchor : offset;
         return new Selection(anchor, offset, column);
+    }
+
+    // By rows on screen once lines wrap or fold, so a move never lands inside a fold or skips a wrapped row.
+    private (int Offset, int Column) VerticalTarget(Selection selection, int lines)
+    {
+        if (Rows.IsIdentity)
+        {
+            var line = Document.GetLineFromOffset(selection.Active);
+            var lineColumn = selection.PreferredColumn >= 0 ? selection.PreferredColumn : VisualColumn(selection.Active);
+            var targetLine = line + lines;
+            if (targetLine < 0)
+            {
+                return (0, lineColumn);
+            }
+            return targetLine >= Document.LineCount
+                ? (Document.Length, lineColumn)
+                : (OffsetAtVisualColumn(targetLine, lineColumn), lineColumn);
+        }
+        var row = Rows.RowOf(selection.Active);
+        var column = selection.PreferredColumn >= 0 ? selection.PreferredColumn : Rows.ColumnInRow(selection.Active);
+        var target = row + lines;
+        if (target < 0)
+        {
+            return (0, column);
+        }
+        return target >= Rows.RowCount ? (Document.Length, column) : (Rows.OffsetAt(target, column), column);
+    }
+
+    // A wrapped row's Home and End stay on that row, as a wrapping Windows text box has them; the first row keeps smart Home.
+    private int RowHome(int offset)
+    {
+        if (Rows.WrapColumns == 0)
+        {
+            return SmartHome(offset);
+        }
+        var (line, start, _) = Rows.RowSpan(Rows.RowOf(offset));
+        return start == Document.GetLineStart(line) ? SmartHome(offset) : start;
+    }
+
+    private int RowEnd(int offset)
+    {
+        if (Rows.WrapColumns == 0)
+        {
+            return Document.GetLineEnd(Document.GetLineFromOffset(offset));
+        }
+        var row = Rows.RowOf(offset);
+        var (_, start, end) = Rows.RowSpan(row);
+        return Rows.IsLastRowOfLine(row) || end <= start ? end : TextUnits.PreviousCaretStop(Document, end);
     }
 
     public int VisualColumn(int offset)
@@ -207,13 +240,12 @@ public sealed partial class EditorModel
         var primary = Primary;
         foreach (var selection in _selections)
         {
-            var line = Document.GetLineFromOffset(selection.Active) + direction;
-            if (line < 0 || line >= Document.LineCount)
+            var row = Rows.IsIdentity ? Document.GetLineFromOffset(selection.Active) : Rows.RowOf(selection.Active);
+            if (row + direction < 0 || row + direction >= Rows.RowCount)
             {
                 continue;
             }
-            var column = selection.PreferredColumn >= 0 ? selection.PreferredColumn : VisualColumn(selection.Active);
-            var offset = OffsetAtVisualColumn(line, column);
+            var (offset, column) = VerticalTarget(selection, direction);
             added.Add(new Selection(offset, offset, column));
             if (selection == primary)
             {
@@ -221,6 +253,28 @@ public sealed partial class EditorModel
             }
         }
         SetSelections(added, added.IndexOf(primary));
+    }
+
+    // Where Alt+drag measures from: the row on screen and the columns into it.
+    public (int Row, int Column) RowColumnOf(int offset) =>
+        Rows.IsIdentity ? (Document.GetLineFromOffset(offset), VisualColumn(offset)) : (Rows.RowOf(offset), Rows.ColumnInRow(offset));
+
+    // A selection per row on screen between the two columns, so each row of a wrapped line gets its own.
+    public void SetRowColumnSelection(int anchorRow, int anchorColumn, int activeRow, int activeColumn)
+    {
+        if (Rows.IsIdentity)
+        {
+            SetColumnSelection(anchorRow, anchorColumn, activeRow, activeColumn);
+            return;
+        }
+        var first = Math.Clamp(Math.Min(anchorRow, activeRow), 0, Rows.RowCount - 1);
+        var last = Math.Clamp(Math.Max(anchorRow, activeRow), 0, Rows.RowCount - 1);
+        var selections = new List<Selection>(last - first + 1);
+        for (var row = first; row <= last; row++)
+        {
+            selections.Add(new Selection(Rows.OffsetAt(row, anchorColumn), Rows.OffsetAt(row, activeColumn), activeColumn));
+        }
+        SetSelections(selections, activeRow >= anchorRow ? selections.Count - 1 : 0);
     }
 
     public void SetColumnSelection(int anchorLine, int anchorColumn, int activeLine, int activeColumn)

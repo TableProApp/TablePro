@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.Editor;
+using TablePro.Editor.Model;
 using TablePro.Interop;
 using Windows.System;
 
@@ -90,6 +91,11 @@ public sealed partial class SettingsView : UserControl
             .OfType<ComboBoxItem>()
             .First(item => item.Tag is long threshold && threshold == settings.CountRowsIfEstimateLessThan);
         FillFamilies(FontFamilyBox, SqlEditor.InstalledFontFamilies(monospacedOnly: true), settings.EditorFontFamily, "FontFamilyDefault");
+        WordWrapSwitch.IsOn = settings.WordWrap;
+        StatementSwitch.IsOn = settings.HighlightCurrentStatement;
+        FoldingSwitch.IsOn = settings.CodeFolding;
+        FillSchemes(LightSchemeBox, dark: false, settings.EditorLightScheme);
+        FillSchemes(DarkSchemeBox, dark: true, settings.EditorDarkScheme);
         FillFamilies(GridFontBox, SqlEditor.InstalledFontFamilies(monospacedOnly: false), settings.GridFontFamily, "GridFontDefault");
         GridFontSizeBox.Value = settings.GridFontSize;
         NullDisplayBox.Text = settings.NullDisplay;
@@ -119,6 +125,25 @@ public sealed partial class SettingsView : UserControl
         box.SelectedItem = box.Items
             .OfType<ComboBoxItem>()
             .FirstOrDefault(item => string.Equals(item.Tag as string, saved ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+            ?? box.Items[0];
+    }
+
+    // An id no scheme has draws the default colors, so it shows as Default.
+    private static void FillSchemes(ComboBox box, bool dark, string? saved)
+    {
+        box.Items.Clear();
+        box.Items.Add(new ComboBoxItem { Content = Strings.Get("ColorSchemeDefault"), Tag = string.Empty });
+        var schemes = ColorSchemes.All
+            .Where(scheme => scheme.IsDark == dark)
+            .OrderBy(scheme => scheme.Name, StringComparer.CurrentCulture);
+        foreach (var scheme in schemes)
+        {
+            box.Items.Add(new ComboBoxItem { Content = scheme.Name, Tag = scheme.Id });
+        }
+
+        box.SelectedItem = box.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => item.Tag is string id && id.Length > 0 && id == saved)
             ?? box.Items[0];
     }
 
@@ -186,6 +211,49 @@ public sealed partial class SettingsView : UserControl
         if (!_loading && FontFamilyBox.SelectedItem is ComboBoxItem { Tag: string family })
         {
             _workbench.UpdateSettings(settings => settings with { EditorFontFamily = family.Length == 0 ? null : family });
+        }
+    }
+
+    private void OnWordWrapToggled(object sender, RoutedEventArgs e)
+    {
+        if (!_loading)
+        {
+            var wrap = WordWrapSwitch.IsOn;
+            _workbench.UpdateSettings(settings => settings with { WordWrap = wrap });
+        }
+    }
+
+    private void OnStatementToggled(object sender, RoutedEventArgs e)
+    {
+        if (!_loading)
+        {
+            var highlight = StatementSwitch.IsOn;
+            _workbench.UpdateSettings(settings => settings with { HighlightCurrentStatement = highlight });
+        }
+    }
+
+    private void OnFoldingToggled(object sender, RoutedEventArgs e)
+    {
+        if (!_loading)
+        {
+            var folding = FoldingSwitch.IsOn;
+            _workbench.UpdateSettings(settings => settings with { CodeFolding = folding });
+        }
+    }
+
+    private void OnLightSchemeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && LightSchemeBox.SelectedItem is ComboBoxItem { Tag: string id })
+        {
+            _workbench.UpdateSettings(settings => settings with { EditorLightScheme = id.Length == 0 ? null : id });
+        }
+    }
+
+    private void OnDarkSchemeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && DarkSchemeBox.SelectedItem is ComboBoxItem { Tag: string id })
+        {
+            _workbench.UpdateSettings(settings => settings with { EditorDarkScheme = id.Length == 0 ? null : id });
         }
     }
 

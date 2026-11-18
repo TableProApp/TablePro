@@ -62,14 +62,35 @@
 | Alt+Up/Down, Shift+Alt+Up/Down, Ctrl+Shift+K | Move, copy, delete lines |
 | Ctrl+/, Tab, Shift+Tab, Ctrl+], Ctrl+[ | Line comment, indent, outdent |
 | Ctrl+F, F3, Shift+F3 | Find, next, previous |
+| Ctrl+Shift+[, Ctrl+Shift+] | Fold the innermost region at the caret, unfold the one on its line |
 
 - Typing closes brackets and quotes and steps over a closer already there; Enter keeps indentation and opens a bracket pair onto its own lines; Backspace in indentation goes back one tab stop.
 - Mouse: click, Shift+click, double-click word, triple-click line, drag to select with auto-scroll, drag and drop of text (a move inside the editor is one undo step), and a context menu.
+
+### Rows: word wrap and folding
+
+- `VisualRows` in the model maps document lines to the rows on screen. With no wrap and no fold a row is a line and nothing is stored. Drawing, hit testing, carets, scrolling and the UIA geometry all read rows.
+- Word wrap breaks a line by columns, as a monospaced font lays it out (`LineWrap`): a wide East Asian character or an emoji takes two, a combining mark none, a tab runs to the next stop of its row. A row breaks after its last space, else at the edge, and spaces hang past the edge, as Notepad and VS Code wrap. Each row is its own DirectWrite layout, so the drawing breaks where the model does. An edit lays out only its own lines again; a new width lays out every line.
+- A caret at a row's first offset draws at the start of that row. Up and Down move by rows and keep their column; Home and End stay on the row, as a wrapping Windows text box has them, and the first row keeps smart Home.
+- A fold keeps its first line on screen with a chip after its text and hides the lines after it (`FoldSet`). Folding never touches the document, so it makes no undo step. A caret sent into a fold, by find, undo or Go to Error, opens it; Left and Right step over a fold. An edit on the hidden lines, or one that splits or joins the first line, opens it.
+- Chevrons in a gutter column show while the pointer is over the gutter, and stay on a folded line, as the macOS editor and VS Code reveal them. A click on a chevron or a chip folds or opens. The menu has Fold, Unfold, Fold All and Unfold All; Fold All folds top-level regions only, as the macOS editor's does.
+
+### Statements, fold regions and bracket pairs
+
+- `ISqlStructure` is what the lexer knows past colors: its statement split and which of its kinds carry structure. `CoreSqlLexer` splits through the core's `tablepro_script_statements`, the split the drivers and Run Statement read, from UTF-16 with no copy into a UniFFI string.
+- `DocumentStructure` reads the statements and the fold regions of one version of the text: statements over more than one line, multi-line block comments, brackets (to the line before the closer, as VS Code folds them) and `BEGIN` or `CASE` to `END`. A text up to 64 KB is read before the frame that needs it; a longer one off the UI thread once typing pauses for 200 ms, mapped through each edit in between. Over 2,000,000 characters there are none, the limit the macOS editor stops at.
+- The band behind the statement the caret is in is the host's to turn on, as the macOS editor's is. It is the statement Run Statement sends: the one the primary caret is in, or the last one before it, and it steps aside for a selection.
+- The bracket beside the caret, before it first as the macOS editor reads it, and its pair get a box, as VS Code and Visual Studio mark them on Windows. Only a bracket the lexer gives as punctuation or an operator pairs, so one inside a string, a comment or a quoted name never does. A text the lexer gives no tokens for, such as a MongoDB query, pairs plain characters.
+
+### Color schemes
+
+- The editor half of each built-in macOS theme is a scheme (`windows/scripts/editor-schemes.py` writes `ColorSchemes.Themes.cs` from `apple/TablePro/Resources/Themes`). The host picks one for light and one for dark; none keeps the Windows colors. Names the user wrote, punctuation and quoted names draw as text, as the macOS editor colors them. High contrast draws the system colors whatever the scheme.
 
 ### Accessibility
 
 - A FrameworkElementAutomationPeer of type Edit with TextPattern and TextPattern2: document range, selections, visible ranges, caret range, range from point, bounding rectangles in screen pixels.
 - Character, word and line units move by the model's own rules. Units it does not have fall back to the next larger one: format to word, paragraph to line, page to document.
+- Bounding rectangles come one per row on screen, so a wrapped line gives several and a folded one none, and the visible ranges split where a fold hides lines.
 - Text changes and selection changes raise their UIA events.
 
 ### Interop
@@ -86,8 +107,9 @@
 - Text input, hit testing and accessibility are ours to keep right; RichEditBox's own behaviors no longer come for free.
 - A transitory TSF context gives up reconversion and IME features that read the text around the caret.
 - The composition is drawn at the primary caret only, and committed text goes to every caret.
-- Seams for the later slices: the lexer is an `ISyntaxLexer`; the model's commands and `SqlEditor.HandleKey` are public; `FramePresented` reports every frame. Completion, hover, diagnostics, formatting, Vim and folding are not built.
-- Not yet: word wrap, bracket matching, the current-statement band, regex find, replace.
+- Seams for the later slices: the lexer is an `ISyntaxLexer`; the model's commands and `SqlEditor.HandleKey` are public; `FramePresented` reports every frame. Completion, hover, diagnostics, formatting and Vim are not built.
+- A new width lays out every line again for word wrap, which on a 5 MB script costs a pass over its text per column the width gains or loses.
+- The fold chevrons have no UIA element of their own; the keys and the menu reach every fold.
 
 ## Alternatives considered
 

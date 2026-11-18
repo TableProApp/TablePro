@@ -77,6 +77,26 @@
                 <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Font" /></toolkit:SettingsCard.HeaderIcon>
                 <ComboBox x:Name="FontFamilyBox" x:Uid="FontFamilyBox" AutomationProperties.AutomationId="FontFamilyBox" MinWidth="200" SelectionChanged="OnFontFamilyChanged" />
             </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="WordWrapCard" x:Name="WordWrapCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE751;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="WordWrapSwitch" x:Uid="WordWrapSwitch" AutomationProperties.AutomationId="WordWrapSwitch" Toggled="OnWordWrapToggled" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="StatementCard" x:Name="StatementCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7E6;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="StatementSwitch" x:Uid="StatementSwitch" AutomationProperties.AutomationId="StatementSwitch" Toggled="OnStatementToggled" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="FoldingCard" x:Name="FoldingCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE943;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="FoldingSwitch" x:Uid="FoldingSwitch" AutomationProperties.AutomationId="FoldingSwitch" Toggled="OnFoldingToggled" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="LightSchemeCard" x:Name="LightSchemeCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE706;" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="LightSchemeBox" x:Uid="LightSchemeBox" AutomationProperties.AutomationId="LightSchemeBox" MinWidth="200" SelectionChanged="OnLightSchemeChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="DarkSchemeCard" x:Name="DarkSchemeCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE708;" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="DarkSchemeBox" x:Uid="DarkSchemeBox" AutomationProperties.AutomationId="DarkSchemeBox" MinWidth="200" SelectionChanged="OnDarkSchemeChanged" />
+            </toolkit:SettingsCard>
 
             <TextBlock x:Uid="GridHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsCard x:Uid="GridFontCard" x:Name="GridFontCard">

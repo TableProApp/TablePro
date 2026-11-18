@@ -199,6 +199,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     // About the rows, not a failure of the run, so the status keeps what the run said.
     internal void ShowNotice(string message)
     {
+        ErrorBar.ActionButton = null;
         ErrorBar.Severity = InfoBarSeverity.Informational;
         ErrorBar.Message = message;
         ErrorBar.IsOpen = false;
@@ -233,6 +234,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
 
     public void ShowError(string message)
     {
+        ErrorBar.ActionButton = null;
         ErrorBar.Severity = InfoBarSeverity.Error;
         ErrorBar.Message = message;
         ErrorBar.IsOpen = false;
@@ -240,11 +242,21 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         Status(Strings.Get("StatusRunFailed"));
     }
 
+    // On the failed run's bar, which every later message replaces along with the button.
+    internal void OfferGoToError(Action go)
+    {
+        var button = new Button { Content = Strings.Get("GoToError") };
+        AutomationProperties.SetAutomationId(button, "GoToErrorButton");
+        button.Click += (_, _) => go();
+        ErrorBar.ActionButton = button;
+    }
+
     public void Clear()
     {
         Release();
         Outcome = null;
         RowsAffected = null;
+        ErrorBar.ActionButton = null;
         ErrorBar.IsOpen = false;
         Placeholder.Text = Strings.Get("ResultsEmpty");
         _messages.Reset();
@@ -257,6 +269,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(run);
+        ErrorBar.ActionButton = null;
         ErrorBar.IsOpen = false;
         Status(Strings.Get("StatusRunning"));
         ResultSetCount = 0;

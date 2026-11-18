@@ -3876,6 +3876,57 @@ New fingerprint: {2}</value>
   <data name="FontFamilyDefault" xml:space="preserve">
     <value>Default (Cascadia Mono)</value>
   </data>
+  <data name="WordWrapCard.Header" xml:space="preserve">
+    <value>Word wrap</value>
+  </data>
+  <data name="WordWrapCard.Description" xml:space="preserve">
+    <value>Long lines wrap to fit the editor. When off, they scroll sideways.</value>
+  </data>
+  <data name="WordWrapSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Word wrap</value>
+  </data>
+  <data name="StatementCard.Header" xml:space="preserve">
+    <value>Highlight current statement</value>
+  </data>
+  <data name="StatementCard.Description" xml:space="preserve">
+    <value>A band behind the statement at the cursor, which Run statement at cursor runs</value>
+  </data>
+  <data name="StatementSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Highlight current statement</value>
+  </data>
+  <data name="FoldingCard.Header" xml:space="preserve">
+    <value>Code folding</value>
+  </data>
+  <data name="FoldingCard.Description" xml:space="preserve">
+    <value>Chevrons in the line number gutter fold statements, brackets, BEGIN blocks and block comments. Ctrl+Shift+[ folds and Ctrl+Shift+] unfolds.</value>
+  </data>
+  <data name="FoldingSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Code folding</value>
+  </data>
+  <data name="LightSchemeCard.Header" xml:space="preserve">
+    <value>Light color scheme</value>
+  </data>
+  <data name="LightSchemeCard.Description" xml:space="preserve">
+    <value>The SQL editor's colors in the light theme</value>
+  </data>
+  <data name="LightSchemeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Light color scheme</value>
+  </data>
+  <data name="DarkSchemeCard.Header" xml:space="preserve">
+    <value>Dark color scheme</value>
+  </data>
+  <data name="DarkSchemeCard.Description" xml:space="preserve">
+    <value>The SQL editor's colors in the dark theme</value>
+  </data>
+  <data name="DarkSchemeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Dark color scheme</value>
+  </data>
+  <data name="ColorSchemeDefault" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="GoToError" xml:space="preserve">
+    <value>Go to Error</value>
+  </data>
   <data name="GridHeader.Text" xml:space="preserve">
     <value>Data grid</value>
   </data>

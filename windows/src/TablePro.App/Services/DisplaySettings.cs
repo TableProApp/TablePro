@@ -5,7 +5,7 @@ using TablePro.Editor;
 
 namespace TablePro.App.Services;
 
-// The font and NULL settings every editor and grid follows: applied as each one loads and again when Settings changes
+// The display settings every editor and grid follows: applied as each one loads and again when Settings changes
 // them, so an open tab takes a change at once.
 internal static class DisplaySettings
 {
@@ -20,6 +20,11 @@ internal static class DisplaySettings
         s_current = settings;
         if (before.EditorFontSize != settings.EditorFontSize
             || before.EditorFontFamily != settings.EditorFontFamily
+            || before.WordWrap != settings.WordWrap
+            || before.CodeFolding != settings.CodeFolding
+            || before.HighlightCurrentStatement != settings.HighlightCurrentStatement
+            || before.EditorLightScheme != settings.EditorLightScheme
+            || before.EditorDarkScheme != settings.EditorDarkScheme
             || before.GridFontFamily != settings.GridFontFamily
             || before.GridFontSize != settings.GridFontSize
             || before.NullDisplay != settings.NullDisplay)
@@ -46,6 +51,11 @@ internal static class DisplaySettings
         {
             editor.EditorFontFamily = s_current.EditorFontFamily;
             editor.EditorFontSize = (float)s_current.EditorFontSize;
+            editor.WordWrap = s_current.WordWrap;
+            editor.IsFoldingEnabled = s_current.CodeFolding;
+            editor.HighlightsCurrentStatement = s_current.HighlightCurrentStatement;
+            editor.LightColorScheme = s_current.EditorLightScheme;
+            editor.DarkColorScheme = s_current.EditorDarkScheme;
         });
     }
 

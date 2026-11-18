@@ -18,11 +18,9 @@ internal sealed partial class SqlEditorAutomationPeer(SqlEditor editor) : Framew
     public ITextRangeProvider[] GetSelection() =>
         Editor.Model.Selections.Select(s => (ITextRangeProvider)new EditorTextRange(this, s.Start, s.End)).ToArray();
 
-    public ITextRangeProvider[] GetVisibleRanges()
-    {
-        var (first, last) = Editor.VisibleLines();
-        return [new EditorTextRange(this, Editor.Document.GetLineStart(first), Editor.Document.GetLineEnd(last))];
-    }
+    // A fold between rows on screen splits the text shown into ranges.
+    public ITextRangeProvider[] GetVisibleRanges() =>
+        Editor.VisibleRanges().Select(range => (ITextRangeProvider)new EditorTextRange(this, range.Start, range.End)).ToArray();
 
     public ITextRangeProvider RangeFromChild(IRawElementProviderSimple childElement) => DocumentRange;
 

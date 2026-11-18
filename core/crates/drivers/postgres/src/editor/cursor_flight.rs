@@ -50,6 +50,19 @@ pub(crate) fn correct_position(error: DriverError) -> DriverError {
     }
 }
 
+// The server counts from the start of the statement it was sent, the run's caller from the start of the SQL it gave.
+pub(crate) fn rebase_position(error: DriverError, chars_before: usize) -> DriverError {
+    match error {
+        DriverError::Server(mut diagnostics) => {
+            diagnostics.position = diagnostics
+                .position
+                .and_then(|position| position.checked_add(u32::try_from(chars_before).ok()?));
+            DriverError::Server(diagnostics)
+        }
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use tablepro_core::{ServerCode, ServerDiagnostics};
@@ -71,6 +84,32 @@ mod tests {
             panic!("the error changed kind");
         };
         assert_eq!(diagnostics.position, Some(8));
+    }
+
+    #[test]
+    fn error_position_counts_from_the_start_of_the_script() {
+        // The é is one character and two bytes.
+        let script = "SELECT 'é'; SELECT 1 FROM missing";
+        let before = script.find("SELECT 1").expect("the second statement");
+
+        let rebased = rebase_position(syntax_error("42P01", 15), script[..before].chars().count());
+
+        let DriverError::Server(diagnostics) = rebased else {
+            panic!("the error changed kind");
+        };
+        assert_eq!(diagnostics.position, Some(27));
+        assert_eq!(script.chars().skip(26).collect::<String>(), "missing");
+    }
+
+    #[test]
+    fn an_error_without_a_position_keeps_none() {
+        let error = DriverError::reported(ServerDiagnostics::new(None, "no position"));
+
+        let DriverError::Server(diagnostics) = rebase_position(error, 10) else {
+            panic!("the error changed kind");
+        };
+        assert_eq!(diagnostics.position, None);
+        assert_eq!(rebase_position(DriverError::Cancelled, 10), DriverError::Cancelled);
     }
 
     #[test]
