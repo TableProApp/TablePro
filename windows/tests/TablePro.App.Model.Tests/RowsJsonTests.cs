@@ -234,6 +234,21 @@ public sealed class RowsJsonTests
     }
 
     [Fact]
+    public void AWideRowOfDeepDocumentsStaysNearTheCap()
+    {
+        var deep = new string('[', 100) + string.Join(',', Enumerable.Repeat("0", 49_000)) + new string(']', 100);
+        var names = Enumerable.Range(0, 128).Select(index => "c" + index.ToString(CultureInfo.InvariantCulture)).ToArray();
+        var data = new TextGridData(names, [[.. names.Select(_ => deep)]]);
+
+        var json = Write(data, null, [.. names.Select(name => Column(name, ValueKind.Json))], null);
+
+        Assert.InRange(json.Text.Length, 1, 3 * RowsJson.MaximumBytes);
+        using var parsed = JsonDocument.Parse(json.Text);
+        Assert.Equal(JsonValueKind.String, parsed.RootElement[0].GetProperty("c0").ValueKind);
+        Assert.Equal(deep, parsed.RootElement[0].GetProperty("c0").GetString());
+    }
+
+    [Fact]
     public void AValuePastTheCapIsReadOnlyThatFarAndGoesOutCut()
     {
         var huge = new string('x', RowsJson.MaximumNestedCharacters * 5);

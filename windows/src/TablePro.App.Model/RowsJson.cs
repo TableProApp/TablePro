@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -115,7 +116,9 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
                         var kind = row < dataRows
                             ? kinds?.Kind(row, sources[column]) ?? columnKinds[column]
                             : columnKinds[column];
-                        WriteCell(writer, reader, block, single, row, column, kind);
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var left = MaximumBytes - (writer.BytesCommitted + writer.BytesPending);
+                        WriteCell(writer, reader, block, single, row, column, kind, left);
                     }
 
                     writer.WriteEndObject();
@@ -209,8 +212,16 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
         return at;
     }
 
+    // Left is what the size cap still allows; past it a cell goes out as the text the grid shows, never nested.
     private static void WriteCell(
-        Utf8JsonWriter writer, IGridReader reader, CellBlock block, CellBlock single, int row, int column, ValueKind kind)
+        Utf8JsonWriter writer,
+        IGridReader reader,
+        CellBlock block,
+        CellBlock single,
+        int row,
+        int column,
+        ValueKind kind,
+        long left)
     {
         var cell = block.Get(row, column);
         // DEFAULT has no value until the server gives it one.
@@ -220,10 +231,16 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
             return;
         }
 
+        if (left <= 0)
+        {
+            WriteText(writer, cell.Text, kind == ValueKind.Json ? ValueKind.Text : kind, left);
+            return;
+        }
+
         // Binary keeps the grid's 0x text, cut where the grid cuts it, rather than its whole hex.
         if (kind == ValueKind.Bytes || (cell.State & (CellState.Truncated | CellState.Lossy)) == 0)
         {
-            WriteText(writer, cell.Text, kind);
+            WriteText(writer, cell.Text, kind, left);
             return;
         }
 
@@ -234,7 +251,7 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
             // Still cut, it goes out as the text it shows, its ellipsis included, never as a document.
             if (longer.IsTruncated || (longer.State & CellState.Lossy) == 0)
             {
-                WriteText(writer, longer.Text, longer.IsTruncated ? ValueKind.Text : kind);
+                WriteText(writer, longer.Text, longer.IsTruncated ? ValueKind.Text : kind, left);
                 return;
             }
         }
@@ -242,7 +259,7 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
         // Control characters show as spaces in a window, so a short value with one is read as it is stored.
         if (reader.ReadWhole(row, column) is { } whole)
         {
-            WriteText(writer, whole, kind);
+            WriteText(writer, whole, kind, left);
         }
         else
         {
@@ -250,7 +267,7 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
         }
     }
 
-    private static void WriteText(Utf8JsonWriter writer, ReadOnlySpan<char> text, ValueKind kind)
+    private static void WriteText(Utf8JsonWriter writer, ReadOnlySpan<char> text, ValueKind kind, long left)
     {
         switch (kind)
         {
@@ -266,7 +283,7 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
                 writer.WriteRawValue(text, skipInputValidation: true);
                 return;
             case ValueKind.Json when text.Length <= MaximumNestedCharacters:
-                if (TryWriteJson(writer, text))
+                if (TryWriteJson(writer, text, left))
                 {
                     return;
                 }
@@ -279,7 +296,8 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
         writer.WriteStringValue(text);
     }
 
-    private static bool TryWriteJson(Utf8JsonWriter writer, ReadOnlySpan<char> text)
+    // A document whose indented form would pass what is left goes out as its text: nesting can grow it many times over.
+    private static bool TryWriteJson(Utf8JsonWriter writer, ReadOnlySpan<char> text, long left)
     {
         JsonDocument document;
         try
@@ -293,10 +311,52 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
 
         using (document)
         {
+            if (IndentedSize(document.RootElement, writer.CurrentDepth, left) > left)
+            {
+                return false;
+            }
+
             // Keeps each member in its order, a repeated key and each number's digits.
             document.RootElement.WriteTo(writer);
         }
 
         return true;
+    }
+
+    // The bytes the element takes written indented at this depth, counted only until it passes the limit.
+    private static long IndentedSize(JsonElement element, int depth, long limit)
+    {
+        const int Indent = 2;
+        long size;
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                size = 2 + ((long)depth * Indent);
+                foreach (var member in element.EnumerateObject())
+                {
+                    size += ((depth + 1L) * Indent) + Encoding.UTF8.GetByteCount(member.Name) + 5
+                        + IndentedSize(member.Value, depth + 1, limit - size);
+                    if (size > limit)
+                    {
+                        return size;
+                    }
+                }
+
+                return size;
+            case JsonValueKind.Array:
+                size = 2 + ((long)depth * Indent);
+                foreach (var item in element.EnumerateArray())
+                {
+                    size += ((depth + 1L) * Indent) + 2 + IndentedSize(item, depth + 1, limit - size);
+                    if (size > limit)
+                    {
+                        return size;
+                    }
+                }
+
+                return size;
+            default:
+                return JsonMarshal.GetRawUtf8Value(element).Length;
+        }
     }
 }

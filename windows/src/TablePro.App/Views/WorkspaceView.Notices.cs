@@ -18,7 +18,8 @@ public sealed partial class WorkspaceView
         var duration = FinishNotice.Duration(end.Elapsed);
         var body = end switch
         {
-            { Failure: { } failure } => Strings.Format("NotifyFailed", duration, failure),
+            // The server's message stays in the app: it can quote the values it refused, and a notification shows anywhere.
+            { Failure: not null } => Strings.Format("NotifyFailed", duration),
             { Rows: 1 } => Strings.Format("NotifyRow", duration),
             { Rows: { } rows } => Strings.Format("NotifyRows", rows, duration),
             { RowsAffected: 1 } => Strings.Format("NotifyAffectedOne", duration),

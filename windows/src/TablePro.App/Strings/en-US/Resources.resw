@@ -4528,7 +4528,7 @@ New fingerprint: {2}</value>
     <value>Finished in {0}</value>
   </data>
   <data name="NotifyFailed" xml:space="preserve">
-    <value>Failed after {0}: {1}</value>
+    <value>Failed after {0}</value>
   </data>
   <data name="CellEditAsText" xml:space="preserve">
     <value>Edit as text</value>
