@@ -6,7 +6,9 @@
 # DuckDBStagingDatabase.swift against the shipped library, stages a table holding the values the
 # export used to change (binary, a zero-length blob, bit(8), BIGINT UNSIGNED above 2^63, a TIME
 # past 24 hours, an Oracle DATE with a time, text in an integer column, timestamps and a time
-# with a UTC offset), writes the file and reads it back.
+# with a UTC offset), writes the file and reads it back. It then stages what the memory limit
+# cannot hold: one value larger than the limit, rows too wide to spill, and a spill budget that
+# runs out, and checks that each still writes every row.
 #
 # Usage:
 #   scripts/probes/check-parquet-export-values.sh
@@ -177,8 +179,53 @@ enum ParquetValuesProbe {
         expect("Oracle timestamp with time zone", try cell("timezone('UTC', oracle_tz)", id: 1), "2026-10-06 20:52:20.000001")
         expect("Oracle timestamp with local time zone", try cell("timezone('UTC', oracle_ltz)", id: 1), "2026-10-06 08:22:20.000001")
 
+        try checkMemoryLimitFallbacks(in: file.deletingLastPathComponent(), reader: reader, expect: expect)
+
         if failures > 0 { exit(1) }
         print("PASS: the Parquet file holds every staged value")
+    }
+
+    private static func checkMemoryLimitFallbacks(
+        in directory: URL,
+        reader: Reader,
+        expect: (String, String, String) -> Void
+    ) throws {
+        let gibibyte: UInt64 = 1 << 30
+        func write(_ name: String, spillBudget: UInt64? = nil, batches: [[[PluginCellValue]]]) throws -> String {
+            let file = directory.appendingPathComponent("\(name).parquet")
+            let staging = try DuckDBStagingDatabase(memoryLimit: gibibyte, spillBudget: spillBudget)
+            try staging.createTable(columns: ["id", "body"], types: ["BIGINT", "VARCHAR"])
+            for batch in batches { try staging.insert(rows: batch) }
+            try staging.copyToParquet(fileURL: file, compression: "SNAPPY", rowGroupSize: 122_880)
+            return "read_parquet('\(file.path)')"
+        }
+
+        // Each value is 1.2 GiB, so neither staging it nor writing it fits under the 1 GiB limit.
+        let oversized = String(repeating: "abcdefgh", count: 160 << 20)
+        let large = try write("oversized", batches: [[[.text("1"), .text("first")]], [[.text("2"), .text(oversized)]], [[.text("3"), .text("last")]]])
+        expect("rows around a value over the limit", try reader.scalar("SELECT CAST(count(*) AS VARCHAR) FROM \(large)"), "3")
+        expect(
+            "a value over the limit",
+            try reader.scalar("SELECT CAST(strlen(body) AS VARCHAR) FROM \(large) WHERE id = 2"),
+            "\(oversized.utf8.count)")
+
+        // One row group of 3.2 GiB is held in memory while it is written.
+        let wideText = String(repeating: "abcdefgh", count: 8 << 10)
+        let wideRows: [[PluginCellValue]] = (0 ..< 50_000).map { [.text("\($0)"), .text("\($0)-\(wideText)")] }
+        let wide = try write("wide", batches: stride(from: 0, to: wideRows.count, by: 2_000).map {
+            Array(wideRows[$0 ..< min($0 + 2_000, wideRows.count)])
+        })
+        expect("wide rows", try reader.scalar("SELECT CAST(count(DISTINCT body) AS VARCHAR) FROM \(wide)"), "50000")
+
+        // A budget of zero lifts the limit at the first check, and the rows must not repeat or go missing.
+        let narrowBatches: [[[PluginCellValue]]] = (0 ..< 50).map { batch in
+            (0 ..< 2_000).map { [.text("\(batch * 2_000 + $0)"), .text(String(repeating: "x", count: 2_048))] }
+        }
+        let budgeted = try write("budget", spillBudget: 0, batches: narrowBatches)
+        expect(
+            "rows after the spill budget ran out",
+            try reader.scalar("SELECT CAST(count(DISTINCT id) AS VARCHAR) || '/' || CAST(count(*) AS VARCHAR) FROM \(budgeted)"),
+            "100000/100000")
     }
 }
 

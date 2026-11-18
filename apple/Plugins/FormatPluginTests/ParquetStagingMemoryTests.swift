@@ -28,65 +28,25 @@ struct ParquetStagingMemoryTests {
         #expect(ParquetStaging.memoryLimitSetting(bytes: limit) == "\(limitMiB)MiB")
     }
 
-    @Test("An export that fits under the limit runs once, with the limit")
-    func successRunsOnce() async throws {
-        var attempts: [UInt64?] = []
-
-        let result = try await ParquetStaging.retryingWithoutMemoryLimit(limit: 42) { limit in
-            attempts.append(limit)
-            return "written"
-        }
-
-        #expect(result == "written")
-        #expect(attempts == [42])
+    @Test("Spilling may take a quarter of the free disk")
+    func spillBudgetIsAQuarterOfTheFreeDisk() {
+        #expect(ParquetStaging.spillBudget(freeDiskBytes: 40 * Self.gibibyte) == 10 * Self.gibibyte)
+        #expect(ParquetStaging.spillBudget(freeDiskBytes: 0) == 0)
     }
 
     @Test(
-        "Running out of memory or losing the staging database runs the table again with no limit",
+        "The budget counts what is spilled and what is about to arrive",
         arguments: [
-            ParquetStaging.StagingError.memoryExhausted("could not allocate block"),
-            ParquetStaging.StagingError.stagingLost("failed to offload data block")
+            (spilled: UInt64(0), incoming: UInt64(10), budget: UInt64(100), isSpent: false),
+            (spilled: 89, incoming: 10, budget: 100, isSpent: false),
+            (spilled: 90, incoming: 10, budget: 100, isSpent: true),
+            (spilled: 100, incoming: 0, budget: 100, isSpent: true),
+            (spilled: 0, incoming: 500, budget: 100, isSpent: true),
+            (spilled: 0, incoming: 0, budget: 0, isSpent: true)
         ]
     )
-    func memoryFailureRetriesWithoutTheLimit(failure: ParquetStaging.StagingError) async throws {
-        var attempts: [UInt64?] = []
-
-        let result = try await ParquetStaging.retryingWithoutMemoryLimit(limit: 42) { limit in
-            attempts.append(limit)
-            if limit != nil { throw failure }
-            return "written"
-        }
-
-        #expect(result == "written")
-        #expect(attempts == [42, nil])
-    }
-
-    @Test("Any other failure is reported at once")
-    func otherFailureIsNotRetried() async {
-        var attempts: [UInt64?] = []
-
-        await #expect(throws: ParquetStaging.StagingError.self) {
-            try await ParquetStaging.retryingWithoutMemoryLimit(limit: 42) { limit -> String in
-                attempts.append(limit)
-                throw ParquetStaging.StagingError.queryFailed("syntax error")
-            }
-        }
-
-        #expect(attempts == [42])
-    }
-
-    @Test("A failure with no limit in place is the export's failure")
-    func secondFailureSurfaces() async {
-        var attempts: [UInt64?] = []
-
-        await #expect(throws: ParquetStaging.StagingError.self) {
-            try await ParquetStaging.retryingWithoutMemoryLimit(limit: 42) { limit -> String in
-                attempts.append(limit)
-                throw ParquetStaging.StagingError.memoryExhausted("still too large")
-            }
-        }
-
-        #expect(attempts == [42, nil])
+    func budgetCountsSpilledAndIncoming(spilled: UInt64, incoming: UInt64, budget: UInt64, isSpent: Bool) {
+        #expect(ParquetStaging.spillBudgetIsSpent(spilled: spilled, incoming: incoming, budget: budget) == isSpent)
     }
 
     @Test("Bytes in a text column keep DuckDB's blob spelling")

@@ -7,24 +7,6 @@ import Foundation
 
 // Kept free of DuckDB so a test bundle can compile it.
 enum ParquetStaging {
-    enum StagingError: LocalizedError {
-        case openFailed
-        case queryFailed(String)
-        // The database survives this one, so a statement can run again without the limit.
-        case memoryExhausted(String)
-        // DuckDB invalidates the database when it cannot spill during a checkpoint.
-        case stagingLost(String)
-
-        var errorDescription: String? {
-            switch self {
-            case .openFailed:
-                return String(localized: "Could not start the Parquet writer.")
-            case .queryFailed(let message), .memoryExhausted(let message), .stagingLost(let message):
-                return String(format: String(localized: "Parquet writer failed: %@"), message)
-            }
-        }
-    }
-
     static let textType = "VARCHAR"
     static let binaryType = "BLOB"
 
@@ -38,16 +20,13 @@ enum ParquetStaging {
         "\(bytes >> 20)MiB"
     }
 
-    // A value larger than the limit, or a disk too full to spill to, exports today, so it still has to.
-    static func retryingWithoutMemoryLimit<Result>(
-        limit: UInt64,
-        _ attempt: (UInt64?) async throws -> Result
-    ) async throws -> Result {
-        do {
-            return try await attempt(limit)
-        } catch StagingError.memoryExhausted, StagingError.stagingLost {
-            return try await attempt(nil)
-        }
+    // Past a quarter of the free disk, staging goes back to memory as if no limit was set.
+    static func spillBudget(freeDiskBytes: UInt64) -> UInt64 {
+        freeDiskBytes / 4
+    }
+
+    static func spillBudgetIsSpent(spilled: UInt64, incoming: UInt64, budget: UInt64) -> Bool {
+        spilled + incoming >= budget
     }
 
     static func stagedType(for targetType: String) -> String {

@@ -88,35 +88,9 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
         let declaredTypes = Dictionary(
             columnInfo.map { ($0.name, $0.typeNameForClassification) }, uniquingKeysWith: { first, _ in first })
 
-        let rowsBeforeTable = progress.processedRows
-        let limit = ParquetStaging.memoryLimit(physicalMemory: ProcessInfo.processInfo.physicalMemory)
-        return try await ParquetStaging.retryingWithoutMemoryLimit(limit: limit) { memoryLimit in
-            try await stageAndWrite(
-                table,
-                declaredTypes: declaredTypes,
-                memoryLimit: memoryLimit,
-                rowsBeforeTable: rowsBeforeTable,
-                options: options,
-                dataSource: dataSource,
-                to: fileURL,
-                progress: progress
-            )
-        }
-    }
-
-    private func stageAndWrite(
-        _ table: PluginExportTable,
-        declaredTypes: [String: String],
-        memoryLimit: UInt64?,
-        rowsBeforeTable: Int,
-        options: ParquetExportOptions,
-        dataSource: any PluginExportDataSource,
-        to fileURL: URL,
-        progress: PluginExportProgress
-    ) async throws -> [String] {
-        let staging = try DuckDBStagingDatabase(memoryLimit: memoryLimit)
+        let staging = try DuckDBStagingDatabase(
+            memoryLimit: ParquetStaging.memoryLimit(physicalMemory: ProcessInfo.processInfo.physicalMemory))
         var columns: [String] = []
-        var rowsRead = 0
         var batch: [[PluginCellValue]] = []
         var created = false
 
@@ -136,11 +110,7 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
                 guard created else { continue }
                 for row in rows {
                     batch.append(row)
-                    rowsRead += 1
-                    // A second read of the table counts only the rows the first one never reached.
-                    if rowsBeforeTable + rowsRead > progress.processedRows {
-                        progress.incrementRow()
-                    }
+                    progress.incrementRow()
                     guard batch.count >= Self.stagingBatchSize else { continue }
                     try staging.insert(rows: batch)
                     batch.removeAll(keepingCapacity: true)
