@@ -317,6 +317,10 @@ fn file_message(error: &DriverError) -> String {
             "No permission to open {path}.",
             &[("path", &path.display().to_string())],
         ),
+        DriverError::FileExists { path } => crate::i18n::gettext_f(
+            "A file is already at {path}, so it was left as it is. Use Choose… to open it, or New Database… to replace it.",
+            &[("path", &path.display().to_string())],
+        ),
         DriverError::NotADatabase { path } => crate::i18n::gettext_f(
             "{path} is not a database file.",
             &[("path", &path.display().to_string())],

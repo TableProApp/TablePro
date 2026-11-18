@@ -34,6 +34,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 | `RolledBack`, `RowGuardFailed`, `CommitOutcomeUnknown`, `PartiallyApplied` | What a failed save left in the database ([adding-drivers.md](adding-drivers.md#5-writes-and-the-writeledger)). |
 | `GuardUnsupported` | The engine reports no row count, so a guarded write cannot run. |
 | `FileNotFound`, `FileAccessDenied`, `NotADatabase`, `FileIo` | A file engine's file. |
+| `FileExists` | A new database file was asked for where a file already is, which is kept as it is. |
 | `Busy(BusyReason)` | Something was busy: `NoFreeConnection` (the server has no room for another connection, or the pool had no free slot in time) or `FileLocked` (another connection held the database file's lock past the lock timeout). |
 | `EditorSessionBusy` | The tab's session is already running a statement. |
 | `Config(ConfigError)` | The settings cannot be used: a bad host, port, path, TLS option, auth mode or missing database name. |

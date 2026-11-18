@@ -1,5 +1,5 @@
-//! What opening a path does: open what is there, create only when
-//! asked, and replace atomically.
+//! What opening a path does: open what is there, create only where
+//! nothing is, and replace atomically when asked.
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -26,13 +26,34 @@ async fn open_existing_missing_path_file_not_found_no_file_created() {
 }
 
 #[tokio::test]
-async fn create_new_replaces_existing_database_atomically() {
+async fn create_new_keeps_a_database_already_there() {
     let file = TestFile::new().await;
     let old = file.open().await;
     apply(old.as_ref(), &["CREATE TABLE old_table (a)"]).await.unwrap();
     old.close().await.unwrap();
 
-    let created = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable())
+    let created = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable()).await;
+
+    assert_eq!(
+        created.err(),
+        Some(DriverError::FileExists {
+            path: file.path.clone()
+        })
+    );
+    let kept = file.open().await;
+    let tables = query(kept.as_ref(), "SELECT name FROM sqlite_schema").await;
+    assert_eq!(tables.rows, vec![vec![Value::Text("old_table".to_owned())]]);
+    kept.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn replace_replaces_existing_database_atomically() {
+    let file = TestFile::new().await;
+    let old = file.open().await;
+    apply(old.as_ref(), &["CREATE TABLE old_table (a)"]).await.unwrap();
+    old.close().await.unwrap();
+
+    let created = connect(FileEndpoint::replace(file.path.clone()).unwrap(), writable())
         .await
         .unwrap();
 
@@ -44,7 +65,7 @@ async fn create_new_replaces_existing_database_atomically() {
 }
 
 #[tokio::test]
-async fn create_new_removes_stale_wal_and_shm_sidecars() {
+async fn replace_removes_stale_wal_and_shm_sidecars() {
     let file = TestFile::new().await;
     let sidecars: Vec<PathBuf> = ["-wal", "-shm", "-journal"]
         .iter()
@@ -54,7 +75,7 @@ async fn create_new_removes_stale_wal_and_shm_sidecars() {
         std::fs::write(sidecar, b"stale journal from the replaced database").unwrap();
     }
 
-    let created = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable())
+    let created = connect(FileEndpoint::replace(file.path.clone()).unwrap(), writable())
         .await
         .unwrap();
 
@@ -242,12 +263,12 @@ async fn a_file_duckdb_has_open_is_not_opened() {
 /// A new database over a file this process has open would pull it out
 /// from under the window using it.
 #[tokio::test]
-async fn create_new_refuses_a_file_this_process_holds() {
+async fn replace_refuses_a_file_this_process_holds() {
     let file = TestFile::new().await;
     let open = file.open().await;
     apply(open.as_ref(), &["CREATE TABLE kept (a)"]).await.unwrap();
 
-    let created = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable()).await;
+    let created = connect(FileEndpoint::replace(file.path.clone()).unwrap(), writable()).await;
 
     assert_eq!(
         created.err(),

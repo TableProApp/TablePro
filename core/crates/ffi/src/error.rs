@@ -248,6 +248,7 @@ fn file_path(error: &DriverError) -> Option<&Path> {
     match error {
         DriverError::FileNotFound { path }
         | DriverError::FileAccessDenied { path }
+        | DriverError::FileExists { path }
         | DriverError::NotADatabase { path }
         | DriverError::FileIo { path, .. } => Some(path),
         _ => None,

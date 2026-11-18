@@ -21,7 +21,9 @@ The connect reads `sqlite_version()` and counts `sqlite_schema` once, so a file 
 
 ### New databases
 
-`FileOpenMode::CreateNew` is what the New Database flow sends after the save dialog has asked about replacing a file. The driver writes an empty file next to the target with mode 0600, syncs it, renames it over the path, removes any `-wal`, `-shm` or `-journal` file left beside the old database (it would be replayed into the new one), and syncs the folder so the rename is durable. A reader sees the old file or the new one, never half of one. An existing file is replaced, not refused, unless this process has it open: the rename would pull it out from under the window or the DuckDB database using it, so that is `Busy(FileLocked)`.
+`FileOpenMode::CreateNew` makes the file only where nothing is: an empty file with mode 0600, opened with `create_new` (`O_EXCL`), so a file another program made after the app looked is never replaced. Anything at the path, a symbolic link included, is `FileExists`. The driver then removes any `-wal`, `-shm` or `-journal` file a deleted database left (it would be replayed into the new one), syncs the file and syncs the folder. A failure never removes the file, which may by then be another program's.
+
+`FileOpenMode::Replace` is what the New Database flow sends for a file the save dialog asked about replacing. The driver writes an empty file next to the target with mode 0600, syncs it, renames it over the path, removes the old database's sidecars and syncs the folder. A reader sees the old file or the new one, never half of one. A file this process has open is `Busy(FileLocked)`: the rename would pull it out from under the window or the DuckDB database using it.
 
 A reconnect uses `FileEndpoint::for_reopen`, which is always `OpenExisting`, so reconnecting never empties a database the user just created.
 

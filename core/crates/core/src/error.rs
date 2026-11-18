@@ -117,6 +117,10 @@ pub enum DriverError {
     #[error("no permission to open {}", .path.display())]
     FileAccessDenied { path: PathBuf },
 
+    // A new database is made only where nothing is, so a file another program made there is kept.
+    #[error("a file is already at {}", .path.display())]
+    FileExists { path: PathBuf },
+
     #[error("{} is not a database file", .path.display())]
     NotADatabase { path: PathBuf },
 
@@ -172,6 +176,7 @@ impl DriverError {
             Self::FileNotFound { .. } => "driver.file_not_found",
             Self::DatabaseNotFound { .. } => "driver.database_not_found",
             Self::FileAccessDenied { .. } => "driver.file_access_denied",
+            Self::FileExists { .. } => "driver.file_exists",
             Self::NotADatabase { .. } => "driver.not_a_database",
             Self::FileIo { .. } => "driver.file_io",
             Self::Busy(..) => "driver.busy",
@@ -217,6 +222,7 @@ impl DriverError {
             | Self::PartiallyApplied { .. } => ErrorCategory::WriteOutcome,
             Self::FileNotFound { .. }
             | Self::FileAccessDenied { .. }
+            | Self::FileExists { .. }
             | Self::NotADatabase { .. }
             | Self::FileIo { .. } => ErrorCategory::File,
             Self::Busy(_) | Self::EditorSessionBusy => ErrorCategory::Busy,
@@ -272,6 +278,17 @@ mod tests {
             full.to_string().contains(&std::io::ErrorKind::StorageFull.to_string()),
             "{full}"
         );
+    }
+
+    #[test]
+    fn a_file_already_there_is_a_file_problem_with_its_own_code() {
+        let there = DriverError::FileExists {
+            path: PathBuf::from("/data/app.sqlite3"),
+        };
+
+        assert_eq!(there.category(), ErrorCategory::File);
+        assert_eq!(there.code(), "driver.file_exists");
+        assert!(there.to_string().contains("/data/app.sqlite3"), "{there}");
     }
 
     #[test]

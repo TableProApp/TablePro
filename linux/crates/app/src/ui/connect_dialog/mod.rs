@@ -28,12 +28,14 @@ use secrecy::SecretString;
 use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
-    AiPolicy, AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, LocalSocket,
-    NetworkOption, NetworkOptions, QueryTimeout, SafeModeLevel, TlsConfig, TlsMode, TransportClass, WorkspaceSettings,
-    is_local_socket_host,
+    AiPolicy, AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, FileOpenMode,
+    LocalSocket, NetworkOption, NetworkOptions, QueryTimeout, SafeModeLevel, TlsConfig, TlsMode, TransportClass,
+    WorkspaceSettings, is_local_socket_host,
 };
 use tablepro_session::runtime::{ProcessHold, Tasks};
-use tablepro_session::{ConnectError, ConnectRequest, ConnectionMetadata, Connector, CredentialSource, PendingSave};
+use tablepro_session::{
+    ConnectError, ConnectRequest, ConnectionMetadata, Connector, CredentialSource, PendingSave, RequestTarget,
+};
 use tablepro_storage::{ConnectionTag, CredentialDemand, SavedConnection};
 use uuid::Uuid;
 
@@ -1236,6 +1238,11 @@ impl ConnectDialog {
         // A test entry is never saved, so it gets an id of its own.
         let mut request = request;
         request.metadata.id = Uuid::new_v4();
+        // A test of a new file makes it, so Connect then opens that file rather than refusing it.
+        let made = match &request.target {
+            RequestTarget::File(file) if file.mode() != FileOpenMode::OpenExisting => Some(file.clone()),
+            _ => None,
+        };
         let connector = services.connector.clone();
         let interaction = services.interaction.clone();
         let cancel = ticket.cancel().clone();
@@ -1269,7 +1276,14 @@ impl ConnectDialog {
             }
             dialog.stop_test();
             match outcome {
-                Ok(Ok(())) => dialog.show_toast(&crate::i18n::gettext("Connection works"), None),
+                Ok(Ok(())) => {
+                    if let Some(made) = made
+                        && imp.file_row.endpoint().as_ref() == Some(&made)
+                    {
+                        imp.file_row.set_endpoint(Some(made.for_reopen()));
+                    }
+                    dialog.show_toast(&crate::i18n::gettext("Connection works"), None);
+                }
                 Ok(Err(ConnectError::Cancelled)) => {}
                 Ok(Err(error)) => dialog.show_toast(
                     &crate::ui::error_text::connect_error_message(&error),

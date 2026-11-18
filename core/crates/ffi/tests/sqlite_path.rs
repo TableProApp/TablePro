@@ -288,6 +288,38 @@ async fn errors_carry_the_codes_the_app_words_them_by() {
     assert!(info.server.unwrap().message.contains("no such table"));
 }
 
+// The app found the path free, then another program made a file there before the create.
+#[tokio::test]
+async fn a_new_file_never_replaces_one_made_after_the_path_was_checked() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core();
+
+    for (engine, name) in [("sqlite", "made.sqlite"), ("duckdb", "made.duckdb")] {
+        let path = dir.path().join(name);
+        std::fs::write(&path, b"another program's data").unwrap();
+
+        let error = core
+            .open_file(
+                FileOpenRequest {
+                    path: path.display().to_string(),
+                    driver_id: Some(engine.to_owned()),
+                    read_only: false,
+                    create: true,
+                },
+                None,
+            )
+            .await
+            .unwrap_err();
+
+        let CoreError::Failed { info } = error else {
+            panic!("{engine}: {error:?}")
+        };
+        assert_eq!(info.codes, ["connect.driver", "driver.file_exists"], "{engine}");
+        assert!(info.path.unwrap().ends_with(name), "{engine}");
+        assert_eq!(std::fs::read(&path).unwrap(), b"another program's data", "{engine}");
+    }
+}
+
 #[tokio::test]
 async fn a_cancelled_open_is_a_cancel() {
     let dir = tempfile::tempdir().unwrap();

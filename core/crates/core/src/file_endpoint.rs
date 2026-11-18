@@ -17,6 +17,10 @@ impl FileEndpoint {
         Self::with_mode(path, FileOpenMode::CreateNew)
     }
 
+    pub fn replace(path: PathBuf) -> Result<Self, ConfigError> {
+        Self::with_mode(path, FileOpenMode::Replace)
+    }
+
     fn with_mode(path: PathBuf, mode: FileOpenMode) -> Result<Self, ConfigError> {
         if !path.is_absolute() {
             return Err(ConfigError::RelativePath);
@@ -70,13 +74,24 @@ mod tests {
 
         let created = FileEndpoint::create_new(absolute("/srv/new.sqlite")).unwrap();
         assert_eq!(created.mode(), FileOpenMode::CreateNew);
+
+        let replaced = FileEndpoint::replace(absolute("/srv/old.sqlite")).unwrap();
+        assert_eq!(replaced.mode(), FileOpenMode::Replace);
+        assert_eq!(
+            FileEndpoint::replace(PathBuf::from("old.sqlite")),
+            Err(ConfigError::RelativePath)
+        );
     }
 
     #[test]
     fn for_reopen_is_open_existing_for_the_same_path() {
-        let created = FileEndpoint::create_new(absolute("/srv/new.sqlite")).unwrap();
-        let reopened = created.for_reopen();
-        assert_eq!(reopened.path(), created.path());
-        assert_eq!(reopened.mode(), FileOpenMode::OpenExisting);
+        for created in [
+            FileEndpoint::create_new(absolute("/srv/new.sqlite")).unwrap(),
+            FileEndpoint::replace(absolute("/srv/new.sqlite")).unwrap(),
+        ] {
+            let reopened = created.for_reopen();
+            assert_eq!(reopened.path(), created.path());
+            assert_eq!(reopened.mode(), FileOpenMode::OpenExisting);
+        }
     }
 }

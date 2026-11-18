@@ -143,6 +143,7 @@ impl DatabaseFileRow {
         let endpoint = match mode {
             FileOpenMode::OpenExisting => FileEndpoint::open_existing(path),
             FileOpenMode::CreateNew => FileEndpoint::create_new(path),
+            FileOpenMode::Replace => FileEndpoint::replace(path),
         };
         match endpoint {
             Ok(endpoint) => self.set_endpoint(Some(endpoint)),
@@ -169,15 +170,27 @@ impl DatabaseFileRow {
         }
     }
 
-    /// The save chooser asks before replacing a file that exists, and
-    /// the driver then replaces it whole, so no second question here.
     async fn choose_new(&self) {
         let files = self.imp().files.borrow().clone();
         let dialog = database_file_dialog(&crate::i18n::gettext("New Database File"), files.as_ref());
         dialog.set_initial_name(Some(&new_file_name(files.as_ref())));
         let chosen = dialog.save_future(self.parent_window().as_ref()).await;
         if let Some(path) = chosen.ok().and_then(|file| file.path()) {
-            self.adopt_choice(path, FileOpenMode::CreateNew);
+            let mode = self.new_file_mode(&path).await;
+            self.adopt_choice(path, mode);
+        }
+    }
+
+    // GTK does not say whether the chooser asked to replace, so a file there when it closes is taken as asked about.
+    pub(super) async fn new_file_mode(&self, path: &Path) -> FileOpenMode {
+        let Some(tasks) = self.imp().tasks.get() else {
+            return FileOpenMode::CreateNew;
+        };
+        let probe = path.to_path_buf();
+        let taken = tasks.spawn_blocking_task(move || file_location::is_taken_blocking(&probe));
+        match taken.await {
+            Ok(true) => FileOpenMode::Replace,
+            _ => FileOpenMode::CreateNew,
         }
     }
 
@@ -194,7 +207,9 @@ fn subtitle(endpoint: Option<&FileEndpoint>, host_path: Option<&Path>) -> String
     };
     let shown = file_location::display_path(file.path(), host_path);
     match file.mode() {
-        FileOpenMode::CreateNew => crate::i18n::gettext_f("{path}, created when you connect", &[("path", &shown)]),
+        FileOpenMode::CreateNew | FileOpenMode::Replace => {
+            crate::i18n::gettext_f("{path}, created when you connect", &[("path", &shown)])
+        }
         FileOpenMode::OpenExisting => shown,
     }
 }
@@ -290,6 +305,11 @@ mod tests {
             "/srv/data/app.db"
         );
         assert_eq!(subtitle(Some(&created), None), "new.db, created when you connect");
+        let replaced = FileEndpoint::replace(PathBuf::from("/home/me/old.db")).expect("absolute");
+        assert_eq!(
+            subtitle(Some(&replaced), None),
+            "/home/me/old.db, created when you connect"
+        );
         assert_eq!(subtitle(Some(&local), None), "/home/me/app.db");
         assert_eq!(subtitle(None, None), "No file chosen");
     }

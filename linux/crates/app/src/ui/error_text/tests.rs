@@ -280,6 +280,16 @@ fn file_not_found_names_path() {
 }
 
 #[test]
+fn a_file_already_there_names_it_and_says_it_was_kept() {
+    let message = driver_message(&DriverError::FileExists {
+        path: PathBuf::from("/srv/new.db"),
+    });
+
+    assert!(message.contains("/srv/new.db"), "{message}");
+    assert!(message.contains("left as it is"), "{message}");
+}
+
+#[test]
 fn timeout_phase_login_vs_statement_differ() {
     let timeout = |phase| {
         driver_message(&DriverError::Timeout {
