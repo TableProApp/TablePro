@@ -154,6 +154,24 @@ public sealed class RowsJsonTests
     }
 
     [Fact]
+    public void ABooleanInAnySpellingTheCoreReadsIsWrittenAsOne()
+    {
+        var rows = new TextGridData(["b"], [["1"], ["t"], ["maybe"], ["2"]]);
+        var edits = new GridEdits(
+            new Dictionary<(int Row, int Column), PendingCell> { [(1, 0)] = new(PendingKind.Value, "off") },
+            new HashSet<int>(),
+            []);
+
+        var json = Write(new EditedGridData(rows, edits), null, [Column("b", ValueKind.Bool)], null);
+
+        using var parsed = JsonDocument.Parse(json.Text);
+        Assert.True(parsed.RootElement[0].GetProperty("b").GetBoolean());
+        Assert.False(parsed.RootElement[1].GetProperty("b").GetBoolean());
+        Assert.Equal("maybe", parsed.RootElement[2].GetProperty("b").GetString());
+        Assert.Equal(2, parsed.RootElement[3].GetProperty("b").GetInt32());
+    }
+
+    [Fact]
     public void ATableTabsLayoutAndPendingEditsAreWrittenAsTheGridShowsThem()
     {
         var rows = new TextGridData(["id", "name", "note"], [["1", "a", "x"], ["2", "b", "y"], ["3", "c", "z"]]);

@@ -273,11 +273,12 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
     {
         switch (kind)
         {
-            case ValueKind.Bool when text.Equals("true", StringComparison.OrdinalIgnoreCase):
-                writer.WriteBooleanValue(true);
+            // Every word the core reads as a boolean, and 0 or 1; another number a column of them holds stays a number.
+            case ValueKind.Bool when CellEditors.ReadBool(text.ToString()) is { } flag && (!IsJsonNumber(text) || text is "0" or "1"):
+                writer.WriteBooleanValue(flag);
                 return;
-            case ValueKind.Bool when text.Equals("false", StringComparison.OrdinalIgnoreCase):
-                writer.WriteBooleanValue(false);
+            case ValueKind.Bool when IsJsonNumber(text):
+                writer.WriteRawValue(text, skipInputValidation: true);
                 return;
             case ValueKind.Integer or ValueKind.UnsignedInteger or ValueKind.WideInteger or ValueKind.Float
                 or ValueKind.Decimal when IsJsonNumber(text):
