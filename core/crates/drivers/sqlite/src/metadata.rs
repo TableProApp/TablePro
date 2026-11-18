@@ -767,10 +767,11 @@ pub(crate) async fn table_info(connection: &mut SqlxConnection, table: &TableRef
     }
 }
 
-// The statement only reads the catalog, so the server refuses it only where dbstat is missing, as from a system SQLite
-// built without SQLITE_ENABLE_DBSTAT_VTAB, or where a table the user named dbstat hides it.
+// dbstat is missing from a system SQLite built without SQLITE_ENABLE_DBSTAT_VTAB, and a table or view the user named
+// dbstat hides it and lacks its columns. An interrupt, a lock or an I/O error still fails the read.
 fn cannot_count_pages(error: &sqlx::Error) -> bool {
-    matches!(error, sqlx::Error::Database(_))
+    matches!(error, sqlx::Error::Database(database)
+        if database.message() == "no such table: dbstat" || database.message().starts_with("no such column: d."))
 }
 
 pub(crate) async fn fetch_table_definition(
