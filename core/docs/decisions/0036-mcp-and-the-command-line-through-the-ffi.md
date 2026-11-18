@@ -17,13 +17,14 @@
 - Off Linux the server checks each connection's peer with `tablepro_net::loopback_peer_is_this_user`: on Windows the owning process from `GetExtendedTcpTable`, opened for a limited query, and the user SID in its token against the server's own. A process this user cannot open, or one gone before the check, is refused.
 - `tablepro-cli`'s `Host` gains `places()`, the app's names for its MCP settings and token store. Linux keeps Preferences > MCP and the keyring; the messages read the same there.
 - `completion powershell` writes clap_complete's PowerShell script.
-- The ffi package builds a `tablepro-cli` program beside the library: `command_line::main` classifies the arguments, runs a command with a Windows host, and hands files and links to `TablePro.exe` beside it. The host reads the data folder as the app resolves it, `mcpServerEnabled` and `mcpServerPort` from its `settings.json`, the token from Credential Manager under the core's own name, and checks the listener's user before the token is sent. The app runs while a process holds `runtime\app.lock` in the data folder shared with no one.
+- The ffi package builds a `tablepro-cli` program beside the library: `command_line::main` classifies the arguments, runs a command with a Windows host, and hands files and links to `TablePro.exe` beside it. The host reads the data folder as the app resolves it, `mcpServerEnabled` and `mcpServerPort` from its `settings.json` and the token from Credential Manager under the core's own name. The app writes its process id into `runtime\app.lock` in the data folder and holds the file open for writing, shared for reading; the command reads the app as running while no second writer can open it, and sends the token only to a listener that process owns, by `GetExtendedTcpTable`.
 
 ## Rationale
 
 - The server, the token store and the session lookup in the core keep the tools, the access checks and the write question the same on both apps; the Windows app only shows the question and opens a workspace.
 - Registering sessions in `connect_saved` needs no call from the app to keep a list in step: every saved connection the Windows app connects is a workspace's, and a closed one shuts down.
-- The user check matches Linux's boundary: the same user can read the token from Credential Manager anyway.
+- The server's user check matches Linux's boundary: the same user can read the token from Credential Manager anyway.
+- The command checks the process, not the user: a packaged and a development build keep different data folders but one token, and on a shared port the command of one would otherwise reach the other's connections.
 - A console program of its own, since a WinUI app is a GUI program: a terminal neither waits for one nor gives it its console. Built from the ffi package, it reads the token through the same Credential Manager code and ships through the same copy into the app's folder as the library.
 
 ## Consequences

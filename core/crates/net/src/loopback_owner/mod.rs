@@ -24,6 +24,15 @@ pub fn loopback_peer_is_this_user(peer: SocketAddr, local: SocketAddr) -> io::Re
     this_users(peer, local)
 }
 
+// The process at the other end of a loopback connection, by GetExtendedTcpTable; None when no row names it. Blocks.
+#[cfg(windows)]
+pub fn loopback_peer_process(peer: SocketAddr, local: SocketAddr) -> io::Result<Option<u32>> {
+    let (SocketAddr::V4(peer), SocketAddr::V4(local)) = (peer, local) else {
+        return Ok(None);
+    };
+    Ok(tcp_table::owner(&tcp_table::connections()?, peer, local))
+}
+
 #[cfg(target_os = "linux")]
 fn this_users(peer: SocketAddrV4, local: SocketAddrV4) -> io::Result<bool> {
     owned_here(peer, local)
@@ -31,8 +40,7 @@ fn this_users(peer: SocketAddrV4, local: SocketAddrV4) -> io::Result<bool> {
 
 #[cfg(windows)]
 fn this_users(peer: SocketAddrV4, local: SocketAddrV4) -> io::Result<bool> {
-    let table = tcp_table::connections()?;
-    match tcp_table::owner(&table, peer, local) {
+    match loopback_peer_process(SocketAddr::V4(peer), SocketAddr::V4(local))? {
         Some(pid) => token_user::runs_as_this_user(pid),
         None => Ok(false),
     }
@@ -100,6 +108,19 @@ mod tests {
         assert!(loopback_peer_is_this_user(client.peer_addr().unwrap(), client.local_addr().unwrap()).unwrap());
         let (_server, peer) = listener.accept().unwrap();
         assert!(loopback_peer_is_this_user(peer, listener.local_addr().unwrap()).unwrap());
+        drop(client);
+    }
+
+    // The command line's question on Windows: which process listens, before it accepts.
+    #[cfg(windows)]
+    #[test]
+    fn the_listening_end_names_this_process_before_it_accepts() {
+        let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let client = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+
+        let owner = loopback_peer_process(client.peer_addr().unwrap(), client.local_addr().unwrap()).unwrap();
+
+        assert_eq!(owner, Some(std::process::id()));
         drop(client);
     }
 

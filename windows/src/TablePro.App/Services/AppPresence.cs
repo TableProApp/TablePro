@@ -1,6 +1,9 @@
+using System.Globalization;
+using System.Text;
+
 namespace TablePro.App.Services;
 
-// The tablepro command reads the app as running while this file is held, in command_line/app_files.rs.
+// The tablepro command talks only to the process whose id this file holds (core/crates/ffi/src/command_line).
 internal sealed class AppPresence : IDisposable
 {
     private readonly FileStream? _held;
@@ -9,17 +12,21 @@ internal sealed class AppPresence : IDisposable
 
     public static string FileIn(string dataFolder) => Path.Combine(dataFolder, "runtime", "app.lock");
 
-    // A file another program holds leaves the command saying the app is not running; the app itself runs as before.
+    // Shared for reading only, so the command can read the id and tell a held file from one a crash left behind.
     public static AppPresence Hold(string dataFolder)
     {
         var path = FileIn(dataFolder);
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            return new AppPresence(new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None));
+            var held = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
+            held.Write(Encoding.ASCII.GetBytes(Environment.ProcessId.ToString(CultureInfo.InvariantCulture)));
+            held.Flush();
+            return new AppPresence(held);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
+            // Another program holding the file leaves the command saying the app is not running; the app runs as before.
             CrashLog.Write(exception);
             return new AppPresence(null);
         }

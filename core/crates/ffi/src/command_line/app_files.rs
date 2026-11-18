@@ -10,7 +10,7 @@ const ENABLED_KEY: &str = "mcpServerEnabled";
 const PORT_KEY: &str = "mcpServerPort";
 const LOWEST_PORT: u16 = 1024;
 
-// The app holds this file open, shared with no one, while its MCP server can run (App's AppPresence).
+// The app writes its process id here and holds the file open for writing while it runs (App's AppPresence).
 #[cfg(windows)]
 const PRESENCE_FILE: [&str; 2] = ["runtime", "app.lock"];
 
@@ -79,14 +79,20 @@ pub(crate) fn presence_file(folder: &Path) -> PathBuf {
         .fold(folder.to_path_buf(), |path, part| path.join(part))
 }
 
-// Held means another process opened the file and shares it with no one: Windows refuses this open.
+// The running app's process id. It shares the file for reading only, so Windows refuses a second writer while it runs.
 #[cfg(windows)]
-pub(crate) fn is_held(folder: &Path) -> bool {
+pub(crate) fn holder(folder: &Path) -> Option<u32> {
     const ERROR_SHARING_VIOLATION: i32 = 32;
-    match std::fs::File::open(presence_file(folder)) {
-        Ok(_) => false,
-        Err(error) => error.raw_os_error() == Some(ERROR_SHARING_VIOLATION),
+    let file = presence_file(folder);
+    match std::fs::OpenOptions::new().write(true).open(&file) {
+        Err(error) if error.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => {}
+        _ => return None,
     }
+    parse_holder(&std::fs::read_to_string(file).ok()?)
+}
+
+pub(crate) fn parse_holder(text: &str) -> Option<u32> {
+    text.trim().parse().ok().filter(|pid| *pid != 0)
 }
 
 // The informational version .NET writes as the product version, without the commit after `+`.
@@ -190,26 +196,40 @@ mod tests {
         assert_eq!(app_version(None), "0.0.0");
     }
 
+    #[test]
+    fn the_holder_is_a_process_id() {
+        assert_eq!(parse_holder("4242"), Some(4242));
+        assert_eq!(parse_holder(" 4242\r\n"), Some(4242));
+        assert_eq!(parse_holder(""), None);
+        assert_eq!(parse_holder("0"), None);
+        assert_eq!(parse_holder("tablepro"), None);
+    }
+
+    // As the app holds it: FileAccess.ReadWrite with FileShare.Read.
     #[cfg(windows)]
     #[test]
-    fn a_folder_is_held_only_while_a_process_keeps_the_file_to_itself() {
+    fn a_folder_has_a_holder_only_while_a_process_keeps_the_file_open_for_writing() {
+        use std::io::Write;
         use std::os::windows::fs::OpenOptionsExt;
 
+        const FILE_SHARE_READ: u32 = 1;
         let folder = tempfile::tempdir().unwrap();
-        assert!(!is_held(folder.path()));
+        assert_eq!(holder(folder.path()), None);
         let file = presence_file(folder.path());
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
 
-        let holder = std::fs::OpenOptions::new()
+        let mut held = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .truncate(false)
-            .share_mode(0)
+            .truncate(true)
+            .share_mode(FILE_SHARE_READ)
             .open(&file)
             .unwrap();
-        assert!(is_held(folder.path()));
-        drop(holder);
-        assert!(!is_held(folder.path()));
+        write!(held, "4242").unwrap();
+        held.flush().unwrap();
+        assert_eq!(holder(folder.path()), Some(4242));
+        drop(held);
+        assert_eq!(holder(folder.path()), None);
     }
 }

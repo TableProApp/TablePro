@@ -31,6 +31,11 @@ impl WindowsHost {
         }
     }
 
+    // Read each time: the app can quit or start between the command's checks.
+    fn app(&self) -> Option<u32> {
+        self.folder.as_deref().and_then(app_files::holder)
+    }
+
     fn settings(&self) -> Result<McpSettings, HostError> {
         self.settings
             .get_or_init(|| {
@@ -51,7 +56,7 @@ impl Host for WindowsHost {
     }
 
     fn app_running(&self) -> bool {
-        self.folder.as_deref().is_some_and(app_files::is_held)
+        self.app().is_some()
     }
 
     fn server_enabled(&self) -> Result<bool, HostError> {
@@ -62,12 +67,18 @@ impl Host for WindowsHost {
         Ok(self.settings()?.port)
     }
 
-    // This user's is enough: the same user can already read the token from Credential Manager.
+    // The app of this data folder alone: another one, as a packaged and a development build, shares the token.
     fn verify_peer(&self, peer: SocketAddr, local: SocketAddr) -> Result<(), HostError> {
         let port = peer.port();
-        match tablepro_net::loopback_peer_is_this_user(peer, local) {
-            Ok(true) => Ok(()),
-            Ok(false) => Err(HostError::ForeignServer { port }),
+        let Some(app) = self.app() else {
+            return Err(HostError::Unverified {
+                port,
+                reason: "TablePro no longer holds its data folder".to_owned(),
+            });
+        };
+        match tablepro_net::loopback_peer_process(peer, local) {
+            Ok(Some(owner)) if owner == app => Ok(()),
+            Ok(_) => Err(HostError::ForeignServer { port }),
             Err(error) => Err(HostError::Unverified {
                 port,
                 reason: error.to_string(),
@@ -164,19 +175,57 @@ mod tests {
 
     use super::*;
 
+    fn holding(folder: &std::path::Path, pid: u32) -> std::fs::File {
+        use std::io::Write;
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let file = folder.join("runtime").join("app.lock");
+        std::fs::create_dir_all(file.parent().expect("a folder")).expect("the runtime folder");
+        let mut held = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .share_mode(1)
+            .open(file)
+            .expect("the presence file");
+        write!(held, "{pid}").expect("the process id");
+        held
+    }
+
+    fn host(folder: &std::path::Path) -> WindowsHost {
+        WindowsHost {
+            folder: Some(folder.to_path_buf()),
+            version: "test".to_owned(),
+            settings: Arc::default(),
+        }
+    }
+
     #[test]
-    fn a_listener_this_user_runs_is_verified_before_it_accepts() {
+    fn only_the_listener_of_the_app_holding_the_folder_is_verified() {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("a free port");
         let stream = TcpStream::connect(listener.local_addr().expect("an address")).expect("a connection");
-
-        assert!(
-            WindowsHost::current()
-                .verify_peer(
-                    stream.peer_addr().expect("the peer"),
-                    stream.local_addr().expect("the local address")
-                )
-                .is_ok()
+        let (peer, local) = (
+            stream.peer_addr().expect("the peer"),
+            stream.local_addr().expect("the local address"),
         );
+        let ours = tempfile::tempdir().expect("a folder");
+        let other = tempfile::tempdir().expect("a folder");
+        let _ours = holding(ours.path(), std::process::id());
+        let _other = holding(other.path(), std::process::id() + 1);
+        let stopped = tempfile::tempdir().expect("a folder");
+
+        assert_eq!(host(ours.path()).verify_peer(peer, local), Ok(()));
+        assert_eq!(
+            host(other.path()).verify_peer(peer, local),
+            Err(HostError::ForeignServer { port: peer.port() })
+        );
+        assert!(matches!(
+            host(stopped.path()).verify_peer(peer, local),
+            Err(HostError::Unverified { .. })
+        ));
+        assert!(host(ours.path()).app_running());
+        assert!(!host(stopped.path()).app_running());
     }
 
     #[test]
