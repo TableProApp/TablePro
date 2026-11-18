@@ -351,19 +351,15 @@ struct HistorySettings: Codable, Equatable {
 
 struct TabSettings: Codable, Equatable {
     var enablePreviewTabs: Bool = true
-    // `scroll` is the system's answer: every tab bar Apple ships keeps one row and scrolls it.
-    var overflow: EditorTabStripOverflow = .scroll
     static let `default` = TabSettings()
 
-    init(enablePreviewTabs: Bool = true, overflow: EditorTabStripOverflow = .scroll) {
+    init(enablePreviewTabs: Bool = true) {
         self.enablePreviewTabs = enablePreviewTabs
-        self.overflow = overflow
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let fallback = Self.default
         enablePreviewTabs = container.decodeSetting(.enablePreviewTabs, default: fallback.enablePreviewTabs)
-        overflow = container.decodeSetting(.overflow, default: fallback.overflow)
     }
 }

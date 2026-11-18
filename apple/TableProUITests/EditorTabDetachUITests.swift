@@ -3,6 +3,30 @@ import XCTest
 // Once one connection is hosted by two windows, the tab must not be lost from both, and the shared
 // session must not go down with whichever window closes first.
 final class EditorTabDetachUITests: UITestCase {
+    func testDraggingATabOutOfTheStripOpensItInItsOwnWindow() throws {
+        let tables = ["album", "artist", "genre"]
+        let launch = try launchWithFixture([ConnectionSeed(tabs: tables.map { SeededTab.table($0) })])
+        let app = launch.app
+        let window = launch.window
+
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) { self.editorTabTitles(in: window) == tables },
+            "The strip must restore a tab per table, got \(editorTabTitles(in: window))"
+        )
+        let dragged = editorTabs(titled: "genre", in: window).firstMatch
+        XCTAssertTrue(waitUntilHittable(dragged, timeout: 20), "The dragged tab must be hittable")
+
+        dragged.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .click(forDuration: 0.02, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)))
+
+        let windows = app.children(matching: .window)
+        XCTAssertTrue(waitForPredicate(timeout: 20) { windows.count == 2 }, "The drop must open a second window")
+        XCTAssertTrue(
+            windows.matching(NSPredicate(format: "title CONTAINS %@", "genre")).firstMatch.waitToExist(timeout: 20),
+            "A window must be titled for the dragged tab"
+        )
+    }
+
     func testADetachedTabWorksInItsOwnWindowAndTheOriginalKeepsWorking() throws {
         let tables = ["album", "artist", "genre"]
         let launch = try launchWithFixture([ConnectionSeed(tabs: tables.map { SeededTab.table($0) })])

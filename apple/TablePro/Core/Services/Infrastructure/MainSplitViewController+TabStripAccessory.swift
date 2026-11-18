@@ -5,14 +5,9 @@
 
 import AppKit
 import Combine
-import SwiftUI
 
 internal extension MainSplitViewController {
-    /// Installed from `TabWindowController.init`, right after the content view controller is
-    /// assigned, rather than from `viewWillAppear`. A window that joins a tab group without ever
-    /// being activated never runs its appearance lifecycle, so a band added there would be missing
-    /// from every background tab until the user clicked it. That is the same shape as the blank
-    /// window title CLAUDE.md records, and the fix is the same: do it at construction.
+    // At construction, because a window that joins a tab group without activating never runs its appearance lifecycle.
     func installTabStripAccessory(on window: NSWindow) {
         guard !window.titlebarAccessoryViewControllers.contains(where: { $0 === tabStripAccessory }) else { return }
         tabStripAccessory.setBandVisible(false)
@@ -20,10 +15,18 @@ internal extension MainSplitViewController {
         showSelectedTabStrip()
     }
 
-    /// The strip is built per connection like the other three panes, so a connection the user is
-    /// not looking at keeps its own strip rather than rebuilding it on every switch.
     func refreshTabStripPane(of workspace: ConnectionWorkspace) {
-        workspace.panes.tabStrip.rootView = buildTabStripView(for: workspace)
+        let pane = workspace.panes.tabStrip
+        guard let sessionState = workspace.sessionState else {
+            pane.unbind()
+            return
+        }
+        pane.bind(
+            tabManager: sessionState.tabManager,
+            execution: TabExecutionObservation(owner: sessionState.coordinator),
+            target: workspace.connection.flatMap { PluginManager.shared.containerSwitchTarget(for: $0.type) },
+            commands: makeTabCommands(for: workspace, sessionState: sessionState)
+        )
     }
 
     func showSelectedTabStrip() {
@@ -31,12 +34,7 @@ internal extension MainSplitViewController {
         applyTabStripVisibility()
     }
 
-    /// Re-arms on every call, which is what makes this safe to drive from anywhere. The first arm
-    /// a window makes is worthless on its own: it runs from `TabWindowController.init`, before the
-    /// connection has a session, so the tracking closure reads through a nil `sessionState` and
-    /// registers a dependency on nothing. Only the call that follows the session coming up sees a
-    /// real `tabManager` to observe, and there is no single moment in the lifecycle that is
-    /// reliably that call.
+    // Re-arms on every call: the first arm runs from `TabWindowController.init`, before the connection has a session.
     func applyTabStripVisibility() {
         let tabCount = workspaces.selected?.sessionState?.tabManager.visibleTabs.count ?? 0
         tabStripAccessory.setBandVisible(
@@ -49,16 +47,7 @@ internal extension MainSplitViewController {
         armTabStripObservation()
     }
 
-    /// `withObservationTracking` fires once per registration and cannot be cancelled, so something
-    /// has to re-register and nothing may register twice. `applyTabStripVisibility()` runs on every
-    /// phase change and every workspace switch, which would otherwise leave a live arm behind each
-    /// time and wake all of them on the next tab change. An arm is therefore made only when there
-    /// is none, or when the connection on screen changed and the live one is watching the previous
-    /// connection's tab manager: `workspaces.selected` is not itself observable, so a switch can
-    /// never reach the closure on its own.
-    ///
-    /// The generation is still carried, because an arm that has already fired cannot be recalled
-    /// and must fail its own guard rather than act on a window that has moved on.
+    // The generation is carried because an arm that already fired cannot be recalled and must fail its own guard.
     private func armTabStripObservation() {
         let manager = workspaces.selected?.sessionState?.tabManager
         let identity = manager.map(ObjectIdentifier.init)
@@ -69,10 +58,6 @@ internal extension MainSplitViewController {
         tabStripObservedManager = identity
         let generation = tabStripObservationGeneration
 
-        /// `onMainActorChange` already delivers a turn late, which is what the count needs:
-        /// the publisher fires before the change lands. It also wakes for any tab mutation
-        /// rather than only a count change, so the count is compared here. The count is the
-        /// strip's, which moving to another entry changes without a tab opening or closing.
         guard let manager = workspaces.selected?.sessionState?.tabManager else { return }
         var lastCount = manager.visibleTabs.count
         tabStripObservation = manager.onMainActorChange { [weak self] in
@@ -85,44 +70,31 @@ internal extension MainSplitViewController {
         }
     }
 
-    /// `commandActions` is read at click time rather than captured, because it only exists once
-    /// the detail pane has appeared and this strip is built alongside that pane, not after it.
-    /// The workspace is held weakly: it owns the hosting controller these closures live in.
-    ///
-    /// The command set is handed to the pane's interaction object rather than to the SwiftUI view,
-    /// because the view is no longer what receives a press. AppKit owns the pointer over the
-    /// strip and reaches the app through exactly these closures.
-    private func buildTabStripView(for workspace: ConnectionWorkspace) -> AnyView {
-        guard let sessionState = workspace.sessionState else { return AnyView(Color.clear) }
-        let interaction = workspace.panes.tabStrip.interaction
-        configure(interaction, for: workspace, sessionState: sessionState)
-        return AnyView(
-            EditorTabStrip(
-                tabManager: sessionState.tabManager,
-                interaction: interaction,
-                containerTarget: workspace.connection.flatMap {
-                    PluginManager.shared.containerSwitchTarget(for: $0.type)
-                },
-                execution: TabExecutionObservation(owner: sessionState.coordinator),
-                onNewTab: { [weak workspace] in
-                    workspace?.sessionState?.coordinator.commandActions?.newTab()
-                }
-            )
-        )
+    private static func tabStripContains(screenPoint: NSPoint) -> Bool {
+        let number = NSWindow.windowNumber(at: screenPoint, belowWindowWithWindowNumber: 0)
+        guard let window = NSApp.window(withWindowNumber: number),
+              let split = window.contentViewController as? MainSplitViewController,
+              !split.tabStripAccessory.isHidden
+        else { return false }
+        let band = split.tabStripAccessory.view
+        return window.convertToScreen(band.convert(band.bounds, to: nil)).contains(screenPoint)
     }
 
-    private func configure(
-        _ interaction: EditorTabStripInteraction,
+    // The workspace is held weakly: it owns the pane these closures live in.
+    private func makeTabCommands(
         for workspace: ConnectionWorkspace,
         sessionState: SessionStateFactory.SessionState
-    ) {
+    ) -> EditorTabCommands {
         let manager = sessionState.tabManager
-        let target = workspace.connection.flatMap { PluginManager.shared.containerSwitchTarget(for: $0.type) }
-        interaction.commands = EditorTabCommands(
+        return EditorTabCommands(
+            connectionId: workspace.connectionId,
             activate: { [weak manager] id in
                 guard let manager, manager.selectedTabId != id else { return }
                 TabSwitchTracer.shared.requestSwitch(.tabStrip, to: id)
                 manager.selectedTabId = id
+            },
+            newTab: { [weak workspace] in
+                workspace?.sessionState?.coordinator.commandActions?.newTab()
             },
             keepOpen: { [weak manager] id in
                 manager?.promotePreviewTab(id: id)
@@ -151,9 +123,9 @@ internal extension MainSplitViewController {
             moveTab: { [weak manager] id, destination in manager?.moveTab(id: id, to: destination) },
             canMove: { [weak manager] id, offset in manager?.canMoveTab(id: id, by: offset) ?? false },
             moveBy: { [weak manager] id, offset in manager?.moveTab(id: id, by: offset) },
-            tearOff: { [weak workspace] id in
+            tearOff: { [weak workspace] id, dropPoint in
                 guard let connectionId = workspace?.connectionId else { return }
-                WindowManager.shared.openTabInNewWindow(connectionId: connectionId, tabId: id)
+                WindowManager.shared.openTabInNewWindow(connectionId: connectionId, tabId: id, droppedAt: dropPoint)
             },
             canTearOff: { [weak workspace] id in
                 guard let workspace,
@@ -171,8 +143,12 @@ internal extension MainSplitViewController {
                         .reportedStatus.isConnected == true
                 )
             },
-            /// The selection is left alone: selecting first would judge the tab against the grid edits
-            /// of the tab it replaced, which the change manager still holds until the switch lands.
+            receiveTab: { [weak workspace] id, index in
+                guard let workspace else { return false }
+                return WindowManager.shared.moveTab(id, into: workspace, at: index)
+            },
+            isOverTabStrip: { Self.tabStripContains(screenPoint: $0) },
+            // The selection is left alone: selecting first would judge the tab against the grid edits it replaced.
             moveToConnection: { [weak self] id in
                 self?.presentMoveTabPicker(tabId: id)
             },
@@ -181,27 +157,7 @@ internal extension MainSplitViewController {
             },
             canMoveToConnection: { [weak workspace] id in
                 workspace?.sessionState?.coordinator.canMoveTabToConnection(id) ?? false
-            },
-            /// The resolver's description, not the drawn title: a table tab carries its database
-            /// and schema there even when the short title is unique, and the tooltip is where a
-            /// truncated or duplicated name is told apart.
-            tooltip: { [weak manager] id in
-                guard let manager, let tab = manager.tabs.first(where: { $0.id == id }) else { return "" }
-                let description = EditorTabLabelResolver.resolve(tabs: manager.visibleTabs, target: target)[id]?
-                    .description ?? tab.title
-                guard tab.isPreview else { return description }
-                return String(
-                    format: String(localized: "%@\nPreview tab. Double-click to keep it open."),
-                    description
-                )
             }
-        )
-        /// Seeded here, where the strip is built, rather than from one of its view modifiers. See
-        /// `EditorTabStripInteraction.adopt(tabIds:overflow:)`; the strip's own `onChange` carries
-        /// every later change.
-        interaction.adopt(
-            tabIds: manager.visibleTabs.map(\.id),
-            overflow: AppSettingsManager.shared.tabs.overflow
         )
     }
 }

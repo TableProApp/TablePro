@@ -2,43 +2,29 @@
 //  EditorTabStripSurfacesTests.swift
 //  TableProTests
 //
-//  What these pin is the one property the selection rests on: that it can never resolve at or
-//  below the track, over the system window or a themed one. It used to be a pair of Liquid Glass
-//  tints, whose step was a function of the wallpaper behind the window and inverted outright on
-//  macOS 27 (#2439).
-//
 
 import AppKit
 import Foundation
-import SwiftUI
 @testable import TablePro
 import Testing
 
 @MainActor
 struct EditorTabStripSurfacesTests {
-    /// The two appearances that can actually be instantiated, and no more.
-    ///
-    /// This list used to carry `.accessibilityHighContrastAqua` and its dark twin as well, which
-    /// covered nothing: those constants carry the raw values "NSAppearanceNameAccessibilityAqua"
-    /// and "NSAppearanceNameAccessibilityDarkAqua", and `NSAppearance(named:)` resolves both back
-    /// to plain Aqua and DarkAqua, which `NSAppearance.currentDrawing().name` confirms from inside
-    /// the block. So the suite ran the same two appearances twice and reported four.
-    ///
-    /// Spelling the real names out does not rescue it either: "NSAppearanceNameAccessibilityHigh-
-    /// ContrastAqua" instantiates in a plain process and returns nil in the test host, so the
-    /// cases fail rather than cover anything. Increase Contrast is a system setting, not an
-    /// appearance to borrow, which is why the app reads it through `colorSchemeContrast` and why
-    /// `solidSurfacesAnswerBothSettings` below is where that contract is pinned.
-    nonisolated private static let appearances: [NSAppearance.Name] = [
-        .aqua,
-        .darkAqua,
+    nonisolated private static let appearances: [NSAppearance.Name] = [.aqua, .darkAqua]
+
+    // Window colors a theme draws behind the strip: Solarized Light, GitHub Light, plain white and Dracula.
+    nonisolated private static let themedBackdrops: [(NSAppearance.Name, String)] = [
+        (.aqua, "#FDF6E3"),
+        (.aqua, "#F6F8FA"),
+        (.aqua, "#FFFFFF"),
+        (.darkAqua, "#282A36"),
     ]
 
-    /// `NSColor.relativeLuminance` drops the alpha component, so a translucent fill has to be laid
-    /// over what it covers before it can be measured at all. `controlColor` is white at a quarter
-    /// alpha in dark, which reads as pure white until it is composited.
-    private func composite(_ source: Color, over destination: NSColor) -> NSColor {
-        guard let top = NSColor(source).usingColorSpace(.sRGB),
+    private static let systemTrack = EditorTabStripPalette.trackColor(overThemedBackdrop: false)
+
+    // `relativeLuminance` drops alpha, so a translucent fill is laid over what it covers before it is measured.
+    private func composite(_ source: NSColor, over destination: NSColor) -> NSColor {
+        guard let top = source.usingColorSpace(.sRGB),
               let bottom = destination.usingColorSpace(.sRGB)
         else { return destination }
         let alpha = top.alphaComponent
@@ -56,123 +42,64 @@ struct EditorTabStripSurfacesTests {
         return (max(first, second) + 0.05) / (min(first, second) + 0.05)
     }
 
-    /// The track over a window that keeps its system color.
-    private static let systemTrack = EditorTabStripPalette.trackFill(overThemedBackdrop: false)
-
-    /// Window colors a theme draws behind the strip: Solarized Light, GitHub Light, plain white and Dracula.
-    nonisolated private static let themedBackdrops: [(NSAppearance.Name, String)] = [
-        (.aqua, "#FDF6E3"),
-        (.aqua, "#F6F8FA"),
-        (.aqua, "#FFFFFF"),
-        (.darkAqua, "#282A36"),
-    ]
-
     private func resolve<T>(_ appearance: NSAppearance.Name, _ body: () -> T) -> T? {
         var result: T?
         NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance { result = body() }
         return result
     }
 
-    // MARK: - The opaque surfaces
-
-    /// The bug this suite exists for. `selectedFill` used to be the track's own
-    /// `unemphasizedSelectedContentBackgroundColor` whenever the window was not in front, and both
-    /// resolve opaque, so the selected capsule and the track it sat in were the same pixel.
-    @Test(
-        "The opaque selected fill is never the track's own colour",
-        arguments: EditorTabStripSurfacesTests.appearances
-    )
-    func selectedFillIsNotTheTrackFill(appearance: NSAppearance.Name) {
+    @Test("The selected fill is never the track's own colour", arguments: EditorTabStripSurfacesTests.appearances)
+    func selectedFillIsNotTheTrackFill(appearance: NSAppearance.Name) throws {
         let pair = resolve(appearance) {
             (
-                NSColor(Self.systemTrack).usingColorSpace(.sRGB),
-                NSColor(EditorTabStripPalette.selectedFill).usingColorSpace(.sRGB)
+                Self.systemTrack.usingColorSpace(.sRGB),
+                EditorTabStripPalette.selectedColor.usingColorSpace(.sRGB)
             )
         }
-        guard let track = pair?.0, let selected = pair?.1 else {
-            Issue.record("The strip's opaque fills did not resolve")
-            return
-        }
-        /// Compared on resolved components rather than with `==`, which answers how a colour was
-        /// built rather than what it draws.
-        #expect(
-            track.redComponent != selected.redComponent
-                || track.alphaComponent != selected.alphaComponent
-        )
+        let track = try #require(pair?.0)
+        let selected = try #require(pair?.1)
+        #expect(track.redComponent != selected.redComponent || track.alphaComponent != selected.alphaComponent)
     }
 
-    @Test(
-        "The opaque selected tab stands clear of the track it sits in",
-        arguments: EditorTabStripSurfacesTests.appearances
-    )
-    func opaqueSelectionStandsClearOfTheTrack(appearance: NSAppearance.Name) {
+    @Test("The selected tab stands clear of the track it sits in", arguments: EditorTabStripSurfacesTests.appearances)
+    func selectionStandsClearOfTheTrack(appearance: NSAppearance.Name) throws {
         let measured = resolve(appearance) { () -> CGFloat in
             let track = self.composite(Self.systemTrack, over: .windowBackgroundColor)
-            let selected = self.composite(EditorTabStripPalette.selectedFill, over: track)
+            let selected = self.composite(EditorTabStripPalette.selectedColor, over: track)
             return self.contrast(selected, track)
         }
-        guard let measured else {
-            Issue.record("The strip's opaque fills did not resolve")
-            return
-        }
-        /// The system's own tab bar measures 1.161 to 1 in light and 1.098 to 1 in dark. The opaque
-        /// path carries far more than that, 1.371 and 1.991, because it is what the strip falls
-        /// back to when the user has asked for Increase Contrast or Reduce Transparency.
-        #expect(measured > 1.25)
+        #expect(try #require(measured) > 1.25)
     }
 
-    // MARK: - The selection can never invert
-
-    /// The defect behind #2439, expressed as the property that prevents it. In light appearance
-    /// `controlColor` is opaque white, so it is the ceiling and no track can rise above it; in
-    /// dark it is white at alpha 0.247, so it composites *over* whatever the track resolved to and
-    /// always lifts. Either way the selected tab is lighter than its track, by construction rather
-    /// than by a tuned distance. The Liquid Glass tints it replaced had neither guarantee.
-    @Test(
-        "The selected fill can never resolve at or below the track",
-        arguments: EditorTabStripSurfacesTests.appearances
-    )
-    func selectionNeverInverts(appearance: NSAppearance.Name) {
+    @Test("The selected fill can never resolve at or below the track", arguments: EditorTabStripSurfacesTests.appearances)
+    func selectionNeverInverts(appearance: NSAppearance.Name) throws {
         let measured = resolve(appearance) { () -> (CGFloat, CGFloat) in
             let track = self.composite(Self.systemTrack, over: .windowBackgroundColor)
-            let selected = self.composite(EditorTabStripPalette.selectedFill, over: track)
+            let selected = self.composite(EditorTabStripPalette.selectedColor, over: track)
             return (track.relativeLuminance, selected.relativeLuminance)
         }
-        guard let measured else {
-            Issue.record("The strip's fills did not resolve")
-            return
-        }
-        #expect(measured.1 > measured.0)
+        let values = try #require(measured)
+        #expect(values.1 > values.0)
     }
 
-    /// A hovered tab has to stay a hint. The system darkens one in light appearance rather than
-    /// lightening it, so hover and selection travel in opposite directions and the only thing
-    /// worth pinning is that hover never travels further.
     @Test(
         "A hovered tab never moves further from the track than the selected one",
         arguments: EditorTabStripSurfacesTests.appearances
     )
-    func hoverNeverOutreadsTheSelection(appearance: NSAppearance.Name) {
+    func hoverNeverOutreadsTheSelection(appearance: NSAppearance.Name) throws {
         let measured = resolve(appearance) { () -> (CGFloat, CGFloat) in
             let track = self.composite(Self.systemTrack, over: .windowBackgroundColor)
-            let hovered = self.composite(EditorTabStripPalette.hoverFill, over: track)
-            let selected = self.composite(EditorTabStripPalette.selectedFill, over: track)
+            let hovered = self.composite(EditorTabStripPalette.hoverColor, over: track)
+            let selected = self.composite(EditorTabStripPalette.selectedColor, over: track)
             return (
                 abs(hovered.relativeLuminance - track.relativeLuminance),
                 abs(selected.relativeLuminance - track.relativeLuminance)
             )
         }
-        guard let measured else {
-            Issue.record("The strip's fills did not resolve")
-            return
-        }
-        #expect(measured.0 < measured.1)
+        let values = try #require(measured)
+        #expect(values.0 < values.1)
     }
 
-    /// The tab is inset inside the track by the padding on every side, so the two capsules stay
-    /// concentric at their ends and the selected one never overruns the track's curve. Both are
-    /// fully rounded, which is what the system's own tab bar draws: its runtime view tree reports
-    /// `cornerRadius = 12` on each 24pt tab, exactly half the height.
     @Test("The tab is inset inside the track on every side")
     func tabIsInsetInsideTheTrack() {
         #expect(
@@ -182,38 +109,21 @@ struct EditorTabStripSurfacesTests {
         #expect(EditorTabStripLayout.trackHeight < EditorTabStripLayout.bandHeight)
     }
 
-    // MARK: - Over a themed window
-
-    /// The window color itself was the track here before, which left the selected tab a step of 1.00 to
-    /// 1.08 under a light theme. The system's own tab bar measures 1.161 in light.
     @Test(
         "Over a themed window the selected tab keeps a step above the track",
         arguments: EditorTabStripSurfacesTests.themedBackdrops
     )
-    func selectionStandsClearOverAThemedWindow(appearance: NSAppearance.Name, windowHex: String) {
+    func selectionStandsClearOverAThemedWindow(appearance: NSAppearance.Name, windowHex: String) throws {
         let measured = resolve(appearance) { () -> (CGFloat, CGFloat, CGFloat) in
             let track = self.composite(
-                EditorTabStripPalette.trackFill(overThemedBackdrop: true),
+                EditorTabStripPalette.trackColor(overThemedBackdrop: true),
                 over: HexColor.color(windowHex)
             )
-            let selected = self.composite(EditorTabStripPalette.selectedFill, over: track)
+            let selected = self.composite(EditorTabStripPalette.selectedColor, over: track)
             return (self.contrast(selected, track), track.relativeLuminance, selected.relativeLuminance)
         }
-        guard let measured else {
-            Issue.record("The strip's fills did not resolve")
-            return
-        }
-        #expect(measured.0 > 1.16, "step \(measured.0) over \(windowHex)")
-        #expect(measured.2 > measured.1)
-    }
-
-    // MARK: - Leaving glass behind
-
-    @Test("Either accessibility setting alone takes the strip off glass")
-    func solidSurfacesAnswerBothSettings() {
-        #expect(!EditorTabStripEmphasis.prefersSolidSurfaces(reduceTransparency: false, contrast: .standard))
-        #expect(EditorTabStripEmphasis.prefersSolidSurfaces(reduceTransparency: true, contrast: .standard))
-        #expect(EditorTabStripEmphasis.prefersSolidSurfaces(reduceTransparency: false, contrast: .increased))
-        #expect(EditorTabStripEmphasis.prefersSolidSurfaces(reduceTransparency: true, contrast: .increased))
+        let values = try #require(measured)
+        #expect(values.0 > 1.16, "step \(values.0) over \(windowHex)")
+        #expect(values.2 > values.1)
     }
 }

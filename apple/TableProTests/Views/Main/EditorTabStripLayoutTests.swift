@@ -5,22 +5,22 @@ import Testing
 struct EditorTabStripLayoutTests {
     private static let ids = (0..<5).map { _ in UUID() }
 
-    @Test("Tabs share the track equally once each share clears the minimum")
+    @Test("Tabs share the viewport equally once each share clears the minimum")
     func equalShare() {
-        let width = EditorTabStripLayout.tabWidth(forTrack: 604, count: 4)
+        let width = EditorTabStripLayout.tabWidth(forViewport: 600, count: 4)
         #expect(width == 150)
     }
 
-    @Test("A crowded track stops shrinking at the minimum, so the strip scrolls instead")
+    @Test("A crowded viewport stops shrinking at the minimum, so the strip scrolls instead")
     func minimumWidthFloor() {
-        let width = EditorTabStripLayout.tabWidth(forTrack: 404, count: 20)
+        let width = EditorTabStripLayout.tabWidth(forViewport: 400, count: 20)
         #expect(width == EditorTabStripLayout.minimumTabWidth)
     }
 
     @Test("An empty tab list does not divide by zero")
     func emptyList() {
-        let width = EditorTabStripLayout.tabWidth(forTrack: 404, count: 0)
-        #expect(width == 400)
+        let width = EditorTabStripLayout.tabWidth(forViewport: 400, count: 0)
+        #expect(width == EditorTabStripLayout.minimumTabWidth)
     }
 
     @Test("No separator leads the first tab")
