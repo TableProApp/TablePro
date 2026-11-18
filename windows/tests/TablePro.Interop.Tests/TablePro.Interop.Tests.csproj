@@ -16,10 +16,12 @@
     <Using Include="Xunit" />
     <Compile Include="../Shared/SshTestEnvironment.cs" Link="SshTestEnvironment.cs" />
     <Compile Include="../Shared/FakeAiServer.cs" Link="FakeAiServer.cs" />
+    <None Include="../../../core/crates/test-support/corpus/*.json" Link="corpus/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/TablePro.Interop/TablePro.Interop.csproj" />
+    <ProjectReference Include="../../src/TablePro.DataGrid.Model/TablePro.DataGrid.Model.csproj" />
   </ItemGroup>
 
 </Project>

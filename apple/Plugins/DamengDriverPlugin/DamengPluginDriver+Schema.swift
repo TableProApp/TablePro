@@ -305,6 +305,15 @@ extension DamengPluginDriver {
         )
     }
 
+    // NUM_ROWS is the last statistics gather, and NULL on a table that never had one.
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        let result = try await executeParameterized(
+            query: "SELECT NUM_ROWS FROM SYS.ALL_TABLES WHERE OWNER = ? AND TABLE_NAME = ?",
+            parameters: [.text(effectiveSchema(schema)), .text(table)]
+        )
+        return result.rows.first?[safe: 0]?.asText.flatMap(Int.init)
+    }
+
     /// `ALL_TAB_COMMENTS.OWNER` really is the schema, unlike `ALL_COL_COMMENTS.OWNER`, which is
     /// the schema's owning user. The two catalog views disagree, so this join stays on `OWNER`.
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {

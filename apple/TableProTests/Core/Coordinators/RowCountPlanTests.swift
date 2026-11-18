@@ -32,12 +32,12 @@ struct RowCountPlanTests {
         #expect(plan == .skip)
     }
 
-    @Test("Unfiltered unknown size runs an exact count")
+    @Test("Unfiltered unknown size counts no further than one row past the threshold")
     func unfilteredUnknownSize() {
         let plan = QueryExecutionCoordinator.rowCountPlan(
             isNonSQL: false, filterState: TabFilterState(), approximateRowCount: nil, threshold: 100_000
         )
-        #expect(plan == .exactCount(filtered: false))
+        #expect(plan == .cappedCount(filtered: false, limit: 100_001))
     }
 
     @Test("Filtered small table runs an exact filtered count")
@@ -56,12 +56,76 @@ struct RowCountPlanTests {
         #expect(plan == .clear)
     }
 
-    @Test("Filtered unknown size runs an exact filtered count")
+    @Test("Filtered unknown size counts no further than one row past the threshold")
     func filteredUnknownSize() {
         let plan = QueryExecutionCoordinator.rowCountPlan(
             isNonSQL: false, filterState: filtered(), approximateRowCount: nil, threshold: 100_000
         )
-        #expect(plan == .exactCount(filtered: true))
+        #expect(plan == .cappedCount(filtered: true, limit: 100_001))
+    }
+
+    @Test("Always count keeps the exact count when nothing estimates the table")
+    func alwaysCountStaysExact() {
+        let unfiltered = QueryExecutionCoordinator.rowCountPlan(
+            isNonSQL: false, filterState: TabFilterState(), approximateRowCount: nil, threshold: Int.max
+        )
+        let filteredPlan = QueryExecutionCoordinator.rowCountPlan(
+            isNonSQL: false, filterState: filtered(), approximateRowCount: nil, threshold: Int.max
+        )
+        #expect(unfiltered == .exactCount(filtered: false))
+        #expect(filteredPlan == .exactCount(filtered: true))
+    }
+
+    @Test("A threshold of zero counts nothing, as it always did")
+    func zeroThresholdCountsNothing() {
+        let plan = QueryExecutionCoordinator.rowCountPlan(
+            isNonSQL: false, filterState: TabFilterState(), approximateRowCount: nil, threshold: 0
+        )
+        #expect(plan == .skip)
+    }
+
+    @Test("A page turn under the same filters keeps the answer the last count gave")
+    func settledScopeSkipsTheCount() {
+        let plan = QueryExecutionCoordinator.rowCountPlan(
+            isNonSQL: false, filterState: filtered(), approximateRowCount: nil, threshold: 100_000,
+            isSettled: true
+        )
+        #expect(plan == .skip)
+    }
+
+    @Test("A count answers for its filters and its relation, and for nothing else")
+    func scopeNamesFiltersAndRelation() {
+        var tab = QueryTab(title: "a", query: "SELECT * FROM a", tabType: .query, tableName: "a")
+        let unfiltered = tab.rowCountScope(table: "a")
+        #expect(tab.rowCountScope(table: "a") == unfiltered)
+        #expect(tab.rowCountScope(table: "b") != unfiltered)
+
+        tab.filterState = filtered()
+        #expect(tab.rowCountScope(table: "a") != unfiltered)
+    }
+
+    @Test("A browse search that was counted is not walked again on the next page")
+    func settledBrowseSearchSkips() {
+        var state = TabFilterState()
+        state.browseSearch = BrowseSearchState(pattern: "user:*")
+        let plan = QueryExecutionCoordinator.rowCountPlan(
+            isNonSQL: true, filterState: state, approximateRowCount: nil, threshold: 100_000,
+            browseSearch: state.browseSearch, isSettled: true
+        )
+        #expect(plan == .skip)
+    }
+
+    @Test("Only a capped count needs a limit in its statement")
+    func countRequestCarriesTheLimit() throws {
+        let capped = try #require(RowCountPlan.cappedCount(filtered: true, limit: 11).countRequest)
+        #expect(capped.filtered)
+        #expect(capped.limit == 11)
+
+        let exact = try #require(RowCountPlan.exactCount(filtered: false).countRequest)
+        #expect(!exact.filtered)
+        #expect(exact.limit == nil)
+
+        #expect(RowCountPlan.skip.countRequest == nil)
     }
 
     @Test("Non-SQL unfiltered uses the approximate count")
@@ -73,7 +137,7 @@ struct RowCountPlanTests {
     }
 
     @Test("An engine whose count is a full scan is never counted automatically", arguments: [
-        DatabaseType.dynamodb, .cassandra, .scylladb
+        DatabaseType.dynamodb, .cassandra, .scylladb, .spanner, .cloudflareD1, .surrealdb
     ])
     func fullScanEngineIsCountedOnlyOnRequest(databaseType: DatabaseType) {
         let countsAutomatically = PluginManager.shared.countsRowsAutomatically(for: databaseType)
@@ -175,6 +239,19 @@ struct RowCountOutcomeTests {
     @Test("A negative exact count applies nothing")
     func negativeExactAppliesNothing() {
         #expect(RowCountOutcome.count(-5, isApproximate: false).appliedTotal == nil)
+    }
+
+    @Test("A failed count applies nothing, and is not asked again under the same filters")
+    func failedCountSettlesWithoutATotal() {
+        #expect(RowCountOutcome.failed.appliedTotal == nil)
+        #expect(RowCountOutcome.failed.settlesScope)
+    }
+
+    @Test("An exact total settles the filters it was counted for, and an estimate does not")
+    func onlyAnExactAnswerSettles() {
+        #expect(RowCountOutcome.count(12, isApproximate: false).settlesScope)
+        #expect(RowCountOutcome.clear.settlesScope)
+        #expect(!RowCountOutcome.count(12, isApproximate: true).settlesScope)
     }
 
     /// A filter change genuinely invalidates the count, so this one still wipes it.

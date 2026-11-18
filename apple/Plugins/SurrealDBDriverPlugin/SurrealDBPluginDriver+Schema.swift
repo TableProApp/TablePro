@@ -110,8 +110,9 @@ extension SurrealDBPluginDriver {
         return PluginTableMetadata(tableName: table, rowCount: rows.map(Int64.init))
     }
 
+    // SurrealDB keeps no row statistics: the only answer is `count()` over the whole table, which Count Exactly runs on request.
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        try await count(table: table, schema: schema, filters: [], logicMode: "and")
+        nil
     }
 
     // MARK: - Helpers

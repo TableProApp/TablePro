@@ -300,9 +300,12 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         return snapshot
     }
 
+    var fetchColumnsGate: AsyncGate?
+
     func fetchColumns(table: String) async throws -> [ColumnInfo] {
         fetchColumnsCallCount += 1
         fetchColumnsCalls.append(table)
+        await fetchColumnsGate?.wait()
         return columnsToReturn[table.lowercased()] ?? []
     }
 

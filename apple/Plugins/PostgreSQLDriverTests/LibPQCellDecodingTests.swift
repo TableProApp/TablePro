@@ -57,4 +57,14 @@ struct LibPQCellDecodingTests {
     func byteaFallsBackToText() {
         #expect(decode(Array("\\xzz".utf8), oid: Self.byteaOid) == .text("\\xzz"))
     }
+
+    @Test("A bytea value in escape format keeps a raw high byte as it arrived")
+    func byteaKeepsRawHighBytes() {
+        #expect(decode([0xFF, 0x41], oid: Self.byteaOid) == .bytes(Data([0xFF, 0x41])))
+    }
+
+    @Test("A bytea value that does not parse falls back to its text")
+    func malformedByteaFallsBackToText() {
+        #expect(decode(Array("\\xZZ".utf8), oid: Self.byteaOid) == .text("\\xZZ"))
+    }
 }

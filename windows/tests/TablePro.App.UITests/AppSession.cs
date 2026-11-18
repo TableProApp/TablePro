@@ -203,6 +203,7 @@ internal sealed class AppSession : IDisposable
     public void Chord(Window window, Func<bool> landed, params VirtualKeyShort[] keys) =>
         Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys), window);
 
+    // Keyboard.Type sends '\n' as Ctrl+Enter, which runs the query, so a line break is typed as '\r': Enter.
     public void TypeInto(string title, string text) =>
         Again(
             () =>
@@ -220,7 +221,7 @@ internal sealed class AppSession : IDisposable
                 Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
                 Keyboard.Type(text);
             },
-            () => EditorText(FindEditor(title)).TrimEnd('\r', '\n') == text,
+            () => EditorText(FindEditor(title)).TrimEnd('\r', '\n') == text.Replace('\r', '\n'),
             $"Typing {text}");
 
     public AutomationElement FindEditor(string title) =>

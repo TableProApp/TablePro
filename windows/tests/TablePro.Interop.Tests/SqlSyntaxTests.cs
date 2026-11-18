@@ -12,6 +12,13 @@ public sealed class SqlSyntaxTests
         return tokens.Take(count).Select(t => (t.Kind, text.Substring(t.Start, t.Length))).ToList();
     }
 
+    private static List<string> Split(SqlGrammar grammar, string text)
+    {
+        var statements = new List<StatementRange>();
+        SqlSyntax.Statements(grammar, text, statements);
+        return statements.Select(s => text[s.Start..s.End]).ToList();
+    }
+
     [Fact]
     public void KeywordsMatchInAnyCaseAndWhiteSpaceIsLeftOut()
     {
@@ -105,5 +112,47 @@ public sealed class SqlSyntaxTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(
             () => SqlSyntax.Tokenize((SqlGrammar)42, "select 1", new SyntaxToken[8]));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => SqlSyntax.Statements((SqlGrammar)42, "select 1", []));
+    }
+
+    [Fact]
+    public void TwoStatementsSplitWithoutTheirTerminators()
+    {
+        var statements = new List<StatementRange>();
+
+        SqlSyntax.Statements(SqlGrammar.PostgreSql, "select 1; select 2", statements);
+
+        Assert.Equal([new StatementRange(0, 8), new StatementRange(10, 18)], statements);
+    }
+
+    [Fact]
+    public void ASemicolonInsideAStringIsNotABoundary()
+    {
+        Assert.Equal(
+            ["insert into t values ('a;b')", "select 'tiếng 😀 việt'"],
+            Split(SqlGrammar.MySql, "insert into t values ('a;b');\nselect 'tiếng 😀 việt';"));
+    }
+
+    [Fact]
+    public void MoreStatementsThanTheStackBufferHoldsAreAllReturned()
+    {
+        var text = string.Concat(Enumerable.Repeat("SELECT 1;", 600));
+        var statements = new List<StatementRange>();
+
+        SqlSyntax.Statements(SqlGrammar.Sqlite, text, statements);
+
+        Assert.Equal(600, statements.Count);
+        Assert.Equal(new StatementRange(599 * 9, (599 * 9) + 8), statements[^1]);
+    }
+
+    [Fact]
+    public void EmptyTextHasNoStatementsAndClearsTheList()
+    {
+        var statements = new List<StatementRange> { new(0, 1) };
+
+        SqlSyntax.Statements(SqlGrammar.PostgreSql, "", statements);
+
+        Assert.Empty(statements);
     }
 }

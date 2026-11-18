@@ -240,6 +240,21 @@ struct SortState: Equatable {
     var direction: SortDirection { columns.first?.direction ?? .ascending }
 }
 
+extension QueryTab {
+    // Named by the caller: a query tab counts the table its statement reads, which its context may not name yet.
+    func rowCountScope(table: String) -> RowCountScope {
+        let rerun = filterState.rerunFilters
+        return RowCountScope(
+            table: table,
+            schema: tableContext.schemaName,
+            database: tableContext.databaseName,
+            filters: rerun.filters,
+            logicMode: rerun.logicMode,
+            browseSearch: filterState.browseSearch
+        )
+    }
+}
+
 struct PaginationState: Equatable {
     var totalRowCount: Int?
     var pageSize: Int
@@ -253,6 +268,8 @@ struct PaginationState: Equatable {
     var exactCountError: String?
     // Silent automatic count in flight, so Count Exactly is not offered; the execution claim settles before it dispatches.
     var isCountPending: Bool = false
+    // The filters the last count answered for, with a total, past its cap or with an error: a page turn does not ask again.
+    var settledRowCountScope: RowCountScope?
 
     // Result truncation state (query tabs)
     var hasMoreRows: Bool = false
@@ -385,6 +402,7 @@ struct PaginationState: Equatable {
     mutating func retireDerivedRowCount() {
         totalRowCount = nil
         isApproximateRowCount = false
+        settledRowCountScope = nil
     }
 
     mutating func reset() {

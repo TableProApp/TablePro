@@ -72,6 +72,17 @@ public sealed record AppSettings
     // Null keeps the editor's own monospaced family.
     public string? EditorFontFamily { get; set; }
 
+    public bool WordWrap { get; set; }
+
+    public bool HighlightCurrentStatement { get; set; } = true;
+
+    public bool CodeFolding { get; set; } = true;
+
+    // A color scheme's id; null keeps the editor's default colors.
+    public string? EditorLightScheme { get; set; }
+
+    public string? EditorDarkScheme { get; set; }
+
     // Null keeps the grid's own family.
     public string? GridFontFamily { get; set; }
 
@@ -140,6 +151,8 @@ public sealed record AppSettings
         Theme = Enum.IsDefined(Theme) ? Theme : AppTheme.System,
         EditorFontSize = Math.Clamp(EditorFontSize, 8, 36),
         EditorFontFamily = string.IsNullOrWhiteSpace(EditorFontFamily) ? null : EditorFontFamily.Trim(),
+        EditorLightScheme = string.IsNullOrWhiteSpace(EditorLightScheme) ? null : EditorLightScheme.Trim(),
+        EditorDarkScheme = string.IsNullOrWhiteSpace(EditorDarkScheme) ? null : EditorDarkScheme.Trim(),
         GridFontFamily = string.IsNullOrWhiteSpace(GridFontFamily) ? null : GridFontFamily.Trim(),
         GridFontSize = double.IsFinite(GridFontSize) ? Math.Clamp(GridFontSize, 8, 36) : DefaultGridFontSize,
         NullDisplay = string.IsNullOrEmpty(NullDisplay)

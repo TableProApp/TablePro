@@ -55,7 +55,7 @@ pub use client_identity_engine::ClientIdentityEngine;
 pub use conformance_engine::ConformanceEngine;
 pub use conformance_failure::ConformanceFailure;
 pub use connection_suite_flags::ConnectionSuiteFlags;
-pub use corpus_column::{CorpusColumn, CorpusValue};
+pub use corpus_column::{CorpusColumn, CorpusValue, ValueCorpus};
 pub use ddl_conformance_engine::ConformanceDdlEngine;
 pub use document_engine::DocumentEngine;
 pub use dump_engine::{DumpEngine, NativeDump};

@@ -59,6 +59,10 @@ public sealed record SessionTab
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool RecoverFile { get; set; }
 
+    // The first line of each region folded in a query tab, which come back folded where the text still has them.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<int>? FoldedLines { get; set; }
+
     // A table tab's pending changes by key, which the session's writes keep until a close has asked about them.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SavedEdits? Edits { get; set; }

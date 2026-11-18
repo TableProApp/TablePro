@@ -140,6 +140,18 @@ internal final class TableLoadTracer {
         emit(stage, timing: timing, detail: detail)
     }
 
+    internal func beginPhase2(_ token: TableLoadTraceToken?) {
+        guard let token, let timing = recorder.beginPhase2(token: token, at: clock.now) else { return }
+        emit(.phase2Begin, timing: timing, detail: nil)
+    }
+
+    // The load's summary waits for this when phase 2 outlives it.
+    internal func endPhase2(_ token: TableLoadTraceToken?) {
+        guard let token, let timing = recorder.endPhase2(token: token, at: clock.now) else { return }
+        emit(.phase2End, timing: timing, detail: nil)
+        drainCompletedTraces()
+    }
+
     internal func anomaly(_ anomaly: TableLoadAnomaly, token: TableLoadTraceToken, detail: String? = nil) {
         guard let timing = recorder.note(anomaly, token: token, at: clock.now) else { return }
         report(anomaly, timing: timing, detail: detail)

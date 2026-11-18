@@ -369,6 +369,16 @@ extension TableFilter {
     }
 }
 
+// What a row total was counted for: the relation and the filters a page turn keeps showing.
+struct RowCountScope: Equatable {
+    let table: String
+    let schema: String?
+    let database: String?
+    let filters: [TableFilter]
+    let logicMode: FilterLogicMode
+    let browseSearch: BrowseSearchState
+}
+
 /// Stores per-tab filter state (preserves filters when switching tabs)
 struct TabFilterState: Equatable, Hashable, Codable {
     var filters: [TableFilter]

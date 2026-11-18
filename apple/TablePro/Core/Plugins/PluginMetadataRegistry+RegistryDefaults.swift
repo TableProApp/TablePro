@@ -926,7 +926,8 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    exactRowCountIsFullScan: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "main",

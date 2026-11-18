@@ -266,7 +266,8 @@ public sealed partial class DataGridView
             var cell = Cell(row, column);
             widest = Math.Max(widest, cell.IsNull
                 ? painter.Measure(_nullText, placeholder: true)
-                : cell.IsDefault ? painter.MeasureDefault() : painter.Measure(Head(cell.Text, maxCharacters)));
+                : cell.IsDefault ? painter.MeasureDefault()
+                : painter.Measure(Head(cell.Text, maxCharacters), placeholder: (cell.State & CellState.Unreadable) != 0));
         }
         return Math.Ceiling(widest + (CellPainter.Padding * 2) + 2);
     }

@@ -22,6 +22,8 @@ public sealed partial class EditorModel
     {
         Document = document;
         Options = options ?? new EditorOptions();
+        // Before the model's own handler, so carets mapped through an edit read rows that already know it.
+        Rows = new VisualRows(document);
         Document.Changed += OnDocumentChanged;
         Document.Reset += (_, _) => SetSelections([Selection.Caret(0)]);
     }
@@ -31,6 +33,8 @@ public sealed partial class EditorModel
     public TextDocument Document { get; }
 
     public EditorOptions Options { get; }
+
+    public VisualRows Rows { get; }
 
     public IReadOnlyList<Selection> Selections => _selections;
 
@@ -71,6 +75,14 @@ public sealed partial class EditorModel
             }
         }
         var index = merged.FindIndex(s => s.Contains(primarySelection.Active));
+        // A caret sent into a fold, by find, undo or a jump, opens it rather than sit where nobody can see it.
+        if (Rows.Folds.Count > 0)
+        {
+            foreach (var selection in merged)
+            {
+                Rows.Folds.Reveal(Document.GetLineFromOffset(selection.Active));
+            }
+        }
         _selections = merged;
         PrimaryIndex = index < 0 ? merged.Count - 1 : index;
         Document.Undo.BreakJoinUnlessApplying(_applying > 0);

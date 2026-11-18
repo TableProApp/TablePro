@@ -3,7 +3,7 @@
     reason = "the helpers fail a test the way the test functions themselves do"
 )]
 
-use tablepro_ffi::window_abi::{TpSyntaxToken, tablepro_syntax_tokens};
+use tablepro_ffi::window_abi::{TpStatementSpan, TpSyntaxToken, tablepro_script_statements, tablepro_syntax_tokens};
 
 const POSTGRESQL: u32 = 0;
 const MYSQL: u32 = 1;
@@ -104,6 +104,116 @@ fn refuses_null_pointers_and_unknown_grammars() {
         );
         assert_eq!(
             tablepro_syntax_tokens(7, 0, units.as_ptr(), len, tokens.as_mut_ptr(), len),
+            0
+        );
+    }
+}
+
+fn statements(grammar: u32, text: &str) -> Vec<TpStatementSpan> {
+    let units: Vec<u16> = text.encode_utf16().collect();
+    let mut spans = vec![TpStatementSpan::default(); units.len()];
+    let len = u32::try_from(units.len()).unwrap();
+    // SAFETY: both buffers hold the lengths passed.
+    let counted =
+        unsafe { tablepro_script_statements(grammar, DEFAULT_ESCAPES, units.as_ptr(), len, spans.as_mut_ptr(), len) };
+    spans.truncate(usize::try_from(counted).unwrap());
+    spans
+}
+
+fn statement_texts(grammar: u32, text: &str) -> Vec<String> {
+    let units: Vec<u16> = text.encode_utf16().collect();
+    statements(grammar, text)
+        .iter()
+        .map(|span| {
+            let start = usize::try_from(span.start).unwrap();
+            let end = usize::try_from(span.end).unwrap();
+            String::from_utf16(&units[start..end]).unwrap()
+        })
+        .collect()
+}
+
+#[test]
+fn splits_two_statements_on_one_line() {
+    assert_eq!(
+        statements(POSTGRESQL, "SELECT 1; SELECT 2"),
+        vec![
+            TpStatementSpan { start: 0, end: 8 },
+            TpStatementSpan { start: 10, end: 18 },
+        ]
+    );
+}
+
+#[test]
+fn a_semicolon_inside_a_string_is_not_a_boundary() {
+    assert_eq!(
+        statement_texts(MYSQL, "INSERT INTO t VALUES ('a;b'); SELECT 2"),
+        vec!["INSERT INTO t VALUES ('a;b')".to_owned(), "SELECT 2".to_owned()]
+    );
+}
+
+#[test]
+fn statement_offsets_count_utf16_units() {
+    // The second statement starts at byte 17 and at unit 14.
+    let text = "SELECT 'é😀'; SELECT 2";
+    assert_eq!(
+        statements(POSTGRESQL, text),
+        vec![
+            TpStatementSpan { start: 0, end: 12 },
+            TpStatementSpan { start: 14, end: 22 },
+        ]
+    );
+    assert_eq!(
+        statement_texts(POSTGRESQL, text),
+        vec!["SELECT 'é😀'".to_owned(), "SELECT 2".to_owned()]
+    );
+}
+
+#[test]
+fn counts_every_statement_past_the_capacity() {
+    let units: Vec<u16> = "SELECT 1; SELECT 2; SELECT 3".encode_utf16().collect();
+    let mut spans = vec![TpStatementSpan::default(); 2];
+    let len = u32::try_from(units.len()).unwrap();
+    // SAFETY: `spans` holds more than the capacity passed.
+    let counted =
+        unsafe { tablepro_script_statements(POSTGRESQL, DEFAULT_ESCAPES, units.as_ptr(), len, spans.as_mut_ptr(), 1) };
+    assert_eq!(counted, 3);
+    assert_eq!(
+        spans,
+        vec![TpStatementSpan { start: 0, end: 8 }, TpStatementSpan::default()]
+    );
+}
+
+#[test]
+fn null_spans_with_no_capacity_only_count() {
+    let units: Vec<u16> = "SELECT 1; SELECT 2; SELECT 3".encode_utf16().collect();
+    let len = u32::try_from(units.len()).unwrap();
+    // SAFETY: `text` holds the length passed and nothing is written.
+    let counted = unsafe {
+        tablepro_script_statements(
+            POSTGRESQL,
+            DEFAULT_ESCAPES,
+            units.as_ptr(),
+            len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    assert_eq!(counted, 3);
+}
+
+#[test]
+fn statements_refuse_null_text_and_unknown_grammars() {
+    let units: Vec<u16> = "SELECT 1".encode_utf16().collect();
+    let mut spans = vec![TpStatementSpan::default(); units.len()];
+    let len = u32::try_from(units.len()).unwrap();
+    // SAFETY: a null pointer is refused before any read; the rest hold their lengths.
+    unsafe {
+        assert_eq!(
+            tablepro_script_statements(POSTGRESQL, 0, std::ptr::null(), len, spans.as_mut_ptr(), len),
+            0
+        );
+        assert_eq!(
+            tablepro_script_statements(9, 0, units.as_ptr(), len, spans.as_mut_ptr(), len),
             0
         );
     }

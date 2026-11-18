@@ -30,7 +30,7 @@ public sealed partial class ShellTests
             () => AppSession.EditorText(app.Find("SqlEditor")).Contains("FROM Genre", StringComparison.Ordinal),
             AppSession.Wait,
             throwOnTimeout: false).Success);
-        app.Screenshot("140-file-from-command-line");
+        app.Screenshot("170-file-from-command-line");
     }
 
     [Theory]
@@ -49,7 +49,7 @@ public sealed partial class ShellTests
         // A query link shows its SQL first and opens it in a new tab only when asked; nothing runs.
         app.HandOver($"tablepro://connect/{id}/query?sql={Uri.EscapeDataString(Sql)}");
         Assert.Equal(Sql, AppSession.TextOf(app.Find("LinkQueryPreview")));
-        app.Screenshot("141-link-query-confirm");
+        app.Screenshot("171-link-query-confirm");
         app.PressDialogButton();
         Assert.True(Retry.WhileFalse(
             () => AppSession.EditorText(app.Find("SqlEditor")).Contains(Sql, StringComparison.Ordinal),
@@ -76,7 +76,7 @@ public sealed partial class ShellTests
             () => File.Exists(path) && File.ReadAllText(path).Contains("\"notifyAfterSeconds\": 60", StringComparison.Ordinal),
             AppSession.Wait,
             throwOnTimeout: false).Success);
-        app.Screenshot("142-settings-notifications");
+        app.Screenshot("172-settings-notifications");
 
         app.Find("NotifySwitch").AsToggleButton().Toggle();
         Assert.False(app.Find("NotifyAfterBox").IsEnabled);

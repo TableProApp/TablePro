@@ -1,0 +1,98 @@
+{
+  "why": "A value reads as the storage class SQLite keeps it in, whatever the column declares, so the declared types here are the ones real schemas use.",
+  "columns": [
+    {
+      "column": "v INTEGER",
+      "values": [
+        { "sql": "9223372036854775807", "shows": "9223372036854775807" },
+        { "sql": "-9223372036854775808", "shows": "-9223372036854775808" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v REAL",
+      "values": [
+        { "sql": "0.1", "shows": "0.1" },
+        { "sql": "-2.5e-5", "shows": "-0.000025" },
+        { "sql": "1", "shows": "1" }
+      ]
+    },
+    {
+      "column": "v TEXT",
+      "values": [
+        { "sql": "'naïve café'", "shows": "naïve café" },
+        { "sql": "'日本語のテキスト'", "shows": "日本語のテキスト" },
+        { "sql": "'🦀 emoji 👩‍💻'", "shows": "🦀 emoji 👩‍💻" },
+        { "sql": "''", "shows": "" },
+        { "sql": "'it''s'", "shows": "it's" },
+        { "sql": "'line' || char(10) || 'break'", "shows": "line\nbreak" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v BLOB",
+      "values": [
+        { "sql": "X'DEADBEEF'", "shows": "0xdeadbeef" },
+        { "sql": "X''", "shows": "0x" }
+      ]
+    },
+    {
+      "column": "v NUMERIC",
+      "values": [
+        { "sql": "'1.50'", "shows": "1.5" },
+        { "sql": "'12'", "shows": "12" }
+      ]
+    },
+    {
+      "column": "v DECIMAL(10, 2)",
+      "values": [
+        { "sql": "-12.5", "shows": "-12.5" }
+      ]
+    },
+    {
+      "column": "v DATETIME",
+      "values": [
+        { "sql": "'2024-02-29 12:00:00.123'", "shows": "2024-02-29 12:00:00.123" },
+        { "sql": "'2024-03-10T02:30:00-08:00'", "shows": "2024-03-10T02:30:00-08:00" },
+        { "sql": "'2024-03-10 10:30:00Z'", "shows": "2024-03-10 10:30:00Z" }
+      ]
+    },
+    {
+      "why": "SQLite gives DATE, TIME and DATETIME one affinity, so each holds any form its date and time functions read.",
+      "column": "v DATE",
+      "values": [
+        { "sql": "'2024-02-29'", "shows": "2024-02-29" },
+        { "sql": "'2024-03-10 02:30:00'", "shows": "2024-03-10 02:30:00" }
+      ]
+    },
+    {
+      "column": "v TIME",
+      "values": [
+        { "sql": "'12:30:00'", "shows": "12:30:00" },
+        { "sql": "'12:30:00+05:30'", "shows": "12:30:00+05:30" }
+      ]
+    },
+    {
+      "column": "v BOOLEAN",
+      "values": [
+        { "sql": "1", "shows": "1" },
+        { "sql": "0", "shows": "0" }
+      ]
+    },
+    {
+      "column": "v JSON",
+      "values": [
+        { "sql": "'{\"b\": 1, \"a\": [1, 2.50]}'", "shows": "{\"b\": 1, \"a\": [1, 2.50]}" }
+      ]
+    },
+    {
+      "column": "v",
+      "values": [
+        { "sql": "42", "shows": "42" },
+        { "sql": "'text'", "shows": "text" },
+        { "sql": "X'01'", "shows": "0x01" },
+        { "sql": "1.5", "shows": "1.5" }
+      ]
+    }
+  ]
+}
