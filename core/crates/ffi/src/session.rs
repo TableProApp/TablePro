@@ -391,14 +391,19 @@ impl DatabaseSession {
                 .run_cancellable(OperationKind::Metadata, &cancel, |lease, options| {
                     let table = table.clone();
                     async move {
-                        let estimate = lease.table_estimate(&table, options.clone()).await?;
+                        // An estimate the engine refuses, as MongoDB's count on a view, is unknown; a lost link or
+                        // a cancel still ends the read at table_info, which runs after it on the same lease.
+                        let estimate = lease
+                            .table_estimate(&table, options.clone())
+                            .await
+                            .map_or(RowCountEstimate::Unknown, |estimate| estimate.rows);
                         let info = lease.table_info(&table, options).await?;
                         Ok((estimate, info))
                     }
                 })
                 .await?;
             Ok(TableInfoRecord {
-                rows: RowEstimate::from(estimate.rows),
+                rows: RowEstimate::from(estimate),
                 comment: info.comment,
                 data_bytes: info.data_bytes,
                 index_bytes: info.index_bytes,

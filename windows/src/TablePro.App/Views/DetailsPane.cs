@@ -251,6 +251,12 @@ internal sealed partial class DetailsPane : UserControl
         // the status, so at most the focused field holds text not kept.
         box.LostFocus += (_, _) =>
         {
+            // The field's own menus take the focus while they show; the text stays the field's.
+            if (box.ContextFlyout is { IsOpen: true } || box.SelectionFlyout is { IsOpen: true })
+            {
+                return;
+            }
+
             if (!Commit(entry))
             {
                 entry.Show(entry.Field);
