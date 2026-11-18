@@ -64,6 +64,8 @@ impl ColumnCells {
             Value::Text(text) => self.keep(text.as_bytes()),
             Value::Json(json) => self.keep(json.as_str().as_bytes()),
             Value::Bytes(bytes) => self.keep(bytes),
+            // No text reads it back; the type's name lets the grid say what it could not read, as Linux's does.
+            Value::Undecodable(undecoded) => self.keep(undecoded.type_name.as_bytes()),
             other => {
                 if let Some(text) = value_text(other, column) {
                     self.bytes.extend_from_slice(text.as_bytes());
@@ -176,7 +178,7 @@ pub(super) fn cell_value(cell: Cell<'_>) -> Value {
         ValueKind::Interval => SqlInterval::from_str(&text()).ok().map(Value::Interval),
         ValueKind::Bits => bits_of(cell.bytes).map(Value::Bits),
         ValueKind::Undecodable => Some(Value::Undecodable(Box::new(UndecodedValue {
-            type_name: String::new(),
+            type_name: text().into_owned(),
             reason: UndecodableReason::UnsupportedType,
         }))),
         ValueKind::Array | ValueKind::Network | ValueKind::Spatial | ValueKind::Other => None,
@@ -348,6 +350,22 @@ mod tests {
         assert_eq!(cells.cell(7).kind, None);
         assert_eq!((text(cells.cell(8)), cells.cell(8).raw), ("héllo", 6));
         assert_eq!(cells.cell(8).kind, Some(ValueKind::Text));
+    }
+
+    #[test]
+    fn an_unreadable_value_keeps_the_name_of_its_type() {
+        let undecoded = Value::Undecodable(Box::new(UndecodedValue {
+            type_name: "money".to_owned(),
+            reason: UndecodableReason::OutOfRange,
+        }));
+        let cells = cells(&[undecoded]);
+
+        assert_eq!(cells.cell(0).kind, Some(ValueKind::Undecodable));
+        assert_eq!(text(cells.cell(0)), "money");
+        assert!(matches!(
+            cell_value(cells.cell(0)),
+            Value::Undecodable(read) if read.type_name == "money"
+        ));
     }
 
     #[test]

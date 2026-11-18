@@ -103,6 +103,7 @@ pub struct ServerMessage {
     pub sqlstate: Option<String>,
     pub detail: Option<String>,
     pub hint: Option<String>,
+    // In characters from 1, from the start of the SQL the run was given.
     pub position: Option<u32>,
 }
 

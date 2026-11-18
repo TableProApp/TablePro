@@ -4,10 +4,15 @@ using TablePro.Interop;
 
 namespace TablePro.Editor;
 
-// Span kinds are TablePro.Interop.SyntaxKind values.
-public sealed class CoreSqlLexer(SqlGrammar grammar) : ISyntaxLexer
+// Span kinds are TablePro.Interop.SyntaxKind values. Statements split as the drivers split a script.
+public sealed class CoreSqlLexer(SqlGrammar grammar) : ISyntaxLexer, ISqlStructure
 {
+    private static readonly SyntaxRoles s_roles = new(
+        (byte)SyntaxKind.Keyword, (byte)SyntaxKind.Comment, (byte)SyntaxKind.Punctuation, (byte)SyntaxKind.Operator);
+
     public SqlGrammar Grammar { get; } = grammar;
+
+    public SyntaxRoles Roles => s_roles;
 
     public int Tokenize(ReadOnlySpan<char> text, Span<SyntaxSpan> spans)
     {
@@ -29,6 +34,18 @@ public sealed class CoreSqlLexer(SqlGrammar grammar) : ISyntaxLexer
         finally
         {
             ArrayPool<SyntaxToken>.Shared.Return(tokens);
+        }
+    }
+
+    public void SplitStatements(ReadOnlySpan<char> text, List<(int Start, int End)> statements)
+    {
+        ArgumentNullException.ThrowIfNull(statements);
+        var found = new List<StatementRange>();
+        SqlSyntax.Statements(Grammar, text, found);
+        statements.EnsureCapacity(statements.Count + found.Count);
+        foreach (var statement in found)
+        {
+            statements.Add((statement.Start, statement.End));
         }
     }
 }

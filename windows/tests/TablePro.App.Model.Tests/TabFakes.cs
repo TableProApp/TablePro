@@ -614,11 +614,15 @@ internal sealed class FakeQueryView : IQueryTabView
 
     public string SelectedText { get; set; } = string.Empty;
 
+    public int? SelectedTextStart { get; set; }
+
     public string WholeText { get; set; } = "select * from Artist";
 
     public string DocumentText => WholeText;
 
     public int Caret { get; set; }
+
+    public IReadOnlyList<int> FoldedLines { get; set; } = [];
 
     public string TimedOutMessage => "timed out";
 
@@ -633,6 +637,8 @@ internal sealed class FakeQueryView : IQueryTabView
     public void SelectStatement(int start, int length) => Shown.Add($"selected {start} {length}");
 
     public void ShowNoStatement() => Shown.Add("no statement");
+
+    public void ShowErrorPosition(int offset) => Shown.Add($"error at {offset}");
 
     public void ShowRefused() => Shown.Add("refused");
 

@@ -27,7 +27,7 @@ public sealed partial class SqlEditor
 
     private DragMode _drag;
     private Selection _dragOrigin;
-    private int _columnAnchorLine;
+    private int _columnAnchorRow;
     private int _columnAnchorColumn;
     private Point _pressPoint;
     private ulong _lastClickTime;
@@ -41,6 +41,7 @@ public sealed partial class SqlEditor
         PointerMoved += OnPointerMoved;
         PointerReleased += OnPointerReleased;
         PointerCaptureLost += (_, _) => _drag = DragMode.None;
+        PointerExited += (_, _) => ShowChevrons(false);
         PointerWheelChanged += OnPointerWheelChanged;
         AllowDrop = true;
         DragOver += OnDragOver;
@@ -60,6 +61,11 @@ public sealed partial class SqlEditor
         Focus(FocusState.Pointer);
         RestartBlink();
         var position = point.Position;
+        if (FoldClickedAt(position))
+        {
+            e.Handled = true;
+            return;
+        }
         CountClick(point.Timestamp, position);
         var offset = OffsetAt(position);
         var shift = (e.KeyModifiers & VirtualKeyModifiers.Shift) != 0;
@@ -70,9 +76,7 @@ public sealed partial class SqlEditor
 
         if (alt && _clickCount == 1)
         {
-            var line = Document.GetLineFromOffset(offset);
-            _columnAnchorLine = line;
-            _columnAnchorColumn = VisualColumnAt(line, position.X);
+            (_columnAnchorRow, _columnAnchorColumn) = _model.RowColumnOf(offset);
             _model.AddSelection(Selection.Caret(offset));
             _drag = DragMode.Column;
             return;
@@ -113,6 +117,8 @@ public sealed partial class SqlEditor
     {
         if (_drag == DragMode.None)
         {
+            var at = e.GetCurrentPoint(_panel).Position;
+            ShowChevrons(at.X >= 0 && at.X < GutterWidth && at.Y >= 0 && at.Y < ViewHeight);
             return;
         }
         var position = e.GetCurrentPoint(_panel).Position;
@@ -129,8 +135,8 @@ public sealed partial class SqlEditor
                 }
                 return;
             case DragMode.Column:
-                var line = Math.Clamp((int)Math.Floor((position.Y + _scrollY) / LineHeight), 0, Document.LineCount - 1);
-                _model.SetColumnSelection(_columnAnchorLine, _columnAnchorColumn, line, VisualColumnAt(line, position.X));
+                var (row, column) = _model.RowColumnOf(offset);
+                _model.SetRowColumnSelection(_columnAnchorRow, _columnAnchorColumn, row, column);
                 break;
             case DragMode.Characters:
                 _model.SetSelection(_dragOrigin.Anchor, offset);
@@ -176,6 +182,43 @@ public sealed partial class SqlEditor
             ScrollBy(0, -delta * WheelLines() * LineHeight);
         }
         e.Handled = true;
+    }
+
+    // The chevrons show while the pointer is over the gutter, as the macOS editor and VS Code reveal them.
+    private void ShowChevrons(bool show)
+    {
+        if (_pointerInGutter == show)
+        {
+            return;
+        }
+        _pointerInGutter = show;
+        if (_foldingEnabled && RegionsNow().Count > 0)
+        {
+            Invalidate();
+        }
+    }
+
+    // A chevron in the gutter folds or opens its region, and a click on a folded line's chip opens it.
+    private bool FoldClickedAt(Windows.Foundation.Point position)
+    {
+        if (!_foldingEnabled || _layouts is null)
+        {
+            return false;
+        }
+        foreach (var (box, line) in _chips)
+        {
+            if (box.Contains(position))
+            {
+                return _model.Rows.Folds.Unfold(line);
+            }
+        }
+        var left = NumbersRight + 4;
+        if (position.X < left || position.X >= GutterWidth)
+        {
+            return false;
+        }
+        var (rowLine, rowStart, _) = _model.Rows.RowSpan(RowAt(position.Y));
+        return rowStart == Document.GetLineStart(rowLine) && ToggleFold(rowLine);
     }
 
     private void ExtendByUnit(int offset)
@@ -355,6 +398,20 @@ public sealed partial class SqlEditor
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("Select All", "Ctrl+A", () => _model.SelectAll());
         Add("Toggle Line Comment", "Ctrl+/", () => Edit(_model.ToggleLineComment));
+        var foldSeparator = new MenuFlyoutSeparator();
+        menu.Items.Add(foldSeparator);
+        var fold = new MenuFlyoutItem { Text = "Fold", KeyboardAcceleratorTextOverride = "Ctrl+Shift+[" };
+        fold.Click += (_, _) => FoldAtCaret();
+        menu.Items.Add(fold);
+        var unfold = new MenuFlyoutItem { Text = "Unfold", KeyboardAcceleratorTextOverride = "Ctrl+Shift+]" };
+        unfold.Click += (_, _) => UnfoldAtCaret();
+        menu.Items.Add(unfold);
+        var foldAll = new MenuFlyoutItem { Text = "Fold All" };
+        foldAll.Click += (_, _) => FoldAll();
+        menu.Items.Add(foldAll);
+        var unfoldAll = new MenuFlyoutItem { Text = "Unfold All" };
+        unfoldAll.Click += (_, _) => UnfoldAll();
+        menu.Items.Add(unfoldAll);
         var own = menu.Items.Count;
         menu.Opening += (_, _) =>
         {
@@ -362,6 +419,20 @@ public sealed partial class SqlEditor
             {
                 menu.Items.RemoveAt(menu.Items.Count - 1);
             }
+            // Fold reads the caret's line, as Ctrl+Shift+[ does; Unfold opens the fold on it.
+            var regions = RegionsNow();
+            var folding = _foldingEnabled && regions.Count > 0;
+            var shown = folding ? Visibility.Visible : Visibility.Collapsed;
+            foldSeparator.Visibility = shown;
+            fold.Visibility = shown;
+            unfold.Visibility = shown;
+            foldAll.Visibility = shown;
+            unfoldAll.Visibility = shown;
+            var line = Document.GetLineFromOffset(_model.Primary.Active);
+            fold.IsEnabled = regions.Any(region => region.StartLine <= line && line <= region.EndLine
+                && !_model.Rows.Folds.IsFolded(region.StartLine));
+            unfold.IsEnabled = _model.Rows.Folds.IsFolded(line);
+            unfoldAll.IsEnabled = _model.Rows.Folds.Count > 0;
             ContextMenuOpening?.Invoke(this, menu.Items);
         };
         return menu;

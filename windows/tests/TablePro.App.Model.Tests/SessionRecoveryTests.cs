@@ -57,6 +57,19 @@ public sealed class SessionRecoveryTests : IDisposable
     }
 
     [Fact]
+    public void AQueryTabsFoldsComeBackFromTheSessionFileAndNoneWriteNothing()
+    {
+        var path = Path.Combine(_directory, "session.json");
+        var store = new SessionStore(path);
+
+        store.Save(WithTab(new SessionTab { Kind = TabKind.Query, Title = "Query 1", Sql = "SELECT 1", FoldedLines = [0, 7] }));
+        Assert.Equal<int>([0, 7], Assert.Single(store.Load().Connections).Tabs[0].FoldedLines!);
+
+        store.Save(WithTab(new SessionTab { Kind = TabKind.Query, Title = "Query 1", Sql = "SELECT 1" }));
+        Assert.DoesNotContain("\"foldedLines\"", File.ReadAllText(path), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RowsAreFoundByTheirKeyAfterThePageReordersThem()
     {
         var saved = SavedEdits.From(Edited(), Page("10", "20", "30"))!;

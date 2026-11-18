@@ -2,6 +2,7 @@ use super::ValueKind;
 
 const HEX: &[u8; 16] = b"0123456789abcdef";
 
+// An unreadable value has no text of its own: its bytes name its type, which only the grid's window carries.
 pub(super) fn full(kind: ValueKind, bytes: &[u8]) -> String {
     match kind {
         ValueKind::Bytes => {
@@ -9,6 +10,7 @@ pub(super) fn full(kind: ValueKind, bytes: &[u8]) -> String {
             push_hex(bytes, bytes.len(), &mut out);
             String::from_utf8_lossy(&out).into_owned()
         }
+        ValueKind::Undecodable => String::new(),
         _ => String::from_utf8_lossy(bytes).into_owned(),
     }
 }
@@ -21,6 +23,7 @@ pub(super) fn head(kind: ValueKind, bytes: &[u8], max_chars: usize) -> (String, 
             let cut = push_hex(bytes, max_chars.saturating_sub(2) / 2, &mut out);
             (String::from_utf8_lossy(&out).into_owned(), cut)
         }
+        ValueKind::Undecodable => (String::new(), false),
         _ => {
             let end = char_boundary_after(bytes, max_chars);
             (String::from_utf8_lossy(&bytes[..end]).into_owned(), end < bytes.len())
@@ -84,6 +87,16 @@ mod tests {
         let mut out = Vec::new();
         let cut = display(kind, bytes, max_chars, &mut out);
         (String::from_utf8(out).unwrap(), cut)
+    }
+
+    #[test]
+    fn an_unreadable_value_shows_its_type_to_the_grid_and_has_no_text() {
+        assert_eq!(
+            shown(ValueKind::Undecodable, b"money", 100),
+            ("money".to_owned(), false)
+        );
+        assert_eq!(full(ValueKind::Undecodable, b"money"), "");
+        assert_eq!(head(ValueKind::Undecodable, b"money", 100), (String::new(), false));
     }
 
     #[test]

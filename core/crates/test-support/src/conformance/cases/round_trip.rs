@@ -81,7 +81,7 @@ const LISTED_IDS: usize = 10;
 pub async fn csv_export_imports_back_as_the_same_rows<E: ValueCorpusEngine>(
     engine: E,
 ) -> Result<(), ConformanceFailure> {
-    let corpus = engine.value_corpus();
+    let corpus = engine.value_corpus().columns()?;
     expect(CSV_CASE, !corpus.is_empty(), || "the engine lists no corpus".to_owned())?;
     let connection = connect(CSV_CASE, &engine, writable()).await?;
     let mut wrong = Vec::new();
@@ -141,7 +141,7 @@ pub async fn csv_export_imports_back_as_the_same_rows<E: ValueCorpusEngine>(
 /// paste leaves an id the server numbers, such as SQLite's row id, to
 /// the server.
 pub async fn tsv_copy_pastes_back_as_the_same_rows<E: ValueCorpusEngine>(engine: E) -> Result<(), ConformanceFailure> {
-    let corpus = engine.value_corpus();
+    let corpus = engine.value_corpus().columns()?;
     expect(PASTE_CASE, !corpus.is_empty(), || {
         "the engine lists no corpus".to_owned()
     })?;
@@ -334,7 +334,7 @@ fn order_differences(what: &str, source: &[Vec<String>], copy: &[Vec<String>]) -
 pub async fn sql_insert_export_runs_back_as_the_same_rows<E: ValueCorpusEngine>(
     engine: E,
 ) -> Result<(), ConformanceFailure> {
-    let corpus = engine.value_corpus();
+    let corpus = engine.value_corpus().columns()?;
     expect(SQL_CASE, !corpus.is_empty(), || "the engine lists no corpus".to_owned())?;
     let connection = connect(SQL_CASE, &engine, writable()).await?;
     let session = connection

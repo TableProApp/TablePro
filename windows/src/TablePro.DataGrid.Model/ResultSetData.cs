@@ -52,6 +52,10 @@ public sealed class ResultSetData : IGridData
                     {
                         block.AddNull();
                     }
+                    else if (window.GetKind(row, column) == ValueKind.Undecodable)
+                    {
+                        block.AddUnreadable(window.GetUtf8(row, column));
+                    }
                     else
                     {
                         var text = window.GetUtf8(row, column);
