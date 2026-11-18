@@ -92,6 +92,7 @@ public enum ClickHouseResponseClassifier {
     private static func tabSeparatedOutcome(lines: [ArraySlice<UInt8>], rowLimit: Int) -> Outcome {
         let columns = ClickHouseTabSeparatedBytes.fields(lines[0]).map(ClickHouseTabSeparatedBytes.headerText)
         let columnTypeNames = ClickHouseTabSeparatedBytes.fields(lines[1]).map(ClickHouseTabSeparatedBytes.headerText)
+        let literalSyntaxColumns = columnTypeNames.map(ClickHouseTabSeparatedBytes.writesLiteralSyntax)
 
         var rows: [[PluginCellValue]] = []
         var binaryColumns = Set<Int>()
@@ -108,8 +109,10 @@ public enum ClickHouseResponseClassifier {
                     row.append(.null)
                     continue
                 }
-                let columnType = column < columnTypeNames.count ? columnTypeNames[column] : ""
-                let value = ClickHouseTabSeparatedBytes.value(field, columnType: columnType)
+                let value = ClickHouseTabSeparatedBytes.value(
+                    field,
+                    writesLiteralSyntax: column < literalSyntaxColumns.count && literalSyntaxColumns[column]
+                )
                 guard let text = utf8Text(value) else {
                     binaryColumns.insert(column)
                     row.append(.bytes(Data(value)))

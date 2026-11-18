@@ -16,6 +16,8 @@ public struct OracleRowBatcher: Sendable {
         self.rowBudget = rowBudget.map { max(1, $0) }
     }
 
+    var expectedRows: Int? { rowBudget }
+
     public mutating func append(_ row: [OracleRawCell]) -> [[OracleRawCell]]? {
         if pending.isEmpty, delivered > 0 { pending.reserveCapacity(nextBatchCapacity) }
         pending.append(row)

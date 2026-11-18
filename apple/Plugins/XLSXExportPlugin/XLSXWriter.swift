@@ -131,8 +131,7 @@ nonisolated final class XLSXWriter {
                         return convertNullToEmpty ? .empty : .string("NULL")
                     case .bytes(let data):
                         // Zero bytes are `0x`, as in CSV: an empty cell reads back as NULL.
-                        let hex = data.map { String(format: "%02X", $0) }.joined()
-                        return .string("0x" + hex)
+                        return .string("0x" + PluginHexText.uppercase(data))
                     case .text(let val):
                         let numbers = index < currentColumnNumbers.count ? currentColumnNumbers[index] : .untyped
                         return Self.cell(forText: val, numbers: numbers)
