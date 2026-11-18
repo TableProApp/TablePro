@@ -179,6 +179,7 @@ public sealed partial class WorkspaceView
 
         await DiscardTabsAsync(view => view.Shows(entry.Schema, entry.Name)).ConfigureAwait(true);
         _workbench.TableFilters.ForgetTable(FilterConnection, session.Database, table);
+        _workbench.ColumnLayouts.ForgetTable(FilterConnection, session.Database, table);
         // A partitioned table takes its partitions with it, and Cascade the views on it, so every tab whose object the
         // catalog no longer lists goes too.
         await DiscardGoneTabsAsync(session, entry.Schema).ConfigureAwait(true);
@@ -205,6 +206,7 @@ public sealed partial class WorkspaceView
         await DiscardObjectTabsAsync(shown => string.Equals(shown.Schema, schema, StringComparison.Ordinal))
             .ConfigureAwait(true);
         _workbench.TableFilters.ForgetSchema(FilterConnection, session.Database, schema);
+        _workbench.ColumnLayouts.ForgetSchema(FilterConnection, session.Database, schema);
         // Cascade drops the views in other schemas that read this one's tables too.
         await DiscardGoneTabsAsync(session, null).ConfigureAwait(true);
         await RefreshAsync().ConfigureAwait(true);
@@ -239,6 +241,7 @@ public sealed partial class WorkspaceView
             await DiscardObjectTabsAsync(shown => string.Equals(shown.Schema, database, StringComparison.Ordinal))
                 .ConfigureAwait(true);
             _workbench.TableFilters.ForgetSchema(FilterConnection, session.Database, database);
+            _workbench.ColumnLayouts.ForgetSchema(FilterConnection, session.Database, database);
             await DiscardGoneTabsAsync(session, null).ConfigureAwait(true);
             if (string.Equals(_defaultDatabase, database, StringComparison.Ordinal))
             {
@@ -252,6 +255,7 @@ public sealed partial class WorkspaceView
         else
         {
             _workbench.TableFilters.ForgetDatabase(FilterConnection, database);
+            _workbench.ColumnLayouts.ForgetDatabase(FilterConnection, database);
         }
     }
 

@@ -204,6 +204,13 @@ internal static partial class Mapping
         _ => null,
     };
 
+    public static TableInfo Info(Native.TableInfoRecord info) => new(
+        Estimate(info.Rows),
+        info.Comment,
+        info.DataBytes is { } data ? Count(data) : null,
+        info.IndexBytes is { } index ? Count(index) : null,
+        info.TotalBytes is { } total ? Count(total) : null);
+
     public static ObjectSource Source(Native.ObjectSource source) =>
         new(source.Sql, source.Database, source.OpensInEditor);
 

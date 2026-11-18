@@ -19,6 +19,9 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
     // Segoe Fluent Icons' Hide, the eye with a slash the macOS sheet marks a masked column with.
     private const string MaskedGlyph = "\uED1A";
 
+    // Sideways DIPs before a press on a header becomes a drag to move its column.
+    private const double MoveThreshold = 4;
+
     private readonly DataGridView _grid;
     private readonly TextBlock _title;
     private readonly FontIcon _sort;
@@ -29,6 +32,10 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
     private double _dragStartX;
     private double _dragStartWidth;
     private bool _dragging;
+    private uint? _pressPointer;
+    private double _pressX;
+    private bool _moving;
+    private bool _moved;
 
     public HeaderCell(DataGridView grid)
     {
@@ -71,6 +78,11 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
         PointerPressed += (_, _) => SetVisual(_hover, pressed: true);
         PointerReleased += (_, _) => SetVisual(_hover, pressed: false);
         PointerCaptureLost += (_, _) => SetVisual(_hover, pressed: false);
+        PointerPressed += OnPressed;
+        PointerMoved += OnMoved;
+        PointerReleased += OnReleased;
+        PointerCaptureLost += OnMoveLost;
+        PointerCanceled += OnMoveLost;
         Tapped += OnTapped;
         _grip.PointerPressed += OnGripPressed;
         _grip.PointerMoved += OnGripMoved;
@@ -84,6 +96,8 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
     public static int Instances { get; private set; }
 
     public int Column { get; private set; } = -2;
+
+    public DataGridView Owner => _grid;
 
     public string Title => _title.Text;
 
@@ -135,9 +149,104 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
         ApplyBrushes();
     }
 
+    // The grid ended a move this cell started, on Escape or new data: the release that follows is no click.
+    public void StopMove()
+    {
+        _pressPointer = null;
+        if (!_moving)
+        {
+            return;
+        }
+        _moving = false;
+        _moved = true;
+        ReleasePointerCaptures();
+    }
+
+    private void OnPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _moved = false;
+        _pressPointer = null;
+        if (Column < 0 || !_grid.CanReorderColumns || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+        _pressPointer = e.Pointer.PointerId;
+        _pressX = e.GetCurrentPoint(_grid.Scroller).Position.X;
+    }
+
+    // Captured only once it is a drag, so a press and release without one is still a Tapped that sorts.
+    private void OnMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (_pressPointer != e.Pointer.PointerId)
+        {
+            return;
+        }
+        var point = e.GetCurrentPoint(_grid.Scroller).Position;
+        if (!_moving)
+        {
+            if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            {
+                _pressPointer = null;
+                return;
+            }
+            if (Math.Abs(point.X - _pressX) < MoveThreshold || !CapturePointer(e.Pointer))
+            {
+                return;
+            }
+            _moving = true;
+            if (!_grid.BeginColumnMove(this, Column, point))
+            {
+                StopMove();
+                return;
+            }
+        }
+        else
+        {
+            _grid.DragColumnMove(point);
+        }
+        e.Handled = true;
+    }
+
+    private void OnReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (_pressPointer != e.Pointer.PointerId)
+        {
+            return;
+        }
+        _pressPointer = null;
+        if (!_moving)
+        {
+            return;
+        }
+        _moving = false;
+        _moved = true;
+        var point = e.GetCurrentPoint(_grid.Scroller).Position;
+        ReleasePointerCapture(e.Pointer);
+        _grid.EndColumnMove(point);
+        e.Handled = true;
+    }
+
+    private void OnMoveLost(object sender, PointerRoutedEventArgs e)
+    {
+        _pressPointer = null;
+        if (!_moving)
+        {
+            return;
+        }
+        _moving = false;
+        _moved = true;
+        _grid.CancelColumnMove();
+    }
+
     private void OnTapped(object sender, TappedRoutedEventArgs e)
     {
         e.Handled = true;
+        // A drag that moved, or was cancelled, ends with a release Windows may still call a tap.
+        if (_moved)
+        {
+            _moved = false;
+            return;
+        }
         if (Column < 0)
         {
             _grid.SelectAll();

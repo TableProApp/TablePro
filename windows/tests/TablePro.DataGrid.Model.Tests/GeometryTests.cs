@@ -30,6 +30,39 @@ public sealed class GeometryTests
     }
 
     [Fact]
+    public void ADroppedHeaderGoesBeforeTheNearestBoundaryOfItsPane()
+    {
+        var columns = new GridColumns(10, 100) { RowHeaderWidth = 48, FrozenCount = 2 };
+
+        Assert.Equal(0, columns.BoundaryAt(frozen: true, 0));
+        Assert.Equal(0, columns.BoundaryAt(frozen: true, 97));
+        Assert.Equal(1, columns.BoundaryAt(frozen: true, 98));
+        Assert.Equal(2, columns.BoundaryAt(frozen: true, 5000));
+        Assert.Equal(2, columns.BoundaryAt(frozen: false, -10));
+        Assert.Equal(2, columns.BoundaryAt(frozen: false, 49));
+        Assert.Equal(3, columns.BoundaryAt(frozen: false, 50));
+        Assert.Equal(10, columns.BoundaryAt(frozen: false, 750));
+        Assert.Equal(10, columns.BoundaryAt(frozen: false, 1e9));
+        Assert.Equal(48, columns.BoundaryX(frozen: true, 0));
+        Assert.Equal(248, columns.BoundaryX(frozen: true, 2));
+        Assert.Equal(0, columns.BoundaryX(frozen: false, 2));
+        Assert.Equal(800, columns.BoundaryX(frozen: false, 10));
+        Assert.Equal(3, new GridColumns(3, 100) { FrozenCount = 3 }.BoundaryAt(frozen: false, 10));
+    }
+
+    // To is where the column sits once moved, so a drop just right of itself is no move.
+    [Fact]
+    public void ADropBeforeABoundaryNamesThePlaceTheColumnTakes()
+    {
+        Assert.Equal(new GridColumnMove(2, 4), GridColumnMove.Dropped(2, 5));
+        Assert.Equal(new GridColumnMove(6, 4), GridColumnMove.Dropped(6, 4));
+        Assert.Equal(new GridColumnMove(4, 0), GridColumnMove.Dropped(4, 0));
+        Assert.Equal(new GridColumnMove(0, 9), GridColumnMove.Dropped(0, 10));
+        Assert.Null(GridColumnMove.Dropped(3, 3));
+        Assert.Null(GridColumnMove.Dropped(3, 4));
+    }
+
+    [Fact]
     public void TheScrollRangeCoversEveryColumnAViewportTouches()
     {
         var columns = new GridColumns(200, 140);

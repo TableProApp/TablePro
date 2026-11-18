@@ -35,9 +35,14 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
             <CommandBar
                 x:Name="Commands"
+                Grid.ColumnSpan="2"
                 x:Uid="TableCommands"
                 AutomationProperties.AutomationId="TableCommands"
                 DefaultLabelPosition="Right"
@@ -79,6 +84,14 @@
                     Checked="OnFilterToggled"
                     Icon="Filter"
                     Unchecked="OnFilterToggled" />
+                <AppBarButton x:Uid="ColumnsButton" x:Name="ColumnsButton" AutomationProperties.AutomationId="ColumnsButton" Icon="ViewAll" Click="OnColumns" />
+                <AppBarToggleButton
+                    x:Uid="DetailsButton"
+                    x:Name="DetailsButton"
+                    AutomationProperties.AutomationId="DetailsButton"
+                    Checked="OnDetailsToggled"
+                    Icon="OpenPane"
+                    Unchecked="OnDetailsToggled" />
                 <!-- Last, so a narrow bar moves them to the overflow first and keeps the pager; the keys are the menus'. -->
                 <AppBarSeparator />
                 <AppBarButton x:Uid="AddRowButton" x:Name="AddRowButton" AutomationProperties.AutomationId="AddRowButton" Icon="Add" IsEnabled="False" Click="OnAddRow" />
@@ -93,6 +106,7 @@
             <InfoBar
                 x:Name="RecoveredBar"
                 Grid.Row="1"
+                Grid.ColumnSpan="2"
                 Margin="8,0,8,8"
                 AutomationProperties.AutomationId="RecoveredEditsBar"
                 Closed="OnRecoveredBarClosed"
@@ -108,9 +122,12 @@
             </InfoBar>
 
             <!-- The filter bar and the structure are made the first time they show. -->
-            <Border x:Name="FilterHost" Grid.Row="2" Visibility="Collapsed" />
+            <Border x:Name="FilterHost" Grid.Row="2" Grid.ColumnSpan="2" Visibility="Collapsed" />
 
             <local:ResultsPane x:Name="Results" Grid.Row="3" />
+
+            <!-- Made the first time Details is turned on. -->
+            <Border x:Name="DetailsHost" Grid.Row="3" Grid.Column="1" Visibility="Collapsed" />
         </Grid>
 
         <Border x:Name="StructureHost" Grid.Row="1" Visibility="Collapsed" />

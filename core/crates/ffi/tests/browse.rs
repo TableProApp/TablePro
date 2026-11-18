@@ -292,6 +292,27 @@ async fn a_tables_estimate_is_unknown_until_analyze_writes_its_statistics() {
 }
 
 #[tokio::test]
+async fn a_tables_info_has_its_estimate_and_its_size_but_sqlite_keeps_no_comment() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session) = fixture(dir.path(), PEOPLE).await;
+    execute(&session, "CREATE INDEX people_by_age ON people (age); ANALYZE").await;
+
+    let info = session.table_info(table("people"), None).await.unwrap();
+    session.close().await.unwrap();
+
+    assert_eq!(info.rows, RowEstimate::Approximate { rows: 7 });
+    assert_eq!(info.comment, None);
+    // A system SQLite may be built without dbstat, so only the bundled one is sure to report sizes.
+    if cfg!(not(target_os = "linux")) {
+        assert!(info.data_bytes.is_some_and(|bytes| bytes > 0), "{info:?}");
+        assert!(info.index_bytes.is_some_and(|bytes| bytes > 0), "{info:?}");
+    }
+    if let (Some(data), Some(index), Some(total)) = (info.data_bytes, info.index_bytes, info.total_bytes) {
+        assert_eq!(total, data + index);
+    }
+}
+
+#[tokio::test]
 async fn a_filter_on_a_column_the_table_lacks_is_refused_before_any_read() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, session) = fixture(dir.path(), PEOPLE).await;

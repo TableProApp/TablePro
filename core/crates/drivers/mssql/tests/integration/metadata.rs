@@ -1,14 +1,19 @@
 //! The catalogue as browse and the structure tab read it.
 
+use secrecy::SecretString;
 use tablepro_core::column::{ColumnDefault, ColumnKind, ReadForm, TextLength};
 use tablepro_core::ddl::{DdlDialect, IdentityStyle, TableDraft, diff_table};
 use tablepro_core::dialect::{BindTarget, LikeForm};
-use tablepro_core::meta::{EditorRefusal, ObjectInfo, ObjectKind, ObjectScope, RowIdentity, TableRef};
+use tablepro_core::meta::{EditorRefusal, ObjectInfo, ObjectKind, ObjectScope, RowIdentity, TableInfo, TableRef};
 use tablepro_core::statement::StatementBuilder;
-use tablepro_core::{DriverError, RowLimit, UnsupportedFeature, Value};
+use tablepro_core::{Credentials, DriverError, RowLimit, UnsupportedFeature, Value, WorkspaceSettings};
 use tablepro_driver_mssql::MssqlDialect;
+use tablepro_test_support::conformance::test_liveness;
 
-use crate::support::{CALL, columns, connect, dbo, rows, run_ok, scalar, session, setup, start, statement, within};
+use crate::support::{
+    CALL, columns, connect, dbo, dial, direct, options_over, require, rows, run_ok, scalar, session, setup, start,
+    statement, within,
+};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
@@ -136,6 +141,84 @@ async fn the_servers_databases_are_listed_for_a_query_tab() {
         .find(|database| database.is_default)
         .expect("the login's database");
     assert!(!own.is_system || own.name == "master", "{own:?}");
+}
+
+/// A login that may read the table but not the DMV its sizes come from
+/// still gets its comment.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn table_info_reports_comment_and_sizes() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE dbo.sized (id int PRIMARY KEY, label nvarchar(100))",
+            "CREATE INDEX sized_label ON dbo.sized (label)",
+            "INSERT INTO dbo.sized VALUES (1, N'a'), (2, N'b'), (3, N'c')",
+            "EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'the sized one', \
+             @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'sized'",
+            "CREATE VIEW dbo.sized_view AS SELECT id FROM dbo.sized",
+        ],
+    )
+    .await;
+    let admin = session(connection.as_ref()).await;
+    for sql in [
+        "CREATE LOGIN sizer WITH PASSWORD = N'Sizer-Pass-2026!', CHECK_POLICY = OFF",
+        "CREATE USER sizer FOR LOGIN sizer",
+        "GRANT SELECT ON dbo.sized TO sizer",
+    ] {
+        run_ok(admin.as_ref(), sql).await;
+    }
+    let liveness = test_liveness();
+    let sizer = dial(options_over(
+        direct(fixture.host(), fixture.port(), &liveness),
+        Credentials::Password {
+            username: "sizer".to_owned(),
+            password: SecretString::from("Sizer-Pass-2026!".to_owned()),
+        },
+        require(),
+        WorkspaceSettings::workspace(false),
+        liveness,
+    ))
+    .await
+    .expect("the sizer's connection");
+
+    let sized = connection
+        .table_info(&dbo("sized"), within(CALL))
+        .await
+        .expect("the table's info");
+    let view = connection
+        .table_info(&dbo("sized_view"), within(CALL))
+        .await
+        .expect("the view's info");
+    let missing = connection
+        .table_info(&dbo("missing"), within(CALL))
+        .await
+        .expect("no info");
+    let refused = sizer
+        .table_info(&dbo("sized"), within(CALL))
+        .await
+        .expect("the comment without the sizes");
+
+    assert_eq!(sized.comment.as_deref(), Some("the sized one"));
+    let (data, index, total) = (
+        sized.data_bytes.expect("data"),
+        sized.index_bytes.expect("indexes"),
+        sized.total_bytes.expect("total"),
+    );
+    assert!(data > 0 && index > 0, "{sized:?}");
+    assert!(total >= data + index, "{sized:?}");
+    assert_eq!(view, TableInfo::default());
+    assert_eq!(missing, TableInfo::default());
+    assert_eq!(
+        refused,
+        TableInfo {
+            comment: Some("the sized one".to_owned()),
+            ..TableInfo::default()
+        }
+    );
+    sizer.close().await.expect("a close");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

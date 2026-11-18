@@ -69,6 +69,18 @@ internal static class CoreCall
         }
     }
 
+    public static void Run(Action call)
+    {
+        try
+        {
+            call();
+        }
+        catch (Native.CoreException exception)
+        {
+            throw Translate(exception, CancellationToken.None);
+        }
+    }
+
     private static Exception Translate(Native.CoreException exception, CancellationToken cancellationToken) =>
         exception switch
         {

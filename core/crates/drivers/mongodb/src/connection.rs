@@ -12,7 +12,9 @@ use tablepro_core::ddl::{
     ColumnAttributes, ColumnDefinition, InboundForeignKey, OutboundForeignKey, PrimaryKeyConstraint, TableDefinition,
 };
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
+use tablepro_core::meta::{
+    IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
+};
 use tablepro_core::sql_syntax::StatementAccess;
 use tablepro_core::sql_syntax::mongo::access_of;
 use tablepro_core::statement::Statement;
@@ -439,6 +441,14 @@ impl Connection for MongoConnection {
         let (database, collection) = (self.database_of(table), table.name.clone());
         self.read(options, move |context, session| {
             Box::pin(async move { reader(&context, session).estimate(&database, &collection).await })
+        })
+        .await
+    }
+
+    async fn table_info(&self, table: &TableRef, options: CallOptions) -> Result<TableInfo, DriverError> {
+        let (database, collection) = (self.database_of(table), table.name.clone());
+        self.read(options, move |context, session| {
+            Box::pin(async move { reader(&context, session).table_info(&database, &collection).await })
         })
         .await
     }

@@ -43,6 +43,9 @@ public interface ITabSession
 
     Task<TableStructure> GetStructureAsync(TableName table, ObjectKind kind, CancellationToken cancellationToken);
 
+    // The row estimate with the table's comment and sizes, each null where the engine keeps none.
+    Task<TableInfo> GetTableInfoAsync(TableName table, CancellationToken cancellationToken);
+
     // Null when the object is gone or the engine cannot read its definition.
     Task<ObjectSource?> GetObjectDefinitionAsync(ObjectEntry entry, CancellationToken cancellationToken);
 
@@ -197,6 +200,9 @@ public sealed class CoreTabSession : ITabSession
 
     public Task<FilterChoices> GetFilterChoicesAsync(TableName table, CancellationToken cancellationToken) =>
         _share.Session.GetFilterChoicesAsync(table, cancellationToken);
+
+    public Task<TableInfo> GetTableInfoAsync(TableName table, CancellationToken cancellationToken) =>
+        _share.Session.GetTableInfoAsync(table, cancellationToken);
 
     public Task<TableStructure> GetStructureAsync(
         TableName table,

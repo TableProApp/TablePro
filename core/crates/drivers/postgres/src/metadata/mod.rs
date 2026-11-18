@@ -9,6 +9,7 @@ mod foreign_keys;
 mod identity;
 mod indexes;
 mod objects;
+mod table_info;
 
 pub(crate) use database_choices::database_choices;
 pub(crate) use definitions::fetch_object_definition;
@@ -17,6 +18,7 @@ pub(crate) use foreign_keys::{fetch_foreign_keys, fetch_outbound_foreign_keys};
 pub(crate) use identity::row_identity;
 pub(crate) use indexes::{fetch_indexes, in_tablespace, without_only};
 pub(crate) use objects::{list_databases, list_objects, list_schemas};
+pub(crate) use table_info::table_info;
 
 use futures_util::TryStreamExt;
 use postgres_types::{ToSql, Type};
@@ -194,6 +196,8 @@ mod tests {
             ("indexes", indexes::INDEXES_SQL.to_owned()),
             ("index statements", indexes::INDEX_STATEMENTS_SQL.to_owned()),
             ("estimate", estimate::ESTIMATE_SQL.to_owned()),
+            ("table info", table_info::TABLE_INFO_SQL.to_owned()),
+            ("table info before 12", table_info::TABLE_INFO_SQL_BEFORE_12.to_owned()),
             ("foreign keys", foreign_keys::foreign_keys_sql()),
             ("inbound foreign keys", inbound_foreign_keys_sql()),
             ("primary key", PRIMARY_KEY_NAME_SQL.to_owned()),

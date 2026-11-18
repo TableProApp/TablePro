@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -10,6 +12,7 @@ using Microsoft.Windows.Storage.Pickers;
 using TablePro.Interop;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
+using Windows.UI.Core;
 
 namespace TablePro.App.Views;
 
@@ -17,6 +20,10 @@ namespace TablePro.App.Views;
 public sealed partial class HomeView : UserControl
 {
     private static readonly string[] TagColors = ["blue", "green", "orange", "purple", "teal", "red", "pink", "yellow", "slate"];
+
+    // In the connection form's order, None first.
+    private static readonly string[] GroupColors =
+        ["", "blue", "teal", "green", "yellow", "orange", "red", "pink", "purple", "slate"];
 
     private readonly Workbench _workbench;
     private readonly IShell _shell;
@@ -369,6 +376,7 @@ public sealed partial class HomeView : UserControl
         {
             AddItem(menu, "MenuNewSubgroup", Symbol.NewFolder, async () => await NewGroupAsync(group.Id).ConfigureAwait(true));
             AddItem(menu, "MenuRename", Symbol.Rename, () => StartRename(item));
+            menu.Items.Add(GroupColorMenu(group));
             menu.Items.Add(new MenuFlyoutSeparator());
             AddItem(menu, "MenuDelete", Symbol.Delete, async () => await DeleteGroupAsync(group).ConfigureAwait(true));
         }
@@ -386,6 +394,39 @@ public sealed partial class HomeView : UserControl
         {
             menu.ShowAt((FrameworkElement)sender);
         }
+    }
+
+    // As macOS offers it: None and each colour a connection can take, the group's own checked.
+    private MenuFlyoutSubItem GroupColorMenu(ConnectionGroup group)
+    {
+        var menu = new MenuFlyoutSubItem
+        {
+            Text = Strings.Get("MenuGroupColor"),
+            Icon = new SymbolIcon(Symbol.FontColor),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(menu, "GroupColorMenu");
+        foreach (var color in GroupColors)
+        {
+            var choice = new RadioMenuFlyoutItem
+            {
+                Text = Strings.Get(color.Length == 0 ? "ColorNone" : "Color_" + color),
+                GroupName = "GroupColor",
+                IsChecked = string.Equals(group.Color ?? string.Empty, color, StringComparison.Ordinal),
+            };
+            if (color.Length > 0)
+            {
+                var icon = new SymbolIcon(Symbol.Folder);
+                EngineIcons.Tint(icon, color);
+                choice.Icon = icon;
+            }
+
+            var picked = color.Length == 0 ? null : color;
+            choice.Click += async (_, _) =>
+                await Write(() => _workbench.Library.SetGroupColorAsync(group.Id, picked)).ConfigureAwait(true);
+            menu.Items.Add(choice);
+        }
+
+        return menu;
     }
 
     private MenuFlyoutSubItem MoveMenu(IReadOnlyList<SavedConnection> targets)
@@ -1005,6 +1046,95 @@ public sealed partial class HomeView : UserControl
         sender is FrameworkElement { DataContext: LibraryItem item } ? item : null;
 
     private void OnNewConnection(object sender, RoutedEventArgs e) => _shell.NewConnection();
+
+    // As macOS's Import from URL, a URL already on the clipboard is filled in.
+    private async void OnHomeUrlFlyoutOpened(object sender, object e)
+    {
+        HomeUrlBox.Description = null;
+        HomeUrlBox.Focus(FocusState.Programmatic);
+        if (HomeUrlBox.Text.Length == 0 && PastedUrl.In(await ReadClipboardAsync().ConfigureAwait(true)) is { } url
+            && HomeUrlBox.Text.Length == 0)
+        {
+            HomeUrlBox.Text = url;
+            HomeUrlBox.SelectAll();
+        }
+    }
+
+    private void OnHomeUrlKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter)
+        {
+            e.Handled = true;
+            ContinueFromUrl();
+        }
+    }
+
+    private void OnHomeUrlContinue(object sender, RoutedEventArgs e) => ContinueFromUrl();
+
+    private void ContinueFromUrl()
+    {
+        if (StartFromUrl(HomeUrlBox.Text.Trim()) is { } error)
+        {
+            HomeUrlBox.Description = error;
+            return;
+        }
+
+        HomeUrlBox.Text = string.Empty;
+        HomeUrlFlyout.Hide();
+    }
+
+    // Ctrl+V on the page, outside a text box, opens the form on a URL the clipboard holds.
+    private async void OnPageKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.V || !IsDown(VirtualKey.Control) || IsDown(VirtualKey.Shift) || IsDown(VirtualKey.Menu)
+            || e.OriginalSource is TextBox or PasswordBox || _renaming is not null)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        if (PastedUrl.In(await ReadClipboardAsync().ConfigureAwait(true)) is { } url && StartFromUrl(url) is { } error)
+        {
+            ShowMessage(error, InfoBarSeverity.Error);
+        }
+    }
+
+    // Null once the form opens; otherwise why the URL cannot start a connection.
+    private string? StartFromUrl(string text)
+    {
+        try
+        {
+            var parsed = TableProCore.ParseConnectionUrl(text);
+            if (_workbench.Engine(parsed.EngineId) is not { } engine)
+            {
+                return Strings.Get("Error_url_unknown_scheme");
+            }
+
+            _shell.NewConnection(ConnectionDraft.FromUrl(parsed, engine));
+            return null;
+        }
+        catch (TableProException exception)
+        {
+            return Strings.Error(exception.Error);
+        }
+    }
+
+    private static bool IsDown(VirtualKey key) =>
+        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
+
+    // Null when the clipboard holds no text or does not answer.
+    private static async Task<string?> ReadClipboardAsync()
+    {
+        try
+        {
+            var content = Clipboard.GetContent();
+            return content.Contains(StandardDataFormats.Text) ? await content.GetTextAsync() : null;
+        }
+        catch (COMException)
+        {
+            return null;
+        }
+    }
 
     private async void OnOpenFile(object sender, RoutedEventArgs e) => await _shell.OpenFileAsync().ConfigureAwait(true);
 

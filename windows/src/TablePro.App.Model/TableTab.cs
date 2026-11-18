@@ -30,6 +30,21 @@ public enum CellValueKind
 // The open editor's cell and text, which a commit would keep; Row counts the page's rows, then the new ones.
 public sealed record CellDraft(int Row, int Column, string Text);
 
+// One column of a row as the details pane shows it: what the cell holds now, its pending edit included. Text is null
+// for NULL and for DEFAULT; a value too long to show whole is cut, and then not edited here.
+public sealed record RowField(
+    int Column,
+    string Name,
+    string TypeName,
+    string? Text,
+    bool TextCut,
+    bool IsDefault,
+    bool IsEdited,
+    bool CanEdit)
+{
+    public bool IsNull => Text is null && !IsDefault;
+}
+
 // The run that read the page shown, which the status words with the page.
 public readonly record struct PageRun(long Milliseconds, bool Truncated);
 
@@ -99,6 +114,9 @@ public interface ITableTabView
     // The grid's open editor keeps its text first; false when the text was refused and the editor stays open.
     bool CommitOpenEdit();
 
+    // A confirmed Discard drops what is still typed and not kept, a refused value included.
+    void DiscardOpenEdit();
+
     void FocusRow(int row);
 
     Task<bool> ConfirmDiscardForReloadAsync(ReloadReason reason);
@@ -122,6 +140,9 @@ public interface ITableTabView
 
     // Without the columns and their operators the filter bar has nothing to offer.
     void ShowFilterChoicesFailed(CoreError failure);
+
+    // The details pane's table figures could not be read; the rows stay as they are.
+    void ShowTableInfoFailed(CoreError failure);
 
     // Recovered changes back and waiting, and whether Save waits for a reload or a discard; all empty hides it.
     void ShowRecovered(int restored, int waiting, bool saveBlocked);
@@ -148,6 +169,7 @@ public sealed class TableTab : IWorkspaceTab
     private readonly TabWork _work = new();
     private readonly KeptRead<TableStructure> _structure;
     private readonly KeptRead<FilterChoices> _choices;
+    private readonly KeptRead<TableInfo> _info;
     private readonly ITableFilters? _filters;
 
     // Where each page of a server-paged table resumes, by its offset: a paging state only goes forward.
@@ -232,6 +254,10 @@ public sealed class TableTab : IWorkspaceTab
             _work,
             token => _session.GetFilterChoicesAsync(Table, token),
             _view.ShowFilterChoicesFailed);
+        _info = new KeptRead<TableInfo>(
+            _work,
+            token => _session.GetTableInfoAsync(Table, token),
+            _view.ShowTableInfoFailed);
         _results.ShownSetChanged += OnShownSetChanged;
     }
 
@@ -266,6 +292,9 @@ public sealed class TableTab : IWorkspaceTab
 
     // Null until LoadStructureAsync has read it.
     public TableStructure? Structure => _structure.Value;
+
+    // The details pane's figures, read when it first shows them and again after a refresh.
+    public TableInfo? Info => _info.Value;
 
     public TablePage Page => _page;
 
@@ -517,6 +546,7 @@ public sealed class TableTab : IWorkspaceTab
             _keys = null;
             _structure.MarkStale();
             _choices.MarkStale();
+            _info.MarkStale();
             await LoadAsync(_page.Offset, recount: true).ConfigureAwait(true);
         }
     }
@@ -570,6 +600,8 @@ public sealed class TableTab : IWorkspaceTab
 
     // Read beside the page, never in its way, and kept until a refresh of the tab or of the structure.
     public Task<TableStructure?> LoadStructureAsync(bool refresh) => _structure.LoadAsync(refresh);
+
+    public Task<TableInfo?> LoadInfoAsync(bool refresh) => _info.LoadAsync(refresh);
 
     public async Task SortAsync(GridSort sort)
     {
@@ -650,6 +682,89 @@ public sealed class TableTab : IWorkspaceTab
 
         text = stored ?? string.Empty;
         return null;
+    }
+
+    // Each column of the row in the table's own order; a binary value shows as the grid shows it, 0x and hex. A stored
+    // value past maxCharacters is cut and not edited here, so a large one is never read whole to show a row.
+    public IReadOnlyList<RowField> FieldsAt(int row, int maxCharacters = CellValue.MaximumShownCharacters)
+    {
+        var columns = _results.Columns;
+        var rows = ShownRows;
+        var edits = Edits;
+        if (row < 0 || (edits is null ? rows is null || row >= rows.RowCount : row >= edits.RowCount))
+        {
+            return [];
+        }
+
+        var fields = new List<RowField>(columns.Count);
+        var count = edits is null ? columns.Count : Math.Min(columns.Count, edits.Columns.Count);
+        for (var column = 0; column < count; column++)
+        {
+            var info = columns[column];
+            var editable = CanEdit && edits is not null && CellRefusal(edits, row, column) is null;
+            if (edits?.GetCell(row, column) is { } pending)
+            {
+                var edited = !edits.IsAdded(row);
+                (string? Text, bool IsDefault) shown = pending switch
+                {
+                    CellEdit.Text typed => (typed.Value, false),
+                    CellEdit.ServerDefault => (null, true),
+                    _ => (null, false),
+                };
+                // A duplicated row's copy of a value is pending text: one with a NUL, or past maxCharacters, is shown
+                // as the stored value would be, read only.
+                var cut = shown.Text is { } whole && whole.Length > maxCharacters;
+                var text = cut ? Head(shown.Text!, maxCharacters) : shown.Text;
+                var canEdit = editable && !cut && text?.Contains('\0', StringComparison.Ordinal) != true;
+                fields.Add(new RowField(
+                    column, info.Name, info.TypeName, text, cut, shown.IsDefault, edited, canEdit));
+                continue;
+            }
+
+            var held = StoredField(rows, row, column, info, maxCharacters);
+            // An editable cell opens with its whole stored text, as the grid's editor does, once it fits.
+            if (editable && !held.TextCut && ReadStored(row, column, out var stored) is null)
+            {
+                // A TextBox ends its text at a NUL, so such a value is shown and never edited here, as in the grid.
+                var editableText = stored?.Contains('\0', StringComparison.Ordinal) != true;
+                fields.Add(new RowField(column, info.Name, info.TypeName, stored, false, false, false, editableText));
+                continue;
+            }
+
+            fields.Add(held);
+        }
+
+        return fields;
+    }
+
+    // Never between the halves of a surrogate pair.
+    private static string Head(string text, int length) =>
+        text[..(length > 0 && char.IsHighSurrogate(text[length - 1]) ? length - 1 : length)];
+
+    private static RowField StoredField(ResultSet? rows, int row, int column, ResultColumn info, int maxCharacters)
+    {
+        if (rows is null || row >= rows.RowCount)
+        {
+            return new RowField(column, info.Name, info.TypeName, null, false, false, false, false);
+        }
+
+        try
+        {
+            if (rows.GetCellBytes(row, column, Math.Clamp(maxCharacters / 2, 1, CellValue.MaximumHexBytes)) is { } binary)
+            {
+                var hex = "0x" + Convert.ToHexStringLower(binary.Bytes.Span);
+                var cut = binary.Bytes.Length < binary.Length;
+                return new RowField(column, info.Name, info.TypeName, hex, cut, false, false, false);
+            }
+
+            return rows.GetCellTextHead(row, column, maxCharacters) is { } head
+                ? new RowField(column, info.Name, info.TypeName, head.Text, head.Cut, false, false, false)
+                : new RowField(column, info.Name, info.TypeName, null, false, false, false, false);
+        }
+        catch (TableProException)
+        {
+            return new RowField(column, info.Name, info.TypeName, null, false, false, false, false);
+        }
     }
 
     // Read as the save will read it, so a cell the user leaves says why it would not save.
@@ -764,6 +879,7 @@ public sealed class TableTab : IWorkspaceTab
             return;
         }
 
+        _view.DiscardOpenEdit();
         Unblock();
         edits.Discard();
     }

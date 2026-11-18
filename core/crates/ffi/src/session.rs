@@ -128,6 +128,16 @@ pub enum RowEstimate {
     Unknown,
 }
 
+// What the engine keeps about a table besides its rows: each figure None where it keeps none or the login cannot read it.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TableInfoRecord {
+    pub rows: RowEstimate,
+    pub comment: Option<String>,
+    pub data_bytes: Option<u64>,
+    pub index_bytes: Option<u64>,
+    pub total_bytes: Option<u64>,
+}
+
 impl From<RowCountEstimate> for RowEstimate {
     fn from(estimate: RowCountEstimate) -> Self {
         match estimate {
@@ -363,6 +373,37 @@ impl DatabaseSession {
                 })
                 .await?;
             Ok(RowEstimate::from(estimate.rows))
+        })
+        .await
+    }
+
+    // The row estimate and the engine's figures for the table, read in one metadata operation.
+    pub async fn table_info(
+        &self,
+        table: TableName,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<TableInfoRecord, CoreError> {
+        let session = self.session.clone();
+        let cancel = token(cancel);
+        on_runtime(&self.tasks, async move {
+            let table: TableRef = table.into();
+            let (estimate, info) = session
+                .run_cancellable(OperationKind::Metadata, &cancel, |lease, options| {
+                    let table = table.clone();
+                    async move {
+                        let estimate = lease.table_estimate(&table, options.clone()).await?;
+                        let info = lease.table_info(&table, options).await?;
+                        Ok((estimate, info))
+                    }
+                })
+                .await?;
+            Ok(TableInfoRecord {
+                rows: RowEstimate::from(estimate.rows),
+                comment: info.comment,
+                data_bytes: info.data_bytes,
+                index_bytes: info.index_bytes,
+                total_bytes: info.total_bytes,
+            })
         })
         .await
     }

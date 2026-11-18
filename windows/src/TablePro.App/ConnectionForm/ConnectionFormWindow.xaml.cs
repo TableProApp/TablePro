@@ -35,7 +35,8 @@ public sealed partial class ConnectionFormWindow : Window
     private bool _fillingTls;
     private TlsRemedy? _remedy;
 
-    internal ConnectionFormWindow(Workbench workbench, Window owner, SavedConnection? existing)
+    internal ConnectionFormWindow(
+        Workbench workbench, Window owner, SavedConnection? existing, ConnectionDraft? draft = null)
     {
         _workbench = workbench;
         _isNew = existing is null;
@@ -64,6 +65,10 @@ public sealed partial class ConnectionFormWindow : Window
         {
             ShowDetails(engine, ConnectionDraft.From(existing, engine));
         }
+        else if (draft is not null && workbench.Engine(draft.EngineId) is { } drafted)
+        {
+            ShowDetails(drafted, draft);
+        }
         else
         {
             ShowChooser();
@@ -73,6 +78,15 @@ public sealed partial class ConnectionFormWindow : Window
     }
 
     internal event EventHandler<FormResult>? Completed;
+
+    // A URL pasted on the Connections page while this new connection's form is open replaces what it holds.
+    internal void ShowDraft(ConnectionDraft draft)
+    {
+        if (_isNew && !_busy && _workbench.Engine(draft.EngineId) is { } engine)
+        {
+            ShowDetails(engine, draft);
+        }
+    }
 
     internal string Key { get; }
 
@@ -193,6 +207,7 @@ public sealed partial class ConnectionFormWindow : Window
         SshAuthBox.SelectedIndex = (int)draft.SshAuth;
         SshKeyBox.Text = draft.SshKeyPath;
         SshPasswordInput.Password = string.Empty;
+        SshJumpHostsBox.Text = draft.JumpHosts;
         AuthBox.Visibility = engine.SupportsIntegratedAuth ? Visibility.Visible : Visibility.Collapsed;
         AuthBox.SelectedIndex = draft.IntegratedAuth ? 1 : 0;
         FillTlsModes(engine, draft.TlsMode);
@@ -236,6 +251,7 @@ public sealed partial class ConnectionFormWindow : Window
             draft.SshAuth = (SshAuthMethod)Math.Max(0, SshAuthBox.SelectedIndex);
             draft.SshKeyPath = SshKeyBox.Text;
             draft.SshPassword = SshPasswordInput.Password;
+            draft.JumpHosts = SshJumpHostsBox.Text;
             draft.TlsMode = SelectedTlsMode;
             draft.CaFile = CaFileBox.Text;
             draft.ServerName = ServerNameBox.Text;
@@ -254,7 +270,19 @@ public sealed partial class ConnectionFormWindow : Window
     {
         ClearErrors();
         var draft = ReadDraft();
-        var errors = draft.Validate();
+        var errors = draft.Validate().ToList();
+        if (draft is { IsFileEngine: false, UseSsh: true } && !string.IsNullOrWhiteSpace(draft.JumpHosts))
+        {
+            try
+            {
+                TableProCore.CheckJumpHosts(draft.JumpHosts);
+            }
+            catch (TableProException)
+            {
+                errors.Add(new FieldError(FormField.JumpHosts, FieldProblem.Invalid));
+            }
+        }
+
         if (errors.Count == 0)
         {
             return true;
@@ -266,7 +294,7 @@ public sealed partial class ConnectionFormWindow : Window
             var field = Field(error.Field);
             SetError(field, Message(error));
             first ??= field;
-            if (error.Field is FormField.SshHost or FormField.SshPort or FormField.SshKey)
+            if (error.Field is FormField.SshHost or FormField.SshPort or FormField.SshKey or FormField.JumpHosts)
             {
                 SshExpander.IsExpanded = true;
             }
@@ -293,6 +321,7 @@ public sealed partial class ConnectionFormWindow : Window
         FormField.SshHost => SshHostBox,
         FormField.SshPort => SshPortBox,
         FormField.SshKey => SshKeyBox,
+        FormField.JumpHosts => SshJumpHostsBox,
         FormField.ClientKey => ClientKeyBox,
         _ => TimeoutBox,
     };
@@ -300,6 +329,7 @@ public sealed partial class ConnectionFormWindow : Window
     private static string Message(FieldError error) => (error.Field, error.Problem) switch
     {
         (FormField.ClientKey, _) => Strings.Get("FieldClientPair"),
+        (FormField.JumpHosts, _) => Strings.Get("FieldJumpHosts"),
         (_, FieldProblem.Required) => Strings.Get("FieldRequired"),
         (_, FieldProblem.NotANumber) => Strings.Get("FieldNotANumber"),
         (_, FieldProblem.NotAbsolute) => Strings.Get("FieldNotAbsolute"),
@@ -333,7 +363,8 @@ public sealed partial class ConnectionFormWindow : Window
 
     private void ClearErrors()
     {
-        foreach (var box in new[] { HostBox, PortBox, FileBox, SshHostBox, SshPortBox, SshKeyBox, ClientKeyBox, TimeoutBox })
+        TextBox[] boxes = [HostBox, PortBox, FileBox, SshHostBox, SshPortBox, SshKeyBox, SshJumpHostsBox, ClientKeyBox, TimeoutBox];
+        foreach (var box in boxes)
         {
             box.Description = null;
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetFullDescription(box, string.Empty);
@@ -482,8 +513,12 @@ public sealed partial class ConnectionFormWindow : Window
     // Each section says what it holds while folded.
     private void UpdateSummaries()
     {
+        var server = string.IsNullOrWhiteSpace(SshUserBox.Text)
+            ? SshHostBox.Text.Trim()
+            : $"{SshUserBox.Text.Trim()}@{SshHostBox.Text.Trim()}";
+        var jumps = SshJumpHostsBox.Text.Trim();
         SshExpander.Description = SshSwitch.IsOn && !string.IsNullOrWhiteSpace(SshHostBox.Text)
-            ? string.IsNullOrWhiteSpace(SshUserBox.Text) ? SshHostBox.Text.Trim() : $"{SshUserBox.Text.Trim()}@{SshHostBox.Text.Trim()}"
+            ? jumps.Length == 0 ? server : Strings.Format("SshThroughSummary", server, jumps)
             : Strings.Get(SshSwitch.IsOn ? "SshOnSummary" : "SshOffSummary");
         TlsExpander.Description = (TlsModeBox.SelectedItem as ComboBoxItem)?.Content as string ?? string.Empty;
         var safeMode = (SafeModeBox.SelectedItem as ComboBoxItem)?.Content as string ?? string.Empty;
@@ -514,6 +549,14 @@ public sealed partial class ConnectionFormWindow : Window
     }
 
     private void OnSshAuthChanged(object sender, SelectionChangedEventArgs e) => UpdateSsh();
+
+    private void OnSshSummaryChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_draft is not null)
+        {
+            UpdateSummaries();
+        }
+    }
 
     private void OnEngineSearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args) =>
         FillEngines(sender.Text);
@@ -565,15 +608,8 @@ public sealed partial class ConnectionFormWindow : Window
                 return;
             }
 
-            var draft = ConnectionDraft.New(engine);
-            draft.Apply(parsed, engine);
-            if (draft.IsFileEngine)
-            {
-                draft.Database = parsed.Database;
-            }
-
             UrlFlyout.Hide();
-            ShowDetails(engine, draft);
+            ShowDetails(engine, ConnectionDraft.FromUrl(parsed, engine));
         }
         catch (TableProException exception)
         {

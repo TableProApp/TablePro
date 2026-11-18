@@ -15,7 +15,7 @@ use tablepro_core::ddl::{
 };
 use tablepro_core::meta::{
     EngineRowId, IndexInfo, IndexKey, ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate,
-    RowIdentity, SchemaInfo, TableEstimate, TableRef,
+    RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
 };
 use tablepro_core::sql_syntax::{SqlGrammar, qualify_created_name, terminated};
 use tablepro_core::{
@@ -748,6 +748,29 @@ pub(crate) async fn table_estimate(
         },
         None => unknown,
     })
+}
+
+/// The bytes `dbstat` counts for the table and its indexes. SQLite keeps
+/// no comment.
+pub(crate) async fn table_info(connection: &mut SqlxConnection, table: &TableRef) -> Result<TableInfo, DriverError> {
+    let schema = schema_of(table);
+    let read: Result<Vec<(String, i64)>, sqlx::Error> =
+        sqlx::query_as(AssertSqlSafe(catalog::table_pages_sql(&quote(schema))))
+            .bind(schema)
+            .bind(table.name.as_str())
+            .fetch_all(&mut *connection)
+            .await;
+    match read {
+        Ok(bytes) => Ok(catalog::table_sizes(&bytes)),
+        Err(error) if cannot_count_pages(&error) => Ok(TableInfo::default()),
+        Err(error) => Err(map_error(error)),
+    }
+}
+
+// The statement only reads the catalog, so the server refuses it only where dbstat is missing, as from a system SQLite
+// built without SQLITE_ENABLE_DBSTAT_VTAB, or where a table the user named dbstat hides it.
+fn cannot_count_pages(error: &sqlx::Error) -> bool {
+    matches!(error, sqlx::Error::Database(_))
 }
 
 pub(crate) async fn fetch_table_definition(

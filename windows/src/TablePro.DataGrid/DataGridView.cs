@@ -159,7 +159,11 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _scroller = new ScrollViewer
         {
             Content = _content,
-            TopHeader = new HeaderRow { HorizontalAlignment = HorizontalAlignment.Left, Children = { _header } },
+            TopHeader = new HeaderRow
+            {
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Children = { _header, _moveLayer },
+            },
             LeftHeader = _frozenContent,
             TopLeftHeader = _corner,
             HorizontalScrollMode = ScrollMode.Enabled,
@@ -180,6 +184,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _frozenContent.SizeChanged += (_, _) => MeasureInsets();
         Content = _scroller;
         InitializeCellTips();
+        InitializeColumnMoves();
 
         IsTabStop = true;
         UseSystemFocusVisuals = false;
@@ -337,6 +342,9 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     public event EventHandler? FocusedCellChanged;
 
+    // The selected cells changed without the focus moving, as Select All does, or a whole-row selection grew with them.
+    public event EventHandler? SelectedCellsChanged;
+
     internal GridColumns Columns => _columns;
 
     internal string SortStatus(SortDirection direction) => direction switch
@@ -431,6 +439,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     // Shows data, or nothing for null. The grid opens its own reader on this thread and disposes it with the data.
     public void SetData(IGridData? data)
     {
+        CancelColumnMove();
         ClearCellTip();
         Cancel(EditorFocused);
         // A copy still reading the old data would read it after the host lets it go, then put it on the clipboard.
@@ -513,6 +522,10 @@ public sealed partial class DataGridView : UserControl, IGridWindow
             ColumnsChanged();
         }
         Follow(_viewX, _viewY);
+        if (_selection.Kind != SelectionKind.Cells)
+        {
+            SelectedCellsChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     internal double FetchMilliseconds => _cache?.FetchMilliseconds ?? 0;
@@ -655,6 +668,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        CancelColumnMove();
         ClearCellTip();
         // As when the editor loses focus, so text typed into a grid that leaves the window still reaches the host.
         CommitOrCancel(refocus: false);
