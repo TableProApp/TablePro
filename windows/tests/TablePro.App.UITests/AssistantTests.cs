@@ -31,7 +31,8 @@ public sealed partial class ShellTests
     private static void ShowAssistant(AppSession app)
     {
         app.Click(app.Find("ViewMenu"), () => app.TryFindMenuItem("Show AI assistant") is { IsEnabled: true });
-        app.Click(app.FindMenuItem("Show AI assistant"), () => app.TryFind("AssistantPane") is { IsOffscreen: false });
+        // The pane is a UserControl, which UI Automation does not list, so its Close button stands for it.
+        app.Click(app.FindMenuItem("Show AI assistant"), () => app.TryFind("AssistantCloseButton") is { IsOffscreen: false });
     }
 
     private static string WaitForCode(AppSession app) =>
@@ -57,17 +58,24 @@ public sealed partial class ShellTests
         address.Text = server.Address;
         app.Find("AiKeyBox");
         var model = app.Find("AiModelBox").AsComboBox();
+        model.Focus();
         model.Expand();
-        Assert.True(Retry.WhileFalse(
-            () => AppSession.Holds(() => model.Items.Select(item => item.Text).SequenceEqual(["qwen3", "test-model"])),
-            AppSession.Wait,
-            throwOnTimeout: false).Success);
-        model.Select("test-model");
+        // The list is read from the server as it opens; each model is an item of the open list.
+        app.FindByName("qwen3");
+        app.FindByName("test-model").Patterns.SelectionItem.Pattern.Select();
         model.Collapse();
+        model.Focus();
         app.Screenshot("140-settings-ai");
 
         Assert.Contains(server.Seen, request => request.Path == "/v1/models");
         Assert.DoesNotContain(server.Seen, request => request.Path.EndsWith("/chat/completions", StringComparison.Ordinal));
+        var saved = Retry.WhileFalse(
+            () => File.ReadAllText(Path.Combine(app.DataFolder, "settings.json")) is var json
+                && json.Contains("\"aiProvider\": \"OpenAICompatible\"", StringComparison.Ordinal)
+                && json.Contains("\"compatibleModel\": \"test-model\"", StringComparison.Ordinal),
+            AppSession.Wait,
+            throwOnTimeout: false).Success;
+        Assert.True(saved, File.ReadAllText(Path.Combine(app.DataFolder, "settings.json")));
     }
 
     [Theory]
@@ -93,8 +101,8 @@ public sealed partial class ShellTests
         app.PressDialogButton("Allow");
 
         Assert.Equal(ReplyCode, WaitForCode(app).Replace("\r", string.Empty, StringComparison.Ordinal));
-        app.FindByName("Sent with the structure of Album, Track", app.Find("AssistantPane"));
-        app.FindByName("150 tokens", app.Find("AssistantPane"));
+        app.FindByName("Sent with the structure of Album, Track", app.Find("AssistantScroller"));
+        app.FindByName("150 tokens", app.Find("AssistantScroller"));
         app.Screenshot("143-assistant-reply");
 
         var request = Assert.Single(server.Seen);
@@ -122,7 +130,7 @@ public sealed partial class ShellTests
 
         WaitForCode(app);
         Assert.Equal("SELECT Name FROM Track LIMIT 5;", AppSession.TextOf(app.Find("AssistantStatement")));
-        app.FindByName("Explain with AI", app.Find("AssistantPane"));
+        app.FindByName("Explain with AI", app.Find("AssistantScroller"));
         app.Screenshot("144-assistant-explain");
         var asked = JsonDocument.Parse(Assert.Single(server.Seen).Body).RootElement.GetProperty("messages");
         Assert.StartsWith("Explain what this statement does", asked[1].GetProperty("content").GetString(), StringComparison.Ordinal);
@@ -132,7 +140,7 @@ public sealed partial class ShellTests
         app.FindMenuItem("Review with AI").Patterns.Invoke.Pattern.Invoke();
         Assert.True(Retry.WhileFalse(() => server.Seen.Count == 2, AppSession.Wait, throwOnTimeout: false).Success);
         Assert.Null(app.TryFind("AssistantConsentText"));
-        app.FindByName("Review with AI", app.Find("AssistantPane"));
+        app.FindByName("Review with AI", app.Find("AssistantScroller"));
     }
 
     [Theory]
