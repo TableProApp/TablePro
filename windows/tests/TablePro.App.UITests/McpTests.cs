@@ -104,7 +104,9 @@ public sealed partial class ShellTests
         // A new connection is Read only to clients, so a write is refused without a question.
         Assert.Equal(3, refused.Exit);
 
-        app.Find("SettingsButton").AsButton().Invoke();
+        // With a connection open the rail holds Settings; the File menu reaches it from anywhere.
+        app.Click(app.Find("FileMenu"), () => app.TryFindMenuItem("Settings") is not null);
+        app.FindMenuItem("Settings").Patterns.Invoke.Pattern.Invoke();
         app.Find("SettingsPage");
         // The toolkit's outer peer is a group; its native Expander owns expansion.
         var clients = app.Find("McpClientsExpander").FindFirstDescendant(condition =>
