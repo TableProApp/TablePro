@@ -16,6 +16,9 @@ public sealed partial class MainWindow
     // Connections a tablepro://connect link opened, with what each link asked for once it is up, in the order asked.
     private readonly Dictionary<OpenConnection, Queue<LinkTarget>> _linkTargets = [];
 
+    // One drain per connection, so a link that comes in while another opens waits its turn.
+    private readonly HashSet<OpenConnection> _drainingLinks = [];
+
     // Files first, as Explorer opens them, then links one at a time; a tab window hands them to the primary.
     internal async void OpenActivation(ActivationRequest request)
     {
@@ -157,27 +160,44 @@ public sealed partial class MainWindow
         await OpenLinkTargetAsync(open);
     }
 
-    // Raised again as the workspace's commands change, so what waits runs once the connection is up.
+    // Run as the workspace's commands change; a target the connection went away under waits for its reconnect.
     private async Task OpenLinkTargetAsync(OpenConnection open)
     {
-        if (!open.View.IsConnected || !_linkTargets.Remove(open, out var waiting))
+        if (!open.View.IsConnected || !_linkTargets.TryGetValue(open, out var waiting) || !_drainingLinks.Add(open))
         {
             return;
         }
 
-        while (waiting.TryDequeue(out var target))
+        try
         {
-            await OpenLinkTargetAsync(open, target);
+            while (open.View.IsConnected && waiting.TryPeek(out var target))
+            {
+                if (!await OpenLinkTargetAsync(open, target))
+                {
+                    break;
+                }
+
+                waiting.Dequeue();
+            }
+        }
+        finally
+        {
+            _drainingLinks.Remove(open);
+            if (waiting.Count == 0 && _linkTargets.TryGetValue(open, out var current) && ReferenceEquals(current, waiting))
+            {
+                _linkTargets.Remove(open);
+            }
         }
     }
 
-    private async Task OpenLinkTargetAsync(OpenConnection open, LinkTarget target)
+    // False when the connection went before the target opened.
+    private async Task<bool> OpenLinkTargetAsync(OpenConnection open, LinkTarget target)
     {
         switch (target)
         {
             case LinkTarget.Query query:
                 open.View.OpenLinkedQuery(query.Sql);
-                break;
+                return true;
             case LinkTarget.Table table:
                 var place = LinkedTable.Place(
                     open.View.Layout ?? DatabaseLayout.OneDatabase,
@@ -191,11 +211,25 @@ public sealed partial class MainWindow
                         await QueueLinkTargetAsync(other, new LinkTarget.Table(null, place.Schema, table.Name));
                     }
 
-                    return;
+                    return true;
                 }
 
-                await open.View.OpenLinkedTableAsync(place.Schema, table.Name);
-                break;
+                return await open.View.OpenLinkedTableAsync(place.Schema, table.Name);
+            default:
+                return true;
+        }
+    }
+
+    // A mapped drive is another machine's share, which the form shows before anything reaches it.
+    private static bool OnNetworkDrive(string path)
+    {
+        try
+        {
+            return Path.GetPathRoot(path) is { Length: > 0 } root && new DriveInfo(root).DriveType == DriveType.Network;
+        }
+        catch (ArgumentException)
+        {
+            return true;
         }
     }
 
@@ -233,7 +267,7 @@ public sealed partial class MainWindow
         }
     }
 
-    // A file engine's URL opens the file, saving nothing; any other fills the form, so nothing connects unseen.
+    // A local file engine's URL opens the file, saving nothing; any other fills the form, so nothing connects unseen.
     private void OpenDatabaseUrl(string link)
     {
         string? problem;
@@ -244,7 +278,7 @@ public sealed partial class MainWindow
             {
                 problem = Strings.Get("Error_url_unknown_scheme");
             }
-            else if (engine.DefaultPort is null)
+            else if (engine.DefaultPort is null && LinkedFile.IsOnDrive(parsed.Database) && !OnNetworkDrive(parsed.Database))
             {
                 OpenFile(parsed.Database, engine.Id);
                 return;

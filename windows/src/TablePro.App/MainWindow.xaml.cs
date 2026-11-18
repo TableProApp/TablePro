@@ -862,6 +862,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         await open.DisconnectAsync();
         _open.Remove(open);
         _linkTargets.Remove(open);
+        _drainingLinks.Remove(open);
         Rail.MenuItems.Remove(open.RailItem);
         if (ReferenceEquals(_front, open))
         {

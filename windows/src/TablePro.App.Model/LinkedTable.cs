@@ -19,6 +19,16 @@ public static class LinkedTable
         };
 }
 
+// A linked file opens at once only on a lettered drive: a UNC or device path would reach another machine unseen.
+public static class LinkedFile
+{
+    public static bool IsOnDrive(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        return path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/';
+    }
+}
+
 // What a tablepro://connect link opens once its connection is up.
 public abstract record LinkTarget
 {

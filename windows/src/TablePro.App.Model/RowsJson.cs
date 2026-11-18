@@ -25,7 +25,7 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
     // A longer JSON value is written as its text, as macOS does.
     public const int MaximumNestedCharacters = 100_000;
 
-    // A value the window cut at this is read whole.
+    // A cut value is read again only up to MaximumNestedCharacters, so one large cell cannot fill the memory.
     private const int WindowCharacters = 4096;
 
     private const int CellsPerRead = 16_384;
@@ -83,6 +83,7 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
         {
             writer.WriteStartArray();
             var block = new CellBlock();
+            var single = new CellBlock();
             var rowsPerRead = Math.Max(1, CellsPerRead / Math.Max(1, width));
             var first = start;
             while (width > 0 && first < end && !capped)
@@ -93,6 +94,7 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
                 reader.Read(first, asked, 0, width, WindowCharacters, block);
                 for (var row = first; row < first + block.RowCount; row++)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     if ((block.Get(row, 0).State & CellState.Deleted) != 0)
                     {
                         deleted++;
@@ -113,7 +115,7 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
                         var kind = row < dataRows
                             ? kinds?.Kind(row, sources[column]) ?? columnKinds[column]
                             : columnKinds[column];
-                        WriteCell(writer, reader, block, row, column, kind);
+                        WriteCell(writer, reader, block, single, row, column, kind);
                     }
 
                     writer.WriteEndObject();
@@ -208,7 +210,7 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
     }
 
     private static void WriteCell(
-        Utf8JsonWriter writer, IGridReader reader, CellBlock block, int row, int column, ValueKind kind)
+        Utf8JsonWriter writer, IGridReader reader, CellBlock block, CellBlock single, int row, int column, ValueKind kind)
     {
         var cell = block.Get(row, column);
         // DEFAULT has no value until the server gives it one.
@@ -225,6 +227,19 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
             return;
         }
 
+        if ((cell.State & CellState.Truncated) != 0)
+        {
+            reader.Read(row, 1, column, 1, MaximumNestedCharacters, single);
+            var longer = single.Get(row, column);
+            // Still cut, it goes out as the text it shows, its ellipsis included, never as a document.
+            if (longer.IsTruncated || (longer.State & CellState.Lossy) == 0)
+            {
+                WriteText(writer, longer.Text, longer.IsTruncated ? ValueKind.Text : kind);
+                return;
+            }
+        }
+
+        // Control characters show as spaces in a window, so a short value with one is read as it is stored.
         if (reader.ReadWhole(row, column) is { } whole)
         {
             WriteText(writer, whole, kind);

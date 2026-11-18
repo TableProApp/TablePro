@@ -105,7 +105,8 @@ internal static class CellEditorFlyouts
             if (picker.SelectedTime is { } time)
             {
                 flyout.Hide();
-                Commit(request, CellEditors.WithTime(request.Text, time.Hours, time.Minutes, LocalOffset(request)));
+                var today = DateOnly.FromDateTime(DateTime.Now);
+                Commit(request, CellEditors.WithTime(request.Text, time.Hours, time.Minutes, LocalOffset(request, today, time)));
             }
         });
         flyout.Content = Stacked(picker, Buttons(EditAsTextButton(flyout, request), set));
@@ -127,7 +128,7 @@ internal static class CellEditorFlyouts
             {
                 var day = Day(calendar.SelectedDates[0]);
                 flyout.Hide();
-                Commit(request, CellEditors.WithDateAndTime(request.Text, day, time.Hours, time.Minutes, LocalOffset(request)));
+                Commit(request, CellEditors.WithDateAndTime(request.Text, day, time.Hours, time.Minutes, LocalOffset(request, day, time)));
             }
         });
         set.IsEnabled = calendar.SelectedDates.Count > 0;
@@ -145,10 +146,11 @@ internal static class CellEditorFlyouts
         }
     }
 
-    // A new value in a column that keeps an offset takes this machine's, as the picker shows local time.
-    private static TimeSpan? LocalOffset(CellEditRequest request) =>
+    // A new value with an offset takes this machine's on the day and hour picked; a skipped or repeated hour, standard.
+    private static TimeSpan? LocalOffset(CellEditRequest request, DateOnly day, TimeSpan time) =>
         request.Column.Kind is ValueKind.TimeWithOffset or ValueKind.TimestampWithOffset
-            ? TimeZoneInfo.Local.GetUtcOffset(DateTime.Now)
+            ? TimeZoneInfo.Local.GetUtcOffset(
+                day.ToDateTime(new TimeOnly(time.Hours, time.Minutes), DateTimeKind.Local))
             : null;
 
     private static string ChoiceId(int index) => "CellChoice" + index.ToString(CultureInfo.InvariantCulture);

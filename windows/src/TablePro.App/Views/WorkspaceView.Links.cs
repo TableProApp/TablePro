@@ -11,12 +11,12 @@ public sealed partial class WorkspaceView
 
     internal string? SessionDatabase => _session?.Database;
 
-    // The catalog's entry, so a view opens as a view; a name it does not list still opens and says what the server says.
-    internal async Task OpenLinkedTableAsync(string? schema, string table)
+    // The catalog's entry, so a view opens as a view; false when the connection went while the catalog was read.
+    internal async Task<bool> OpenLinkedTableAsync(string? schema, string table)
     {
         if (_session is not { } session)
         {
-            return;
+            return false;
         }
 
         ObjectEntry? listed = null;
@@ -35,10 +35,11 @@ public sealed partial class WorkspaceView
 
         if (!ReferenceEquals(_session, session))
         {
-            return;
+            return false;
         }
 
         OpenTable(listed ?? new ObjectEntry(schema, table, ObjectKind.Table, null));
+        return true;
     }
 
     // A tab that already holds exactly this SQL comes forward rather than a second one opening, as on macOS.

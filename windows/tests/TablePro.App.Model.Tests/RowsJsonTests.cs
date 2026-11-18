@@ -129,7 +129,8 @@ public sealed class RowsJsonTests
         using var parsed = JsonDocument.Parse(json.Text);
         var row = parsed.RootElement[0];
         Assert.Equal("{\"a\":", row.GetProperty("broken").GetString());
-        Assert.Equal(tooLong, row.GetProperty("long").GetString());
+        // Read again only up to the cap, so it goes out cut, as the grid shows a cut value.
+        Assert.Equal(tooLong[..RowsJson.MaximumNestedCharacters] + CellBlock.Ellipsis, row.GetProperty("long").GetString());
         Assert.Equal(5, row.GetProperty("scalar").GetInt32());
         Assert.Equal("1,5", row.GetProperty("count").GetString());
     }
@@ -220,16 +221,28 @@ public sealed class RowsJsonTests
     }
 
     [Fact]
-    public void RowsStopOnceTheTextPassesItsSizeButTheFirstIsWrittenWhole()
+    public void RowsStopOnceTheTextPassesItsSizeAndTheLastWrittenIsWhole()
     {
-        var large = new string('x', (RowsJson.MaximumBytes * 3) / 5);
-        var data = new TextGridData(["text"], [[large], [large], [large]]);
+        var large = new string('x', 90_000);
+        var data = new TextGridData(["text"], [.. Enumerable.Repeat<IReadOnlyList<string?>>([large], 13)]);
 
         var json = Write(data, null, [Column("text", ValueKind.Text)], null);
 
-        Assert.Equal((2, 3, true), (json.Rows, json.Total, json.Capped));
+        Assert.Equal((12, 13, true), (json.Rows, json.Total, json.Capped));
         using var parsed = JsonDocument.Parse(json.Text);
-        Assert.Equal(large, parsed.RootElement[1].GetProperty("text").GetString());
+        Assert.Equal(large, parsed.RootElement[11].GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public void AValuePastTheCapIsReadOnlyThatFarAndGoesOutCut()
+    {
+        var huge = new string('x', RowsJson.MaximumNestedCharacters * 5);
+        var data = new TextGridData(["text"], [[huge]]);
+
+        var json = Write(data, null, [Column("text", ValueKind.Text)], null);
+
+        using var parsed = JsonDocument.Parse(json.Text);
+        Assert.Equal(huge[..RowsJson.MaximumNestedCharacters] + CellBlock.Ellipsis, parsed.RootElement[0].GetProperty("text").GetString());
     }
 
     [Fact]
