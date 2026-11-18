@@ -12,7 +12,7 @@ The interop tests reached a server only for PostgreSQL (`NoticeTests` and the SS
 ### Tests
 
 - `tests/TablePro.Interop.Tests/Live` holds one class per engine, through the public interop API only. A SQL engine's class (`SqlEngineTests`) lists a new table in the catalog, pages it, counts it and reads its structure; writes each corpus column into a table of its own and reads every value back through `ReadTablePageAsync`, as a table tab does, and a plain `SELECT` in a `QueryEditor`, as a query tab does, comparing `GetCellText` with the text the corpus names, every wrong value in one failure; and saves an update, an insert and a delete through `TableEditor` and reads the rows back.
-- MongoDB's class does the same with a collection and the document of every BSON type the driver's own tests read. Redis's lists a key of each type, reads each through `KeyReader`, and writes and deletes keys from the editor, with a key's expiry.
+- MongoDB's class does the same with a collection and the document of every BSON type the driver's own tests read, where a table tab shows a binary field and a field of nulls as the extended JSON it edits them as. Redis's writes a key of each type from the editor, lists them there, reads each through `KeyReader` as a key tab does, and changes and deletes keys, with a key's expiry.
 - The corpus is one home for both sides: `core/crates/test-support/corpus/<engine>.json`, which the Rust conformance cases read through `ValueCorpus` and the test project copies beside its assembly. A column marked `only` belongs to one flavour of a file two engines share (MySQL and MariaDB).
 - A class whose server is not there skips. `ci/live-servers.ps1` names each server in `TABLEPRO_TEST_LIVE_<ENGINE>_PORT`, `_USER` and `_PASSWORD`.
 
@@ -26,7 +26,7 @@ Each one is set up the way that measured fastest and held on `windows-2025`:
 | SQL Server 2022 Express CU1 | `core/crates/drivers/mssql/tests/windows/sql-server.ps1 -Install -SaPassword`, its certificate verified with the CA file the script writes | 4 min 39 s |
 | MongoDB 7.0 | The image's service, started | 9 s |
 | Redis 8.10.3 | The redis-windows msys2 build, pinned by SHA-256 | 2 s |
-| Cassandra 4.0.21 | The Apache tarball on the image's Java 11, its java command written out with `disk_access_mode: standard` | 50 s |
+| Cassandra 4.0.21 | The Apache tarball on the image's Java 11, its java command written out with `disk_access_mode: standard` | 46 s |
 | ClickHouse 26.8 LTS | Its Linux binary in a WSL 1 distribution imported from the Ubuntu base tarball | 14 s |
 | DuckDB | In process: no server, so it runs in every Windows job and on macOS | none |
 
@@ -42,6 +42,9 @@ Probes on `windows-2025` (runs 44241847132, 44242839754 and 44243471366):
 - SQL Server 2022 Express RTM installed in 2 min 36 s with SQL logins; with CU1, as the core's script installs it, 4 min 39 s.
 - MySQL's `--initialize-insecure` took 5 s and its start 2 s. The Redis build started in under a second.
 - The first live run (44244847194) found the grid showing an unreadable value as an empty cell, where the Linux grid shows `<unreadable money>`: the FFI kept no text for it. The core now keeps the type's name for the grid's window ([0003](0003-data-grid-control.md)).
+- Java started with its output redirected shares the step's console and stopped when the step ended, so Cassandra refused the tests' connections (run 44249651260); started on a console of its own it runs to the end of the job.
+- The core lists no Redis keys through the FFI (the Linux sidebar's listing lives in the Linux app), so the Redis test lists them with `KEYS` in the editor.
+- Run 44256128478 passed all 21 live tests in 48 s, after 7 min of server setup.
 
 ## Rationale
 
