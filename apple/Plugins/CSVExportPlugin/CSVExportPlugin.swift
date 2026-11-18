@@ -52,13 +52,16 @@ nonisolated final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, S
         /// straight into `settings`. Reading it per row would let a picker change halfway through
         /// switch the delimiter, the line ending or the encoding of a file already being written.
         let options = settings
-        let lineBreak = options.lineBreak.value
+        let format = CSVRowFormat(options: options)
+        let lineBreak = format.lineBreak
         let encoding = options.encoding
+        var output = PluginExportOutputBuffer(fileHandle: fileHandle)
+        var line = ""
         var report = CSVEncodingReport()
         var neutralisedCount = 0
 
         if options.writesByteOrderMark, !encoding.byteOrderMark.isEmpty {
-            try fileHandle.write(contentsOf: Data(encoding.byteOrderMark))
+            try output.append(encoding.byteOrderMark)
         }
 
         for (index, table) in tables.enumerated() {
@@ -70,7 +73,7 @@ nonisolated final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, S
                 let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(table.qualifiedName)
                 try write(
                     "# Table: \(sanitizedName)\(lineBreak)",
-                    to: fileHandle,
+                    to: &output,
                     encoding: encoding,
                     report: &report
                 )
@@ -91,32 +94,33 @@ nonisolated final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, S
                             neutralisedCount += header.columns.filter(PluginRowWriters.isFormulaLike).count
                         }
                         let headerLine = header.columns
-                            .map { escapeCSVField($0, options: options, sanitizes: options.sanitizeFormulas) }
-                            .joined(separator: options.delimiter.actualValue)
-                        try write(headerLine + lineBreak, to: fileHandle, encoding: encoding, report: &report)
+                            .map { escapeCSVField($0, format: format, sanitizes: options.sanitizeFormulas) }
+                            .joined(separator: format.delimiter)
+                        try write(headerLine + lineBreak, to: &output, encoding: encoding, report: &report)
                     }
                     isFirstBatch = false
                 case .rows(let rows):
                     for row in rows {
-                        try writeCSVRow(
+                        buildCSVRow(
                             row,
                             columnNumbers: columnNumbers,
-                            options: options,
-                            to: fileHandle,
-                            report: &report,
+                            format: format,
+                            into: &line,
                             neutralisedCount: &neutralisedCount
                         )
+                        try write(line, to: &output, encoding: encoding, report: &report)
                         progress.incrementRow()
                     }
                 }
             }
 
             if index < tables.count - 1 {
-                try write("\(lineBreak)\(lineBreak)", to: fileHandle, encoding: encoding, report: &report)
+                try write("\(lineBreak)\(lineBreak)", to: &output, encoding: encoding, report: &report)
             }
         }
 
         try progress.checkCancellation()
+        try output.flush()
         try fileHandle.close()
         try PluginExportUtilities.commitAtomicWrite(from: tempURL, to: destination)
         committed = true
@@ -141,123 +145,120 @@ nonisolated final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, S
 
     // MARK: - Private
 
-    /// Every byte this format writes goes through here, so the chosen encoding and the record of
-    /// what it could not represent stay together. `String.toUTF8Data()` is left alone: seven
-    /// plugins call it, and giving it an encoding parameter would replace its mangled symbol and
-    /// stop every already-built plugin from loading.
-    ///
-    /// The encoding is passed in rather than read from `settings`, which one shared plugin
-    /// instance publishes to every window: an export running while another window's dialog changes
-    /// the picker would otherwise switch encoding mid-file, under a mark and a warning naming the
-    /// one it started with.
+    // A line is encoded whole, since Foundation composes across the characters it is given.
     private func write(
         _ text: String,
-        to fileHandle: FileHandle,
+        to output: inout PluginExportOutputBuffer,
         encoding: PluginTextEncoding,
         report: inout CSVEncodingReport
     ) throws {
+        guard encoding != .utf8 else {
+            try output.append(text)
+            return
+        }
         let encoded = try PluginTextEncoder.encode(
             text,
             as: encoding,
             detectingUnrepresented: !report.isSaturated
         )
         report.record(encoded.unrepresented)
-        try fileHandle.write(contentsOf: encoded.data)
+        try output.append(encoded.data)
+    }
+
+    private func buildCSVRow(
+        _ row: [PluginCellValue],
+        columnNumbers: [PluginColumnNumbers],
+        format: CSVRowFormat,
+        into line: inout String,
+        neutralisedCount: inout Int
+    ) {
+        line.removeAll(keepingCapacity: true)
+
+        for (index, cell) in row.enumerated() {
+            if index > 0 {
+                line += format.delimiter
+            }
+            switch cell {
+            case .null:
+                line += format.options.convertNullToEmpty ? "" : "NULL"
+            case .text(let text):
+                appendCSVField(
+                    text, column: index, columnNumbers: columnNumbers, format: format,
+                    to: &line, neutralisedCount: &neutralisedCount
+                )
+            case .bytes(let data):
+                appendCSVField(
+                    "0x" + PluginHexText.uppercase(data), column: index, columnNumbers: columnNumbers, format: format,
+                    to: &line, neutralisedCount: &neutralisedCount
+                )
+            }
+        }
+
+        line += format.lineBreak
     }
 
     // A text column holding "1.10" is a version or a code; a column with no usable type keeps the decimal comma.
-    private func writeCSVRow(
-        _ row: [PluginCellValue],
+    private func appendCSVField(
+        _ value: String,
+        column: Int,
         columnNumbers: [PluginColumnNumbers],
-        options: CSVExportOptions,
-        to fileHandle: FileHandle,
-        report: inout CSVEncodingReport,
+        format: CSVRowFormat,
+        to line: inout String,
         neutralisedCount: inout Int
-    ) throws {
-        var fields: [String] = []
-        fields.reserveCapacity(row.count)
+    ) {
+        let options = format.options
+        let takesDecimalComma = column >= columnNumbers.count || columnNumbers[column] != .text
 
-        for (index, cell) in row.enumerated() {
-            let val: String
-            switch cell {
-            case .null:
-                fields.append(options.convertNullToEmpty ? "" : "NULL")
-                continue
-            case .text(let s):
-                val = s
-            case .bytes(let d):
-                val = "0x" + d.map { String(format: "%02X", $0) }.joined()
+        if format.writesVerbatim(value, takesDecimalComma: takesDecimalComma) {
+            if options.quoteHandling == .always {
+                line += "\""
+                line += value
+                line += "\""
+            } else {
+                line += value
             }
-
-            let takesDecimalComma = index >= columnNumbers.count || columnNumbers[index] != .text
-            var processed = val
-            // `\r\n` is one Character, so only a scalar test sees a Windows line break.
-            let hadLineBreaks = val.unicodeScalars.contains { $0 == "\n" || $0 == "\r" }
-
-            if options.convertLineBreakToSpace {
-                processed = processed
-                    .replacingOccurrences(of: "\r\n", with: " ", options: .literal)
-                    .replacingOccurrences(of: "\r", with: " ", options: .literal)
-                    .replacingOccurrences(of: "\n", with: " ", options: .literal)
-            }
-
-            var isCommaDecimal = false
-            if options.decimalFormat == .comma, takesDecimalComma {
-                let range = NSRange(processed.startIndex..., in: processed)
-                if Self.decimalFormatRegex.firstMatch(in: processed, range: range) != nil {
-                    processed = processed.replacingOccurrences(of: ".", with: ",")
-                    isCommaDecimal = true
-                }
-            }
-
-            // `-1,5` is still a number, and the quote would turn it into text.
-            let sanitizes = options.sanitizeFormulas && !isCommaDecimal
-            if sanitizes, PluginRowWriters.isFormulaLike(processed) {
-                neutralisedCount += 1
-            }
-            fields.append(escapeCSVField(
-                processed, options: options, sanitizes: sanitizes, originalHadLineBreaks: hadLineBreaks
-            ))
+            return
         }
 
-        try write(
-            fields.joined(separator: options.delimiter.actualValue) + options.lineBreak.value,
-            to: fileHandle,
-            encoding: options.encoding,
-            report: &report
-        )
+        var processed = value
+        // `\r\n` is one Character, so only a scalar test sees a Windows line break.
+        let hadLineBreaks = value.unicodeScalars.contains { $0 == "\n" || $0 == "\r" }
+
+        if options.convertLineBreakToSpace {
+            processed = processed
+                .replacingOccurrences(of: "\r\n", with: " ", options: .literal)
+                .replacingOccurrences(of: "\r", with: " ", options: .literal)
+                .replacingOccurrences(of: "\n", with: " ", options: .literal)
+        }
+
+        var isCommaDecimal = false
+        if options.decimalFormat == .comma, takesDecimalComma {
+            let range = NSRange(processed.startIndex..., in: processed)
+            if Self.decimalFormatRegex.firstMatch(in: processed, range: range) != nil {
+                processed = processed.replacingOccurrences(of: ".", with: ",")
+                isCommaDecimal = true
+            }
+        }
+
+        // `-1,5` is still a number, and the quote would turn it into text.
+        let sanitizes = options.sanitizeFormulas && !isCommaDecimal
+        if sanitizes, PluginRowWriters.isFormulaLike(processed) {
+            neutralisedCount += 1
+        }
+        line += escapeCSVField(processed, format: format, sanitizes: sanitizes, originalHadLineBreaks: hadLineBreaks)
     }
 
     // `originalHadLineBreaks` still forces quoting after the breaks became spaces: the source text spanned lines.
     private func escapeCSVField(
         _ field: String,
-        options: CSVExportOptions,
+        format: CSVRowFormat,
         sanitizes: Bool,
         originalHadLineBreaks: Bool = false
     ) -> String {
-        let escaped = PluginRowWriters.csvField(field, options: writeOptions(options, sanitizes: sanitizes))
-        guard originalHadLineBreaks, options.quoteHandling == .asNeeded, escaped.unicodeScalars.first != "\"" else {
+        let escaped = PluginRowWriters.csvField(field, options: format.writeOptions(sanitizes: sanitizes))
+        guard originalHadLineBreaks, format.options.quoteHandling == .asNeeded, escaped.unicodeScalars.first != "\"" else {
             return escaped
         }
         return "\"\(escaped.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
-    }
-
-    private func writeOptions(_ options: CSVExportOptions, sanitizes: Bool) -> PluginCsvWriteOptions {
-        PluginCsvWriteOptions(
-            delimiter: options.delimiter.actualValue,
-            quoteHandling: quoteHandling(options.quoteHandling),
-            lineEnding: options.lineBreak.value,
-            nullAsEmpty: true,
-            sanitizesFormulas: sanitizes,
-            flattensLineBreaks: false
-        )
-    }
-
-    private func quoteHandling(_ handling: CSVQuoteHandling) -> PluginCsvWriteOptions.QuoteHandling {
-        switch handling {
-        case .always: return .always
-        case .never: return .never
-        case .asNeeded: return .asNeeded
-        }
     }
 }

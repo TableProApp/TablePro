@@ -25,6 +25,7 @@ public struct ClickHouseTabSeparatedRowDecoder: Sendable {
     // The pending bytes already searched for a separator, so a line split over many chunks is scanned once.
     private var searchedCount = 0
     private var columnNames: [String]?
+    private var literalSyntaxColumns: [Bool] = []
 
     public init() {}
 
@@ -74,21 +75,23 @@ public struct ClickHouseTabSeparatedRowDecoder: Sendable {
             return nil
         }
         guard header != nil else {
-            header = Header(
-                columns: columnNames,
-                columnTypeNames: ClickHouseTabSeparatedBytes.fields(line).map(ClickHouseTabSeparatedBytes.headerText)
-            )
+            let types = ClickHouseTabSeparatedBytes.fields(line).map(ClickHouseTabSeparatedBytes.headerText)
+            header = Header(columns: columnNames, columnTypeNames: types)
+            literalSyntaxColumns = types.map(ClickHouseTabSeparatedBytes.writesLiteralSyntax)
             return nil
         }
-        guard !line.isEmpty, let types = header?.columnTypeNames else { return nil }
+        guard !line.isEmpty else { return nil }
         return ClickHouseTabSeparatedBytes.fields(line).enumerated().map { index, field in
-            Self.cellValue(field, columnType: index < types.count ? types[index] : "")
+            Self.cellValue(
+                field,
+                writesLiteralSyntax: index < literalSyntaxColumns.count && literalSyntaxColumns[index]
+            )
         }
     }
 
-    private static func cellValue(_ field: ArraySlice<UInt8>, columnType: String) -> PluginCellValue {
+    private static func cellValue(_ field: ArraySlice<UInt8>, writesLiteralSyntax: Bool) -> PluginCellValue {
         guard !ClickHouseTabSeparatedBytes.isNullMarker(field) else { return .null }
-        let value = ClickHouseTabSeparatedBytes.value(field, columnType: columnType)
+        let value = ClickHouseTabSeparatedBytes.value(field, writesLiteralSyntax: writesLiteralSyntax)
         guard let text = String(bytes: value, encoding: .utf8) else { return .bytes(Data(value)) }
         return .text(text)
     }

@@ -143,6 +143,12 @@ struct ClickHouseTabSeparatedRowDecoderTests {
 
     // MARK: - Chunk boundaries
 
+    @Test("A field past the last declared type is unescaped like any text")
+    func unescapesFieldPastDeclaredTypes() {
+        let decoded = decodeAll(Data("a\nArray(String)\n['x']\tit\\'s\n".utf8))
+        #expect(decoded.rows == [[.text("['x']"), .text("it's")]])
+    }
+
     @Test("A row split across two chunks decodes once it is whole")
     func joinsRowsAcrossChunks() {
         var first = Self.header

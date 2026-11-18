@@ -28,6 +28,9 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LibSQLPluginDriver")
 
+    private static let lexicalGrammar: SQLLexicalGrammar =
+        SQLLexicalProfile.curated(forDatabaseTypeId: LibSQLPlugin.databaseTypeId)?.grammar ?? .ansi
+
     var serverVersion: String? {
         lock.lock()
         defer { lock.unlock() }
@@ -281,6 +284,33 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     // MARK: - Streaming
+
+    // A server answers a pipeline request with the whole result, so a remote read carries its own limit. A local
+    // read stops stepping once the reader has its rows.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        guard let sent = SQLStatementRowLimit.boundedRead(query, rowCap: rowCap, grammar: Self.lexicalGrammar) else {
+            return nil
+        }
+        switch getBackend() {
+        case .remote:
+            let result = try await execute(query: sent)
+            guard result.rows.count > rowCap else { return result }
+            return PluginQueryResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: Array(result.rows.prefix(rowCap)),
+                rowsAffected: result.rowsAffected,
+                timing: result.timing,
+                isTruncated: true,
+                statusMessage: result.statusMessage,
+                columnMeta: result.columnMeta
+            )
+        case .local:
+            return try await boundedQueryFromStream(query: query, rowCap: rowCap)
+        case nil:
+            throw LibSQLError.notConnected
+        }
+    }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         PluginRowStream.makeBounded { continuation, abort in

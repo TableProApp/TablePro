@@ -46,6 +46,39 @@ public enum SQLStatementRowLimit {
         return found
     }
 
+    /// The one statement of `query`, past its terminator and any comment after it, when a trailing `LIMIT` is valid
+    /// on it: a SELECT, or a WITH list whose statement is a SELECT, with no compound term that is a bare VALUES list,
+    /// which SQLite takes no LIMIT after. Nil for several statements: a limit appended to the last would bound the
+    /// wrong one.
+    public static func boundableRead(_ query: String, grammar: SQLLexicalGrammar) -> String? {
+        let statements = SQLStatementScanner.allStatements(in: query, grammar: grammar)
+        guard statements.count == 1, let statement = statements.first,
+              let keyword = leadingKeyword(statement, grammar: grammar)
+        else { return nil }
+        switch keyword {
+        case "SELECT":
+            return hasCompoundValuesTerm(statement, grammar: grammar) ? nil : statement
+        case "WITH":
+            guard let reading = SQLCommonTableExpressions.read(statement, grammar: grammar) else { return nil }
+            let main = (statement as NSString).substring(from: reading.mainStatement)
+            guard leadingKeyword(main, grammar: grammar) == "SELECT",
+                  !hasCompoundValuesTerm(main, grammar: grammar)
+            else { return nil }
+            return statement
+        default:
+            return nil
+        }
+    }
+
+    /// The text to send for a read a client trims to `rowCap`, for a server that answers with the whole result. It
+    /// reads one row past the cap, which tells a trimmed result from a complete one. A statement with a limit of its
+    /// own goes as written, and nil means the statement cannot be bounded this way.
+    public static func boundedRead(_ query: String, rowCap: Int, grammar: SQLLexicalGrammar) -> String? {
+        guard rowCap > 0, let statement = boundableRead(query, grammar: grammar) else { return nil }
+        guard !hasExplicitRowLimit(statement, countsTop: false, grammar: grammar) else { return query }
+        return appendingLimit(rowCap + 1, to: statement)
+    }
+
     /// The statement with `LIMIT limit` after it, for a caller that has checked it states no limit of its own.
     public static func appendingLimit(_ limit: Int, to sql: String) -> String {
         "\(clauseHost(sql))\nLIMIT \(limit)"

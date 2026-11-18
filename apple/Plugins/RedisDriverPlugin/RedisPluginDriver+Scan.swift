@@ -9,6 +9,11 @@ import TableProPluginKit
 import TableProRedisCore
 
 extension RedisPluginDriver {
+    // A wider COUNT holds the server longer per call, so it grows only as far as the keys the caller keeps.
+    static func scanCount(forKeysWanted maxKeys: Int) -> Int {
+        min(max(maxKeys, 1_000), maxKeyBrowseScan)
+    }
+
     func scanAllKeys(
         connection conn: any RedisCommandChannel,
         pattern: String?,
@@ -17,11 +22,12 @@ extension RedisPluginDriver {
     ) async throws -> [String] {
         var allKeys: [String] = []
         var cursor = RedisClusterCursor.start
+        let count = Self.scanCount(forKeysWanted: maxKeys)
 
         repeat {
             try Task.checkCancellation()
             let page = try await conn.scanKeyspace(
-                cursor: cursor, pattern: pattern, type: typeFilter, count: 1_000, scope: .outsideBlock
+                cursor: cursor, pattern: pattern, type: typeFilter, count: count, scope: .outsideBlock
             )
             cursor = page.cursor
             allKeys.append(contentsOf: page.keys)
