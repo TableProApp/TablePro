@@ -108,12 +108,11 @@ public sealed partial class ShellTests
         app.Click(app.Find("FileMenu"), () => app.TryFindMenuItem("Settings") is not null);
         app.FindMenuItem("Settings").Patterns.Invoke.Pattern.Invoke();
         app.Find("SettingsPage");
-        // The expander's items are realized only once it is in view; its native Expander owns expansion.
-        app.Find("McpRegenerateButton").Focus();
+        // The section sits near the page's end, and the expander's items are realized only once it is in view.
+        app.Find("SettingsPage").Patterns.Scroll.Pattern.SetScrollPercent(-1, 100);
         var clients = app.Find("McpClientsExpander").FindFirstDescendant(condition =>
             condition.ByControlType(ControlType.Button).And(condition.ByName("Clients")));
         Assert.NotNull(clients);
-        clients.Focus();
         clients.Patterns.ExpandCollapse.Pattern.Expand();
         app.FindByName("Command Line", app.Find("McpClientsExpander"));
         app.Screenshot("150-settings-mcp");
