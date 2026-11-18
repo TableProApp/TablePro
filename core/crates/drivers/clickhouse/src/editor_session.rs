@@ -3,8 +3,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_core::{
-    CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LossPhase,
-    ResultSink, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql,
+    CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState,
+    EditorSessionStatus, LossPhase, ResultSink, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState,
+    UserSql, deadline_elapsed,
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -13,7 +14,6 @@ use crate::editor_run::EditorRun;
 use crate::endpoint::ClickHouseEndpoint;
 use crate::lingering_query::LingeringQuery;
 use crate::result_reader::drain;
-use crate::session_status::SessionStatus;
 
 /// One editor tab's ClickHouse HTTP session.
 ///
@@ -31,7 +31,7 @@ pub(crate) struct ClickHouseEditorSession {
     statement_timeout: Option<Duration>,
     bounds_on_server: bool,
     grace: Duration,
-    status: Arc<SessionStatus>,
+    status: Arc<EditorSessionStatus>,
     shutdown: CancellationToken,
     lingering: Arc<LingeringQuery>,
 }
@@ -71,7 +71,7 @@ impl ClickHouseEditorSession {
             statement_timeout: options.statement_timeout,
             bounds_on_server: endpoint.bounds_reads(),
             grace: liveness.cancel_grace,
-            status: Arc::new(SessionStatus::new()),
+            status: Arc::new(EditorSessionStatus::new()),
             shutdown: CancellationToken::new(),
             lingering: Arc::new(LingeringQuery::default()),
         }))
@@ -95,7 +95,7 @@ impl EditorSession for ClickHouseEditorSession {
         let answered = tokio::select! {
             biased;
             () = options.cancel().cancelled() => return Err(DriverError::Cancelled),
-            () = until(options.deadline()) => return Err(DriverError::Timeout {
+            () = deadline_elapsed(options.deadline()) => return Err(DriverError::Timeout {
                 phase: TimeoutPhase::Statement,
                 server_cancelled: false,
             }),
@@ -175,13 +175,6 @@ impl EditorSession for ClickHouseEditorSession {
     async fn close(&self) {
         self.shutdown.cancel();
         self.status.lose();
-    }
-}
-
-async fn until(deadline: Option<tokio::time::Instant>) {
-    match deadline {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
     }
 }
 

@@ -5,7 +5,6 @@
 
 import Foundation
 import os
-import TableProHTTP
 import TableProMCP
 
 enum ResponsesDialect: Sendable {
@@ -23,13 +22,10 @@ enum ResponsesDialect: Sendable {
 final class OpenAIResponsesProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "OpenAIResponsesProvider")
 
-    private let endpoint: String
-    private let resolvedEndpoint: AIEndpoint?
-    private let apiKey: String?
+    private let transport: AIProviderTransport
     private let model: String
     private let maxOutputTokens: Int?
     private let dialect: ResponsesDialect
-    private let session: URLSession
 
     init(
         endpoint: String,
@@ -39,37 +35,31 @@ final class OpenAIResponsesProvider: ChatTransport {
         dialect: ResponsesDialect = .openAI,
         session: URLSession = URLSession(configuration: .ephemeral)
     ) {
-        self.endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.resolvedEndpoint = AIEndpoint(endpoint, style: .responses)
-        self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.transport = AIProviderTransport(
+            endpoint: endpoint,
+            style: .responses,
+            headers: AIProviderTransport.bearer(apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)),
+            session: session
+        )
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
         self.dialect = dialect
-        self.session = session
-    }
-
-    private func requestURL(_ resource: String) throws -> URL {
-        guard let url = resolvedEndpoint?.url(appending: resource) else {
-            throw AIProviderError.invalidEndpoint(endpoint)
-        }
-        return url
     }
 
     func streamChat(
         turns: [ChatTurnWire],
         options: ChatTransportOptions
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        ResponsesEventStream.make(
-            session: session,
-            buildRequest: { [self] in try buildRequest(turns: turns, options: options, stream: true) }
-        )
+        transport.stream(ResponsesStreamWire()) { [self] in
+            try buildRequest(turns: turns, options: options, stream: true)
+        }
     }
 
     func fetchAvailableModels() async throws -> [AIModelInfo] {
         if dialect == .xai, let languageModels = await fetchXAILanguageModels() {
             return languageModels
         }
-        let host = resolvedEndpoint?.apiBase.host
+        let host = transport.endpoint?.apiBase.host
         return try await fetchModelEntries(resource: AIEndpointStyle.responses.modelsResource, key: "data")
             .filter { Self.listsChatModel($0, dialect: dialect, host: host) }
             .compactMap { $0["id"] as? String }
@@ -127,28 +117,16 @@ final class OpenAIResponsesProvider: ChatTransport {
     }
 
     private func fetchModelEntries(resource: String, key: String) async throws -> [[String: Any]] {
-        let url = try requestURL(resource)
-        var request = URLRequest(url: url)
-        request.timeoutInterval = AIProvider.modelListTimeout
-        if let apiKey, !apiKey.isEmpty {
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        }
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
-        } catch {
+        let url = try transport.url(resource)
+        switch await transport.modelList(at: url, key: key) {
+        case .unreachable(let error):
             Self.logger.warning("OpenAI Responses model fetch failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError("Failed to fetch models")
-        }
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let entries = json[key] as? [[String: Any]]
-        else {
+        case .notHTTP, .rejected, .entries(nil):
             throw AIProviderError.networkError("Failed to fetch models")
+        case .entries(let entries?):
+            return entries
         }
-        return entries
     }
 
     func testConnection() async throws -> Bool {
@@ -156,20 +134,11 @@ final class OpenAIResponsesProvider: ChatTransport {
         let testOptions = ChatTransportOptions(model: testModel, maxOutputTokens: 16)
         let testTurn = ChatTurnWire(role: .user, blocks: [.text("Hi")])
         let request = try buildRequest(turns: [testTurn], options: testOptions, stream: false)
-        let (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
-        guard let httpResponse = response as? HTTPURLResponse else { return false }
-        if httpResponse.statusCode == 200 || httpResponse.statusCode == 400 {
-            return true
+        guard let reply = try await transport.connectionReply(to: request) else { return false }
+        guard reply.statusCode == 200 || reply.statusCode == 400 else {
+            throw transport.httpError(reply, url: request.url)
         }
-        if httpResponse.statusCode == 401 {
-            throw AIProviderError.authenticationFailed("")
-        }
-        let body = String(data: data, encoding: .utf8) ?? ""
-        throw AIProviderError.mapHTTPError(
-            statusCode: httpResponse.statusCode,
-            body: body,
-            requestURL: request.url
-        )
+        return true
     }
 
     private func buildRequest(
@@ -177,13 +146,7 @@ final class OpenAIResponsesProvider: ChatTransport {
         options: ChatTransportOptions,
         stream: Bool
     ) throws -> URLRequest {
-        let url = try requestURL(AIEndpointStyle.responses.chatResource(model: options.model))
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let apiKey, !apiKey.isEmpty {
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        }
+        let url = try transport.url(AIEndpointStyle.responses.chatResource(model: options.model))
 
         var body: [String: Any] = [
             "model": options.model,
@@ -217,8 +180,7 @@ final class OpenAIResponsesProvider: ChatTransport {
             body["tools"] = try options.tools.map(Self.encodeToolSpec(_:))
         }
 
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        return request
+        return try transport.post(url, body: body)
     }
 
     static func encodeInput(turns: [ChatTurnWire]) throws -> [[String: Any]] {
@@ -349,20 +311,10 @@ final class OpenAIResponsesProvider: ChatTransport {
         ])
         parts = []
     }
+}
 
-    static func decodeStreamLine(_ line: String) -> [String: Any]? {
-        guard let payload = SSEEventStream.dataPayload(line),
-              payload != "[DONE]",
-              let data = payload.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
-        return json
-    }
-
-    static func parseEvent(
-        _ json: [String: Any],
-        state: inout ResponsesStreamState
-    ) throws -> [ChatStreamEvent] {
+struct ResponsesStreamWire: ChatStreamWire {
+    func parse(_ json: [String: Any], state: inout ResponsesStreamState) throws -> [ChatStreamEvent] {
         guard let type = json["type"] as? String else { return [] }
         switch type {
         case "response.output_text.delta":
@@ -385,8 +337,7 @@ final class OpenAIResponsesProvider: ChatTransport {
             case "function_call":
                 guard let callID = item["call_id"] as? String,
                       let name = item["name"] as? String else { return [] }
-                state.openFunctionCallIDs.insert(callID)
-                return [.toolUseStart(id: callID, name: name)]
+                return [state.toolCalls.start(callID, id: callID, name: name)].compactMap { $0 }
             default:
                 return []
             }
@@ -409,12 +360,12 @@ final class OpenAIResponsesProvider: ChatTransport {
                 return [.reasoningEnd(id: itemID, opaque: opaque)]
             case "function_call":
                 guard let callID = item["call_id"] as? String,
-                      state.openFunctionCallIDs.remove(callID) != nil else { return [] }
+                      let end = state.toolCalls.end(callID) else { return [] }
                 if !state.functionCallArgDeltaIDs.contains(callID),
                    let arguments = item["arguments"] as? String, !arguments.isEmpty {
-                    return [.toolUseDelta(id: callID, inputJSONDelta: arguments), .toolUseEnd(id: callID)]
+                    return [.toolUseDelta(id: callID, inputJSONDelta: arguments), end]
                 }
-                return [.toolUseEnd(id: callID)]
+                return [end]
             default:
                 return []
             }
@@ -429,6 +380,7 @@ final class OpenAIResponsesProvider: ChatTransport {
             }
             return []
         case "response.completed", "response.incomplete":
+            state.receivedOutput = true
             let responseObj = json["response"] as? [String: Any]
             if let usage = responseObj?["usage"] as? [String: Any] {
                 let input = usage["input_tokens"] as? Int ?? 0
@@ -447,25 +399,19 @@ final class OpenAIResponsesProvider: ChatTransport {
             }
             throw AIProviderError.streamingFailed(String(localized: "Response failed"))
         case "error":
-            if let message = json["message"] as? String {
-                throw AIProviderError.streamingFailed(message)
-            }
-            return []
+            let reason = json["message"] as? String ?? json["code"] as? String
+            throw AIProviderError.streamingFailed(reason ?? String(localized: "The provider reported an error."))
         default:
             return []
         }
     }
 }
 
-struct ResponsesStreamState {
+struct ResponsesStreamState: ChatStreamState {
     var inputTokens: Int = 0
     var outputTokens: Int = 0
+    var receivedOutput = false
     var openReasoningItemIDs: Set<String> = []
-    var openFunctionCallIDs: Set<String> = []
+    var toolCalls = ToolCallTracker<String>()
     var functionCallArgDeltaIDs: Set<String> = []
-
-    func finalUsageEvent() -> ChatStreamEvent? {
-        guard inputTokens > 0 || outputTokens > 0 else { return nil }
-        return .usage(AITokenUsage(inputTokens: inputTokens, outputTokens: outputTokens))
-    }
 }

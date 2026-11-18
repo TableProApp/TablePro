@@ -11,8 +11,8 @@ use sqlx::mysql::MySqlConnection;
 use sqlx::{AssertSqlSafe, Executor as _};
 use tablepro_core::statement::{GuardedStatement, RowGuard, Statement};
 use tablepro_core::{
-    DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WorkspaceSettings, WriteAtomicity, WriteBatch, WriteKind,
-    WriteLedger, WriteReport,
+    DriverError, SessionFate, StopRequest, WorkspaceSettings, WriteAtomicity, WriteBatch, WriteKind, WriteLedger,
+    WriteReport,
 };
 
 use crate::cancel::{MySqlStop, acknowledges_stop, interrupted};
@@ -30,10 +30,7 @@ use crate::workspace_call::{count, prepared};
 /// writes, and MySQL has no way to suspend foreign keys for a batch the
 /// way the plan means it.
 pub(crate) fn precheck(batch: &WriteBatch, read_only: bool) -> Result<(), DriverError> {
-    if read_only {
-        return Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard));
-    }
-    batch.foreign_keys.require_enforced()
+    batch.precheck(read_only)
 }
 
 /// Everything one write needs once its task holds a connection.
@@ -324,7 +321,9 @@ fn acknowledged(request: &StopRequest) -> DriverError {
 #[cfg(test)]
 mod tests {
     use tablepro_core::meta::TableRef;
-    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, StopReason, TimeoutPhase, UnsupportedFeature};
+    use tablepro_core::{
+        ForeignKeyCheck, ForeignKeyMode, ReadOnlyRefusal, StopReason, TimeoutPhase, UnsupportedFeature,
+    };
 
     use super::*;
 

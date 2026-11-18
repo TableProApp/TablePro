@@ -5,9 +5,7 @@ use sqlx::mysql::{MySqlConnection, MySqlDatabaseError};
 use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _, Statement as _};
 use tablepro_core::column::ResultColumn;
 use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, statement_access};
-use tablepro_core::{
-    DriverError, ReadOnlyRefusal, ReadStatement, ResultEvent, ResultSink, SinkFlow, StreamSummary, Truncation, Value,
-};
+use tablepro_core::{DriverError, ReadEmitter, ReadOnlyRefusal, ReadStatement, ResultSink, StreamSummary};
 
 use crate::catalog::result_column;
 use crate::decode::decode_row;
@@ -16,8 +14,6 @@ use crate::flavour::MySqlFlavour;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
 use crate::mysql_wire_format::MySqlWireFormat;
 use crate::workspace_call::{describe, prepare_uncached, prepared};
-
-const BATCH_ROWS: usize = 256;
 
 /// Every row of a read, into the sink, inside a read-only transaction.
 /// The connection has no statement timeout: an export can take minutes,
@@ -39,20 +35,18 @@ pub(crate) async fn stream(
         .execute("START TRANSACTION READ ONLY")
         .await
         .map_err(|error| map_error(&error, flavour))?;
-    let mut emitter = Emitter {
-        sink,
-        batch: Vec::new(),
-        rows: 0,
-        set_rows: 0,
-        started: false,
-    };
+    let mut emitter = ReadEmitter::new(sink);
     let streamed = match read {
         ReadStatement::Generated(statement) => {
             let query = prepared(statement)?;
-            let streamed = emitter
-                .rows_of(query.fetch(&mut *connection), flavour, MySqlWireFormat::Binary)
-                .await;
-            match (streamed, emitter.started) {
+            let streamed = rows_of(
+                &mut emitter,
+                query.fetch(&mut *connection),
+                flavour,
+                MySqlWireFormat::Binary,
+            )
+            .await;
+            match (streamed, emitter.is_open()) {
                 (Ok(()), false) => {
                     let columns = describe(connection, flavour, statement.sql()).await?;
                     emitter.start(columns.into()).await?;
@@ -64,9 +58,9 @@ pub(crate) async fn stream(
         }
         ReadStatement::User(sql) => {
             let results = connection.fetch_many(sqlx::raw_sql(AssertSqlSafe(sql.as_str().to_owned())));
-            match emitter.results(results, flavour).await {
+            match results_of(&mut emitter, results, flavour).await {
                 // sqlx gives an empty set as its OK alone, so its columns come from the prepare.
-                Ok(()) if emitter.rows == 0 && !declared.is_empty() => {
+                Ok(()) if emitter.rows() == 0 && !declared.is_empty() => {
                     emitter.start(declared.into()).await?;
                     emitter.finish().await
                 }
@@ -81,7 +75,7 @@ pub(crate) async fn stream(
         .map_err(|error| map_error(&error, flavour));
     streamed?;
     committed?;
-    Ok(StreamSummary::new(emitter.rows))
+    Ok(StreamSummary::new(emitter.rows()))
 }
 
 /// User SQL that does anything but read is refused: a write fails in the
@@ -123,95 +117,53 @@ async fn prepare_as_one(
     }
 }
 
-struct Emitter<'a> {
-    sink: &'a mut dyn ResultSink,
-    batch: Vec<Vec<Value>>,
-    rows: u64,
-    set_rows: u64,
-    started: bool,
+async fn rows_of<S>(
+    emitter: &mut ReadEmitter<'_>,
+    rows: S,
+    flavour: MySqlFlavour,
+    format: MySqlWireFormat,
+) -> Result<(), DriverError>
+where
+    S: futures_util::Stream<Item = Result<sqlx::mysql::MySqlRow, sqlx::Error>>,
+{
+    let mut rows = std::pin::pin!(rows);
+    while let Some(row) = rows.try_next().await.map_err(|error| map_error(&error, flavour))? {
+        row_of(emitter, &row, format).await?;
+    }
+    Ok(())
 }
 
-impl Emitter<'_> {
-    async fn rows_of<S>(&mut self, rows: S, flavour: MySqlFlavour, format: MySqlWireFormat) -> Result<(), DriverError>
-    where
-        S: futures_util::Stream<Item = Result<sqlx::mysql::MySqlRow, sqlx::Error>>,
-    {
-        let mut rows = std::pin::pin!(rows);
-        while let Some(row) = rows.try_next().await.map_err(|error| map_error(&error, flavour))? {
-            self.row(&row, format).await?;
+async fn results_of<S>(emitter: &mut ReadEmitter<'_>, results: S, flavour: MySqlFlavour) -> Result<(), DriverError>
+where
+    S: futures_util::Stream<Item = Result<Either<sqlx::mysql::MySqlQueryResult, sqlx::mysql::MySqlRow>, sqlx::Error>>,
+{
+    let mut results = std::pin::pin!(results);
+    while let Some(item) = results.try_next().await.map_err(|error| map_error(&error, flavour))? {
+        match item {
+            Either::Right(row) => row_of(emitter, &row, MySqlWireFormat::Text).await?,
+            Either::Left(_) if emitter.is_open() => emitter.finish().await?,
+            Either::Left(_) => {}
         }
-        Ok(())
     }
+    Ok(())
+}
 
-    async fn results<S>(&mut self, results: S, flavour: MySqlFlavour) -> Result<(), DriverError>
-    where
-        S: futures_util::Stream<
-                Item = Result<Either<sqlx::mysql::MySqlQueryResult, sqlx::mysql::MySqlRow>, sqlx::Error>,
-            >,
-    {
-        let mut results = std::pin::pin!(results);
-        while let Some(item) = results.try_next().await.map_err(|error| map_error(&error, flavour))? {
-            match item {
-                Either::Right(row) => self.row(&row, MySqlWireFormat::Text).await?,
-                Either::Left(_) if self.started => self.finish().await?,
-                Either::Left(_) => {}
-            }
-        }
-        Ok(())
+async fn row_of(
+    emitter: &mut ReadEmitter<'_>,
+    row: &sqlx::mysql::MySqlRow,
+    format: MySqlWireFormat,
+) -> Result<(), DriverError> {
+    if !emitter.is_open() {
+        let columns: Arc<[ResultColumn]> = row
+            .columns()
+            .iter()
+            .map(|column| result_column(column, MySqlTimestampMode::WorkspaceUtc))
+            .collect();
+        emitter.start(columns).await?;
     }
-
-    async fn row(&mut self, row: &sqlx::mysql::MySqlRow, format: MySqlWireFormat) -> Result<(), DriverError> {
-        if !self.started {
-            let columns: Arc<[ResultColumn]> = row
-                .columns()
-                .iter()
-                .map(|column| result_column(column, MySqlTimestampMode::WorkspaceUtc))
-                .collect();
-            self.start(columns).await?;
-        }
-        self.batch
-            .push(decode_row(row, format, MySqlTimestampMode::WorkspaceUtc));
-        self.rows += 1;
-        self.set_rows += 1;
-        if self.batch.len() >= BATCH_ROWS {
-            self.flush().await?;
-        }
-        Ok(())
-    }
-
-    async fn start(&mut self, columns: Arc<[ResultColumn]>) -> Result<(), DriverError> {
-        self.started = true;
-        self.send(ResultEvent::ResultSetStarted { columns }).await
-    }
-
-    async fn flush(&mut self) -> Result<(), DriverError> {
-        if self.batch.is_empty() {
-            return Ok(());
-        }
-        let rows = std::mem::take(&mut self.batch);
-        self.send(ResultEvent::Rows(rows)).await
-    }
-
-    async fn finish(&mut self) -> Result<(), DriverError> {
-        self.flush().await?;
-        self.started = false;
-        let rows = std::mem::take(&mut self.set_rows);
-        self.send(ResultEvent::ResultSetFinished {
-            retained: rows,
-            total_rows: Some(rows),
-            truncation: Truncation::Complete,
-        })
+    emitter
+        .row(decode_row(row, format, MySqlTimestampMode::WorkspaceUtc))
         .await
-    }
-
-    /// A consumer that went away ends the read: the rows would go
-    /// nowhere.
-    async fn send(&mut self, event: ResultEvent) -> Result<(), DriverError> {
-        match self.sink.accept(event).await {
-            SinkFlow::Continue => Ok(()),
-            SinkFlow::ConsumerGone => Err(DriverError::Cancelled),
-        }
-    }
 }
 
 #[cfg(test)]

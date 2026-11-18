@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use tablepro_core::CallOptions;
+use tablepro_core::{CallOptions, deadline_elapsed};
 use tablepro_storage::CredentialDemand;
 use tokio::sync::watch;
 use tokio::time::Instant;
@@ -60,7 +60,7 @@ pub(crate) async fn run_monitor(ctx: MonitorContext) {
             biased;
             () = ctx.cancel.cancelled() => return,
             signals = ctx.mailbox.next() => Wakeup::Signals(signals),
-            () = sleep_until(policy.next_deadline()) => Wakeup::Deadline,
+            () = deadline_elapsed(policy.next_deadline()) => Wakeup::Deadline,
             generation = lease_lost(watched) => after_loss(&ctx.mailbox, generation),
         };
         let now = Instant::now();
@@ -108,13 +108,6 @@ fn after_loss(mailbox: &MonitorMailbox, generation: LinkGeneration) -> Wakeup {
     match mailbox.try_next() {
         Some(signals) => Wakeup::Signals(signals),
         None => Wakeup::LeaseLost(generation),
-    }
-}
-
-async fn sleep_until(deadline: Option<Instant>) {
-    match deadline {
-        Some(deadline) => tokio::time::sleep_until(deadline).await,
-        None => std::future::pending().await,
     }
 }
 

@@ -8,14 +8,13 @@ use sqlx::Connection as _;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection as SqlxConnection};
 use tablepro_core::{
     CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionOptions, EditorSessionState, LivenessPolicy,
-    LossPhase, ResultSink, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql,
+    LossPhase, ResultSink, RunEnd, RunOptions, RunSummary, TimeoutPhase, TransactionState, UserSql, deadline_elapsed,
 };
 use tokio::sync::OwnedMutexGuard;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::autocommit::is_autocommit;
-use crate::deadline;
 use crate::errors::{map_error, map_open_error};
 use crate::interrupt::InterruptFlag;
 use crate::result_stream::{StreamOutcome, run_script};
@@ -191,7 +190,7 @@ impl Shared {
                 };
             }
             () = options.cancel.cancelled() => Stop::Cancelled,
-            () = deadline::elapsed(deadline) => Stop::DeadlineElapsed,
+            () = deadline_elapsed(deadline) => Stop::DeadlineElapsed,
         };
         flag.raise();
         let settled = tokio::time::timeout(self.cancel_grace, &mut running).await;
@@ -311,7 +310,7 @@ impl EditorSession for SqliteEditorSession {
         let mut held = tokio::select! {
             biased;
             () = options.cancel().cancelled() => return Err(DriverError::Cancelled),
-            () = deadline::elapsed(options.deadline()) => {
+            () = deadline_elapsed(options.deadline()) => {
                 return Err(DriverError::Timeout { phase: TimeoutPhase::Statement, server_cancelled: false });
             }
             held = shared.connection.lock() => held,

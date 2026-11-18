@@ -1,10 +1,12 @@
 use bson::Document;
 use mongodb::{ClientSession, SessionCursor};
-use tablepro_core::{ByteLimit, DriverError, LossPhase, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation};
+use tablepro_core::{
+    ByteLimit, DriverError, LossPhase, ResultEvent, ResultSink, RowBatch, RowLimit, SinkFlow, Truncation,
+};
 
 use crate::call::ReadStop;
 use crate::endpoint::MongoEndpoint;
-use crate::rows::{BATCH_ROWS, Layout};
+use crate::rows::Layout;
 use crate::shell_command::Columns;
 
 // Found columns hold every kept document before the first event, so no sink can stop them at the byte limit.
@@ -78,7 +80,7 @@ impl<'a> Read<'a> {
     /// ends when it does: a full `room` reads one more to say whether the
     /// result was cut.
     async fn batch(&mut self, room: u64) -> Result<(Vec<Document>, Option<Truncation>), DriverError> {
-        let take = usize::try_from(room).unwrap_or(usize::MAX).min(BATCH_ROWS);
+        let take = usize::try_from(room).unwrap_or(usize::MAX).min(RowBatch::MAX_ROWS);
         let mut documents = Vec::with_capacity(take);
         while documents.len() < take {
             match self.next().await? {
@@ -135,7 +137,7 @@ async fn discovered_kept(
         return Ok((SinkFlow::ConsumerGone, 0));
     }
     let retained = documents.len() as u64;
-    for batch in documents.chunks(BATCH_ROWS) {
+    for batch in documents.chunks(RowBatch::MAX_ROWS) {
         let rows = batch.iter().map(|document| layout.row(document)).collect();
         if sink.accept(ResultEvent::Rows(rows)).await == SinkFlow::ConsumerGone {
             return Ok((SinkFlow::ConsumerGone, retained));
@@ -232,7 +234,7 @@ async fn every(
     loop {
         let mut documents = Vec::new();
         let mut exhausted = false;
-        while documents.len() < BATCH_ROWS {
+        while documents.len() < RowBatch::MAX_ROWS {
             match read.next().await? {
                 Some(document) => documents.push(document),
                 None => {

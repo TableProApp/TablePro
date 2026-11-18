@@ -21,7 +21,6 @@ mod key_scan;
 mod link;
 mod reply_rows;
 mod server_version;
-mod session_status;
 mod stream_read;
 mod tls_watch;
 mod workspace_link;
