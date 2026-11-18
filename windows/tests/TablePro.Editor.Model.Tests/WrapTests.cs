@@ -35,6 +35,7 @@ public sealed class WrapTests
     {
         Assert.Equal([2], Breaks("你好世界", 5));
         Assert.Equal([4], Breaks("😀😀😀", 4));
+        Assert.Equal(6, LineWrap.Columns(char.ConvertFromUtf32(0x1F680) + char.ConvertFromUtf32(0x1F680) + char.ConvertFromUtf32(0x1FA9F), 4));
     }
 
     [Fact]

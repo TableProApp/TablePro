@@ -137,8 +137,9 @@ public static class LineWrap
         >= 0xFE30 and <= 0xFE4F => true,
         >= 0xFF00 and <= 0xFF60 => true,
         >= 0xFFE0 and <= 0xFFE6 => true,
-        >= 0x1F300 and <= 0x1F64F => true,
+        >= 0x1F300 and <= 0x1F6FF => true,
         >= 0x1F900 and <= 0x1F9FF => true,
+        >= 0x1FA70 and <= 0x1FAFF => true,
         >= 0x20000 and <= 0x3FFFD => true,
         _ => false,
     };

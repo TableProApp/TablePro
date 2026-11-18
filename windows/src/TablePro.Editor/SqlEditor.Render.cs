@@ -489,12 +489,15 @@ public sealed partial class SqlEditor
             return [];
         }
         // Range by range, so a fold between the rows on screen is never searched. A match that starts on a wrapped row
-        // above the first one on screen still shows on it, so each range is searched from a little before.
+        // above the first one on screen still shows on it: plain text is never longer than the query, and a pattern is
+        // matched from its line's start, where its anchors hold.
+        var query = _findBar.Query;
         var matches = new List<(int Start, int Length)>();
         foreach (var (start, end) in RowRanges(firstRow, lastRow))
         {
-            var from = Math.Max(Document.GetLineStart(Document.GetLineFromOffset(start)), start - 4096);
-            foreach (var match in TextSearch.InRange(Document, _findBar.Query, from, end))
+            var lineStart = Document.GetLineStart(Document.GetLineFromOffset(start));
+            var from = query.UseRegex ? lineStart : Math.Max(lineStart, start - query.Text.Length);
+            foreach (var match in TextSearch.InRange(Document, query, from, end))
             {
                 if (match.Start + match.Length > start || match.Start >= start)
                 {
