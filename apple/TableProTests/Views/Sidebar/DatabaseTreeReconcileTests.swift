@@ -17,10 +17,40 @@ import Testing
 struct DatabaseTreeReconcileTests {
     private final class CountingOutlineView: NSOutlineView {
         var reloads = 0
+        var insertedRows = 0
+        var removedRows = 0
+        var reloadedParents = 0
+
+        var rowOperations: Int {
+            insertedRows + removedRows + reloadedParents
+        }
 
         override func reloadData() {
             reloads += 1
             super.reloadData()
+        }
+
+        override func insertItems(
+            at indexes: IndexSet,
+            inParent parent: Any?,
+            withAnimation animationOptions: NSTableView.AnimationOptions = []
+        ) {
+            insertedRows += indexes.count
+            super.insertItems(at: indexes, inParent: parent, withAnimation: animationOptions)
+        }
+
+        override func removeItems(
+            at indexes: IndexSet,
+            inParent parent: Any?,
+            withAnimation animationOptions: NSTableView.AnimationOptions = []
+        ) {
+            removedRows += indexes.count
+            super.removeItems(at: indexes, inParent: parent, withAnimation: animationOptions)
+        }
+
+        override func reloadItem(_ item: Any?, reloadChildren: Bool) {
+            reloadedParents += 1
+            super.reloadItem(item, reloadChildren: reloadChildren)
         }
     }
 
@@ -120,19 +150,270 @@ struct DatabaseTreeReconcileTests {
         await tearDown(fixture)
     }
 
-    @Test("A change to this connection's tables reloads the outline with them")
-    func ownTablesReload() async throws {
-        let fixture = try await makeFixture()
-        let reloads = fixture.outlineView.reloads
-        fixture.driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders"), TestFixtures.makeTableInfo(name: "invoices")]
-
+    private func reload(_ fixture: Fixture, tables: [TableInfo]) async {
+        fixture.driver.tablesToReturn = tables
         await SchemaService.shared.reload(
             connectionId: fixture.connection.id, driver: fixture.driver, connection: fixture.connection
         )
+        fixture.coordinator.reconcile()
+    }
 
-        try await waitUntil { fixture.outlineView.reloads > reloads }
-        #expect(try tableNames(fixture).contains("invoices"))
+    private func tableRow(_ fixture: Fixture, named name: String) throws -> DatabaseTreeNode {
+        try #require(try tableRows(fixture).first { node in
+            guard case .table(let ref) = node.kind else { return false }
+            return ref.table.name == name
+        })
+    }
+
+    private func select(_ fixture: Fixture, named name: String) throws -> DatabaseTreeTableRef {
+        let node = try tableRow(fixture, named: name)
+        let ref = try #require(node.tableRef)
+        fixture.coordinator.windowState?.selectTables([ref])
+        fixture.coordinator.syncSelectionToModel()
+        #expect(fixture.outlineView.selectedRow == fixture.outlineView.row(forItem: node))
+        return ref
+    }
+
+    @Test("A change to this connection's tables reaches the outline as row changes, without a reload")
+    func ownTablesChangeRows() async throws {
+        let fixture = try await makeFixture()
+        let reloads = fixture.outlineView.reloads
+
+        await reload(fixture, tables: [TestFixtures.makeTableInfo(name: "orders"), TestFixtures.makeTableInfo(name: "invoices")])
+
+        #expect(try tableNames(fixture) == ["orders", "invoices"])
+        #expect(fixture.outlineView.reloads == reloads)
+        #expect(fixture.outlineView.insertedRows == 1)
+        #expect(fixture.outlineView.removedRows == 1)
+        #expect(fixture.outlineView.row(forItem: try tableRow(fixture, named: "invoices")) >= 0)
         await tearDown(fixture)
+    }
+
+    @Test("Reading the same rows again touches no row")
+    func sameRowsTouchNothing() async throws {
+        let fixture = try await makeFixture()
+        let reloads = fixture.outlineView.reloads
+        let nodes = try tableRows(fixture)
+
+        await reload(fixture, tables: [TestFixtures.makeTableInfo(name: "orders"), TestFixtures.makeTableInfo(name: "customers")])
+
+        #expect(fixture.outlineView.reloads == reloads)
+        #expect(fixture.outlineView.rowOperations == 0)
+        #expect(SameRows(rows: try tableRows(fixture)) == SameRows(rows: nodes))
+        await tearDown(fixture)
+    }
+
+    @Test("A table added beside the selected one leaves the selection on it")
+    func insertionKeepsSelection() async throws {
+        let fixture = try await makeFixture()
+        let ref = try select(fixture, named: "customers")
+        let orders = try tableRow(fixture, named: "orders")
+        let customers = try tableRow(fixture, named: "customers")
+
+        await reload(fixture, tables: [
+            TestFixtures.makeTableInfo(name: "accounts"),
+            TestFixtures.makeTableInfo(name: "orders"),
+            TestFixtures.makeTableInfo(name: "customers")
+        ])
+
+        #expect(fixture.outlineView.insertedRows == 1)
+        #expect(try tableRow(fixture, named: "orders") === orders)
+        #expect(try tableRow(fixture, named: "customers") === customers)
+        #expect(fixture.coordinator.nodeCache[orders.id] === orders)
+        #expect(fixture.outlineView.selectedRow == fixture.outlineView.row(forItem: try tableRow(fixture, named: "customers")))
+        #expect(fixture.coordinator.windowState?.selectedTables == [ref])
+        await tearDown(fixture)
+    }
+
+    @Test("Dropping the selected table empties the highlight and leaves the model's selection alone")
+    func removalKeepsTheModelSelection() async throws {
+        let fixture = try await makeFixture()
+        let ref = try select(fixture, named: "customers")
+
+        await reload(fixture, tables: [TestFixtures.makeTableInfo(name: "orders")])
+
+        #expect(try tableNames(fixture) == ["orders"])
+        #expect(fixture.outlineView.removedRows == 1)
+        #expect(fixture.outlineView.selectedRow == -1)
+        #expect(fixture.coordinator.windowState?.selectedTables == [ref])
+        await tearDown(fixture)
+    }
+
+    @Test("A new comment on a kept table writes the row in place")
+    func commentChangeKeepsTheRow() async throws {
+        let fixture = try await makeFixture()
+        let node = try tableRow(fixture, named: "orders")
+        let reloads = fixture.outlineView.reloads
+
+        await reload(fixture, tables: [
+            TableInfo(name: "orders", type: .table, rowCount: 0, comment: "Paid and unpaid"),
+            TestFixtures.makeTableInfo(name: "customers")
+        ])
+
+        #expect(try tableRow(fixture, named: "orders") === node)
+        #expect(node.tableRef?.table.comment == "Paid and unpaid")
+        #expect(fixture.outlineView.reloads == reloads)
+        #expect(fixture.outlineView.rowOperations == 0)
+        await tearDown(fixture)
+    }
+
+    @Test("The rows on screen are drawn again after a change, so a kept row shows what it now holds")
+    func keptRowsAreRedrawn() async throws {
+        let fixture = try await makeFixture()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 280, height: 800), styleMask: [.titled], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        window.contentView = fixture.scrollView
+        fixture.outlineView.layoutSubtreeIfNeeded()
+        let row = fixture.outlineView.row(forItem: try tableRow(fixture, named: "orders"))
+        let cell = try #require(fixture.outlineView.view(atColumn: 0, row: row, makeIfNecessary: true) as? DatabaseTreeCellView)
+        let hosting = try #require(cell.hostedView as? NSHostingView<DatabaseTreeRowView>)
+        #expect(hosting.rootView.context.activeDatabase == "shop")
+        let reloads = fixture.outlineView.reloads
+
+        fixture.coordinator.activeDatabase = "archive"
+        await reload(fixture, tables: [
+            TestFixtures.makeTableInfo(name: "orders"),
+            TestFixtures.makeTableInfo(name: "customers"),
+            TestFixtures.makeTableInfo(name: "invoices")
+        ])
+
+        #expect(fixture.outlineView.reloads == reloads)
+        #expect(hosting.rootView.context.activeDatabase == "archive")
+        window.orderOut(nil)
+        await tearDown(fixture)
+    }
+
+    @Test("A section closed during a change lists the new rows when it opens")
+    func closedSectionOpensOnNewRows() async throws {
+        let fixture = try await makeFixture()
+        let section = try #require(fixture.coordinator.resolvedChildren(of: nil).first { node in
+            guard case .objectKindSection(.table) = node.kind else { return false }
+            return true
+        })
+        fixture.viewModel.expanded[.table] = false
+        fixture.outlineView.collapseItem(section)
+
+        await reload(fixture, tables: [
+            TestFixtures.makeTableInfo(name: "orders"),
+            TestFixtures.makeTableInfo(name: "customers"),
+            TestFixtures.makeTableInfo(name: "invoices")
+        ])
+        fixture.outlineView.expandItem(section)
+
+        #expect(fixture.outlineView.numberOfChildren(ofItem: section) == 3)
+        #expect(fixture.outlineView.row(forItem: try tableRow(fixture, named: "invoices")) >= 0)
+        await tearDown(fixture)
+    }
+
+    @Test("Kept rows in a new order reload their parent alone")
+    func reorderReloadsTheParent() async throws {
+        let fixture = try await makeFixture()
+        let reloads = fixture.outlineView.reloads
+
+        await reload(fixture, tables: [TestFixtures.makeTableInfo(name: "customers"), TestFixtures.makeTableInfo(name: "orders")])
+
+        #expect(fixture.outlineView.reloads == reloads)
+        #expect(fixture.outlineView.reloadedParents == 1)
+        let shown = try tableRows(fixture).map { fixture.outlineView.row(forItem: $0) }
+        #expect(shown == shown.sorted())
+        #expect(try tableNames(fixture) == ["customers", "orders"])
+        await tearDown(fixture)
+    }
+
+    @Test("A rename in progress holds a row change until the edit ends")
+    func renameHoldsRowChanges() async throws {
+        let fixture = try await makeFixture()
+        let ref = try #require(try tableRow(fixture, named: "orders").tableRef)
+        fixture.coordinator.beginRename(.table(ref))
+        #expect(fixture.coordinator.renameSession != nil)
+
+        await reload(fixture, tables: [
+            TestFixtures.makeTableInfo(name: "orders"),
+            TestFixtures.makeTableInfo(name: "customers"),
+            TestFixtures.makeTableInfo(name: "invoices")
+        ])
+
+        #expect(fixture.outlineView.rowOperations == 0)
+        #expect(fixture.coordinator.renameSession != nil)
+        fixture.coordinator.endRename(commit: false)
+        try await waitUntil { (try? tableNames(fixture).contains("invoices")) == true }
+        #expect(fixture.outlineView.row(forItem: try tableRow(fixture, named: "invoices")) >= 0)
+        await tearDown(fixture)
+    }
+
+    @Test("A row no rebuild has listed for a while is dropped, and one on screen stays")
+    func unlistedNodesAreDropped() async throws {
+        let fixture = try await makeFixture()
+        let dropped = try tableRow(fixture, named: "customers").id
+        let kept = try tableRow(fixture, named: "orders").id
+
+        await reload(fixture, tables: [TestFixtures.makeTableInfo(name: "orders")])
+        #expect(fixture.coordinator.nodeCache[dropped] != nil)
+        for _ in 0..<16 { fixture.coordinator.refresh() }
+
+        #expect(fixture.coordinator.nodeCache[dropped] == nil)
+        #expect(fixture.coordinator.nodeCache[kept] != nil)
+        await tearDown(fixture)
+    }
+
+    @Test("The generation moving alone is not a change to what the outline draws")
+    func generationAloneChangesNothing() async throws {
+        let fixture = try await makeFixture()
+        let inputs = fixture.coordinator.currentRenderInputs()
+
+        SchemaService.shared.bumpGeneration(fixture.connection.id)
+
+        #expect(fixture.coordinator.currentRenderInputs() == inputs)
+        await tearDown(fixture)
+    }
+
+    @Test("A schema a change overtook is a change, so an open row reads it again")
+    func overtakenSchemaChangesTheInputs() async throws {
+        let connection = TestFixtures.makeConnection(database: "", type: .mysql)
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.schemaTablesToReturn = ["sales": [TestFixtures.makeTableInfo(name: "orders", schema: "sales")]]
+        let service = SchemaService()
+        let scope = DatabaseScope(connectionId: connection.id, database: "", schema: nil)
+        await service.loadSchemaObjects(schema: "sales", in: scope, driver: driver)
+        func inputs() -> DatabaseTreeRenderInputs {
+            DatabaseTreeRenderInputs(
+                connectionId: connection.id,
+                treeMetadata: .shared,
+                schemaService: service,
+                temporaryTables: .shared,
+                sidebarState: nil,
+                rootShape: .hierarchicalSchema,
+                searchText: "",
+                browsedDatabase: nil
+            )
+        }
+        let current = inputs()
+        #expect(current.schemaObjects["sales"]?.isCurrent == true)
+
+        service.markLoadedSchemaObjectsStale(connectionId: connection.id)
+
+        #expect(inputs() != current)
+        #expect(inputs().schemaObjects["sales"]?.needsFetch == true)
+    }
+
+    @Test("Browsing another database is a change even when no list moved")
+    func browsedDatabaseChangesTheInputs() async throws {
+        let connection = TestFixtures.makeConnection(database: "shop", type: .mysql)
+        func inputs(_ database: String?) -> DatabaseTreeRenderInputs {
+            DatabaseTreeRenderInputs(
+                connectionId: connection.id,
+                treeMetadata: .shared,
+                schemaService: SchemaService(),
+                temporaryTables: .shared,
+                sidebarState: nil,
+                rootShape: .flat,
+                searchText: "",
+                browsedDatabase: database
+            )
+        }
+
+        #expect(inputs("shop") == inputs("shop"))
+        #expect(inputs("shop") != inputs("archive"))
     }
 
     @Test("Typing in the filter field alone does not reload the outline")
@@ -147,8 +428,8 @@ struct DatabaseTreeReconcileTests {
         await tearDown(fixture)
     }
 
-    @Test("A recent table recorded for this connection reloads the outline")
-    func recentTableReloads() async throws {
+    @Test("A recent table recorded for this connection adds its section without a reload")
+    func recentTableAddsItsSection() async throws {
         let fixture = try await makeFixture()
         let reloads = fixture.outlineView.reloads
 
@@ -157,7 +438,12 @@ struct DatabaseTreeReconcileTests {
         )]
         fixture.coordinator.reconcile()
 
-        #expect(fixture.outlineView.reloads == reloads + 1)
+        #expect(fixture.outlineView.reloads == reloads)
+        let section = try #require(fixture.coordinator.resolvedChildren(of: nil).first { node in
+            guard case .recentSection = node.kind else { return false }
+            return true
+        })
+        #expect(fixture.outlineView.row(forItem: section) == 0)
         await tearDown(fixture)
     }
 
@@ -179,7 +465,8 @@ struct DatabaseTreeReconcileTests {
                 temporaryTables: .shared,
                 sidebarState: nil,
                 rootShape: .flat,
-                searchText: searchText
+                searchText: searchText,
+                browsedDatabase: "shop"
             )
         }
         let unread = inputs()
@@ -219,7 +506,8 @@ struct DatabaseTreeReconcileTests {
                 temporaryTables: .shared,
                 sidebarState: nil,
                 rootShape: shape,
-                searchText: ""
+                searchText: "",
+                browsedDatabase: "shop"
             )
         }
         let flat = inputs(.flat)

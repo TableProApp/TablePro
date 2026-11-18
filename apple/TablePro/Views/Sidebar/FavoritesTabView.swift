@@ -9,8 +9,9 @@ internal struct FavoritesTabView: View {
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @ObservedObject private var gitStatusStore = LinkedFolderGitStatusStore.shared
     @ObservedObject private var gitActions = LinkedFolderGitActions.shared
-    @ObservedObject private var schemaService = SchemaService.shared
-    @ObservedObject private var treeMetadata = DatabaseTreeMetadataService.shared
+    @ObservedObject private var catalog: ConnectionSidebarCatalog
+    private var schemaService: SchemaService { .shared }
+    private var treeMetadata: DatabaseTreeMetadataService { .shared }
     @Environment(\.sidebarRowSize) private var systemRowSize
 
     @StateObject private var viewModel: FavoritesSidebarViewModel
@@ -84,10 +85,12 @@ internal struct FavoritesTabView: View {
         connectionId: UUID,
         databaseType: DatabaseType,
         sharedSidebarState: SharedSidebarState,
-        coordinator: MainContentCoordinator?
+        coordinator: MainContentCoordinator?,
+        catalog: ConnectionSidebarCatalog
     ) {
         self.connectionId = connectionId
         self.databaseType = databaseType
+        self.catalog = catalog
         self.sharedSidebarState = sharedSidebarState
         _viewModel = StateObject(wrappedValue: FavoritesSidebarViewModel(connectionId: connectionId))
         self.coordinator = coordinator

@@ -11,16 +11,18 @@ import TableProUtilities
 
 struct SidebarView: View {
     @ObservedObject private var featureAccess = FeatureAccess.shared
-    @ObservedObject private var databaseManager = DatabaseManager.shared
     @StateObject private var viewModel: SidebarViewModel
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var showsSchemaProgress = false
     /// See `presentedSchemaState`.
     @State private var showsLoadedCatalog = false
 
-    @ObservedObject private var schemaService = SchemaService.shared
-    @ObservedObject private var treeMetadata = DatabaseTreeMetadataService.shared
-    @ObservedObject private var temporaryTables = TemporaryTableStore.shared
+    @ObservedObject private var catalog: ConnectionSidebarCatalog
+
+    private var databaseManager: DatabaseManager { .shared }
+    private var schemaService: SchemaService { .shared }
+    private var treeMetadata: DatabaseTreeMetadataService { .shared }
+    private var temporaryTables: TemporaryTableStore { .shared }
 
     @ObservedObject var sidebarState: SharedSidebarState
     @ObservedObject var windowState: WindowSidebarState
@@ -160,6 +162,9 @@ struct SidebarView: View {
         _viewModel = StateObject(wrappedValue: vm)
         self.connectionId = connectionId
         self.coordinator = coordinator
+        _catalog = ObservedObject(
+            wrappedValue: coordinator?.sidebarCatalog ?? ConnectionSidebarCatalog(connectionId: connectionId, toolbarState: nil)
+        )
     }
 
     // MARK: - Body
@@ -178,7 +183,8 @@ struct SidebarView: View {
                         connectionId: connectionId,
                         databaseType: viewModel.databaseType,
                         sharedSidebarState: sidebarState,
-                        coordinator: coordinator
+                        coordinator: coordinator,
+                        catalog: catalog
                     )
                 } else {
                     Color.clear
@@ -256,7 +262,8 @@ struct SidebarView: View {
                         SchemaPickerControl(
                             connectionId: connectionId,
                             databaseType: viewModel.databaseType,
-                            coordinator: coordinator
+                            coordinator: coordinator,
+                            catalog: catalog
                         )
                     }
                 }
@@ -300,7 +307,8 @@ struct SidebarView: View {
                 pendingDeletes: $pendingDeletes,
                 coordinator: coordinator,
                 toolbarState: coordinator.toolbarState,
-                sidebarState: sidebarState
+                sidebarState: sidebarState,
+                catalog: catalog
             )
         }
     }
@@ -329,7 +337,8 @@ struct SidebarView: View {
                     sidebarState: sidebarState,
                     pendingTruncates: $pendingTruncates,
                     pendingDeletes: $pendingDeletes,
-                    coordinator: coordinator
+                    coordinator: coordinator,
+                    catalog: catalog
                 )
             }
         }
