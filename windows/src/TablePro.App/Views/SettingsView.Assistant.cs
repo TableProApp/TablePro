@@ -83,6 +83,11 @@ public sealed partial class SettingsView
         var address = AiAddressBox.Text;
         _workbench.UpdateSettings(settings => settings with { CompatibleAddress = address });
         CheckAddress(address);
+        // Models listed by the server before are not this one's; the model typed stays.
+        _listingModels?.Cancel();
+        var model = AiModelBox.Text;
+        AiModelBox.Items.Clear();
+        AiModelBox.Text = model;
     }
 
     private void CheckAddress(string address)
@@ -193,12 +198,13 @@ public sealed partial class SettingsView
         _listingModels?.Cancel();
         using var listing = new CancellationTokenSource();
         _listingModels = listing;
+        var asked = _workbench.Settings.AssistantFor(provider);
         IReadOnlyList<string> models;
         try
         {
             AiStatusText.Text = Strings.Get("AiModelsReading");
             models = await _workbench.Core.Assistant
-                .ListModelsAsync(_workbench.Settings.AssistantFor(provider), listing.Token)
+                .ListModelsAsync(asked, listing.Token)
                 .ConfigureAwait(true);
         }
         catch (OperationCanceledException)
@@ -222,7 +228,9 @@ public sealed partial class SettingsView
             }
         }
 
-        if (listing.IsCancellationRequested || ChosenProvider != provider)
+        if (listing.IsCancellationRequested
+            || ChosenProvider != provider
+            || _workbench.Settings.AssistantFor(provider).Address != asked.Address)
         {
             return;
         }

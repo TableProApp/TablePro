@@ -97,12 +97,27 @@ public sealed partial class AssistantPane : UserControl
         Ask(new AssistantAsk.Action(action, statement, error));
     }
 
+    // A pane shown for the first time has not loaded yet, and an unloaded box takes no focus.
     public void FocusComposer()
     {
-        if (ComposerBar.Visibility == Visibility.Visible)
+        if (ComposerBar.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        if (Composer.IsLoaded)
         {
             Composer.Focus(FocusState.Programmatic);
+            return;
         }
+
+        void OnLoaded(object sender, RoutedEventArgs e)
+        {
+            Composer.Loaded -= OnLoaded;
+            Composer.Focus(FocusState.Programmatic);
+        }
+
+        Composer.Loaded += OnLoaded;
     }
 
     // The session ends: whatever is on its way stops, and work that lands after is dropped.
