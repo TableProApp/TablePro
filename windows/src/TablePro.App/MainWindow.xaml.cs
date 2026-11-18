@@ -541,6 +541,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         // Another program may have changed an open .sql file while the window was in the background.
         Activated += async (_, args) =>
         {
+            // Notifications may have been turned on in Windows Settings while this window was in the back.
+            if (args.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                _settings?.ShowNotificationState();
+            }
+
             if (args.WindowActivationState != WindowActivationState.Deactivated && Workspace is { } workspace)
             {
                 await workspace.CheckFileAsync();

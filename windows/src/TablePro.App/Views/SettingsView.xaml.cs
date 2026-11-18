@@ -98,10 +98,16 @@ public sealed partial class SettingsView : UserControl
         NotifySwitch.IsOn = settings.NotifyLongWork;
         FillChoices(NotifyAfterBox, AppSettings.NotifyAfterChoices, settings.NotifyAfterSeconds, NotifyAfterLabel);
         NotifyAfterCard.IsEnabled = settings.NotifyLongWork;
-        var off = settings.NotifyLongWork && !FinishNotifications.AreAllowed;
+        ShowNotificationState();
+        _loading = false;
+    }
+
+    // Windows turns the app's notifications on and off outside it, so this is read again as the window comes back.
+    internal void ShowNotificationState()
+    {
+        var off = _workbench.Settings.NotifyLongWork && !FinishNotifications.AreAllowed;
         NotificationsOffBar.IsOpen = off;
         NotificationsOffBar.Visibility = off ? Visibility.Visible : Visibility.Collapsed;
-        _loading = false;
     }
 
     private static string NotifyAfterLabel(int seconds) => seconds < 60
@@ -115,9 +121,7 @@ public sealed partial class SettingsView : UserControl
             var notify = NotifySwitch.IsOn;
             _workbench.UpdateSettings(settings => settings with { NotifyLongWork = notify });
             NotifyAfterCard.IsEnabled = notify;
-            var off = notify && !FinishNotifications.AreAllowed;
-            NotificationsOffBar.IsOpen = off;
-            NotificationsOffBar.Visibility = off ? Visibility.Visible : Visibility.Collapsed;
+            ShowNotificationState();
         }
     }
 

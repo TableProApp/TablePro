@@ -34,6 +34,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     private readonly JsonResultView _jsonView = new() { Visibility = Visibility.Collapsed };
     private bool _showsJson;
     private CancellationTokenSource? _jsonWrite;
+    private bool _jsonStale;
 
     private static readonly TimeSpan SummaryDelay = TimeSpan.FromMilliseconds(150);
 
@@ -403,7 +404,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
             if (ReferenceEquals(held, _picked))
             {
                 ResultGrid.RowsChanged();
-                QueueJson();
+                QueueJson(rowsArrived: true);
                 if (ended)
                 {
                     ShowPickedLabel();
@@ -768,9 +769,16 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         QueueJson();
     }
 
-    // Each change to the rows shown stops the write before it; rows selected in Data narrow it.
-    private void QueueJson()
+    // A change stops the write before it, but arriving rows wait for the one under way, so a stream still gets written.
+    private void QueueJson(bool rowsArrived = false)
     {
+        if (rowsArrived && _jsonWrite is not null)
+        {
+            _jsonStale = true;
+            return;
+        }
+
+        _jsonStale = false;
         _jsonWrite?.Cancel();
         _jsonWrite = null;
         if (!_showsJson)
@@ -831,12 +839,17 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         }
         finally
         {
-            if (ReferenceEquals(_jsonWrite, cancel))
+            var current = ReferenceEquals(_jsonWrite, cancel);
+            if (current)
             {
                 _jsonWrite = null;
             }
 
             cancel.Dispose();
+            if (current && _jsonStale)
+            {
+                QueueJson();
+            }
         }
     }
 
