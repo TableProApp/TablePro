@@ -490,4 +490,33 @@ struct LibPQConnectionStringTests {
         #expect(!LibPQConnectionString.isClientEncoding(reportedByServer: "SQL_ASCII"))
         #expect(!LibPQConnectionString.isClientEncoding(reportedByServer: nil))
     }
+
+    @Test("Direct TLS is asked for only under a mode that requires TLS", arguments: [
+        (SSLMode.required, true),
+        (SSLMode.verifyCa, true),
+        (SSLMode.verifyIdentity, true),
+        (SSLMode.preferred, false),
+        (SSLMode.disabled, false),
+    ])
+    func directTLSFollowsTheMode(mode: SSLMode, expected: Bool) throws {
+        let conninfo = try LibPQConnectionString.build(
+            host: "db.example.com",
+            port: 5_432,
+            user: "postgres",
+            password: nil,
+            database: "app",
+            sslConfig: SSLConfiguration(mode: mode),
+            options: nil,
+            directTLS: true
+        )
+
+        #expect(conninfo.contains("sslnegotiation='direct'") == expected)
+    }
+
+    @Test("A connection string is on the standard negotiation unless asked otherwise")
+    func standardNegotiationByDefault() throws {
+        let conninfo = try build(sslConfig: SSLConfiguration(mode: .required))
+
+        #expect(!conninfo.contains("sslnegotiation"))
+    }
 }

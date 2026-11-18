@@ -12,15 +12,14 @@ nonisolated internal enum LibPQCellDecoding {
     private static let byteaOid: UInt32 = 17
 
     static func value(from bytes: UnsafeRawBufferPointer, oid: UInt32) -> PluginCellValue {
-        let text = text(from: bytes)
         switch oid {
         case byteaOid:
-            guard let data = LibPQByteaDecoder.decode(text) else { return .text(text) }
+            guard let data = LibPQByteaDecoder.decode(bytes: bytes) else { return .text(text(from: bytes)) }
             return .bytes(data)
         case booleanOid:
-            return .text(text == "t" ? "true" : "false")
+            return .text(text(from: bytes) == "t" ? "true" : "false")
         default:
-            return .text(text)
+            return .text(text(from: bytes))
         }
     }
 
