@@ -11,6 +11,7 @@ use tablepro_core::{
     ConnectEnvironment, Credentials, DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy,
     SafeModeLevel, UnsupportedFeature, WorkspaceSettings,
 };
+use tablepro_mcp::TokenVault;
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{
     ConnectError, ConnectRequest, ConnectServices, ConnectionMetadata, Connector, CredentialSource, DefaultDeadlines,
@@ -31,8 +32,8 @@ use crate::library::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, LibraryWrites, apply, blank, keep_proved_secrets, parse_id,
     tls_config,
 };
-use crate::mcp::HistoryAccess;
 use crate::mcp::open_sessions::OpenSessions;
+use crate::mcp::{HistoryAccess, StoredTokens};
 use crate::prompter::{HostPrompter, HostPrompterBridge};
 use crate::runtime::{self, on_runtime};
 use crate::session::DatabaseSession;
@@ -59,6 +60,7 @@ pub struct Core {
     ai_client: Arc<OnceCell<AiClient>>,
     // The saved connections' sessions `connect_saved` opened, which the MCP server reaches.
     open_sessions: Arc<OpenSessions>,
+    mcp_tokens: Arc<dyn TokenVault>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -85,6 +87,7 @@ impl Core {
                 items: host.clone(),
                 // A host keeps one item for it, whichever server the sign-in is with.
                 refresh_tokens: Arc::new(move |_: &AccountSettings| host.clone() as Arc<dyn RefreshTokenVault>),
+                folder_token: None,
             },
             tasks,
         ))
@@ -347,10 +350,12 @@ impl Core {
             ssh: ssh.clone(),
             liveness,
         };
-        let paths = config
-            .storage_dir
-            .filter(|dir| !dir.trim().is_empty())
-            .map(|dir| storage_paths(Path::new(&dir)));
+        let storage_dir = config.storage_dir.filter(|dir| !dir.trim().is_empty());
+        let mcp_tokens = match (&secrets.folder_token, &storage_dir) {
+            (Some(folder_token), Some(dir)) => folder_token(dir),
+            _ => Arc::new(StoredTokens(secrets.items.clone())) as Arc<dyn TokenVault>,
+        };
+        let paths = storage_dir.map(|dir| storage_paths(Path::new(&dir)));
         let store = paths.as_ref().map(ConnectionStore::new);
         Arc::new(Self {
             registry: Arc::new(drivers::registry()),
@@ -368,6 +373,7 @@ impl Core {
             client_version,
             ai_client: Arc::default(),
             open_sessions: Arc::default(),
+            mcp_tokens,
         })
     }
 
@@ -405,6 +411,10 @@ impl Core {
     pub(crate) fn client_version(&self) -> String {
         self.client_version.clone()
     }
+
+    pub(crate) fn mcp_tokens(&self) -> Arc<dyn TokenVault> {
+        self.mcp_tokens.clone()
+    }
 }
 
 impl std::fmt::Debug for Core {
@@ -437,7 +447,11 @@ struct SystemSecrets {
     vault: Arc<dyn SecretVault>,
     items: Arc<dyn SecretItems>,
     refresh_tokens: RefreshTokens,
+    // The platform store's MCP token for a data folder; None keeps it as the host's `SecretItem::McpToken`.
+    folder_token: Option<FolderTokens>,
 }
+
+type FolderTokens = Arc<dyn Fn(&str) -> Arc<dyn TokenVault> + Send + Sync>;
 
 #[cfg(windows)]
 fn system_secrets(tasks: &Tasks) -> Result<SystemSecrets, CoreError> {
@@ -448,10 +462,16 @@ fn system_secrets(tasks: &Tasks) -> Result<SystemSecrets, CoreError> {
     Ok(SystemSecrets {
         vault: manager.clone(),
         items: manager.clone(),
-        refresh_tokens: Arc::new(move |settings: &AccountSettings| {
-            Arc::new(manager.refresh_token(&settings.sign_in_key(), settings.is_production()))
-                as Arc<dyn RefreshTokenVault>
+        refresh_tokens: Arc::new({
+            let manager = manager.clone();
+            move |settings: &AccountSettings| {
+                Arc::new(manager.refresh_token(&settings.sign_in_key(), settings.is_production()))
+                    as Arc<dyn RefreshTokenVault>
+            }
         }),
+        folder_token: Some(Arc::new(move |dir: &str| {
+            Arc::new(crate::credential_manager::FolderToken::new(manager.clone(), dir)) as Arc<dyn TokenVault>
+        })),
     })
 }
 
@@ -694,6 +714,7 @@ mod tests {
                 vault: Arc::new(Vault::default()),
                 items: Arc::new(NoItems),
                 refresh_tokens: Arc::new(|_: &AccountSettings| Arc::new(NoItems) as Arc<dyn RefreshTokenVault>),
+                folder_token: None,
             },
             runtime::tasks().unwrap(),
         );

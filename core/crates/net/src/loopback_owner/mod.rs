@@ -24,6 +24,12 @@ pub fn loopback_peer_is_this_user(peer: SocketAddr, local: SocketAddr) -> io::Re
     this_users(peer, local)
 }
 
+// A process this user may not open, as another user's, is not this user's. Blocks.
+#[cfg(windows)]
+pub fn process_runs_as_this_user(pid: u32) -> io::Result<bool> {
+    token_user::runs_as_this_user(pid)
+}
+
 // The process at the other end of a loopback connection, by GetExtendedTcpTable; None when no row names it. Blocks.
 #[cfg(windows)]
 pub fn loopback_peer_process(peer: SocketAddr, local: SocketAddr) -> io::Result<Option<u32>> {

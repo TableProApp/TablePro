@@ -2,12 +2,11 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use secrecy::ExposeSecret;
-use tablepro_cli::{Host, HostError, Places, Terminal};
-use tablepro_core::credentials::SecretItem;
-
 use super::app_files::{self, McpSettings};
 use crate::credential_manager;
+use crate::mcp::token_target::mcp_token_target;
+use secrecy::ExposeSecret;
+use tablepro_cli::{Host, HostError, Places, Terminal};
 
 // The Windows app's names for where it keeps the switch and the token.
 const PLACES: Places = Places {
@@ -76,19 +75,25 @@ impl Host for WindowsHost {
                 reason: "TablePro no longer holds its data folder".to_owned(),
             });
         };
-        match tablepro_net::loopback_peer_process(peer, local) {
-            Ok(Some(owner)) if owner == app => Ok(()),
-            Ok(_) => Err(HostError::ForeignServer { port }),
-            Err(error) => Err(HostError::Unverified {
-                port,
-                reason: error.to_string(),
-            }),
+        let unverified = |error: std::io::Error| HostError::Unverified {
+            port,
+            reason: error.to_string(),
+        };
+        let owner = tablepro_net::loopback_peer_process(peer, local).map_err(unverified)?;
+        // The user too: a data folder another account can write could name that account's listener.
+        match owner == Some(app) && tablepro_net::process_runs_as_this_user(app).map_err(unverified)? {
+            true => Ok(()),
+            false => Err(HostError::ForeignServer { port }),
         }
     }
 
-    // Only read: a token made here would be one the running server never accepts.
+    // Only read, and the token of this data folder's app: a token made here would be one the server never accepts.
     fn token(&self) -> Result<Option<String>, HostError> {
-        credential_manager::read_item(credential_manager::PREFIX, SecretItem::McpToken)
+        let folder = self.folder.as_ref().ok_or_else(|| HostError::Keyring {
+            reason: "%LOCALAPPDATA% is not set".to_owned(),
+        })?;
+        let target = mcp_token_target(credential_manager::PREFIX, &folder.to_string_lossy());
+        credential_manager::read_target(&target)
             .map(|token| token.map(|token| token.expose_secret().to_owned()))
             .map_err(|error| HostError::Keyring {
                 reason: error.to_string(),

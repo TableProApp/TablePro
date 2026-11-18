@@ -7962,6 +7962,7 @@ dependencies = [
  "russh",
  "secrecy",
  "serde_json",
+ "sha2 0.11.0",
  "tablepro-account",
  "tablepro-ai",
  "tablepro-cli",

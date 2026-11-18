@@ -64,7 +64,7 @@ struct Shown {
 impl McpService {
     pub(crate) fn new(
         tasks: Tasks,
-        items: Arc<dyn SecretItems>,
+        tokens: Arc<dyn TokenVault>,
         context: ToolContext,
         version: String,
         listener: Arc<dyn McpListener>,
@@ -72,7 +72,7 @@ impl McpService {
         Self {
             inner: Arc::new(Inner {
                 tasks,
-                tokens: Arc::new(StoredTokens(items)),
+                tokens,
                 context,
                 version,
                 listener,
@@ -312,8 +312,8 @@ fn start_failure(error: StartError) -> CoreError {
     }
 }
 
-// The token as the core's secret store keeps it, as `SecretItem::McpToken`.
-struct StoredTokens(Arc<dyn SecretItems>);
+// The token as a host's own secret store keeps it, as `SecretItem::McpToken`.
+pub(crate) struct StoredTokens(pub(crate) Arc<dyn SecretItems>);
 
 #[async_trait]
 impl TokenVault for StoredTokens {

@@ -96,10 +96,41 @@ impl std::fmt::Debug for CredentialManager {
     }
 }
 
-// The tablepro command's read, on its own thread with no runtime, under the same prefix the app's core keeps it.
-pub(crate) fn read_item(prefix: &str, item: SecretItem) -> Result<Option<SecretString>, SecretError> {
+// The tablepro command's read, on its own thread with no runtime.
+pub(crate) fn read_target(target: &str) -> Result<Option<SecretString>, SecretError> {
     let _held = STORE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    read(&format!("{prefix}/{}", item_name(item)))
+    read(target)
+}
+
+// The MCP token of one data folder (`mcp::token_target`).
+pub(crate) struct FolderToken {
+    manager: Arc<CredentialManager>,
+    target: String,
+}
+
+impl FolderToken {
+    pub(crate) fn new(manager: Arc<CredentialManager>, data_folder: &str) -> Self {
+        Self {
+            target: crate::mcp::token_target::mcp_token_target(&manager.prefix, data_folder),
+            manager,
+        }
+    }
+}
+
+#[async_trait]
+impl tablepro_mcp::TokenVault for FolderToken {
+    async fn load_token(&self) -> Result<Option<SecretString>, SecretError> {
+        let target = self.target.clone();
+        self.manager.blocking(move || read(&target)).await
+    }
+
+    async fn store_token(&self, token: &SecretString) -> Result<(), SecretError> {
+        let (target, token) = (self.target.clone(), token.clone());
+        let label = english_item_label(SecretItem::McpToken);
+        self.manager
+            .blocking(move || write(&target, token.expose_secret(), &label))
+            .await
+    }
 }
 
 fn kind_name(kind: SecretKind) -> &'static str {
