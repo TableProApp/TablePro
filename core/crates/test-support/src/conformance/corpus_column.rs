@@ -117,11 +117,17 @@ mod tests {
             assert!(!columns.is_empty(), "{corpus:?} lists no column");
             for column in columns {
                 assert!(
-                    column.declaration.starts_with("v ") || column.declaration.starts_with("COLUMN v ") || column.declaration == "v",
+                    column.declaration.starts_with("v ")
+                        || column.declaration.starts_with("COLUMN v ")
+                        || column.declaration == "v",
                     "{corpus:?}: `{}` does not add `v`",
                     column.declaration
                 );
-                assert!(!column.values.is_empty(), "{corpus:?}: `{}` has no value", column.declaration);
+                assert!(
+                    !column.values.is_empty(),
+                    "{corpus:?}: `{}` has no value",
+                    column.declaration
+                );
             }
         }
     }
@@ -129,7 +135,12 @@ mod tests {
     #[test]
     fn mysql_and_mariadb_share_the_common_columns_and_keep_their_own() {
         let declarations = |corpus: ValueCorpus| -> Vec<String> {
-            corpus.columns().unwrap().into_iter().map(|column| column.declaration).collect()
+            corpus
+                .columns()
+                .unwrap()
+                .into_iter()
+                .map(|column| column.declaration)
+                .collect()
         };
         let (mysql, mariadb) = (declarations(ValueCorpus::Mysql), declarations(ValueCorpus::Mariadb));
 

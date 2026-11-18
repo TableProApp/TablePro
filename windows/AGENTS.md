@@ -15,7 +15,7 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 
 - `TablePro.slnx`: the solution. `global.json`: the .NET 10 SDK, and Microsoft.Testing.Platform as the runner `dotnet test` uses. `Directory.Build.props`: nullable, warnings as errors and the latest recommended analyzers for every project. `Directory.Packages.props`: every package version. `.editorconfig`: the C# style.
 - `src/TablePro.Interop`: the library the app calls. Its public API is hand-written; `Generated/` holds the uniffi-bindgen-cs and csbindgen output, all `internal`, so a generator upgrade cannot change what the app sees. The project is AOT and trim compatible, and its analyzers fail the build otherwise.
-- `tests/TablePro.Interop.Tests`: xunit v3 tests against the real core and real SQLite files.
+- `tests/TablePro.Interop.Tests`: xunit v3 tests against the real core and real SQLite files. `Live/` reads a table, the core's value corpus (`core/crates/test-support/corpus`) and a save on each engine's server, or in process for DuckDB; a server's tests skip where `ci/live-servers.ps1` did not start it (`docs/decisions/0013-live-server-tests.md`).
 - `src/TablePro.Editor.Model`: the editor's text, carets, undo history, find and line-state highlighter. Plain `net10.0` with no WinUI, so `tests/TablePro.Editor.Model.Tests` runs anywhere.
 - `src/TablePro.Graphics`: the one text and drawing stack the controls share: Direct3D, Direct2D and DirectWrite through TerraFX, the editor's swap chain and line layouts, theme colors, and the font fallback warm-up. Its types are internal to the controls.
 - `src/TablePro.Editor`: the `SqlEditor` control over that model: Direct2D and DirectWrite in a SwapChainPanel, TSF, the UIA text provider, and the core's lexer through `CoreSqlLexer`.
@@ -26,6 +26,7 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `src/TablePro.App`: the WinUI app: one window, the rail, the Connections page, the connection form window, Settings and a workspace per connection (`docs/decisions/0004-app-shell.md`). Strings are in `Strings/en-US/Resources.resw`.
 - `src/TablePro.App.Model`: the app's settings and session files, the library tree, the connection form's fields, the object folders, the tab and connection lifecycles over small session, editor and run interfaces, and a table tab's pending edits. Plain `net10.0`, so `tests/TablePro.App.Model.Tests` runs anywhere.
 - `tests/TablePro.App.UITests`: UI Automation tests (FlaUI) that launch the built app with a data folder of their own, and the installed MSIX once `TABLEPRO_PACKAGE` names its family.
+- `ci/live-servers.ps1`: starts one server the `Live/` interop tests reach on the x64 runner, for `windows.yml`.
 - `ci/desktop.ps1`: readies a hosted runner's desktop for UI work (privacy settings window, WSL console, display size, window dragging), for `windows.yml`, `release-windows.yml` and the grid gate.
 - `ci/winget-manifest.py`: writes a release's winget manifest, for `release-windows.yml`.
 - `scripts/engine-glyphs.py`: writes `src/TablePro.App/Resources/EngineGlyphs.xaml` from the macOS app's engine artwork. Run it after that artwork changes or an engine is added.
@@ -101,4 +102,4 @@ Pass `-p:UniffiBindgenCs=<path>` when it is not on `PATH`; the target refuses an
 
 ## CI
 
-`.github/workflows/windows.yml`, which `ci.yml` calls when the `windows` suite changed (`.claude/rules/ci.md`). It builds the core and runs the tests on x64, Arm64 and macOS runners, publishes the app with Native AOT and runs its UI tests on the Windows runners with their screenshots as an artifact, and on macOS checks the committed bindings. CI's Lint job runs zizmor on every workflow. `.github/workflows/release-windows.yml` builds and ships a release (`RELEASING.md`).
+`.github/workflows/windows.yml`, which `ci.yml` calls when the `windows` suite changed (`.claude/rules/ci.md`). It builds the core and runs the tests on x64, Arm64 and macOS runners, the `Live/` tests against their servers on a second x64 runner, publishes the app with Native AOT and runs its UI tests on the Windows runners with their screenshots as an artifact, and on macOS checks the committed bindings. CI's Lint job runs zizmor on every workflow. `.github/workflows/release-windows.yml` builds and ships a release (`RELEASING.md`).

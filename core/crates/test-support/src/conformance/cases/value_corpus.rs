@@ -350,7 +350,11 @@ mod tests {
     fn column() -> CorpusColumn {
         corpus_column(
             "v numeric(10, 2)",
-            &[("1.5", Some("1.50"), None), ("2", Some("2.00"), Some("2")), ("NULL", None, None)],
+            &[
+                ("1.5", Some("1.50"), None),
+                ("2", Some("2.00"), Some("2")),
+                ("NULL", None, None),
+            ],
         )
     }
 
