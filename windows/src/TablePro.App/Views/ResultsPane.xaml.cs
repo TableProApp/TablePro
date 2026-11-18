@@ -2,7 +2,6 @@ using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.DataGrid;
@@ -851,7 +850,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
             var title = new TextBlock
             {
                 Text = Strings.Get(label),
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                Style = (Style)Application.Current.Resources["SecondaryTextBlockStyle"],
                 VerticalAlignment = VerticalAlignment.Center,
             };
             var shown = new TextBlock

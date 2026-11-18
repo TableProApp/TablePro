@@ -40,7 +40,13 @@ public sealed partial class ShellTests
         Keyboard.Type(ShopUrl.Replace("5433", "5434", StringComparison.Ordinal));
         app.Chord(() => true, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
         app.Chord(() => true, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_C);
-        search.AsTextBox().Text = string.Empty;
+        // Typed away, as a value set through UI Automation leaves the suggestion box's filter in place.
+        app.Chord(() => true, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
+        Keyboard.Type(VirtualKeyShort.BACK);
+        Assert.True(Retry.WhileFalse(
+            () => app.TryFind("ConnectionTree") is { IsOffscreen: false },
+            AppSession.Wait,
+            throwOnTimeout: false).Success);
         app.Click(app.FindByNamePrefix("Chinook (Sample),", app.Find("ConnectionTree")));
         app.Chord(() => app.HasWindow("New connection"), VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_V);
         form = app.WaitForWindow("New connection");
@@ -99,7 +105,7 @@ public sealed partial class ShellTests
         app.PressDialogButton();
 
         app.RightClick(app.FindByName("Production", tree));
-        app.OpenSubmenu("Color", "Red").Patterns.Invoke.Pattern.Invoke();
+        app.Click(app.OpenSubmenu("Color", "Red"));
 
         Assert.True(Retry.WhileFalse(
             () => Regex.IsMatch(File.ReadAllText(AppSession.LibraryFile(app.DataFolder)), "\"color\"\\s*:\\s*\"red\""),

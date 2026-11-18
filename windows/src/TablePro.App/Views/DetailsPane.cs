@@ -2,7 +2,6 @@ using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.DataGrid;
@@ -51,11 +50,7 @@ internal sealed partial class DetailsPane : UserControl
         _views.Items.Add(_tableItem);
         _views.SelectionChanged += (_, _) => ShowView();
         _scroller.Content = _rowPanel;
-        var root = new Grid
-        {
-            BorderBrush = (Brush)Application.Current.Resources["DividerStrokeColorDefaultBrush"],
-            BorderThickness = new Thickness(1, 0, 0, 0),
-        };
+        var root = new Grid { Style = (Style)Application.Current.Resources["PaneDividerStyle"] };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         Grid.SetRow(_scroller, 1);
@@ -219,11 +214,7 @@ internal sealed partial class DetailsPane : UserControl
             Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        var type = new TextBlock
-        {
-            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-            VerticalAlignment = VerticalAlignment.Center,
-        };
+        var type = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
         var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         title.Children.Add(name);
         title.Children.Add(type);
@@ -305,8 +296,8 @@ internal sealed partial class DetailsPane : UserControl
         var edited = _model.Edits is { } edits && !edits.IsAdded(entry.Row)
             && edits.GetCell(entry.Row, entry.Field.Column) is not null;
         entry.Type.Text = edited ? Strings.Format("DetailsTypeEdited", entry.Field.TypeName) : entry.Field.TypeName;
-        entry.Type.Foreground = (Brush)Application.Current.Resources[
-            edited ? "AccentTextFillColorPrimaryBrush" : "TextFillColorSecondaryBrush"];
+        entry.Type.Style = (Style)Application.Current.Resources[
+            edited ? "AccentCaptionTextBlockStyle" : "SecondaryCaptionTextBlockStyle"];
     }
 
     // Kept in place, so the field the focus moved to, or this one after Ctrl+Enter, stays as it is. False when the
@@ -433,8 +424,7 @@ internal sealed partial class DetailsPane : UserControl
         var title = new TextBlock
         {
             Text = Strings.Get(label),
-            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            Style = (Style)Application.Current.Resources["SecondaryCaptionTextBlockStyle"],
         };
         var text = new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
         AutomationProperties.SetAutomationId(text, automationId);
@@ -449,7 +439,7 @@ internal sealed partial class DetailsPane : UserControl
     {
         Text = text,
         TextWrapping = TextWrapping.Wrap,
-        Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+        Style = (Style)Application.Current.Resources["SecondaryTextBlockStyle"],
     };
 
     private sealed class FieldEntry(int row, TextBox box, TextBlock type)
