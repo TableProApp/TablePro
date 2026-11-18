@@ -45,6 +45,22 @@ public sealed class WrapTests
     }
 
     [Fact]
+    public void ASpacingMarkStaysWithItsLetterAndHomeLandsAfterIt()
+    {
+        var line = "1234567" + (char)0x915 + (char)0x93E + "x";
+        Assert.Equal([9], Breaks(line, 8));
+
+        var model = Carets.Model(line);
+        model.Rows.SetWrap(8, 4);
+        model.SetCaret(line.Length);
+        model.Move(CaretMove.LineStart, extend: false);
+        Assert.Equal(9, model.Primary.Active);
+        model.Move(CaretMove.Up, extend: false);
+        model.Move(CaretMove.LineEnd, extend: false);
+        Assert.Equal(7, model.Primary.Active);
+    }
+
+    [Fact]
     public void ATabRunsToTheNextStopOfItsRow()
     {
         Assert.Equal(8, LineWrap.Columns("ab\tc".AsSpan(0, 3), 8));

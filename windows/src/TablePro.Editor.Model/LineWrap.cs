@@ -30,7 +30,8 @@ public static class LineWrap
             }
             var length = UnitLength(line, i);
             var width = Width(line, i, length);
-            if (column + width > columns && i > rowStart)
+            // A mark stays with the letter before it, as a caret stop does (TextUnits).
+            if (column + width > columns && i > rowStart && !IsMark(c))
             {
                 var at = afterSpace > rowStart ? afterSpace : i;
                 breaks.Add(at);
@@ -108,7 +109,9 @@ public static class LineWrap
         {
             return 1;
         }
-        if (IsMark(c) || CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.Format)
+        // A spacing mark such as a Devanagari vowel sign takes a column of its own; the others draw over their letter.
+        if (CharUnicodeInfo.GetUnicodeCategory(c) is UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark
+            or UnicodeCategory.Format)
         {
             return 0;
         }
@@ -116,7 +119,7 @@ public static class LineWrap
     }
 
     private static bool IsMark(char c) => CharUnicodeInfo.GetUnicodeCategory(c) is UnicodeCategory.NonSpacingMark
-        or UnicodeCategory.EnclosingMark;
+        or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark;
 
     // East Asian Wide and Fullwidth, and the emoji blocks, as terminals and VS Code count them.
     private static bool IsWide(int code) => code switch

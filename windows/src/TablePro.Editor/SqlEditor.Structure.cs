@@ -158,8 +158,11 @@ public sealed partial class SqlEditor
         return folded;
     }
 
+    // Rows move under a fold while the text's version stays, so the last frame's layouts no longer match their rows.
     private void OnFoldsChanged()
     {
+        _frameLayouts.Clear();
+        _frameVersion = -1;
         UpdateScrollBars();
         Invalidate();
         FoldsChanged?.Invoke(this, EventArgs.Empty);
