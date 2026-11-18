@@ -181,7 +181,13 @@ internal final class EditorTabStripView: NSView {
             height: metrics.trackHeight
         )
         track.frame = trackFrame
-        scrollView.frame = trackFrame.insetBy(dx: metrics.trackPadding, dy: metrics.trackPadding)
+        // Not `insetBy`: the band starts 1pt wide, and insetting an empty rect returns the null rect at infinity.
+        scrollView.frame = CGRect(
+            x: trackFrame.minX + metrics.trackPadding,
+            y: metrics.trackPadding,
+            width: max(trackFrame.width - metrics.trackPadding * 2, 0),
+            height: metrics.tabHeight
+        )
         layoutTabs(animated: false)
         refreshHoverArea()
 

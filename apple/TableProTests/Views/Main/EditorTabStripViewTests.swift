@@ -47,6 +47,20 @@ struct EditorTabStripViewTests {
         #expect(views(of: strip).allSatisfy { $0.frame.width == strip.run.tabWidth })
     }
 
+    @Test("A band too narrow for the track keeps finite geometry", arguments: [0, 1, 40] as [CGFloat])
+    func narrowBandKeepsFiniteGeometry(width: CGFloat) {
+        let (strip, window) = makeStrip(width: max(width, 1))
+        defer { window.orderOut(nil) }
+
+        strip.setFrameSize(NSSize(width: width, height: Self.size.height))
+        strip.layoutSubtreeIfNeeded()
+
+        #expect(strip.scrollView.frame.minX.isFinite)
+        #expect(strip.scrollView.frame.minY.isFinite)
+        #expect(strip.scrollView.frame.width == 0)
+        #expect(strip.items.allSatisfy { strip.itemView(for: $0.id)?.frame.minX.isFinite == true })
+    }
+
     @Test("A title with room is drawn whole")
     func titleWithRoomIsNotTruncated() throws {
         let (strip, window) = makeStrip(titles: ["beta_invites", "beta_testers", "license_jobs", "licenses"], width: 1_200)
