@@ -86,21 +86,22 @@ struct RowCountPlanTests {
 
     @Test("A page turn under the same filters keeps the answer the last count gave")
     func settledScopeSkipsTheCount() {
-        let state = filtered()
         let plan = QueryExecutionCoordinator.rowCountPlan(
-            isNonSQL: false, filterState: state, approximateRowCount: nil, threshold: 100_000,
-            settledScope: state.rowCountScope
+            isNonSQL: false, filterState: filtered(), approximateRowCount: nil, threshold: 100_000,
+            isSettled: true
         )
         #expect(plan == .skip)
     }
 
-    @Test("Other filters than the ones the last count answered for are counted again")
-    func otherFiltersCountAgain() {
-        let plan = QueryExecutionCoordinator.rowCountPlan(
-            isNonSQL: false, filterState: filtered(), approximateRowCount: nil, threshold: 100_000,
-            settledScope: TabFilterState().rowCountScope
-        )
-        #expect(plan == .cappedCount(filtered: true, limit: 100_001))
+    @Test("A count answers for its filters and its relation, and for nothing else")
+    func scopeNamesFiltersAndRelation() {
+        var tab = QueryTab(title: "a", query: "SELECT * FROM a", tabType: .query, tableName: "a")
+        let unfiltered = tab.rowCountScope(table: "a")
+        #expect(tab.rowCountScope(table: "a") == unfiltered)
+        #expect(tab.rowCountScope(table: "b") != unfiltered)
+
+        tab.filterState = filtered()
+        #expect(tab.rowCountScope(table: "a") != unfiltered)
     }
 
     @Test("A browse search that was counted is not walked again on the next page")
@@ -109,7 +110,7 @@ struct RowCountPlanTests {
         state.browseSearch = BrowseSearchState(pattern: "user:*")
         let plan = QueryExecutionCoordinator.rowCountPlan(
             isNonSQL: true, filterState: state, approximateRowCount: nil, threshold: 100_000,
-            browseSearch: state.browseSearch, settledScope: state.rowCountScope
+            browseSearch: state.browseSearch, isSettled: true
         )
         #expect(plan == .skip)
     }

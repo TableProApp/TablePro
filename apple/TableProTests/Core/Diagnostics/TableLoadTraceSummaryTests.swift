@@ -140,19 +140,19 @@ struct TableLoadTraceSummaryTests {
     @Test("The lease keeps the first instant of each stage, and a pooled lease is ready at once")
     func leaseTimingKeepsTheFirstInstant() {
         let pooled = TableLoadLeaseTiming()
-        pooled.noteDriverReady(at: instant(5))
-        pooled.noteFirstRow(at: instant(9))
-        pooled.noteFirstRow(at: instant(12))
+        pooled.noteQueryStarted(at: instant(5))
+        pooled.noteQueryStarted(at: instant(9))
         #expect(pooled.instants.leaseAcquired == instant(5))
         #expect(pooled.instants.pinFinished == instant(5))
-        #expect(pooled.instants.firstRow == instant(9))
+        #expect(pooled.instants.queryStarted == instant(5))
 
         let session = TableLoadLeaseTiming()
         session.noteLeaseAcquired(at: instant(20))
         session.notePinFinished(at: instant(220))
-        session.noteDriverReady(at: instant(221))
+        session.noteQueryStarted(at: instant(221))
         #expect(session.instants.leaseAcquired == instant(20))
         #expect(session.instants.pinFinished == instant(220))
+        #expect(session.instants.queryStarted == instant(221))
     }
 
     @Test("A phase whose stages never fired is absent rather than zero")

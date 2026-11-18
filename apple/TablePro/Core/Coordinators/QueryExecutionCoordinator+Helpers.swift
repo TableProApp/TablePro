@@ -443,9 +443,10 @@ extension QueryExecutionCoordinator {
         let workToken = UUID()
         TableLoadTracer.shared.beginPhase2(traceToken)
         let task = Task(priority: .utility) { [weak self, parent] in
+            var countOwnsTrace = false
             defer {
                 parent.finishPhase2Work(workToken, forTab: tabId)
-                TableLoadTracer.shared.endPhase2(traceToken)
+                if !countOwnsTrace { TableLoadTracer.shared.endPhase2(traceToken) }
             }
             // The caller marked the total pending; every exit that skips `resolveRowCount` must release it, or Count Exactly never returns.
             guard let self else {
@@ -461,21 +462,23 @@ extension QueryExecutionCoordinator {
                 helpersLogger.error("[fk] phase2 schema fetch failed table=\(tableName, privacy: .private(mask: .hash))")
             }
 
-            await MainActor.run { [weak self] in
+            countOwnsTrace = await MainActor.run { [weak self] in
                 guard let self else {
                     if countsRows { parent.releaseCountPending(for: tabId) }
-                    return
+                    return false
                 }
                 if let schema {
                     applySchemaMetadata(schema, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
                 }
                 // A retarget or newer run owns the tab now with its own pending mark; clearing here would release the successor's.
-                guard countsRows, parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
+                guard countsRows, parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return false }
                 resolveRowCount(
                     tableName: tableName,
                     tabId: tabId,
-                    connectionType: connectionType
+                    connectionType: connectionType,
+                    traceToken: traceToken
                 )
+                return true
             }
 
             guard !isNonSQL, let schema, !Task.isCancelled else { return }
@@ -662,12 +665,15 @@ extension QueryExecutionCoordinator {
     func launchPhase2Count(
         tableName: String,
         tabId: UUID,
-        connectionType: DatabaseType
+        connectionType: DatabaseType,
+        traceToken: TableLoadTraceToken? = nil
     ) {
+        TableLoadTracer.shared.beginPhase2(traceToken)
         resolveRowCount(
             tableName: tableName,
             tabId: tabId,
-            connectionType: connectionType
+            connectionType: connectionType,
+            traceToken: traceToken
         )
     }
 
@@ -675,7 +681,8 @@ extension QueryExecutionCoordinator {
     func resolveRowCount(
         tableName: String,
         tabId: UUID,
-        connectionType: DatabaseType
+        connectionType: DatabaseType,
+        traceToken: TableLoadTraceToken? = nil
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
         let countsAutomatically = PluginManager.shared.countsRowsAutomatically(for: connectionType)
@@ -685,6 +692,7 @@ extension QueryExecutionCoordinator {
         parent.tabManager.mutate(tabId: tabId) { $0.pagination.isCountPending = true }
 
         let task = Task(priority: .utility) { [weak self, parent] in
+            defer { TableLoadTracer.shared.endPhase2(traceToken) }
             guard let self else { return }
             guard !parent.isTearingDown else { return }
 
@@ -696,7 +704,7 @@ extension QueryExecutionCoordinator {
                     return (.skip, nil, nil, nil)
                 }
                 let scope = parent.scope(for: tab)
-                let countScope = tab.filterState.rowCountScope
+                let countScope = tab.rowCountScope(table: tableName)
                 let plan = Self.rowCountPlan(
                     isNonSQL: isNonSQL,
                     filterState: tab.filterState,
@@ -705,7 +713,7 @@ extension QueryExecutionCoordinator {
                     threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan,
                     countsAutomatically: countsAutomatically,
                     browseSearch: parent.filterCoordinator.activeBrowseSearch(for: tab.filterState),
-                    settledScope: tab.pagination.settledRowCountScope
+                    isSettled: tab.pagination.settledRowCountScope == countScope
                 )
                 guard let request = plan.countRequest else { return (plan, nil, scope, countScope) }
                 let queryColumns = parent.queryColumns(for: tab)
@@ -866,9 +874,9 @@ extension QueryExecutionCoordinator {
         threshold: Int,
         countsAutomatically: Bool = true,
         browseSearch: BrowseSearchState? = nil,
-        settledScope: RowCountScope? = nil
+        isSettled: Bool = false
     ) -> RowCountPlan {
-        if settledScope == filterState.rowCountScope { return .skip }
+        if isSettled { return .skip }
         if let browseSearch {
             return countsAutomatically ? .browseSearch(browseSearch, tableSizeLimit: threshold) : .skip
         }

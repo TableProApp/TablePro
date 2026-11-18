@@ -80,7 +80,6 @@ extension QueryExecutionCoordinator {
         let needsDefinition = parent.tabSessionRegistry.needsDefinition(tabId)
         let needsMetadataFetch = tableName.map { isEditable && !isMetadataCached(tabId: tabId, tableName: $0) } ?? false
         let knownColumns = needsMetadataFetch ? parent.takeFirstLoadColumns(tabId: tabId, tableName: tableName, scope: scope) : nil
-        parent.cancelPhase2Work(forTab: tabId, unlessReading: tableName)
         // Captured now, while the result this decision was made against is still the active one.
         let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
             rows: parent.tabSessionRegistry.tableRows(for: tabId),
@@ -120,7 +119,7 @@ extension QueryExecutionCoordinator {
                         isTableTab: isTableTab,
                         lease: run.lease
                     ) { [queryExecutor = parent.queryExecutor, manager = parent.services.databaseManager] driver in
-                        leaseTiming?.noteDriverReady()
+                        leaseTiming?.noteQueryStarted()
                         let fetched = try await held.running([statement.sql], on: driver) {
                             // Before it runs, so a statement that fails or a connection lost under it is still noted.
                             if !isAutoLoad { await manager.noteSessionStatements([statement.sql], ranOn: driver, scope: scope) }
@@ -133,7 +132,6 @@ extension QueryExecutionCoordinator {
                                 capturingOutputInto: isTableTab ? nil : failureOutput
                             )
                         }
-                        leaseTiming?.noteFirstRow()
                         let edits = isAutoLoad ? nil : await SucceededStatements.single(
                             statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
                         )
@@ -217,6 +215,8 @@ extension QueryExecutionCoordinator {
                     prepared: prepared,
                     trigger: trigger
                 )
+                // Only now: a run that fails leaves the old result on screen, and its definition read still has to land.
+                parent.cancelPhase2Work(forTab: tabId, unlessReading: tableName)
                 if let bound {
                     keepBoundValues(bound, onTab: tabId)
                 }

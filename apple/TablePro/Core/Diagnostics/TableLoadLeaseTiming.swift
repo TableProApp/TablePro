@@ -11,7 +11,7 @@ internal final class TableLoadLeaseTiming: Sendable {
     internal struct Instants: Equatable, Sendable {
         var leaseAcquired: ContinuousClock.Instant?
         var pinFinished: ContinuousClock.Instant?
-        var firstRow: ContinuousClock.Instant?
+        var queryStarted: ContinuousClock.Instant?
     }
 
     @TaskLocal internal static var current: TableLoadLeaseTiming?
@@ -30,15 +30,12 @@ internal final class TableLoadLeaseTiming: Sendable {
         state.withLock { $0.pinFinished = $0.pinFinished ?? instant }
     }
 
-    // A pooled lease already sits on its database, so it reaches the body with no pin of its own.
-    internal func noteDriverReady(at instant: ContinuousClock.Instant = .now) {
+    // A pooled lease already sits on its database, so it reaches the statement with no pin of its own.
+    internal func noteQueryStarted(at instant: ContinuousClock.Instant = .now) {
         state.withLock {
             $0.leaseAcquired = $0.leaseAcquired ?? instant
             $0.pinFinished = $0.pinFinished ?? instant
+            $0.queryStarted = $0.queryStarted ?? instant
         }
-    }
-
-    internal func noteFirstRow(at instant: ContinuousClock.Instant = .now) {
-        state.withLock { $0.firstRow = $0.firstRow ?? instant }
     }
 }

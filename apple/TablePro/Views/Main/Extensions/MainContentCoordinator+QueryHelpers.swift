@@ -229,7 +229,8 @@ extension MainContentCoordinator {
             launchPhase2Count(
                 tableName: tableName,
                 tabId: tabId,
-                connectionType: connectionType
+                connectionType: connectionType,
+                traceToken: traceToken
             )
             return
         }
@@ -263,12 +264,14 @@ extension MainContentCoordinator {
     func launchPhase2Count(
         tableName: String,
         tabId: UUID,
-        connectionType: DatabaseType
+        connectionType: DatabaseType,
+        traceToken: TableLoadTraceToken? = nil
     ) {
         queryExecutionCoordinator.launchPhase2Count(
             tableName: tableName,
             tabId: tabId,
-            connectionType: connectionType
+            connectionType: connectionType,
+            traceToken: traceToken
         )
     }
 
