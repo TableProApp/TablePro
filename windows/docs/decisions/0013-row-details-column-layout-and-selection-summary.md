@@ -23,7 +23,7 @@ A table tab showed its rows and nothing about the row or the table beside them, 
 
 ### Connections
 
-- New from URL on the Connections page opens a box filled from a connection URL on the clipboard, as macOS's Import from URL; Continue opens the connection form on what the URL names. Ctrl+V on the page, outside a text box, does the same with the clipboard's URL. Both read it as the engine chooser's From connection URL does (`ConnectionDraft.FromUrl`).
+- New from URL on the Connections page opens a box filled from a connection URL on the clipboard, as macOS's Import from URL; Continue opens the connection form on what the URL names. Ctrl+V while the page shows, outside a text box, a dialog or a menu, does the same with the clipboard's URL. It is the page's keyboard accelerator, not a KeyDown handler, so it also works with the focus on the rail, on the title bar or nowhere after the library rebuilds. Both read it as the engine chooser's From connection URL does (`ConnectionDraft.FromUrl`).
 - The SSH section has Jump hosts, one list as OpenSSH's `-J` takes it and the Linux app shows it: `user@host:port` separated by commas, saved as one entry. The core checks it as a connect would (`check_jump_hosts`) before a save or a test.
 - A group's menu has Color, None and the nine connection colours; the group's folder takes its colour (`set_group_color`).
 

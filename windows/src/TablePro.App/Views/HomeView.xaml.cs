@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Runtime.InteropServices;
-using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -12,7 +11,6 @@ using Microsoft.Windows.Storage.Pickers;
 using TablePro.Interop;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
-using Windows.UI.Core;
 
 namespace TablePro.App.Views;
 
@@ -1083,20 +1081,44 @@ public sealed partial class HomeView : UserControl
         HomeUrlFlyout.Hide();
     }
 
-    // Ctrl+V on the page, outside a text box, opens the form on a URL the clipboard holds.
-    private async void OnPageKeyDown(object sender, KeyRoutedEventArgs e)
+    // Ctrl+V while the page shows, outside a text box, a dialog or a menu, opens the form on a URL the clipboard holds.
+    private async void OnPasteInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
-        if (e.Key != VirtualKey.V || !IsDown(VirtualKey.Control) || IsDown(VirtualKey.Shift) || IsDown(VirtualKey.Menu)
-            || e.OriginalSource is TextBox or PasswordBox || _renaming is not null)
+        if (_renaming is not null || XamlRoot is not { } root)
         {
             return;
         }
 
-        e.Handled = true;
+        var focused = FocusManager.GetFocusedElement(root) as DependencyObject;
+        if (focused is TextBox or PasswordBox or RichEditBox || InPopup(focused, root))
+        {
+            return;
+        }
+
+        args.Handled = true;
         if (PastedUrl.In(await ReadClipboardAsync().ConfigureAwait(true)) is { } url && StartFromUrl(url) is { } error)
         {
             ShowMessage(error, InfoBarSeverity.Error);
         }
+    }
+
+    // An element of a dialog or a flyout sits in a popup, so its ancestors do not include the window's content.
+    private static bool InPopup(DependencyObject? element, XamlRoot root)
+    {
+        if (element is null)
+        {
+            return false;
+        }
+
+        for (var node = element; node is not null; node = VisualTreeHelper.GetParent(node))
+        {
+            if (ReferenceEquals(node, root.Content))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // Null once the form opens; otherwise why the URL cannot start a connection.
@@ -1119,20 +1141,25 @@ public sealed partial class HomeView : UserControl
         }
     }
 
-    private static bool IsDown(VirtualKey key) =>
-        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
-
-    // Null when the clipboard holds no text or does not answer.
+    // Null when the clipboard holds no text or does not answer. A program holding it open, as Remote Desktop's
+    // clipboard copy does after each change, makes a read throw for a moment, so it is tried again.
     private static async Task<string?> ReadClipboardAsync()
     {
-        try
+        for (var attempt = 1; ; attempt++)
         {
-            var content = Clipboard.GetContent();
-            return content.Contains(StandardDataFormats.Text) ? await content.GetTextAsync() : null;
-        }
-        catch (COMException)
-        {
-            return null;
+            try
+            {
+                var content = Clipboard.GetContent();
+                return content.Contains(StandardDataFormats.Text) ? await content.GetTextAsync() : null;
+            }
+            catch (COMException) when (attempt < 5)
+            {
+                await Task.Delay(20).ConfigureAwait(true);
+            }
+            catch (COMException)
+            {
+                return null;
+            }
         }
     }
 

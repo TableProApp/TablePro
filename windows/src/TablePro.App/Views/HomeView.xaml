@@ -4,9 +4,15 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:TablePro.App.Views"
-    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    KeyboardAcceleratorPlacementMode="Hidden">
 
-    <Grid Padding="36,24,36,0" KeyDown="OnPageKeyDown">
+    <!-- Not a KeyDown handler: an accelerator also fires with the focus on the rail, the title bar or nowhere. -->
+    <UserControl.KeyboardAccelerators>
+        <KeyboardAccelerator Modifiers="Control" Key="V" Invoked="OnPasteInvoked" />
+    </UserControl.KeyboardAccelerators>
+
+    <Grid Padding="36,24,36,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />

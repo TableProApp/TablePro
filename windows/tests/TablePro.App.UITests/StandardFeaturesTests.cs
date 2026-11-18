@@ -52,6 +52,14 @@ public sealed partial class ShellTests
         form = app.WaitForWindow("New connection");
         Assert.Equal("5434", app.Find("PortBox", form).AsTextBox().Text);
         app.Find("CancelButton", form).AsButton().Invoke();
+        app.WaitForClose("New connection");
+
+        // With the focus on the rail, outside the page, where a key handler on the page never sees the key.
+        app.Click(app.Find("HomeItem"));
+        app.Chord(() => app.HasWindow("New connection"), VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_V);
+        form = app.WaitForWindow("New connection");
+        Assert.Equal("5434", app.Find("PortBox", form).AsTextBox().Text);
+        app.Find("CancelButton", form).AsButton().Invoke();
     }
 
     [Theory]
