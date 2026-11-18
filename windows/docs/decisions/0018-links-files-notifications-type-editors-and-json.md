@@ -1,4 +1,4 @@
-# 0014: Links, file types, notifications, type editors and JSON results
+# 0018: Links, file types, notifications, type editors and JSON results
 
 - **Status**: Accepted
 - **Date**: 2026-11-18

@@ -8,7 +8,7 @@ using TablePro.Interop;
 
 namespace TablePro.App;
 
-// Links and files a launch hands over (docs/decisions/0014, Links and files).
+// Links and files a launch hands over (docs/decisions/0018, Links and files).
 public sealed partial class MainWindow
 {
     private readonly PendingLinks _links = new();

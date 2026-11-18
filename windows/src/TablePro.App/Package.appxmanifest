@@ -57,7 +57,7 @@
             <uap:DisplayName>TablePro</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
-        <!-- The database URL schemes the core reads (docs/decisions/0014, Links and files). -->
+        <!-- The database URL schemes the core reads (docs/decisions/0018, Links and files). -->
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="cassandra">
             <uap:DisplayName>TablePro</uap:DisplayName>

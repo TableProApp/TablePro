@@ -4,7 +4,7 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// What a tablepro://connect link opens once the connection is up (docs/decisions/0014, Links and files).
+// What a tablepro://connect link opens once the connection is up (docs/decisions/0018, Links and files).
 public sealed partial class WorkspaceView
 {
     internal DatabaseLayout? Layout => _session?.Layout;
