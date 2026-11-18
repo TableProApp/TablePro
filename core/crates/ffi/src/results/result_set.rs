@@ -32,6 +32,10 @@ impl ResultSet {
         self.store.columns()
     }
 
+    pub(crate) fn extent(&self) -> tablepro_core::export::ResultExtent {
+        self.store.extent()
+    }
+
     pub(crate) fn stored_value(&self, row: u64, column: usize) -> Option<tablepro_core::Value> {
         self.store.stored_value(self.stored_row(row), column)
     }

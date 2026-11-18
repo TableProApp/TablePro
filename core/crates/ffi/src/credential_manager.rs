@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use secrecy::zeroize::{Zeroize, Zeroizing};
 use secrecy::{ExposeSecret, SecretString};
+use tablepro_account::RefreshTokenVault;
 use tablepro_core::AiProvider;
 use tablepro_core::credentials::{SecretError, SecretItem, SecretItems, SecretKind, SecretLookup, SecretVault};
 use tablepro_session::runtime::Tasks;
@@ -25,6 +28,11 @@ const COMMENT_UNITS: usize = CRED_MAX_STRING_LENGTH as usize - 1;
 // An attribute keyword of the form CREDENTIAL_ATTRIBUTEW asks for, <Company>_<Name>.
 const LAYOUT_KEYWORD: &str = "TablePro_Parts";
 
+// Before a sign-in had a key, every one shared this target, and only tablepro.app's ever wrote it.
+const LEGACY_REFRESH_TOKEN_ITEM: &str = "account-refresh-token";
+// Credential Manager shows it as the credential's comment; Linux's keyring item has the same label.
+const REFRESH_TOKEN_LABEL: &str = "TablePro account sign-in";
+
 // Generic credentials under one prefix, so Credential Manager lists TablePro's together and a test keeps to its own.
 pub(crate) struct CredentialManager {
     prefix: String,
@@ -45,6 +53,16 @@ impl CredentialManager {
 
     fn item_target(&self, item: SecretItem) -> String {
         format!("{}/{}", self.prefix, item_name(item))
+    }
+
+    // One sign-in's refresh token, by `AccountSettings::sign_in_key`, so another server or another build's state
+    // folder never reads or overwrites it. tablepro.app's first read moves a token the shared target holds.
+    pub(crate) fn refresh_token(self: &Arc<Self>, sign_in_key: &str, production: bool) -> SignInToken {
+        SignInToken {
+            manager: self.clone(),
+            target: format!("{}/account/{sign_in_key}/refresh-token", self.prefix),
+            legacy: production.then(|| format!("{}/{LEGACY_REFRESH_TOKEN_ITEM}", self.prefix)),
+        }
     }
 
     // One call at a time: concurrent writes from one process lost each other's changes on both CI runners.
@@ -107,13 +125,10 @@ fn failure(action: &str) -> SecretError {
 
 // The blob holds UTF-16, as cmdkey and the Credential Manager control panel write it.
 fn decode(blob: &[u8]) -> Result<SecretString, SecretError> {
-    if blob.len() % 2 != 0 {
+    let (pairs, []) = blob.as_chunks::<2>() else {
         return Err(SecretError::InvalidEncoding);
-    }
-    let units: Vec<u16> = blob
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-        .collect();
+    };
+    let units: Vec<u16> = pairs.iter().map(|pair| u16::from_le_bytes(*pair)).collect();
     let units = Zeroizing::new(units);
     // Sized exactly, so neither a push nor SecretString's shrink to fit leaves a copy in freed memory.
     let mut size = 0;
@@ -325,6 +340,63 @@ impl SecretItems for CredentialManager {
     }
 }
 
+pub(crate) struct SignInToken {
+    manager: Arc<CredentialManager>,
+    target: String,
+    legacy: Option<String>,
+}
+
+impl std::fmt::Debug for SignInToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SignInToken")
+            .field("target", &self.target)
+            .finish_non_exhaustive()
+    }
+}
+
+#[async_trait]
+impl RefreshTokenVault for SignInToken {
+    async fn load_refresh_token(&self) -> Result<Option<SecretString>, SecretError> {
+        let (target, legacy) = (self.target.clone(), self.legacy.clone());
+        self.manager
+            .blocking(move || {
+                if let Some(token) = read(&target)? {
+                    return Ok(Some(token));
+                }
+                let Some(legacy) = legacy else {
+                    return Ok(None);
+                };
+                let Some(token) = read(&legacy)? else {
+                    return Ok(None);
+                };
+                write(&target, token.expose_secret(), REFRESH_TOKEN_LABEL)?;
+                if let Err(error) = delete(&legacy) {
+                    tracing::warn!(%error, "the moved refresh token stays at its old target too");
+                }
+                Ok(Some(token))
+            })
+            .await
+    }
+
+    async fn store_refresh_token(&self, token: &SecretString) -> Result<(), SecretError> {
+        let target = self.target.clone();
+        let token = token.clone();
+        self.manager
+            .blocking(move || write(&target, token.expose_secret(), REFRESH_TOKEN_LABEL))
+            .await
+    }
+
+    // The old target goes too, or the next start would move a signed-out token back.
+    async fn delete_refresh_token(&self) -> Result<(), SecretError> {
+        let targets: Vec<String> = std::iter::once(self.target.clone())
+            .chain(self.legacy.clone())
+            .collect();
+        self.manager
+            .blocking(move || targets.iter().try_for_each(|target| delete(target)))
+            .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -494,6 +566,89 @@ mod tests {
             Some("sk-test".to_owned())
         );
         assert!(gone.is_none());
+    }
+
+    #[tokio::test]
+    async fn the_refresh_token_is_kept_apart_from_the_items_and_removed_whole() {
+        let manager = Arc::new(manager());
+        let signed_in = manager.refresh_token("0123456789abcdef", false);
+        let token = format!("{}tail", "r".repeat(PART_SIZE));
+        manager
+            .store_item(SecretItem::McpToken, &SecretString::from("mcp"))
+            .await
+            .unwrap();
+
+        signed_in
+            .store_refresh_token(&SecretString::from(token.clone()))
+            .await
+            .unwrap();
+        let found = signed_in.load_refresh_token().await.unwrap();
+        signed_in.delete_refresh_token().await.unwrap();
+        let gone = signed_in.load_refresh_token().await.unwrap();
+        let continued = Credentials.read(&format!("{}/1", signed_in.target)).unwrap();
+        let kept = manager.load_item(SecretItem::McpToken).await.unwrap();
+        manager.delete_item(SecretItem::McpToken).await.unwrap();
+
+        assert_eq!(found.map(|found| found.expose_secret().to_owned()), Some(token));
+        assert!(gone.is_none());
+        assert!(continued.is_none());
+        assert_eq!(kept.map(|kept| kept.expose_secret().to_owned()), Some("mcp".to_owned()));
+    }
+
+    #[tokio::test]
+    async fn each_sign_in_keeps_its_own_refresh_token() {
+        let manager = Arc::new(manager());
+        let production = manager.refresh_token("aaaaaaaaaaaaaaaa", true);
+        let local = manager.refresh_token("bbbbbbbbbbbbbbbb", false);
+
+        production
+            .store_refresh_token(&SecretString::from("prod"))
+            .await
+            .unwrap();
+        local.store_refresh_token(&SecretString::from("local")).await.unwrap();
+        let read_back = (
+            production.load_refresh_token().await.unwrap(),
+            local.load_refresh_token().await.unwrap(),
+        );
+        production.delete_refresh_token().await.unwrap();
+        local.delete_refresh_token().await.unwrap();
+
+        assert_eq!(
+            (
+                read_back.0.map(|token| token.expose_secret().to_owned()),
+                read_back.1.map(|token| token.expose_secret().to_owned())
+            ),
+            (Some("prod".to_owned()), Some("local".to_owned()))
+        );
+    }
+
+    #[tokio::test]
+    async fn tablepro_app_s_first_read_moves_the_token_every_sign_in_once_shared() {
+        let manager = Arc::new(manager());
+        let legacy = format!("{}/{LEGACY_REFRESH_TOKEN_ITEM}", manager.prefix);
+        write(&legacy, "kept from before", REFRESH_TOKEN_LABEL).unwrap();
+        let local = manager.refresh_token("bbbbbbbbbbbbbbbb", false);
+        let production = manager.refresh_token("aaaaaaaaaaaaaaaa", true);
+
+        let not_local = local.load_refresh_token().await.unwrap();
+        let moved = production.load_refresh_token().await.unwrap();
+        let left = read(&legacy).unwrap();
+        let again = production.load_refresh_token().await.unwrap();
+        write(&legacy, "stale", REFRESH_TOKEN_LABEL).unwrap();
+        production.delete_refresh_token().await.unwrap();
+        let after_sign_out = (production.load_refresh_token().await.unwrap(), read(&legacy).unwrap());
+
+        assert!(not_local.is_none());
+        assert_eq!(
+            moved.map(|token| token.expose_secret().to_owned()),
+            Some("kept from before".to_owned())
+        );
+        assert!(left.is_none());
+        assert_eq!(
+            again.map(|token| token.expose_secret().to_owned()),
+            Some("kept from before".to_owned())
+        );
+        assert!(after_sign_out.0.is_none() && after_sign_out.1.is_none());
     }
 
     #[tokio::test]

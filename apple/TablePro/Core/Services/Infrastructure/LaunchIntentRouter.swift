@@ -33,6 +33,9 @@ internal final class LaunchIntentRouter {
             case .openConnectionShare(let url):
                 WelcomeRouter.shared.routeShare(url)
 
+            case .openSharedLink(let token):
+                await SharedLinkOpener.shared.open(token: token)
+
             case .pairIntegration(let request):
                 try await MCPPairingService.shared.startPairing(request)
 
@@ -163,7 +166,7 @@ internal final class LaunchIntentRouter {
             title = String(localized: "Connection Failed")
         case .openSQLFile, .openDataFile:
             title = String(localized: "Could Not Open File")
-        case .importConnection, .openConnectionShare, .startMCPServer, .openSettings:
+        case .importConnection, .openConnectionShare, .openSharedLink, .startMCPServer, .openSettings:
             title = String(localized: "Action Failed")
         }
         if presentRecoverableError(error, for: intent, title: title) { return }

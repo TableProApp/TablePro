@@ -28,6 +28,7 @@
         "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm22/bin",
         "prepend-ld-library-path": "/usr/lib/sdk/llvm22/lib",
         "cxxflags": "-g0",
+        "no-debuginfo": true,
         "build-args": [
             "--share=network"
         ],

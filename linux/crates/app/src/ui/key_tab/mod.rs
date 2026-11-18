@@ -275,6 +275,7 @@ fn key_grid(key: &str, settings: Rc<AppSettings>, tasks: Tasks) -> DataGrid {
         table: None,
         find: true,
         filter_by_value: false,
+        share: false,
         tasks,
         label: key.to_owned(),
     });
@@ -666,6 +667,7 @@ impl Inner {
             GridRequest::Sort(_)
             | GridRequest::FollowReference(_)
             | GridRequest::FilterByValue(_)
+            | GridRequest::Share(_)
             | GridRequest::PendingChanged => {}
         }
     }

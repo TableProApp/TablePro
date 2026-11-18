@@ -1,6 +1,6 @@
 # 0001: No plugin system; drivers are statically linked
 
-- **Status**: Superseded by core 0004 (`core/docs/decisions/0004-driver-plugin-abi.md`)
+- **Status**: Accepted; superseded by core 0004 from 2026-11-02 until core 0025 (`core/docs/decisions/0025-linux-and-windows-link-their-drivers.md`) put it back in force
 - **Date**: 2026-04-26
 
 ## Context

@@ -245,6 +245,22 @@ public sealed class QueryTabTests
     }
 
     [Fact]
+    public async Task TheSqlOfTheResultShownIsTheLastTypedRunAndCommitClearsIt()
+    {
+        _session.Script = _ => FakeRun.Rows(1, TransactionState.InTransaction);
+        Assert.Null(_tab.LastStatement);
+
+        _view.SelectedText = "select 1";
+        await _tab.RunAsync();
+        var ran = _tab.LastStatement;
+        _session.Verdict = new RunGate(true, [], false);
+        await _tab.CommitAsync();
+
+        Assert.Equal("select 1", ran);
+        Assert.Null(_tab.LastStatement);
+    }
+
+    [Fact]
     public async Task ARollBackDeclinedSendsNothingAndAKeyValueEngineEndsWithItsOwnCommands()
     {
         var tab = new QueryTab("Query 1", _session, _view, _results, DataModel.KeyValue, () => new AppSettings());

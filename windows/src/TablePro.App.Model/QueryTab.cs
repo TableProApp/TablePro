@@ -101,6 +101,9 @@ public sealed class QueryTab : IWorkspaceTab
 
     public bool HasUnsavedChanges => false;
 
+    // The typed SQL whose results the tab shows, which a result share sends; null after Commit or Roll back.
+    public string? LastStatement => _statement;
+
     // A query tab's text is kept in the session, so closing loses nothing to ask about.
     public Task<bool> ConfirmCloseAsync(bool offerSave) => Task.FromResult(true);
 

@@ -321,3 +321,78 @@ fn a_sql_file_already_open_brings_its_tab_forward() {
     assert_eq!(bound, 1, "a second tab opened on the file");
     assert_eq!(test.app.windows().len(), 1);
 }
+
+fn shared(window: &SessionWindow, title: &str, sql: &str) {
+    window.send(SessionWindowInput::Script(ScriptInput::Shared {
+        title: title.to_owned(),
+        sql: sql.to_owned(),
+    }));
+}
+
+fn editor_with_text(window: &SessionWindow, text: &str) -> crate::ui::editor::SqlEditor {
+    let mut found = None;
+    wait_until(WAIT, || {
+        found = editors(window).into_iter().find(|editor| text_of(editor) == text);
+        found.is_some()
+    })
+    .expect("an editor tab with the shared SQL");
+    found.expect("the editor")
+}
+
+#[gtk4::test]
+fn a_shared_query_opens_in_a_new_tab_of_the_session_in_front_without_running() {
+    let test = TestWindow::connected("SharedQuery");
+    wait_until(WAIT, || !test.window.settling()).expect("the saved tabs read");
+    let counters = test.connection().counters();
+    let before = editors(&test.window).len();
+
+    shared(&test.window, "Orders", "DELETE FROM orders;");
+    let editor = editor_with_text(&test.window, "DELETE FROM orders;");
+    drain_main_context();
+
+    assert_eq!(editors(&test.window).len(), before + 1, "the SQL took over a tab");
+    assert!(editor.file().is_none(), "a shared query is bound to a file");
+    assert!(!editor.is_running(), "the shared query ran");
+    assert_eq!(
+        CallCounters::get(&counters.open_editor_session),
+        0,
+        "the shared query ran"
+    );
+    assert_eq!(test.app.windows().len(), 1);
+}
+
+#[gtk4::test]
+fn a_shared_query_on_the_picker_waits_for_a_connection() {
+    let test = TestWindow::picker("SharedQueryWaits");
+    let banner = script_banner(&test);
+
+    shared(&test.window, "Orders", "SELECT 1;");
+    wait_until(WAIT, || banner.is_revealed()).expect("the banner asking for a connection");
+    assert_eq!(banner.title(), "Choose a connection to open “Orders”");
+    shared(&test.window, "", "SELECT 2;");
+    wait_until(WAIT, || banner.title() == "Choose a connection to open 2 queries").expect("both waiting");
+
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("workspace");
+    editor_with_text(&test.window, "SELECT 1;");
+    editor_with_text(&test.window, "SELECT 2;");
+
+    assert!(!banner.is_revealed(), "the banner stayed once the queries opened");
+}
+
+#[gtk4::test]
+fn a_share_link_that_cannot_open_says_so_in_the_window_in_front() {
+    let test = TestWindow::connected("ShareLinkToast");
+    crate::services::connection_link::register_link_schemes().expect("register the links");
+
+    open(&test, &[gio::File::for_uri("tablepro://share?token=short")]);
+
+    wait_until(WAIT, || {
+        test.window
+            .toast_titles()
+            .contains(&"This shared link is no longer available.".to_owned())
+    })
+    .expect("the toast in the window in front");
+    assert_eq!(test.app.windows().len(), 1, "a picker opened only to say it");
+}

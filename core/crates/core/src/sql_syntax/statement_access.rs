@@ -872,6 +872,33 @@ mod tests {
         }
     }
 
+    // Read-Only keeps these back on every app before the driver sees them.
+    #[test]
+    fn statements_that_turn_read_only_off_are_writes() {
+        for (grammar, sql) in [
+            (SqlGrammar::PostgreSql, "SET TRANSACTION READ WRITE"),
+            (SqlGrammar::PostgreSql, "SET LOCAL transaction_read_only = off"),
+            (
+                SqlGrammar::PostgreSql,
+                "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE",
+            ),
+            (SqlGrammar::PostgreSql, "SET default_transaction_read_only = off"),
+            (SqlGrammar::PostgreSql, "BEGIN READ WRITE"),
+            (SqlGrammar::PostgreSql, "START TRANSACTION READ WRITE"),
+            (
+                SqlGrammar::PostgreSql,
+                "SELECT set_config('default_transaction_read_only', 'off', false)",
+            ),
+            (SqlGrammar::MySql, "SET SESSION TRANSACTION READ WRITE"),
+            (SqlGrammar::MySql, "SET TRANSACTION READ WRITE"),
+            (SqlGrammar::MySql, "SET @@session.transaction_read_only = 0"),
+            (SqlGrammar::MySql, "SET tx_read_only = 0"),
+            (SqlGrammar::MySql, "START TRANSACTION READ WRITE"),
+        ] {
+            assert!(access(sql, grammar) >= StatementAccess::Write, "{grammar:?}: {sql}");
+        }
+    }
+
     #[test]
     fn engine_specific_writes() {
         for (grammar, sql) in [

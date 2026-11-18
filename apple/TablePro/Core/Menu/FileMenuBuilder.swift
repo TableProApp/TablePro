@@ -127,6 +127,19 @@ enum FileMenuBuilder {
             exportSubmenu(keyboard: keyboard),
             MenuItemFactory.separator,
             MenuItemFactory.item(
+                String(localized: "Share Query…"),
+                action: #selector(MainSplitViewController.shareQuery(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Share Result…"),
+                action: #selector(MainSplitViewController.shareQueryResult(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Manage Shared Links…"),
+                action: #selector(AppDelegate.manageSharedLinks(_:))
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
                 String(localized: "Backup Dump…"),
                 action: #selector(MainSplitViewController.backupDatabase(_:))
             ),

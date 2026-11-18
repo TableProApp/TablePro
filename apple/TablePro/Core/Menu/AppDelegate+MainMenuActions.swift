@@ -1,4 +1,5 @@
 import AppKit
+import TableProHTTP
 
 /// Commands that belong to the app rather than to any one window. They sit on the
 /// app delegate because it is the last link in the responder chain, so they stay
@@ -22,6 +23,10 @@ extension AppDelegate: NSMenuItemValidation {
 
     @objc func checkForUpdates(_ sender: Any?) {
         UpdateCenter.shared.performPrimaryAction()
+    }
+
+    @objc func manageSharedLinks(_ sender: Any?) {
+        _ = WebPageOpener.open(AccountServices.shared.configuration.portalSharedLinks, scope: .httpsOrLoopbackHTTP)
     }
 
     @objc func openMCPActivity(_ sender: Any?) {

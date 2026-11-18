@@ -88,6 +88,7 @@ pub(crate) fn result_set_page(
         table,
         find: true,
         filter_by_value: false,
+        share: true,
         tasks: deps.tasks.clone(),
         label: name.to_owned(),
     });

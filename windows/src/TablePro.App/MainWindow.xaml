@@ -75,6 +75,14 @@
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuShareResult" x:Name="MenuShareResult" Click="OnShareResult" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Share" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuShareQuery" x:Name="MenuShareQuery" Click="OnShareQuery" IsEnabled="False" />
+                <MenuFlyoutItem x:Uid="MenuManageSharedLinks" x:Name="MenuManageSharedLinks" Click="OnManageSharedLinks">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="Globe" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuSettings" x:Name="MenuSettings" Click="OnShowSettings">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Setting" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>

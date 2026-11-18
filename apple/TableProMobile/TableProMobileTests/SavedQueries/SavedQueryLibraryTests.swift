@@ -23,7 +23,8 @@ struct SavedQueryLibraryTests {
             makeTransport: { UnreachableSyncTransport() },
             isEnabled: { false },
             notificationCenter: NotificationCenter(),
-            networkMonitor: nil
+            networkMonitor: nil,
+            pushRegistrar: .inert
         )
     }
 

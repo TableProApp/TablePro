@@ -84,7 +84,8 @@ final class SyncTestEnvironment {
         favorites: SQLFavoriteManager? = nil,
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { nil },
         licenseGate: @escaping @MainActor () -> DisableReason? = { nil },
-        activationClock: any Clock<Duration> = ContinuousClock()
+        activationClock: any Clock<Duration> = ContinuousClock(),
+        pushRegistrar: SyncPushRegistrar = .inert
     ) -> SyncCoordinator {
         let live = AppServices.live
         let services = AppServices(
@@ -139,7 +140,25 @@ final class SyncTestEnvironment {
             makeNetworkMonitor: makeNetworkMonitor,
             columnLayouts: self.columnLayouts,
             licenseGate: licenseGate,
-            activationClock: activationClock
+            activationClock: activationClock,
+            pushRegistrar: pushRegistrar
+        )
+    }
+}
+
+extension SyncPushRegistrar {
+    static let inert = SyncPushRegistrar(register: {}, unregister: {})
+}
+
+@MainActor
+final class RecordingPushRegistrar {
+    private(set) var registrations = 0
+    private(set) var unregistrations = 0
+
+    var registrar: SyncPushRegistrar {
+        SyncPushRegistrar(
+            register: { [weak self] in self?.registrations += 1 },
+            unregister: { [weak self] in self?.unregistrations += 1 }
         )
     }
 }
@@ -171,6 +190,8 @@ actor ScriptedSyncTransport: SyncTransport {
     private(set) var pullCount = 0
     private(set) var pushCount = 0
     private(set) var zoneSaveCount = 0
+    private(set) var subscriptionSaveCount = 0
+    private var subscriptionError: (any Error)?
 
     /// What the account reads as, what every pushed item fails with, and what a pull throws. Each
     /// is changeable mid-test, the way the account or the storage changes under a running app.
@@ -264,6 +285,17 @@ actor ScriptedSyncTransport: SyncTransport {
 
     func ensureZoneExists() async throws {
         zoneSaveCount += 1
+    }
+
+    func failSubscriptionSaves(with error: (any Error)?) {
+        subscriptionError = error
+    }
+
+    func saveSubscription() async throws {
+        subscriptionSaveCount += 1
+        if let subscriptionError {
+            throw subscriptionError
+        }
     }
 
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {

@@ -46,11 +46,7 @@ protocol SQLiteExecutionBackend: Actor {
         rules: SQLiteStatementRules,
         bound: SQLiteReadBound?
     ) async throws -> SQLiteRawResult
-    func streamQuery(
-        _ query: String,
-        rules: SQLiteStatementRules,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) async throws
+    func streamQuery(_ query: String, rules: SQLiteStatementRules, into spill: PluginRowSpill) async throws
 }
 
 // How one statement runs: the authorizer scope, and whether read-only, with `PRAGMA query_only` around it and
@@ -130,13 +126,6 @@ extension SQLiteExecutionBackend {
 
     func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> SQLiteRawResult {
         try await executeQuery(query, parameters: parameters, rules: .unrestricted, bound: nil)
-    }
-
-    func streamQuery(
-        _ query: String,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) async throws {
-        try await streamQuery(query, rules: .unrestricted, continuation: continuation)
     }
 }
 
@@ -507,13 +496,9 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         return Int(sqlite3_changes64(db))
     }
 
-    func streamQuery(
-        _ query: String,
-        rules: SQLiteStatementRules,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) throws {
+    func streamQuery(_ query: String, rules: SQLiteStatementRules, into spill: PluginRowSpill) throws {
         try withStatementHandle(rules) { handle, notReadRefusal in
-            try stream(query, on: handle, notReadRefusal: notReadRefusal, continuation: continuation)
+            try stream(query, on: handle, notReadRefusal: notReadRefusal, into: spill)
         }
     }
 
@@ -521,7 +506,7 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         _ query: String,
         on db: OpaquePointer,
         notReadRefusal: SQLitePluginError?,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        into spill: PluginRowSpill
     ) throws {
         let statement = try Self.prepareOnlyStatement(query, db: db)
         // EXPLAIN never runs its statement, but stmt_readonly reports that statement's writes.
@@ -536,7 +521,7 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             columns: firstStep.names, columnTypeNames: firstStep.typeNames, estimatedRowCount: nil
         )
         header.columnOrigins = Self.columnOrigins(after: firstStep, of: statement, on: db, text: query)
-        continuation.yield(.header(header))
+        spill.yield(header)
 
         let batchSize = 5_000
         var batch: [PluginRow] = []
@@ -545,30 +530,33 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         var stepResult = firstStep.result
         while stepResult == SQLITE_ROW {
             if Task.isCancelled {
-                if !batch.isEmpty { _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation) }
+                if !batch.isEmpty { spill.deliver(batch) }
                 sqlite3_finalize(statement)
-                continuation.finish(throwing: CancellationError())
+                spill.finish(throwing: CancellationError())
                 return
             }
             batch.append(Self.readRow(statement, columnCount: columnCount))
             if batch.count >= batchSize {
-                // Blocks the actor's thread: an await here would let another call reach the handle mid-statement.
-                _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation)
+                // Synchronous on the actor's thread: an await here would let another call reach the handle mid-statement.
+                guard spill.deliver(batch) else {
+                    sqlite3_finalize(statement)
+                    return
+                }
                 batch.removeAll(keepingCapacity: true)
             }
             stepResult = sqlite3_step(statement)
         }
 
-        if !batch.isEmpty { _ = PluginRowStream.deliverBlocking(.rows(batch), to: continuation) }
+        if !batch.isEmpty { spill.deliver(batch) }
 
         guard stepResult == SQLITE_DONE else {
             let message = String(cString: sqlite3_errmsg(db))
             sqlite3_finalize(statement)
-            continuation.finish(throwing: SQLitePluginError.queryFailed(message))
+            spill.finish(throwing: SQLitePluginError.queryFailed(message))
             return
         }
         sqlite3_finalize(statement)
-        continuation.finish()
+        spill.finish()
     }
 
     private func bind(_ parameters: [PluginCellValue], to statement: OpaquePointer?, db: OpaquePointer) throws {

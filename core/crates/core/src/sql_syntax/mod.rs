@@ -13,6 +13,7 @@ mod order_by;
 mod outside_reach;
 mod parse_expression;
 mod parse_type;
+mod read_write_mode;
 pub mod redis;
 mod reserved_words;
 pub mod script;
@@ -35,6 +36,7 @@ pub use order_by::with_order_by;
 pub use outside_reach::reaches_outside_database;
 pub use parse_expression::{MAX_EXPRESSION_LEN, ValidatedExpression, parse_expression};
 pub use parse_type::{MAX_TYPE_LEN, TypeShape, ValidatedType, parse_type};
+pub use read_write_mode::turns_read_write;
 pub use sort_reference::{SortReference, sort_reference};
 pub use source_table::{
     SourceItem, SourceName, SourceRefusal, SourceTable, same_name, source_columns_for_result, source_table,

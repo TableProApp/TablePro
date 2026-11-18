@@ -153,6 +153,7 @@ internal enum FavoritesMenuSpec {
     ) -> [FavoritesMenuSection] {
         var edits: [FavoritesMenuItem] = [
             .command(String(localized: "Copy Query"), .copyText(favorite.query)),
+            .command(String(localized: "Share…"), .shareFavorite(favorite)),
             .command(String(localized: "Edit…"), .editFavorite(favorite)),
             .command(String(localized: "Show History"), .showFavoriteHistory(favorite))
         ]
@@ -212,7 +213,10 @@ internal enum FavoritesMenuSpec {
             ]),
             FavoritesMenuSection(gitItems(favorite, gitState: gitState, folderGitState: folderGitState)),
             FavoritesMenuSection(
-                [.command(String(localized: "Copy Query"), .copyLinkedFavoriteQuery(favorite))]
+                [
+                    .command(String(localized: "Copy Query"), .copyLinkedFavoriteQuery(favorite)),
+                    .command(String(localized: "Share…"), .shareLinkedFavorite(favorite))
+                ]
                     + pathCommands
                     + [.command(String(localized: "Show in Finder"), .revealLinkedFavorite(favorite))]
             ),

@@ -65,6 +65,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     private IndexList _items = new(0);
     private IndexList _columnItems = new(0);
     private string[] _names = [];
+    private string?[] _maskNotes = [];
     private bool[] _sizedByUser = [];
     private bool _sizedToRows;
     private GridColumns _columns = new(0, 140);
@@ -210,6 +211,12 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     // Off, every column starts at DefaultColumnWidth; on, at the width of its header and its first rows.
     public bool SizeColumnsToContent { get; set; }
+
+    // The widest a column sized to its content starts; a value past it ends in an ellipsis.
+    public double MaximumContentColumnWidth { get; set; } = ContentMaximumWidth;
+
+    // On, a pointer resting on a cell shows the cell's text in a tooltip, for values the column cuts.
+    public bool ShowsCellTips { get; set; }
 
     // A column header's UIA ItemStatus, which the HeaderItem control type gives its sort order in.
     public string SortedAscendingStatus { get; set; } = "Sorted ascending";
@@ -645,6 +652,16 @@ public sealed partial class DataGridView : UserControl, IGridWindow
             Canvas.SetLeft(cell, _columns.PaneX(column));
         }
     }
+
+    // A column with a note, such as "Masked: Email", shows the masked mark, the note its tooltip and UIA help text.
+    public void SetMaskedColumns(IReadOnlyList<string?> notes)
+    {
+        ArgumentNullException.ThrowIfNull(notes);
+        _maskNotes = [.. notes];
+        RebindHeaders();
+    }
+
+    internal string? MaskNote(int column) => column >= 0 && column < _maskNotes.Length ? _maskNotes[column] : null;
 
     private void RebindHeaders()
     {

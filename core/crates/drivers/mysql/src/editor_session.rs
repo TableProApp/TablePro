@@ -79,7 +79,10 @@ impl MysqlEditorSession {
         Ok(Arc::new(Self {
             id: EditorSessionId::new(),
             shared: Arc::new(Shared {
-                held: Arc::new(tokio::sync::Mutex::new(Some(EditorLink::new(physical.connection)))),
+                held: Arc::new(tokio::sync::Mutex::new(Some(EditorLink::new(
+                    physical.connection,
+                    limits.read_only,
+                )))),
                 connection_id: physical.connection_id,
                 flavour: physical.flavour,
                 control: ControlLink::new(endpoint),

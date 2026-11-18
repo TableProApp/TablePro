@@ -160,9 +160,13 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         sqliteQuoteIdentifier(name)
     }
 
-    init(config: DriverConnectionConfig) {
+    convenience init(config: DriverConnectionConfig) {
+        self.init(config: config, backend: Self.makeBackend(config: config))
+    }
+
+    init(config: DriverConnectionConfig, backend: any SQLiteExecutionBackend) {
         self.config = config
-        self.backend = Self.makeBackend(config: config)
+        self.backend = backend
     }
 
     /// A file-backed connection runs on the app's own SQLite; one whose transport marks it a remote
@@ -712,22 +716,19 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         stream(query, rules: SQLiteStatementRules(context))
     }
 
-    // Over the SSH agent the stream stays unbounded: a reader waiting for its consumer stops the tunnel relaying the
-    // heartbeats, and the agent's idle watchdog ends the session.
     private func stream(_ query: String, rules: SQLiteStatementRules) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
-        let policy: AsyncThrowingStream<PluginStreamElement, Error>.Continuation.BufferingPolicy = backend is SQLiteLocalBackend
-            ? .bufferingOldest(PluginRowStream.boundedBufferBatches)
-            : .unbounded
-        return AsyncThrowingStream(bufferingPolicy: policy) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(PluginRowStream.boundedBufferBatches)) { continuation in
+            let spill = PluginRowSpill(continuation: continuation)
             let streamTask = Task {
                 do {
-                    try await self.backend.streamQuery(queryToRun, rules: rules, continuation: continuation)
+                    try await self.backend.streamQuery(queryToRun, rules: rules, into: spill)
                 } catch {
-                    continuation.finish(throwing: error)
+                    spill.finish(throwing: error)
                 }
             }
             continuation.onTermination = { @Sendable _ in
+                spill.abandon()
                 streamTask.cancel()
             }
         }

@@ -49,6 +49,12 @@
             <uap5:ExecutionAlias Alias="tablepro.exe" />
           </uap5:AppExecutionAlias>
         </uap5:Extension>
+        <!-- tablepro://share?token=... opens a shared link's SQL in a new query tab (docs/decisions/0009-share-links.md). -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="tablepro">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
       </Extensions>
     </Application>
   </Applications>

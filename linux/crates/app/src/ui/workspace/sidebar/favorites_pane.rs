@@ -26,6 +26,7 @@ const KEYS: &str = "favorite-keys";
 const RENAME: &str = "rename";
 const DELETE: &str = "delete";
 const MOVE: &str = "move";
+const SHARE: &str = "share";
 const NEW_FOLDER: &str = "new-folder";
 
 #[derive(Debug, Clone)]
@@ -34,6 +35,7 @@ pub(crate) enum FavoriteAction {
     Rename(SavedQuery),
     Delete(SavedQuery),
     MoveTo(SavedQuery),
+    Share(SavedQuery),
     NewFolder(Option<SavedQueryFolder>),
     RenameFolder(SavedQueryFolder),
     DeleteFolder(SavedQueryFolder),

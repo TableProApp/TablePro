@@ -31,6 +31,26 @@ struct SQLStatementClassifierTests {
         #expect(Self.deletesEveryRow(sql, "DuckDB"))
     }
 
+    // Read-Only refuses a write on both apps before the driver sees it, so none of these reaches the server.
+    @Test("A statement that turns a transaction or the session read-write is a write", arguments: [
+        ("PostgreSQL", "SET TRANSACTION READ WRITE"),
+        ("PostgreSQL", "SET LOCAL transaction_read_only = off"),
+        ("PostgreSQL", "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE"),
+        ("PostgreSQL", "SET default_transaction_read_only = off"),
+        ("PostgreSQL", "BEGIN READ WRITE"),
+        ("PostgreSQL", "START TRANSACTION READ WRITE"),
+        ("PostgreSQL", "SELECT set_config('default_transaction_read_only', 'off', false)"),
+        ("MySQL", "SET SESSION TRANSACTION READ WRITE"),
+        ("MySQL", "SET TRANSACTION READ WRITE"),
+        ("MySQL", "SET @@session.transaction_read_only = 0"),
+        ("MySQL", "START TRANSACTION READ WRITE"),
+        ("MariaDB", "SET tx_read_only = 0"),
+        ("MariaDB", "/*!50000 SET SESSION TRANSACTION READ WRITE */"),
+    ])
+    func turningReadOnlyOffIsAWrite(engine: String, sql: String) {
+        #expect(Self.tier(sql, engine) == .write)
+    }
+
     @Test("A CockroachDB b'' string continued after a line break hides no statement")
     func continuedEscapeBytesHidesNoStatement() {
         #expect(Self.deletesEveryRow("SELECT b'a'\n'\\''; COMMIT; DELETE FROM orders; --'", "CockroachDB"))

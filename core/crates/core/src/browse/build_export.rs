@@ -19,8 +19,23 @@ use super::{BrowseSqlError, ExportRequest};
 /// could be written. A table's rows hold only its columns, so SQL reads
 /// the listed columns for either `ExportFields`.
 pub fn build_export(dialect: &dyn SqlDialect, request: &ExportRequest<'_>) -> Result<Statement, BrowseSqlError> {
+    export_with(dialect, request, StatementBuilder::new())
+}
+
+// The export's statement, every page at once and with no row window, its filter's values written as literals: the
+// query a table view stands for, for a person to read or a share link to carry.
+pub fn build_view_sql(dialect: &dyn SqlDialect, request: &ExportRequest<'_>) -> Result<String, BrowseSqlError> {
+    let (sql, _) = export_with(dialect, request, StatementBuilder::inlining())?.into_parts();
+    Ok(sql)
+}
+
+fn export_with(
+    dialect: &dyn SqlDialect,
+    request: &ExportRequest<'_>,
+    mut builder: StatementBuilder,
+) -> Result<Statement, BrowseSqlError> {
     if crate::document::speaks_shell(dialect) {
-        return crate::document::export(request);
+        return crate::document::export(request, &builder);
     }
     let projection = projection_list(dialect, request.columns)?;
     let components = identity_components(request.identity, request.columns)?;
@@ -35,7 +50,6 @@ pub fn build_export(dialect: &dyn SqlDialect, request: &ExportRequest<'_>) -> Re
         (TablePaging::InStatement, false) => with_tiebreak(user, &identity_order(dialect, request.table, &components)?),
     };
 
-    let mut builder = StatementBuilder::new();
     let mut conditions = Vec::new();
     if build_filter(&mut builder, dialect, request.columns, request.filter)? {
         conditions.push(builder.take_fragment());

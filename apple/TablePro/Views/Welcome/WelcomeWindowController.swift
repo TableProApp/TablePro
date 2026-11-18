@@ -97,6 +97,7 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
 
     internal func windowWillClose(_ notification: Notification) {
         window?.saveFrame(usingAutosaveName: Self.frameAutosaveName)
+        WelcomeRouter.shared.welcomeDidClose()
     }
 
     // MARK: - Commands

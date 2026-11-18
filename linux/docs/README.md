@@ -1,6 +1,6 @@
 # Linux docs
 
-The reference for working on the Linux app. Start with [ARCHITECTURE.md](../ARCHITECTURE.md) for the crate graph and [CONTRIBUTING.md](../CONTRIBUTING.md) for the build; [ROADMAP.md](../ROADMAP.md) says what is built and what is not.
+The reference for working on the Linux app. Start with [ARCHITECTURE.md](../ARCHITECTURE.md) for the crate graph and [CONTRIBUTING.md](../CONTRIBUTING.md) for the build; [features.md](features.md) says what is built, and the repository's [ROADMAP.md](../../ROADMAP.md) what is not.
 
 ## Guides
 
@@ -14,7 +14,8 @@ The reference for working on the Linux app. Start with [ARCHITECTURE.md](../ARCH
 | [toolkit-workarounds.md](toolkit-workarounds.md) | Each place the app steps around a GTK, libadwaita, GtkSourceView, IBus or gtk-rs defect, and when it can go |
 | [troubleshooting.md](troubleshooting.md) | For users: saved passwords, SSH, Kerberos, logs, crash reports, bug reports and downgrades |
 | [regression-tests.md](regression-tests.md) | The tests that guard each critical audit finding |
-| [releasing.md](releasing.md) | The setup before the first release, a release, a packaging fix and a fix release |
+| [features.md](features.md) | What the app does today, area by area |
+| [releasing.md](releasing.md) | The setup before the first release, the 0.1.0 release criteria, a release, a packaging fix and a fix release |
 | [po/README.md](../po/README.md) | Marking strings for translation and generating the template |
 
 ## Drivers

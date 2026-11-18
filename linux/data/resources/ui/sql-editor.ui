@@ -31,6 +31,14 @@
         <attribute name="action">win.export-results</attribute>
       </item>
       <item>
+        <attribute name="label" translatable="yes">S_hare Query…</attribute>
+        <attribute name="action">editor.share-query</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Share Res_ult…</attribute>
+        <attribute name="action">editor.share-result</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">Forma_t</attribute>
         <attribute name="action">editor.format</attribute>
         <attribute name="accel">&lt;Primary&gt;&lt;Shift&gt;f</attribute>

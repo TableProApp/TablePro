@@ -501,6 +501,13 @@ fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
             offer: Box::new(offer),
         });
     });
+    let share = input.clone();
+    browse.connect_share_requested(move |_, subject| {
+        share.deliver(WorkspaceInput::Share {
+            tab: Some(tab_id),
+            subject: Box::new(subject),
+        });
+    });
     let alert = input.clone();
     browse.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
     let toast = input.clone();
@@ -573,6 +580,13 @@ pub(super) fn connect_editor(
         export.deliver(WorkspaceInput::ExportResults {
             tab: tab_id,
             offer: Box::new(offer),
+        });
+    });
+    let share = input.clone();
+    editor.connect_share_requested(move |_, subject| {
+        share.deliver(WorkspaceInput::Share {
+            tab: Some(tab_id),
+            subject: Box::new(subject),
         });
     });
     // The overlay is an ancestor of the editor, so a strong capture

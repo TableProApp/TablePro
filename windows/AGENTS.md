@@ -47,6 +47,8 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `QueryEvent.Finished.Transaction` is the transaction the editor's connection is left in. A session's `Health` is waited on with `WaitForHealthChangeAsync`, which returns once it differs from the one passed in.
 - The app starts the core with `TableProCore.CreateWithSystemSecrets`, so the core keeps secrets in Credential Manager itself. `ISecretStore` is for tests and hosts with a store of their own; the core calls it on a thread of its own.
 - `TableProCore.Library` reads and writes the saved connections in the storage directory the configuration names. A list the app shows is rebuilt from `GetSnapshotAsync` after each change.
+- A result share's columns start from `ResultSet.GetShareMaskingAsync` (what the detectors see), `GetShareSummaryAsync` says what a share with the sheet's choices sends and `GetSharePreviewAsync` shows it masked as sent; `CreateShareAsync` takes the same choices. Nothing else masks (`docs/decisions/0010-data-masking.md`).
+- `TableProCore.OpenAccountAsync` opens the TablePro account once per app; `ReadStatusChangesAsync` gives its status on the UI thread, and its share calls (`GetShareLimitsAsync`, `CreateShareAsync` from a finished `ResultSet`, `ListSharesAsync`, `RevokeShareAsync`, `ExtendShareAsync`, `FetchSharedAsync`) throw `account.*` codes. `ShareLinks` holds the core's secret scan and deep link rule (`docs/decisions/0008-tablepro-account.md`, `docs/decisions/0009-share-links.md`).
 
 ## Commands
 

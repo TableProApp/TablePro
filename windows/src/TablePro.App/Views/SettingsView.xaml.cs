@@ -1,7 +1,10 @@
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using TablePro.App.Model;
 using TablePro.App.Services;
+using TablePro.Interop;
 using Windows.System;
 
 namespace TablePro.App.Views;
@@ -14,6 +17,9 @@ public sealed partial class SettingsView : UserControl
 
     private readonly Workbench _workbench;
     private bool _loading;
+    private bool _accountBusy;
+    private CoreError? _accountError;
+    private int _devicesGeneration;
 
     internal SettingsView(Workbench workbench)
     {
@@ -22,6 +28,15 @@ public sealed partial class SettingsView : UserControl
         VersionText.Text = Strings.Format("VersionText", AppStorage.Version);
         DataFolderCard.Description = workbench.Folder;
         Load();
+        ShowAccount();
+        // The workbench outlives the page only while the window is open, so the page listens while it is shown.
+        Loaded += (_, _) =>
+        {
+            _workbench.AccountChanged -= OnAccountChanged;
+            _workbench.AccountChanged += OnAccountChanged;
+            ShowAccount();
+        };
+        Unloaded += (_, _) => _workbench.AccountChanged -= OnAccountChanged;
     }
 
     public void ShowAbout()
@@ -150,6 +165,246 @@ public sealed partial class SettingsView : UserControl
         {
             _workbench.UpdateSettings(settings => settings with { QueryTimeoutSeconds = (int)args.NewValue });
         }
+    }
+
+    private void OnAccountChanged(object? sender, EventArgs e) => ShowAccount();
+
+    // One card names the account and holds its one action; the notice above it says what needs doing.
+    private void ShowAccount()
+    {
+        var panel = _workbench.AccountPanel;
+        var signedIn = panel.Stage == AccountStage.SignedIn;
+        AccountCard.Header = signedIn && panel.Title is { } title ? title : Strings.Get("AccountTitle");
+        AccountCard.Description = panel.Stage switch
+        {
+            AccountStage.Unavailable when _workbench.AccountFailure is { } failure => Strings.Error(failure),
+            AccountStage.SigningIn => Strings.Get("AccountSigningIn"),
+            AccountStage.SignedIn => Strings.Format(
+                "AccountSignedInDescription",
+                panel.Email ?? string.Empty,
+                Strings.Get(panel.IsPro ? "AccountPlanPro" : "AccountPlanFree")),
+            AccountStage.Offline => Strings.Get("AccountOffline"),
+            _ => Strings.Get("AccountSignedOut"),
+        };
+        AccountButton.Content = Strings.Get(panel.Stage switch
+        {
+            AccountStage.SigningIn => "Cancel",
+            AccountStage.SignedIn => "AccountSignOut",
+            _ => "AccountSignIn",
+        });
+        AccountButton.Visibility = panel.Stage == AccountStage.Unavailable ? Visibility.Collapsed : Visibility.Visible;
+        AccountButton.IsEnabled = !_accountBusy;
+        var busy = _accountBusy || panel.Stage == AccountStage.SigningIn;
+        AccountProgress.IsActive = busy;
+        AccountProgress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        AccountRefreshButton.IsEnabled = !_accountBusy;
+        AccountDetails.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
+        DevicesExpander.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
+        ShowAccountNotice(panel);
+    }
+
+    // An error a press here met comes first, then the account's own problem.
+    private void ShowAccountNotice(AccountPanel panel)
+    {
+        if (AccountNotice(panel) is not { } notice)
+        {
+            AccountBar.IsOpen = false;
+            AccountBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var (title, message, severity, action) = notice;
+        var changed = AccountBar.Message != message || !AccountBar.IsOpen;
+        AccountBar.Title = title;
+        AccountBar.Message = message;
+        AccountBar.Severity = severity;
+        AccountBar.ActionButton = action;
+        AccountBar.Visibility = Visibility.Visible;
+        if (changed)
+        {
+            // Narrator reads an InfoBar when it opens, not when its text changes.
+            AccountBar.IsOpen = false;
+            AccountBar.IsOpen = true;
+        }
+    }
+
+    private (string Title, string Message, InfoBarSeverity Severity, Button? Action)? AccountNotice(AccountPanel panel)
+    {
+        if (_accountError is { } error)
+        {
+            return (Strings.Get("AccountErrorTitle"), Strings.Error(error), InfoBarSeverity.Error, null);
+        }
+
+        switch (panel.Notice)
+        {
+            case { Kind: AccountNoticeKind.Expired }:
+                return (
+                    Strings.Get("AccountExpiredTitle"),
+                    Strings.Get("AccountExpiredMessage"),
+                    InfoBarSeverity.Warning,
+                    NoticeButton("AccountRefresh", OnAccountRefresh));
+            case { Kind: AccountNoticeKind.RefreshFailed, Code: var code }:
+                var failed = code ?? string.Empty;
+                return (
+                    Strings.Get("AccountRefreshFailedTitle"),
+                    Strings.Error(new CoreError(failed, [failed], failed, null, null)),
+                    InfoBarSeverity.Warning,
+                    NoticeButton("AccountTryAgain", OnAccountRefresh));
+            case { Kind: AccountNoticeKind.DeviceLimitReached }:
+                return (
+                    Strings.Get("DeviceLimitTitle"),
+                    Strings.Get("AccountDeviceLimitMessage"),
+                    InfoBarSeverity.Error,
+                    NoticeButton("AccountRemoveDevice", OnRemoveDevice));
+            case { Kind: AccountNoticeKind.NotRemembered }:
+                return (
+                    Strings.Get("AccountNotRememberedTitle"),
+                    Strings.Get("AccountNotRememberedMessage"),
+                    InfoBarSeverity.Informational,
+                    null);
+            default:
+                return null;
+        }
+    }
+
+    private static Button NoticeButton(string text, RoutedEventHandler click)
+    {
+        var button = new Button { Content = Strings.Get(text) };
+        AutomationProperties.SetAutomationId(button, "AccountBarAction");
+        button.Click += click;
+        return button;
+    }
+
+    private async void OnAccountButton(object sender, RoutedEventArgs e)
+    {
+        switch (_workbench.AccountPanel.Stage)
+        {
+            case AccountStage.SigningIn:
+                _workbench.CancelSignIn();
+                break;
+            case AccountStage.SignedIn:
+                await RunAccountAsync(account => account.SignOutAsync());
+                break;
+            default:
+                _accountError = null;
+                try
+                {
+                    await _workbench.SignInAsync();
+                }
+                catch (TableProException exception)
+                {
+                    _accountError = exception.Error;
+                }
+
+                ShowAccount();
+                break;
+        }
+    }
+
+    private async void OnAccountRefresh(object sender, RoutedEventArgs e) =>
+        await RunAccountAsync(account => account.RefreshAsync());
+
+    private async void OnRemoveDevice(object sender, RoutedEventArgs e)
+    {
+        if (_workbench.AccountPanel is { LimitDevices.Count: > 0 } panel)
+        {
+            await DeviceLimitDialog.ShowAsync(this, _workbench, panel.LimitDevices);
+        }
+    }
+
+    // One account call at a time from this page; the status it leaves shows when it ends, the error if it failed.
+    private async Task RunAccountAsync(Func<TableProAccount, Task> call)
+    {
+        if (_accountBusy || await _workbench.GetAccountAsync() is not { } account)
+        {
+            return;
+        }
+
+        _accountBusy = true;
+        _accountError = null;
+        ShowAccount();
+        try
+        {
+            await call(account);
+        }
+        catch (TableProException exception)
+        {
+            _accountError = exception.Error;
+        }
+        finally
+        {
+            _accountBusy = false;
+            _workbench.ShowAccount(account.Status);
+            ShowAccount();
+        }
+    }
+
+    private async void OnManageAccount(object sender, RoutedEventArgs e) =>
+        await Launcher.LaunchUriAsync(_workbench.Portal);
+
+    private async void OnManageSharedLinks(object sender, RoutedEventArgs e) =>
+        await Launcher.LaunchUriAsync(AccountSetup.SharedLinksPage(_workbench.Portal));
+
+    // Read each time the list opens, since a device may have been removed on another one.
+    private async void OnDevicesExpanded(object? sender, EventArgs e)
+    {
+        var generation = ++_devicesGeneration;
+        DevicesExpander.Items.Clear();
+        DevicesProgress.IsActive = true;
+        DevicesProgress.Visibility = Visibility.Visible;
+        try
+        {
+            if (await _workbench.GetAccountAsync() is not { } account)
+            {
+                return;
+            }
+
+            var devices = await account.GetDevicesAsync();
+            if (generation != _devicesGeneration)
+            {
+                return;
+            }
+
+            foreach (var device in AccountDevices.Ordered(devices))
+            {
+                DevicesExpander.Items.Add(DeviceCard(device));
+            }
+        }
+        catch (TableProException exception) when (generation == _devicesGeneration)
+        {
+            DevicesExpander.Items.Add(new SettingsCard { Header = Strings.Error(exception.Error) });
+        }
+        finally
+        {
+            if (generation == _devicesGeneration)
+            {
+                DevicesProgress.IsActive = false;
+                DevicesProgress.Visibility = Visibility.Collapsed;
+            }
+        }
+    }
+
+    private SettingsCard DeviceCard(AccountDevice device)
+    {
+        var card = new SettingsCard { Header = device.Name, Description = DeviceLimitDialog.DeviceText(device) };
+        if (AccountDevices.CanRemove(device, DateTimeOffset.Now))
+        {
+            var remove = new Button { Content = Strings.Get("DeviceRemove") };
+            AutomationProperties.SetName(remove, Strings.Format("DeviceRemoveName", device.Name));
+            remove.Click += async (_, _) =>
+            {
+                remove.IsEnabled = false;
+                await RunAccountAsync(async current =>
+                {
+                    await current.RemoveDeviceAsync(device.Id);
+                    DevicesExpander.Items.Remove(card);
+                });
+                remove.IsEnabled = true;
+            };
+            card.Content = remove;
+        }
+
+        return card;
     }
 
     private async void OnDocumentation(object sender, RoutedEventArgs e) =>

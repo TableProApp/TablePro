@@ -42,6 +42,7 @@ struct SQLEditorInput {
     var currentAIAvailability: (() -> AIQueryActionAvailability)?
     var onAIAction: ((AIQueryAction, AIQueryTarget) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
+    var onShareQuery: ((String) -> Void)?
 }
 
 /// The SQL editor in AppKit, so the query tab hosts it with no SwiftUI host around it: each one above an editor
@@ -193,6 +194,7 @@ final class SQLEditorController {
         coordinator.currentAIAvailability = input.currentAIAvailability
         coordinator.onAIAction = input.onAIAction
         coordinator.onSaveAsFavorite = input.onSaveAsFavorite
+        coordinator.onShareQuery = input.onShareQuery
         coordinator.schemaProvider = input.schemaProvider
         coordinator.databaseScope = input.databaseScope
         coordinator.databaseType = input.databaseType

@@ -228,7 +228,8 @@ struct SyncCategoryRefetchTests {
             transport: server,
             makeNetworkMonitor: { nil },
             columnLayouts: columnLayouts,
-            licenseGate: { nil }
+            licenseGate: { nil },
+            pushRegistrar: .inert
         )
     }
 
@@ -285,6 +286,8 @@ private actor ZoneServer: SyncTransport {
     }
 
     func ensureZoneExists() async throws {}
+
+    func saveSubscription() async throws {}
 
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
         var outcome = PushOutcome()

@@ -10,7 +10,7 @@ struct SyncAdmissionTests {
     private var earlier: Date { now.addingTimeInterval(-1) }
 
     private static let everyTrigger: [SyncTrigger] = [
-        .launch, .activation, .localChange, .accountChange, .networkRestored, .scheduledRetry, .userRequest
+        .launch, .activation, .remoteChange, .localChange, .accountChange, .networkRestored, .scheduledRetry, .userRequest
     ]
 
     @Test("Nothing in the way admits every trigger", arguments: everyTrigger)
@@ -27,6 +27,7 @@ struct SyncAdmissionTests {
         #expect(SyncAdmission.decide(for: .localChange, after: error, nextAttempt: later, now: now) == .none)
         #expect(SyncAdmission.decide(for: .activation, after: error, nextAttempt: later, now: now) == .downloadOnly)
         #expect(SyncAdmission.decide(for: .networkRestored, after: error, nextAttempt: later, now: now) == .downloadOnly)
+        #expect(SyncAdmission.decide(for: .remoteChange, after: error, nextAttempt: later, now: now) == .downloadOnly)
     }
 
     @Test("Full storage lets the person, the timer and an account change try the upload")
@@ -83,6 +84,7 @@ struct SyncAdmissionTests {
         for error in [SyncError?.none, .blocked(.storageFull), .blocked(.dataDeletedFromICloud)] {
             #expect(SyncAdmission.decide(for: .activation, after: error, nextAttempt: nil, throttledUntil: later, now: now) == .none)
             #expect(SyncAdmission.decide(for: .scheduledRetry, after: error, nextAttempt: nil, throttledUntil: later, now: now) == .none)
+            #expect(SyncAdmission.decide(for: .remoteChange, after: error, nextAttempt: nil, throttledUntil: later, now: now) == .none)
             #expect(SyncAdmission.decide(for: .userRequest, after: error, nextAttempt: nil, throttledUntil: later, now: now) != .none)
         }
         #expect(SyncAdmission.decide(for: .activation, after: nil, nextAttempt: nil, throttledUntil: earlier, now: now) == .full)

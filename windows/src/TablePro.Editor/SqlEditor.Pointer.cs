@@ -312,6 +312,15 @@ public sealed partial class SqlEditor
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("Select All", "Ctrl+A", () => _model.SelectAll());
         Add("Toggle Line Comment", "Ctrl+/", () => Edit(_model.ToggleLineComment));
+        var own = menu.Items.Count;
+        menu.Opening += (_, _) =>
+        {
+            while (menu.Items.Count > own)
+            {
+                menu.Items.RemoveAt(menu.Items.Count - 1);
+            }
+            ContextMenuOpening?.Invoke(this, menu.Items);
+        };
         return menu;
     }
 }

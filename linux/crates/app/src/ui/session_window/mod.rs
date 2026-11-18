@@ -69,7 +69,7 @@ pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
 use self::session_page::{FailedConnect, OpenSession, PendingConnect, SessionPage, TakenFailure, source_key};
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};
-pub(crate) use self::session_window_input::{LibraryEdit, MovedTab, ScriptInput, SessionWindowInput};
+pub(crate) use self::session_window_input::{LibraryEdit, MovedTab, ScriptInput, SessionWindowInput, WaitingScript};
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::connection_link::without_password;
@@ -1237,6 +1237,10 @@ impl SessionWindow {
         match input {
             ScriptInput::Open(file) => self.on_open_script(file),
             ScriptInput::Loaded { file, text, target } => self.on_script_loaded(file, text, target),
+            ScriptInput::Shared { title, sql } => {
+                let target = self.relational_front().and_then(|workspace| workspace.key());
+                self.place_waiting_script(WaitingScript::Shared { title, sql }, target);
+            }
             ScriptInput::For { key, scripts } => self.on_scripts_for(key, scripts),
             ScriptInput::DropWaiting => {
                 self.imp().waiting_scripts.borrow_mut().clear();
@@ -1245,22 +1249,23 @@ impl SessionWindow {
         }
     }
 
+    fn relational_front(&self) -> Option<Workspace> {
+        self.workspace()
+            .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
+    }
+
     // The session in front now is the one it goes to, even if another comes forward during a slow read.
     fn on_open_script(&self, file: gio::File) {
         let Some(input) = self.input() else {
             return;
         };
-        let target = self
-            .workspace()
-            .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
-            .and_then(|workspace| workspace.key());
+        let target = self.relational_front().and_then(|workspace| workspace.key());
         glib::spawn_future_local(async move {
             let text = crate::ui::editor::load_text(&file).await;
             input.deliver(SessionWindowInput::Script(ScriptInput::Loaded { file, text, target }));
         });
     }
 
-    // A script opens in the relational session in front and is never run.
     fn on_script_loaded(&self, file: gio::File, text: Result<String, String>, target: Option<SessionKey>) {
         let text = match text {
             Ok(text) => text,
@@ -1276,6 +1281,11 @@ impl SessionWindow {
         if self.focus_bound_tab(&file) {
             return;
         }
+        self.place_waiting_script(WaitingScript::File { file, text }, target);
+    }
+
+    // A script opens in the relational session in front and is never run.
+    fn place_waiting_script(&self, script: WaitingScript, target: Option<SessionKey>) {
         let chosen = target.and_then(|key| {
             self.workspaces()
                 .into_iter()
@@ -1286,24 +1296,24 @@ impl SessionWindow {
             .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
             .and_then(|workspace| workspace.sender());
         match front {
-            Some(input) => input.deliver(WorkspaceInput::OpenScript { file, text }),
-            None if self.page() != SessionPage::Shell => self.wait_for_session(file, text),
-            None => self.ask_elsewhere(vec![(file, text)]),
+            Some(input) => input.deliver(script_input(script)),
+            None if self.page() != SessionPage::Shell => self.wait_for_session(script),
+            None => self.ask_elsewhere(vec![script]),
         }
     }
 
-    fn wait_for_session(&self, file: gio::File, text: String) {
+    fn wait_for_session(&self, script: WaitingScript) {
         {
             let mut waiting = self.imp().waiting_scripts.borrow_mut();
-            waiting.retain(|(kept, _)| !kept.equal(&file));
-            waiting.push((file, text));
+            waiting.retain(|kept| !kept.same_as(&script));
+            waiting.push(script);
         }
         self.show_waiting_scripts();
     }
 
     // A session that holds keys or documents runs no SQL, so the script
     // asks for a connection in a window of its own.
-    fn ask_elsewhere(&self, scripts: Vec<(gio::File, String)>) {
+    fn ask_elsewhere(&self, scripts: Vec<WaitingScript>) {
         if scripts.is_empty() {
             return;
         }
@@ -1316,11 +1326,14 @@ impl SessionWindow {
             tracing::warn!("no window to open a SQL file in");
             return;
         };
-        for (file, text) in scripts {
-            window.send(SessionWindowInput::Script(ScriptInput::Loaded {
-                file,
-                text: Ok(text),
-                target: None,
+        for script in scripts {
+            window.send(SessionWindowInput::Script(match script {
+                WaitingScript::File { file, text } => ScriptInput::Loaded {
+                    file,
+                    text: Ok(text),
+                    target: None,
+                },
+                WaitingScript::Shared { title, sql } => ScriptInput::Shared { title, sql },
             }));
         }
     }
@@ -1357,7 +1370,7 @@ impl SessionWindow {
     }
 
     // The session left between the hand-over and now: they wait here instead, behind the picker's banner.
-    fn on_scripts_for(&self, key: SessionKey, scripts: Vec<(gio::File, String)>) {
+    fn on_scripts_for(&self, key: SessionKey, scripts: Vec<WaitingScript>) {
         match self
             .workspaces()
             .into_iter()
@@ -1365,26 +1378,26 @@ impl SessionWindow {
         {
             Some(workspace) => self.open_scripts_in(&workspace, scripts),
             None => {
-                for (file, text) in scripts {
-                    self.wait_for_session(file, text);
+                for script in scripts {
+                    self.wait_for_session(script);
                 }
             }
         }
     }
 
     // A session that runs no SQL leaves them waiting for one that does.
-    fn open_scripts_in(&self, workspace: &Workspace, scripts: Vec<(gio::File, String)>) {
-        let scripts: Vec<(gio::File, String)> = scripts
+    fn open_scripts_in(&self, workspace: &Workspace, scripts: Vec<WaitingScript>) {
+        let scripts: Vec<WaitingScript> = scripts
             .into_iter()
-            .filter(|(file, _)| !self.focus_bound_tab(file))
+            .filter(|script| !script.file().is_some_and(|file| self.focus_bound_tab(file)))
             .collect();
         let input = workspace
             .sender()
             .filter(|_| workspace.data_model() == Some(DataModel::Relational));
         match input {
             Some(input) => {
-                for (file, text) in scripts {
-                    input.deliver(WorkspaceInput::OpenScript { file, text });
+                for script in scripts {
+                    input.deliver(script_input(script));
                 }
             }
             None => self.ask_elsewhere(scripts),
@@ -1396,22 +1409,7 @@ impl SessionWindow {
             return;
         };
         let banner = picker.script_banner();
-        let title = match self.imp().waiting_scripts.borrow().as_slice() {
-            [] => None,
-            [(file, _)] => Some(crate::i18n::gettext_f(
-                "Choose a connection to open “{name}”",
-                &[("name", &file_display_name(&file.uri()))],
-            )),
-            waiting => {
-                let count = waiting.len();
-                Some(crate::i18n::ngettext_f(
-                    "Choose a connection to open {n} SQL file",
-                    "Choose a connection to open {n} SQL files",
-                    u32::try_from(count).unwrap_or(u32::MAX),
-                    &[("n", &count.to_string())],
-                ))
-            }
-        };
+        let title = waiting_title(&self.imp().waiting_scripts.borrow());
         match title {
             Some(title) => {
                 banner.set_title(&title);
@@ -1424,6 +1422,16 @@ impl SessionWindow {
     #[cfg(test)]
     pub(crate) fn script_banner(&self) -> Option<adw::Banner> {
         self.imp().picker.get().map(PickerPage::script_banner)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn toast_titles(&self) -> Vec<String> {
+        self.imp()
+            .toasts
+            .borrow()
+            .iter()
+            .filter_map(|toast| toast.title().map(String::from))
+            .collect()
     }
 
     /// The dialog may be editing a connection the window shows or already
@@ -2120,6 +2128,46 @@ fn source_name(source: &ConnectSource) -> String {
         ConnectSource::Saved(saved) => saved.name.clone(),
         ConnectSource::Intent(intent) => intent.request.metadata.name.clone(),
         ConnectSource::File(identity) => file_display_name(&identity.uri),
+    }
+}
+
+fn script_input(script: WaitingScript) -> WorkspaceInput {
+    match script {
+        WaitingScript::File { file, text } => WorkspaceInput::OpenScript { file, text },
+        WaitingScript::Shared { sql, .. } => WorkspaceInput::OpenInEditor { sql, database: None },
+    }
+}
+
+fn waiting_title(waiting: &[WaitingScript]) -> Option<String> {
+    match waiting {
+        [] => None,
+        [WaitingScript::File { file, .. }] => Some(crate::i18n::gettext_f(
+            "Choose a connection to open “{name}”",
+            &[("name", &file_display_name(&file.uri()))],
+        )),
+        [WaitingScript::Shared { title, .. }] if !title.trim().is_empty() => Some(crate::i18n::gettext_f(
+            "Choose a connection to open “{name}”",
+            &[("name", title.trim())],
+        )),
+        [WaitingScript::Shared { .. }] => Some(crate::i18n::gettext("Choose a connection to open the shared query")),
+        waiting if waiting.iter().all(|script| script.file().is_some()) => {
+            let count = waiting.len();
+            Some(crate::i18n::ngettext_f(
+                "Choose a connection to open {n} SQL file",
+                "Choose a connection to open {n} SQL files",
+                u32::try_from(count).unwrap_or(u32::MAX),
+                &[("n", &count.to_string())],
+            ))
+        }
+        waiting => {
+            let count = waiting.len();
+            Some(crate::i18n::ngettext_f(
+                "Choose a connection to open {n} query",
+                "Choose a connection to open {n} queries",
+                u32::try_from(count).unwrap_or(u32::MAX),
+                &[("n", &count.to_string())],
+            ))
+        }
     }
 }
 

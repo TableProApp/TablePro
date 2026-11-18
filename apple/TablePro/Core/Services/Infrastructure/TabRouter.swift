@@ -141,6 +141,7 @@ internal final class TabRouter {
     }
 
     private func openConnection(id: UUID, transientConnection: DatabaseConnection? = nil) async throws {
+        WelcomeRouter.shared.claimPendingSharedQueries(for: id)
         let connection: DatabaseConnection
         if let stored = ConnectionStorage.shared.loadConnections().first(where: { $0.id == id }) {
             connection = stored
@@ -492,6 +493,30 @@ internal final class TabRouter {
         }
         let payload = try await Self.sqlFileTabPayload(for: url, connectionId: target)
         WindowManager.shared.openTab(payload: payload)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+    }
+
+    // False when no connection is up to open it in; the caller holds it until one connects.
+    @discardableResult
+    internal func openSharedQuery(_ query: SharedQueryOpen) -> Bool {
+        let target = Self.sqlFileConnectionId(
+            shownConnectionId: WindowManager.shared.frontmostHost()?.workspaces.selectedConnectionId,
+            lastActiveConnectionId: DatabaseManager.shared.lastActiveSessionId,
+            activeSessionIds: Set(DatabaseManager.shared.activeSessions.keys)
+        )
+        guard let target else { return false }
+        openSharedQuery(query, in: target)
+        return true
+    }
+
+    internal func openSharedQuery(_ query: SharedQueryOpen, in connectionId: UUID) {
+        WindowManager.shared.openTab(payload: EditorTabPayload(
+            connectionId: connectionId,
+            tabType: .query,
+            initialQuery: query.sql,
+            forcesNewTab: true,
+            tabTitle: query.title
+        ))
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
     }
 

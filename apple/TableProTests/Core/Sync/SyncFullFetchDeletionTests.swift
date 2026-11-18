@@ -173,7 +173,8 @@ struct SyncFullFetchDeletionTests {
             makeNetworkMonitor: { nil },
             columnLayouts: environment.columnLayouts,
             licenseGate: { nil },
-            recordCreationDate: { dates.date(for: $0) }
+            recordCreationDate: { dates.date(for: $0) },
+            pushRegistrar: .inert
         )
     }
 
@@ -254,6 +255,8 @@ private actor ExpiringZoneServer: SyncTransport {
     }
 
     func ensureZoneExists() async throws {}
+
+    func saveSubscription() async throws {}
 
     // Saves without listing the record in the next fetch, as a fetch that lags the save would.
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {

@@ -7,6 +7,11 @@ import Foundation
 import TableProPluginKit
 
 extension LibPQReadOnlyTransaction {
+    struct Scope: Sendable, Equatable {
+        let reason: Reason
+        let runsInOpenTransaction: Bool
+    }
+
     static var sessionNotIdle: LibPQPluginError {
         LibPQPluginError(message: notIdleMessage(.externalClients), sqlState: nil, detail: nil)
     }
@@ -29,14 +34,40 @@ extension LibPQReadOnlyTransaction {
         reason(for: context, capabilities: capabilities) != nil
     }
 
-    // Inside an open transaction the wrap would make the user's own transaction read-only.
+    static func scope(for context: PluginStatementContext, capabilities: PluginCapabilities) -> Scope? {
+        reason(for: context, capabilities: capabilities).map { reason in
+            Scope(reason: reason, runsInOpenTransaction: context.enforcesReadOnly && !context.callsUnlistedFunction)
+        }
+    }
+
     static func run<Result>(
         state: PluginSessionTransactionState,
-        reason: Reason,
+        scope: Scope,
         send: (String) throws -> Void,
         statement: () throws -> Result
     ) throws -> Result {
-        guard state == .idle else { throw notIdle(reason) }
+        try run(
+            state: state,
+            reason: scope.reason,
+            runsInOpenTransaction: scope.runsInOpenTransaction,
+            send: send,
+            statement: statement
+        )
+    }
+
+    // Inside an open transaction the wrap would make the user's own transaction read-only, so a session holding one runs
+    // a statement the host checked for unlisted function calls in it as it is.
+    static func run<Result>(
+        state: PluginSessionTransactionState,
+        reason: Reason,
+        runsInOpenTransaction: Bool = false,
+        send: (String) throws -> Void,
+        statement: () throws -> Result
+    ) throws -> Result {
+        guard state == .idle else {
+            guard runsInOpenTransaction else { throw notIdle(reason) }
+            return try statement()
+        }
         do {
             try send(begin)
         } catch {

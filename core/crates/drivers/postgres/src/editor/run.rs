@@ -3,8 +3,10 @@ use std::sync::atomic::Ordering;
 
 use futures_util::StreamExt;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken};
-use tablepro_core::sql_syntax::{SourceTable, SqlGrammar};
-use tablepro_core::{DriverError, ResultEvent, ResultSink, RowBatch, RowLimit, RunEnd, SinkFlow, Truncation, Value};
+use tablepro_core::sql_syntax::{SourceTable, SqlGrammar, turns_read_write};
+use tablepro_core::{
+    DriverError, ReadOnlyRefusal, ResultEvent, ResultSink, RowBatch, RowLimit, RunEnd, SinkFlow, Truncation, Value,
+};
 use tokio_postgres::{SimpleQueryMessage, SimpleQueryStream};
 use tracing::debug;
 
@@ -127,6 +129,11 @@ impl<'a> Run<'a> {
     }
 
     async fn statement(&mut self, text: &str, class: StatementClass) -> Result<Option<DriverError>, Lost> {
+        // Until its first query the user's transaction can still be made writable, after the SET TRANSACTION READ ONLY
+        // the driver sends behind their BEGIN too.
+        if self.core.read_only && turns_read_write(text, SqlGrammar::PostgreSql) {
+            return Ok(Some(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard)));
+        }
         match plan(class, self.core.tracker.state(), self.core.read_only) {
             Flight::Refuse(error) => Ok(Some(error)),
             Flight::Simple(wrap) => self.simple(text, class, wrap).await,

@@ -1252,10 +1252,37 @@ struct ReadOnlyFunctionPolicyTests {
         #expect(ExecutionGateProvider.runsAtReadOnly(connection.id))
     }
 
+    // The read-only mode would end what a session holds, so the read runs outside it and its calls are checked.
+    @Test(
+        "A live MySQL driver with the mode is refused the call while its session holds a transaction or a lock",
+        arguments: [
+            (PluginSessionTransactionState.idle, false),
+            (.inTransaction, true),
+            (.abortedTransaction, true),
+            (.holdsSessionLocks, true),
+            (.unknown, true),
+        ]
+    )
+    func liveSessionStateDecides(state: PluginSessionTransactionState, refused: Bool) async {
+        let connection = DatabaseConnection(name: "Shop", database: "shop", type: .mysql, safeModeLevel: .readOnly)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        install(connection, driver: SessionStateDriver(state))
+
+        let policy = await ExecutionGateProvider.liveReadOnlyFunctionPolicy(
+            connectionId: connection.id, databaseType: .mysql
+        )
+
+        #expect(policy.functionsCanWrite == refused)
+    }
+
     private func install(_ connection: DatabaseConnection, capabilities: PluginCapabilities) {
+        install(connection, driver: CapabilityOnlyDriver(capabilities))
+    }
+
+    private func install(_ connection: DatabaseConnection, driver: any PluginDatabaseDriver) {
         var session = ConnectionSession(
             connection: connection,
-            driver: PluginDriverAdapter(connection: connection, pluginDriver: CapabilityOnlyDriver(capabilities))
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: driver)
         )
         session.status = .connected
         DatabaseManager.shared.injectSession(session, for: connection.id)
@@ -1270,6 +1297,19 @@ private final class CapabilityOnlyDriver: PluginDriverStub, @unchecked Sendable 
     }
 
     var capabilities: PluginCapabilities { declared }
+}
+
+private final class SessionStateDriver: PluginDriverStub, @unchecked Sendable {
+    private let state: PluginSessionTransactionState
+
+    init(_ state: PluginSessionTransactionState) {
+        self.state = state
+    }
+
+    var capabilities: PluginCapabilities { [.readOnlyStatements, .enforcesReadOnlyMode] }
+    var supportsTransactions: Bool { true }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState { state }
 }
 
 // The editor's request for a text the gate must tier by what the server runs, behind each executable comment form.

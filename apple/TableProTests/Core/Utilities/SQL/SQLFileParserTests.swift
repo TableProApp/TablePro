@@ -415,6 +415,46 @@ struct SQLFileParserTests {
         #expect(count == statementCount)
     }
 
+    @Test("An empty file holds no statement, parsed or counted")
+    func emptyFile() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
+        try Data().write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let parser = SQLFileParser()
+        var statements: [String] = []
+        for try await (statement, _) in parser.parseFile(url: url, encoding: .utf8, grammar: TestGrammar.postgres) {
+            statements.append(statement)
+        }
+        #expect(statements.isEmpty)
+        #expect(try await parser.countStatements(url: url, encoding: .utf8, grammar: TestGrammar.postgres) == 0)
+    }
+
+    @Test("A last statement with no ; arrives when the file ends on a full read chunk", arguments: [1, 6, 9, 18])
+    func lastStatementEndsOnChunkBoundary(chunkSize: Int) async throws {
+        let sql = "SELECT 1;\nSELECT 2"
+        try #require(sql.utf8.count % chunkSize == 0)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
+        try Data(sql.utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let parser = SQLFileParser(chunkSize: chunkSize)
+        var statements: [String] = []
+        for try await (statement, _) in parser.parseFile(url: url, encoding: .utf8, grammar: TestGrammar.postgres) {
+            statements.append(statement)
+        }
+        #expect(statements == ["SELECT 1", "SELECT 2"])
+        #expect(try await parser.countStatements(url: url, encoding: .utf8, grammar: TestGrammar.postgres) == 2)
+    }
+
+    @Test("A UTF-8 file cut inside its last character fails rather than dropping the bytes")
+    func fileCutInsideItsLastCharacter() async throws {
+        let cut = Data(Data("SELECT 'é".utf8).dropLast())
+        await #expect(throws: DecompressionError.self) {
+            _ = try await Self.parse(cut, encoding: .utf8)
+        }
+    }
+
     @Test("Dialect.from maps known database type ids")
     func dialect_from_database_type_id() {
         #expect(SqlDialect.from(databaseTypeId: "PostgreSQL") == .postgres)

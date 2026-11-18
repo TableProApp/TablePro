@@ -13,7 +13,7 @@ const EXPIRING_SOON: TimeDelta = TimeDelta::days(3);
 const OWNER: &str = "owner";
 
 // product.md's codes, and whether TablePro for Linux has the feature yet.
-const FEATURES: [(&str, bool); 10] = [
+const FEATURES: [(&str, bool); 11] = [
     ("icloud_sync", false),
     ("encrypted_export", false),
     ("env_var_references", false),
@@ -24,6 +24,8 @@ const FEATURES: [(&str, bool); 10] = [
     ("data_rewind", false),
     ("team_catalog", false),
     ("team_library", false),
+    // Every account shares links; the plan only lifts the Free limits.
+    ("shared_links", true),
 ];
 
 #[derive(Default)]
@@ -641,6 +643,7 @@ fn feature_name(code: &str) -> String {
         "data_rewind" => gettext("Data Rewind"),
         "team_catalog" => gettext("Team Catalog"),
         "team_library" => gettext("Team Library"),
+        "shared_links" => gettext("Pro Options for Shared Links"),
         other => other.to_owned(),
     }
 }

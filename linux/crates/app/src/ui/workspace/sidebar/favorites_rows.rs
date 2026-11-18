@@ -167,7 +167,7 @@ pub(super) fn install_menu(
     asked: &Asked,
 ) -> gtk::PopoverMenu {
     let actions = gio::SimpleActionGroup::new();
-    for name in [RENAME, DELETE, MOVE, NEW_FOLDER] {
+    for name in [RENAME, DELETE, MOVE, SHARE, NEW_FOLDER] {
         let action = gio::SimpleAction::new(name, Some(glib::VariantTy::STRING));
         let (tree, index, asked) = (tree.clone(), index.clone(), asked.clone());
         action.connect_activate(move |_, target| {
@@ -220,6 +220,7 @@ fn request(asked: &Asked, name: &str, node: Node) {
         (RENAME, Node::Query(query)) => FavoriteAction::Rename(query),
         (DELETE, Node::Query(query)) => FavoriteAction::Delete(query),
         (MOVE, Node::Query(query)) => FavoriteAction::MoveTo(query),
+        (SHARE, Node::Query(query)) => FavoriteAction::Share(query),
         (RENAME, Node::Folder(folder)) => FavoriteAction::RenameFolder(folder),
         (DELETE, Node::Folder(folder)) => FavoriteAction::DeleteFolder(folder),
         (NEW_FOLDER, Node::Folder(folder)) => FavoriteAction::NewFolder(Some(folder)),
@@ -290,12 +291,13 @@ fn install_keys(
 pub(super) fn menu_of(key: Key) -> gio::Menu {
     let menu = gio::Menu::new();
     let entries = match key {
-        Key::Query(_) => [
+        Key::Query(_) => vec![
             (gettext("_Rename…"), RENAME),
             (gettext("_Move to Folder…"), MOVE),
+            (gettext("_Share…"), SHARE),
             (gettext("_Delete…"), DELETE),
         ],
-        Key::Folder(_) => [
+        Key::Folder(_) => vec![
             (gettext("New _Subfolder…"), NEW_FOLDER),
             (gettext("_Rename…"), RENAME),
             (gettext("_Delete…"), DELETE),

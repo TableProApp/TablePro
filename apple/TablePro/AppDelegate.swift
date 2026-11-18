@@ -170,6 +170,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
+    // MARK: - Remote Notifications
+
+    func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        SyncCoordinator.shared.pushRegistrationDidFinish(registered: true)
+    }
+
+    func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
+        Self.logger.warning("Push registration failed: \(error.localizedDescription, privacy: .private)")
+        SyncCoordinator.shared.pushRegistrationDidFinish(registered: false)
+    }
+
+    func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]) {
+        SyncCoordinator.shared.handleRemoteNotification(userInfo)
+    }
+
     /// Unhiding is the one way a window comes back without any window notification firing, and the
     /// app reports every window it owns as invisible while it is hidden.
     func applicationDidUnhide(_ notification: Notification) {

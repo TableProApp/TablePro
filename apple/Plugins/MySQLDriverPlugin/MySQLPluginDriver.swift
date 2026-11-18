@@ -178,7 +178,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             capabilities.insert(.temporaryTables)
         }
         if flavor.enforcesReadOnlyTransactions {
-            capabilities.formUnion([.readOnlyStatements, .enforcesReadOnlyMode])
+            capabilities.insert(.readOnlyStatements)
+        }
+        if holdsForServer(MySQLReadOnlyTransaction.isAvailable(banner:flavor:)) {
+            capabilities.insert(.enforcesReadOnlyMode)
         }
         return capabilities
     }
@@ -1497,11 +1500,17 @@ extension MySQLPluginDriver {
     }
 
     private func readOnlyScope(_ context: PluginStatementContext) -> MySQLReadOnlyTransaction.Scope? {
-        guard let reason = MySQLReadOnlyTransaction.reason(for: context, flavor: flavor) else { return nil }
+        let identity = serverIdentity
+        guard let reason = MySQLReadOnlyTransaction.reason(for: context, flavor: identity.flavor, banner: identity.banner)
+        else { return nil }
         // The lock comes from the footprint, because the status flags never show it.
-        return MySQLReadOnlyTransaction.Scope(reason: reason, sessionState: { isInTransaction in
-            self.sessionLock.withLock { self.footprint.transactionState(isInTransaction: isInTransaction) }
-        })
+        return MySQLReadOnlyTransaction.Scope(
+            reason: reason,
+            runsInOpenTransaction: context.enforcesReadOnly && !context.callsUnlistedFunction,
+            sessionState: { isInTransaction in
+                self.sessionLock.withLock { self.footprint.transactionState(isInTransaction: isInTransaction) }
+            }
+        )
     }
 
     private func readOnlyRead(

@@ -47,7 +47,7 @@ public interface ITabSession
 }
 
 // The run gives the page's rows as an editor run's events do; columns past VisibleColumns are the row's address.
-public sealed record TablePageRead(ITabRun Run, int VisibleColumns, bool CanSeek);
+public sealed record TablePageRead(ITabRun Run, int VisibleColumns, bool CanSeek, string? ViewSql = null);
 
 // A table's rows as a save sees them. `rows` is the set a page was read into, null when no set is shown.
 public interface ITableEditor : IDisposable
@@ -133,7 +133,7 @@ public sealed class CoreTabSession : ITabSession
     {
         var page = await _share.Session.ReadTablePageAsync(table, sort, filter, limit, offset, cancellationToken)
             .ConfigureAwait(true);
-        return new TablePageRead(new CoreTabRun(page.Run), page.VisibleColumns, page.CanSeek);
+        return new TablePageRead(new CoreTabRun(page.Run), page.VisibleColumns, page.CanSeek, page.ViewSql);
     }
 
     public Task<long> CountRowsAsync(TableName table, TableFilter? filter, CancellationToken cancellationToken) =>

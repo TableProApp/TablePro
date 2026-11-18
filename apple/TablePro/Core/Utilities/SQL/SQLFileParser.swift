@@ -1186,21 +1186,25 @@ extension SQLFileParser {
             return ctx.sawBatchSeparator
         }
 
+        // A MySQL count keeps each statement's text, so the cut drains per statement as well as per chunk.
         private func readNextStatement() throws {
-            processBuffer()
-            guard ctx.collected.isEmpty else { return }
-            guard !ctx.atEndOfInput else {
-                emitTrailingStatement()
-                finished = true
-                closeFile()
-                return
+            try autoreleasepool {
+                processBuffer()
+                guard ctx.collected.isEmpty else { return }
+                guard !ctx.atEndOfInput else {
+                    emitTrailingStatement()
+                    finished = true
+                    closeFile()
+                    return
+                }
+                try readChunk()
             }
-            try readChunk()
         }
 
         private func readChunk() throws {
             let handle = try openFileIfNeeded()
-            let rawData = handle.readData(ofLength: limits.chunkSize)
+            // A count, a GO scan and a driver's COPY read chunk after chunk with nothing draining the autorelease pool.
+            let rawData = try autoreleasepool { try handle.read(upToCount: limits.chunkSize) } ?? Data()
             if !rawData.isEmpty, let onRead {
                 bytesRead += Int64(rawData.count)
                 onRead(bytesRead, fileSize)
@@ -1337,8 +1341,10 @@ extension SQLFileParser {
 
         private func nextRowsPiece(generation: Int) throws -> Data? {
             do {
-                guard let piece = try nextRowsRange(generation: generation) else { return nil }
-                return Data(nsBuffer.substring(with: piece).utf8)
+                return try autoreleasepool {
+                    guard let piece = try nextRowsRange(generation: generation) else { return nil }
+                    return Data(nsBuffer.substring(with: piece).utf8)
+                }
             } catch {
                 rowsFailure = error
                 copyRows = nil

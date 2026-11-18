@@ -3,8 +3,8 @@ use gtk4::prelude::*;
 use tablepro_session::SessionKey;
 
 use super::{TableProApplication, WindowLaunch};
-use crate::services::connection_link;
 use crate::services::file_resolution::{FileTarget, ResolvedFile, resolve_file_blocking};
+use crate::services::{connection_link, share_link};
 use crate::ui::{ScriptInput, SessionWindow, SessionWindowInput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +37,10 @@ impl TableProApplication {
     pub fn open_files(&self, files: &[gio::File], placement: Placement) {
         for file in files {
             // A link names no file, and file resolution would show its text, password and all.
+            if let Some(link) = share_link::share_link_text(file) {
+                self.open_share_link(&link, placement);
+                continue;
+            }
             match connection_link::link_text(file) {
                 Some(link) => self.open_link(&link, placement),
                 None => self.open_file(file.clone(), placement),
@@ -107,32 +111,44 @@ impl TableProApplication {
         if SessionWindow::focus_tab_bound_to(self, &file) {
             return;
         }
+        self.route_script(self.script_windows(placement), ScriptInput::Open(file));
+    }
+
+    // A shared link's SQL takes the way a script does, never running and carrying no connection.
+    pub(super) fn place_shared_sql(&self, title: String, sql: String, placement: Placement) {
+        self.route_script(self.script_windows(placement), ScriptInput::Shared { title, sql });
+    }
+
+    // GTK lists the windows most recently focused first. While any window settles, a tab bound to the
+    // file may still appear, so a picker asks rather than opening a second one beside it.
+    fn script_windows(&self, placement: Placement) -> Vec<SessionWindow> {
         if placement == Placement::NewWindow {
-            return self.route_script(Vec::new(), file);
+            return Vec::new();
         }
-        // GTK lists the windows most recently focused first.
         let windows: Vec<SessionWindow> = self
             .windows()
             .into_iter()
             .filter_map(|window| window.downcast::<SessionWindow>().ok())
             .collect();
-        // While any window settles, a tab bound to the file may still appear, so a picker asks rather
-        // than opening a second one beside it.
         if windows.iter().any(SessionWindow::settling) {
-            let idle = windows.into_iter().next().filter(SessionWindow::is_idle);
-            return self.route_script(idle.into_iter().collect(), file);
+            return windows
+                .into_iter()
+                .next()
+                .filter(SessionWindow::is_idle)
+                .into_iter()
+                .collect();
         }
-        self.route_script(windows, file);
+        windows
     }
 
-    fn route_script(&self, windows: Vec<SessionWindow>, file: gio::File) {
+    fn route_script(&self, windows: Vec<SessionWindow>, script: ScriptInput) {
         let window = match windows.into_iter().next() {
             Some(window) => Some(window),
             None => self.open_window(WindowLaunch::Picker).and_downcast::<SessionWindow>(),
         };
         match window {
             Some(window) => {
-                window.send(SessionWindowInput::Script(ScriptInput::Open(file)));
+                window.send(SessionWindowInput::Script(script));
                 window.present();
             }
             None => tracing::warn!("no window to open a SQL file in"),

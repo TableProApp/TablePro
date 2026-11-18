@@ -106,8 +106,8 @@ public sealed record TableName(string? Schema, string Name);
 // Column is the table's column position, as the grid numbers its columns.
 public sealed record ColumnSort(int Column, bool Ascending);
 
-// Any columns past VisibleColumns are the engine's row address; without CanSeek only the first page can be read.
-public sealed record TablePageRun(QueryRun Run, int VisibleColumns, bool CanSeek);
+// Past VisibleColumns: the row's address. Without CanSeek only page one reads. ViewSql: every row's query, or null.
+public sealed record TablePageRun(QueryRun Run, int VisibleColumns, bool CanSeek, string? ViewSql);
 
 public enum FailureCause
 {

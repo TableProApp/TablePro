@@ -34,6 +34,49 @@ public sealed class ResultSet : IDisposable
     // Each thread that reads windows opens its own.
     public ResultCursor OpenCursor() => new(_set.OpenCursor());
 
+    // The share sheet's columns as it starts them, from the first visibleColumns columns and the first maxRows rows:
+    // what the detectors saw in each column's name and values.
+    public async Task<IReadOnlyList<ShareColumnMasking>> GetShareMaskingAsync(int visibleColumns, long maxRows)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRows);
+        var limit = (uint)Math.Min(maxRows, uint.MaxValue);
+        var columns = await CoreCall.RunAsync(() => _set.ShareMasking(checked((uint)visibleColumns), limit))
+            .ConfigureAwait(false);
+        return [.. columns.Select(Mapping.ColumnMasking)];
+    }
+
+    // What a share of maxRows with the sheet's choices sends, without building it: cheap enough for each choice.
+    public async Task<ShareSummary> GetShareSummaryAsync(
+        int visibleColumns, long maxRows, IReadOnlyList<ShareColumnChoice> columns)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRows);
+        ArgumentNullException.ThrowIfNull(columns);
+        var limit = (uint)Math.Min(maxRows, uint.MaxValue);
+        Native.ShareColumnChoice[] choices = [.. columns.Select(Mapping.Choice)];
+        var summary = await CoreCall.RunAsync(
+                () => _set.ShareSummary(checked((uint)visibleColumns), limit, choices))
+            .ConfigureAwait(false);
+        return Mapping.Summary(summary);
+    }
+
+    // The rows a share of maxRows with the sheet's choices sends, as a finished set: removed columns left out and
+    // every value masked as the link's, so the preview shows a Stable Hash the core computed.
+    public async Task<ResultSet> GetSharePreviewAsync(
+        int visibleColumns, long maxRows, IReadOnlyList<ShareColumnChoice> columns)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(visibleColumns);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRows);
+        ArgumentNullException.ThrowIfNull(columns);
+        var limit = (uint)Math.Min(maxRows, uint.MaxValue);
+        Native.ShareColumnChoice[] choices = [.. columns.Select(Mapping.Choice)];
+        var preview = await CoreCall.RunAsync(
+                () => _set.SharePreview(checked((uint)visibleColumns), limit, choices))
+            .ConfigureAwait(false);
+        return new ResultSet(preview, Index);
+    }
+
     // For a statement that cannot run again: a new set over the rows held, sorted stably; this one keeps its order.
     public Task<ResultSet> SortedAsync(int column, bool ascending)
     {

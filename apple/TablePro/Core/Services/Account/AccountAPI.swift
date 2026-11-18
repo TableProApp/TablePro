@@ -20,6 +20,15 @@ internal enum AccountAPI {
         )
     }
 
+    // No bearer: the public share read answers a recipient who may not be signed in.
+    static func publicClient(configuration: AccountConfiguration, transport: any ClientTransport) -> Client {
+        Client(
+            serverURL: configuration.apiServerURL,
+            configuration: Configuration(dateTranscoder: RFC3339DateTranscoder()),
+            transport: transport
+        )
+    }
+
     static func transport(session: URLSession) -> any ClientTransport {
         URLSessionTransport(configuration: .init(session: session))
     }

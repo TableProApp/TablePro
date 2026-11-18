@@ -1,0 +1,393 @@
+use super::detect::{MaskSuggestion, Seen, ValueTally, is_text_like, suggest_from_tallies};
+use super::{MaskingStyle, mask_value};
+use crate::column::ResultColumn;
+use crate::export::{SnapshotFit, SnapshotRefusal, snapshot_row_count};
+use crate::value::Value;
+
+// What the share sheet does with one column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ShareChoice {
+    Keep,
+    Mask(MaskingStyle),
+    Remove,
+}
+
+impl ShareChoice {
+    pub fn style(self) -> Option<MaskingStyle> {
+        match self {
+            Self::Mask(style) => Some(style),
+            Self::Keep | Self::Remove => None,
+        }
+    }
+}
+
+// How a share sends a result's visible columns: which it keeps and how it masks each. The snapshot, the sheet's preview
+// and its summary all go through it, so the sheet shows what is sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharePlan {
+    kept: Vec<usize>,
+    styles: Vec<Option<MaskingStyle>>,
+    columns_cut: bool,
+}
+
+// What a share with a plan sends, for the sheet's note: the rows the snapshot keeps under the plan's row limit and its
+// body budget, or why it cannot go at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShareSummary {
+    pub rows_sent: usize,
+    pub columns_sent: usize,
+    pub columns_cut: bool,
+    pub refused: Option<SnapshotRefusal>,
+}
+
+impl SharePlan {
+    // `choices` is the sheet's for each visible column, Keep past its end. At most `max_columns` columns are kept.
+    pub fn new(visible: usize, choices: &[ShareChoice], max_columns: usize) -> Self {
+        let choice = |index: usize| choices.get(index).copied().unwrap_or(ShareChoice::Keep);
+        let mut kept: Vec<usize> = (0..visible)
+            .filter(|index| choice(*index) != ShareChoice::Remove)
+            .collect();
+        let columns_cut = kept.len() > max_columns;
+        kept.truncate(max_columns);
+        Self {
+            styles: (0..visible).map(|index| choice(index).style()).collect(),
+            kept,
+            columns_cut,
+        }
+    }
+
+    // Positions among the visible columns, in order.
+    pub fn kept(&self) -> &[usize] {
+        &self.kept
+    }
+
+    // More columns were chosen than `max_columns`, and the rest were left out.
+    pub fn columns_cut(&self) -> bool {
+        self.columns_cut
+    }
+
+    pub fn columns(&self, visible: &[ResultColumn]) -> Vec<ResultColumn> {
+        self.kept
+            .iter()
+            .filter_map(|index| visible.get(*index).cloned())
+            .collect()
+    }
+
+    // The style each kept column names, in the order of `kept`.
+    pub fn masked(&self) -> Vec<Option<MaskingStyle>> {
+        self.kept
+            .iter()
+            .map(|index| self.styles.get(*index).copied().flatten())
+            .collect()
+    }
+
+    // One row as sent. `read` gives the value held at a visible position and is asked only for kept columns.
+    pub fn row(&self, visible: &[ResultColumn], mut read: impl FnMut(usize) -> Value) -> Vec<Value> {
+        self.kept
+            .iter()
+            .map(|index| {
+                let value = read(*index);
+                match (self.styles.get(*index).copied().flatten(), visible.get(*index)) {
+                    (Some(style), Some(column)) => mask_value(&value, &column.column_type, style),
+                    _ => value,
+                }
+            })
+            .collect()
+    }
+
+    // `rows` held rows of the visible columns, read one value at a time by `read(row, column)`; at most `max_rows`.
+    pub fn summary(
+        &self,
+        visible: &[ResultColumn],
+        rows: usize,
+        mut read: impl FnMut(usize, usize) -> Value,
+        max_rows: usize,
+    ) -> ShareSummary {
+        let sent = snapshot_row_count(
+            &self.columns(visible),
+            (0..rows).map(|row| self.row(visible, |column| read(row, column))),
+            max_rows,
+        );
+        let (rows_sent, refused) = match sent {
+            Ok(rows) => (rows, None),
+            Err(refused) => (0, Some(refused)),
+        };
+        ShareSummary {
+            rows_sent,
+            columns_sent: self.kept.len(),
+            columns_cut: self.columns_cut,
+            refused,
+        }
+    }
+}
+
+// The first `max_rows` held rows whatever they weigh, and the rows a share keeping every column sends (core ADR 0028),
+// read a row at a time so no rows are held twice.
+pub fn share_suggestions<R: AsRef<[Value]>>(
+    visible: &[ResultColumn],
+    held: impl IntoIterator<Item = R>,
+    max_rows: usize,
+    max_columns: usize,
+) -> Vec<Option<MaskSuggestion>> {
+    // Keeping every column, a share sends the first `max_columns` as held.
+    let kept = &visible[..visible.len().min(max_columns)];
+    let text_like: Vec<bool> = visible.iter().map(|column| is_text_like(&column.column_type)).collect();
+    let mut first = vec![ValueTally::default(); visible.len()];
+    let mut sent = vec![ValueTally::default(); visible.len()];
+    // None from the first row that does not fit; `refused` when the share cannot go at all.
+    let mut fit = SnapshotFit::new(kept).ok();
+    let mut refused = fit.is_none();
+    for row in held.into_iter().take(max_rows) {
+        let row = row.as_ref();
+        let goes = match fit.as_mut().map(|fit| fit.take(&row[..kept.len().min(row.len())])) {
+            Some(Ok(true)) => true,
+            Some(Ok(false)) => {
+                fit = None;
+                false
+            }
+            Some(Err(_)) => {
+                fit = None;
+                refused = true;
+                false
+            }
+            None => false,
+        };
+        for (index, column) in visible.iter().enumerate() {
+            if !text_like[index] {
+                continue;
+            }
+            let seen = Seen::of(&column.column_type, row.get(index).unwrap_or(&Value::Null));
+            first[index].record(seen);
+            if goes {
+                sent[index].record(seen);
+            }
+        }
+    }
+    match refused {
+        true => suggest_from_tallies(visible, &[first]),
+        false => suggest_from_tallies(visible, &[first, sent]),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MaskingStyle::{Email, Full, LastFour};
+    use super::*;
+    use crate::column::ColumnType;
+
+    fn columns() -> Vec<ResultColumn> {
+        ["id", "email", "phone", "notes"]
+            .iter()
+            .map(|name| ResultColumn::new(*name, ColumnType::untyped_text("text")))
+            .collect()
+    }
+
+    fn text(value: &str) -> Value {
+        Value::Text(value.to_owned())
+    }
+
+    fn held() -> Vec<Value> {
+        ["1", "ann@example.com", "+1 555 0100", "vip"]
+            .iter()
+            .map(|value| text(value))
+            .collect()
+    }
+
+    #[test]
+    fn removed_columns_go_and_the_rest_take_their_choice() {
+        let choices = [
+            ShareChoice::Remove,
+            ShareChoice::Mask(Email),
+            ShareChoice::Mask(LastFour),
+        ];
+
+        let plan = SharePlan::new(4, &choices, 100);
+        let row = held();
+        let mut asked = Vec::new();
+        let sent = plan.row(&columns(), |index| {
+            asked.push(index);
+            row[index].clone()
+        });
+
+        assert_eq!(plan.kept(), [1, 2, 3]);
+        assert_eq!(asked, [1, 2, 3], "a removed column was read");
+        assert_eq!(sent, [text("a•••@example.com"), text("••••0100"), text("vip")]);
+        assert_eq!(plan.masked(), [Some(Email), Some(LastFour), None]);
+        let names: Vec<String> = plan.columns(&columns()).into_iter().map(|column| column.name).collect();
+        assert_eq!(names, ["email", "phone", "notes"]);
+    }
+
+    #[test]
+    fn a_null_stays_null_under_every_style() {
+        for style in MaskingStyle::ALL {
+            let plan = SharePlan::new(1, &[ShareChoice::Mask(style)], 100);
+
+            assert_eq!(plan.row(&columns(), |_| Value::Null), [Value::Null], "{style:?}");
+        }
+    }
+
+    #[test]
+    fn columns_past_the_cap_are_left_out_after_removals() {
+        let plan = SharePlan::new(4, &[ShareChoice::Remove], 2);
+
+        assert_eq!(plan.kept(), [1, 2]);
+        assert!(plan.columns_cut());
+        assert!(!SharePlan::new(3, &[ShareChoice::Remove], 2).columns_cut());
+    }
+
+    #[test]
+    fn a_summary_counts_the_rows_the_budget_keeps_or_says_why_none_go() {
+        let visible = [ResultColumn::new("note", ColumnType::untyped_text("text"))];
+        let plan = SharePlan::new(1, &[], 100);
+        let long = |chars: usize| Value::Text("x".repeat(chars));
+
+        let cut = plan.summary(&visible, 30, |_, _| long(200_000), 1_000);
+        let refused = plan.summary(&visible, 3, |_, _| long(300_000), 1_000);
+        let masked =
+            SharePlan::new(1, &[ShareChoice::Mask(Full)], 100).summary(&visible, 30, |_, _| long(200_000), 1_000);
+
+        assert_eq!(
+            cut,
+            ShareSummary {
+                rows_sent: 22,
+                columns_sent: 1,
+                columns_cut: false,
+                refused: None,
+            }
+        );
+        assert_eq!(refused.rows_sent, 0);
+        assert_eq!(
+            refused.refused,
+            Some(SnapshotRefusal::Cell {
+                column: "note".to_owned()
+            })
+        );
+        assert_eq!(masked.rows_sent, 30, "masked text was not what was weighed");
+    }
+
+    #[test]
+    fn removing_every_column_refuses_the_share() {
+        let removed = [
+            ShareChoice::Remove,
+            ShareChoice::Remove,
+            ShareChoice::Remove,
+            ShareChoice::Remove,
+        ];
+
+        let summary =
+            SharePlan::new(4, &removed, 100).summary(&columns(), 2, |_, column| held()[column].clone(), 1_000);
+
+        assert_eq!(
+            summary,
+            ShareSummary {
+                rows_sent: 0,
+                columns_sent: 0,
+                columns_cut: false,
+                refused: Some(SnapshotRefusal::NoColumns),
+            }
+        );
+    }
+
+    fn style_of(suggestion: Option<MaskSuggestion>) -> Option<MaskingStyle> {
+        suggestion.map(|suggestion| suggestion.style)
+    }
+
+    #[test]
+    fn a_first_row_too_large_to_send_still_has_its_values_read() {
+        let visible = [
+            ResultColumn::new("blob", ColumnType::untyped_text("text")),
+            ResultColumn::new("notes", ColumnType::untyped_text("text")),
+        ];
+        let rows = vec![
+            vec![Value::Text("x".repeat(300 * 1_024)), text("ann@example.com")],
+            vec![text("small"), text("bob@example.com")],
+        ];
+
+        let suggested = share_suggestions(&visible, &rows, 1_000, 100);
+
+        assert_eq!(
+            suggested.iter().map(|found| style_of(*found)).collect::<Vec<_>>(),
+            [None, Some(Email)]
+        );
+    }
+
+    #[test]
+    fn values_in_rows_that_go_only_once_a_wide_column_is_removed_are_read() {
+        let visible = [
+            ResultColumn::new("blob", ColumnType::untyped_text("text")),
+            ResultColumn::new("notes", ColumnType::untyped_text("text")),
+        ];
+        // 22 rows fit the budget with the blob kept; the e-mails are in the 8 after them.
+        let rows: Vec<Vec<Value>> = (0..30)
+            .map(|row| {
+                let notes = match row < 22 {
+                    true => Value::Null,
+                    false => text(&format!("person{row}@example.com")),
+                };
+                vec![Value::Text("x".repeat(200_000)), notes]
+            })
+            .collect();
+
+        let suggested = share_suggestions(&visible, &rows, 1_000, 100);
+
+        assert_eq!(style_of(suggested[1]), Some(Email));
+    }
+
+    #[test]
+    fn detection_reads_one_held_row_at_a_time() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        // A row that counts the rows alive at once, and the most there were.
+        struct Counted(Vec<Value>, Rc<Cell<(usize, usize)>>);
+        impl AsRef<[Value]> for Counted {
+            fn as_ref(&self) -> &[Value] {
+                &self.0
+            }
+        }
+        impl Drop for Counted {
+            fn drop(&mut self) {
+                let (alive, most) = self.1.get();
+                self.1.set((alive - 1, most));
+            }
+        }
+        let visible = [ResultColumn::new("contact", ColumnType::untyped_text("text"))];
+        let alive = Rc::new(Cell::new((0, 0)));
+        let rows = (0..50).map(|row| {
+            let (now, most) = alive.get();
+            alive.set((now + 1, most.max(now + 1)));
+            Counted(vec![text(&format!("p{row}@example.com"))], alive.clone())
+        });
+
+        let suggested = share_suggestions(&visible, rows, 1_000, 100);
+
+        assert_eq!(style_of(suggested[0]), Some(Email));
+        assert_eq!(alive.get(), (0, 1), "rows were held for detection");
+    }
+
+    #[test]
+    fn each_window_keeps_its_own_threshold() {
+        let visible = [
+            ResultColumn::new("blob", ColumnType::untyped_text("text")),
+            ResultColumn::new("contact", ColumnType::untyped_text("text")),
+        ];
+        // With the wide blob, the budget sends the 22 rows of e-mails; over all 60 they are fewer than half.
+        let rows = |blob: &str| -> Vec<Vec<Value>> {
+            (0..60)
+                .map(|row| {
+                    let contact = match row < 22 {
+                        true => format!("p{row}@example.com"),
+                        false => "word".to_owned(),
+                    };
+                    vec![text(blob), Value::Text(contact)]
+                })
+                .collect()
+        };
+
+        let wide = share_suggestions(&visible, rows(&"x".repeat(200_000)), 1_000, 100);
+        let narrow = share_suggestions(&visible, rows("x"), 1_000, 100);
+
+        assert_eq!(style_of(wide[1]), Some(Email));
+        assert_eq!(style_of(narrow[1]), None);
+    }
+}

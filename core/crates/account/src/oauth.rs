@@ -118,7 +118,7 @@ impl OAuth {
             .form(&form)
             .send()
             .await
-            .map_err(|error| AccountError::unreachable(&error))?;
+            .map_err(AccountError::unreachable)?;
         match response.status().is_success() {
             true => Ok(()),
             false => Err(AccountError::Refused {
@@ -182,7 +182,7 @@ fn grant_error(
             code: answer.error().to_string(),
             detail: answer.error_description().cloned().unwrap_or_default(),
         },
-        RequestTokenError::Request(HttpClientError::Reqwest(error)) => AccountError::unreachable(&*error),
+        RequestTokenError::Request(HttpClientError::Reqwest(error)) => AccountError::unreachable(*error),
         other => AccountError::Protocol(other.to_string()),
     }
 }

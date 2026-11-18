@@ -852,6 +852,18 @@ impl WorkspaceShell {
             FavoriteAction::Rename(favorite) => self.ask_favorite_name(favorite),
             FavoriteAction::Delete(favorite) => self.ask_favorite_deletion(favorite),
             FavoriteAction::MoveTo(favorite) => self.ask_folder_for(favorite),
+            FavoriteAction::Share(favorite) => {
+                if let Some(sender) = self.front().and_then(|front| front.sender()) {
+                    sender.deliver(super::WorkspaceInput::Share {
+                        tab: None,
+                        subject: Box::new(crate::services::share_subject::ShareSubject::query(
+                            favorite.name,
+                            favorite.query,
+                            None,
+                        )),
+                    });
+                }
+            }
             FavoriteAction::NewFolder(parent) => self.ask_folder_name(parent, None),
             FavoriteAction::RenameFolder(folder) => self.ask_folder_name(None, Some(folder)),
             FavoriteAction::DeleteFolder(folder) => self.ask_folder_deletion(folder),

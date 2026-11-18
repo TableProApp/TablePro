@@ -5,6 +5,7 @@ import TableProConnectionLibrary
 import TableProDatabase
 import TableProLogRedaction
 import TableProModels
+import TableProSyncTransport
 
 @MainActor @Observable
 final class AppState {
@@ -218,6 +219,18 @@ final class AppState {
         loadPersistedData()
         guard loadStatus == .ready else { return }
         publishLibrary()
+    }
+
+    // A background wake can come while the device is locked and the library unreadable, so nothing runs until it loads.
+    func syncFromBackground(_ trigger: SyncTrigger) async -> Bool {
+        guard onboarding.isCloudSyncEnabled else { return false }
+        retryLoadIfFailed()
+        guard loadStatus == .ready else {
+            Self.logger.warning("Background sync skipped: persistence load not ready (likely device locked)")
+            return false
+        }
+        await syncCoordinator.sync(trigger)
+        return true
     }
 
     private func refuseWriteIfNotReady() -> Bool {

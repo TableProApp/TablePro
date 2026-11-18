@@ -1,6 +1,6 @@
 # 0042: Preferences > Account lists only the features TablePro for Linux has
 
-- **Status**: Accepted
+- **Status**: Accepted; the empty Features group amended by [0046](0046-share-links-and-the-tablepro-scheme.md)
 - **Date**: 2026-11-07
 
 ## Context

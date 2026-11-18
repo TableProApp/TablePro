@@ -160,6 +160,39 @@ fn texts(values: &[&str]) -> Vec<Option<String>> {
 }
 
 #[tokio::test]
+async fn a_page_s_view_sql_selects_every_page_with_its_filter_written_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session) = fixture(dir.path(), PEOPLE).await;
+    let filter = all(vec![
+        rule("age", FilterOpTag::Gt, Some("40")),
+        rule("name", FilterOpTag::Contains, Some("a")),
+    ]);
+    let by_name = Some(ColumnSort {
+        column: 1,
+        ascending: false,
+    });
+
+    let page = read(&session, by_name, filter, 1, 1).await.unwrap();
+    let names = column(&page, 1).await;
+    let sql = page.view_sql().unwrap();
+    let editor = session.open_editor(None).await.unwrap();
+    let run = editor.run(sql.clone(), RunSettings::default(), Box::new(Quiet));
+    let outcome = run.outcome().await.unwrap();
+    let set = run.result_set(0).unwrap();
+    let every: Vec<Option<String>> = (0..set.row_count()).map(|row| set.cell_text(row, 1).unwrap()).collect();
+    editor.close().await.unwrap();
+    session.close().await.unwrap();
+
+    assert_eq!(names, texts(&["Barbara"]));
+    assert_eq!(
+        sql,
+        r#"SELECT "id", "name", "age" FROM "people" WHERE "age" > 40 AND "name" LIKE '%a%' ESCAPE '!' ORDER BY "people"."name" DESC, "people"."id" ASC"#
+    );
+    assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
+    assert_eq!(every, texts(&["Grace", "Barbara"]));
+}
+
+#[tokio::test]
 async fn a_filtered_page_reads_only_the_matching_rows_and_counts_them() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, session) = fixture(dir.path(), PEOPLE).await;

@@ -88,6 +88,7 @@ use super::data_grid::{DataGrid, GridSorting, KeysHandle};
 use super::filter_strip::FilterStrip;
 use super::tab_load::{ContentLoad, FirstLoad, start_first_load};
 use crate::runtime::{FailedRequests, RequestSequencer};
+use crate::services::share_subject::ShareSubject;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::export::ExportOffer;
 
@@ -383,6 +384,16 @@ impl BrowseTab {
         )
     }
 
+    pub(crate) fn connect_share_requested<F: Fn(&Self, ShareSubject) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "share-requested",
+            false,
+            glib::closure_local!(move |tab: &Self, payload: glib::BoxedAnyObject| {
+                f(tab, payload.borrow::<ShareSubject>().clone());
+            }),
+        )
+    }
+
     /// The grid asked to open the rows a foreign key leads to.
     pub(crate) fn connect_follow_reference<F: Fn(&Self, RowReference) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
@@ -588,6 +599,9 @@ impl BrowseTab {
             BrowseTabOutput::Export(offer) => {
                 self.emit_by_name::<()>("export-results", &[&glib::BoxedAnyObject::new(*offer)]);
             }
+            BrowseTabOutput::Share(subject) => {
+                self.emit_by_name::<()>("share-requested", &[&glib::BoxedAnyObject::new(*subject)]);
+            }
             BrowseTabOutput::ShowAlert { title, body } => self.emit_by_name::<()>("alert", &[&title, &body]),
             BrowseTabOutput::ShowToast(text) => self.emit_by_name::<()>("toast", &[&text]),
             BrowseTabOutput::DirtyChanged(dirty) => self.emit_by_name::<()>("dirty-changed", &[&dirty]),
@@ -704,6 +718,7 @@ pub(crate) enum BrowseTabOutput {
     /// sort, the page size.
     StateChanged,
     Export(Box<ExportOffer>),
+    Share(Box<ShareSubject>),
     /// What a toast is too short to say, as why a save failed.
     ShowAlert {
         title: String,

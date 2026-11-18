@@ -1,6 +1,7 @@
 use tablepro_account::{AccountError, EntitlementError, OfflineFileError};
 
 use crate::i18n::{gettext, gettext_f, ngettext_f};
+use crate::services::account_service::AccountStart;
 
 // The OAuth error a person gets by pressing Cancel on the confirmation screen.
 const ACCESS_DENIED: &str = "access_denied";
@@ -37,7 +38,9 @@ pub fn account_error_message(error: &AccountError) -> String {
         AccountError::OtherAccount => gettext(
             "This file was made for another account. Make one with the account signed in here, or sign out first.",
         ),
-        AccountError::Refused { status, code, .. } => refused_message(*status, code),
+        AccountError::Refused { status, code, .. } => {
+            share_refusal(error.code()).unwrap_or_else(|| refused_message(*status, code))
+        }
         AccountError::RateLimited {
             retry_after: Some(wait),
         } => {
@@ -62,6 +65,75 @@ pub fn account_error_message(error: &AccountError) -> String {
         ),
         AccountError::Protocol(_) => gettext("TablePro could not read the account service’s answer. Try again later."),
     }
+}
+
+pub fn account_unavailable_message(start: &AccountStart) -> Option<String> {
+    match start {
+        AccountStart::Starting | AccountStart::Ready(_) => None,
+        AccountStart::NoMachineId(detail) => Some(gettext_f(
+            "TablePro accounts need this computer’s machine ID, which could not be read: {detail}",
+            &[("detail", detail)],
+        )),
+        AccountStart::Misconfigured(detail) => Some(gettext_f(
+            "This development build’s account settings are not valid: {detail}",
+            &[("detail", detail)],
+        )),
+        AccountStart::Failed(error) => Some(account_error_message(error)),
+    }
+}
+
+// The share sheet's own words for a failed create, the share plan's section 6.
+pub fn share_error_message(error: &AccountError) -> String {
+    match (error, error.code()) {
+        (AccountError::SignedOut, _) => gettext("Sign in to your TablePro account to share links."),
+        (AccountError::Unreachable(_), _) => offline_message(),
+        (AccountError::RateLimited { .. }, _) => gettext("Too many links just now. Try again in a moment."),
+        (
+            _,
+            "account.email_unverified"
+            | "account.pro_required"
+            | "account.sharing_disabled"
+            | "account.team_sharing_disabled"
+            | "account.seat_required"
+            | "account.share_limit_reached"
+            | "account.snapshot_too_large",
+        ) => share_refusal(error.code()).unwrap_or_default(),
+        _ => gettext("The link couldn’t be created. Try again."),
+    }
+}
+
+pub fn shared_link_message(error: &AccountError) -> String {
+    match (error, error.code()) {
+        (AccountError::Unreachable(_), _) => offline_message(),
+        (_, "account.not_found") => gettext("This shared link is no longer available."),
+        _ => account_error_message(error),
+    }
+}
+
+fn offline_message() -> String {
+    gettext("You appear to be offline. Try again once you’re connected.")
+}
+
+fn share_refusal(code: &str) -> Option<String> {
+    Some(match code {
+        "account.email_unverified" => gettext("Verify your email address to share links."),
+        "account.pro_required" => gettext("This option needs TablePro Pro."),
+        "account.sharing_disabled" => gettext("Sharing is turned off for this account."),
+        "account.team_sharing_disabled" => gettext("Public links are turned off for this team."),
+        "account.seat_required" => gettext("A team link needs a seat on the team."),
+        "account.share_limit_reached" => {
+            gettext("You have reached your plan’s limit of live links. Revoke one to share another.")
+        }
+        "account.share_revoked" => gettext("This link was revoked."),
+        "account.share_removed" => gettext("TablePro removed this link."),
+        "account.validation_failed" => {
+            gettext("The account service did not accept what was sent. Check the fields and try again.")
+        }
+        "account.snapshot_too_large" => gettext("This result is too large to share."),
+        "account.share_password_required" => gettext("This link is password protected."),
+        "account.share_password_wrong" => gettext("That password is not correct."),
+        _ => return None,
+    })
 }
 
 pub fn offline_file_message(error: &OfflineFileError) -> String {
@@ -157,6 +229,17 @@ mod tests {
             refused(400, "revoke"),
             refused(503, "unavailable"),
             refused(422, "validation_failed"),
+            refused(403, "email_unverified"),
+            refused(403, "pro_required"),
+            refused(403, "sharing_disabled"),
+            refused(403, "team_sharing_disabled"),
+            refused(403, "seat_required"),
+            refused(409, "share_limit_reached"),
+            refused(409, "share_revoked"),
+            refused(409, "share_removed"),
+            refused(413, "snapshot_too_large"),
+            refused(401, "share_password_required"),
+            refused(401, "share_password_wrong"),
             AccountError::Entitlement(EntitlementError::Machine),
             AccountError::Entitlement(EntitlementError::Expired(Utc::now())),
             AccountError::Entitlement(EntitlementError::NotYetValid(Utc::now())),
@@ -235,5 +318,78 @@ mod tests {
             limited(None),
             "The account service is busy. Try again in a few minutes."
         );
+    }
+
+    #[test]
+    fn a_failed_share_reads_in_the_share_plans_words() {
+        let cases = [
+            (
+                AccountError::SignedOut,
+                "Sign in to your TablePro account to share links.",
+            ),
+            (
+                refused(403, "email_unverified"),
+                "Verify your email address to share links.",
+            ),
+            (refused(403, "pro_required"), "This option needs TablePro Pro."),
+            (
+                refused(403, "sharing_disabled"),
+                "Sharing is turned off for this account.",
+            ),
+            (
+                refused(403, "team_sharing_disabled"),
+                "Public links are turned off for this team.",
+            ),
+            (refused(422, "snapshot_too_large"), "This result is too large to share."),
+            (
+                AccountError::RateLimited { retry_after: None },
+                "Too many links just now. Try again in a moment.",
+            ),
+            (
+                AccountError::Unreachable("dns".to_owned()),
+                "You appear to be offline. Try again once you’re connected.",
+            ),
+            (
+                refused(422, "validation_failed"),
+                "The link couldn’t be created. Try again.",
+            ),
+            (refused(500, "internal"), "The link couldn’t be created. Try again."),
+            (
+                AccountError::Protocol("secret detail".to_owned()),
+                "The link couldn’t be created. Try again.",
+            ),
+        ];
+
+        for (error, expected) in cases {
+            assert_eq!(share_error_message(&error), expected, "{error:?}");
+        }
+    }
+
+    #[test]
+    fn a_shared_link_that_will_not_open_says_why() {
+        assert_eq!(
+            shared_link_message(&refused(404, "not_found")),
+            "This shared link is no longer available."
+        );
+        assert_eq!(
+            shared_link_message(&refused(401, "share_password_wrong")),
+            "That password is not correct."
+        );
+        assert_eq!(
+            shared_link_message(&refused(401, "share_password_required")),
+            "This link is password protected."
+        );
+        assert_eq!(
+            shared_link_message(&AccountError::Unreachable("dns".to_owned())),
+            "You appear to be offline. Try again once you’re connected."
+        );
+    }
+
+    #[test]
+    fn an_account_that_did_not_start_says_why_and_one_that_did_says_nothing() {
+        let missing = account_unavailable_message(&AccountStart::NoMachineId("no /etc/machine-id".to_owned()));
+
+        assert!(missing.is_some_and(|message| message.contains("/etc/machine-id")));
+        assert_eq!(account_unavailable_message(&AccountStart::Starting), None);
     }
 }

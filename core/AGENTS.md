@@ -9,7 +9,7 @@ This is the guide for work under `core/`. The root `AGENTS.md` holds the rules e
 1. **Tests define behavior**, as in the root `AGENTS.md`.
 2. **No GUI, no platform service.** A core crate depends on no GUI toolkit and on no platform crate. What a platform does its own way comes in as a value or a trait the app passes in, or sits behind a `cfg` split; `ARCHITECTURE.md`, Platforms, lists both.
 3. **Every target builds.** A change keeps the crates building for Linux, Windows (x64 and Arm64) and macOS. `std::os::unix`, `rustix`, `/proc` and Unix sockets go behind `cfg(unix)` or `cfg(target_os = "linux")`, with the other platforms' answer beside them.
-4. **One-directional crates.** `ARCHITECTURE.md` has the graph. Drivers are linked in at compile time until the driver ABI lands (`docs/decisions/0004-driver-plugin-abi.md`).
+4. **One-directional crates.** `ARCHITECTURE.md` has the graph. Linux and Windows link their drivers at compile time for good (`docs/decisions/0025-linux-and-windows-link-their-drivers.md`); the driver ABI in `docs/decisions/0004-driver-plugin-abi.md` is for macOS.
 5. **Errors carry a code, not a sentence.** Each boundary error has a stable `code()` and typed fields; an app words it. No translation catalog lives here.
 6. **Decisions are recorded.** One that holds for every platform goes in `docs/decisions/` (`docs/decisions/README.md`).
 

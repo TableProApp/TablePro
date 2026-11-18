@@ -30,6 +30,15 @@ struct VisibleColumnProjection {
         return indices.map { all.indices.contains($0) ? all[$0] : .null }
     }
 
+    func masks(_ all: ColumnMasks) -> ColumnMasks {
+        guard let indices else { return all }
+        var styles: [Int: MaskingStyle] = [:]
+        for (position, index) in indices.enumerated() {
+            styles[position] = all.styles[index]
+        }
+        return ColumnMasks(styles: styles)
+    }
+
     /// The positions, in the projected order, of the columns a row has no field for.
     func absentColumns(_ all: Set<Int>) -> Set<Int> {
         positions(of: all)

@@ -140,8 +140,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, SessionDatabaseReporting, @
     }
 
     static func runsReadOnlyTransactions(for databaseType: DatabaseType, banner: String?) -> Bool {
-        let flavor = serverFlavor(for: databaseType, banner: banner)
-        return flavor.enforcesReadOnlyTransactions && MySQLServerVersion.hasReadOnlyTransactions(banner: banner, flavor: flavor)
+        MySQLReadOnlyTransaction.isAvailable(banner: banner, flavor: serverFlavor(for: databaseType, banner: banner))
     }
 
     func connect() async throws {

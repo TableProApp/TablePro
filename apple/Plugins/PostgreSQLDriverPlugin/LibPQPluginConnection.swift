@@ -809,7 +809,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     func executeReadOnlyStatement(
         _ statement: String,
         parameters: [PluginCellValue]?,
-        reason: LibPQReadOnlyTransaction.Reason
+        scope: LibPQReadOnlyTransaction.Scope
     ) async throws -> LibPQPluginQueryResult {
         let statementToRun = String(statement)
         let params = parameters
@@ -819,7 +819,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             if let ended = sessionEndedBeforeSending(conn) { throw ended }
             return try LibPQReadOnlyTransaction.run(
                 state: transactionStateOnQueue().sessionTransactionState,
-                reason: reason,
+                scope: scope,
                 send: { try runReadOnlyControl($0, on: conn) }
             ) {
                 guard let params else { return try executeQuerySync(statementToRun, singleStatement: true) }
@@ -1626,7 +1626,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // only once the whole result has been read, which is no abort at all.
     func streamQuery(
         _ query: String,
-        readOnly: LibPQReadOnlyTransaction.Reason? = nil
+        readOnly: LibPQReadOnlyTransaction.Scope? = nil
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
 
@@ -1672,7 +1672,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         // The extended protocol takes one statement, so no `COMMIT; INSERT` can follow the read.
                         try LibPQReadOnlyTransaction.run(
                             state: transactionStateOnQueue().sessionTransactionState,
-                            reason: readOnly,
+                            scope: readOnly,
                             send: { try runReadOnlyControl($0, on: conn) }
                         ) {
                             try streamResults(stream, singleStatement: true)
@@ -2014,7 +2014,7 @@ extension LibPQPluginConnection {
         _ statement: String,
         parameters: [PluginCellValue]?,
         bound: LibPQReadBound,
-        reason: LibPQReadOnlyTransaction.Reason
+        scope: LibPQReadOnlyTransaction.Scope
     ) async throws -> LibPQPluginQueryResult {
         let statementToRun = String(statement)
         let params = parameters ?? []
@@ -2024,7 +2024,7 @@ extension LibPQPluginConnection {
             if let ended = sessionEndedBeforeSending(conn) { throw ended }
             let read = try LibPQReadOnlyTransaction.run(
                 state: transactionStateOnQueue().sessionTransactionState,
-                reason: reason,
+                scope: scope,
                 send: { try runReadOnlyControl($0, on: conn) }
             ) {
                 if suppressServerSideCancel,

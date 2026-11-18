@@ -83,6 +83,8 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
 
     internal func dismissWelcomeIfMainWindowVisible() {
         guard NSApp.windows.contains(where: { AppLaunchCoordinator.isMainWindow($0) && $0.isVisible }) else { return }
+        // Welcome is up to pick a connection for a shared link that had none to open in.
+        guard WelcomeRouter.shared.pendingSharedQueries.isEmpty else { return }
         WindowOpener.shared.closeWelcome()
     }
 

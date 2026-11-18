@@ -10,6 +10,7 @@ extension MySQLReadOnlyTransaction {
     // The session state is read on the statement's own queue, so nothing queued behind it can open a transaction first.
     struct Scope: Sendable {
         let reason: Reason
+        let runsInOpenTransaction: Bool
         let sessionState: @Sendable (Bool) -> PluginSessionTransactionState
     }
 
@@ -21,10 +22,12 @@ extension MySQLReadOnlyTransaction {
         MariaDBPluginError(code: 0, message: notIdleMessage(.safeMode), sqlState: nil)
     }
 
-    static func reason(for context: PluginStatementContext, flavor: MySQLServerFlavor) -> Reason? {
+    // An external read stays wrapped on a server too old for the mode, where the begin fails and nothing runs: no host
+    // check stands behind it at a writable level. Safe Mode's function check stands behind Read-Only.
+    static func reason(for context: PluginStatementContext, flavor: MySQLServerFlavor, banner: String? = nil) -> Reason? {
         guard flavor.enforcesReadOnlyTransactions else { return nil }
         if context.readOnly, context.origin == .external { return .externalClients }
-        if context.enforcesReadOnly { return .safeMode }
+        if context.enforcesReadOnly, isAvailable(banner: banner, flavor: flavor) { return .safeMode }
         return nil
     }
 
@@ -32,14 +35,20 @@ extension MySQLReadOnlyTransaction {
         reason(for: context, flavor: flavor) != nil
     }
 
-    // `START TRANSACTION` would commit the user's open transaction and release their `LOCK TABLES`.
+    // `START TRANSACTION` would commit the user's open transaction and release their `LOCK TABLES`, so a session that
+    // holds either runs a statement the host checked for unlisted function calls as it is. A `SET autocommit = 0`
+    // session holds a transaction from its first statement on.
     static func run<Result>(
         state: PluginSessionTransactionState,
         reason: Reason,
+        runsInOpenTransaction: Bool = false,
         send: (String) throws -> Void,
         statement: () throws -> Result
     ) throws -> Result {
-        guard state == .idle else { throw notIdle(reason) }
+        guard state == .idle else {
+            guard runsInOpenTransaction else { throw notIdle(reason) }
+            return try statement()
+        }
         do {
             try send(begin)
         } catch {

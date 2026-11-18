@@ -1,5 +1,6 @@
 // Foreign code is called only from a runtime thread, never under a lock (core/ARCHITECTURE.md, Bindings).
 
+mod account;
 mod cancel_token;
 mod catalog;
 mod cloud;
@@ -19,6 +20,7 @@ mod history;
 mod host;
 mod host_key;
 mod library;
+mod masking;
 mod prompter;
 mod results;
 mod row_edits;
@@ -31,6 +33,13 @@ mod structure;
 mod syntax;
 pub mod window_abi;
 
+pub use account::{
+    AccountConfig, AccountListener, AccountService, AccountStateTag, AccountStatusInfo, CreatedShareInfo, DeviceInfo,
+    EntitlementProblemTag, FeatureAccessTag, HostBrowser, HostBrowserError, LicenseInfo, MembershipInfo, ProfileInfo,
+    SecretHitInfo, SecretHitKindTag, ShareExpiryTag, ShareInfo, ShareKindTag, ShareLimitsInfo, SharePageInfo,
+    ShareRequestArg, ShareTeamInfo, SharedLinkInfo, TeamInfo, scan_columns_for_secrets, scan_sql_for_secrets,
+    share_token_from_link,
+};
 pub use cancel_token::CancelToken;
 pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, SchemaEntry, TableName};
 pub use cloud::{CloudConnectionFields, CloudGroupFields, CloudLibraryPull, CloudLibraryRecords};
@@ -51,6 +60,10 @@ pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, Secret
 pub use library::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, GroupRecord, ImportSummary, LibrarySnapshot, SafeModeTag,
     SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings,
+};
+pub use masking::{
+    MaskReason, MaskStyleTag, MaskSuggestionInfo, PersonalDataHitInfo, SensitiveKindTag, ShareColumnChoice,
+    ShareColumnMasking, ShareRefusal, ShareSummary,
 };
 pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag, PromptReasonTag, PromptRequest};
 pub use results::{ResultColumnInfo, ResultSet, ValueKind};

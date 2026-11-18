@@ -21,6 +21,7 @@ pub mod storage;
 pub use services::{change_tracker, tab_tracker_handle, tracker_edit};
 // Public for the desktop entry's test, which claims each of them.
 pub use services::connection_link::LINK_SCHEMES;
+pub use services::share_link::SHARE_LINK_SCHEME;
 #[cfg(test)]
 mod test_support;
 mod ui;

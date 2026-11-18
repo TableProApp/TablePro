@@ -103,8 +103,11 @@ internal struct ObjectCopyRowCopier: Sendable {
         var filler = SQLWriteBatchFiller<[PluginCellValue]>(budget: budget)
         let cut = OSAllocatedUnfairLock<Int?>(initialState: nil)
         // The copy's SELECT states no engine ceiling, so only a limit the driver declares applies, as for its own export query.
-        let rows = readContext.map { sourceDriver.streamRows(query: step.sourceQuery, context: $0) }
-            ?? sourceDriver.streamRows(query: step.sourceQuery)
+        let rows = readContext.map { context in
+            var context = context
+            context.readFunctionCalls(in: step.sourceQuery, databaseType: sourceDatabaseType)
+            return sourceDriver.streamRows(query: step.sourceQuery, context: context)
+        } ?? sourceDriver.streamRows(query: step.sourceQuery)
         var stream = ExportRowCut<PluginStreamElement>.reporting(rows, engineCeiling: nil) { limit in
             cut.withLock { $0 = limit }
         }.makeAsyncIterator()

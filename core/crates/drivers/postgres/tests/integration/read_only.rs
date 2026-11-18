@@ -60,11 +60,68 @@ async fn editor_set_default_transaction_read_only_off_does_not_escape() {
     let reader = connect(&fixture, true).await;
     let session = session(reader.as_ref()).await;
 
-    run_ok(session.as_ref(), "SET default_transaction_read_only = off").await;
+    let (set, _) = run(session.as_ref(), "SET default_transaction_read_only = off").await;
+    run_ok(
+        session.as_ref(),
+        "SELECT set_config('default_transaction_read_only', 'off', false)",
+    )
+    .await;
     let (summary, _) = run(session.as_ref(), "DELETE FROM t").await;
 
+    assert_eq!(
+        set.end,
+        RunEnd::Failed(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
+    );
     assert!(refused_by_server(&summary.end), "{:?}", summary.end);
     assert_eq!(scalar(owner.as_ref(), "SELECT count(*) FROM t").await, Value::Int(1));
+}
+
+// Before its first query the user's transaction can still be made writable, which the driver's own SET TRANSACTION
+// READ ONLY after BEGIN does not stop.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn editor_cannot_turn_its_transaction_read_write() {
+    let fixture = start().await;
+    let owner = connect(&fixture, false).await;
+    setup(owner.as_ref(), &["CREATE TABLE t (id int)", "INSERT INTO t VALUES (1)"]).await;
+    let reader = connect(&fixture, true).await;
+    let session = session(reader.as_ref()).await;
+
+    for (begin, turn) in [
+        ("BEGIN", "SET TRANSACTION READ WRITE"),
+        ("BEGIN", "SET LOCAL transaction_read_only = off"),
+        ("BEGIN", "set transaction_read_only to 'false'"),
+        (
+            "START TRANSACTION",
+            "SET TRANSACTION ISOLATION LEVEL READ COMMITTED, READ WRITE",
+        ),
+        ("BEGIN", "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE"),
+        ("SELECT 1", "BEGIN READ WRITE"),
+        ("SELECT 1", "START TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ WRITE"),
+        ("SELECT 1", "SET default_transaction_read_only = off"),
+    ] {
+        run_ok(session.as_ref(), begin).await;
+        let (turned, _) = run(session.as_ref(), turn).await;
+        run(session.as_ref(), "DELETE FROM t").await;
+        run(session.as_ref(), "COMMIT").await;
+
+        assert_eq!(
+            turned.end,
+            RunEnd::Failed(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard)),
+            "{turn}"
+        );
+        assert_eq!(
+            scalar(owner.as_ref(), "SELECT count(*) FROM t").await,
+            Value::Int(1),
+            "{turn}"
+        );
+    }
+    let (isolation, _) = run(
+        session.as_ref(),
+        "BEGIN; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE; COMMIT",
+    )
+    .await;
+    assert_eq!(isolation.end, RunEnd::Completed);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

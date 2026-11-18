@@ -56,6 +56,19 @@ public sealed class TableProCore : IDisposable
         return new QueryHistory(store);
     }
 
+    // Keeps the entitlement fresh until disposed; account.no_machine_id or ffi.account_config when it cannot start.
+    public async Task<TableProAccount> OpenAccountAsync(AccountConfiguration configuration, IAccountBrowser browser)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(browser);
+        var native = Mapping.Account(configuration);
+        var wake = new AccountWake();
+        var service = await CoreCall.RunAsync(
+                () => _core.OpenAccount(native, new AccountBrowserAdapter(browser), wake))
+            .ConfigureAwait(false);
+        return new TableProAccount(service, wake);
+    }
+
     public async Task<DatabaseSession> OpenFileAsync(
         FileOpenOptions options,
         CancellationToken cancellationToken = default)

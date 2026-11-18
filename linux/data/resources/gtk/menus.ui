@@ -37,6 +37,10 @@
     </section>
     <section>
       <item>
+        <attribute name="label" translatable="yes">Manage Shared _Links…</attribute>
+        <attribute name="action">app.manage-shared-links</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">_Preferences</attribute>
         <attribute name="action">app.preferences</attribute>
       </item>

@@ -12,6 +12,8 @@ actor RecordingSyncTransport: IOSSyncTransport {
     private(set) var pushedRecords: [CKRecord] = []
     private(set) var pushedDeletions: [CKRecord.ID] = []
     private(set) var pullCount = 0
+    private(set) var subscriptionSaves = 0
+    private var subscriptionError: (any Error)?
     private var beforeAccountRead: (@Sendable () async -> Void)?
     private var beforePull: (@Sendable () async -> Void)?
 
@@ -50,6 +52,17 @@ actor RecordingSyncTransport: IOSSyncTransport {
     }
 
     func ensureZoneExists() async throws {}
+
+    func failSubscriptionSaves(with error: (any Error)?) {
+        subscriptionError = error
+    }
+
+    func saveSubscription() async throws {
+        subscriptionSaves += 1
+        if let subscriptionError {
+            throw subscriptionError
+        }
+    }
 
     func pull(since token: CKServerChangeToken?) async throws -> PullResult {
         pullCount += 1

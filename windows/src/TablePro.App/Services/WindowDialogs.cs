@@ -8,8 +8,45 @@ namespace TablePro.App.Services;
 internal static class WindowDialogs
 {
     private static readonly HashSet<XamlRoot> OpenRoots = [];
+    private static TaskCompletionSource? _free;
 
     public static bool IsOpen(XamlRoot? root) => root is not null && OpenRoots.Contains(root);
+
+    // A dialog nobody asked for just then, as a link from another launch, waits for the window and any open dialog.
+    public static async Task<ContentDialogResult> ShowWhenFreeAsync(ContentDialog dialog, FrameworkElement owner)
+    {
+        ArgumentNullException.ThrowIfNull(dialog);
+        ArgumentNullException.ThrowIfNull(owner);
+        while (true)
+        {
+            if (owner.XamlRoot is null || !owner.IsLoaded)
+            {
+                await LoadedAsync(owner).ConfigureAwait(true);
+            }
+            else if (OpenRoots.Count > 0)
+            {
+                await (_free ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task
+                    .ConfigureAwait(true);
+            }
+            else
+            {
+                return await ShowAsync(dialog, owner).ConfigureAwait(true);
+            }
+        }
+    }
+
+    private static Task LoadedAsync(FrameworkElement owner)
+    {
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnLoaded(object sender, RoutedEventArgs args)
+        {
+            owner.Loaded -= OnLoaded;
+            loaded.TrySetResult();
+        }
+
+        owner.Loaded += OnLoaded;
+        return loaded.Task;
+    }
 
     public static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, FrameworkElement owner)
     {
@@ -36,6 +73,11 @@ internal static class WindowDialogs
         {
             owner.Unloaded -= OnUnloaded;
             OpenRoots.Remove(root);
+            if (OpenRoots.Count == 0 && _free is { } free)
+            {
+                _free = null;
+                free.TrySetResult();
+            }
         }
     }
 }

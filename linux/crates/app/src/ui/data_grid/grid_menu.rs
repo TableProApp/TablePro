@@ -184,6 +184,9 @@ fn cell_menu(grid: &DataGrid, references: &gio::Menu, expressions: &gio::Menu) -
         export.set_attribute_value("accel", Some(&key.to_variant()));
     }
     let rows = section([export]);
+    if config.as_ref().is_some_and(|config| config.share) {
+        rows.append_item(&item(&gettext("_Share Result…"), "grid.share"));
+    }
     if editable {
         rows.append_item(&item(&gettext("_Insert Row"), "grid.insert-row"));
         rows.append_item(&item(&gettext("D_uplicate"), "grid.duplicate-rows"));

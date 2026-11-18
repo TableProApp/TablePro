@@ -150,13 +150,22 @@ pub(crate) fn copy_text(widget: &impl IsA<gtk::Widget>, text: String, report: im
 /// Put a payload rendered already on `widget`'s clipboard, and tell
 /// `report`.
 pub(crate) fn copy_payload(widget: &impl IsA<gtk::Widget>, payload: ClipboardPayload, report: impl Fn(&str)) {
-    if holds_nul(&payload.text) {
-        return report(&ClipboardError::ContainsNul.message());
-    }
-    match write(&widget.as_ref().clipboard(), payload) {
+    match put_payload(widget, payload) {
         Ok(()) => report(&gettext("Copied to clipboard")),
         Err(error) => report(&error.message()),
     }
+}
+
+// For a caller that words the outcome itself.
+pub(crate) fn put_text(widget: &impl IsA<gtk::Widget>, text: String) -> Result<(), ClipboardError> {
+    put_payload(widget, ClipboardPayload::plain(text))
+}
+
+fn put_payload(widget: &impl IsA<gtk::Widget>, payload: ClipboardPayload) -> Result<(), ClipboardError> {
+    if holds_nul(&payload.text) {
+        return Err(ClipboardError::ContainsNul);
+    }
+    write(&widget.as_ref().clipboard(), payload)
 }
 
 fn copy_error_text(error: &CopyError) -> String {

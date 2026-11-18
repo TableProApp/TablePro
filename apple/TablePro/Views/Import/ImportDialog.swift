@@ -437,7 +437,7 @@ struct ImportDialog: View {
             }
 
             let maxPreviewSize = 5 * 1_024 * 1_024
-            let previewData = handle.readData(ofLength: maxPreviewSize)
+            let previewData = try handle.read(upToCount: maxPreviewSize) ?? Data()
 
             var decoder = SQLChunkDecoder(encoding: selectedEncoding.encoding)
             if let preview = decoder.decode(previewData) {

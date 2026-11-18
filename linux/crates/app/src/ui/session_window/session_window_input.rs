@@ -1,3 +1,4 @@
+use gio::prelude::FileExt;
 use gtk4::glib;
 use libadwaita as adw;
 use tablepro_core::SafeModeLevel;
@@ -259,11 +260,40 @@ pub(crate) enum ScriptInput {
         /// The session in front when the read began, which takes the script if it is still open.
         target: Option<SessionKey>,
     },
+    // A shared link's SQL, which opens as a script does with no file behind it.
+    Shared {
+        title: String,
+        sql: String,
+    },
     /// The waiting scripts banner's Cancel.
     DropWaiting,
     /// Scripts another window's user chose this window's session for.
     For {
         key: SessionKey,
-        scripts: Vec<(gio::File, String)>,
+        scripts: Vec<WaitingScript>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum WaitingScript {
+    File { file: gio::File, text: String },
+    Shared { title: String, sql: String },
+}
+
+impl WaitingScript {
+    pub(crate) fn file(&self) -> Option<&gio::File> {
+        match self {
+            Self::File { file, .. } => Some(file),
+            Self::Shared { .. } => None,
+        }
+    }
+
+    // A second ask for the same file or the same shared SQL replaces the first.
+    pub(crate) fn same_as(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::File { file, .. }, Self::File { file: other, .. }) => file.equal(other),
+            (Self::Shared { sql, .. }, Self::Shared { sql: other, .. }) => sql == other,
+            _ => false,
+        }
+    }
 }

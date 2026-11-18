@@ -21,6 +21,11 @@ nonisolated internal enum MySQLReadOnlyTransaction {
     // ER_CANT_EXECUTE_IN_READ_ONLY_TRANSACTION.
     static let refusalCode: UInt32 = 1_792
 
+    // MySQL 5.5.62 and MariaDB 5.5.64 answer `begin` with 1064 (measured), so an older server runs a read as it is.
+    static func isAvailable(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        flavor.enforcesReadOnlyTransactions && MySQLServerVersion.hasReadOnlyTransactions(banner: banner, flavor: flavor)
+    }
+
     static func notIdleMessage(_ reason: Reason) -> String {
         switch reason {
         case .externalClients:

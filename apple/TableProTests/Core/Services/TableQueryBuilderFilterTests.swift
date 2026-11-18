@@ -10,6 +10,60 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+struct TableQueryBuilderViewQueryTests {
+    private static func dialect(_ style: SQLDialectDescriptor.PaginationStyle) -> SQLDialectDescriptor {
+        SQLDialectDescriptor(
+            identifierQuote: "`", keywords: [], functions: [], dataTypes: [],
+            regexSyntax: .regexp, booleanLiteralStyle: .numeric,
+            likeEscapeStyle: .implicit, paginationStyle: style
+        )
+    }
+
+    private static func builder(_ style: SQLDialectDescriptor.PaginationStyle) -> TableQueryBuilder {
+        TableQueryBuilder(databaseType: .mysql, dialect: dialect(style), pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier)
+    }
+
+    private static let sort = SortState(columns: [SortColumn(columnIndex: 1, direction: .descending, columnName: "name")])
+
+    @Test("A view query without its window keeps the filter and the sort and drops LIMIT and OFFSET")
+    func viewQueryHasNoWindow() throws {
+        var filter = TableFilter()
+        filter.columnName = "name"
+        filter.filterOperator = .equal
+        filter.value = "Alice"
+        filter.isEnabled = true
+
+        let query = try #require(Self.builder(.limit).buildFilteredQuery(
+            tableName: "users", filters: [filter], sortState: Self.sort, columns: ["id", "name"],
+            limit: 1_000, offset: 3_000, window: false
+        ))
+        #expect(query.contains("WHERE"))
+        #expect(query.contains("ORDER BY"))
+        #expect(!query.contains("LIMIT"))
+        #expect(!query.contains("OFFSET"))
+    }
+
+    @Test("A base view query without its window has no pagination, and no default ORDER BY on OFFSET FETCH engines")
+    func baseViewQueryHasNoWindow() {
+        let plain = Self.builder(.offsetFetch).buildBaseQuery(tableName: "users", limit: 1_000, offset: 2_000, window: false)
+        #expect(!plain.contains("OFFSET"))
+        #expect(!plain.contains("FETCH"))
+        #expect(!plain.contains("ORDER BY"))
+
+        let sorted = Self.builder(.limit).buildBaseQuery(
+            tableName: "users", sortState: Self.sort, columns: ["id", "name"], window: false
+        )
+        #expect(sorted.hasSuffix("DESC"))
+        #expect(!sorted.contains("LIMIT"))
+    }
+
+    @Test("The windowed query still carries its page")
+    func windowedQueryKeepsItsPage() {
+        let query = Self.builder(.limit).buildBaseQuery(tableName: "users", limit: 100, offset: 200)
+        #expect(query.hasSuffix("LIMIT 100 OFFSET 200"))
+    }
+}
+
 struct TableQueryBuilderFilteredQueryTests {
     /// The dialect is what carries the quoting and the operators, so a builder without one emits no
     /// query at all: that is what `TableQueryBuilderDialectlessTests` asserts. These cases are

@@ -459,7 +459,13 @@ fn primary_menu_has_no_quit() {
         }
     }
 
-    for expected in ["app.new-window", "app.preferences", "app.shortcuts", "app.about"] {
+    for expected in [
+        "app.new-window",
+        "app.manage-shared-links",
+        "app.preferences",
+        "app.shortcuts",
+        "app.about",
+    ] {
         assert!(actions.iter().any(|action| action == expected), "{expected} is missing");
     }
     assert!(!actions.iter().any(|action| action == "app.quit"), "the menu has Quit");
@@ -479,7 +485,7 @@ fn application_and_session_commands_have_separate_native_menus() {
     let primary = test.app.menu_by_id("primary_menu").expect("the primary menu");
     let mut app_actions = Vec::new();
     collect_actions(primary.upcast_ref(), &mut app_actions);
-    assert_eq!(app_actions.len(), 10);
+    assert_eq!(app_actions.len(), 11);
     let button = session_menu_button(&test);
     assert!(!button.is_primary(), "F10 belongs to Main Menu");
     crate::test_support::assert_labelled(&button).expect("the menu's accessible name");
@@ -968,4 +974,39 @@ fn the_sidebar_takes_the_width_kept_in_settings_and_has_a_handle_to_set_it() {
     assert!(!handle.is_visible(), "a collapsed sidebar lies over the content");
     split.set_collapsed(false);
     assert!(handle.is_visible());
+}
+
+#[gtk4::test]
+fn share_query_opens_the_sheet_with_the_tabs_sql_and_name() {
+    let test = TestWindow::connected("ShareQuerySheet");
+    wait_until(WAIT, || !test.window.settling()).expect("the saved tabs read");
+    let before = editors(&test.window);
+    let input = test.workspace().sender().expect("the workspace's input");
+    crate::runtime::DeliverInput::deliver(&input, crate::ui::workspace::WorkspaceInput::NewEditorTab);
+    wait_until(WAIT, || editors(&test.window).len() > before.len()).expect("a new editor tab");
+    let editor = editors(&test.window)
+        .into_iter()
+        .find(|editor| !before.contains(editor))
+        .expect("the editor");
+    editor.buffer().set_text("SELECT * FROM orders");
+
+    editor.share_query();
+    wait_until(WAIT, || test.window.visible_dialog().is_some()).expect("the share sheet");
+
+    let dialog = test
+        .window
+        .visible_dialog()
+        .and_downcast::<crate::ui::share_dialog::ShareDialog>()
+        .expect("the share sheet");
+    let subject = dialog.subject().expect("what it shares");
+    let page = shell_of(&test.workspace())
+        .tab_view()
+        .selected_page()
+        .expect("the editor's page");
+    assert_eq!(subject.sql, "SELECT * FROM orders");
+    assert_eq!(subject.title, page.title());
+    assert!(subject.rows.is_none());
+    assert!(subject.dialect.is_some());
+    assert_eq!(dialog.title(), "Share Query");
+    dialog.force_close();
 }

@@ -618,3 +618,47 @@ fn a_page_splits_into_keys_the_dml_can_bind_back() {
     assert_eq!(delete.sql(), r#"DELETE FROM "public"."users" WHERE rowid = $1"#);
     assert_eq!(delete.params()[0].value(), &Value::Int(77));
 }
+
+#[test]
+fn a_view_s_sql_reads_every_page_with_its_filter_values_written_in() {
+    let dialect = TestDialect::exact();
+    let columns = columns();
+    let table = table();
+    let filter = FilterSet {
+        combinator: Combinator::And,
+        rules: vec![
+            FilterRule {
+                column: "id".to_owned(),
+                op: FilterOp::Gt,
+                value: Some(FilterValue::Single("18".to_owned())),
+            },
+            FilterRule {
+                column: "name".to_owned(),
+                op: FilterOp::Contains,
+                value: Some(FilterValue::Single("O'Brien".to_owned())),
+            },
+        ],
+        extra_sql: None,
+    };
+    let sort = [SortKey {
+        column: 1,
+        ascending: false,
+    }];
+    let request = ExportRequest {
+        table: &table,
+        columns: &columns,
+        filter: &filter,
+        sort: &sort,
+        identity: &by_id(),
+        fields: ExportFields::Listed,
+    };
+
+    let sql = build_view_sql(&dialect, &request).expect("the view's SQL");
+    let export = build_export(&dialect, &request).expect("the export");
+
+    assert_eq!(
+        sql,
+        r#"SELECT "id", "name" FROM "public"."users" WHERE "id" > 18 AND "name" LIKE '%O''Brien%' ESCAPE '!' ORDER BY "users"."name" DESC, "users"."id" ASC"#
+    );
+    assert_eq!(export.params().len(), 2, "the export still binds its values");
+}
