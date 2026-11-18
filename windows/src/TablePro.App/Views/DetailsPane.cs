@@ -2,7 +2,6 @@ using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using TablePro.App.Model;
 using TablePro.App.Services;
@@ -70,6 +69,9 @@ internal sealed partial class DetailsPane : UserControl
 
     // A field's text typed and not kept yet, which the tab counts as an open edit as it counts the grid's editor.
     public event EventHandler? DraftChanged;
+
+    // A field took the focus, so Copy and Select All in the Edit menu reach it rather than the grid.
+    public event EventHandler<TextBox>? FieldFocused;
 
     public bool HasDraft => _entries.Any(entry => entry.Changed);
 
@@ -244,6 +246,7 @@ internal sealed partial class DetailsPane : UserControl
         AutomationProperties.SetAutomationId(box, "DetailsField_" + id);
 
         box.TextChanged += (_, _) => DraftChanged?.Invoke(this, EventArgs.Empty);
+        box.GotFocus += (_, _) => FieldFocused?.Invoke(this, box);
         box.LostFocus += (_, _) => Commit(entry);
         box.KeyDown += (_, e) =>
         {
@@ -376,22 +379,6 @@ internal sealed partial class DetailsPane : UserControl
 
     // As the tab allows now: a save or a reload under way takes edits from every field, the focused one too.
     private bool Editable(FieldEntry entry) => entry.Field.CanEdit && !entry.Field.TextCut && _model.CanEdit;
-
-    private TextBox? FocusedBox() =>
-        XamlRoot is { } root && FocusManager.GetFocusedElement(root) is TextBox box && IsInside(box) ? box : null;
-
-    private bool IsInside(DependencyObject element)
-    {
-        for (var node = element; node is not null; node = VisualTreeHelper.GetParent(node))
-        {
-            if (ReferenceEquals(node, this))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     // A read a refresh overtook answers last with the older figures, so only the newest read shows.
     private async void LoadInfo(bool refresh)

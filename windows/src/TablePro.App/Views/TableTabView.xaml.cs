@@ -22,6 +22,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     private FilterBar? _filters;
     private StructureView? _structure;
     private DetailsPane? _details;
+    private TextBox? _detailsTarget;
     private readonly ITableColumns? _columns;
     private ColumnLayout _layout;
 
@@ -59,6 +60,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         grid.CanReorderColumns = true;
         grid.ColumnMoveRequested += (_, move) => MoveColumn(move.From, move.To);
         grid.SizeChanged += (_, _) => FitFrozen();
+        grid.ColumnResized += (_, _) => FitFrozen();
         Results.ShownSetChanged += (_, _) => FitFrozen();
         AddColumnKeys(grid);
         Results.StatusChanged += (_, status) => StatusText.Text = status;
@@ -71,11 +73,16 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         grid.GotFocus += (_, _) =>
         {
             _messagesIsTarget = false;
+            _detailsTarget = null;
             EditStateMayHaveChanged();
         };
         // The editor takes focus as it opens and gives it back as it closes, so Save and the closes follow it.
         grid.LostFocus += (_, _) => EditStateMayHaveChanged();
-        Results.MessagesBox.GotFocus += (_, _) => _messagesIsTarget = true;
+        Results.MessagesBox.GotFocus += (_, _) =>
+        {
+            _messagesIsTarget = true;
+            _detailsTarget = null;
+        };
         grid.CellEditStarting += OnCellEditStarting;
         grid.CellEditCommitting += OnCellEditCommitting;
         grid.DeleteRequested += (_, _) => DeleteRows();
@@ -127,6 +134,11 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             if (_showsStructure)
             {
                 return _structure?.TextTarget;
+            }
+
+            if (_detailsTarget is { IsLoaded: true } field && DetailsHost.Visibility == Visibility.Visible)
+            {
+                return field;
             }
 
             return _messagesIsTarget && Results.MessagesBox.Visibility == Visibility.Visible
@@ -1052,6 +1064,11 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         {
             DraftChanged?.Invoke(this, EventArgs.Empty);
             EditStateMayHaveChanged();
+        };
+        details.FieldFocused += (_, field) =>
+        {
+            _messagesIsTarget = false;
+            _detailsTarget = field;
         };
         DetailsHost.Child = details;
         return details;

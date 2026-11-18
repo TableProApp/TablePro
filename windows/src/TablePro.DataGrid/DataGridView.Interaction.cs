@@ -220,6 +220,7 @@ public sealed partial class DataGridView
         _columns.SetWidth(column, width);
         _sizedByUser[column] = true;
         ColumnsChanged();
+        ColumnResized?.Invoke(this, column);
     }
 
     // Fits a column to its header and the rows in view; a result set may hold far more rows than can be read here.

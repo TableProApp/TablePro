@@ -345,6 +345,9 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     // The selected cells changed without the focus moving, as Select All does, or a whole-row selection grew with them.
     public event EventHandler? SelectedCellsChanged;
 
+    // The user dragged or fitted a column's width, which can make frozen columns too wide for the grid.
+    public event EventHandler<int>? ColumnResized;
+
     internal GridColumns Columns => _columns;
 
     internal string SortStatus(SortDirection direction) => direction switch
