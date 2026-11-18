@@ -435,7 +435,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 rolledBack,
                 restored?.FileStamp,
                 restored?.FileUnsaved ?? false,
-                onDisk),
+                onDisk,
+                restored?.FoldedLines),
             Symbol.Document,
             index);
     }
@@ -1193,6 +1194,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             if (content.Editor is { } editor)
             {
                 editor.TextChanged += OnEditorTextChanged;
+                editor.FoldsChanged += OnEditorFoldsChanged;
                 _editorHasText[editor] = HasText(editor.Document);
             }
         }
@@ -1256,6 +1258,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             if (content.Editor is { } editor)
             {
                 editor.TextChanged -= OnEditorTextChanged;
+                editor.FoldsChanged -= OnEditorFoldsChanged;
                 _editorHasText.Remove(editor);
             }
 
@@ -1378,6 +1381,17 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
         UpdateElsewhereBar();
         CommandsChanged?.Invoke(this, EventArgs.Empty);
+        SessionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // A snapshot is kept by the text's version, which folding leaves as it was.
+    private void OnEditorFoldsChanged(object? sender, EventArgs e)
+    {
+        if (_snapshots.Keys.FirstOrDefault(content => ReferenceEquals(content.Editor, sender)) is { } content)
+        {
+            _snapshots.Remove(content);
+        }
+
         SessionChanged?.Invoke(this, EventArgs.Empty);
     }
 

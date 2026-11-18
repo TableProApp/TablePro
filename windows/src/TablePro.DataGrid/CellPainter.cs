@@ -222,6 +222,12 @@ internal sealed unsafe class CellPainter : IDisposable
             layout = Create(_nullText, _null, width, height);
             length = _nullText.Length;
         }
+        else if ((state & CellState.Unreadable) != 0)
+        {
+            ink = deleted ? CellInk.Deleted : CellInk.Placeholder;
+            layout = Create(text, _null, width, height);
+            length = text.Length;
+        }
         else if ((state & CellState.Default) != 0)
         {
             if (_defaultText.Length == 0)

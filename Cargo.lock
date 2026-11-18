@@ -8189,6 +8189,8 @@ dependencies = [
  "async-trait",
  "futures",
  "secrecy",
+ "serde",
+ "serde_json",
  "tablepro-core",
  "tablepro-net",
  "tempfile",

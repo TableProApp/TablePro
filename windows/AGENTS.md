@@ -15,7 +15,7 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 
 - `TablePro.slnx`: the solution. `global.json`: the .NET 10 SDK, and Microsoft.Testing.Platform as the runner `dotnet test` uses. `Directory.Build.props`: nullable, warnings as errors and the latest recommended analyzers for every project. `Directory.Packages.props`: every package version. `.editorconfig`: the C# style.
 - `src/TablePro.Interop`: the library the app calls. Its public API is hand-written; `Generated/` holds the uniffi-bindgen-cs and csbindgen output, all `internal`, so a generator upgrade cannot change what the app sees. The project is AOT and trim compatible, and its analyzers fail the build otherwise.
-- `tests/TablePro.Interop.Tests`: xunit v3 tests against the real core and real SQLite files.
+- `tests/TablePro.Interop.Tests`: xunit v3 tests against the real core and real SQLite files. `Live/` reads a table, the core's value corpus (`core/crates/test-support/corpus`) and a save on each engine's server, or in process for DuckDB; a server's tests skip where `ci/live-servers.ps1` did not start it (`docs/decisions/0016-live-server-tests.md`).
 - `src/TablePro.Editor.Model`: the editor's text, carets, undo history, find and line-state highlighter. Plain `net10.0` with no WinUI, so `tests/TablePro.Editor.Model.Tests` runs anywhere.
 - `src/TablePro.Graphics`: the one text and drawing stack the controls share: Direct3D, Direct2D and DirectWrite through TerraFX, the editor's swap chain and line layouts, theme colors, and the font fallback warm-up. Its types are internal to the controls.
 - `src/TablePro.Editor`: the `SqlEditor` control over that model: Direct2D and DirectWrite in a SwapChainPanel, TSF, the UIA text provider, and the core's lexer through `CoreSqlLexer`.
@@ -26,10 +26,12 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `src/TablePro.App`: the WinUI app: one window, the rail, the Connections page, the connection form window, Settings and a workspace per connection (`docs/decisions/0004-app-shell.md`). Strings are in `Strings/en-US/Resources.resw`.
 - `src/TablePro.App.Model`: the app's settings and session files, the library tree, the connection form's fields, the object folders, the tab and connection lifecycles over small session, editor and run interfaces, and a table tab's pending edits. Plain `net10.0`, so `tests/TablePro.App.Model.Tests` runs anywhere.
 - `tests/TablePro.App.UITests`: UI Automation tests (FlaUI) that launch the built app with a data folder of their own, and the installed MSIX once `TABLEPRO_PACKAGE` names its family.
+- `ci/live-servers.ps1`: starts one server the `Live/` interop tests reach on the x64 runner, for `windows.yml`.
 - `ci/desktop.ps1`: readies a hosted runner's desktop for UI work (privacy settings window, WSL console, display size, window dragging), for `windows.yml`, `release-windows.yml` and the grid gate.
 - `ci/winget-manifest.py`: writes a release's winget manifest, for `release-windows.yml`.
 - `scripts/engine-glyphs.py`: writes `src/TablePro.App/Resources/EngineGlyphs.xaml` from the macOS app's engine artwork. Run it after that artwork changes or an engine is added.
 - `scripts/package-assets.py`: writes the MSIX logos in `src/TablePro.App/Assets` from the app icon. Run it after the icon changes.
+- `scripts/editor-schemes.py`: writes `src/TablePro.Editor.Model/ColorSchemes.Themes.cs`, the editor's color schemes, from the macOS app's built-in themes. Run it after a theme changes.
 - `RELEASING.md`: how a release is built, signed, published and sent to winget.
 - `docs/decisions/`: the decisions only the Windows app makes.
 - The core's side of the boundary: `core/crates/ffi` (`core/ARCHITECTURE.md`, Bindings).
@@ -50,6 +52,7 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - A query result edits through `DatabaseSession.OpenResultEditorAsync(sql, rows)`, the same `TableEditor` with one column per result column; its `Lock` says why a result is not one keyed table's rows. The app refuses a run with several results, an open or unknown transaction and a tab in another database before it asks (`core/docs/decisions/0033-foreign-import-and-result-editing-through-the-ffi.md`).
 - `TableProCore.GetForeignSourcesAsync` lists the other apps found under `ForeignAppDirs.ForCurrentUser()`, `ReadForeignAsync` gives a `ForeignImportReview` whose `Choices()` follow each check, and `ApplyAsync` writes the connections, their passwords into Credential Manager and the saved queries once; DataGrip's KeePass key opens with the user's DPAPI (core 0033).
 - `DatabaseSession.Layout` says how the server's databases stand to the catalog, `GetDatabasesAsync` lists them, and `OpenEditorAsync(database)` opens an editor that runs in one (opened there or moved there; one that cannot reach it throws). `QueryEditor.Database` follows a typed USE. `TableProCore.ConnectAsync(database:)` opens a saved connection in another of its databases, and `OpenKey` reads a key-value engine's key a window at a time (`KeyReader`).
+- `SqlSyntax.Tokenize` and `SqlSyntax.Statements` read SQL as the core does, from the editor's UTF-16 text with no copy into a UniFFI string; `Statements` splits as `StatementAt` and the drivers do. A failed run's `CoreError.Server.Position` counts characters from 1 from the start of the SQL the run was given.
 - `QueryEvent.Finished.Transaction` is the transaction the editor's connection is left in. A session's `Health` is waited on with `WaitForHealthChangeAsync`, which returns once it differs from the one passed in.
 - The app starts the core with `TableProCore.CreateWithSystemSecrets`, so the core keeps secrets in Credential Manager itself. `ISecretStore` is for tests and hosts with a store of their own; the core calls it on a thread of its own.
 - `TableProCore.Library` reads and writes the saved connections in the storage directory the configuration names. A list the app shows is rebuilt from `GetSnapshotAsync` after each change.
@@ -105,4 +108,4 @@ Pass `-p:UniffiBindgenCs=<path>` when it is not on `PATH`; the target refuses an
 
 ## CI
 
-`.github/workflows/windows.yml`, which `ci.yml` calls when the `windows` suite changed (`.claude/rules/ci.md`). It builds the core and runs the tests on x64, Arm64 and macOS runners, publishes the app with Native AOT and runs its UI tests on the Windows runners with their screenshots as an artifact, and on macOS checks the committed bindings. CI's Lint job runs zizmor on every workflow. `.github/workflows/release-windows.yml` builds and ships a release (`RELEASING.md`).
+`.github/workflows/windows.yml`, which `ci.yml` calls when the `windows` suite changed (`.claude/rules/ci.md`). It builds the core and runs the tests on x64, Arm64 and macOS runners, the `Live/` tests against their servers on a second x64 runner, publishes the app with Native AOT and runs its UI tests on the Windows runners with their screenshots as an artifact, and on macOS checks the committed bindings. CI's Lint job runs zizmor on every workflow. `.github/workflows/release-windows.yml` builds and ships a release (`RELEASING.md`).

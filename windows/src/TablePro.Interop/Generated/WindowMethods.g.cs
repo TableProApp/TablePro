@@ -62,6 +62,27 @@ namespace TablePro.Interop.Native
         [DllImport(__DllName, EntryPoint = "tablepro_syntax_tokens", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern uint tablepro_syntax_tokens(uint grammar, uint backslash_escapes, ushort* text, uint text_len, TpSyntaxToken* tokens, uint capacity);
 
+        /// <summary>
+        ///  Splits `text_len` UTF-16 code units of SQL into statements as
+        ///  `grammar` reads them, the split the editor and the drivers run, and
+        ///  writes up to `capacity` of them, in order, to `spans`. Returns how
+        ///  many statements the text holds, which may pass `capacity`, so a
+        ///  caller can call again with that capacity. A null `spans` or a
+        ///  `capacity` of 0 writes nothing and only counts.
+        ///
+        ///  `grammar` and `backslash_escapes` are as `tablepro_syntax_tokens`
+        ///  reads them. A null `text`, a `text_len` of 0, an unknown grammar or a
+        ///  panic write nothing and return 0.
+        ///
+        ///  # Safety
+        ///
+        ///  `text` is null or points at `text_len` readable `u16`s, and `spans`
+        ///  is null or points at `capacity` writable `TpStatementSpan`s that do
+        ///  not overlap `text`.
+        /// </summary>
+        [DllImport(__DllName, EntryPoint = "tablepro_script_statements", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern uint tablepro_script_statements(uint grammar, uint backslash_escapes, ushort* text, uint text_len, TpStatementSpan* spans, uint capacity);
+
 
     }
 
@@ -121,6 +142,18 @@ namespace TablePro.Interop.Native
         public uint start;
         public uint length;
         public uint kind;
+    }
+
+    /// <summary>
+    ///  One statement of `tablepro_script_statements`: its text without the
+    ///  terminator, from `start` to `end` in UTF-16 code units from the start
+    ///  of the text split.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe partial struct TpStatementSpan
+    {
+        public uint start;
+        public uint end;
     }
 
 

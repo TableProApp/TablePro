@@ -30,6 +30,9 @@ public enum CellState : ushort
 
     // The server's value, with no text: the grid draws its DefaultText.
     Default = 256,
+
+    // A value the driver could not read: the text says so, from its type's name, and a copy leaves it out.
+    Unreadable = 512,
 }
 
 public readonly ref struct CellText(ReadOnlySpan<char> text, CellState state)
@@ -94,6 +97,19 @@ public sealed class CellBlock
     public void AddNull(CellState marks = CellState.None) => Close(CellState.Null | marks);
 
     public void AddDefault(CellState marks = CellState.None) => Close(CellState.Default | marks);
+
+    // Worded as the Linux grid words it.
+    public void AddUnreadable(ReadOnlySpan<byte> typeName)
+    {
+        const string Start = "<unreadable ";
+        Reserve(Start.Length + Encoding.UTF8.GetMaxCharCount(typeName.Length) + 1);
+        var start = _length;
+        Start.CopyTo(_chars.AsSpan(_length));
+        _length += Start.Length;
+        _length += Encoding.UTF8.GetChars(typeName, _chars.AsSpan(_length));
+        _chars[_length++] = '>';
+        Finish(start, truncated: false, lossy: false, CellState.Unreadable);
+    }
 
     // Grows the buffer once for a window's text, where adding cell by cell would grow it several times.
     public void EnsureCapacity(int characters) => Reserve(characters - _length, exact: true);

@@ -47,7 +47,8 @@ public sealed partial class QueryTabView
         bool rolledBack = false,
         SqlFileStamp? fileStamp = null,
         bool fileUnsaved = false,
-        SqlFileRead? onDisk = null)
+        SqlFileRead? onDisk = null,
+        IReadOnlyList<int>? foldedLines = null)
     {
         var engineId = share.Session.EngineId;
         var restoring = filePath is not null && onDisk is null;
@@ -61,6 +62,10 @@ public sealed partial class QueryTabView
         SqlText.Text = onDisk?.Text ?? sql ?? string.Empty;
         SqlText.Lexer = new CoreSqlLexer(Grammars.For(engineId));
         DisplaySettings.Follow(SqlText);
+        if (foldedLines is not null)
+        {
+            SqlText.RestoreFolds(foldedLines);
+        }
         _model = new QueryTab(
             title,
             new CoreTabSession(share),
@@ -193,11 +198,16 @@ public sealed partial class QueryTabView
 
     string IQueryTabView.SelectedText => SqlText.Model.GetSelectedText();
 
+    int? IQueryTabView.SelectedTextStart =>
+        SqlText.Model.Selections.Where(selection => !selection.IsEmpty).ToList() is [var only] ? only.Start : null;
+
     string IQueryTabView.WholeText => SqlText.Text;
 
     string IQueryTabView.DocumentText => SqlText.Document.Snapshot();
 
     int IQueryTabView.Caret => SqlText.Model.Primary.Active;
+
+    IReadOnlyList<int> IQueryTabView.FoldedLines => SqlText.FoldedLines;
 
     string IQueryTabView.TimedOutMessage => Strings.Get("StatusTimedOut");
 
@@ -260,6 +270,16 @@ public sealed partial class QueryTabView
     }
 
     void IQueryTabView.ShowNoStatement() => StatusText.Text = Strings.Get("StatusNoStatement");
+
+    // Text typed after the run can make the document shorter than the place the server named.
+    void IQueryTabView.ShowErrorPosition(int offset)
+    {
+        Results.OfferGoToError(() =>
+        {
+            SqlText.GoTo(Math.Min(offset, SqlText.Document.Length));
+            SqlText.Focus(FocusState.Programmatic);
+        });
+    }
 
     void IQueryTabView.ShowRefused() => Results.ShowError(Strings.Get("Error_driver_read_only"));
 
