@@ -43,12 +43,15 @@ nonisolated struct MongoScriptCursorOptions: Equatable, Sendable {
     /// script that asks for more than the row cap still stops at the cap and a script that asks for
     /// fewer is not silently raised to it.
     func findOptionsJson(limit ceiling: Int, timeoutMS: Int32) -> String {
-        var fields: [String] = ["\"skip\": \(skip ?? 0)", "\"limit\": \(effectiveLimit(ceiling: ceiling))"]
+        let limit = effectiveLimit(ceiling: ceiling)
+        var fields: [String] = ["\"skip\": \(skip ?? 0)", "\"limit\": \(limit)"]
         appendDocument(&fields, key: "sort", value: sort)
         appendDocument(&fields, key: "projection", value: projection)
         appendDocument(&fields, key: "hint", value: hint)
         appendDocument(&fields, key: "collation", value: collation)
-        if let batchSize { fields.append("\"batchSize\": \(batchSize)") }
+        if let size = batchSize ?? MongoDBFindLimitPolicy.firstBatchSize(limit: limit) {
+            fields.append("\"batchSize\": \(size)")
+        }
         if allowDiskUse { fields.append("\"allowDiskUse\": true") }
         if let resolved = resolvedMaxTimeMS(timeoutMS) { fields.append("\"maxTimeMS\": \(resolved)") }
         return "{\(fields.joined(separator: ", "))}"

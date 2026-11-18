@@ -1075,6 +1075,8 @@ targets:
       principalClass: ElasticsearchPlugin
     dependencies:
       - package: TableProCore
+        product: TableProElasticsearchCore
+      - package: TableProCore
         product: TableProNumberFormatting
       - package: TableProCore
         product: TableProDocumentPath

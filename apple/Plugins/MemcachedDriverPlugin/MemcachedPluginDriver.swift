@@ -12,7 +12,6 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     /// Keys one listing reads before it stops, so a cache holding millions of items cannot exhaust memory.
     static let listingLimit = 1_000_000
-    private static let valuesPerRequest = 100
     private static let rowsPerStreamBatch = 1_000
 
     private let endpoint: MemcachedEndpoint
@@ -228,7 +227,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let connection = try liveConnection()
         let page = try await browsePage(spec, on: connection)
         let keys = page.entries.map(\.key)
-        let values = try await values(of: keys, on: connection)
+        let values = try await values(of: page.entries, on: connection)
         rememberLoadedItems(of: keys, values: values)
         let rows = rows(of: page.entries, values: values, serverTime: page.serverTime)
         return result(
@@ -253,16 +252,16 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     // `gets`, so each value comes with the unique a `cas` needs to write it back.
-    private func values(of keys: [String], on connection: MemcachedConnection) async throws -> [String: MemcachedValue] {
+    private func values(
+        of entries: some Collection<MemcachedKeyEntry>,
+        on connection: MemcachedConnection
+    ) async throws -> [String: MemcachedValue] {
         var values: [String: MemcachedValue] = [:]
-        var start = keys.startIndex
-        while start < keys.endIndex {
+        for keys in MemcachedValueBatches.split(entries) {
             try Task.checkCancellation()
-            let end = min(start + Self.valuesPerRequest, keys.endIndex)
-            if case .values(let read) = try await connection.send(.get(keys: Array(keys[start ..< end]), withCAS: true)) {
+            if case .values(let read) = try await connection.send(.get(keys: keys, withCAS: true)) {
                 for value in read { values[value.key] = value }
             }
-            start = end
         }
         return values
     }
@@ -372,7 +371,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 try Task.checkCancellation()
                 let end = min(start + Self.rowsPerStreamBatch, page.entries.endIndex)
                 let batch = page.entries[start ..< end]
-                let values = try await self.values(of: batch.map(\.key), on: connection)
+                let values = try await self.values(of: batch, on: connection)
                 let rows = self.rows(of: batch, values: values, serverTime: page.serverTime)
                 if !rows.isEmpty { _ = await PluginRowStream.deliver(.rows(rows), to: continuation) }
                 start = end
