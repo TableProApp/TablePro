@@ -417,7 +417,7 @@ internal sealed partial class DetailsPane : UserControl
         }
 
         var none = Strings.Get("DetailsNotKept");
-        string Size(long? bytes) => bytes is { } value ? ByteSize.Format(value, Strings.Get("DetailsBytes")) : none;
+        string Size(long? bytes) => bytes is { } value ? ByteSize.Format(value, Strings.Get("DetailsBytes"), CultureInfo.CurrentCulture) : none;
         var rows = info.Rows is { } estimate
             ? Strings.Format(estimate.IsExact ? "DetailsRowsExact" : "DetailsRowsAbout", estimate.Rows)
             : none;
