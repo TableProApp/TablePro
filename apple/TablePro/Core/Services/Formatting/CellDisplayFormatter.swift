@@ -140,6 +140,8 @@ enum CellDisplayFormatter {
 
     // Binary read as text carries newlines and runs to megabytes, so all output is capped and flattened. A lone CR stays for the cell to mark.
     private static func fitToCell(_ value: String) -> String {
+        // A value within the cap in UTF-8 is within it in UTF-16, and asking for that length walks the whole value.
+        guard value.utf8.count > maxDisplayLength else { return value.flattenedForCell }
         var displayValue = value
         let nsDisplay = displayValue as NSString
         if nsDisplay.length > maxDisplayLength {

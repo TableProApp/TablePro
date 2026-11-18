@@ -108,7 +108,7 @@ struct ParseSchemaMetadataTests {
         #expect(parsed.columnDeclaredTypes == ["id": "CHAR(32)", "name": "VARCHAR(80)"])
 
         var rows = TableRows.from(queryRows: [], columns: ["id", "name"], columnTypes: [.text(rawType: "CHAR"), .text(rawType: "VARCHAR")])
-        #expect(rows.updateDisplayMetadata(columnDeclaredTypes: parsed.columnDeclaredTypes) == .columnsReplaced)
+        #expect(rows.updateDisplayMetadata(columnDeclaredTypes: parsed.columnDeclaredTypes) == .columnMetadataChanged)
         #expect(rows.declaredType(at: 0) == "CHAR(32)")
         #expect(ParsedSchemaMetadata.cached(rows: rows, primaryKeyColumns: ["id"]).columnDeclaredTypes == parsed.columnDeclaredTypes)
     }

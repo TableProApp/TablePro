@@ -32,7 +32,7 @@ extension DataGridViewController: NSTableViewDataSource, NSTableViewDelegate {
         if let editing = editingCellView(in: pane, tableColumn: tableColumn, row: row) {
             return editing
         }
-        guard pane.isMain, DataGridAccessibility.isActive, mountsAccessibilityCell(forRow: row) else { return nil }
+        guard pane.isMain, DataGridAccessibility.isActive, mountsAccessibilityCell(forRow: row, tableColumn: tableColumn) else { return nil }
         return accessibilityCellView(for: tableColumn, row: row)
     }
 

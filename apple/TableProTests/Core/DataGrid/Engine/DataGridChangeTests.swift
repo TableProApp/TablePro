@@ -24,6 +24,7 @@ struct DataGridChangeTests {
     func replaceAndColumns() {
         #expect(change(.fullReplace) == .reload)
         #expect(change(.columnsReplaced) == .columnsChanged)
+        #expect(change(.columnMetadataChanged) == .columnMetadataChanged)
     }
 
     @Test("Inserts and removals pass through while the order is the storage order")

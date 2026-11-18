@@ -326,12 +326,11 @@ final class DataFileController: ObservableObject {
     }
 
     func refreshPage() {
-        let previousColumns = tableRows.columns
         guard let table else {
             tableRows = TableRows()
             pageKeys = []
             changeManager.bumpReload()
-            gridModel.reloadHeldRows(columnsChanged: !previousColumns.isEmpty)
+            gridModel.reloadRows()
             return
         }
         let visible = visibleRowCount
@@ -375,7 +374,7 @@ final class DataFileController: ObservableObject {
             columnNullable: Dictionary(uniqueKeysWithValues: names.map { ($0, holdsNull) })
         )
         changeManager.bumpReload()
-        gridModel.reloadHeldRows(columnsChanged: previousColumns != names || gridModel.columns.isEmpty)
+        gridModel.reloadRows()
     }
 
     func goToPage(offsetBy delta: Int) {

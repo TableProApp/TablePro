@@ -125,7 +125,7 @@ extension MainContentCoordinator {
     func applyGridDelta(_ delta: Delta, forTab tabId: UUID) {
         guard let model = existingGridModel(forTab: tabId), delta != .none else { return }
         model.apply(delta)
-        if delta == .columnsReplaced || delta == .fullReplace {
+        if delta == .columnsReplaced || delta == .columnMetadataChanged || delta == .fullReplace {
             consumePendingColumnJump(forTab: tabId, contentReplaced: delta == .fullReplace)
         }
     }
