@@ -60,7 +60,7 @@ enum KafkaBrowseEngine {
 
         let wanted = min(query.skip + query.limit, maximumOverFetch)
         let window = try await resolveWindow(query, partitions: selected, cluster: cluster)
-        let firstPages = await KafkaFetchRequest.firstPages(
+        var firstPages = await KafkaFetchRequest.firstPages(
             topic: query.topic,
             targets: KafkaFetchWire.firstReads(start: window.start, tail: window.tail, wanted: wanted),
             cluster: cluster
@@ -95,7 +95,7 @@ enum KafkaBrowseEngine {
                         endOffset: range.end,
                         keepingNewest: walk.needed,
                         byteBudget: walkBytesLeft,
-                        firstPage: firstPages[partition],
+                        firstPage: firstPages.removeValue(forKey: partition),
                         cluster: cluster
                     )
                     if result.stoppedAtByteBudget {
@@ -115,7 +115,7 @@ enum KafkaBrowseEngine {
                 partition: partition,
                 startOffset: start,
                 maximumRecords: wanted,
-                firstPage: firstPages[partition],
+                firstPage: firstPages.removeValue(forKey: partition),
                 cluster: cluster
             )
             collected.append(contentsOf: result.records)

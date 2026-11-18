@@ -18,11 +18,11 @@ struct KafkaFetchResult: Sendable {
     var bytesRead = 0
 }
 
-// A partition's first reply, read together with the other partitions of its leader.
+// A partition's first reply, read together with the other partitions of its leader. It stays compressed until the
+// partition's turn, so a topic of many partitions never holds every decoded page at once.
 struct KafkaFetchFirstPage: Sendable {
     let startOffset: Int64
-    let page: KafkaFetchResult
-    let decompression: DecompressionBudget
+    let reply: KafkaFetchedPartition
 }
 
 enum KafkaFetchRequest {
@@ -56,12 +56,13 @@ enum KafkaFetchRequest {
         while keepingNewest != nil || collected.count < maximumRecords, let from = offset {
             if let endOffset, from >= endOffset { break }
             try Task.checkCancellation()
+            let allowance = try KafkaCompression.fetchBudget(requesting: budget, after: decompression)
             let page: KafkaFetchResult
             if let first = firstPage, first.startOffset == from {
-                page = first.page
-                decompression = first.decompression
+                var spent = allowance
+                page = try decode(first.reply, from: from, budget: &spent)
+                decompression = spent
             } else {
-                let allowance = try KafkaCompression.fetchBudget(requesting: budget, after: decompression)
                 let (fetched, spent) = try await fetchOnce(
                     topic: topic,
                     partition: partition,
@@ -163,13 +164,7 @@ enum KafkaFetchRequest {
                 outcomes[reply.partition] = .rejected(code: reply.errorCode)
                 continue
             }
-            do {
-                var spent = try KafkaCompression.fetchBudget(requesting: defaultPartitionBudget)
-                let page = try decode(reply, from: start, budget: &spent)
-                outcomes[reply.partition] = .value(KafkaFetchFirstPage(startOffset: start, page: page, decompression: spent))
-            } catch {
-                outcomes[reply.partition] = .failed(.malformedResponse(error.localizedDescription))
-            }
+            outcomes[reply.partition] = .value(KafkaFetchFirstPage(startOffset: start, reply: reply))
         }
         return outcomes
     }
