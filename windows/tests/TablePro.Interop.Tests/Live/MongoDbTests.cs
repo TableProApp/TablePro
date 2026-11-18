@@ -61,8 +61,9 @@ public sealed class MongoDbTests : IDisposable
         await using var editor = await session.OpenEditorAsync(cancellationToken);
         var name = $"types_{_unique}";
         await ExecuteAsync(editor, $"db.getCollection('{name}').insertOne({EveryType})", cancellationToken);
+        var collection = await ListedAsync(session, name, cancellationToken);
 
-        using var browsed = await PageAsync(session, new TableName(Database, name), cancellationToken);
+        using var browsed = await PageAsync(session, collection, cancellationToken);
         using var found = await RowsAsync(editor.Run($"db.getCollection('{name}').find()", cancellationToken: cancellationToken));
 
         var wrong = Wrong("browse", browsed.Set).Concat(Wrong("editor", found.Set)).ToList();
@@ -128,6 +129,11 @@ public sealed class MongoDbTests : IDisposable
             $"db.getCollection('{name}').insertMany([{{_id: 1, name: 'Ada', note: null}}, "
                 + "{_id: 2, name: 'Grace', note: 'note'}, {_id: 3, name: 'Zoë 👋', note: '中文'}])",
             cancellationToken);
+        return await ListedAsync(session, name, cancellationToken);
+    }
+
+    private static async Task<TableName> ListedAsync(DatabaseSession session, string name, CancellationToken cancellationToken)
+    {
         var objects = await session.RefreshObjectsAsync(ObjectScope.DefaultSchema, cancellationToken);
         var entry = Assert.Single(objects, item => item.Name == name);
         Assert.Equal(ObjectKind.Table, entry.Kind);
