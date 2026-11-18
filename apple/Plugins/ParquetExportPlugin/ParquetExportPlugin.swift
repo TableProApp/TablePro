@@ -88,7 +88,8 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
         let declaredTypes = Dictionary(
             columnInfo.map { ($0.name, $0.typeNameForClassification) }, uniquingKeysWith: { first, _ in first })
 
-        let staging = try DuckDBStagingDatabase()
+        let staging = try DuckDBStagingDatabase(
+            memoryLimit: ParquetStaging.memoryLimit(physicalMemory: ProcessInfo.processInfo.physicalMemory))
         var columns: [String] = []
         var batch: [[PluginCellValue]] = []
         var created = false
