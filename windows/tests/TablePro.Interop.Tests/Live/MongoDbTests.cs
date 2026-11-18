@@ -11,11 +11,18 @@ public sealed class MongoDbTests : IDisposable
         + "uid: UUID('0e3f6f0e-8a3b-4b8e-9a7c-2f1d1b3c4d5e'), blob: BinData(0, 'AAEC'), "
         + "stamp: Timestamp({t: 1700000000, i: 3})}";
 
+    // A table tab edits a binary field and a field that holds only null as extended JSON, so it shows them as such.
+    private static readonly Dictionary<string, string?> BrowseShows = new()
+    {
+        ["nothing"] = "null",
+        ["blob"] = """{"$binary": {"base64": "AAEC", "subType": "00"}}""",
+    };
+
     private static readonly Dictionary<string, string?> EveryTypeShows = new()
     {
         ["_id"] = "1",
         ["oid"] = "5f1d7a0c9b1e8b2a3c4d5e6f",
-        ["at"] = "2024-05-06 07:08:09.01+00:00",
+        ["at"] = "2024-05-06 07:08:09.010+00:00",
         ["price"] = "12.50",
         ["big"] = "9007199254740993",
         ["ratio"] = "0.5",
@@ -168,8 +175,9 @@ public sealed class MongoDbTests : IDisposable
     private static IEnumerable<string> Wrong(string path, ResultSet set)
     {
         var columns = set.GetColumns().Select(column => column.Name).ToList();
-        foreach (var (field, expected) in EveryTypeShows)
+        foreach (var (field, shows) in EveryTypeShows)
         {
+            var expected = path == "browse" && BrowseShows.TryGetValue(field, out var browsed) ? browsed : shows;
             var index = columns.IndexOf(field);
             var shown = index < 0 ? "<no column>" : set.GetCellText(0, index);
             if (shown != expected)

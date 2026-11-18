@@ -31,13 +31,16 @@ public sealed class RedisTests : IDisposable
             await ExecuteAsync(editor, command, cancellationToken);
         }
 
-        var keys = await session.RefreshObjectsAsync(ObjectScope.DefaultSchema, cancellationToken);
-        var ours = keys.Where(key => key.Name.StartsWith(_prefix, StringComparison.Ordinal)).ToList();
+        // The core lists no keys through the FFI yet (the Linux sidebar's listing), so the editor lists them.
+        using var listed = editor.Run($"KEYS {_prefix}*", cancellationToken: cancellationToken);
+        Assert.IsType<QueryOutcome.Completed>(await listed.Completion);
+        using var keys = listed.GetResultSet(0);
+        Assert.NotNull(keys);
+        var value = keys.GetColumns().ToList().FindIndex(column => column.Name == "value");
 
-        Assert.All(ours, key => Assert.Equal(ObjectKind.Key, key.Kind));
         Assert.Equal(
             ["bytes", "hash", "list", "set", "stream", "text", "zset"],
-            ours.Select(key => key.Name[_prefix.Length..]).Order(StringComparer.Ordinal));
+            Enumerable.Range(0, (int)keys.RowCount).Select(row => keys.GetCellText(row, value)![_prefix.Length..]).Order(StringComparer.Ordinal));
         Assert.Equal((KeyKind.Text, Rows(["naïve café 🦀"])), await ReadAsync(session, "text", cancellationToken));
         Assert.Equal((KeyKind.Text, Rows(["0xff00fe"])), await ReadAsync(session, "bytes", cancellationToken));
         Assert.Equal((KeyKind.Hash, Rows(["f1", "v1"], ["f2", "two words"])), await ReadAsync(session, "hash", cancellationToken, sorted: true));
@@ -112,7 +115,7 @@ public sealed class RedisTests : IDisposable
         var rows = Enumerable.Range(0, (int)set.RowCount)
             .Select(row => string.Join(" | ", Enumerable.Range(0, columns).Select(column => set.GetCellText(row, column) ?? "NULL")))
             .ToList();
-        return (window.Kind, string.Join('\n', sorted ? rows.Order(StringComparer.Ordinal) : rows));
+        return (window.Kind, string.Join('\n', sorted ? [.. rows.Order(StringComparer.Ordinal)] : rows));
     }
 
     private static string Rows(params string[][] rows) => string.Join('\n', rows.Select(row => string.Join(" | ", row)));

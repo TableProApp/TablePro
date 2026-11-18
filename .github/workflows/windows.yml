@@ -249,6 +249,6 @@ jobs:
         if: failure()
         run: |
           Get-Content (Join-Path $env:RUNNER_TEMP 'mysqld.log') -Tail 60 -ErrorAction Continue
-          Get-Content (Join-Path $env:RUNNER_TEMP 'cassandra.log') -Tail 80 -ErrorAction Continue
+          Get-Content (Join-Path $env:RUNNER_TEMP 'cassandra-logs\system.log') -Tail 80 -ErrorAction Continue
           wsl --distribution tablepro --user root -- tail -n 80 /var/lib/clickhouse/server.log
           Get-Content "$env:ProgramFiles\MongoDB\Server\7.0\log\mongod.log" -Tail 40 -ErrorAction Continue

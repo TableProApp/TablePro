@@ -108,19 +108,18 @@ switch ($Server) {
             ForEach-Object { $_.Trim() } |
             Where-Object { $_ -match '^-' -and $_ -ne '-XX:+UseNUMA' } |
             ForEach-Object { $_ -replace '^(--add-(exports|opens)) ', '$1=' }
+        $logs = Join-Path $env:RUNNER_TEMP 'cassandra-logs'
         $arguments = @($options) + @(
             '-Xms1g', '-Xmx1g',
             '-Dlogback.configurationFile=logback.xml',
-            "-Dcassandra.logdir=$root\logs",
+            "-Dcassandra.logdir=$logs",
             "-Dcassandra.storagedir=$root\data",
-            '-Dcassandra-foreground=yes',
             '-cp', "`"$conf;$root\lib\*`"",
             'org.apache.cassandra.service.CassandraDaemon'
         )
-        $out = Join-Path $env:RUNNER_TEMP 'cassandra.log'
-        Start-Process (Join-Path $env:JAVA_HOME_11_X64 'bin\java.exe') -ArgumentList $arguments -WorkingDirectory $root `
-            -RedirectStandardOutput $out -RedirectStandardError (Join-Path $env:RUNNER_TEMP 'cassandra.err') -WindowStyle Hidden
-        Wait-Listening 9042 5 { Get-Content $out -Tail 80 }
+        # Redirected output would tie java to this step's console, whose close at the step's end stops it.
+        Start-Process (Join-Path $env:JAVA_HOME_11_X64 'bin\java.exe') -ArgumentList $arguments -WorkingDirectory $root -WindowStyle Hidden
+        Wait-Listening 9042 5 { Get-Content (Join-Path $logs 'system.log') -Tail 80 }
         Set-Live CASSANDRA 9042
     }
     # ClickHouse has no Windows build. WSL 1 runs its Linux binary on the runner, which cannot nest a WSL 2 VM.
