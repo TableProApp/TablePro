@@ -9,6 +9,9 @@ internal sealed class McpBridge(DispatcherQueue queue, Func<MainWindow?> window)
 {
     private readonly ConcurrentDictionary<ulong, CancellationTokenSource> _asking = new();
 
+    // The core calls Approve and Withdraw on threads of their own, so a withdrawal can arrive before its question.
+    private readonly ConcurrentDictionary<ulong, bool> _withdrawn = new();
+
     public bool OpenConnection(Guid connectionId) =>
         OnUi(() => window() is { } shown ? shown.OpenForClientAsync(connectionId) : Task.FromResult(false));
 
@@ -21,6 +24,13 @@ internal sealed class McpBridge(DispatcherQueue queue, Func<MainWindow?> window)
         using var withdrawn = new CancellationTokenSource();
         if (!_asking.TryAdd(request.Id, withdrawn))
         {
+            return false;
+        }
+
+        // Checked after the question is listed, so a withdrawal lands in one of the two.
+        if (_withdrawn.TryRemove(request.Id, out _))
+        {
+            _asking.TryRemove(request.Id, out _);
             return false;
         }
 
@@ -38,8 +48,10 @@ internal sealed class McpBridge(DispatcherQueue queue, Func<MainWindow?> window)
 
     public void Withdraw(ulong requestId)
     {
+        _withdrawn[requestId] = true;
         if (_asking.TryGetValue(requestId, out var withdrawn))
         {
+            _withdrawn.TryRemove(requestId, out _);
             try
             {
                 withdrawn.Cancel();

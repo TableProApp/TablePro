@@ -38,9 +38,19 @@ public sealed partial class WorkspaceView
             RequestedTheme = ActualTheme,
         };
         AutomationProperties.SetAutomationId(dialog, "ClientWriteDialog");
-        // The client went away, so its question comes down; the core reads that as declined.
-        using var registration = withdrawn.Register(() => DispatcherQueue.TryEnqueue(dialog.Hide));
-        return await WindowDialogs.ShowWhenFreeAsync(dialog, this, withdrawn).ConfigureAwait(true)
-            == ContentDialogResult.Primary;
+        // A question waiting its turn is declined once the workspace leaves the window, as a shown one is.
+        using var ended = CancellationTokenSource.CreateLinkedTokenSource(withdrawn);
+        void OnUnloaded(object sender, RoutedEventArgs args) => ended.Cancel();
+        Unloaded += OnUnloaded;
+        using var registration = ended.Token.Register(() => DispatcherQueue.TryEnqueue(dialog.Hide));
+        try
+        {
+            return await WindowDialogs.ShowWhenFreeAsync(dialog, this, ended.Token).ConfigureAwait(true)
+                == ContentDialogResult.Primary;
+        }
+        finally
+        {
+            Unloaded -= OnUnloaded;
+        }
     }
 }

@@ -36,6 +36,34 @@ public sealed partial class ShellTests
             }
 
             app.Screenshot("package-settings");
+
+            // The alias starts the console command with the package's identity, so it finds the same LocalState.
+            var alias = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Microsoft",
+                "WindowsApps",
+                "tablepro.exe");
+            var start = new System.Diagnostics.ProcessStartInfo(alias)
+            {
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            start.ArgumentList.Add("status");
+            start.ArgumentList.Add("--format");
+            start.ArgumentList.Add("json");
+            start.Environment.Remove("TABLEPRO_DATA_DIR");
+            var started = System.Diagnostics.Process.Start(start)
+                ?? throw new InvalidOperationException("The tablepro alias did not start.");
+            started.StandardInput.Close();
+            var status = Finish(started);
+            Assert.Contains("\"running\":true", status.Out, StringComparison.Ordinal);
+            if (!string.IsNullOrEmpty(version))
+            {
+                Assert.Contains($"\"version\":\"{version}\"", status.Out, StringComparison.Ordinal);
+            }
+
             app.Close();
         }
 

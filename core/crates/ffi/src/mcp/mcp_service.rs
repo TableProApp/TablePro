@@ -1,4 +1,3 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::UNIX_EPOCH;
 
@@ -52,10 +51,11 @@ struct Inner {
     shown: Mutex<Shown>,
     // Taken by every start, stop and token change in turn, so a stop frees the port before the next start binds it.
     live: Arc<tokio::sync::Mutex<Option<McpServer>>>,
-    generation: AtomicU64,
 }
 
+// One lock over the generation and what it shows, so a start that settles late never shows over a later change.
 struct Shown {
+    generation: u64,
     status: McpStatusTag,
     seen: Vec<SeenClientInfo>,
     following: Option<AbortOnDropHandle<()>>,
@@ -77,12 +77,12 @@ impl McpService {
                 version,
                 listener,
                 shown: Mutex::new(Shown {
+                    generation: 0,
                     status: McpStatusTag::Off,
                     seen: Vec::new(),
                     following: None,
                 }),
                 live: Arc::default(),
-                generation: AtomicU64::new(0),
             }),
         }
     }
@@ -93,14 +93,10 @@ impl McpService {
     // Called again on each change of the setting, and to try again; returns at once and the listener hears the rest.
     pub fn apply(&self, enabled: bool, port: u16) {
         let inner = self.inner.clone();
-        let generation = inner.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        inner.show(
-            match enabled {
-                true => McpStatusTag::Starting { port },
-                false => McpStatusTag::Off,
-            },
-            None,
-        );
+        let generation = inner.next(match enabled {
+            true => McpStatusTag::Starting { port },
+            false => McpStatusTag::Off,
+        });
         let tasks = inner.tasks.clone();
         drop(tasks.spawn_task(async move {
             let started = inner.restart(generation, enabled.then_some(port)).await;
@@ -149,8 +145,7 @@ impl McpService {
     // For good, as the app quits; returns once the port is free.
     pub async fn stop(&self) {
         let inner = self.inner.clone();
-        inner.generation.fetch_add(1, Ordering::SeqCst);
-        inner.show(McpStatusTag::Off, None);
+        inner.next(McpStatusTag::Off);
         let stopping = on_runtime(&self.inner.tasks, async move {
             if let Some(server) = inner.live.lock().await.take() {
                 server.shutdown().await;
@@ -165,7 +160,7 @@ impl McpService {
 
 impl Drop for McpService {
     fn drop(&mut self) {
-        self.inner.generation.fetch_add(1, Ordering::SeqCst);
+        self.inner.lock().generation += 1;
         let live = self.inner.live.clone();
         drop(self.inner.tasks.spawn_task(async move {
             if let Some(server) = live.lock().await.take() {
@@ -182,15 +177,22 @@ impl Inner {
         self.shown.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    // The clients a stopped or moved server saw are forgotten with it.
-    fn show(self: &Arc<Self>, status: McpStatusTag, following: Option<AbortOnDropHandle<()>>) {
-        {
+    // What a change shows until its own start settles; a stopped or moved server's clients are forgotten with it.
+    fn next(self: &Arc<Self>, status: McpStatusTag) -> u64 {
+        let generation = {
             let mut shown = self.lock();
+            shown.generation += 1;
             shown.status = status;
             shown.seen.clear();
-            shown.following = following;
-        }
+            shown.following = None;
+            shown.generation
+        };
         self.signal();
+        generation
+    }
+
+    fn current(&self, generation: u64) -> bool {
+        self.lock().generation == generation
     }
 
     fn signal(self: &Arc<Self>) {
@@ -201,7 +203,7 @@ impl Inner {
     async fn restart(&self, generation: u64, port: Option<u16>) -> Started {
         let mut live = self.live.lock().await;
         // Tasks reach the lock out of order; a later change decides for itself, and may have started the live server.
-        if self.generation.load(Ordering::SeqCst) != generation {
+        if !self.current(generation) {
             return None;
         }
         if let Some(previous) = live.take() {
@@ -226,30 +228,40 @@ impl Inner {
     }
 
     fn settle(self: &Arc<Self>, generation: u64, port: u16, started: Started) {
-        if self.generation.load(Ordering::SeqCst) != generation {
-            return;
-        }
-        match started {
-            None => {}
-            Some(Ok((bound, sightings))) => {
-                let following = self.follow(sightings);
-                self.show(McpStatusTag::Running { port: bound }, Some(following));
-            }
+        let (status, following) = match started {
+            None => return,
+            Some(Ok((bound, sightings))) => (
+                McpStatusTag::Running { port: bound },
+                Some(self.follow(generation, sightings)),
+            ),
             Some(Err(error)) => {
                 tracing::warn!(%error, port, "the MCP server did not start");
-                self.show(
+                (
                     McpStatusTag::Failed {
                         port,
                         error: error.into_info(),
                     },
                     None,
-                );
+                )
             }
+        };
+        {
+            let mut shown = self.lock();
+            if shown.generation != generation {
+                return;
+            }
+            shown.status = status;
+            shown.following = following;
         }
+        self.signal();
     }
 
     // Ends with the server, whose sender then drops, or when a later status replaces it.
-    fn follow(self: &Arc<Self>, mut sightings: watch::Receiver<Vec<SeenClient>>) -> AbortOnDropHandle<()> {
+    fn follow(
+        self: &Arc<Self>,
+        generation: u64,
+        mut sightings: watch::Receiver<Vec<SeenClient>>,
+    ) -> AbortOnDropHandle<()> {
         let weak = Arc::downgrade(self);
         self.tasks.spawn_owned(async move {
             while sightings.changed().await.is_ok() {
@@ -257,7 +269,13 @@ impl Inner {
                 let Some(inner) = weak.upgrade() else {
                     return;
                 };
-                inner.lock().seen = clients;
+                {
+                    let mut shown = inner.lock();
+                    if shown.generation != generation {
+                        return;
+                    }
+                    shown.seen = clients;
+                }
                 inner.listener.changed();
             }
         })

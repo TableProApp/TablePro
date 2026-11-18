@@ -126,6 +126,9 @@ impl McpHost for AppBridge {
     }
 
     async fn approve(&self, approval: WriteApproval) -> bool {
+        if approval.cancel.is_cancelled() {
+            return false;
+        }
         let id = self.requests.fetch_add(1, Ordering::Relaxed);
         let request = McpWriteRequest {
             id,
@@ -136,7 +139,9 @@ impl McpHost for AppBridge {
             destructive: approval.destructive,
         };
         let asking = self.ask(move |app| app.approve(request));
+        // The question is handed over first, so the app hears of every withdrawal after its question, never alone.
         tokio::select! {
+            biased;
             answer = asking => answer.unwrap_or(false),
             () = approval.cancel.cancelled() => {
                 // The question's own call ends once the app has taken it down.
