@@ -13,7 +13,7 @@ public sealed class SqlServerTests : SqlEngineTests
         var server = LiveServer.Require("MSSQL");
         await using var session = await ConnectAsync(
             Core,
-            Connection(server) with { UserName = string.Empty, IntegratedAuth = true },
+            Connection(server) with { Database = "master", UserName = string.Empty, IntegratedAuth = true },
             ConnectionSecrets.None,
             cancellationToken);
         await using var editor = await session.OpenEditorAsync(cancellationToken);
