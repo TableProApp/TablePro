@@ -47,7 +47,17 @@ public sealed record AppSettings
     // As macOS offers them; 0 keeps as many as the store holds.
     public static IReadOnlyList<int> HistoryMaxEntriesChoices { get; } = [100, 500, 1_000, 5_000, 10_000, 0];
 
+    public const int DefaultNotifyAfterSeconds = 20;
+
+    // As macOS offers them, in seconds: 5, 10, 20 or 30 seconds, or 1, 2, 5 or 10 minutes.
+    public static IReadOnlyList<int> NotifyAfterChoices { get; } = [5, 10, 20, 30, 60, 120, 300, 600];
+
     public AppTheme Theme { get; set; } = AppTheme.System;
+
+    // A query that ran at least NotifyAfterSeconds and finished where the user is not looking posts a notification.
+    public bool NotifyLongWork { get; set; } = true;
+
+    public int NotifyAfterSeconds { get; set; } = DefaultNotifyAfterSeconds;
 
     public bool ReopenSession { get; set; } = true;
 
@@ -101,6 +111,7 @@ public sealed record AppSettings
         QueryTimeoutSeconds = Math.Clamp(QueryTimeoutSeconds, 0, 86_400),
         CountRowsIfEstimateLessThan = Math.Max(0, CountRowsIfEstimateLessThan),
         ResultSetsKeptPerRun = Math.Max(0, ResultSetsKeptPerRun),
+        NotifyAfterSeconds = NotifyAfterChoices.Contains(NotifyAfterSeconds) ? NotifyAfterSeconds : DefaultNotifyAfterSeconds,
     };
 }
 

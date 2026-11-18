@@ -153,6 +153,22 @@
                 <Button x:Uid="ClearHistorySettingsButton" x:Name="ClearHistoryButton" AutomationProperties.AutomationId="ClearHistorySettingsButton" Click="OnClearHistory" />
             </toolkit:SettingsCard>
 
+            <TextBlock x:Uid="NotificationsHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Uid="NotifyCard" x:Name="NotifyCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xEA8F;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="NotifySwitch" x:Uid="NotifySwitch" AutomationProperties.AutomationId="NotifySwitch" Toggled="OnNotifyToggled" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="NotifyAfterCard" x:Name="NotifyAfterCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Clock" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="NotifyAfterBox" x:Uid="NotifyAfterBox" AutomationProperties.AutomationId="NotifyAfterBox" MinWidth="200" SelectionChanged="OnNotifyAfterChanged" />
+            </toolkit:SettingsCard>
+            <!-- Windows turns notifications off per app; the toggle above cannot turn them back on. -->
+            <InfoBar x:Name="NotificationsOffBar" x:Uid="NotificationsOffBar" AutomationProperties.AutomationId="NotificationsOffBar" IsClosable="False" IsOpen="False" Severity="Warning" Visibility="Collapsed">
+                <InfoBar.ActionButton>
+                    <HyperlinkButton x:Uid="NotificationsOffLink" NavigateUri="ms-settings:notifications" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+
             <TextBlock x:Uid="AboutHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsExpander x:Name="AboutExpander" x:Uid="AboutExpander" AutomationProperties.AutomationId="AboutExpander">
                 <toolkit:SettingsExpander.HeaderIcon>

@@ -1,6 +1,7 @@
 // Foreign code is called only from a runtime thread, never under a lock (core/ARCHITECTURE.md, Bindings).
 
 mod account;
+mod app_link;
 mod cancel_token;
 mod catalog;
 mod catalog_change;
@@ -48,6 +49,7 @@ pub use account::{
     ShareRequestArg, ShareTeamInfo, SharedLinkInfo, TeamInfo, scan_columns_for_secrets, scan_sql_for_secrets,
     share_token_from_link,
 };
+pub use app_link::{AppLinkInfo, parse_app_link};
 pub use cancel_token::CancelToken;
 pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, SchemaEntry, TableName};
 pub use catalog_change::{

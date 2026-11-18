@@ -1,5 +1,6 @@
 mod ai_policy;
 mod ai_provider;
+pub mod app_link;
 mod auth_mode;
 pub mod browse;
 mod busy_reason;

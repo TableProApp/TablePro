@@ -68,7 +68,7 @@ public sealed partial class DataGridView
                 {
                     return false;
                 }
-                BeginEditAfterKey();
+                BeginEditAfterKey(inPlace: false);
                 return true;
             case VirtualKey.Delete when !control && !shift:
                 if (!IsEditable)

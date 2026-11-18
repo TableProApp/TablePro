@@ -18,7 +18,10 @@ public sealed class TableEditor : IDisposable
             column.Nullable,
             column.PrimaryKey,
             column.TakesEmpty,
-            column.TakesDefault))];
+            column.TakesDefault,
+            Mapping.Kind(column.Kind),
+            column.Labels,
+            column.Multiple))];
     }
 
     // Read again on each call, since a reconnect can make the connection read-only.

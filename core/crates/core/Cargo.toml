@@ -30,6 +30,7 @@ tokio = { workspace = true, features = ["io-util", "rt"] }
 tokio-util.workspace = true
 unicode-segmentation.workspace = true
 unicode-width.workspace = true
+url.workspace = true
 uuid.workspace = true
 
 [target.'cfg(all(unix, not(target_os = "linux")))'.dependencies]

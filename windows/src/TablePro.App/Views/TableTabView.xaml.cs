@@ -248,7 +248,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         }
 
         grid.FocusCell(row, ShownColumn(_model.FirstColumnToFill));
-        grid.BeginEdit();
+        grid.BeginTextEdit();
     }
 
     public void DuplicateRows()
@@ -618,14 +618,65 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     private void OnCellEditStarting(object? sender, GridEditStartingEventArgs e)
     {
-        if (_model.StartEdit(e.Row, Results.DataColumn(e.Column), out var text) is { } refusal)
+        var source = Results.DataColumn(e.Column);
+        if (_model.StartEdit(e.Row, source, out var text) is { } refusal)
         {
             e.Cancel = true;
             ShowRefusal(refusal);
             return;
         }
 
-        e.Text = text;
+        var column = e.InPlace ? null : _model.Edits?.Columns.ElementAtOrDefault(source);
+        var editor = column is null ? CellEditor.Text : CellEditors.For(column);
+        if (column is null || editor == CellEditor.Text)
+        {
+            e.Text = text;
+            return;
+        }
+
+        e.Cancel = true;
+        OpenCellEditor(editor, e.Row, source, column, text);
+    }
+
+    // As macOS opens them: a boolean toggles at once; an enum, a set, a date or a time opens its own editor.
+    private void OpenCellEditor(CellEditor editor, int row, int column, EditColumn info, string text)
+    {
+        var grid = Results.GridView;
+        var shown = Results.ShownSet;
+        var cell = (grid.FocusedRow, grid.FocusedColumn);
+        void Commit(string value) => ShowRefusal(_model.CommitEdit(row, column, value));
+
+        // A flyout's pick can land after a reload replaced the page it was opened on.
+        bool IsCurrent() =>
+            !_model.IsClosed && ReferenceEquals(shown, Results.ShownSet) && cell == (grid.FocusedRow, grid.FocusedColumn);
+
+        if (editor == CellEditor.Toggle)
+        {
+            Commit(CellEditors.Toggled(text));
+            return;
+        }
+
+        var request = new CellEditRequest(grid, info, text, IsCurrent, Commit);
+        switch (editor)
+        {
+            case CellEditor.Choice:
+                CellEditorFlyouts.ShowChoice(request);
+                break;
+            case CellEditor.Choices:
+                CellEditorFlyouts.ShowChoices(request);
+                break;
+            case CellEditor.Date:
+                CellEditorFlyouts.ShowDate(request);
+                break;
+            case CellEditor.Time:
+                CellEditorFlyouts.ShowTime(request);
+                break;
+            case CellEditor.Timestamp:
+                CellEditorFlyouts.ShowTimestamp(request);
+                break;
+            default:
+                break;
+        }
     }
 
     // A refusal keeps the editor open with the reason on it; on a focus loss the editor closes, so the status says it too.

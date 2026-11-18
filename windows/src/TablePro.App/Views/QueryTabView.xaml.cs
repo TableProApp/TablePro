@@ -61,6 +61,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         ShowDatabase();
         _model.StateChanged += (_, _) => OnModelStateChanged();
         _model.FileSaved += (_, path) => FileSaved?.Invoke(this, path);
+        _model.RunEnded += (_, end) => RunEnded?.Invoke(this, end);
         Results.StatusChanged += (_, status) => StatusText.Text = status;
         Results.SortRequested += async (_, sort) => await _model.SortAsync(sort).ConfigureAwait(true);
         Results.ResultPicked += (_, _) => _model.ResultPicked();
@@ -89,6 +90,14 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         await _model.LoadRestoredFileAsync(stamp, unsaved).ConfigureAwait(true);
 
     public event EventHandler? StateChanged;
+
+    // A run the user started ended; the workspace holding the tab decides whether it notifies.
+    internal event EventHandler<RunEnd>? RunEnded;
+
+    // The tab's notification, which a later run's replaces.
+    internal string NoticeKey { get; } = Guid.NewGuid().ToString("N");
+
+    internal string? ShownDatabase => _model.ShownDatabase;
 
     // .sql files dropped on the editor; the workspace opens each in a tab of its own.
     public event EventHandler<IReadOnlyList<string>>? OpenFilesRequested;

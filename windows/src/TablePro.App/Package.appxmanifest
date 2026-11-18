@@ -3,8 +3,10 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap5 rescap">
+  IgnorableNamespaces="uap uap5 com desktop rescap">
 
   <!-- Development identity: the release workflow sets the version and its signing certificate's publisher (windows/RELEASING.md). -->
   <Identity
@@ -49,11 +51,167 @@
             <uap5:ExecutionAlias Alias="tablepro.exe" />
           </uap5:AppExecutionAlias>
         </uap5:Extension>
-        <!-- tablepro://share?token=... opens a shared link's SQL in a new query tab (docs/decisions/0009-share-links.md). -->
+        <!-- tablepro:// links: share links (docs/decisions/0009-share-links.md), connect and settings links. -->
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="tablepro">
             <uap:DisplayName>TablePro</uap:DisplayName>
           </uap:Protocol>
+        </uap:Extension>
+        <!-- The database URL schemes the core reads (docs/decisions/0014, Links and files). -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="cassandra">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="ch">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="clickhouse">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="cql">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="duckdb">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="mariadb">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="mongodb">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="mongodb+srv">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="mssql">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="mysql">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="mysqlx">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="postgres">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="postgresql">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="redis">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="rediss">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="scylla">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="scylladb">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="sqlite">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="sqlite3">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="sqlserver">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="valkey">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="valkeys">
+            <uap:DisplayName>TablePro</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <!-- A click on a notification reaches the app through this COM class, starting it when it is not running. -->
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="C3D5606D-8E04-466A-A6E7-26D033F0BFC3" />
+        </desktop:Extension>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="TablePro.exe" Arguments="----AppNotificationActivated:" DisplayName="TablePro">
+              <com:Class Id="C3D5606D-8E04-466A-A6E7-26D033F0BFC3" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+        <!-- A .sql file opens in a query tab, a database file as a connection that saves nothing. -->
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="sql">
+            <uap:DisplayName>SQL script</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.sql</uap:FileType>
+              <uap:FileType>.psql</uap:FileType>
+              <uap:FileType>.pgsql</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="sqlite">
+            <uap:DisplayName>SQLite database</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.db</uap:FileType>
+              <uap:FileType>.db3</uap:FileType>
+              <uap:FileType>.s3db</uap:FileType>
+              <uap:FileType>.sl3</uap:FileType>
+              <uap:FileType>.sqlite</uap:FileType>
+              <uap:FileType>.sqlite3</uap:FileType>
+              <uap:FileType>.sqlitedb</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="duckdb">
+            <uap:DisplayName>DuckDB database</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.duckdb</uap:FileType>
+              <uap:FileType>.ddb</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
         </uap:Extension>
       </Extensions>
     </Application>

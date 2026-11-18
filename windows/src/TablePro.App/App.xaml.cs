@@ -1,6 +1,7 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
+using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.DataGrid;
 using TablePro.Interop;
@@ -28,6 +29,8 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        FinishNotifications.Start(DispatcherQueue.GetForCurrentThread());
+        FinishNotifications.TabRequested += (_, tab) => _window?.ShowTab(tab);
         var folder = AppStorage.DataFolder;
         Directory.CreateDirectory(folder);
         var core = TableProCore.CreateWithSystemSecrets(new HostConfiguration(AppStorage.Version, folder));
@@ -42,14 +45,14 @@ public partial class App : Application
         _window.ActivateRestored();
         // Off the first grid's path: the fallback fonts for non-Latin cells load in the background.
         DataGridView.WarmUpFonts();
-        if (LaunchLink() is { } link)
+        if (LaunchRequest() is { IsEmpty: false } request)
         {
-            _window.OpenSharedLink(link);
+            _window.Open(request);
         }
     }
 
-    // Another launch handed over, with the tablepro:// link it was started for, if any.
-    internal void Activate(string? link)
+    // Another launch handed over, with the links and files it was started for, if any.
+    internal void Activate(ActivationRequest request)
     {
         if (_window is null || _closed)
         {
@@ -65,22 +68,22 @@ public partial class App : Application
             CrashLog.Write(exception);
         }
 
-        if (link is not null)
+        if (!request.IsEmpty)
         {
-            _window.OpenSharedLink(link);
+            _window.Open(request);
         }
     }
 
-    private static string? LaunchLink()
+    private static ActivationRequest LaunchRequest()
     {
         try
         {
-            return ActivationLink.OfLaunch(AppInstance.GetCurrent().GetActivatedEventArgs());
+            return ActivationRequests.OfLaunch(AppInstance.GetCurrent().GetActivatedEventArgs());
         }
         catch (Exception exception)
         {
             CrashLog.Write(exception);
-            return null;
+            return ActivationRequest.None;
         }
     }
 
@@ -93,6 +96,7 @@ public partial class App : Application
         }
 
         _closed = true;
+        FinishNotifications.Stop();
         try
         {
             SingleInstance.Release();

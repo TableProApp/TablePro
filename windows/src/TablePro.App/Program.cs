@@ -36,7 +36,7 @@ internal static class Program
         GC.KeepAlive(current);
     }
 
-    // Raised off the UI thread, when another launch on this data folder hands over, a tablepro:// link with it.
+    // Raised off the UI thread, when another launch on this data folder hands over, with the links and files it carries.
     private static AppInstance? Listen(App app, DispatcherQueue queue)
     {
         try
@@ -44,8 +44,8 @@ internal static class Program
             var current = AppInstance.GetCurrent();
             current.Activated += (_, activation) =>
             {
-                var link = LinkOf(activation);
-                queue.TryEnqueue(() => app.Activate(link));
+                var request = RequestOf(activation);
+                queue.TryEnqueue(() => app.Activate(request));
             };
             return current;
         }
@@ -56,16 +56,16 @@ internal static class Program
         }
     }
 
-    private static string? LinkOf(AppActivationArguments activation)
+    private static ActivationRequest RequestOf(AppActivationArguments activation)
     {
         try
         {
-            return ActivationLink.Of(activation);
+            return ActivationRequests.Of(activation);
         }
         catch (Exception exception)
         {
             CrashLog.Write(exception);
-            return null;
+            return ActivationRequest.None;
         }
     }
 }

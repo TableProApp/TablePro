@@ -198,6 +198,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
+        ConnectSaved(connection);
+    }
+
+    private OpenConnection ConnectSaved(SavedConnection connection)
+    {
         var open = Open(new SessionConnection
         {
             ConnectionId = connection.Id,
@@ -207,6 +212,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         open.Mark(connection.EngineId, connection.Color);
         // The tags come from the library's snapshot, which names each one.
         _ = RefreshMarksAsync();
+        return open;
     }
 
     // A tab window picks too: a .sql file opens on its own connection, a database file in the primary window.
@@ -232,7 +238,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     }
 
     // As macOS's Open File: a .sql file goes to a query tab, any other file opens as a database.
-    private async Task OpenAnyFileAsync(string path)
+    internal async Task OpenAnyFileAsync(string path)
     {
         if (SqlSuffixes.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
         {
@@ -433,9 +439,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     void IWorkspaceHost.WriteSessionNow() => _primary.WriteSessionBeforeSave();
 
-    internal void OpenFile(string path)
+    // No engine lets the core tell SQLite from DuckDB by the file's header.
+    internal void OpenFile(string path, string? engineId = null)
     {
-        Open(new SessionConnection { FilePath = path, Name = Path.GetFileName(path) });
+        Open(new SessionConnection { FilePath = path, Name = Path.GetFileName(path), EngineId = engineId ?? string.Empty });
     }
 
     // Each press on a tab asks for a window before any drag, so one is kept hidden for the same connection.
@@ -610,25 +617,24 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     // Another database of a server whose databases hold their own schemas opens as its own rail item, as Linux opens
     // it beside the connection; one already open, the connection's own included, is brought forward.
-    private void OpenDatabase(OpenConnection from, string database)
+    private OpenConnection? OpenDatabase(OpenConnection from, string database)
     {
         if (!IsPrimary)
         {
             _primary.Activate();
-            _primary.OpenDatabase(from, database);
-            return;
+            return _primary.OpenDatabase(from, database);
         }
 
         if (from.ConnectionId is not { } id)
         {
-            return;
+            return null;
         }
 
         var own = _open.FirstOrDefault(item => item.Matches(id, null) && item.Database is null);
         if (own?.Session?.Database == database)
         {
             Select(own);
-            return;
+            return own;
         }
 
         var open = Open(new SessionConnection
@@ -641,6 +647,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         open.Mark(from.Origin.EngineId, from.Color);
         open.SetTags(from.Tags);
         ShowCue(open);
+        return open;
     }
 
     private async void OnLibraryChanged(object? sender, EventArgs e) => await RefreshMarksAsync();
@@ -707,6 +714,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             }
         };
         open.View.CommandsChanged += async (_, _) => await OpenWaitingFilesAsync(open);
+        open.View.CommandsChanged += async (_, _) => await OpenLinkTargetAsync(open);
         open.View.Host = this;
         _open.Add(open);
         SessionChanged();
@@ -853,6 +861,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
         await open.DisconnectAsync();
         _open.Remove(open);
+        _linkTargets.Remove(open);
         Rail.MenuItems.Remove(open.RailItem);
         if (ReferenceEquals(_front, open))
         {

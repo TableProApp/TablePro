@@ -7744,6 +7744,7 @@ dependencies = [
  "tokio-util",
  "unicode-segmentation",
  "unicode-width",
+ "url",
  "uuid",
  "winapi-util",
  "zip",

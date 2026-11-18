@@ -1215,6 +1215,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             query.SaveQueryRequested += OnSaveQueryRequested;
             query.OpenFilesRequested += OnOpenFilesRequested;
             query.FileSaved += OnFileSaved;
+            query.RunEnded += OnRunEnded;
         }
         else if (item.Content is DefinitionTabView definition)
         {
@@ -1276,6 +1277,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             query.SaveQueryRequested -= OnSaveQueryRequested;
             query.OpenFilesRequested -= OnOpenFilesRequested;
             query.FileSaved -= OnFileSaved;
+            query.RunEnded -= OnRunEnded;
         }
         else if (item.Content is DefinitionTabView definition)
         {
