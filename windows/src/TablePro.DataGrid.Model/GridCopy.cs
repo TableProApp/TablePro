@@ -43,7 +43,7 @@ public static class GridCopy
                         output.Append('\t');
                     }
                     var cell = block.Get(row, column);
-                    if (cell.IsNull || (cell.State & CellState.Missing) != 0)
+                    if (cell.IsNull || (cell.State & (CellState.Missing | CellState.Unreadable)) != 0)
                     {
                         continue;
                     }

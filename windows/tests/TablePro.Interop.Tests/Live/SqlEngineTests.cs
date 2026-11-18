@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using TablePro.DataGrid.Model;
 
 namespace TablePro.Interop.Tests.Live;
 
@@ -22,6 +23,8 @@ public abstract class SqlEngineTests : IAsyncDisposable
     private TableProCore? _core;
 
     protected string Unique { get; } = Guid.NewGuid().ToString("N")[..8];
+
+    protected TableProCore Core => _core ??= TableProCore.Create(new HostConfiguration("live-test", _directory), new MemorySecretStore());
 
     protected abstract string CorpusFile { get; }
 
@@ -167,8 +170,7 @@ public abstract class SqlEngineTests : IAsyncDisposable
 
     private async Task<(DatabaseSession Session, QueryEditor Editor)> StartAsync(CancellationToken cancellationToken)
     {
-        _core = TableProCore.Create(new HostConfiguration("live-test", _directory), new MemorySecretStore());
-        var session = await OpenAsync(_core, _directory, cancellationToken);
+        var session = await OpenAsync(Core, _directory, cancellationToken);
         _open.Add(session);
         var editor = await session.OpenEditorAsync(cancellationToken);
         _open.Add(editor);
@@ -254,7 +256,17 @@ public abstract class SqlEngineTests : IAsyncDisposable
     private static Dictionary<long, string?> TextsById(ResultSet set, string column)
     {
         var index = ColumnIndex(set, column);
-        return RowsById(set).ToDictionary(pair => pair.Key, pair => set.GetCellText(pair.Value, index));
+        using var reader = new ResultSetData(set, set.GetColumns()).OpenReader();
+        var block = new CellBlock();
+        reader.Read(0, (int)set.RowCount, index, 1, 256, block);
+        return RowsById(set).ToDictionary(pair => pair.Key, pair => Shown(set, block, (int)pair.Value, index));
+    }
+
+    // The whole value, or what the grid says in place of one the driver could not read.
+    private static string? Shown(ResultSet set, CellBlock block, int row, int column)
+    {
+        var cell = block.Get(row, column);
+        return (cell.State & CellState.Unreadable) != 0 ? cell.Text.ToString() : set.GetCellText(row, column);
     }
 
     private static int ColumnIndex(ResultSet set, string name)

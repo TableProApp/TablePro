@@ -28,5 +28,6 @@ internal sealed record LiveServer(int Port, string UserName, string? Password)
         return server!;
     }
 
-    public ConnectionSecrets Secrets => new(DatabasePassword: Password);
+    // An empty password for a server that takes none, as the connection form saves one.
+    public ConnectionSecrets Secrets => new(DatabasePassword: Password ?? string.Empty);
 }

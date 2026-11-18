@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/TablePro.Interop/TablePro.Interop.csproj" />
+    <ProjectReference Include="../../src/TablePro.DataGrid.Model/TablePro.DataGrid.Model.csproj" />
   </ItemGroup>
 
 </Project>

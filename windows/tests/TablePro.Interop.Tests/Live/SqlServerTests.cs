@@ -11,9 +11,8 @@ public sealed class SqlServerTests : SqlEngineTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var server = LiveServer.Require("MSSQL");
-        using var core = TableProCore.Create(new HostConfiguration("live-test"), new MemorySecretStore());
         await using var session = await ConnectAsync(
-            core,
+            Core,
             Connection(server) with { UserName = string.Empty, IntegratedAuth = true },
             ConnectionSecrets.None,
             cancellationToken);
