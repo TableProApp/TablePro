@@ -4458,4 +4458,310 @@ New fingerprint: {2}</value>
   <data name="SummaryCopy" xml:space="preserve">
     <value>Copy {0}</value>
   </data>
+  <data name="AiHeader.Text" xml:space="preserve">
+    <value>AI assistant</value>
+  </data>
+  <data name="AiProviderCard.Header" xml:space="preserve">
+    <value>Provider</value>
+  </data>
+  <data name="AiProviderBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>AI provider</value>
+  </data>
+  <data name="AiProviderOff" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="AiProviderAnthropic" xml:space="preserve">
+    <value>Anthropic</value>
+  </data>
+  <data name="AiProviderOpenAI" xml:space="preserve">
+    <value>OpenAI</value>
+  </data>
+  <data name="AiProviderCompatible" xml:space="preserve">
+    <value>Ollama or compatible server</value>
+  </data>
+  <data name="AiProviderOffDescription" xml:space="preserve">
+    <value>Nothing is sent anywhere until you choose a provider.</value>
+  </data>
+  <data name="AiProviderOnDescription" xml:space="preserve">
+    <value>Your questions, your SQL and the structure of the tables involved go to this provider. Rows never do. Each connection's AI policy decides whether anything is sent from it.</value>
+  </data>
+  <data name="AiAddressCard.Header" xml:space="preserve">
+    <value>Server address</value>
+  </data>
+  <data name="AiAddressBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Server address</value>
+  </data>
+  <data name="AiAddressBox.PlaceholderText" xml:space="preserve">
+    <value>http://localhost:11434/v1</value>
+  </data>
+  <data name="AiAddressDescription" xml:space="preserve">
+    <value>An http or https address with its version path. A key goes over plain http only to this computer.</value>
+  </data>
+  <data name="AiAddressInvalid" xml:space="preserve">
+    <value>Enter an http or https address with its version path, such as http://localhost:11434/v1.</value>
+  </data>
+  <data name="AiKeyCard.Header" xml:space="preserve">
+    <value>API key</value>
+  </data>
+  <data name="AiKeyHeader" xml:space="preserve">
+    <value>API key</value>
+  </data>
+  <data name="AiKeyOptionalHeader" xml:space="preserve">
+    <value>API key (optional)</value>
+  </data>
+  <data name="AiKeyBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>API key</value>
+  </data>
+  <data name="AiKeyBox.PlaceholderText" xml:space="preserve">
+    <value>Paste a key</value>
+  </data>
+  <data name="AiKeySaveButton.Content" xml:space="preserve">
+    <value>Save key</value>
+  </data>
+  <data name="AiKeyRemoveButton.Content" xml:space="preserve">
+    <value>Remove key</value>
+  </data>
+  <data name="AiKeyKept" xml:space="preserve">
+    <value>A key is kept in Windows Credential Manager.</value>
+  </data>
+  <data name="AiKeyNone" xml:space="preserve">
+    <value>No key is kept. Paste the provider's API key and save it.</value>
+  </data>
+  <data name="AiKeyNoneOptional" xml:space="preserve">
+    <value>No key is kept. A server on this computer usually needs none.</value>
+  </data>
+  <data name="AiKeySaved" xml:space="preserve">
+    <value>The key is saved in Windows Credential Manager.</value>
+  </data>
+  <data name="AiKeyRemoved" xml:space="preserve">
+    <value>The key is removed.</value>
+  </data>
+  <data name="AiModelCard.Header" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="AiModelCard.Description" xml:space="preserve">
+    <value>The model id the provider answers with. Open the list to read the models it offers.</value>
+  </data>
+  <data name="AiModelBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="AiModelBox.PlaceholderText" xml:space="preserve">
+    <value>Model id</value>
+  </data>
+  <data name="AiModelsReading" xml:space="preserve">
+    <value>Reading the provider's models...</value>
+  </data>
+  <data name="AiModelsFailed" xml:space="preserve">
+    <value>The models could not be read. {0}</value>
+  </data>
+  <data name="AiModelsNone" xml:space="preserve">
+    <value>The provider lists no models.</value>
+  </data>
+  <data name="AiPolicyCard.Header" xml:space="preserve">
+    <value>AI assistant</value>
+  </data>
+  <data name="AiPolicyCard.Description" xml:space="preserve">
+    <value>The assistant asks before it first sends this connection's table structure, and your answer lasts until it disconnects.</value>
+  </data>
+  <data name="AiPolicyBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>AI assistant policy</value>
+  </data>
+  <data name="AiPolicyAsk.Content" xml:space="preserve">
+    <value>Ask each time</value>
+  </data>
+  <data name="AiPolicyAllow.Content" xml:space="preserve">
+    <value>Always allow</value>
+  </data>
+  <data name="AiPolicyNever.Content" xml:space="preserve">
+    <value>Never</value>
+  </data>
+  <data name="AiPolicyAskDescription" xml:space="preserve">
+    <value>The assistant asks before it first sends this connection's table structure, and your answer lasts until it disconnects.</value>
+  </data>
+  <data name="AiPolicyAllowDescription" xml:space="preserve">
+    <value>The assistant sends this connection's table structure and your SQL to the provider without asking. It reads no rows.</value>
+  </data>
+  <data name="AiPolicyNeverDescription" xml:space="preserve">
+    <value>Nothing from this connection is sent to the AI provider, and the assistant is off here.</value>
+  </data>
+  <data name="AssistantCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>AI assistant</value>
+  </data>
+  <data name="AssistantHeader.Text" xml:space="preserve">
+    <value>AI assistant</value>
+  </data>
+  <data name="AssistantNewButton.Label" xml:space="preserve">
+    <value>New conversation</value>
+  </data>
+  <data name="AssistantNewButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>New conversation</value>
+  </data>
+  <data name="AssistantCloseButton.Label" xml:space="preserve">
+    <value>Close AI assistant</value>
+  </data>
+  <data name="AssistantCloseButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Close AI assistant</value>
+  </data>
+  <data name="AssistantOffText.Text" xml:space="preserve">
+    <value>Choose a provider in Settings to use the assistant.</value>
+  </data>
+  <data name="AssistantSettingsButton.Content" xml:space="preserve">
+    <value>Open Settings</value>
+  </data>
+  <data name="AssistantBlockedText.Text" xml:space="preserve">
+    <value>This connection's AI policy is Never, so the assistant sends nothing from it. Edit the connection to change it.</value>
+  </data>
+  <data name="AssistantComposer.PlaceholderText" xml:space="preserve">
+    <value>Ask about this connection</value>
+  </data>
+  <data name="AssistantComposer.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Question for the assistant</value>
+  </data>
+  <data name="AssistantSendButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Send</value>
+  </data>
+  <data name="AssistantSendButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Send (Enter)</value>
+  </data>
+  <data name="AssistantStopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="AssistantStopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Stop the reply</value>
+  </data>
+  <data name="AssistantEmpty" xml:space="preserve">
+    <value>Questions go to {0} with this connection's table structure and the SQL in the editor. It reads no rows.</value>
+  </data>
+  <data name="AssistantSentStructure" xml:space="preserve">
+    <value>Sent with the structure of {0}</value>
+  </data>
+  <data name="AssistantWaiting" xml:space="preserve">
+    <value>Waiting for the reply</value>
+  </data>
+  <data name="AssistantRetry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="AssistantCopyCode" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="AssistantInsertCode" xml:space="preserve">
+    <value>Insert in editor</value>
+  </data>
+  <data name="AssistantLengthLimit" xml:space="preserve">
+    <value>The reply reached its length limit.</value>
+  </data>
+  <data name="AssistantRefused" xml:space="preserve">
+    <value>The model declined to answer.</value>
+  </data>
+  <data name="AssistantTokens" xml:space="preserve">
+    <value>{0} tokens</value>
+  </data>
+  <data name="AssistantStopped" xml:space="preserve">
+    <value>Stopped.</value>
+  </data>
+  <data name="AssistantAnswered" xml:space="preserve">
+    <value>The assistant answered.</value>
+  </data>
+  <data name="AssistantNotAllowedNow" xml:space="preserve">
+    <value>The assistant may not send from this connection now.</value>
+  </data>
+  <data name="AssistantConsentTitle" xml:space="preserve">
+    <value>Use the AI assistant here?</value>
+  </data>
+  <data name="AssistantConsentMessage" xml:space="preserve">
+    <value>The assistant sends your questions, your SQL and the structure of the tables involved from “{0}” to {1}. It reads no rows. Your answer lasts until this connection disconnects.</value>
+  </data>
+  <data name="AssistantConsentAllow" xml:space="preserve">
+    <value>Allow</value>
+  </data>
+  <data name="AiDestinationServer" xml:space="preserve">
+    <value>the server at {0}</value>
+  </data>
+  <data name="AiDestinationProvider" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="AiExplain" xml:space="preserve">
+    <value>Explain with AI</value>
+  </data>
+  <data name="AiReview" xml:space="preserve">
+    <value>Review with AI</value>
+  </data>
+  <data name="AiOptimize" xml:space="preserve">
+    <value>Optimize with AI</value>
+  </data>
+  <data name="AiFix" xml:space="preserve">
+    <value>Fix with AI</value>
+  </data>
+  <data name="AiError_missing_key" xml:space="preserve">
+    <value>Add your {0} API key in Settings.</value>
+  </data>
+  <data name="AiError_missing_model" xml:space="preserve">
+    <value>Choose a model in Settings.</value>
+  </data>
+  <data name="AiError_invalid_address" xml:space="preserve">
+    <value>The server address in Settings is not an http or https address.</value>
+  </data>
+  <data name="AiError_key_over_plain_http" xml:space="preserve">
+    <value>An API key goes to another computer over https only. Use an https address, or remove the key.</value>
+  </data>
+  <data name="AiError_invalid_key" xml:space="preserve">
+    <value>The API key holds characters a key cannot have. Enter it again in Settings.</value>
+  </data>
+  <data name="AiError_tls" xml:space="preserve">
+    <value>A secure connection could not be set up: {0}</value>
+  </data>
+  <data name="AiError_unreachable" xml:space="preserve">
+    <value>TablePro could not reach {0}: {1}</value>
+  </data>
+  <data name="AiError_timed_out" xml:space="preserve">
+    <value>{0} did not answer in time.</value>
+  </data>
+  <data name="AiError_unauthorized" xml:space="preserve">
+    <value>{0} refused the API key. Check it in Settings.</value>
+  </data>
+  <data name="AiError_rate_limited" xml:space="preserve">
+    <value>{0} is limiting requests. Wait a moment and try again.</value>
+  </data>
+  <data name="AiError_status" xml:space="preserve">
+    <value>{0} answered with error {1}.</value>
+  </data>
+  <data name="AiError_provider" xml:space="preserve">
+    <value>The provider stopped the reply: {0}</value>
+  </data>
+  <data name="AiError_protocol" xml:space="preserve">
+    <value>The reply could not be read: {0}</value>
+  </data>
+  <data name="AiError_too_long" xml:space="preserve">
+    <value>The reply grew longer than TablePro keeps, so it stopped.</value>
+  </data>
+  <data name="AiError_blocked" xml:space="preserve">
+    <value>This connection's AI policy is Never, so nothing is sent from it.</value>
+  </data>
+  <data name="AiErrorServerSaid" xml:space="preserve">
+    <value>{0} The server said: {1}</value>
+  </data>
+  <data name="MenuShowAssistant.Text" xml:space="preserve">
+    <value>Show AI assistant</value>
+  </data>
+  <data name="MenuShowAssistant.AccessKey" xml:space="preserve">
+    <value>A</value>
+  </data>
+  <data name="MenuAiReview.Text" xml:space="preserve">
+    <value>Review with AI</value>
+  </data>
+  <data name="MenuAiReview.AccessKey" xml:space="preserve">
+    <value>V</value>
+  </data>
+  <data name="MenuAiExplain.Text" xml:space="preserve">
+    <value>Explain with AI</value>
+  </data>
+  <data name="MenuAiExplain.AccessKey" xml:space="preserve">
+    <value>X</value>
+  </data>
+  <data name="MenuAiOptimize.Text" xml:space="preserve">
+    <value>Optimize with AI</value>
+  </data>
+  <data name="MenuAiOptimize.AccessKey" xml:space="preserve">
+    <value>O</value>
+  </data>
 </root>

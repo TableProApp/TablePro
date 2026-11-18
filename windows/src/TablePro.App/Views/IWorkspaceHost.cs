@@ -22,4 +22,7 @@ internal interface IWorkspaceHost
 
     // At once and on this thread, before a table tab's save sends anything; a refused write is logged.
     void WriteSessionNow();
+
+    // The Settings page, in the window with the rail.
+    void ShowSettings();
 }
