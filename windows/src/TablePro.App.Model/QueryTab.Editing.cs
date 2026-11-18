@@ -295,6 +295,12 @@ public sealed partial class QueryTab
             return;
         }
 
+        await LearnHomeAsync(cancellationToken).ConfigureAwait(true);
+        if (_work.IsClosed)
+        {
+            return;
+        }
+
         if (BlockFor() is { } block)
         {
             ReleaseResult(block);
@@ -354,10 +360,30 @@ public sealed partial class QueryTab
         return _statement is null || _results.Outcome is not QueryOutcome.Completed ? ResultEditBlock.RunAgain : null;
     }
 
+    // A connection that names no database saves in the one its login lands in, which the server lists as its default.
+    private async Task LearnHomeAsync(CancellationToken cancellationToken)
+    {
+        if (_session.Database is not null || _home is not null || _listedDefault is not null
+            || (_editor?.Database ?? Database) is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var listed = await _session.GetDatabasesAsync(cancellationToken).ConfigureAwait(true);
+            _listedDefault = listed.FirstOrDefault(entry => entry.IsDefault)?.Name;
+        }
+        catch (TableProException)
+        {
+            // Unknown, it stays refused as another database.
+        }
+    }
+
     // The editor's database as the server last said, else the one the tab opened it in, against the session's own.
     private bool InOtherDatabase()
     {
-        var home = _session.Database ?? _home;
+        var home = _session.Database ?? _home ?? _listedDefault;
         var ran = _editor?.Database ?? Database;
         return ran is not null && !string.Equals(ran, home, StringComparison.Ordinal);
     }

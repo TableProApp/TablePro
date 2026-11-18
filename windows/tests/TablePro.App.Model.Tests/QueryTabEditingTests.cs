@@ -88,6 +88,21 @@ public sealed class QueryTabEditingTests
     }
 
     [Fact]
+    public async Task ATabInTheDatabaseALoginLandsInEditsWhenTheConnectionNamesNone()
+    {
+        _session.ServerDatabases.Add(new SchemaEntry("shop", IsDefault: true, IsSystem: false));
+        _session.ServerDatabases.Add(new SchemaEntry("other", IsDefault: false, IsSystem: false));
+        var home = Tab("shop");
+        var elsewhere = Tab("other");
+
+        await home.RunAsync();
+        await elsewhere.RunAsync();
+
+        Assert.True(home.CanEditResult);
+        Assert.Equal(new EditRefusal.ResultBlocked(ResultEditBlock.OtherDatabase), elsewhere.StartEdit(0, 1, out _));
+    }
+
+    [Fact]
     public async Task ATypedUseThatMovedTheEditorIsRefused()
     {
         _session.Database = "app";
