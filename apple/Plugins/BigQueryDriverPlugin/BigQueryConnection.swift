@@ -384,9 +384,6 @@ internal final class BigQueryConnection: @unchecked Sendable {
     private static let pageSize = String(pageRowLimit)
     private static let listPageSize = "1000"
     private static let maximumPages = 100
-    private static let rateLimitRetries = 3
-    private static let rateLimitedStatus = 429
-    private static let unauthorizedStatus = 401
     private static let namedParameterMode = "NAMED"
     private static let pathSegmentAllowed: CharacterSet = {
         var allowed = CharacterSet.urlPathAllowed
@@ -661,8 +658,8 @@ internal final class BigQueryConnection: @unchecked Sendable {
         _ = try await send(request)
     }
 
-    // Runs apart from the caller's task: cancelling the request would lose the job reference its answer carries,
-    // and with it the only way to stop a statement the server has already started.
+    // Runs apart from the caller's task: cancelling a request on the wire would lose the job reference its answer
+    // carries, and with it the only way to stop a statement the server has started. Stop still ends every retry.
     private func submit(
         _ statement: BigQueryStatementRequest<BigQueryQueryParameter>
     ) async throws -> BQQueryResponse {
@@ -670,11 +667,16 @@ internal final class BigQueryConnection: @unchecked Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(statement)
+        let stop = BigQueryStopSignal()
         let submission = Task { [self] () throws -> BQQueryResponse in
-            try await decode(send(request))
+            try await decode(send(request, stop: stop))
         }
         do {
-            return try await submission.value
+            return try await withTaskCancellationHandler {
+                try await submission.value
+            } onCancel: {
+                stop.stop()
+            }
         } catch BigQueryError.api(let status, let message, let reason)
             where BigQueryStatementPolicy.isStatementRefusal(status: status) {
             throw BigQueryError.jobFailed(message: message, reason: reason)
@@ -801,33 +803,31 @@ internal final class BigQueryConnection: @unchecked Sendable {
         return session
     }
 
-    private func send(_ request: URLRequest) async throws -> Data {
-        var rateLimitAttempt = 0
-        var refreshedToken = false
-        while true {
-            let (data, response) = try await perform(request)
-            let status = response.statusCode
-            if (200..<300).contains(status) {
-                return data
+    private func send(_ request: URLRequest, stop: BigQueryStopSignal? = nil) async throws -> Data {
+        let answer = try await BigQueryRequestLoop.run(
+            isStopped: { stop?.isStopped == true },
+            dispatch: { try await perform(request, stop: stop) },
+            refreshToken: { await tokenProvider.invalidateCachedToken() },
+            backoff: { attempt in
+                Self.logger.info("BigQuery rate limited, retry \(attempt, privacy: .public)")
+                try await sleep(nanoseconds: BigQueryJobPolling.backoffNanoseconds(attempt: attempt))
             }
-            if status == Self.unauthorizedStatus, !refreshedToken {
-                refreshedToken = true
-                await tokenProvider.invalidateCachedToken()
-                continue
-            }
-            if status == Self.rateLimitedStatus, rateLimitAttempt < Self.rateLimitRetries {
-                rateLimitAttempt += 1
-                Self.logger.info("BigQuery rate limited, retry \(rateLimitAttempt, privacy: .public)")
-                try await sleep(nanoseconds: BigQueryJobPolling.backoffNanoseconds(attempt: rateLimitAttempt))
-                continue
-            }
-            throw BQErrorResponse.apiError(status: status, data: data)
+        )
+        guard let answer else {
+            throw BigQueryError.cancelled
         }
+        guard (200..<300).contains(answer.status) else {
+            throw BQErrorResponse.apiError(status: answer.status, data: answer.data)
+        }
+        return answer.data
     }
 
-    private func perform(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    private func perform(_ request: URLRequest, stop: BigQueryStopSignal?) async throws -> BigQueryRequestLoop.Answer {
         let session = try currentSession()
         let token = try await accessToken()
+        if stop?.isStopped == true {
+            throw BigQueryError.cancelled
+        }
         var authorized = request
         authorized.timeoutInterval = lock.withLock { connectDeadline }?.remainingSeconds()
             ?? requestTimeout.requestTimeoutInterval
@@ -837,7 +837,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw BigQueryError.invalidResponse
             }
-            return (data, httpResponse)
+            return BigQueryRequestLoop.Answer(status: httpResponse.statusCode, data: data)
         } catch let error as BigQueryError {
             throw error
         } catch {
