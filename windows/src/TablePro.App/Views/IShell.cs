@@ -1,3 +1,4 @@
+using TablePro.App.Model;
 using TablePro.Interop;
 
 namespace TablePro.App.Views;
@@ -5,6 +6,9 @@ namespace TablePro.App.Views;
 internal interface IShell
 {
     void NewConnection();
+
+    // A new connection the form opens on, filled from a pasted URL.
+    void NewConnection(ConnectionDraft draft);
 
     void EditConnection(SavedConnection connection);
 

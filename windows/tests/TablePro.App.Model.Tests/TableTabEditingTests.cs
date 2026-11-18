@@ -44,6 +44,57 @@ public sealed class TableTabEditingTests
     }
 
     [Fact]
+    public async Task TheDetailsShowEachColumnOfARowWithItsEditAndWhatMayBeEdited()
+    {
+        await _tab.RunAsync();
+        Assert.Null(_tab.CommitEdit(1, 1, "Accept II"));
+
+        var fields = _tab.FieldsAt(1);
+
+        Assert.Equal(["id", "name"], fields.Select(field => field.Name));
+        Assert.Equal("TEXT", fields[1].TypeName);
+        Assert.False(fields[0].CanEdit);
+        Assert.Equal("Accept II", fields[1].Text);
+        Assert.True(fields[1].IsEdited);
+        Assert.True(fields[1].CanEdit);
+        var stored = _tab.FieldsAt(2)[1];
+        Assert.Equal("r2c1", stored.Text);
+        Assert.False(stored.IsEdited);
+
+        Assert.Null(_tab.SetValue(2, 1, CellValueKind.Null));
+        Assert.True(_tab.FieldsAt(2)[1].IsNull);
+        Assert.True(_tab.FieldsAt(2)[1].IsEdited);
+
+        Assert.Null(_tab.AddRow(out var added));
+        var newRow = _tab.FieldsAt(added);
+        Assert.True(newRow[0].IsDefault);
+        Assert.False(newRow[0].IsEdited);
+        Assert.True(newRow[1].IsNull);
+        Assert.True(newRow[1].CanEdit);
+        Assert.Empty(_tab.FieldsAt(9));
+    }
+
+    [Fact]
+    public async Task TheTablesInfoIsReadOnceAndAgainAfterARefresh()
+    {
+        _session.Info = new TableInfo(new RowEstimate(3, IsExact: true), "Artists", 8192, 4096, 12288);
+        await _tab.RunAsync();
+
+        var info = await _tab.LoadInfoAsync(refresh: false);
+        await _tab.LoadInfoAsync(refresh: false);
+        Assert.Equal(1, _session.InfoReads);
+        Assert.Equal("Artists", info?.Comment);
+
+        await _tab.RefreshAsync();
+        await _tab.LoadInfoAsync(refresh: false);
+        Assert.Equal(2, _session.InfoReads);
+
+        _session.InfoFailure = Errors.Of("ffi.unexpected");
+        Assert.Null(await _tab.LoadInfoAsync(refresh: true));
+        Assert.Single(_view.InfoFailures);
+    }
+
+    [Fact]
     public async Task AnEditTheCoreRefusesIsNotKeptAndSaysWhy()
     {
         var failure = Errors.Of("edit.invalid_integer");
@@ -234,12 +285,38 @@ public sealed class TableTabEditingTests
         await _tab.DiscardAsync();
 
         Assert.True(_tab.HasUnsavedChanges);
+        Assert.Equal(0, _view.OpenEditsDiscarded);
 
         _view.Discards = true;
         await _tab.DiscardAsync();
 
         Assert.False(_tab.HasUnsavedChanges);
+        Assert.Equal(1, _view.OpenEditsDiscarded);
         Assert.Single(_session.Queries);
+    }
+
+    [Fact]
+    public async Task AValueHoldingANulIsShownInTheDetailsButNotEditedThere()
+    {
+        Editor.Start = (_, column) => new EditStart.Editable(column == 1 ? "before\0after" : "1", IsNull: false);
+        await _tab.RunAsync();
+
+        var field = _tab.FieldsAt(0)[1];
+
+        Assert.Equal("before\0after", field.Text);
+        Assert.False(field.CanEdit);
+
+        // A pending copy of such a value, as Duplicate makes, is read only there too.
+        Assert.Null(_tab.CommitEdit(1, 1, "copied\0value"));
+        Assert.False(_tab.FieldsAt(1)[1].CanEdit);
+        Assert.Null(_tab.CommitEdit(2, 1, "plain"));
+        Assert.True(_tab.FieldsAt(2)[1].CanEdit);
+
+        // Past the pane's bound a pending value shows its start, read only, as a stored one does.
+        var cut = _tab.FieldsAt(2, maxCharacters: 3)[1];
+        Assert.Equal("pla", cut.Text);
+        Assert.True(cut.TextCut);
+        Assert.False(cut.CanEdit);
     }
 
     [Fact]

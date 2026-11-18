@@ -156,6 +156,34 @@ public sealed class ConnectionLibraryTests : IDisposable
     }
 
     [Fact]
+    public async Task AGroupsColourIsSetTakenOffAndAnUnknownOneRefused()
+    {
+        var library = _core.Library;
+        var work = await library.CreateGroupAsync("Work", null);
+
+        await library.SetGroupColorAsync(work.Id, "teal");
+        var teal = (await library.GetSnapshotAsync()).Groups.Single().Color;
+        var refused = await Assert.ThrowsAsync<TableProException>(() => library.SetGroupColorAsync(work.Id, "mauve"));
+        await library.SetGroupColorAsync(work.Id, null);
+        var none = (await library.GetSnapshotAsync()).Groups.Single().Color;
+
+        Assert.Equal("teal", teal);
+        Assert.Equal("library.unknown_color", refused.Error.Code);
+        Assert.Null(none);
+    }
+
+    [Fact]
+    public void JumpHostsAreCheckedAsAConnectReadsThem()
+    {
+        TableProCore.CheckJumpHosts(string.Empty);
+        TableProCore.CheckJumpHosts("ops@jump1:2200, bastion");
+
+        var refused = Assert.Throws<TableProException>(() => TableProCore.CheckJumpHosts("jump1,,jump2"));
+
+        Assert.Equal("ssh.invalid_destination", refused.Error.Code);
+    }
+
+    [Fact]
     public async Task ARenameAndADropChangeOnlyWhatTheyName()
     {
         var library = _core.Library;

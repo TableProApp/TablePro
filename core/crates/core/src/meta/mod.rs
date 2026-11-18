@@ -8,6 +8,7 @@ mod page;
 mod row_identity;
 mod schema_info;
 mod table_estimate;
+mod table_info;
 mod table_ref;
 
 pub use index_info::{IndexInfo, IndexKey};
@@ -17,4 +18,5 @@ pub use page::{CtidWindow, HeapAddress, PageCost, PagePosition, PageStability, P
 pub use row_identity::{EngineRowId, EngineRowIdPart, RowIdentity};
 pub use schema_info::{ObjectScope, SchemaInfo};
 pub use table_estimate::{RowCountEstimate, TableEstimate};
+pub use table_info::TableInfo;
 pub use table_ref::TableRef;

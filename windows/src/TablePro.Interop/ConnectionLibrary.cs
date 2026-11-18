@@ -90,6 +90,10 @@ public sealed class ConnectionLibrary : IDisposable
         return CoreCall.RunAsync(() => _library.RenameGroup(id.ToString(), name));
     }
 
+    // A colour ConnectionColor names, such as "red"; null takes it off.
+    public Task SetGroupColorAsync(Guid id, string? color) =>
+        CoreCall.RunAsync(() => _library.SetGroupColor(id.ToString(), color));
+
     // The group's subgroups go with it, and its connections move to the top level.
     public Task DeleteGroupAsync(Guid id) => CoreCall.RunAsync(() => _library.DeleteGroup(id.ToString()));
 

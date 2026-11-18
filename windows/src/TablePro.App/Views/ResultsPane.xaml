@@ -10,6 +10,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <InfoBar
@@ -89,5 +90,28 @@
             ScrollViewer.VerticalScrollBarVisibility="Auto"
             TextWrapping="Wrap"
             Visibility="Collapsed" />
+
+        <!-- As a spreadsheet's status bar: the selected cells' figures, all of them in its flyout. -->
+        <Grid
+            x:Name="SummaryBar"
+            Grid.Row="3"
+            Padding="8,2"
+            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="0,1,0,0"
+            Visibility="Collapsed">
+            <DropDownButton
+                x:Name="SummaryButton"
+                HorizontalAlignment="Right"
+                AutomationProperties.AutomationId="SelectionSummary"
+                Background="Transparent"
+                BorderThickness="0"
+                FontSize="12">
+                <DropDownButton.Flyout>
+                    <Flyout x:Name="SummaryFlyout" Placement="TopEdgeAlignedRight" Opening="OnSummaryOpening">
+                        <Grid x:Name="SummaryFigures" ColumnSpacing="16" RowSpacing="4" AutomationProperties.AutomationId="SummaryFigures" />
+                    </Flyout>
+                </DropDownButton.Flyout>
+            </DropDownButton>
+        </Grid>
     </Grid>
 </UserControl>

@@ -170,6 +170,18 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         ShowForm(null);
     }
 
+    public void NewConnection(ConnectionDraft draft)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        if (!IsPrimary)
+        {
+            _primary.NewConnection(draft);
+            return;
+        }
+
+        ShowForm(null, draft);
+    }
+
     public void EditConnection(SavedConnection connection)
     {
         ArgumentNullException.ThrowIfNull(connection);
@@ -876,22 +888,28 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
     }
 
-    private void ShowForm(SavedConnection? existing)
+    // A draft from a URL goes to the new connection's form, open or not, which then shows what the URL names.
+    private void ShowForm(SavedConnection? existing, ConnectionDraft? draft = null)
     {
         if (!IsPrimary)
         {
-            _primary.ShowForm(existing);
+            _primary.ShowForm(existing, draft);
             return;
         }
 
         var key = ConnectionFormWindow.Keys(existing?.Id);
         if (_forms.TryGetValue(key, out var shown))
         {
+            if (draft is not null)
+            {
+                shown.ShowDraft(draft);
+            }
+
             shown.Activate();
             return;
         }
 
-        var form = new ConnectionFormWindow(_workbench, this, existing);
+        var form = new ConnectionFormWindow(_workbench, this, existing, draft);
         _forms[key] = form;
         form.Closed += (_, _) => _forms.Remove(key);
         form.Completed += async (_, result) => await OnFormCompletedAsync(result);

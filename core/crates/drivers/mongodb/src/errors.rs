@@ -23,6 +23,8 @@ pub(crate) fn closed_unanswered() -> DriverError {
 
 /// `AuthenticationFailed`: the user or the password is wrong.
 pub(crate) const AUTHENTICATION_FAILED: i32 = 18;
+/// `Unauthorized`: the login lacks the action the command needs.
+pub(crate) const UNAUTHORIZED: i32 = 13;
 /// `MaxTimeMSExpired`: the server stopped the operation at its time limit.
 pub(crate) const MAX_TIME_MS_EXPIRED: i32 = 50;
 /// `Interrupted`, `InterruptedAtShutdown`, `CursorKilled` and
