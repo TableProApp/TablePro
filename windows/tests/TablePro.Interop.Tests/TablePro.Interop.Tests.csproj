@@ -15,6 +15,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <Compile Include="../Shared/SshTestEnvironment.cs" Link="SshTestEnvironment.cs" />
+    <None Include="../../../core/crates/test-support/corpus/*.json" Link="corpus/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

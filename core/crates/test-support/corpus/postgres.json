@@ -1,0 +1,261 @@
+{
+  "why": "A browse page reads values in binary and the grid writes them out; an editor run uses the simple query protocol, so it shows the server's own text, as psql does.",
+  "columns": [
+    {
+      "why": "An instant reads back in UTC whatever offset it was written with; the server's zone is UTC too.",
+      "column": "v timestamptz",
+      "values": [
+        { "sql": "'2024-03-10 02:30:00-08'", "shows": "2024-03-10 10:30:00+00:00", "edited": "2024-03-10 10:30:00+00" },
+        { "sql": "'2024-06-15 12:00:00.5+05:45'", "shows": "2024-06-15 06:15:00.5+00:00", "edited": "2024-06-15 06:15:00.5+00" },
+        { "sql": "'1969-12-31 23:59:59.999999+00'", "shows": "1969-12-31 23:59:59.999999+00:00", "edited": "1969-12-31 23:59:59.999999+00" },
+        { "sql": "'0001-01-01 00:00:00+00'", "shows": "0001-01-01 00:00:00+00:00", "edited": "0001-01-01 00:00:00+00" },
+        { "sql": "'4713-01-01 00:00:00+00 BC'", "shows": "4713-01-01 00:00:00+00:00 BC", "edited": "4713-01-01 00:00:00+00 BC" },
+        { "sql": "'infinity'", "shows": "infinity" },
+        { "sql": "'-infinity'", "shows": "-infinity" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v timestamp(3)",
+      "values": [
+        { "sql": "'2024-02-29 23:59:59.999'", "shows": "2024-02-29 23:59:59.999" },
+        { "sql": "'2000-01-01 00:00:00'", "shows": "2000-01-01 00:00:00.000", "edited": "2000-01-01 00:00:00" },
+        { "sql": "'1900-01-01 00:00:00.001'", "shows": "1900-01-01 00:00:00.001" }
+      ]
+    },
+    {
+      "column": "v timestamp",
+      "values": [
+        { "sql": "'294276-12-31 23:59:59.999999'", "shows": "294276-12-31 23:59:59.999999" },
+        { "sql": "'1999-12-31 23:59:59.5'", "shows": "1999-12-31 23:59:59.5" }
+      ]
+    },
+    {
+      "column": "v date",
+      "values": [
+        { "sql": "'2024-02-29'", "shows": "2024-02-29" },
+        { "sql": "'0001-01-01'", "shows": "0001-01-01" },
+        { "sql": "'4713-01-01 BC'", "shows": "4713-01-01 BC" },
+        { "sql": "'10000-01-01'", "shows": "10000-01-01" },
+        { "sql": "'5874897-12-31'", "shows": "5874897-12-31" },
+        { "sql": "'infinity'", "shows": "infinity" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v time(6)",
+      "values": [
+        { "sql": "'00:00:00'", "shows": "00:00:00.000000", "edited": "00:00:00" },
+        { "sql": "'23:59:59.999999'", "shows": "23:59:59.999999" },
+        { "sql": "'24:00:00'", "shows": "24:00:00.000000", "edited": "24:00:00" }
+      ]
+    },
+    {
+      "column": "v timetz",
+      "values": [
+        { "sql": "'12:34:56+05:30'", "shows": "12:34:56+05:30" },
+        { "sql": "'00:00:00.25-15:59'", "shows": "00:00:00.25-15:59" }
+      ]
+    },
+    {
+      "column": "v interval",
+      "values": [
+        { "sql": "'1 year 2 mons 3 days 04:05:06.789'", "shows": "P1Y2M3DT4H5M6.789S", "edited": "1 year 2 mons 3 days 04:05:06.789" },
+        { "sql": "'-1 day +02:00:00'", "shows": "P-1DT2H", "edited": "-1 days +02:00:00" },
+        { "sql": "'0'", "shows": "PT0S", "edited": "00:00:00" }
+      ]
+    },
+    {
+      "column": "v numeric(38, 10)",
+      "values": [
+        { "sql": "12345678901234567890.1234567890", "shows": "12345678901234567890.1234567890" },
+        { "sql": "-0.0000000001", "shows": "-0.0000000001" },
+        { "sql": "1.5", "shows": "1.5000000000" },
+        { "sql": "0", "shows": "0.0000000000" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v numeric",
+      "values": [
+        { "sql": "-123456789012345678901234567890.123456789", "shows": "-123456789012345678901234567890.123456789" },
+        { "sql": "0.000000000000000000000000000001", "shows": "0.000000000000000000000000000001" },
+        { "sql": "2.50", "shows": "2.50" },
+        { "sql": "'NaN'", "shows": "NaN" },
+        { "sql": "'Infinity'", "shows": "Infinity" },
+        { "sql": "'-Infinity'", "shows": "-Infinity" }
+      ]
+    },
+    {
+      "column": "v money",
+      "values": [
+        { "sql": "-12.34", "shows": "-12.34", "edited": "-$12.34" },
+        { "sql": "92233720368547758.07", "shows": "92233720368547758.07", "edited": "$92,233,720,368,547,758.07" }
+      ]
+    },
+    {
+      "column": "v bigint",
+      "values": [
+        { "sql": "-9223372036854775808", "shows": "-9223372036854775808" },
+        { "sql": "9223372036854775807", "shows": "9223372036854775807" }
+      ]
+    },
+    {
+      "column": "v smallint",
+      "values": [
+        { "sql": "-32768", "shows": "-32768" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v real",
+      "values": [
+        { "sql": "1.5", "shows": "1.5" },
+        { "sql": "-0.1", "shows": "-0.1" },
+        { "sql": "'NaN'", "shows": "NaN" },
+        { "sql": "'-Infinity'", "shows": "-Infinity" }
+      ]
+    },
+    {
+      "column": "v double precision",
+      "values": [
+        { "sql": "0.1", "shows": "0.1" },
+        { "sql": "-2.5e-5", "shows": "-0.000025", "edited": "-2.5e-05" },
+        { "sql": "'Infinity'", "shows": "Infinity" }
+      ]
+    },
+    {
+      "column": "v boolean",
+      "values": [
+        { "sql": "true", "shows": "true", "edited": "t" },
+        { "sql": "false", "shows": "false", "edited": "f" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v jsonb",
+      "values": [
+        { "sql": "'{\"b\": 1, \"a\": [1, 2.50, \"x\"], \"ü\": null}'", "shows": "{\"a\": [1, 2.50, \"x\"], \"b\": 1, \"ü\": null}" },
+        { "sql": "'[]'", "shows": "[]" },
+        { "sql": "'\"just text\"'", "shows": "\"just text\"" }
+      ]
+    },
+    {
+      "column": "v json",
+      "values": [
+        { "sql": "'{\"b\":1,  \"a\":2}'", "shows": "{\"b\":1,  \"a\":2}" }
+      ]
+    },
+    {
+      "column": "v uuid",
+      "values": [
+        { "sql": "'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'", "shows": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" },
+        { "sql": "'A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A12'", "shows": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v text",
+      "values": [
+        { "sql": "'naïve café'", "shows": "naïve café" },
+        { "sql": "'日本語のテキスト'", "shows": "日本語のテキスト" },
+        { "sql": "'🦀 emoji 👩‍💻'", "shows": "🦀 emoji 👩‍💻" },
+        { "sql": "'עברית RTL'", "shows": "עברית RTL" },
+        { "sql": "'é'", "shows": "é" },
+        { "sql": "''", "shows": "" },
+        { "sql": "E'tab\\there\\nnew line'", "shows": "tab\there\nnew line" },
+        { "sql": "'it''s'", "shows": "it's" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v char(5)",
+      "values": [
+        { "sql": "'ab'", "shows": "ab   " }
+      ]
+    },
+    {
+      "column": "v varchar(10)",
+      "values": [
+        { "sql": "'ünïcödé'", "shows": "ünïcödé" }
+      ]
+    },
+    {
+      "column": "v bytea",
+      "values": [
+        { "sql": "'\\xdeadbeef'", "shows": "0xdeadbeef", "edited": "\\xdeadbeef" },
+        { "sql": "''", "shows": "0x", "edited": "\\x" },
+        { "sql": "NULL", "shows": null }
+      ]
+    },
+    {
+      "column": "v integer[]",
+      "values": [
+        { "sql": "'{1,NULL,3}'", "shows": "[\"1\",null,\"3\"]", "edited": "{1,NULL,3}" }
+      ]
+    },
+    {
+      "column": "v text[]",
+      "values": [
+        { "sql": "'{\"a b\",\"c,d\",NULL,\"\"}'", "shows": "[\"a b\",\"c,d\",null,\"\"]", "edited": "{\"a b\",\"c,d\",NULL,\"\"}" }
+      ]
+    },
+    {
+      "column": "v inet",
+      "values": [
+        { "sql": "'192.168.0.1/24'", "shows": "192.168.0.1/24" },
+        { "sql": "'::1'", "shows": "::1" }
+      ]
+    },
+    {
+      "column": "v cidr",
+      "values": [
+        { "sql": "'10.0.0.0/8'", "shows": "10.0.0.0/8" }
+      ]
+    },
+    {
+      "column": "v macaddr",
+      "values": [
+        { "sql": "'08:00:2B:01:02:03'", "shows": "08:00:2b:01:02:03" }
+      ]
+    },
+    {
+      "column": "v corpus_mood",
+      "setup": ["CREATE TYPE corpus_mood AS ENUM ('sad', 'ok', 'happy')"],
+      "values": [
+        { "sql": "'happy'", "shows": "happy" }
+      ]
+    },
+    {
+      "column": "v int4range",
+      "values": [
+        { "sql": "'[1,10)'", "shows": "[1,10)" },
+        { "sql": "'empty'", "shows": "empty" }
+      ]
+    },
+    {
+      "column": "v bit(4)",
+      "values": [
+        { "sql": "B'1010'", "shows": "1010" }
+      ]
+    },
+    {
+      "column": "v varbit(8)",
+      "values": [
+        { "sql": "B'101'", "shows": "101" }
+      ]
+    },
+    {
+      "column": "v point",
+      "values": [
+        { "sql": "'(1.5,-2)'", "shows": "(1.5,-2)" }
+      ]
+    },
+    {
+      "column": "v xml",
+      "values": [
+        { "sql": "'<a>1</a>'", "shows": "<a>1</a>" }
+      ]
+    }
+  ]
+}

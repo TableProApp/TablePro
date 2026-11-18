@@ -1,8 +1,10 @@
-# SQL Server 2022 Express CU1 for tests/integration/windows_server.rs. -Install: TCP 1433, Windows logins, the
-# current account as sysadmin, a self-signed certificate written as PEM to TABLEPRO_TEST_MSSQL_WINDOWS_CA and
-# trusted by no Windows store. -ForceStrict: only TDS 8.0 logins get in.
+# SQL Server 2022 Express CU1 for tests/integration/windows_server.rs and windows/ci/live-servers.ps1. -Install: TCP 1433,
+# Windows logins, the current account as sysadmin, a self-signed certificate written as PEM to
+# TABLEPRO_TEST_MSSQL_WINDOWS_CA and trusted by no Windows store; -SaPassword adds SQL logins, sa with that password.
+# -ForceStrict: only TDS 8.0 logins get in.
 param(
     [switch]$Install,
+    [string]$SaPassword,
     [switch]$ForceStrict
 )
 
@@ -38,6 +40,7 @@ if ($Install) {
         "/SQLSYSADMINACCOUNTS=$account", '/TCPENABLED=1', '/UPDATEENABLED=0',
         '/IACCEPTSQLSERVERLICENSETERMS', '/SUPPRESSPRIVACYSTATEMENTNOTICE'
     )
+    if ($SaPassword) { $setup += '/SECURITYMODE=SQL', "/SAPWD=$SaPassword" }
     $process = Start-Process (Join-Path $extract 'setup.exe') -ArgumentList $setup -Wait -PassThru -NoNewWindow
     if ($process.ExitCode -ne 0) {
         Get-Content 'C:\Program Files\Microsoft SQL Server\160\Setup Bootstrap\Log\Summary.txt'
