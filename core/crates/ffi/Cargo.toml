@@ -27,6 +27,7 @@ engines = [
 
 [dependencies]
 tablepro-account.workspace = true
+tablepro-ai.workspace = true
 tablepro-core.workspace = true
 tablepro-driver-cassandra = { workspace = true, optional = true }
 tablepro-driver-clickhouse = { workspace = true, optional = true }

@@ -15,10 +15,16 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
+// What a query tab asks its workspace's assistant; Error is the server's, for Fix.
+internal sealed record AssistantRequest(AiAction Action, string Statement, string? Error = null);
+
 // The editor over the run's results; the run, the close, the transaction and the result's edits are QueryTab's.
 public sealed partial class QueryTabView
     : UserControl, ITabContent, IQueryTabView, IQueryFileView, IResultEditView, IShareSource, IExportSource
 {
+    // In the order macOS lists them, after the editor's own commands.
+    private static readonly AiAction[] EditorActions = [AiAction.Review, AiAction.Explain, AiAction.Optimize];
+
     private readonly QueryTab _model;
     private EditTarget _target;
 
@@ -134,6 +140,15 @@ public sealed partial class QueryTabView
     // Save query... on the editor's menu; the workspace asks its name and folder.
     public event EventHandler? SaveQueryRequested;
 
+    // Explain, Review or Optimize with AI on the editor's menu, or Fix with AI on a refused run; the workspace asks.
+    internal event EventHandler<AssistantRequest>? AssistantRequested;
+
+    // Set by the workspace: whether its assistant may be asked now, which the AI commands follow.
+    internal Func<bool> AssistantReady { get; set; } = static () => false;
+
+    // The database the tab runs in; null for the connection's.
+    internal string? Database => _model.Database;
+
     // Set by the workspace that holds the tab: only a saved connection keeps queries.
     public bool CanSaveQuery { get; set; }
 
@@ -195,6 +210,32 @@ public sealed partial class QueryTabView
     public void Stop() => _model.Stop();
 
     public void FocusContent() => SqlText.Focus(FocusState.Programmatic);
+
+    // Null with no statement at the caret, which the status line then says.
+    internal string? AssistantStatement()
+    {
+        var statement = _model.AssistantStatement();
+        if (statement is null)
+        {
+            StatusText.Text = Strings.Get("StatusNoStatement");
+        }
+
+        return statement;
+    }
+
+    internal void AskAssistant(AiAction action)
+    {
+        if (AssistantReady() && AssistantStatement() is { } statement)
+        {
+            AssistantRequested?.Invoke(this, new AssistantRequest(action, statement));
+        }
+    }
+
+    // After a run, and after the assistant's settings or the connection's policy changed.
+    internal void OfferFix() =>
+        Results.OfferFix(_model.LastFailure is { } failure && AssistantReady()
+            ? () => AssistantRequested?.Invoke(this, new AssistantRequest(AiAction.Fix, failure.Statement, failure.Error))
+            : null);
 
     public SessionTab Snapshot() => _model.Snapshot();
 
@@ -469,6 +510,7 @@ public sealed partial class QueryTabView
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", _model.Title));
         ShowDatabase();
         UpdateEditing();
+        OfferFix();
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -843,6 +885,14 @@ public sealed partial class QueryTabView
         items.Add(new MenuFlyoutSeparator());
         items.Add(save);
         items.Add(share);
+        var ready = AssistantReady();
+        items.Add(new MenuFlyoutSeparator());
+        foreach (var action in EditorActions)
+        {
+            var item = new MenuFlyoutItem { Text = AssistantText.Action(action), IsEnabled = ready };
+            item.Click += (_, _) => AskAssistant(action);
+            items.Add(item);
+        }
     }
 
     private void OnRun(object sender, RoutedEventArgs e) => Run();

@@ -1,4 +1,4 @@
-# 0032: Importing from other apps and editing a query result cross the FFI
+# 0033: Importing from other apps and editing a query result cross the FFI
 
 - **Status**: Accepted
 - **Date**: 2026-11-18

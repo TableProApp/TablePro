@@ -34,6 +34,9 @@ public sealed class ConnectionDraft
 {
     private SshSettings? _savedSsh;
 
+    // The record's own, which a save leaves as it was unless the form changed it.
+    private AiPolicy? _savedAiPolicy;
+
     public Guid? Id { get; set; }
 
     public string EngineId { get; set; } = string.Empty;
@@ -91,6 +94,8 @@ public sealed class ConnectionDraft
 
     public SafeMode SafeMode { get; set; } = SafeMode.Off;
 
+    // What the AI assistant may send from the connection; a new one starts at Ask, as the core saves it.
+    public AiPolicy AiPolicy { get; set; } = AiPolicy.Ask;
     public string Timeout { get; set; } = string.Empty;
 
     public string? Color { get; set; }
@@ -168,6 +173,8 @@ public sealed class ConnectionDraft
             ClientCertificate = connection.Tls.ClientCertificate ?? string.Empty,
             ClientKey = connection.Tls.ClientKey ?? string.Empty,
             SafeMode = connection.SafeMode,
+            AiPolicy = connection.AiPolicy ?? AiPolicy.Ask,
+            _savedAiPolicy = connection.AiPolicy,
             Timeout = connection.QueryTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
             Color = connection.Color,
             GroupId = connection.GroupId,
@@ -294,7 +301,10 @@ public sealed class ConnectionDraft
         {
             return new SavedConnection(
                 Id, name, EngineId, string.Empty, 0, Database.Trim(), string.Empty, TlsSettings.Disabled,
-                SafeMode, Color: Color, GroupId: GroupId, LastOpened: LastOpened);
+                SafeMode, Color: Color, GroupId: GroupId, LastOpened: LastOpened)
+            {
+                AiPolicy = ChosenAiPolicy(),
+            };
         }
 
         return new SavedConnection(
@@ -329,10 +339,15 @@ public sealed class ConnectionDraft
                 : int.Parse(Timeout.Trim(), NumberStyles.None, CultureInfo.InvariantCulture),
             Color: Color,
             GroupId: GroupId,
-            LastOpened: LastOpened);
+            LastOpened: LastOpened)
+        {
+            AiPolicy = ChosenAiPolicy(),
+        };
     }
 
-    // A rename, a colour or a group is nothing a connect reads, so a connect under way goes on without them.
+    private AiPolicy? ChosenAiPolicy() => AiPolicy == (_savedAiPolicy ?? AiPolicy.Ask) ? _savedAiPolicy : AiPolicy;
+
+    // A rename, a colour, a group or the AI policy is nothing a connect reads, so a connect under way goes on.
     public static bool ChangesConnect(SavedConnection before, SavedConnection after)
     {
         ArgumentNullException.ThrowIfNull(before);
@@ -348,6 +363,7 @@ public sealed class ConnectionDraft
             GroupId = before.GroupId,
             LastOpened = before.LastOpened,
             Tags = before.Tags,
+            AiPolicy = before.AiPolicy,
             Ssh = ssh,
         } != before;
     }

@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use futures::future::BoxFuture;
 use secrecy::SecretString;
 use tablepro_account::{AccountSettings, RefreshTokenVault};
+use tablepro_ai::AiClient;
 use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter, SecretItems, SecretKind, SecretVault};
 use tablepro_core::{
     ConnectEnvironment, Credentials, DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy,
@@ -20,6 +21,7 @@ use tablepro_storage::{ConnectionStore, CredentialDemand, KeyringCredentials, Sa
 use tokio::sync::OnceCell;
 use uuid::Uuid;
 
+use crate::ai::AiAssistant;
 use crate::cancel_token::{CancelToken, token};
 use crate::drivers::{self, DriverInfo};
 use crate::error::CoreError;
@@ -50,6 +52,9 @@ pub struct Core {
     history: Arc<OnceCell<Arc<QueryHistoryStore>>>,
     pub(crate) tasks: Tasks,
     pub(crate) ssh: Arc<InProcessSsh>,
+    client_version: String,
+    // One AI client for the app, built on first use.
+    ai_client: Arc<OnceCell<AiClient>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -97,6 +102,17 @@ impl Core {
             .collect();
         drivers.sort_by(|a, b| a.display_name.cmp(&b.display_name));
         drivers
+    }
+
+    // Every assistant shares the core's one AI client.
+    pub fn ai_assistant(&self) -> Arc<AiAssistant> {
+        Arc::new(AiAssistant::new(
+            self.items.clone(),
+            self.store.clone(),
+            self.tasks.clone(),
+            self.client_version.clone(),
+            self.ai_client.clone(),
+        ))
     }
 
     pub fn library(&self) -> Result<Arc<ConnectionLibrary>, CoreError> {
@@ -318,6 +334,7 @@ impl Core {
         let liveness = LivenessPolicy::DESKTOP;
         let deadlines = Arc::new(DefaultDeadlines::new(liveness));
         let ssh = Arc::new(InProcessSsh::system());
+        let client_version = config.client_version.clone();
         let services = ConnectServices {
             environment: ConnectEnvironment::new(config.client_version),
             ssh: ssh.clone(),
@@ -341,6 +358,8 @@ impl Core {
             history: Arc::default(),
             tasks,
             ssh,
+            client_version,
+            ai_client: Arc::default(),
         })
     }
 

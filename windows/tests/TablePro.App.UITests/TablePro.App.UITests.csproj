@@ -19,6 +19,7 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <Compile Include="../Shared/SshTestEnvironment.cs" Link="SshTestEnvironment.cs" />
+    <Compile Include="../Shared/FakeAiServer.cs" Link="FakeAiServer.cs" />
   </ItemGroup>
 
 </Project>

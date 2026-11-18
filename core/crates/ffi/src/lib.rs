@@ -1,6 +1,7 @@
 // Foreign code is called only from a runtime thread, never under a lock (core/ARCHITECTURE.md, Bindings).
 
 mod account;
+mod ai;
 mod cancel_token;
 mod catalog;
 mod catalog_change;
@@ -49,6 +50,11 @@ pub use account::{
     ShareRequestArg, ShareTeamInfo, SharedLinkInfo, TeamInfo, scan_columns_for_secrets, scan_sql_for_secrets,
     share_token_from_link,
 };
+pub use ai::{
+    AiActionTag, AiAssistant, AiChatArg, AiConversationArg, AiConversationStart, AiFailureInfo, AiMessageArg,
+    AiProviderInfo, AiProviderTag, AiReply, AiReplyEvent, AiReplyListener, AiRoleTag, AiSettingsArg, AiStopTag,
+    ai_action_message, ai_address_is_valid, ai_host_of, ai_providers,
+};
 pub use cancel_token::CancelToken;
 pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, SchemaEntry, TableName};
 pub use catalog_change::{
@@ -84,8 +90,8 @@ pub use import::{
 };
 pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
 pub use library::{
-    ConnectionLibrary, ConnectionRecord, ConnectionSecrets, GroupRecord, ImportSummary, LibrarySnapshot, SafeModeTag,
-    SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings, check_jump_hosts,
+    AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, GroupRecord, ImportSummary, LibrarySnapshot,
+    SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings, check_jump_hosts,
 };
 pub use masking::{
     MaskReason, MaskStyleTag, MaskSuggestionInfo, PersonalDataHitInfo, SensitiveKindTag, ShareColumnChoice,

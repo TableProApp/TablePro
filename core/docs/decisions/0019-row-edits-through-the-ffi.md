@@ -1,6 +1,6 @@
 # 0019: A table tab's row edits cross the FFI as typed text, and the core plans and runs the save
 
-- **Status**: Accepted; query results amended by 0032
+- **Status**: Accepted; query results amended by 0033
 - **Date**: 2026-11-11
 
 ## Context

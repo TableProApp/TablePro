@@ -205,6 +205,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             EngineId = connection.EngineId,
         });
         open.Mark(connection.EngineId, connection.Color);
+        open.SetAiPolicy(connection.AiPolicy ?? AiPolicy.Ask);
         // The tags come from the library's snapshot, which names each one.
         _ = RefreshMarksAsync();
     }
@@ -663,6 +664,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             Database = database,
         });
         open.Mark(from.Origin.EngineId, from.Color);
+        open.SetAiPolicy(from.AiPolicy);
         open.SetTags(from.Tags);
         ShowCue(open);
     }
@@ -686,6 +688,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
                 if (snapshot.Connections.FirstOrDefault(saved => saved.Id == open.ConnectionId) is { } saved)
                 {
                     open.Mark(saved.EngineId, saved.Color);
+                    open.SetAiPolicy(saved.AiPolicy ?? AiPolicy.Ask);
                     open.SetTags([.. saved.Tags
                         .Select(id => snapshot.Tags.FirstOrDefault(tag => tag.Id == id))
                         .OfType<ConnectionTag>()]);
@@ -1565,6 +1568,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuShowHistory.IsChecked = workspace?.HistoryVisible ?? false;
         MenuShowSavedQueries.IsEnabled = workspace?.CanShowSavedQueries ?? false;
         MenuShowSavedQueries.IsChecked = workspace?.SavedQueriesVisible ?? false;
+        MenuShowAssistant.IsEnabled = workspace?.CanShowAssistant ?? false;
+        MenuShowAssistant.IsChecked = workspace?.AssistantVisible ?? false;
+        var canAsk = workspace?.CanAskAssistant ?? false;
+        MenuAiReview.IsEnabled = canAsk;
+        MenuAiExplain.IsEnabled = canAsk;
+        MenuAiOptimize.IsEnabled = canAsk;
         MenuSaveQuery.IsEnabled = workspace?.CanSaveQuery ?? false;
         MenuExportResults.IsEnabled = workspace?.CanExport ?? false;
         MenuShareResult.IsEnabled = workspace?.CanShareResult ?? false;
@@ -1753,6 +1762,18 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
         UpdateCommands();
     }
+
+    private void OnToggleAssistant(object sender, RoutedEventArgs e)
+    {
+        Workspace?.ToggleAssistant();
+        UpdateCommands();
+    }
+
+    private void OnAiReview(object sender, RoutedEventArgs e) => Workspace?.AskAssistant(AiAction.Review);
+
+    private void OnAiExplain(object sender, RoutedEventArgs e) => Workspace?.AskAssistant(AiAction.Explain);
+
+    private void OnAiOptimize(object sender, RoutedEventArgs e) => Workspace?.AskAssistant(AiAction.Optimize);
 
     private async void OnSaveQuery(object sender, RoutedEventArgs e)
     {

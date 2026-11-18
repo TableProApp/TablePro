@@ -1,11 +1,11 @@
-# 0014: Importing from other apps and editing a query result
+# 0015: Importing from other apps and editing a query result
 
 - **Status**: Accepted
 - **Date**: 2026-11-18
 
 ## Context
 
-The Windows app imported only TablePro's own connections file, and only a table tab edited its rows ([0006](0006-editing-table-rows.md)). The macOS app imports connections and saved queries from six other clients and edits a query result that reads one keyed table. The core now carries both through the FFI ([core 0032](../../../core/docs/decisions/0032-foreign-import-and-result-editing-through-the-ffi.md)).
+The Windows app imported only TablePro's own connections file, and only a table tab edited its rows ([0006](0006-editing-table-rows.md)). The macOS app imports connections and saved queries from six other clients and edits a query result that reads one keyed table. The core now carries both through the FFI ([core 0033](../../../core/docs/decisions/0033-foreign-import-and-result-editing-through-the-ffi.md)).
 
 ## Decision
 

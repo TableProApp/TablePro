@@ -67,7 +67,7 @@ public interface IResultEditView
     Task ShowSaveFailedAsync(CoreError failure, bool incomplete);
 }
 
-// A result that is one keyed table's rows edits as a table tab's page does, and a save reads it again (core ADR 0032).
+// A result that is one keyed table's rows edits as a table tab's page does, and a save reads it again (core ADR 0033).
 public sealed partial class QueryTab
 {
     private EditedRows? _editing;
@@ -328,7 +328,7 @@ public sealed partial class QueryTab
         Bind(editor, rows);
     }
 
-    // What only the app knows (core ADR 0032): several results, a transaction, another database, no statement.
+    // What only the app knows (core ADR 0033): several results, a transaction, another database, no statement.
     private ResultEditBlock? BlockFor()
     {
         if (_results.ResultSetCount > 1)
