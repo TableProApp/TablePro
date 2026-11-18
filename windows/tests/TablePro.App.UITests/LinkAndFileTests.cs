@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Tools;
 
 namespace TablePro.App.UITests;
