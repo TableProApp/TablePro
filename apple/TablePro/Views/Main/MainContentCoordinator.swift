@@ -1209,12 +1209,9 @@ final class MainContentCoordinator: ObservableObject {
 
         if result.isEmpty,
            let scope,
-           let createSQL = try? await services.databaseManager.withCancellableRead(
-               scope: scope,
-               route: services.databaseManager.metadataRoute(for: scope),
-               sessionWork: .independent,
-               { driver in try await driver.fetchTableDDL(table: tableName, schema: scope.schema) }
-           ) {
+           let createSQL = try? await services.databaseManager.withMetadataDriver(scope: scope, { driver in
+               try await driver.fetchTableDDL(table: tableName, schema: scope.schema)
+           }) {
             for col in columnInfo {
                 if let values = QuerySqlParser.parseSQLiteCheckConstraintValues(
                     createSQL: createSQL, columnName: col.name

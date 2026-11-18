@@ -47,8 +47,8 @@ struct FirstLoadColumnReadTests {
         withExtendedLifetime(fixture) {}
     }
 
-    @Test("A definition read runs under a lease a cancel can reach")
-    func definitionReadIsCancellable() async throws {
+    @Test("A cancelled definition read stops at the statement on the wire and sends no cancel to the server")
+    func cancelStopsBetweenReads() async throws {
         let driver = MockDatabaseDriver()
         driver.columnsToReturn = ["users": Self.columns]
         let gate = AsyncGate()
@@ -58,11 +58,12 @@ struct FirstLoadColumnReadTests {
         let read = Task { try await QueryExecutor.fetchTableSchema(scope: scope, tableName: "users", isView: false) }
         await gate.arrived(1)
 
-        #expect(DatabaseManager.shared.runningDrivers[fixture.connection.id]?.isEmpty == false)
-
         read.cancel()
         await gate.open()
+
         await #expect(throws: CancellationError.self) { try await read.value }
+        #expect(driver.cancelQueryCallCount == 0)
+        withExtendedLifetime(fixture) {}
     }
 
     @Test("Columns the cache answered are no read of this open")

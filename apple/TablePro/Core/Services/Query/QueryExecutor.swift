@@ -299,7 +299,7 @@ final class QueryExecutor {
         }
     }
 
-    // Cancelling stops the statement on the server and the reads after it: the lease is what the next table's load waits for.
+    // A cancel lands between reads, never on the wire: a late server cancel can reach the next statement on that connection.
     static func fetchTableSchema(
         scope: DatabaseScope,
         tableName: String,
@@ -309,7 +309,9 @@ final class QueryExecutor {
         queryExecutorLog.info(
             "[fk] schema fetch start table=\(tableName, privacy: .private(mask: .hash)) db=\(scope.database, privacy: .private(mask: .hash)) schema=\(scope.schema ?? "default", privacy: .private(mask: .hash))"
         )
-        let (columns, approximateRowCount, viewRowEditing) = try await withDefinitionRead(scope: scope) { driver in
+        let (columns, approximateRowCount, viewRowEditing) = try await DatabaseManager.shared.withMetadataDriver(
+            scope: scope
+        ) { driver in
             let columns: [ColumnInfo]
             if let knownColumns {
                 columns = knownColumns
@@ -356,19 +358,9 @@ final class QueryExecutor {
         }
     }
 
-    private static func withDefinitionRead<T: Sendable>(
-        scope: DatabaseScope,
-        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
-    ) async throws -> T {
-        let manager = DatabaseManager.shared
-        return try await manager.withCancellableRead(
-            scope: scope, route: manager.metadataRoute(for: scope), sessionWork: .independent, body
-        )
-    }
-
     private static func fetchForeignKeys(scope: DatabaseScope, tableName: String) async -> [ForeignKeyInfo]? {
         do {
-            return try await withDefinitionRead(scope: scope) { driver in
+            return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
                 try await driver.fetchForeignKeys(table: tableName, schema: scope.schema)
             }
         } catch {
