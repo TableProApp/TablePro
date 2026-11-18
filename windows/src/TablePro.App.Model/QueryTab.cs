@@ -240,7 +240,18 @@ public sealed partial class QueryTab : IWorkspaceTab
                 }
 
                 // Text typed while the file was written is still unsaved, so the tab stays.
-                return !file || (await SaveAsync().ConfigureAwait(true) && !FileUnsaved);
+                if (!file || (await SaveAsync().ConfigureAwait(true) && !FileUnsaved))
+                {
+                    return true;
+                }
+
+                // The tab stays open, so the rows the save wrote are read again rather than shown as they were.
+                if (rows)
+                {
+                    await RereadAsync().ConfigureAwait(true);
+                }
+
+                return false;
             case SaveBeforeClose.DontSave:
                 return true;
             default:
@@ -1027,6 +1038,8 @@ public sealed partial class QueryTab : IWorkspaceTab
         finally
         {
             _sorting = false;
+            // A sorted copy bound while the sort ran was shown as not taking edits.
+            ResultEditsChanged();
         }
     }
 

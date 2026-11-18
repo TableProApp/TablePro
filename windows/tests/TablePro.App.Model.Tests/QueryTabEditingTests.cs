@@ -241,6 +241,60 @@ public sealed class QueryTabEditingTests
         Assert.Equal(3, _edits.ClosesAsked);
     }
 
+    [Fact]
+    public async Task AHeldSortTellsTheViewTheRowsTakeEditsAgainOnceItEnds()
+    {
+        _session.Sorted = (_, _, _, _) => null;
+        await _tab.RunAsync();
+        var shown = _edits.EditsShown;
+
+        await _tab.SortAsync(new GridSort(1, SortDirection.Ascending));
+
+        Assert.True(_edits.EditsShown > shown);
+        Assert.True(_tab.ResultAcceptsEdits);
+    }
+
+    [Fact]
+    public async Task RowsSavedForACloseTheFileThenKeepsOpenAreReadAgain()
+    {
+        var directory = Directory.CreateTempSubdirectory("tablepro-result-close-").FullName;
+        try
+        {
+            var path = Path.Combine(directory, "report.sql");
+            File.WriteAllText(path, "select * from Artist");
+            var read = SqlFile.Read(path);
+            _view.WholeText = read.Text;
+            var files = new NoPickFiles();
+            var tab = new QueryTab(
+                "report.sql",
+                _session,
+                _view,
+                _results,
+                DataModel.Relational,
+                () => new AppSettings(),
+                _history,
+                files: files,
+                filePath: path,
+                onDisk: read,
+                resultEdits: _edits);
+            await tab.RunAsync();
+            tab.CommitEdit(0, 1, "changed");
+            _view.WholeText = "select * from Artist where 1 = 1";
+            tab.TextEdited();
+            File.Delete(path);
+
+            Assert.False(await tab.ConfirmCloseAsync(offerSave: true));
+
+            Assert.Equal(1, Assert.Single(Editor.Saves).Runs);
+            Assert.Equal(2, Assert.Single(_session.Editors).Runs.Count);
+            Assert.False(tab.HasPendingRows);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private QueryTab Tab(string? database) => new(
         "Query 1",
         _session,
@@ -251,4 +305,27 @@ public sealed class QueryTabEditingTests
         _history,
         database,
         resultEdits: _edits);
+
+    // The file is gone and Save As is dismissed, so its save fails.
+    private sealed class NoPickFiles : IQueryFileView
+    {
+        public void ReplaceText(string text)
+        {
+        }
+
+        public Task<string?> PickSavePathAsync(string suggestedName, string? folder) => Task.FromResult<string?>(null);
+
+        public Task<SaveBeforeClose> AskSaveBeforeCloseAsync(string tab, bool offerSave) =>
+            Task.FromResult(SaveBeforeClose.Save);
+
+        public Task<SaveOverChange> AskSaveOverChangeAsync(string path) => Task.FromResult(SaveOverChange.Cancel);
+
+        public void ShowDiskChange(DiskChange change)
+        {
+        }
+
+        public Task ShowSaveFailedAsync(string path, Exception failure) => Task.CompletedTask;
+
+        public Task ShowReloadFailedAsync(string path, Exception failure) => Task.CompletedTask;
+    }
 }
