@@ -18,14 +18,12 @@ struct KafkaFetchResult: Sendable {
     var bytesRead = 0
 }
 
-// A partition's first reply, read together with the other partitions of its leader. It stays compressed until the
-// partition's turn, so a topic of many partitions never holds every decoded page at once.
-struct KafkaFetchFirstPage: Sendable {
-    let startOffset: Int64
-    let reply: KafkaFetchedPartition
-}
-
 enum KafkaFetchRequest {
+    /// Read uncommitted would surface the records of transactions that later aborted, plus the
+    /// commit and abort marker batches themselves. A debugging grid showing phantom rows from
+    /// a rolled-back transaction is worse than useless, so this client always reads committed.
+    private static let readCommitted: Int8 = 1
+
     private static let defaultPartitionBudget: Int32 = 1 * 1_024 * 1_024
     private static let maximumPartitionBudget: Int32 = 64 * 1_024 * 1_024
 
@@ -41,10 +39,8 @@ enum KafkaFetchRequest {
         endOffset: Int64? = nil,
         keepingNewest: Int? = nil,
         byteBudget: Int? = nil,
-        firstPage: KafkaFetchFirstPage? = nil,
         cluster: KafkaCluster
     ) async throws -> KafkaFetchResult {
-        var firstPage = firstPage
         var budget = defaultPartitionBudget
         var collected: [KafkaRecord] = []
         var highWatermark: Int64 = startOffset
@@ -57,24 +53,15 @@ enum KafkaFetchRequest {
             if let endOffset, from >= endOffset { break }
             try Task.checkCancellation()
             let allowance = try KafkaCompression.fetchBudget(requesting: budget, after: decompression)
-            let page: KafkaFetchResult
-            if let first = firstPage, first.startOffset == from {
-                var spent = allowance
-                page = try decode(first.reply, from: from, budget: &spent)
-                decompression = spent
-            } else {
-                let (fetched, spent) = try await fetchOnce(
-                    topic: topic,
-                    partition: partition,
-                    startOffset: from,
-                    budget: budget,
-                    decompression: allowance,
-                    cluster: cluster
-                )
-                page = fetched
-                decompression = spent
-            }
-            firstPage = nil
+            let (page, spent) = try await fetchOnce(
+                topic: topic,
+                partition: partition,
+                startOffset: from,
+                budget: budget,
+                decompression: allowance,
+                cluster: cluster
+            )
+            decompression = spent
             highWatermark = page.highWatermark
             bytesRead += page.bytesRead
             if let byteBudget, bytesRead > byteBudget {
@@ -126,49 +113,6 @@ enum KafkaFetchRequest {
         )
     }
 
-    // One request per leader for every partition's first page, the leaders read at once. It only saves round trips:
-    // a partition it cannot answer is left out, and that partition's own read retries or reports what went wrong.
-    static func firstPages(
-        topic: String,
-        targets: [KafkaFetchTarget],
-        cluster: KafkaCluster
-    ) async -> [Int32: KafkaFetchFirstPage] {
-        guard !targets.isEmpty else { return [:] }
-        let starts = Dictionary(targets.map { ($0.partition, $0.startOffset) }) { first, _ in first }
-        let outcomes = try? await cluster.withLeaders(
-            topic: topic,
-            partitions: targets.map(\.partition)
-        ) { connection, partitions in
-            try await readFirstPages(topic: topic, partitions: partitions, starts: starts, on: connection)
-        }
-        return (outcomes ?? [:]).compactMapValues { outcome in
-            guard case .value(let first) = outcome else { return nil }
-            return first
-        }
-    }
-
-    private static func readFirstPages(
-        topic: String,
-        partitions: [Int32],
-        starts: [Int32: Int64],
-        on connection: KafkaConnection
-    ) async throws -> [Int32: KafkaPartitionOutcome<KafkaFetchFirstPage>] {
-        let targets = partitions.compactMap { partition in
-            starts[partition].map { KafkaFetchTarget(partition: partition, startOffset: $0) }
-        }
-        let replies = try await send(topic: topic, targets: targets, partitionBudget: defaultPartitionBudget, on: connection)
-        var outcomes: [Int32: KafkaPartitionOutcome<KafkaFetchFirstPage>] = [:]
-        for reply in replies where partitions.contains(reply.partition) {
-            guard let start = starts[reply.partition] else { continue }
-            guard reply.errorCode == KafkaErrorCode.none else {
-                outcomes[reply.partition] = .rejected(code: reply.errorCode)
-                continue
-            }
-            outcomes[reply.partition] = .value(KafkaFetchFirstPage(startOffset: start, reply: reply))
-        }
-        return outcomes
-    }
-
     // Returns the decompression budget as the reply left it, so the next page continues from it.
     private static func fetchOnce(
         topic: String,
@@ -179,65 +123,118 @@ enum KafkaFetchRequest {
         cluster: KafkaCluster
     ) async throws -> (KafkaFetchResult, DecompressionBudget) {
         try await cluster.withLeader(of: partition, topic: topic, api: "Fetch") { connection in
-            let target = KafkaFetchTarget(partition: partition, startOffset: startOffset)
-            let replies = try await send(topic: topic, targets: [target], partitionBudget: budget, on: connection)
-            var spent = decompression
-            guard let reply = replies.first else {
-                let empty = KafkaFetchResult(records: [], highWatermark: startOffset, truncated: false, nextOffset: nil)
-                return (empty, spent)
+            let version = try await connection.negotiatedVersion(for: .fetch)
+            let flexible = KafkaApiKey.fetch.isFlexible(version: version)
+
+            let request = KafkaRequest(api: .fetch, version: version) { writer, _ in
+                writer.int32(-1)                                  // replicaId
+                writer.int32(500)                                 // maxWaitMs
+                writer.int32(1)                                   // minBytes
+                if version >= 3 { writer.int32(budget) }          // maxBytes
+                if version >= 4 { writer.int8(readCommitted) }
+                if version >= 7 {
+                    writer.int32(0)                               // sessionId
+                    writer.int32(0)                               // sessionEpoch
+                }
+                if flexible {
+                    writer.compactArrayCount(1)
+                    writer.compactString(topic)
+                    writer.compactArrayCount(1)
+                } else {
+                    writer.legacyArrayCount(1)
+                    writer.legacyString(topic)
+                    writer.legacyArrayCount(1)
+                }
+                writer.int32(partition)
+                if version >= 9 { writer.int32(-1) }              // currentLeaderEpoch
+                writer.int64(startOffset)
+                if version >= 12 { writer.int32(-1) }             // lastFetchedEpoch
+                if version >= 5 { writer.int64(-1) }              // logStartOffset
+                writer.int32(budget)                              // partitionMaxBytes
+                if flexible {
+                    writer.emptyTaggedFields()
+                    writer.emptyTaggedFields()
+                }
+                if version >= 7 {
+                    if flexible {
+                        writer.compactArrayCount(0)               // forgottenTopicsData
+                    } else {
+                        writer.legacyArrayCount(0)
+                    }
+                }
+                if version >= 11 {
+                    if flexible {
+                        writer.compactString("")                  // rackId
+                    } else {
+                        writer.legacyString("")
+                    }
+                }
+                if flexible { writer.emptyTaggedFields() }
             }
-            try KafkaErrorCode.check(reply.errorCode, api: "Fetch")
-            return (try decode(reply, from: startOffset, budget: &spent), spent)
-        }
-    }
 
-    private static func send(
-        topic: String,
-        targets: [KafkaFetchTarget],
-        partitionBudget: Int32,
-        on connection: KafkaConnection
-    ) async throws -> [KafkaFetchedPartition] {
-        let version = try await connection.negotiatedVersion(for: .fetch)
-        let flexible = KafkaApiKey.fetch.isFlexible(version: version)
-        let request = KafkaRequest(api: .fetch, version: version) { writer, _ in
-            KafkaFetchWire.writeRequest(
-                into: &writer,
-                version: version,
-                flexible: flexible,
-                topic: topic,
-                targets: targets,
-                partitionBytes: partitionBudget,
-                responseBytes: KafkaFetchWire.responseBytes(partitions: targets.count, partitionBytes: partitionBudget)
-            )
-        }
-        var body = try await connection.send(request)
-        return try KafkaFetchWire.readResponse(&body, version: version, flexible: flexible)
-    }
+            var body = try await connection.send(request)
+            var spent = decompression
+            if version >= 1 { _ = try body.int32() }              // throttleTimeMs
+            if version >= 7 {
+                let errorCode = try body.int16()
+                try KafkaErrorCode.check(errorCode, api: "Fetch")
+                _ = try body.int32()                              // sessionId
+            }
 
-    private static func decode(
-        _ reply: KafkaFetchedPartition,
-        from startOffset: Int64,
-        budget: inout DecompressionBudget
-    ) throws -> KafkaFetchResult {
-        guard let blob = reply.recordBatches, !blob.isEmpty else {
-            return KafkaFetchResult(records: [], highWatermark: reply.highWatermark, truncated: false, nextOffset: nil)
+            let topics = try body.array(compact: flexible) { reader -> [KafkaFetchResult] in
+                _ = flexible ? try reader.compactString() : try reader.legacyString()
+                let partitions = try reader.array(compact: flexible) { partitionReader -> KafkaFetchResult in
+                    let index = try partitionReader.int32()
+                    let errorCode = try partitionReader.int16()
+                    try KafkaErrorCode.check(errorCode, api: "Fetch")
+                    let highWatermark = try partitionReader.int64()
+                    if version >= 4 { _ = try partitionReader.int64() }   // lastStableOffset
+                    if version >= 5 { _ = try partitionReader.int64() }   // logStartOffset
+
+                    var abortedTransactions: [KafkaAbortedTransaction] = []
+                    if version >= 4 {
+                        abortedTransactions = try partitionReader.array(compact: flexible) { aborted in
+                            let producerId = try aborted.int64()
+                            let firstOffset = try aborted.int64()
+                            if flexible { try aborted.taggedFields() }
+                            return KafkaAbortedTransaction(producerId: producerId, firstOffset: firstOffset)
+                        }
+                    }
+                    if version >= 11 { _ = try partitionReader.int32() }  // preferredReadReplica
+
+                    let blob = flexible
+                        ? try partitionReader.nullableCompactBytes()
+                        : try partitionReader.nullableLegacyBytes()
+                    if flexible { try partitionReader.taggedFields() }
+
+                    guard let blob, !blob.isEmpty else {
+                        return KafkaFetchResult(records: [], highWatermark: highWatermark, truncated: false, nextOffset: nil)
+                    }
+                    let decoded = try KafkaRecordBatchDecoder.decode(
+                        blob: blob,
+                        partition: index,
+                        abortedTransactions: abortedTransactions,
+                        skipAborted: true,
+                        budget: &spent
+                    )
+                    // A batch can start before the offset asked for, because the broker returns
+                    // whole batches. Dropping the head here is what keeps paging exact.
+                    let trimmed = decoded.records.filter { $0.offset >= startOffset }
+                    return KafkaFetchResult(
+                        records: trimmed,
+                        highWatermark: highWatermark,
+                        truncated: decoded.truncated,
+                        nextOffset: decoded.nextOffset,
+                        bytesRead: blob.count
+                    )
+                }
+                if flexible { try reader.taggedFields() }
+                return partitions
+            }
+            // One topic and one partition were requested, so there is one answer.
+            let result = topics.flatMap { $0 }.first
+                ?? KafkaFetchResult(records: [], highWatermark: startOffset, truncated: false, nextOffset: nil)
+            return (result, spent)
         }
-        let decoded = try KafkaRecordBatchDecoder.decode(
-            blob: blob,
-            partition: reply.partition,
-            abortedTransactions: reply.abortedTransactions,
-            skipAborted: true,
-            budget: &budget
-        )
-        // A batch can start before the offset asked for, because the broker returns
-        // whole batches. Dropping the head here is what keeps paging exact.
-        let trimmed = decoded.records.filter { $0.offset >= startOffset }
-        return KafkaFetchResult(
-            records: trimmed,
-            highWatermark: reply.highWatermark,
-            truncated: decoded.truncated,
-            nextOffset: decoded.nextOffset,
-            bytesRead: blob.count
-        )
     }
 }
