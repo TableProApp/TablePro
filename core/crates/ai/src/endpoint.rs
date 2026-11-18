@@ -82,6 +82,15 @@ impl Endpoint {
         self.key.as_ref()
     }
 
+    /// An error as it may leave the crate: without the key this endpoint
+    /// sends.
+    pub(crate) fn scrub(&self, error: AiError) -> AiError {
+        match &self.key {
+            Some(key) => error.without(key.expose_secret()),
+            None => error,
+        }
+    }
+
     pub(crate) fn url(&self, path: &str) -> String {
         format!("{}{path}", self.base)
     }

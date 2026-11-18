@@ -583,3 +583,73 @@ async fn the_models_listed_come_back_sorted() {
     assert_eq!(models, ["llama3.2:latest", "qwen3"]);
     assert_eq!(server.seen()[0].request_line, "GET /v1/models HTTP/1.1");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_key_the_server_echoes_never_reaches_the_app() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let session = shop(&core, &dir.path().join("shop.sqlite")).await;
+    let server = Server::start(Answer::Status(
+        401,
+        r#"{"error":{"message":"the key sk-echoed-secret is not valid"}}"#.to_owned(),
+    ));
+    let assistant = core.ai_assistant();
+    assistant
+        .set_key(AiProviderTag::OpenAiCompatible, SecretString::from("sk-echoed-secret"))
+        .await
+        .unwrap();
+
+    let events = read_to_end(&assistant.reply(
+        session.clone(),
+        compatible(&server.address),
+        question("hello"),
+        Box::new(Quiet),
+    ))
+    .await;
+    let listed = assistant.list_models(compatible(&server.address), None).await;
+
+    let [AiReplyEvent::Failed { error }] = events.as_slice() else {
+        panic!("{events:?}");
+    };
+    assert_eq!(
+        error.server.as_ref().map(|server| server.message.as_str()),
+        Some("the key [redacted] is not valid")
+    );
+    assert!(!format!("{error:?}").contains("sk-echoed-secret"));
+    assert!(!format!("{listed:?}").contains("sk-echoed-secret"), "{listed:?}");
+    session.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reply_stops_with_its_session_and_a_closed_one_sends_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let session = shop(&core, &dir.path().join("shop.sqlite")).await;
+    let server = Server::start(Answer::Stalls);
+    let assistant = core.ai_assistant();
+
+    let reply = assistant.reply(
+        session.clone(),
+        compatible(&server.address),
+        question("hello"),
+        Box::new(Quiet),
+    );
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while server.seen().is_empty() {
+        assert!(Instant::now() < deadline, "the request never arrived");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    session.close().await.unwrap();
+    let during = read_to_end(&reply).await;
+    let after = read_to_end(&assistant.reply(
+        session.clone(),
+        compatible(&server.address),
+        question("again"),
+        Box::new(Quiet),
+    ))
+    .await;
+
+    assert_eq!(during, [AiReplyEvent::Stopped]);
+    assert_eq!(after, [AiReplyEvent::Stopped]);
+    assert_eq!(server.seen().len(), 1);
+}

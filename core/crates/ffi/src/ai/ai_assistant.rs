@@ -159,11 +159,20 @@ impl AiAssistant {
 }
 
 impl Inner {
+    // A reply stops with its session, as an editor does, and one asked of a closed session never starts.
     async fn stream(&self, session: &DatabaseSession, settings: &AiSettingsArg, chat: AiChatArg, state: &ReplyState) {
         let cancel = state.cancel.clone();
+        let shutdown = session.session().shutdown_signal();
+        let stopped = async {
+            tokio::select! {
+                () = cancel.cancelled() => {}
+                () = shutdown.cancelled() => {}
+            }
+        };
+        tokio::pin!(stopped);
         let ready = tokio::select! {
             biased;
-            () = cancel.cancelled() => None,
+            () = &mut stopped => None,
             ready = self.ready_to_send(session, settings) => Some(ready),
         };
         let (client, endpoint) = match ready {
@@ -173,14 +182,19 @@ impl Inner {
         };
         let request = ChatRequest::from(chat);
         let (sender, mut receiver) = mpsc::unbounded_channel();
-        let streaming = tablepro_ai::stream_reply(&client, &endpoint, &request, cancel, sender);
+        let streaming = tablepro_ai::stream_reply(&client, &endpoint, &request, cancel.clone(), sender);
         let forwarding = async {
             while let Some(event) = receiver.recv().await {
                 state.post(event.into());
             }
         };
-        tokio::join!(streaming, forwarding);
-        // A cancel ends the stream with neither Finished nor Failed; after either, this is not posted.
+        // Dropping the stream on a stop ends its request.
+        tokio::select! {
+            biased;
+            () = &mut stopped => {}
+            _ = async { tokio::join!(streaming, forwarding) } => {}
+        }
+        // A stop ends the stream with neither Finished nor Failed; after either, this is not posted.
         state.post(AiReplyEvent::Stopped);
     }
 
