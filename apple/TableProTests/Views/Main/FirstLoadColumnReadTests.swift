@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -44,6 +45,24 @@ struct FirstLoadColumnReadTests {
 
         #expect(driver.fetchColumnsCallCount == 1)
         withExtendedLifetime(fixture) {}
+    }
+
+    @Test("A definition read runs under a lease a cancel can reach")
+    func definitionReadIsCancellable() async throws {
+        let driver = MockDatabaseDriver()
+        driver.columnsToReturn = ["users": Self.columns]
+        let gate = AsyncGate()
+        driver.fetchColumnsGate = gate
+        let (fixture, scope) = makeFixture(driver: driver)
+
+        let read = Task { try await QueryExecutor.fetchTableSchema(scope: scope, tableName: "users", isView: false) }
+        await gate.arrived(1)
+
+        #expect(DatabaseManager.shared.runningDrivers[fixture.connection.id]?.isEmpty == false)
+
+        read.cancel()
+        await gate.open()
+        await #expect(throws: CancellationError.self) { try await read.value }
     }
 
     @Test("Columns the cache answered are no read of this open")

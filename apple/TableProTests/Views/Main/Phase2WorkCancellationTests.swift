@@ -112,6 +112,26 @@ struct Phase2WorkCancellationTests {
         #expect(fixture.coordinator.phase2Works[tabId]?.count == 1)
     }
 
+    @Test("Closing a tab stops the read of a pinned result too, which goes with it")
+    func closingTheTabCancelsAPinnedRead() throws {
+        let fixture = fixtures.make()
+        let tabId = makeTab(in: fixture)
+        let pinned = ResultSet(label: "users")
+        pinned.isPinned = true
+        fixture.tabManager.mutate(tabId: tabId) { tab in
+            tab.display.resultSets = [pinned]
+            tab.display.activeResultSetId = pinned.id
+        }
+        let schemaTask = Self.heldSchemaRead()
+        _ = try launch(schemaTask, on: tabId, in: fixture)
+
+        let tab = try #require(fixture.tabManager.tabs.first { $0.id == tabId })
+        fixture.coordinator.releaseExecution(of: tab)
+
+        #expect(schemaTask.isCancelled)
+        #expect(fixture.coordinator.phase2Works[tabId] == nil)
+    }
+
     @Test("Closing the tab stops its read")
     func closingTheTabCancelsPhase2() throws {
         let fixture = fixtures.make()

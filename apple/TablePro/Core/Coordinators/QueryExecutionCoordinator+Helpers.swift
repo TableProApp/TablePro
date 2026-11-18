@@ -443,10 +443,9 @@ extension QueryExecutionCoordinator {
         let workToken = UUID()
         TableLoadTracer.shared.beginPhase2(traceToken)
         let task = Task(priority: .utility) { [weak self, parent] in
-            var countOwnsTrace = false
             defer {
                 parent.finishPhase2Work(workToken, forTab: tabId)
-                if !countOwnsTrace { TableLoadTracer.shared.endPhase2(traceToken) }
+                TableLoadTracer.shared.endPhase2(traceToken)
             }
             // The caller marked the total pending; every exit that skips `resolveRowCount` must release it, or Count Exactly never returns.
             guard let self else {
@@ -462,39 +461,37 @@ extension QueryExecutionCoordinator {
                 helpersLogger.error("[fk] phase2 schema fetch failed table=\(tableName, privacy: .private(mask: .hash))")
             }
 
-            countOwnsTrace = await MainActor.run { [weak self] in
+            let countTask: Task<Void, Never>? = await MainActor.run { [weak self] in
                 guard let self else {
                     if countsRows { parent.releaseCountPending(for: tabId) }
-                    return false
+                    return nil
                 }
                 if let schema {
                     applySchemaMetadata(schema, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
                 }
                 // A retarget or newer run owns the tab now with its own pending mark; clearing here would release the successor's.
-                guard countsRows, parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return false }
+                guard countsRows, parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return nil }
                 resolveRowCount(
                     tableName: tableName,
                     tabId: tabId,
-                    connectionType: connectionType,
-                    traceToken: traceToken
+                    connectionType: connectionType
                 )
-                return true
+                return parent.rowCountTasks[tabId]?.task
             }
 
-            guard !isNonSQL, let schema, !Task.isCancelled else { return }
-
-            let columnEnumValues = await parent.fetchEnumValues(
-                columnInfo: schema.columns,
-                tableName: tableName,
-                connectionType: connectionType,
-                scope: scope
-            )
-            guard !columnEnumValues.isEmpty else { return }
-
-            await MainActor.run { [weak self] in
-                guard let self, !Task.isCancelled else { return }
-                applyEnumValues(columnEnumValues, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
+            if !isNonSQL, let schema, !Task.isCancelled {
+                let columnEnumValues = await parent.fetchEnumValues(
+                    columnInfo: schema.columns,
+                    tableName: tableName,
+                    connectionType: connectionType,
+                    scope: scope
+                )
+                if !columnEnumValues.isEmpty, !Task.isCancelled {
+                    applyEnumValues(columnEnumValues, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
+                }
             }
+            // Phase 2 ends with the last of its reads, and the count is one of them.
+            await countTask?.value
         }
         parent.trackPhase2Work(
             MainContentCoordinator.Phase2Work(

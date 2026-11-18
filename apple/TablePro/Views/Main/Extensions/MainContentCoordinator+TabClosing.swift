@@ -132,7 +132,7 @@ extension MainContentCoordinator {
         reportEndedExecutions(tabExecution.invalidate(tab.id, reason: .abandoned).map { [$0] } ?? [])
         cancelTableLoad(for: tab.id)
         cancelRowCountTask(for: tab.id)
-        cancelPhase2Work(forTab: tab.id)
+        cancelPhase2Work(forTab: tab.id, closingTab: true)
         cancelQueryTask(for: tab.id, delivery: .background)
     }
 }

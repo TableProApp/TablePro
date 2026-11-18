@@ -25,10 +25,12 @@ extension MainContentCoordinator {
         if phase2Works[tabId]?.isEmpty == true { phase2Works[tabId] = nil }
     }
 
-    // A page, sort or refresh of the same table keeps its read. A pinned result keeps its read too: nothing fetches its metadata later.
-    func cancelPhase2Work(forTab tabId: UUID, unlessReading tableName: String? = nil) {
+    // A page, sort or refresh of the same table keeps its read. So does a pinned result the tab keeps: nothing fetches its metadata later.
+    func cancelPhase2Work(forTab tabId: UUID, unlessReading tableName: String? = nil, closingTab: Bool = false) {
         guard let works = phase2Works[tabId] else { return }
-        let pinnedResults = tabManager.tabs.first { $0.id == tabId }?.display.resultSets.filter(\.isPinned).map(\.id) ?? []
+        let pinnedResults = closingTab
+            ? []
+            : tabManager.tabs.first { $0.id == tabId }?.display.resultSets.filter(\.isPinned).map(\.id) ?? []
         let kept = works.filter { work in
             if work.tableName == tableName { return true }
             if let resultSetId = work.resultSetId, pinnedResults.contains(resultSetId) { return true }
