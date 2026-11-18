@@ -238,9 +238,11 @@ internal final class WindowManager {
             workspace.sessionState?.tabManager.tabs.contains { $0.id == tabId } ?? false
         }),
             let sourceState = origin.sessionState,
-            let tab = sourceState.tabManager.tabs.first(where: { $0.id == tabId }),
             let connection = DatabaseManager.shared.activeSessions[connectionId]?.connection
         else { return false }
+
+        let needsMetadataAndCount = sourceState.coordinator.abandonAutomaticTableReads(of: tabId)
+        guard let tab = sourceState.tabManager.tabs.first(where: { $0.id == tabId }) else { return false }
 
         let payload = EditorTabPayload(
             connectionId: connectionId,
@@ -281,6 +283,8 @@ internal final class WindowManager {
             /// next window opened for this connection adopt a session state holding a tab that
             /// never left its old window.
             SessionStateFactory.removePending(for: payload.id)
+            sourceState.coordinator.lazyLoadCurrentTabIfNeeded()
+            if needsMetadataAndCount { sourceState.coordinator.resumeTableMetadataAndCount(of: tab) }
             return false
         }
 
@@ -289,6 +293,7 @@ internal final class WindowManager {
         /// neither prompts nor clears anything from disk.
         sourceState.coordinator.tabSessionRegistry.unregister(id: tabId)
         sourceState.tabManager.closeTab(id: tabId)
+        if needsMetadataAndCount { state.coordinator.resumeTableMetadataAndCount(of: moved) }
 
         (window.contentViewController as? MainSplitViewController)?.hostsDetachedTab = true
 
@@ -315,9 +320,11 @@ internal final class WindowManager {
             workspace !== target && workspace.sessionState?.tabManager.tabs.contains { $0.id == tabId } == true
         }),
             let sourceState = origin.sessionState,
-            let targetState = target.sessionState,
-            let tab = sourceState.tabManager.tabs.first(where: { $0.id == tabId })
+            let targetState = target.sessionState
         else { return false }
+
+        let needsMetadataAndCount = sourceState.coordinator.abandonAutomaticTableReads(of: tabId)
+        guard let tab = sourceState.tabManager.tabs.first(where: { $0.id == tabId }) else { return false }
 
         let moved = sourceState.coordinator.enrichedForPersistence(tab)
         if let liveSession = sourceState.coordinator.tabSessionRegistry.session(for: tabId) {
@@ -328,6 +335,7 @@ internal final class WindowManager {
 
         targetState.tabManager.adoptTab(moved, claimFocus: true)
         targetState.tabManager.moveTab(id: moved.id, to: index)
+        if needsMetadataAndCount { targetState.coordinator.resumeTableMetadataAndCount(of: moved) }
         host(containing: target)?.view.window?.makeKeyAndOrderFront(nil)
         return true
     }

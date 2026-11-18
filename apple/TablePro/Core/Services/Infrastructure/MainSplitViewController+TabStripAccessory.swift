@@ -136,8 +136,7 @@ internal extension MainSplitViewController {
                     tabType: tab.tabType,
                     tabCount: sessionState.tabManager.tabs.count,
                     hasUnsavedWork: sessionState.coordinator.hasUnsavedWork(forTab: id),
-                    // Not `isExecuting`: Fetch All and an exact row count run on the tab without claiming it.
-                    isBusy: sessionState.coordinator.tabExecution.isBusy(id) || tab.pagination.isBusy,
+                    isBusy: sessionState.coordinator.holdsWorkThatCannotMove(tab),
                     // Not the driver handle, which stays installed through a reconnect and after the monitor gives up.
                     isConnected: DatabaseManager.shared.activeSessions[workspace.connectionId]?
                         .reportedStatus.isConnected == true

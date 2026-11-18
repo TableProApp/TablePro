@@ -16,14 +16,21 @@ final class EditorTabDetachUITests: UITestCase {
         let dragged = editorTabs(titled: "genre", in: window).firstMatch
         XCTAssertTrue(waitUntilHittable(dragged, timeout: 20), "The dragged tab must be hittable")
 
-        dragged.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .click(forDuration: 0.02, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)))
+        // Fast enough to land while the table the press opened is still loading.
+        dragged.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click(
+            forDuration: 0.02,
+            thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)),
+            withVelocity: XCUIGestureVelocity(rawValue: 6_000),
+            thenHoldForDuration: 0
+        )
 
         let windows = app.children(matching: .window)
         XCTAssertTrue(waitForPredicate(timeout: 20) { windows.count == 2 }, "The drop must open a second window")
+        let detached = windows.matching(NSPredicate(format: "title CONTAINS %@", "genre")).firstMatch
+        XCTAssertTrue(detached.waitToExist(timeout: 20), "A window must be titled for the dragged tab")
         XCTAssertTrue(
-            windows.matching(NSPredicate(format: "title CONTAINS %@", "genre")).firstMatch.waitToExist(timeout: 20),
-            "A window must be titled for the dragged tab"
+            gridCell(showing: "Rock", in: dataGrid(in: detached)).waitToExist(timeout: 20),
+            "The new window must load the table the drop interrupted"
         )
     }
 

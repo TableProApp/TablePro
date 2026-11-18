@@ -210,11 +210,13 @@ extension MainContentCoordinator {
         guard tab.execution.errorMessage == nil else { return false }
         guard !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
 
-        let hasLoaded = tab.execution.lastExecutedAt != nil
-            || !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty
-        guard !hasLoaded || tabSessionRegistry.isStale(tab.id) else { return false }
+        guard !hasLoadedTableRows(tab) || tabSessionRegistry.isStale(tab.id) else { return false }
 
         return !holdsUnsavedWork(tab)
+    }
+
+    func hasLoadedTableRows(_ tab: QueryTab) -> Bool {
+        tab.execution.lastExecutedAt != nil || !tabSessionRegistry.tableRows(for: tab.id).rows.isEmpty
     }
 
     private func clearAbandonedExecutingFlagIfNeeded(for tab: QueryTab) {
