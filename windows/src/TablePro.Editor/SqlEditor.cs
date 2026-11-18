@@ -56,6 +56,9 @@ public sealed partial class SqlEditor : UserControl, IDisposable
     private int _compositionCaret;
     private IReadOnlyList<CompositionRun> _compositionRuns = [];
     private bool _disposed;
+    private bool _wordWrap;
+    private string? _lightScheme;
+    private string? _darkScheme;
 
     public SqlEditor()
     {
@@ -118,7 +121,54 @@ public sealed partial class SqlEditor : UserControl, IDisposable
             _highlighter?.Dispose();
             _highlighter = value is null ? null : new SyntaxHighlighter(Document, value);
             ForgetLayouts();
+            StructureChanged();
             Invalidate();
+        }
+    }
+
+    // Off, long lines scroll sideways; on, they break at the view's width as a monospaced font lays them out.
+    public bool WordWrap
+    {
+        get => _wordWrap;
+        set
+        {
+            if (_wordWrap == value)
+            {
+                return;
+            }
+            _wordWrap = value;
+            _scrollX = 0;
+            UpdateWrap();
+            UpdateScrollBars();
+            EnsureCaretVisible();
+            Invalidate();
+        }
+    }
+
+    // A scheme id from ColorSchemes.All for each appearance; null or an id no scheme has draws the Windows colors.
+    public string? LightColorScheme
+    {
+        get => _lightScheme;
+        set
+        {
+            if (_lightScheme != value)
+            {
+                _lightScheme = value;
+                RebuildBrushes();
+            }
+        }
+    }
+
+    public string? DarkColorScheme
+    {
+        get => _darkScheme;
+        set
+        {
+            if (_darkScheme != value)
+            {
+                _darkScheme = value;
+                RebuildBrushes();
+            }
         }
     }
 
@@ -177,9 +227,13 @@ public sealed partial class SqlEditor : UserControl, IDisposable
 
     public double LineHeight => _layouts?.LineHeight ?? 0;
 
-    public int FirstVisibleLine => _layouts is null ? 0 : (int)(_scrollY / _layouts.LineHeight);
+    // The document line on the first row on screen.
+    public int FirstVisibleLine => _layouts is null ? 0 : _model.Rows.LineAtRow(FirstVisibleRow);
 
+    // Rows on screen, which are lines unless lines wrap or fold.
     public int VisibleLineCount => _layouts is null ? 0 : Math.Max(1, (int)(ViewHeight / _layouts.LineHeight));
+
+    private int FirstVisibleRow => _layouts is null ? 0 : (int)(_scrollY / _layouts.LineHeight);
 
     public SyntaxHighlighter? Highlighter => _highlighter;
 
@@ -210,6 +264,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         _disposed = true;
         Unhook();
         _highlighter?.Dispose();
+        StopStructure();
         ReleaseCaretLayer();
         ReleaseDevice();
         _tsf?.Dispose();
@@ -223,10 +278,14 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         model.Document.Changed += OnDocumentChanged;
         model.Document.Reset += (_, _) => OnDocumentReset();
         model.SelectionsChanged += (_, _) => OnSelectionsChanged();
+        model.Rows.Folds.Changed += (_, _) => OnFoldsChanged();
     }
 
     private void OnDocumentChanged(object? sender, TextChange change)
     {
+        StructureEdited(change);
+        // A line count past a power of ten widens the gutter and so narrows the rows.
+        UpdateWrap();
         UpdateScrollBars();
         Invalidate();
         TextChanged?.Invoke(this, EventArgs.Empty);
@@ -239,6 +298,8 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         _scrollY = 0;
         _widest = 0;
         ForgetLayouts();
+        StructureChanged();
+        UpdateWrap();
         UpdateScrollBars();
         Invalidate();
         TextChanged?.Invoke(this, EventArgs.Empty);
@@ -294,10 +355,11 @@ public sealed partial class SqlEditor : UserControl, IDisposable
             _device = new GraphicsDevice(PreferSoftwareRendering);
             _layouts = new TextLayouts(_device.DWrite, _fontFamily, EditorFontSize * _zoom, _model.Options.TabSize);
             RebuildBrushes();
+            UpdateWrap();
             UpdateScrollBars();
         }
         // ColorValuesChanged is watched only while loaded, so the colors may have changed while the tab was hidden.
-        else if (_device.IsCurrent && (_brushes is null || !_brushes.Palette.SameAs(Palette.Resolve(ActualTheme))))
+        else if (_device.IsCurrent && (_brushes is null || !_brushes.Palette.SameAs(ResolvePalette())))
         {
             RebuildBrushes();
         }
@@ -370,6 +432,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
             RecoverDevice(lost: true);
             return;
         }
+        UpdateWrap();
         UpdateScrollBars();
         RenderNow();
     }
@@ -381,7 +444,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
             return;
         }
         _brushes?.Dispose();
-        _brushes = new Brushes(_device.Context, Palette.Resolve(ActualTheme));
+        _brushes = new Brushes(_device.Context, ResolvePalette());
         if (_caretBrush is not null)
         {
             _caretBrush.Color = _brushes.Palette.Caret;
@@ -389,6 +452,9 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         ForgetLayouts();
         Invalidate();
     }
+
+    private Palette ResolvePalette() =>
+        Palette.Resolve(ActualTheme, global::TablePro.Editor.Model.ColorSchemes.Find(ActualTheme == ElementTheme.Dark ? _darkScheme : _lightScheme));
 
     private void OnFocusChanged(bool focused)
     {

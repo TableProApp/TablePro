@@ -20,6 +20,10 @@ internal sealed unsafe class Brushes : IStyleBrushes, IDisposable
         Selection = Create(context, palette.Selection);
         SelectionText = palette.SelectionText is Color selected ? Create(context, selected) : null;
         FindMatch = Create(context, palette.FindMatch);
+        CurrentStatement = Create(context, palette.CurrentStatement);
+        BracketFill = Create(context, palette.BracketFill);
+        BracketBorder = Create(context, palette.BracketBorder);
+        FoldChip = Create(context, palette.FoldChip);
         _syntax = new ID2D1Brush*[palette.Syntax.Length];
         for (var i = 0; i < palette.Syntax.Length; i++)
         {
@@ -40,6 +44,14 @@ internal sealed unsafe class Brushes : IStyleBrushes, IDisposable
     public ID2D1Brush* SelectionText { get; }
 
     public ID2D1Brush* FindMatch { get; }
+
+    public ID2D1Brush* CurrentStatement { get; }
+
+    public ID2D1Brush* BracketFill { get; }
+
+    public ID2D1Brush* BracketBorder { get; }
+
+    public ID2D1Brush* FoldChip { get; }
 
     // Kinds past the syntax table are the editor's own: SelectedText marks high-contrast selected text.
     public const byte SelectedText = 200;

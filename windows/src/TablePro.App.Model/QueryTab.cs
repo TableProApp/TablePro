@@ -9,12 +9,18 @@ public interface IQueryTabView
 {
     string SelectedText { get; }
 
+    // Where SelectedText starts in DocumentText; null when it joins several selections.
+    int? SelectedTextStart { get; }
+
     string WholeText { get; }
 
     // The editor's own text, which the caret and a statement's place count in.
     string DocumentText { get; }
 
     int Caret { get; }
+
+    // The first line of each folded region, which a session keeps.
+    IReadOnlyList<int> FoldedLines { get; }
 
     // The history keeps a run's failure in the words the results pane showed for it.
     string TimedOutMessage { get; }
@@ -24,6 +30,9 @@ public interface IQueryTabView
     void SelectStatement(int start, int length);
 
     void ShowNoStatement();
+
+    // Offered after a failed run whose server said where; the offset counts in DocumentText.
+    void ShowErrorPosition(int offset);
 
     void ShowRefused();
 
@@ -269,6 +278,7 @@ public sealed class QueryTab : IWorkspaceTab
         FilePath = FilePath,
         FileStamp = FilePath is null ? null : _stamp,
         FileUnsaved = FilePath is not null && TextDiffers(),
+        FoldedLines = _view.FoldedLines is { Count: > 0 } folded ? [.. folded] : null,
     };
 
     // The server rolls the transaction back once the app ends, so a relaunch can say so.
@@ -290,12 +300,14 @@ public sealed class QueryTab : IWorkspaceTab
         }
 
         var sql = _view.SelectedText;
+        var origin = _view.SelectedTextStart;
         if (string.IsNullOrWhiteSpace(sql))
         {
             sql = _view.WholeText;
+            origin = 0;
         }
 
-        await RunTypedAsync(sql).ConfigureAwait(true);
+        await RunTypedAsync(sql, origin).ConfigureAwait(true);
     }
 
     // The statement is selected first so the tab shows which of its statements ran, as the Linux app does.
@@ -315,7 +327,29 @@ public sealed class QueryTab : IWorkspaceTab
 
         var (start, length) = statement.GetOffsetAndLength(text.Length);
         _view.SelectStatement(start, length);
-        await RunTypedAsync(text[statement]).ConfigureAwait(true);
+        await RunTypedAsync(text[statement], start).ConfigureAwait(true);
+    }
+
+    // The server counts code points from 1 in the text sent, and the document keeps each line break as one '\n'.
+    public static int? ErrorOffset(int start, string sent, int position)
+    {
+        ArgumentNullException.ThrowIfNull(sent);
+        if (position < 1)
+        {
+            return null;
+        }
+
+        var offset = start;
+        var index = 0;
+        for (var walked = 1; walked < position && index < sent.Length; walked++)
+        {
+            var width = char.IsSurrogatePair(sent, index) ? 2 : 1;
+            var pairedReturn = sent[index] == '\r' && index + 1 < sent.Length && sent[index + 1] == '\n';
+            offset += pairedReturn ? 0 : width;
+            index += width;
+        }
+
+        return offset;
     }
 
     public void Stop() => _run?.Cancel();
@@ -588,8 +622,8 @@ public sealed class QueryTab : IWorkspaceTab
         await _session.ReleaseAsync().ConfigureAwait(true);
     }
 
-    // Safe Mode judges the text that is sent, whichever part of the editor it is.
-    private async Task RunTypedAsync(string sql)
+    // Safe Mode judges the text that is sent, whichever part of the editor it is; origin is null when it joins pieces.
+    private async Task RunTypedAsync(string sql, int? origin)
     {
         if (string.IsNullOrWhiteSpace(sql))
         {
@@ -603,7 +637,7 @@ public sealed class QueryTab : IWorkspaceTab
 
         _statement = sql;
         _sort = GridSort.None;
-        await RunSqlAsync(sql, record: true).ConfigureAwait(true);
+        await RunSqlAsync(sql, record: true, origin).ConfigureAwait(true);
     }
 
     // Typed SQL only: Commit and Roll back end a transaction at every level, and a sort runs again only a read.
@@ -633,10 +667,10 @@ public sealed class QueryTab : IWorkspaceTab
     }
 
     // Record: a run the user typed, which the history keeps; a sort and Commit or Roll back are not.
-    private Task<bool> RunSqlAsync(string sql, bool record) =>
-        _work.RunAsync(token => RunOnEditorAsync(sql, record, token));
+    private Task<bool> RunSqlAsync(string sql, bool record, int? origin = null) =>
+        _work.RunAsync(token => RunOnEditorAsync(sql, record, origin, token));
 
-    private async Task RunOnEditorAsync(string sql, bool record, CancellationToken cancellationToken)
+    private async Task RunOnEditorAsync(string sql, bool record, int? origin, CancellationToken cancellationToken)
     {
         HistoryRun? ran = null;
         SetRunning(true);
@@ -674,6 +708,14 @@ public sealed class QueryTab : IWorkspaceTab
                 .ConfigureAwait(true);
             if (!_work.IsClosed)
             {
+                // Before AfterRunAsync, whose lost-transaction error would take the bar the offer sits on.
+                if (origin is { } start
+                    && _results.Outcome is QueryOutcome.Failed { Error.Server.Position: { } position }
+                    && ErrorOffset(start, sql, position) is { } offset)
+                {
+                    _view.ShowErrorPosition(offset);
+                }
+
                 if (record)
                 {
                     ran = Ran(sql, startedAt, Stopwatch.GetElapsedTime(started));

@@ -11,7 +11,8 @@ use tokio_postgres::{SimpleQueryMessage, SimpleQueryStream};
 use tracing::debug;
 
 use super::cursor_flight::{
-    CLOSE, RELEASE_SAVEPOINT, ROLLBACK_TO_SAVEPOINT, SAVEPOINT, correct_position, declare, fetch, needs_plain_statement,
+    CLOSE, RELEASE_SAVEPOINT, ROLLBACK_TO_SAVEPOINT, SAVEPOINT, correct_position, declare, fetch,
+    needs_plain_statement, rebase_position,
 };
 use super::editor_dispatch::{CursorOwner, Flight, Wrap, fallback, plan};
 use super::result_origin::{self, TracedTable, traceable};
@@ -109,6 +110,8 @@ impl<'a> Run<'a> {
                 let class = classify(rest, &tokens);
                 self.watch.begin_statement(self.core.statement_timeout());
                 if let Some(error) = self.statement(statement.text(rest), class).await? {
+                    let before = sql.get(..offset + statement.range.start).unwrap_or_default();
+                    let error = rebase_position(error, before.chars().count());
                     return Ok(match self.watch.fired() {
                         Some(interrupt) => end_after_stop(interrupt, &error),
                         None => RunEnd::Failed(error),

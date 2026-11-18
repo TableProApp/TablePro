@@ -119,6 +119,52 @@ public sealed class StoreTests : IDisposable
     }
 
     [Fact]
+    public void TheEditorSettingsStartAsMacOSStartsThemAndComeBackAsSaved()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "theme": "Dark" }""");
+        var older = new SettingsStore(path).Load();
+        var store = new SettingsStore(path);
+        var saved = new AppSettings
+        {
+            WordWrap = true,
+            HighlightCurrentStatement = false,
+            CodeFolding = false,
+            EditorLightScheme = "tablepro.github-light",
+            EditorDarkScheme = "tablepro.dracula",
+        };
+
+        store.Save(saved);
+
+        foreach (var fresh in new[] { new AppSettings(), older })
+        {
+            Assert.False(fresh.WordWrap);
+            Assert.True(fresh.HighlightCurrentStatement);
+            Assert.True(fresh.CodeFolding);
+            Assert.Null(fresh.EditorLightScheme);
+            Assert.Null(fresh.EditorDarkScheme);
+        }
+
+        Assert.Equal(saved, store.Load());
+        var json = System.IO.File.ReadAllText(path);
+        Assert.Contains("\"wordWrap\": true", json, StringComparison.Ordinal);
+        Assert.Contains("\"editorDarkScheme\": \"tablepro.dracula\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ABlankColorSchemeKeepsTheDefaultColorsAndANamedOneIsTrimmed()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "editorLightScheme": " ", "editorDarkScheme": " tablepro.dracula " }""");
+
+        var settings = new SettingsStore(path).Load();
+
+        Assert.Null(settings.EditorLightScheme);
+        Assert.Equal("tablepro.dracula", settings.EditorDarkScheme);
+        Assert.Null(new AppSettings { EditorDarkScheme = string.Empty }.Normalized().EditorDarkScheme);
+    }
+
+    [Fact]
     public void ANullTextPastTwentyCharactersIsCutAndAnEmptyOneReadsAsNull()
     {
         var path = File("settings.json");

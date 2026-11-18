@@ -1,7 +1,7 @@
-use tablepro_core::sql_syntax::script::LexicalSettings;
+use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
 use tablepro_core::sql_syntax::{SqlGrammar, SyntaxKind, syntax_tokens};
 
-use crate::window_abi::TpSyntaxToken;
+use crate::window_abi::{TpStatementSpan, TpSyntaxToken};
 
 // Indexed by the grammar codes of `tablepro_syntax_tokens`, in `SqlGrammar`'s declaration order.
 const GRAMMARS: [SqlGrammar; 9] = [
@@ -18,18 +18,7 @@ const GRAMMARS: [SqlGrammar; 9] = [
 
 // `None` for an unknown grammar code.
 pub(crate) fn scan(grammar: u32, backslash_escapes: u32, units: &[u16], out: &mut [TpSyntaxToken]) -> Option<usize> {
-    let grammar = *GRAMMARS.get(usize::try_from(grammar).ok()?)?;
-    let settings = match backslash_escapes {
-        0 => LexicalSettings {
-            backslash_escapes: false,
-        },
-        1 => LexicalSettings {
-            backslash_escapes: true,
-        },
-        _ => LexicalSettings::default_for(grammar),
-    };
-    // A lone surrogate becomes U+FFFD, one unit too, so the offsets mapped back still index `units`.
-    let text = String::from_utf16_lossy(units);
+    let (text, grammar, settings) = decode(grammar, backslash_escapes, units)?;
     let mut units_at = Utf16Offsets::new(&text);
     let mut written = 0;
     for (token, slot) in syntax_tokens(&text, grammar, settings).into_iter().zip(out.iter_mut()) {
@@ -45,6 +34,40 @@ pub(crate) fn scan(grammar: u32, backslash_escapes: u32, units: &[u16], out: &mu
     Some(written)
 }
 
+// The count of statements the text holds, which may pass `out.len()`; `None` for an unknown grammar code.
+pub(crate) fn statements(
+    grammar: u32,
+    backslash_escapes: u32,
+    units: &[u16],
+    out: &mut [TpStatementSpan],
+) -> Option<usize> {
+    let (text, grammar, settings) = decode(grammar, backslash_escapes, units)?;
+    let plan = ScriptPlan::build(&text, grammar, settings);
+    let mut units_at = Utf16Offsets::new(&text);
+    for (statement, slot) in plan.statements().iter().zip(out.iter_mut()) {
+        *slot = TpStatementSpan {
+            start: u32::try_from(units_at.at(statement.range.start)).ok()?,
+            end: u32::try_from(units_at.at(statement.range.end)).ok()?,
+        };
+    }
+    Some(plan.statements().len())
+}
+
+fn decode(grammar: u32, backslash_escapes: u32, units: &[u16]) -> Option<(String, SqlGrammar, LexicalSettings)> {
+    let grammar = *GRAMMARS.get(usize::try_from(grammar).ok()?)?;
+    let settings = match backslash_escapes {
+        0 => LexicalSettings {
+            backslash_escapes: false,
+        },
+        1 => LexicalSettings {
+            backslash_escapes: true,
+        },
+        _ => LexicalSettings::default_for(grammar),
+    };
+    // A lone surrogate becomes U+FFFD, one unit too, so the offsets mapped back still index `units`.
+    Some((String::from_utf16_lossy(units), grammar, settings))
+}
+
 fn kind_code(kind: SyntaxKind) -> u32 {
     match kind {
         SyntaxKind::Identifier => 0,
@@ -58,7 +81,7 @@ fn kind_code(kind: SyntaxKind) -> u32 {
     }
 }
 
-// Byte offsets never go back, so a whole token list maps in one pass over the text.
+// Byte offsets never go back, so a whole token or statement list maps in one pass over the text.
 struct Utf16Offsets<'a> {
     text: &'a str,
     byte: usize,
