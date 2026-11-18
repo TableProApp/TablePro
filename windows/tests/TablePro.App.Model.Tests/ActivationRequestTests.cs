@@ -45,6 +45,18 @@ public sealed class ActivationRequestTests
     }
 
     [Fact]
+    public void ARelativePathIsMadeWholeAgainstTheLaunchsFolderAndTheRestIsKept()
+    {
+        var folder = Path.GetFullPath("scripts");
+        var absolute = Path.GetFullPath("app.sqlite");
+
+        var whole = ActivationRequest.WholePaths(["--flag", "report.sql", absolute, "tablepro://settings"], folder);
+
+        Assert.Equal(["--flag", Path.Combine(folder, "report.sql"), absolute, "tablepro://settings"], whole);
+        Assert.Null(ActivationRequest.WholePaths([absolute, "postgresql://db/shop", "-x"], folder));
+    }
+
+    [Fact]
     public void TheSameFileNamedTwiceOpensOnce()
     {
         var path = Path.GetFullPath("app.duckdb");

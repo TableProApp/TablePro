@@ -142,9 +142,10 @@ internal static partial class FinishNotifications
     // A tab out of view has no window of its own to flash, so the app's main one does.
     private static void Flash(FrameworkElement element)
     {
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
         var window = element.XamlRoot is { } root
             ? Win32Interop.GetWindowFromWindowId(root.ContentIslandEnvironment.AppWindowId)
-            : System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle;
+            : process.MainWindowHandle;
         if (window == IntPtr.Zero)
         {
             return;

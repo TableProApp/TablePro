@@ -104,9 +104,18 @@ internal sealed class AppSession : IDisposable
     }
 
     // A second launch on this data folder hands its files and links to this app and exits without a window.
-    public void HandOver(params string[] arguments)
+    public void HandOver(params string[] arguments) => HandOverFrom(null, arguments);
+
+    // As a terminal in that folder starts it, so a relative path names a file there.
+    public void HandOverFrom(string? workingDirectory, params string[] arguments)
     {
-        using var process = Process.Start(StartInfo(DataFolder, arguments))
+        var start = StartInfo(DataFolder, arguments);
+        if (workingDirectory is not null)
+        {
+            start.WorkingDirectory = workingDirectory;
+        }
+
+        using var process = Process.Start(start)
             ?? throw new InvalidOperationException("The second launch did not start.");
         if (!process.WaitForExit(Wait))
         {

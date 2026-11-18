@@ -13,16 +13,16 @@ public sealed partial class MainWindow
 {
     private readonly PendingLinks _links = new();
 
-    // Connections a tablepro://connect link opened, with the table or query it asked for once each is up.
-    private readonly Dictionary<OpenConnection, LinkTarget> _linkTargets = [];
+    // Connections a tablepro://connect link opened, with what each link asked for once it is up, in the order asked.
+    private readonly Dictionary<OpenConnection, Queue<LinkTarget>> _linkTargets = [];
 
     // Files first, as Explorer opens them, then links one at a time; a tab window hands them to the primary.
-    internal async void Open(ActivationRequest request)
+    internal async void OpenActivation(ActivationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (!IsPrimary)
         {
-            _primary.Open(request);
+            _primary.OpenActivation(request);
             return;
         }
 
@@ -141,19 +141,38 @@ public sealed partial class MainWindow
         var open = ConnectSaved(saved);
         if (target is not null)
         {
-            _linkTargets[open] = target;
-            await OpenLinkTargetAsync(open);
+            await QueueLinkTargetAsync(open, target);
         }
     }
 
-    // Raised again as the workspace's commands change, so it runs once the connection is up.
+    private async Task QueueLinkTargetAsync(OpenConnection open, LinkTarget target)
+    {
+        if (!_linkTargets.TryGetValue(open, out var waiting))
+        {
+            waiting = new Queue<LinkTarget>();
+            _linkTargets[open] = waiting;
+        }
+
+        waiting.Enqueue(target);
+        await OpenLinkTargetAsync(open);
+    }
+
+    // Raised again as the workspace's commands change, so what waits runs once the connection is up.
     private async Task OpenLinkTargetAsync(OpenConnection open)
     {
-        if (!open.View.IsConnected || !_linkTargets.Remove(open, out var target))
+        if (!open.View.IsConnected || !_linkTargets.Remove(open, out var waiting))
         {
             return;
         }
 
+        while (waiting.TryDequeue(out var target))
+        {
+            await OpenLinkTargetAsync(open, target);
+        }
+    }
+
+    private async Task OpenLinkTargetAsync(OpenConnection open, LinkTarget target)
+    {
         switch (target)
         {
             case LinkTarget.Query query:
@@ -169,8 +188,7 @@ public sealed partial class MainWindow
                 {
                     if (OpenDatabase(open, database) is { } other && !ReferenceEquals(other, open))
                     {
-                        _linkTargets[other] = new LinkTarget.Table(null, place.Schema, table.Name);
-                        await OpenLinkTargetAsync(other);
+                        await QueueLinkTargetAsync(other, new LinkTarget.Table(null, place.Schema, table.Name));
                     }
 
                     return;

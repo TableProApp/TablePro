@@ -47,7 +47,7 @@ public partial class App : Application
         DataGridView.WarmUpFonts();
         if (LaunchRequest() is { IsEmpty: false } request)
         {
-            _window.Open(request);
+            _window.OpenActivation(request);
         }
     }
 
@@ -70,7 +70,7 @@ public partial class App : Application
 
         if (!request.IsEmpty)
         {
-            _window.Open(request);
+            _window.OpenActivation(request);
         }
     }
 

@@ -132,6 +132,13 @@ fn connect(url: &Url, segments: &[String]) -> Result<AppLink, AppLinkError> {
     }
 }
 
+fn decoded(text: &str) -> Option<String> {
+    percent_encoding::percent_decode_str(text)
+        .decode_utf8()
+        .ok()
+        .map(|text| text.into_owned())
+}
+
 // Hyphenated, in either case, as Swift's `UUID(uuidString:)` reads one.
 fn connection_id(text: &str) -> Result<Uuid, AppLinkError> {
     (text.len() == 36)
@@ -140,11 +147,15 @@ fn connection_id(text: &str) -> Result<Uuid, AppLinkError> {
         .ok_or_else(|| AppLinkError::InvalidId { text: text.to_owned() })
 }
 
+// Percent-decoded only: a form's + for a space would turn `1+2` into `1 2`, which macOS's query items never do.
 fn query(url: &Url, connection: Uuid) -> Result<AppLink, AppLinkError> {
     let sql = url
-        .query_pairs()
-        .find(|(name, _)| name == "sql")
-        .map(|(_, value)| value.into_owned())
+        .query()
+        .unwrap_or_default()
+        .split('&')
+        .map(|pair| pair.split_once('=').unwrap_or((pair, "")))
+        .find(|(name, _)| decoded(name).as_deref() == Some("sql"))
+        .and_then(|(_, value)| decoded(value))
         .filter(|sql| !sql.is_empty())
         .ok_or(AppLinkError::MissingSql)?;
     let length = sql.encode_utf16().count();
@@ -254,6 +265,17 @@ mod tests {
         for (link, code) in cases {
             assert_eq!(parse(&link).map_err(|error| error.code()), Err(code), "{link}");
         }
+    }
+
+    #[test]
+    fn a_plus_in_the_sql_stays_a_plus() {
+        assert_eq!(
+            parse(&format!("tablepro://connect/{ID}/query?x=1&sql=SELECT%201+2%2B3&sql=ignored")),
+            Ok(AppLink::OpenQuery {
+                connection: id(),
+                sql: "SELECT 1+2+3".to_owned(),
+            })
+        );
     }
 
     #[test]

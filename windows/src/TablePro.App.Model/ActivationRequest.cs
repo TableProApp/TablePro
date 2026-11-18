@@ -41,6 +41,31 @@ public sealed partial record ActivationRequest(IReadOnlyList<string> Links, IRea
         return new ActivationRequest(links, files);
     }
 
+    // Relative file paths made whole, since a second launch hands them to an app in another folder; null when none is.
+    public static IReadOnlyList<string>? WholePaths(IReadOnlyList<string> arguments, string directory)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        ArgumentNullException.ThrowIfNull(directory);
+        var changed = false;
+        var whole = new List<string>(arguments.Count);
+        foreach (var raw in arguments)
+        {
+            var argument = raw.Trim().Trim('"').Trim();
+            if (argument.Length > 0 && !argument.StartsWith('-') && FileUriPath(argument) is null && !IsLink(argument)
+                && !Path.IsPathFullyQualified(argument) && FullPath(argument, directory) is { } full)
+            {
+                whole.Add(full);
+                changed = true;
+            }
+            else
+            {
+                whole.Add(raw);
+            }
+        }
+
+        return changed ? whole : null;
+    }
+
     // A launch activation's arguments as one line, which an unpackaged launch starts with the program's own path.
     public static ActivationRequest FromCommandLine(string? line)
     {
@@ -159,6 +184,18 @@ public sealed partial record ActivationRequest(IReadOnlyList<string> Links, IRea
         && uri.IsFile
             ? uri.LocalPath
             : null;
+
+    private static string? FullPath(string path, string directory)
+    {
+        try
+        {
+            return Path.GetFullPath(path, directory);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+    }
 
     private static void AddFile(List<string> files, string path)
     {

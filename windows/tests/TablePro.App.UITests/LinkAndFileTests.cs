@@ -22,8 +22,8 @@ public sealed partial class ShellTests
             Directory.EnumerateFiles(folder, "connections.json", SearchOption.AllDirectories),
             file => File.ReadAllText(file).Contains(Path.GetFileName(database), StringComparison.Ordinal));
 
-        // A second launch hands its script over, and the script opens in a query tab on the connection.
-        app.HandOver(script);
+        // A second launch from the script's folder hands it over, and it opens in a query tab on the connection.
+        app.HandOverFrom(folder, Path.GetFileName(script));
         app.FindByName("genres.sql");
         Assert.True(Retry.WhileFalse(
             () => AppSession.EditorText(app.Find("SqlEditor")).Contains("FROM Genre", StringComparison.Ordinal),
