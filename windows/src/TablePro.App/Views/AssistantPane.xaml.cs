@@ -505,6 +505,8 @@ public sealed partial class AssistantPane : UserControl
 
     private TurnView ShowTurn(AssistantAsk asked, IReadOnlyList<string> described)
     {
+        // Only the last turn's reply can be asked for again.
+        _lastTurn?.DropRetry();
         var turn = new TurnView(this, asked, described);
         Messages.Children.Add(turn.Root);
         _lastTurn = turn;
@@ -547,6 +549,7 @@ public sealed partial class AssistantPane : UserControl
         private readonly StackPanel _reply = new() { Spacing = 8 };
         private readonly StackPanel _footer = new() { Spacing = 8 };
         private readonly StringBuilder _text = new();
+        private Button? _retry;
         private int _painted;
 
         public TurnView(AssistantPane pane, AssistantAsk asked, IReadOnlyList<string> described)
@@ -582,6 +585,7 @@ public sealed partial class AssistantPane : UserControl
         {
             _text.Clear();
             _painted = 0;
+            _retry = null;
             _reply.Children.Clear();
             _footer.Children.Clear();
         }
@@ -635,6 +639,16 @@ public sealed partial class AssistantPane : UserControl
                 AutomationProperties.SetAutomationId(button, "AssistantRetryButton");
                 button.Click += (_, _) => retry();
                 _footer.Children.Add(button);
+                _retry = button;
+            }
+        }
+
+        public void DropRetry()
+        {
+            if (_retry is { } retry)
+            {
+                _footer.Children.Remove(retry);
+                _retry = null;
             }
         }
 

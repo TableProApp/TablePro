@@ -166,6 +166,7 @@ public sealed partial class SettingsView
         finally
         {
             AiKeyRemoveButton.IsEnabled = true;
+            AiKeySaveButton.IsEnabled = !string.IsNullOrWhiteSpace(AiKeyBox.Password);
         }
 
         // A key typed for another provider, or after this save began, stays in the box.

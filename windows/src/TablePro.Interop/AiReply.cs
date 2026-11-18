@@ -51,7 +51,8 @@ public sealed class AiReply : IDisposable
         _wake = wake;
     }
 
-    // Events arrive on the enumerating context, and text that comes while it is busy as one Text. Read once.
+    // Events arrive on the enumerating context, and text that comes while it is busy as one Text. Read once, so a
+    // cancelled read stops the reply too.
     public async IAsyncEnumerable<AiReplyEvent> ReadEventsAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -59,6 +60,8 @@ public sealed class AiReply : IDisposable
         {
             throw new InvalidOperationException("The reply's events are already being read.");
         }
+
+        using var registration = cancellationToken.UnsafeRegister(static state => ((AiReply)state!).Cancel(), this);
 
         // Resumes on the caller's context, which is where the events are meant to be read.
         while (await _wake.WaitAsync(cancellationToken))
