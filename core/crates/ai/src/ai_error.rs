@@ -63,6 +63,39 @@ impl AiError {
 }
 
 impl AiError {
+    /// The error with `secret` taken out of every text a server or the
+    /// transport wrote, so a server that echoes the key it was sent cannot
+    /// put it on the user's screen.
+    pub(crate) fn without(self, secret: &str) -> Self {
+        if secret.is_empty() {
+            return self;
+        }
+        let scrub = |text: String| text.replace(secret, "[redacted]");
+        match self {
+            Self::Tls(detail) => Self::Tls(scrub(detail)),
+            Self::Unreachable { host, detail } => Self::Unreachable {
+                host,
+                detail: scrub(detail),
+            },
+            Self::Unauthorized { host, message } => Self::Unauthorized {
+                host,
+                message: message.map(scrub),
+            },
+            Self::RateLimited { host, message } => Self::RateLimited {
+                host,
+                message: message.map(scrub),
+            },
+            Self::Status { host, status, message } => Self::Status {
+                host,
+                status,
+                message: message.map(scrub),
+            },
+            Self::Provider(message) => Self::Provider(scrub(message)),
+            Self::Protocol(detail) => Self::Protocol(scrub(detail)),
+            other => other,
+        }
+    }
+
     /// What the server said, when it said anything.
     pub fn server_message(&self) -> Option<&str> {
         match self {
@@ -78,6 +111,25 @@ impl AiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_key_the_server_echoes_is_taken_out_of_what_it_said() {
+        let echoed = AiError::Unauthorized {
+            host: "gpu-box".to_owned(),
+            message: Some("bad key sk-local, try again".to_owned()),
+        };
+        let streamed = AiError::Provider("sk-local is revoked".to_owned());
+
+        assert_eq!(
+            echoed.without("sk-local").server_message(),
+            Some("bad key [redacted], try again")
+        );
+        assert_eq!(
+            streamed.without("sk-local"),
+            AiError::Provider("[redacted] is revoked".to_owned())
+        );
+        assert_eq!(AiError::TooLong.without(""), AiError::TooLong);
+    }
 
     #[test]
     fn each_error_names_its_variant_with_a_code_that_does_not_change() {

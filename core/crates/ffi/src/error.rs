@@ -2,9 +2,11 @@ use std::path::Path;
 use std::sync::Arc;
 
 use tablepro_account::AccountError;
+use tablepro_ai::AiError;
 use tablepro_core::{DriverError, ServerDiagnostics, SshFailure, TlsFailure, TransportError};
 use tablepro_session::{ConnectError, OperationError};
 
+use crate::ai::AiFailureInfo;
 use crate::host::SecretKindTag;
 
 /// Why a call produced no value. A cancel is its own variant, so a
@@ -34,6 +36,9 @@ pub struct ErrorInfo {
     pub secret: Option<SecretKindTag>,
     pub host_key: Option<HostKeyFailure>,
     pub tls_failure: Option<TlsFailureTag>,
+    // What an `ai.*` error is about; the provider's own words are in `server`.
+    #[uniffi(default = None)]
+    pub ai: Option<AiFailureInfo>,
 }
 
 // Error details stay off the stack while bindings keep the same record values.
@@ -114,6 +119,7 @@ impl CoreError {
                 secret: None,
                 host_key: None,
                 tls_failure: None,
+                ai: None,
             }),
         }
     }
@@ -155,6 +161,7 @@ impl ErrorInfo {
                 DriverError::Tls { failure, .. } => Some((*failure).into()),
                 _ => None,
             },
+            ai: None,
         }
     }
 
@@ -168,6 +175,7 @@ impl ErrorInfo {
             secret: None,
             host_key: None,
             tls_failure: None,
+            ai: None,
         }
     }
 }
@@ -335,6 +343,42 @@ impl From<AccountError> for CoreError {
         Self::Failed {
             info: Box::new(ErrorInfo {
                 server,
+                ..ErrorInfo::plain(&[error.code()], error.to_string())
+            }),
+        }
+    }
+}
+
+// The host, status and provider are typed fields the app words; what the provider said goes in `server`.
+impl From<AiError> for CoreError {
+    fn from(error: AiError) -> Self {
+        let server = error.server_message().map(named_only);
+        let mut ai = AiFailureInfo::default();
+        match &error {
+            AiError::MissingKey(provider) => ai.provider = Some((*provider).into()),
+            AiError::Tls(detail) | AiError::Protocol(detail) => ai.detail = Some(detail.clone()),
+            AiError::Unreachable { host, detail } => {
+                ai.host = Some(host.clone());
+                ai.detail = Some(detail.clone());
+            }
+            AiError::TimedOut { host } | AiError::Unauthorized { host, .. } | AiError::RateLimited { host, .. } => {
+                ai.host = Some(host.clone());
+            }
+            AiError::Status { host, status, .. } => {
+                ai.host = Some(host.clone());
+                ai.status = Some(*status);
+            }
+            AiError::MissingModel
+            | AiError::InvalidAddress
+            | AiError::KeyOverPlainHttp
+            | AiError::InvalidKey
+            | AiError::Provider(_)
+            | AiError::TooLong => {}
+        }
+        Self::Failed {
+            info: Box::new(ErrorInfo {
+                server,
+                ai: Some(ai),
                 ..ErrorInfo::plain(&[error.code()], error.to_string())
             }),
         }

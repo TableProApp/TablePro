@@ -101,6 +101,7 @@ public sealed partial class SettingsView : UserControl
         NullDisplayBox.Text = settings.NullDisplay;
         FillChoices(HistoryRetentionBox, AppSettings.HistoryRetentionChoices, settings.HistoryRetentionDays, RetentionLabel);
         FillChoices(HistoryMaxBox, AppSettings.HistoryMaxEntriesChoices, settings.HistoryMaxEntries, MaxEntriesLabel);
+        LoadAssistant();
         _loading = false;
     }
 

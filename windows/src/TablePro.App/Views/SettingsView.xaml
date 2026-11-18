@@ -173,6 +173,45 @@
                 <Button x:Uid="ClearHistorySettingsButton" x:Name="ClearHistoryButton" AutomationProperties.AutomationId="ClearHistorySettingsButton" Click="OnClearHistory" />
             </toolkit:SettingsCard>
 
+            <TextBlock x:Uid="AiHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Uid="AiProviderCard" x:Name="AiProviderCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8BD;" /></toolkit:SettingsCard.HeaderIcon>
+                <!-- Off first, then the providers in the core's order; each item's Tag is its provider. -->
+                <ComboBox x:Name="AiProviderBox" x:Uid="AiProviderBox" AutomationProperties.AutomationId="AiProviderBox" MinWidth="240" SelectionChanged="OnAiProviderChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="AiAddressCard" x:Name="AiAddressCard" Visibility="Collapsed">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Globe" /></toolkit:SettingsCard.HeaderIcon>
+                <TextBox x:Name="AiAddressBox" x:Uid="AiAddressBox" AutomationProperties.AutomationId="AiAddressBox" MinWidth="240" TextChanged="OnAiAddressChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="AiKeyCard" x:Name="AiKeyCard" Visibility="Collapsed">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Permissions" /></toolkit:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <PasswordBox x:Name="AiKeyBox" x:Uid="AiKeyBox" AutomationProperties.AutomationId="AiKeyBox" MinWidth="200" KeyDown="OnAiKeyKeyDown" PasswordChanged="OnAiKeyTyped" />
+                    <Button x:Uid="AiKeySaveButton" x:Name="AiKeySaveButton" AutomationProperties.AutomationId="AiKeySaveButton" Click="OnAiKeySave" IsEnabled="False" />
+                    <Button x:Uid="AiKeyRemoveButton" x:Name="AiKeyRemoveButton" AutomationProperties.AutomationId="AiKeyRemoveButton" Click="OnAiKeyRemove" Visibility="Collapsed" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="AiModelCard" x:Name="AiModelCard" Visibility="Collapsed">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="List" /></toolkit:SettingsCard.HeaderIcon>
+                <!-- Typed or picked; the list is read from the provider each time it opens. -->
+                <ComboBox
+                    x:Name="AiModelBox"
+                    x:Uid="AiModelBox"
+                    AutomationProperties.AutomationId="AiModelBox"
+                    DropDownOpened="OnAiModelsOpened"
+                    IsEditable="True"
+                    MinWidth="240"
+                    SelectionChanged="OnAiModelPicked"
+                    TextSubmitted="OnAiModelTyped" />
+            </toolkit:SettingsCard>
+            <TextBlock
+                x:Name="AiStatusText"
+                AutomationProperties.AutomationId="AiStatusText"
+                AutomationProperties.LiveSetting="Polite"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextWrapping="Wrap" />
+
             <TextBlock x:Uid="AboutHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsExpander x:Name="AboutExpander" x:Uid="AboutExpander" AutomationProperties.AutomationId="AboutExpander">
                 <toolkit:SettingsExpander.HeaderIcon>

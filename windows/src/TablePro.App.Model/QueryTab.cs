@@ -89,6 +89,9 @@ public interface IQueryFileView
     Task ShowReloadFailedAsync(string path, Exception failure);
 }
 
+// A typed run the server refused: its SQL and the words the results pane showed, which Fix with AI sends.
+public sealed record RunFailure(string Statement, string Error);
+
 // The switcher's lists, user databases before the engine's own.
 public sealed record DatabaseChoices(
     IReadOnlyList<string> UserDatabases,
@@ -208,6 +211,43 @@ public sealed class QueryTab : IWorkspaceTab
 
     // The typed SQL whose results the tab shows, which a result share sends; null after Commit or Roll back.
     public string? LastStatement => _statement;
+
+    // The last typed run, when the server refused it; null once another run starts.
+    public RunFailure? LastFailure { get; private set; }
+
+    // What Explain, Review and Optimize with AI send: the selection, else the statement the caret is in, as Run
+    // statement takes it. Null when there is none.
+    public string? AssistantStatement()
+    {
+        var selected = _view.SelectedText;
+        if (!string.IsNullOrWhiteSpace(selected))
+        {
+            return selected.Trim();
+        }
+
+        var text = _view.DocumentText;
+        if (_session.StatementAt(text, _view.Caret) is not { } statement)
+        {
+            return null;
+        }
+
+        // The range stops before its terminator, which the assistant sees as the user wrote it.
+        var (start, length) = statement.GetOffsetAndLength(text.Length);
+        var end = start + length;
+        var after = end;
+        while (after < text.Length && text[after] is ' ' or '\t')
+        {
+            after++;
+        }
+
+        if (after < text.Length && text[after] == ';')
+        {
+            end = after + 1;
+        }
+
+        var found = text[start..end].Trim();
+        return found.Length > 0 ? found : null;
+    }
 
     // A scratch tab's text is kept in the session, so only a file tab's unsaved text is asked about.
     public async Task<bool> ConfirmCloseAsync(bool offerSave)
@@ -655,6 +695,11 @@ public sealed class QueryTab : IWorkspaceTab
             }
 
             _run?.Dispose();
+            if (record)
+            {
+                LastFailure = null;
+            }
+
             var startedAt = DateTimeOffset.Now;
             var started = Stopwatch.GetTimestamp();
             var settings = _settings();
@@ -674,6 +719,9 @@ public sealed class QueryTab : IWorkspaceTab
                 if (record)
                 {
                     ran = Ran(sql, startedAt, Stopwatch.GetElapsedTime(started));
+                    LastFailure = _results.Outcome is QueryOutcome.Failed failed
+                        ? new RunFailure(sql, _view.WordError(failed.Error))
+                        : null;
                 }
 
                 await AfterRunAsync().ConfigureAwait(true);

@@ -30,6 +30,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     private bool _messagesQueued;
     private GridSort _sort = GridSort.None;
     private CancellationTokenSource? _summing;
+    private Action? _goToError;
+    private Action? _fix;
     private SelectionSummary? _summary;
 
     private static readonly TimeSpan SummaryDelay = TimeSpan.FromMilliseconds(150);
@@ -199,7 +201,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     // About the rows, not a failure of the run, so the status keeps what the run said.
     internal void ShowNotice(string message)
     {
-        ErrorBar.ActionButton = null;
+        ClearErrorActions();
         ErrorBar.Severity = InfoBarSeverity.Informational;
         ErrorBar.Message = message;
         ErrorBar.IsOpen = false;
@@ -232,9 +234,16 @@ public sealed partial class ResultsPane : UserControl, IResultsView
 
     public void ShowError(CoreError failure) => ShowError(Strings.Error(failure));
 
+    // Fix with AI on the error bar while a refused run's error shows; null takes it away.
+    internal void OfferFix(Action? fix)
+    {
+        _fix = fix;
+        ShowErrorActions();
+    }
+
     public void ShowError(string message)
     {
-        ErrorBar.ActionButton = null;
+        ClearErrorActions();
         ErrorBar.Severity = InfoBarSeverity.Error;
         ErrorBar.Message = message;
         ErrorBar.IsOpen = false;
@@ -242,13 +251,57 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         Status(Strings.Get("StatusRunFailed"));
     }
 
-    // On the failed run's bar, which every later message replaces along with the button.
+    // On the failed run's bar, which every later message replaces along with its buttons.
     internal void OfferGoToError(Action go)
     {
-        var button = new Button { Content = Strings.Get("GoToError") };
-        AutomationProperties.SetAutomationId(button, "GoToErrorButton");
-        button.Click += (_, _) => go();
-        ErrorBar.ActionButton = button;
+        _goToError = go;
+        ShowErrorActions();
+    }
+
+    private void ClearErrorActions()
+    {
+        _goToError = null;
+        _fix = null;
+        ShowErrorActions();
+    }
+
+    // One action is the bar's own button; Go to Error and Fix with AI together sit side by side under the message, as
+    // the Linux app shows them.
+    private void ShowErrorActions()
+    {
+        var buttons = new List<Button>(2);
+        if (_goToError is { } go)
+        {
+            buttons.Add(ErrorAction("GoToError", "GoToErrorButton", go));
+        }
+
+        if (_fix is { } fix)
+        {
+            buttons.Add(ErrorAction("AiFix", "FixWithAiButton", fix));
+        }
+
+        ErrorBar.ActionButton = buttons.Count == 1 ? buttons[0] : null;
+        if (buttons.Count < 2)
+        {
+            ErrorBar.Content = null;
+            return;
+        }
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 0, 0, 12) };
+        foreach (var button in buttons)
+        {
+            row.Children.Add(button);
+        }
+
+        ErrorBar.Content = row;
+    }
+
+    private static Button ErrorAction(string text, string automationId, Action act)
+    {
+        var button = new Button { Content = Strings.Get(text) };
+        AutomationProperties.SetAutomationId(button, automationId);
+        button.Click += (_, _) => act();
+        return button;
     }
 
     public void Clear()
@@ -256,7 +309,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         Release();
         Outcome = null;
         RowsAffected = null;
-        ErrorBar.ActionButton = null;
+        ClearErrorActions();
         ErrorBar.IsOpen = false;
         Placeholder.Text = Strings.Get("ResultsEmpty");
         _messages.Reset();
@@ -269,7 +322,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(run);
-        ErrorBar.ActionButton = null;
+        ClearErrorActions();
         ErrorBar.IsOpen = false;
         Status(Strings.Get("StatusRunning"));
         ResultSetCount = 0;

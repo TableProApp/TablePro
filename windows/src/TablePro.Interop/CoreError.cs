@@ -11,6 +11,9 @@ public sealed record CoreError(
     HostKeyFailure? HostKey = null)
 {
     public TlsFailure? TlsFailure { get; init; }
+
+    // What an ai.* error is about: its host, status and provider.
+    public AiFailure? Ai { get; init; }
 }
 
 public sealed record HostKeyFailure(
