@@ -83,7 +83,8 @@ enum ParquetValuesProbe {
         ]
         let types = declared.map { ParquetTypeMapper.duckDBType(forColumnType: $0.type, databaseTypeId: $0.engine) }
 
-        let staging = try DuckDBStagingDatabase()
+        let staging = try DuckDBStagingDatabase(
+            memoryLimit: ParquetStaging.memoryLimit(physicalMemory: ProcessInfo.processInfo.physicalMemory))
         try staging.createTable(columns: declared.map(\.name), types: types)
         try staging.insert(rows: [
             [
@@ -240,6 +241,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -module-name ParquetValuesProbe 
     -I "$CDUCKDB" -Xcc -I"$CDUCKDB/include" \
     -Xlinker -force_load -Xlinker "$LIB" -lc++ \
     "$PLUGIN/DuckDBStagingDatabase.swift" "$PLUGIN/ParquetStaging.swift" "$PLUGIN/ParquetTypeMapper.swift" \
+    "$ROOT/Plugins/Shared/PluginHexText.swift" \
     "$WORK/main.swift" -o "$WORK/parquet-values" > "$WORK/compile.log" 2>&1 || {
     echo "harness failed to compile:" >&2
     grep -E 'error:' "$WORK/compile.log" | sort -u | head -20 >&2
