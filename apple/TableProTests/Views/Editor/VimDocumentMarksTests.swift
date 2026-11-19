@@ -63,7 +63,7 @@ struct VimDocumentMarksTests {
 
         engine.documentDidReplace()
         engine.restoreDocumentMarks(saved)
-        buffer.replaceCharacters(in: NSRange(location: 12, length: 0), with: "second line\n")
+        buffer.replayUndo(in: NSRange(location: 12, length: 0), with: "second line\n")
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("`a")
         #expect(pos == 13)

@@ -269,7 +269,7 @@ final class VimEngineMarksAndRegistersTests {
     func undoingTheDeleteRestoresTheMark() {
         buffer.setSelectedRange(NSRange(location: 13, length: 0))
         keys("madd")
-        buffer.replaceCharacters(in: NSRange(location: 12, length: 0), with: "second line\n")
+        buffer.replayUndo(in: NSRange(location: 12, length: 0), with: "second line\n")
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("`a")
         #expect(pos == 13)
@@ -279,7 +279,7 @@ final class VimEngineMarksAndRegistersTests {
     func undoingTheDeleteRestoresTheMarkOverANewerOne() {
         buffer.setSelectedRange(NSRange(location: 13, length: 0))
         keys("maddggma")
-        buffer.replaceCharacters(in: NSRange(location: 12, length: 0), with: "second line\n")
+        buffer.replayUndo(in: NSRange(location: 12, length: 0), with: "second line\n")
         keys("`a")
         #expect(pos == 13)
     }
@@ -296,7 +296,7 @@ final class VimEngineMarksAndRegistersTests {
         key("V", shift: true)
         keys("jp")
         #expect(engine.marks["a"] == nil)
-        buffer.replaceCharacters(in: NSRange(location: 0, length: 4), with: "foo\nbar\n")
+        buffer.replayUndo(in: NSRange(location: 0, length: 4), with: "foo\nbar\n")
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("`a")
         #expect(pos == 5)
@@ -324,11 +324,41 @@ final class VimEngineMarksAndRegistersTests {
         buffer.setSelectedRange(NSRange(location: 16, length: 0))
         keys("magg")
         key("J", shift: true)
-        buffer.replaceCharacters(in: NSRange(location: 11, length: 1), with: "\n    ")
+        buffer.replayUndo(in: NSRange(location: 11, length: 1), with: "\n    ")
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("`a")
         #expect(buffer.text == "hello world\n    second\n")
         #expect(pos == 16)
+    }
+
+    @Test("Undoing an edit after a join, then the join, puts the mark back")
+    func undoingNestedEditsRestoresTheMark() {
+        buffer = VimTextBufferMock(text: "aaa\nbbb\nccc\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        buffer.setSelectedRange(NSRange(location: 6, length: 0))
+        keys("magg")
+        key("J", shift: true)
+        keys("05x")
+        buffer.replayUndo(in: NSRange(location: 0, length: 0), with: "aaa b")
+        buffer.replayUndo(in: NSRange(location: 3, length: 1), with: "\n")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("`a")
+        #expect(buffer.text == "aaa\nbbb\nccc\n")
+        #expect(pos == 6)
+    }
+
+    @Test("Undoing a Visual delete lets gv reselect the restored lines")
+    func undoingAVisualDeleteRestoresTheLastSelection() {
+        buffer = VimTextBufferMock(text: "aaa\nbbb\nccc\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        keys("j")
+        key("V", shift: true)
+        keys("d")
+        buffer.replayUndo(in: NSRange(location: 4, length: 0), with: "bbb\n")
+        keys("gv")
+        #expect(buffer.selectedRange() == NSRange(location: 4, length: 4))
     }
 
     @Test("A mark keeps its column through a line that shrinks and grows back")
@@ -337,7 +367,8 @@ final class VimEngineMarksAndRegistersTests {
         engine = VimEngine(buffer: buffer)
         buffer.editObserver = engine
         keys("$ma0xxxi")
-        typeInTextView("abc")
+        // One key at a time, so each key puts back what an `x` took without being its undo.
+        for character in ["a", "b", "c"] { typeInTextView(character) }
         key("\u{1B}")
         keys("`a")
         #expect(buffer.text == "abcdef\ntail\n")

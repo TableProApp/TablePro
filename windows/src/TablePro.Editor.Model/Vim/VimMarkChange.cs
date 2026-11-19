@@ -81,14 +81,6 @@ internal readonly struct VimMarkChange
         return (KeepColumnOnFirstLine(offset, boundary), true);
     }
 
-    // The column of an offset in the removed text, on its line before the edit.
-    public int OldColumn(int offset)
-    {
-        var relative = Math.Clamp(offset - _location, 0, _removed.Length);
-        var lastBreak = relative > 0 ? _removed.LastIndexOf('\n', relative - 1) : -1;
-        return offset - (lastBreak >= 0 ? _location + lastBreak + 1 : _firstLineStart);
-    }
-
     // The first line keeps its start, so the offset keeps its column, up to the line's new last character.
     private int KeepColumnOnFirstLine(int offset, bool boundary)
     {
@@ -128,16 +120,19 @@ internal readonly struct VimMarkChange
     }
 }
 
-internal readonly record struct VimSavedMark(int Relative, int Column);
+// Where the marks were before one edit.
+internal sealed record VimPositionSnapshot(
+    Dictionary<string, int> Marks,
+    Dictionary<string, int> MarkColumns,
+    int? LastJumpOrigin,
+    int? LastInsertOffset,
+    int? LastVisualStart,
+    int? LastVisualEnd);
 
-// The marks one edit removed or carried onto another line, with where they were relative to the edit's start.
-internal sealed class VimMarkUndoRecord(int location, string removedText, int insertedLength, Dictionary<string, VimSavedMark> marks)
+// One edit and the positions from before it. Undo reverses edits newest first, so the reversing edit finds its record
+// at the end of the journal.
+internal sealed record VimEditRecord(int Location, string RemovedText, int InsertedLength, VimPositionSnapshot Positions)
 {
-    public int Location { get; set; } = location;
-
-    public Dictionary<string, VimSavedMark> Marks { get; } = marks;
-
-    // Only the exact inverse edit, as undo makes, puts the marks back.
-    public bool IsReversedBy(TextChange change) => change.Offset == Location && change.RemovedLength == insertedLength
-        && string.Equals(change.InsertedText, removedText, StringComparison.Ordinal);
+    public bool IsReversedBy(TextChange change) => change.Offset == Location && change.RemovedLength == InsertedLength
+        && string.Equals(change.InsertedText, RemovedText, StringComparison.Ordinal);
 }

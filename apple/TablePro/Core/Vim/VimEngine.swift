@@ -107,8 +107,8 @@ final class VimEngine {
     var searchCount: Int = 1
     // The column each named mark was set at, kept past the end of a line that shrinks, as Vim keeps it.
     var markColumns: [Character: Int] = [:]
-    // Marks an edit removed or moved onto another line, so the edit's undo puts them back.
-    var markUndoRecords: [VimMarkUndoRecord] = []
+    // Recent edits with the positions from before each, so undoing one puts them back.
+    var editJournal: [VimEditRecord] = []
 
     var buffer: VimTextBuffer?
 

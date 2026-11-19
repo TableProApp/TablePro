@@ -80,4 +80,14 @@ public sealed class VimEngineVisualReselectionTests
         s.Press("gv");
         Assert.Equal(VimMode.Normal, s.Mode);
     }
+
+    [Fact]
+    public void GVAfterUndoingAVisualDeleteReselectsTheDeletedLine()
+    {
+        var s = new VimSession("aaa\nbbb\nccc\n", caret: 0);
+        s.Press("jVdugv");
+        Assert.Equal("aaa\nbbb\nccc\n", s.Text);
+        Assert.Equal(VimMode.VisualLine, s.Mode);
+        Assert.Equal((4, 4), s.Selection);
+    }
 }

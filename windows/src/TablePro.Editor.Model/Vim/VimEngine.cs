@@ -184,8 +184,8 @@ public sealed partial class VimEngine : IDisposable
     // The column each named mark was set at, kept past the end of a line that shrinks, as Vim keeps it.
     internal Dictionary<string, int> MarkColumns { get; private set; } = new(StringComparer.Ordinal);
 
-    // Marks an edit removed or moved onto another line, so the edit's undo puts them back.
-    internal List<VimMarkUndoRecord> MarkUndoRecords { get; } = [];
+    // Recent edits with the positions from before each, so undoing one puts them back.
+    internal List<VimEditRecord> EditJournal { get; } = [];
 
     public bool Process(char key, bool shift = false) => Process(key.ToString(), shift);
 
@@ -319,7 +319,7 @@ public sealed partial class VimEngine : IDisposable
     {
         Marks = new Dictionary<string, int>(StringComparer.Ordinal);
         MarkColumns = new Dictionary<string, int>(StringComparer.Ordinal);
-        MarkUndoRecords.Clear();
+        EditJournal.Clear();
         LastVisualStart = null;
         LastVisualEnd = null;
         LastVisualLinewise = false;

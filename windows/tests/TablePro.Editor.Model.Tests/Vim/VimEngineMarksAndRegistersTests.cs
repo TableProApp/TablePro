@@ -270,6 +270,17 @@ public sealed class VimEngineMarksAndRegistersTests
     }
 
     [Fact]
+    public void UndoingAnEditOnAJoinedLineAndTheJoinPutsTheMarkBack()
+    {
+        var s = new VimSession("aaa\nbbb\nccc\n", caret: 6);
+        s.Press("maggJ05xuu");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal("aaa\nbbb\nccc\n", s.Text);
+        Assert.Equal(6, s.Caret);
+    }
+
+    [Fact]
     public void UndoingAJoinPutsTheMarkBackOnItsLine()
     {
         var s = new VimSession("hello world\n    second\n", caret: 16);

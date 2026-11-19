@@ -14,11 +14,11 @@ struct VimDocumentMarks {
     var lastJumpOrigin: Int?
     var lastInsertOffset: Int?
     var markColumns: [Character: Int] = [:]
-    var markUndoRecords: [VimMarkUndoRecord] = []
+    var editJournal: [VimEditRecord] = []
 
     var isEmpty: Bool {
         marks.isEmpty && lastVisualStart == nil && lastVisualEnd == nil && lastJumpOrigin == nil && lastInsertOffset == nil
-            && markUndoRecords.isEmpty
+            && editJournal.isEmpty
     }
 }
 
@@ -32,14 +32,14 @@ extension VimEngine {
             lastJumpOrigin: lastJumpOrigin,
             lastInsertOffset: lastInsertOffset,
             markColumns: markColumns,
-            markUndoRecords: markUndoRecords
+            editJournal: editJournal
         )
     }
 
     func restoreDocumentMarks(_ saved: VimDocumentMarks) {
         marks = saved.marks
         markColumns = saved.markColumns
-        markUndoRecords = saved.markUndoRecords
+        editJournal = saved.editJournal
         lastVisualStart = saved.lastVisualStart
         lastVisualEnd = saved.lastVisualEnd
         lastVisualLinewise = saved.lastVisualLinewise
@@ -149,47 +149,39 @@ extension VimEngine {
         markColumns[name] = offset - buffer.lineRange(forOffset: offset).location
     }
 
+    var positionSnapshot: VimPositionSnapshot {
+        VimPositionSnapshot(
+            marks: marks,
+            markColumns: markColumns,
+            lastJumpOrigin: lastJumpOrigin,
+            lastInsertOffset: lastInsertOffset,
+            lastVisualStart: lastVisualStart,
+            lastVisualEnd: lastVisualEnd
+        )
+    }
+
     // Called before every edit, typed, pasted, undone or the engine's own. A mark keeps its line and column, as Vim's
     // do (`:help mark-motions`): lines added or removed before it move it, a join carries it with its text, and
-    // removing its whole line removes a named mark. An edit that exactly reverses an earlier one, as undo does, puts
-    // back the marks that edit removed or carried onto another line.
-    func textWillChange(in range: NSRange, with replacement: String) {
-        guard let buffer, !marks.isEmpty || !markUndoRecords.isEmpty || lastJumpOrigin != nil
-            || lastInsertOffset != nil || lastVisualStart != nil || lastVisualEnd != nil else { return }
-        var restored: VimMarkUndoRecord?
-        if let index = markUndoRecords.lastIndex(where: { $0.isReversed(by: range, replacement: replacement) }) {
-            restored = markUndoRecords.remove(at: index)
+    // removing its whole line removes a named mark. Each edit is kept with the positions from before it, so an undo or
+    // redo that reverses it puts them back, as Vim's undo restores its marks. Typing the same text back is not undo.
+    func textWillChange(in range: NSRange, with replacement: String, isUndoOrRedo: Bool = false) {
+        guard let buffer else { return }
+        let hasPositions = !marks.isEmpty || lastJumpOrigin != nil || lastInsertOffset != nil
+            || lastVisualStart != nil || lastVisualEnd != nil
+        guard hasPositions || !editJournal.isEmpty else { return }
+        let removedText = buffer.string(in: range)
+        let before = positionSnapshot
+        var restored: VimPositionSnapshot?
+        if isUndoOrRedo,
+           let index = editJournal.lastIndex(where: { $0.isReversed(by: range, replacement: replacement) }) {
+            restored = editJournal[index].positions
+            editJournal.removeSubrange(index...)
         }
         let change = VimMarkChange(range: range, replacement: replacement, in: buffer)
-        var displaced: [Character: VimSavedMark] = [:]
         for (name, offset) in marks {
             let mapped = change.map(offset, removable: true, in: buffer)
-            if mapped?.keepsColumn != true {
-                let column = markColumns[name] ?? offset - buffer.lineRange(forOffset: offset).location
-                displaced[name] = VimSavedMark(relative: offset - range.location, column: column)
-                markColumns[name] = nil
-            }
+            if mapped?.keepsColumn != true { markColumns[name] = nil }
             marks[name] = mapped?.offset
-        }
-        markUndoRecords = markUndoRecords.map { record in
-            var moved = record
-            moved.location = change.map(record.location, removable: false, in: buffer)?.offset ?? record.location
-            return moved
-        }
-        if !displaced.isEmpty {
-            markUndoRecords.append(VimMarkUndoRecord(
-                location: range.location,
-                removedText: buffer.string(in: range),
-                insertedLength: (replacement as NSString).length,
-                marks: displaced
-            ))
-            if markUndoRecords.count > 20 { markUndoRecords.removeFirst() }
-        }
-        if let restored {
-            for (name, saved) in restored.marks {
-                marks[name] = restored.location + saved.relative
-                markColumns[name] = saved.column
-            }
         }
         lastJumpOrigin = lastJumpOrigin.flatMap { change.map($0, removable: false, in: buffer)?.offset }
         lastInsertOffset = lastInsertOffset.flatMap {
@@ -197,20 +189,46 @@ extension VimEngine {
         }
         lastVisualStart = lastVisualStart.flatMap { change.map($0, removable: false, in: buffer)?.offset }
         lastVisualEnd = lastVisualEnd.flatMap { change.map($0, removable: false, in: buffer)?.offset }
+        if let restored { restorePositions(restored) }
+        editJournal.append(VimEditRecord(
+            location: range.location,
+            removedText: removedText,
+            insertedLength: (replacement as NSString).length,
+            positions: before
+        ))
+        if editJournal.count > 100 { editJournal.removeFirst() }
+    }
+
+    // A mark set since the reversed edit keeps its place, as Vim restores only the marks its undo step saved.
+    private func restorePositions(_ saved: VimPositionSnapshot) {
+        for (name, offset) in saved.marks {
+            marks[name] = offset
+            markColumns[name] = saved.markColumns[name]
+        }
+        lastJumpOrigin = saved.lastJumpOrigin ?? lastJumpOrigin
+        lastInsertOffset = saved.lastInsertOffset ?? lastInsertOffset
+        lastVisualStart = saved.lastVisualStart ?? lastVisualStart
+        lastVisualEnd = saved.lastVisualEnd ?? lastVisualEnd
     }
 }
 
-struct VimSavedMark {
-    let relative: Int
-    let column: Int
+// Where the marks were before one edit.
+struct VimPositionSnapshot {
+    var marks: [Character: Int]
+    var markColumns: [Character: Int]
+    var lastJumpOrigin: Int?
+    var lastInsertOffset: Int?
+    var lastVisualStart: Int?
+    var lastVisualEnd: Int?
 }
 
-// The marks one edit removed or carried onto another line, with where they were relative to the edit's start.
-struct VimMarkUndoRecord {
-    var location: Int
+// One edit, and the positions from before it. Undo reverses edits newest first, so the reversing edit finds its
+// record at the end of the journal, past any whose undo the editor folded into one step.
+struct VimEditRecord {
+    let location: Int
     let removedText: String
     let insertedLength: Int
-    let marks: [Character: VimSavedMark]
+    let positions: VimPositionSnapshot
 
     func isReversed(by range: NSRange, replacement: String) -> Bool {
         range.location == location && range.length == insertedLength && replacement == removedText
