@@ -206,6 +206,27 @@ struct CatalogChangeServiceTests {
         #expect(target.changes.map(\.kinds) == [[.objects, .schemas], [.objects, .schemas]])
     }
 
+    @Test("only a transaction end on its own is marked as one, and merging with anything else clears the mark")
+    func transactionEndAloneIsMarked() async {
+        let target = RecordingCatalogTarget()
+        let service = makeService(target: target)
+        let connectionId = UUID()
+
+        service.record(.transactionEnded(connectionId: connectionId))
+        await service.waitUntilIdle(connectionId: connectionId)
+        service.record(.statementsRan(connectionId: connectionId, statements: ["COMMIT"], databaseType: .postgresql))
+        await service.waitUntilIdle(connectionId: connectionId)
+        service.record(.statementsRan(
+            connectionId: connectionId, statements: ["ALTER TABLE t ADD COLUMN c int"], databaseType: .postgresql
+        ))
+        await service.waitUntilIdle(connectionId: connectionId)
+
+        #expect(target.changes.map(\.isTransactionEndOnly) == [true, true, false])
+        let ended = CatalogChange(connectionId: connectionId, kinds: [.objects, .schemas], isTransactionEndOnly: true)
+        #expect(ended.merging(ended).isTransactionEndOnly)
+        #expect(!ended.merging(CatalogChange(connectionId: connectionId, kinds: .tables)).isTransactionEndOnly)
+    }
+
     @Test("rolling back to a savepoint refreshes nothing")
     func savepointRollbackRefreshesNothing() async {
         let target = RecordingCatalogTarget()

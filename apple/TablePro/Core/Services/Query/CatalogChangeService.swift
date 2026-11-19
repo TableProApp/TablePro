@@ -95,7 +95,7 @@ final class CatalogChangeService {
         case .statementsSucceeded(let succeeded):
             recordCommittedTableEdits(of: succeeded)
         case .transactionEnded:
-            schedule(CatalogChange(connectionId: connectionId, kinds: Self.transactionEndKinds))
+            schedule(CatalogChange(connectionId: connectionId, kinds: Self.transactionEndKinds, isTransactionEndOnly: true))
         case .tablesDropped(let refs, _):
             recordDroppedTables(refs, connectionId: connectionId)
         case .tableRenamed(let ref, let newName, _):
@@ -141,7 +141,11 @@ final class CatalogChangeService {
             kinds.formUnion(Self.transactionEndKinds)
         }
         guard !kinds.isEmpty else { return }
-        schedule(CatalogChange(connectionId: connectionId, kinds: kinds))
+        schedule(CatalogChange(
+            connectionId: connectionId,
+            kinds: kinds,
+            isTransactionEndOnly: effect.kinds.isEmpty && effect.endsTransaction
+        ))
     }
 
     /// A table dropped or renamed by SQL the user or an MCP client ran is adopted exactly as the

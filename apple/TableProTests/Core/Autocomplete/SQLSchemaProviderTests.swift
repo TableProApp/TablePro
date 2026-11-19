@@ -321,6 +321,8 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
 
     var oneRequestColumnRead = true
     var fetchesAllColumnsInOneRequest: Bool { oneRequestColumnRead }
+    var bulkColumnReadIsComplete = false
+    var providesBulkColumnFetch: Bool { bulkColumnReadIsComplete }
 
     func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }

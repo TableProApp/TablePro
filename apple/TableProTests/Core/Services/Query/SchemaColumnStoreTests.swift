@@ -1,4 +1,5 @@
 import Foundation
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -7,6 +8,36 @@ import Testing
 struct SchemaColumnStoreTests {
     nonisolated private static func entry(_ columns: [String], primaryKeys: [String] = []) -> SchemaColumnStore.Entry {
         SchemaColumnStore.Entry(columns: columns, primaryKeys: primaryKeys, columnTypes: [:])
+    }
+
+    @Test("A transaction end keeps every list and flags it for a definition read")
+    func markAllUnverifiedKeepsEntries() {
+        let store = SchemaColumnStore()
+        store.store(Self.entry(["id"]), for: "k")
+
+        store.markAllUnverified()
+
+        #expect(store.cached("k")?.columns == ["id"])
+        #expect(store.cached("k")?.isVerified == false)
+    }
+
+    @Test("A load in flight when a transaction ends lands unverified")
+    func loadAcrossATransactionEndLandsUnverified() async {
+        let store = SchemaColumnStore()
+        let gate = AsyncGate()
+        let load = Task {
+            await store.load("k") {
+                await gate.wait()
+                return Self.entry(["id"])
+            }
+        }
+        await gate.arrived(1)
+
+        store.markAllUnverified()
+        await gate.open()
+        await load.value
+
+        #expect(store.cached("k")?.isVerified == false)
     }
 
     @Test("load fetches once and caches the entry")

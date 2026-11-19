@@ -17,12 +17,21 @@ struct CatalogChange: Sendable, Equatable {
     let database: String?
     let schema: String?
     let kinds: SQLCatalogObjectKinds
+    // Nothing but a transaction end produced it, so it names no object that changed.
+    let isTransactionEndOnly: Bool
 
-    init(connectionId: UUID, database: String? = nil, schema: String? = nil, kinds: SQLCatalogObjectKinds) {
+    init(
+        connectionId: UUID,
+        database: String? = nil,
+        schema: String? = nil,
+        kinds: SQLCatalogObjectKinds,
+        isTransactionEndOnly: Bool = false
+    ) {
         self.connectionId = connectionId
         self.database = database?.nilIfEmpty
         self.schema = self.database == nil ? nil : schema?.nilIfEmpty
         self.kinds = kinds
+        self.isTransactionEndOnly = isTransactionEndOnly
     }
 
     func reaches(database candidate: String) -> Bool {
@@ -43,7 +52,8 @@ struct CatalogChange: Sendable, Equatable {
             connectionId: connectionId,
             database: sharedDatabase,
             schema: sharedSchema,
-            kinds: kinds.union(other.kinds)
+            kinds: kinds.union(other.kinds),
+            isTransactionEndOnly: isTransactionEndOnly && other.isTransactionEndOnly
         )
     }
 }

@@ -6,6 +6,8 @@ final class SchemaColumnStore {
         let columns: [String]
         let primaryKeys: [String]
         let columnTypes: [String: ColumnType]
+        // False for a list taken from the shared catalog or kept through a transaction end, until a definition read confirms it.
+        var isVerified = true
 
         /// Positional, because `FilterSQLGenerator` pairs names and types by index. A name this
         /// table does not have returns no types at all, since a shorter list would type every
@@ -30,6 +32,7 @@ final class SchemaColumnStore {
     private var entries: [String: Entry] = [:]
     private var loads: [String: Load] = [:]
     private var lastLoadID = 0
+    private(set) var verificationEpoch = 0
 
     func cached(_ key: String) -> Entry? {
         entries[key]
@@ -62,6 +65,14 @@ final class SchemaColumnStore {
         loads.removeValue(forKey: key)
     }
 
+    // A transaction end names no object, so every list stays until the next definition read confirms it.
+    func markAllUnverified() {
+        verificationEpoch += 1
+        for key in entries.keys {
+            entries[key]?.isVerified = false
+        }
+    }
+
     func removeAll() {
         for load in loads.values { load.task.cancel() }
         loads.removeAll()
@@ -86,9 +97,11 @@ final class SchemaColumnStore {
 
         lastLoadID += 1
         let id = lastLoadID
+        let epoch = verificationEpoch
         let task = Task { [weak self] in
-            guard let entry = await fetch() else { return }
+            guard var entry = await fetch() else { return }
             guard let self, self.loads[key]?.id == id else { return }
+            if epoch != self.verificationEpoch { entry.isVerified = false }
             self.entries[key] = entry
         }
         let load = Load(id: id, task: task, liveWaiters: 1)
@@ -126,14 +139,19 @@ final class SchemaColumnStore {
 extension SchemaColumnStore.Entry {
     /// Classified by the same `ColumnTypeClassifier` the result path uses, so a filter typed from
     /// the schema before any rows load reads a column the way it will once they have.
-    init(fetchedColumns: [ColumnInfo], classifier: ColumnTypeClassifier = ColumnTypeClassifier()) {
+    init(
+        fetchedColumns: [ColumnInfo],
+        classifier: ColumnTypeClassifier = ColumnTypeClassifier(),
+        isVerified: Bool = true
+    ) {
         self.init(
             columns: fetchedColumns.map(\.name),
             primaryKeys: fetchedColumns.filter(\.isPrimaryKey).map(\.name),
             columnTypes: Dictionary(
                 fetchedColumns.map { ($0.name, classifier.classify(rawTypeName: $0.typeNameForClassification)) },
                 uniquingKeysWith: { first, _ in first }
-            )
+            ),
+            isVerified: isVerified
         )
     }
 }
