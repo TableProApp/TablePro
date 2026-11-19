@@ -99,9 +99,12 @@ nonisolated enum LibPQPipelineAdmission {
         "VACUUM", "CHECKPOINT", "CALL", "DO", "LISTEN", "UNLISTEN", "NOTIFY", "DISCARD", "RESET", "SET",
     ]
 
+    // The extended protocol also refuses a text holding a second statement, which a lone simple Query runs whole, so
+    // any `;` before the end keeps the text out, one inside a literal included.
     static func admits(_ query: String) -> Bool {
-        guard let keyword = leadingKeyword(of: query) else { return false }
-        return !refusedKeywords.contains(keyword)
+        guard let keyword = leadingKeyword(of: query), !refusedKeywords.contains(keyword) else { return false }
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !(text.hasSuffix(";") ? text.dropLast() : text[...]).contains(";")
     }
 
     // Skips whitespace, `--` line comments and nested block comments, as the server's lexer does.

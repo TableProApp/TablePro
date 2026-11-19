@@ -212,7 +212,15 @@ struct LibPQPipelineTests {
         #expect(!LibPQPipelineAdmission.admits(text))
     }
 
+    @Test("A text that may hold a second statement goes alone, as a lone call sends it whole", arguments: [
+        "INSERT INTO t VALUES (1); INSERT INTO t VALUES (2)", "INSERT INTO t VALUES ('a;b')", "DELETE FROM t; -- done",
+    ])
+    func refusesSeveralStatements(text: String) {
+        #expect(!LibPQPipelineAdmission.admits(text))
+    }
+
     @Test("Ordinary reads and writes are pipelined", arguments: [
+        "INSERT INTO t VALUES (1);", "DELETE FROM t ;  \n",
         "INSERT INTO t VALUES (1)", "UPDATE t SET a = 1", "DELETE FROM t", "CREATE TABLE t (a int)",
         "SELECT pg_catalog.setval('s', 1, true)", "WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x",
     ])
