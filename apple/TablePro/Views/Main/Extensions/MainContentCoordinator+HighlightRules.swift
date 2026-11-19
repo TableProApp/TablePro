@@ -15,6 +15,13 @@ extension MainContentCoordinator {
         return HighlightRuleStorage.shared.rules(for: scope)
     }
 
+    func highlightRules(forTabAt index: Int) -> [HighlightRule] {
+        guard let scope = tabManager.tabs[index].tableContext.scope(connectionId: connectionId) else {
+            return tabManager.tabs[index].sessionHighlightRules
+        }
+        return HighlightRuleStorage.shared.rules(for: scope)
+    }
+
     func setHighlightRules(_ rules: [HighlightRule], forTab tabId: UUID) {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         if let scope = highlightRuleScope(for: tabManager.tabs[index]) {

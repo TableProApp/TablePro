@@ -13,6 +13,20 @@ struct RowDisplayCacheTests {
         RowDisplayBox(ContiguousArray(values))
     }
 
+    @Test("Dropping text is counted, and adding text is not")
+    func invalidationsFollowDroppedText() {
+        let cache = RowDisplayCache()
+        cache.setBox(makeBox(["a"]), forID: .existing(1))
+        #expect(cache.invalidations == 0)
+
+        cache.clearValues(forID: .existing(1))
+        #expect(cache.invalidations == 1)
+        cache.clearValues(forDataIndexes: [0])
+        #expect(cache.invalidations == 2)
+        cache.removeAll()
+        #expect(cache.invalidations == 3)
+    }
+
     @Test("Empty cache returns nil for any lookup")
     func emptyLookup() {
         let cache = RowDisplayCache()

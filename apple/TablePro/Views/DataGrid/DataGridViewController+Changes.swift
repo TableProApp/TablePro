@@ -18,12 +18,17 @@ extension DataGridViewController {
             applyStagedViewport()
         case .columnsChanged:
             columnsDidChange()
+        case .columnMetadataChanged:
+            columnMetadataDidChange()
         case .rowsInserted(let indexes):
             insertRows(indexes)
         case .rowsRemoved(let indexes):
             removeRows(indexes)
         case .rowsUpdated(let rows, let columns):
             updateRows(rows, columns: columns)
+        case .allRowsRepainted:
+            presenter.rebuildVisualIndex()
+            redrawVisibleRows()
         }
         // A moved row view keeps its layer's pixels, and its number and stripe come from the index it now holds.
         redrawRows(change.movedRows(rowCount: model.rowCount))
@@ -73,6 +78,20 @@ extension DataGridViewController {
         syncSortIndicators()
         redrawVisibleRows()
         remountAccessibilityCells(force: true)
+    }
+
+    // Only an accessory that came or went can move a width, and a wider column can leave the frozen pane with an open editor.
+    private func columnMetadataDidChange() {
+        let changed = presenter.refreshColumnPresentations()
+        if changed.isEmpty {
+            refreshHeaders()
+        } else {
+            suspendFieldEditing(unmounting: true)
+            reconcileColumns(widening: changed)
+            resumeFieldEditing()
+            followRowChangesWithPopovers()
+        }
+        redrawVisibleRows()
     }
 
     // Both panes take the same insert in one call, so their document heights never differ.
@@ -271,12 +290,12 @@ extension DataGridViewController {
 
     // MARK: - Prewarm
 
-    // Formats ±250 rows around the viewport in 2 ms slices, paused during live scroll, so a row draw is a cache hit.
+    // Formats ±250 rows around the viewport off the main actor, paused during live scroll, so a row draw is a cache hit.
     func startBackgroundPrewarm() {
         prewarmResumeTask?.cancel()
         prewarmResumeTask = nil
         prewarmTask?.cancel()
-        prewarmTask = Task { @MainActor [weak self] in
+        prewarmTask = Task(priority: .utility) { @MainActor [weak self] in
             await self?.runBackgroundPrewarm()
         }
     }
@@ -299,31 +318,24 @@ extension DataGridViewController {
 
     private func runBackgroundPrewarm() async {
         var nextIndex: Int?
-        let budget = Duration.milliseconds(2)
         while !Task.isCancelled {
-            let rows = model.rows
-            let order = model.order
-            let formats = model.store.displayFormats
-            let databaseType = model.configuration.traits.databaseType
             let visible = main.tableView.rows(in: main.tableView.visibleRect)
             let window = DataGridPrewarmWindow.rows(
                 around: max(0, visible.location)..<max(0, visible.location + visible.length),
-                displayCount: order.count(in: rows)
+                displayCount: model.rowCount
             )
-            var index = max(nextIndex ?? window.lowerBound, window.lowerBound)
-            guard index < window.upperBound else { return }
-
-            let deadline = ContinuousClock.now.advanced(by: budget)
-            while index < window.upperBound {
-                if Task.isCancelled { return }
-                if let row = order.row(at: index, in: rows) {
-                    presenter.cacheText(of: row, rows: rows, formats: formats, databaseType: databaseType)
-                }
-                index += 1
-                if ContinuousClock.now >= deadline { break }
+            let start = max(nextIndex ?? window.lowerBound, window.lowerBound)
+            guard let (batch, next) = presenter.prewarmBatch(in: window, from: start) else { return }
+            guard let batch else {
+                nextIndex = next
+                continue
             }
-            nextIndex = index
-            await Task.yield()
+            let formatted = await batch.formatted()
+            guard !Task.isCancelled else { return }
+            // Text dropped meanwhile leaves these rows to read again.
+            if presenter.installPrewarmed(formatted, of: batch) {
+                nextIndex = next
+            }
         }
     }
 

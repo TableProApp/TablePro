@@ -59,6 +59,8 @@ final class RowDisplayCache {
     private var insertionOrder: [RowID] = []
     private var insertionHead: Int = 0
     private var totalCost: Int = 0
+    // Rises whenever cached text is dropped, so text formatted off the main actor can tell it went stale on the way back.
+    private(set) var invalidations = 0
     private let countLimit: Int
     private let costLimit: Int
 
@@ -103,6 +105,7 @@ final class RowDisplayCache {
     }
 
     func removeAll() {
+        invalidations &+= 1
         storage.removeAll(keepingCapacity: true)
         highlights.removeAll(keepingCapacity: true)
         insertionOrder.removeAll(keepingCapacity: true)
@@ -112,6 +115,7 @@ final class RowDisplayCache {
 
     // Row ids are positional: a row edited in place keeps its id and would otherwise be served its pre-edit text.
     func clearValues(forID id: RowID) {
+        invalidations &+= 1
         highlights.removeValue(forKey: id)
         guard let existing = storage[id] else { return }
         totalCost -= existing.cost
@@ -122,6 +126,7 @@ final class RowDisplayCache {
     // For a display format change: every other column's text is still right.
     func clearValues(forDataIndexes dataIndexes: Set<Int>) {
         guard !dataIndexes.isEmpty else { return }
+        invalidations &+= 1
         highlights.removeAll(keepingCapacity: true)
         storage = storage.mapValues { entry in
             for index in dataIndexes {

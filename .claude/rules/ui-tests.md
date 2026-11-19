@@ -54,6 +54,7 @@ The UI plan holds end-to-end flows only. Swift Testing rules, isolation and shar
 - Every grid read and click goes through `FixtureGrid` (`cell`, `value`, `waitForValue`, `clickCell`, `editCell`, `clickHeader`) or `gridPoint(in:of:dy:)`.
 - `dataGrid(in:)` matches the main table, `data-grid`, which publishes every column. The frozen pane laid over its leading edge, `data-grid-frozen`, is hidden from accessibility.
 - `FixtureGrid` matches a cell by the identifier `data-grid-cell`, the leaf that carries the value, not the AXCell wrapper AppKit puts around it, and by the label `Row r, column c: `. Both count from 1: `r` is the row number on screen, page offset included, and `c` the column's display position, so hiding or moving a column renumbers the ones after it.
+- A cell exists only while its column can be reached: on screen, one column either side, frozen, or holding the active cell. Scroll a column in before reading it.
 - A plain `clickHeader` sorts by that column alone and flips it on the next click; `clickHeader(_:modifiers: .option)` adds it as another key. A right-click opens the header or cell menu and never moves the selection.
 - `FixtureFile.rows` and `FixtureFile.execute` read and write the fixture database directly, to set up or check data without the UI.
 - Never call `click()` on a grid element. Rows and cells read as obscured by their columns, a row element has an empty frame so an offset click lands on the window's close button, and a header never becomes hittable. The app side is in `.claude/rules/data-grid.md`.
