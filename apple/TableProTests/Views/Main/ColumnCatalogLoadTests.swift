@@ -251,6 +251,50 @@ extension GlobalStateSuites {
             #expect(moved.resultSetId == harness.tab.display.activeResultSet?.id)
         }
 
+        @Test("A rerun of the catalog-built query is judged as it ran, even when the tab changed before rebuilding it")
+        func rerunIsJudgedByTheSQLThatRan() async throws {
+            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+            let harness = try await makeHarness(
+                cataloged: [Self.column("id", key: true), Self.column("name")],
+                current: [Self.column("id", key: true), Self.column("name"), Self.column("email")]
+            )
+            defer { tearDown(harness, restoring: behavior) }
+            let tabId = harness.addUsersTab(hiding: ["name"])
+            try await harness.open(tabId)
+            let first = try #require(harness.notice)
+
+            harness.coordinator.tabManager.mutate(tabId: tabId) { $0.columnLayout.hiddenColumns = [] }
+            harness.coordinator.executeTableTabQueryDirectly(onTab: tabId, trigger: .autoRefresh, viewport: .keepPlace)
+            try await harness.runUntilSettled(tabId, queries: 2)
+
+            #expect(harness.driver.executedUserQueries[1] == harness.driver.executedUserQueries[0])
+            let moved = try #require(harness.tab.shownOutdatedPageNotice)
+            #expect(moved.resultSetId != first.resultSetId)
+            #expect(harness.standing == .outdated)
+        }
+
+        @Test("A rerun of an outdated page whose columns cannot be read keeps the notice on the new page")
+        func unconfirmedRerunKeepsAKnownVerdict() async throws {
+            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+            let harness = try await makeHarness(
+                cataloged: [Self.column("id", key: true), Self.column("name")],
+                current: [Self.column("id", key: true), Self.column("name"), Self.column("email")]
+            )
+            defer { tearDown(harness, restoring: behavior) }
+            let tabId = harness.addUsersTab(hiding: ["name"])
+            try await harness.open(tabId)
+            let first = try #require(harness.notice)
+            harness.coordinator.schemaColumns.removeAll()
+            harness.driver.fetchColumnsError = DatabaseError.queryFailed("connection lost")
+
+            harness.coordinator.executeTableTabQueryDirectly(onTab: tabId, trigger: .autoRefresh, viewport: .keepPlace)
+            try await harness.runUntilSettled(tabId, queries: 2)
+
+            let kept = try #require(harness.tab.shownOutdatedPageNotice)
+            #expect(kept.resultSetId != first.resultSetId)
+            #expect(harness.standing == .outdated)
+        }
+
         @Test("A page that lands while its columns cannot be read stays as built, unconfirmed, until a later run confirms it")
         func unreadableColumnsLeaveThePageUnconfirmed() async throws {
             let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior

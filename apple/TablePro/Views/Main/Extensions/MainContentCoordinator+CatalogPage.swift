@@ -30,7 +30,8 @@ struct CatalogPageCheck {
     let tableName: String
     let scope: DatabaseScope
     let hint: DefaultSortHint
-    let builtOnCatalog: SchemaColumnStore.Entry?
+    let sql: String
+    let isBuiltOnCatalog: Bool
     let confirmedAtStart: SchemaColumnStore.Entry?
     let awaitsConfirmation: Bool
 }
@@ -102,7 +103,8 @@ extension MainContentCoordinator {
             tableName: tableName,
             scope: scope,
             hint: PluginManager.shared.defaultSortHint(for: connection.type, table: tableName),
-            builtOnCatalog: page.query == sql ? page.list : nil,
+            sql: sql,
+            isBuiltOnCatalog: page.query == sql,
             confirmedAtStart: schemaColumns.cached(page.key),
             awaitsConfirmation: page.standing == .awaiting
         )
@@ -142,11 +144,12 @@ extension MainContentCoordinator {
         let tabId = check.tab.id
         // A failed later run leaves the page on screen, and the notice with it.
         guard installed || page.standing == .awaiting else { return }
+        // Unconfirmed, a known verdict stands: the notice follows the new page until a read answers it.
         guard let confirmed else {
-            if installed {
-                setOutdatedPageNotice(nil, onTab: tabId)
-            } else {
+            if !installed {
                 discardCatalogColumns(of: page)
+            } else if page.standing == .outdated {
+                setOutdatedPageNotice(OutdatedPageNotice(tableName: page.tableName, resultSetId: activeResultSetId(of: tabId)), onTab: tabId)
             }
             return
         }
@@ -160,21 +163,20 @@ extension MainContentCoordinator {
             page.standing = .outdated
             tabSessionRegistry.setCatalogPage(page, for: tabId)
         }
-        guard page.standing == .outdated,
-              let shown = tabManager.tabs.first(where: { $0.id == tabId })
-        else { return }
-        setOutdatedPageNotice(
-            OutdatedPageNotice(tableName: page.tableName, resultSetId: shown.display.activeResultSet?.id),
-            onTab: tabId
-        )
+        guard page.standing == .outdated else { return }
+        setOutdatedPageNotice(OutdatedPageNotice(tableName: page.tableName, resultSetId: activeResultSetId(of: tabId)), onTab: tabId)
     }
 
-    // The page the confirmed list builds, with the sort the open would have chosen from it, against the one that ran.
+    // The catalog-built query is judged as it ran, since the tab can change before it is rebuilt; any other run used confirmed columns.
     private func catalogPageIsOutdated(_ check: CatalogPageCheck, confirmed: SchemaColumnStore.Entry) -> Bool {
         var corrected = check.tab
         corrected.sortState = confirmedSortState(for: check.tab, builtOn: confirmed, hint: check.hint)
-        return filterCoordinator.pageQuery(for: corrected, builtOn: confirmed)
-            != filterCoordinator.pageQuery(for: check.tab, builtOn: check.builtOnCatalog ?? confirmed)
+        let ran = check.isBuiltOnCatalog ? check.sql : filterCoordinator.pageQuery(for: check.tab, builtOn: confirmed)
+        return filterCoordinator.pageQuery(for: corrected, builtOn: confirmed) != ran
+    }
+
+    private func activeResultSetId(of tabId: UUID) -> UUID? {
+        tabManager.tabs.first(where: { $0.id == tabId })?.display.activeResultSet?.id
     }
 
     // Asks about unsaved edits first, as Refresh does, and ends as soon as the tab leaves the table it was asked on.
