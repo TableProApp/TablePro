@@ -73,7 +73,7 @@ case "$ENGINE" in
         ;;
     mysql | mariadb)
         FOLDER=MySQLDriverPlugin CLASS=MySQLPlugin C_MODULE=CMariaDB
-        PRODUCTS="TableProGeometry TableProLogRedaction TableProMySQLCore"
+        PRODUCTS="TableProCoreTypes TableProGeometry TableProKerberos TableProLogRedaction TableProMySQLCore TableProSQLQuoting TableProSQLVocabulary"
         LINK="$ROOT/Libs/libmariadb.a -lssl.3 -lcrypto.3 -liconv -lz"
         USER_DEFAULT=root DATABASE_DEFAULT=tp_corpus PORT_IN=3306
         if [ "$ENGINE" = mysql ]; then
