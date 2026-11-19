@@ -175,7 +175,6 @@ public sealed partial class VimEngine
             EditJournal.RemoveRange(index, EditJournal.Count - index);
         }
         var edit = new VimMarkChange(change, _buffer);
-        var touchesPositions = before.Offsets.Any(offset => edit.Touches(offset));
         foreach (var (name, offset) in Marks.ToList())
         {
             var moved = edit.Map(offset, removable: true);
@@ -200,16 +199,8 @@ public sealed partial class VimEngine
         {
             RestorePositions(restored);
         }
+        // Every edit is kept, in order, so an undo always finds the records of the step it reverses at the end.
         var record = new VimEditRecord(change.Offset, change.RemovedText, change.InsertedText, before, undoes == true);
-        // Only an edit on a line that holds a position can lose one, so typing elsewhere keeps the journal short and
-        // never pushes out the record an undo step still needs. An edit that runs on from the newest record is kept
-        // too, since the undo history joins such a run into one change that only the whole run folded reverses.
-        var continuesRun = EditJournal.Count > 0 && EditJournal[^1].IsUndo == record.IsUndo
-            && EditJournal[^1].FollowedBy(record) is not null;
-        if (!touchesPositions && restored is null && !continuesRun)
-        {
-            return;
-        }
         EditJournal.Add(record);
         EditJournalTextLength += record.TextLength;
         // An undo step can hold a long run of typing, so the journal keeps thousands of edits, bounded by the text they

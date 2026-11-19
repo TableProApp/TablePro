@@ -180,7 +180,6 @@ extension VimEngine {
             editJournal.removeSubrange(index...)
         }
         let change = VimMarkChange(range: range, replacement: replacement, in: buffer)
-        let touchesPositions = before.offsets.contains { change.touches($0) }
         for (name, offset) in marks {
             let mapped = change.map(offset, removable: true, in: buffer)
             if mapped?.keepsColumn != true { markColumns[name] = nil }
@@ -193,9 +192,6 @@ extension VimEngine {
         lastVisualStart = lastVisualStart.flatMap { change.map($0, removable: false, in: buffer)?.offset }
         lastVisualEnd = lastVisualEnd.flatMap { change.map($0, removable: false, in: buffer)?.offset }
         if let restored { restorePositions(restored) }
-        // Only an edit on a line that holds a position can lose one, so typing elsewhere keeps the journal short and
-        // never pushes out the record an undo step still needs.
-        guard touchesPositions || restored != nil else { return }
         editJournal.append(VimEditRecord(
             location: range.location,
             removedText: removedText,
@@ -252,10 +248,6 @@ struct VimPositionSnapshot {
     var lastInsertOffset: Int?
     var lastVisualStart: Int?
     var lastVisualEnd: Int?
-
-    var offsets: [Int] {
-        Array(marks.values) + [lastJumpOrigin, lastInsertOffset, lastVisualStart, lastVisualEnd].compactMap { $0 }
-    }
 }
 
 // One edit, and the positions from before it. Undo reverses edits newest first, so the reversing edit finds its
@@ -346,11 +338,6 @@ struct VimMarkChange {
 
     // Nil when the edit removes the line of a removable mark. `keepsColumn` is false where the mark moved onto
     // another line's text, as a join moves it.
-    // The edit reaches the offset's line, so mapping it can lose where it was.
-    func touches(_ offset: Int) -> Bool {
-        offset >= location && offset < endLineEnd
-    }
-
     // An insertion point may sit after a line's last character; a mark sits on a character.
     func map(
         _ offset: Int,

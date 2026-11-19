@@ -468,6 +468,17 @@ final class VimEngineMarksAndRegistersTests {
         #expect(pos == 0)
     }
 
+    @Test("Undoing a later delete of the same text does not bring back a mark an earlier delete took")
+    func undoingALaterIdenticalDeleteKeepsTheMarkGone() {
+        buffer = VimTextBufferMock(text: "aaa\nbbb\nccc\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        keys("jmaddkpdd")
+        #expect(buffer.text == "aaa\nccc\n")
+        buffer.replayUndo(in: NSRange(location: 4, length: 0), with: "bbb\n")
+        #expect(engine.marks["a"] == nil)
+    }
+
     @Test("A mark keeps its column through a line that shrinks and grows back")
     func markColumnSurvivesAShorterLine() {
         buffer = VimTextBufferMock(text: "abcdef\ntail\n")

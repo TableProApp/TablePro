@@ -337,6 +337,16 @@ public sealed class VimEngineMarksAndRegistersTests
     }
 
     [Fact]
+    public void UndoingALaterDeleteOfTheSameTextLeavesTheDeletedMarkUnset()
+    {
+        var s = new VimSession("aaa\nbbb\nccc\n", caret: 0);
+        s.Press("jmaddkpdd");
+        s.Press("u");
+        Assert.Equal("aaa\nbbb\nccc\n", s.Text);
+        Assert.False(s.Engine.Marks.ContainsKey("a"));
+    }
+
+    [Fact]
     public void AnUndoMatchesOnlyTheNewestEdits()
     {
         var s = new VimSession("aaaa\n", caret: 3);

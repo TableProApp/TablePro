@@ -43,9 +43,6 @@ internal readonly struct VimMarkChange
         _lastLineContentEnd = hasBreak ? lastLine.End - 1 : lastLine.End;
     }
 
-    // The edit reaches the offset's line, so mapping the offset can lose where it was.
-    public bool Touches(int offset) => offset >= _location && offset < _endLineEnd;
-
     // Null when the edit removes the line of a removable mark. KeepsColumn is false where the mark moved onto another
     // line's text, as a join moves it. A boundary sits between characters, as the last insert position does, so it can
     // stay at the end of its line rather than on the last character.
@@ -130,11 +127,7 @@ internal sealed record VimPositionSnapshot(
     int? LastJumpOrigin,
     int? LastInsertOffset,
     int? LastVisualStart,
-    int? LastVisualEnd)
-{
-    public IEnumerable<int> Offsets => Marks.Values
-        .Concat(new[] { LastJumpOrigin, LastInsertOffset, LastVisualStart, LastVisualEnd }.OfType<int>());
-}
+    int? LastVisualEnd);
 
 // One edit and the positions from before it. Undo reverses edits newest first, so the reversing edit finds its record
 // at the end of the journal.
