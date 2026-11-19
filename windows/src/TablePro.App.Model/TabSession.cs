@@ -58,6 +58,9 @@ public interface ITabSession
     // Refresh reads the table's columns from the server again, as a Refresh of the tab asks.
     Task<ITableEditor> OpenTableEditorAsync(TableName table, bool refresh, CancellationToken cancellationToken);
 
+    // Lock says why not when the rows are not one keyed table's; `rows` is the run's only set, null when none shows.
+    Task<ITableEditor> OpenResultEditorAsync(string sql, ResultSet? rows, CancellationToken cancellationToken);
+
     Task<ITableKeys> ReadTableKeysAsync(TableName table, CancellationToken cancellationToken);
 
     ValueTask ReleaseAsync();
@@ -86,7 +89,13 @@ public interface ITableEditor : IDisposable
 
     IReadOnlyList<EditColumn> Columns { get; }
 
+    // The table a save writes; null while a query result is locked.
+    TableName? Table { get; }
+
     EditStart GetEditStart(ResultSet? rows, long row, int column);
+
+    // False for a query result row whose values would not copy exactly, as PostgreSQL's text for a float.
+    bool CopiesExactly(ResultSet? rows, long row);
 
     // One column's stored values with their kinds, for rowCount rows from firstRow, as a key names a row in the file.
     IReadOnlyList<StoredValue> GetStoredValues(ResultSet? rows, int column, long firstRow, int rowCount);
@@ -227,6 +236,21 @@ public sealed class CoreTabSession : ITabSession
         new CoreTableEditor(
             await _share.Session.OpenTableEditorAsync(table, refresh, cancellationToken).ConfigureAwait(true));
 
+    public async Task<ITableEditor> OpenResultEditorAsync(
+        string sql,
+        ResultSet? rows,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(sql);
+        if (rows is null)
+        {
+            throw new TableProException(CoreTableEditor.RowsGone);
+        }
+
+        return new CoreTableEditor(
+            await _share.Session.OpenResultEditorAsync(sql, rows, cancellationToken).ConfigureAwait(true));
+    }
+
     public async Task<ITableKeys> ReadTableKeysAsync(TableName table, CancellationToken cancellationToken) =>
         new CoreTableKeys(await _share.Session.ReadTableKeysAsync(table, cancellationToken).ConfigureAwait(true));
 
@@ -253,7 +277,7 @@ internal sealed class CoreTableEditor(TableEditor editor) : ITableEditor
     private const int KindWindow = 4096;
 
     // The rows the edits name are gone, as when the page went before its save was planned.
-    private static readonly CoreError RowsGone = new(
+    internal static readonly CoreError RowsGone = new(
         "edit.out_of_range", ["edit.out_of_range"], "The page's rows are no longer held.", null, null);
 
     public EditLock? Lock => editor.Lock;
@@ -263,8 +287,12 @@ internal sealed class CoreTableEditor(TableEditor editor) : ITableEditor
 
     public IReadOnlyList<EditColumn> Columns => editor.Columns;
 
+    public TableName? Table => editor.Table;
+
     public EditStart GetEditStart(ResultSet? rows, long row, int column) =>
         rows is null ? EditStart.Locked.Instance : editor.GetEditStart(rows, row, column);
+
+    public bool CopiesExactly(ResultSet? rows, long row) => rows is null || editor.CopiesExactly(rows, row);
 
     // A window holds the kinds; the text is the whole value, which a window cuts.
     public IReadOnlyList<StoredValue> GetStoredValues(ResultSet? rows, int column, long firstRow, int rowCount)

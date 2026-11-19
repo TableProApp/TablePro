@@ -371,6 +371,18 @@ impl Core {
         self.vault.clone()
     }
 
+    pub(crate) fn connection_store(&self) -> Result<ConnectionStore, CoreError> {
+        self.store.clone().ok_or_else(no_storage)
+    }
+
+    pub(crate) fn registry(&self) -> Arc<DriverRegistry> {
+        self.registry.clone()
+    }
+
+    pub(crate) fn writes(&self) -> LibraryWrites {
+        self.writes.clone()
+    }
+
     pub fn secret_items(&self) -> Arc<dyn SecretItems> {
         self.items.clone()
     }

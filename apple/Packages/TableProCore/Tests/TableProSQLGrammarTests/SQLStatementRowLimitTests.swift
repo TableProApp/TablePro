@@ -20,6 +20,49 @@ struct SQLStatementRowLimitTests {
         SQLStatementRowLimit.firstRowLimitClauseOffset(sql, grammar: grammar)
     }
 
+    // MARK: - Bounded read
+
+    private func boundedRead(_ sql: String, rowCap: Int = 100) -> String? {
+        SQLStatementRowLimit.boundedRead(sql, rowCap: rowCap, grammar: Self.sqlite)
+    }
+
+    @Test("A read with no limit asks for one row past the cap")
+    func boundedReadAppendsLimit() {
+        #expect(boundedRead("SELECT * FROM users") == "SELECT * FROM users\nLIMIT 101")
+    }
+
+    @Test("A terminator and a trailing comment stay out of the way of the limit")
+    func boundedReadDropsTerminator() {
+        #expect(boundedRead("SELECT * FROM users; -- all of them") == "SELECT * FROM users\nLIMIT 101")
+    }
+
+    @Test("A read that states its own limit goes as written")
+    func boundedReadKeepsExplicitLimit() {
+        #expect(boundedRead("SELECT * FROM users LIMIT 5") == "SELECT * FROM users LIMIT 5")
+    }
+
+    @Test("A WITH list whose statement is a SELECT is bounded")
+    func boundedReadCoversCommonTableExpressions() {
+        #expect(boundedRead("WITH t AS (SELECT 1) SELECT * FROM t") == "WITH t AS (SELECT 1) SELECT * FROM t\nLIMIT 101")
+    }
+
+    @Test("A statement a trailing LIMIT is not valid on is left to the caller", arguments: [
+        "INSERT INTO t VALUES (1)",
+        "WITH t AS (SELECT 1) INSERT INTO u SELECT * FROM t",
+        "VALUES (1), (2)",
+        "SELECT 1 UNION ALL VALUES (2)",
+        "PRAGMA table_info(users)",
+        "SELECT 1; SELECT 2"
+    ])
+    func boundedReadRefuses(sql: String) {
+        #expect(boundedRead(sql) == nil)
+    }
+
+    @Test("A cap of zero bounds nothing")
+    func boundedReadNeedsACap() {
+        #expect(boundedRead("SELECT 1", rowCap: 0) == nil)
+    }
+
     // MARK: - Explicit row limit
 
     @Test("A bare SELECT has no explicit row limit")

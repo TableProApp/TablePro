@@ -8,6 +8,7 @@
 import Foundation
 import os
 import TableProDocumentPath
+import TableProElasticsearchCore
 import TableProPluginKit
 
 extension ElasticsearchPluginDriver {
@@ -260,10 +261,11 @@ extension ElasticsearchPluginDriver {
         conn: ElasticsearchConnection
     ) async throws -> [[String: Any]] {
         var searchAfter: [Any]?
-        var skipped = 0
-        var collected: [[String: Any]] = []
+        var walk = ElasticsearchDeepPageWalk<[String: Any]>(
+            from: parsed.from, size: parsed.size, batchSize: Self.deepPageBatchSize
+        )
 
-        while collected.count < parsed.size {
+        while !walk.isFinished {
             try Task.checkCancellation()
             var body = ElasticsearchQueryBuilder.searchBody(
                 for: parsed, fields: fields, size: Self.deepPageBatchSize,
@@ -271,24 +273,15 @@ extension ElasticsearchPluginDriver {
             )
             body["pit"] = ["id": pit.id, "keep_alive": Self.pitKeepAlive]
             body["track_total_hits"] = false
+            if !walk.nextBatchNeedsDocuments { body["_source"] = false }
             let response = try await conn.search(index: nil, body: body)
             pit.adopt(from: response)
             let hits = extractHits(response)
-            guard !hits.isEmpty else { break }
-
-            for hit in hits {
-                if skipped < parsed.from {
-                    skipped += 1
-                } else if collected.count < parsed.size {
-                    collected.append(hit)
-                }
-                searchAfter = hit["sort"] as? [Any]
-            }
-
-            if hits.count < Self.deepPageBatchSize { break }
+            walk.absorb(hits)
+            searchAfter = hits.last?["sort"] as? [Any]
         }
 
-        return collected
+        return walk.page
     }
 
     // MARK: - Write

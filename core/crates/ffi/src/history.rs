@@ -79,6 +79,10 @@ pub struct HistoryCursorArg {
 
 impl QueryHistoryStore {
     // The prune keeps every entry however old and drops the oldest past the store's cap.
+    pub(crate) fn saved_query_rows(&self) -> tablepro_storage::SavedQueries {
+        self.history.saved_queries()
+    }
+
     pub(crate) async fn open(paths: StoragePaths, tasks: Tasks) -> Result<Arc<Self>, CoreError> {
         let history = QueryHistory::open(&paths).await?;
         match history.prune(0).await {

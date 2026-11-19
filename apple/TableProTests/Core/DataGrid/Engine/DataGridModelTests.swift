@@ -323,6 +323,63 @@ struct DataGridModelTests {
 
     // MARK: - Columns and formats
 
+    @Test("A reload onto other columns reaches the view as one change")
+    func reloadOntoOtherColumnsIsOneChange() {
+        let owner = FakeGridOwner(Self.people)
+        let (model, view) = mount(owner)
+
+        owner.tableRows = TableRows.from(
+            queryRows: [["1", "x"]],
+            columns: ["id", "city"],
+            columnTypes: [.integer(rawType: "INT"), .text(rawType: "TEXT")]
+        )
+        model.reloadRows()
+
+        #expect(view.changes == [.reload])
+        #expect(model.columns.orderedNames == ["id", "city"])
+    }
+
+    @Test("Metadata for the same columns keeps the formatted text and the row order")
+    func columnMetadataKeepsTheCache() throws {
+        let owner = FakeGridOwner(Self.people)
+        let (model, view) = mount(owner)
+        model.display.cache.setBox(RowDisplayBox(["0", "ann", "30"]), forID: .existing(0))
+        model.setSelection(cell(1, 1))
+
+        let delta = owner.tableRows.updateDisplayMetadata(columnComments: ["name": "Given name"])
+        model.apply(delta)
+
+        #expect(delta == .columnMetadataChanged)
+        #expect(view.changes == [.columnMetadataChanged])
+        #expect(model.display.cache.box(forID: .existing(0)) != nil)
+        #expect(try #require(model.columns.column(at: 1)).comment == "Given name")
+        #expect(model.selection == cell(1, 1))
+    }
+
+    @Test("A column type change still drops the formatted text")
+    func columnTypeChangeDropsTheCache() {
+        let owner = FakeGridOwner(Self.people)
+        let (model, view) = mount(owner)
+        model.display.cache.setBox(RowDisplayBox(["0", "ann", "30"]), forID: .existing(0))
+
+        model.apply(owner.tableRows.updateDisplayMetadata(columnTypes: [
+            .text(rawType: "TEXT"), .text(rawType: "TEXT"), .text(rawType: "TEXT"),
+        ]))
+
+        #expect(view.changes == [.columnsChanged])
+        #expect(model.display.cache.box(forID: .existing(0)) == nil)
+    }
+
+    @Test("Repainting every row names no row, so it costs the same at any row count")
+    func repaintingEveryRowIsOneChange() {
+        let owner = FakeGridOwner(Self.people)
+        let (model, view) = mount(owner)
+
+        model.repaintAllRows()
+
+        #expect(view.changes == [.allRowsRepainted])
+    }
+
     @Test("Reordering and freezing columns keeps the selection on the same column")
     func columnLayoutKeepsSelection() {
         let owner = FakeGridOwner(Self.people)

@@ -371,8 +371,11 @@ extension QueryExecutionCoordinator {
             isEditable: isEditable
         )
 
-        // The tab's own edits named rows of the result this replaces.
-        parent.changeManager(forTab: tabId).configureForTable(
+        // The tab's own edits named rows of the result this replaces. The reload above drew the new rows, so only
+        // marks it read from those edits are left to repaint.
+        let changeManager = parent.changeManager(forTab: tabId)
+        let hadStagedRows = !changeManager.changes.isEmpty || !changeManager.insertedRowIDs.isEmpty
+        changeManager.configureForTable(
             tableName: tableName ?? "",
             schemaName: parent.tabManager.tabs[idx].tableContext.schemaName,
             columns: columns,
@@ -380,7 +383,8 @@ extension QueryExecutionCoordinator {
             databaseType: conn.type,
             generatedColumns: generatedColumns,
             rowMatchPolicy: resolved.rowMatchPolicy,
-            columnTypeNames: newTableRows.columnTypeNames
+            columnTypeNames: newTableRows.columnTypeNames,
+            triggerReload: hadStagedRows
         )
 
         if trigger.recordsHistory {
@@ -602,7 +606,7 @@ extension QueryExecutionCoordinator {
             for (col, vals) in values {
                 rows.columnEnumValues[col] = vals
             }
-            return .columnsReplaced
+            return .columnMetadataChanged
         }
         parent.tabManager.mutate(tabId: tabId) { $0.metadataVersion += 1 }
     }
@@ -649,7 +653,7 @@ extension QueryExecutionCoordinator {
         changeManager.setGeneratedColumns(parsed.generatedColumns)
         changeManager.setRowMatchPolicy(parsed.rowMatchPolicy)
 
-        // The metadata delta rebuilt the model's columns; the foreign key arrows need the rows redrawn.
+        // The keys and generated columns above were set after the metadata delta drew the rows.
         let refreshed = isActiveTab(tabId)
         if refreshed {
             parent.existingGridModel(forTab: tabId)?.repaintAllRows()

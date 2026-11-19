@@ -20,20 +20,20 @@ struct GridSelectionWatcher: View {
     @ObservedObject var model: DataGridModel
     let onAttach: () -> Void
     let onChange: (_ rowsChanged: Bool) -> Void
-    @State private var selectedRowIDs: [RowID] = []
+    @State private var selectedRowRuns = RowIDRuns()
 
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
             .onAppear {
-                selectedRowIDs = model.selectedRowIDs
+                selectedRowRuns = model.selectedRowRuns
                 onAttach()
             }
             .onChange(of: model.selectionRevision) { _ in
-                let rowIDs = model.selectedRowIDs
-                let rowsChanged = rowIDs != selectedRowIDs
-                selectedRowIDs = rowIDs
+                let runs = model.selectedRowRuns
+                let rowsChanged = runs != selectedRowRuns
+                selectedRowRuns = runs
                 onChange(rowsChanged)
             }
     }

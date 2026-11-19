@@ -97,6 +97,9 @@ nonisolated extension MongoDBConnection {
         defer { bson_destroy(filterBson) }
 
         var optsJson: [String: Any] = ["skip": skip, "limit": limit]
+        if let size = MongoDBFindLimitPolicy.firstBatchSize(limit: limit) {
+            optsJson["batchSize"] = size
+        }
         if let sort = sort, let data = sort.data(using: .utf8),
            let obj = try? JSONSerialization.jsonObject(with: data) {
             optsJson["sort"] = obj

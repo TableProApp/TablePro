@@ -320,6 +320,7 @@ extension DataGridViewController {
         }
         redrawVisibleRows()
         updateReorderToolTip()
+        scheduleAccessibilityRemount()
     }
 
     func tableDidMoveColumn(_ table: DataGridTableView) {

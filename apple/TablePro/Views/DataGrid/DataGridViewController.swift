@@ -30,6 +30,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
     var knownWidthsSawRows = false
     var savedWidthIDs: Set<DataGridColumnID> = []
     var isAccessibilityRemountScheduled = false
+    var mountedAccessibilityColumns = IndexSet()
     var needsViewportRestore = false
     var pendingFocus = false
     var lastDataGridSettings = AppSettingsManager.shared.dataGrid

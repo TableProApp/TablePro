@@ -851,7 +851,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 let regions = await timeZoneRegions(on: connection)
                 return try await collectRows(
                     statement,
-                    options: OracleRowLimits.collecting(admitted.options),
+                    options: OracleRowLimits.fetching(admitted.options),
                     zones: zones,
                     regions: regions,
                     on: connection
@@ -1027,7 +1027,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 let regions = await timeZoneRegions(on: connection)
                 try await streamRows(
                     query,
-                    options: admitted.options,
+                    options: OracleRowLimits.fetching(admitted.options, rowBudget: batching.expectedRows),
                     zones: zones,
                     regions: regions,
                     batching: batching,
@@ -1152,7 +1152,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
     private func readTimeZoneRegions(on connection: OracleNIO.OracleConnection) async throws -> OracleTimeZoneRegions {
         let stream = try await connection.execute(
             OracleStatement(unsafeSQL: OracleTimeZoneRegions.query),
-            options: OracleRowLimits.collecting(Self.sessionSetupOptions),
+            options: OracleRowLimits.fetching(Self.sessionSetupOptions),
             logger: nioLogger
         )
         var rows: [(name: String, wire: [UInt8])] = []

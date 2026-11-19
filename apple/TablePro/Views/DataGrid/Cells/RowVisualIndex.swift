@@ -25,8 +25,6 @@ final class RowVisualIndex {
         guard let changeManager else { return }
 
         let insertedRowIDs = changeManager.insertedRowIDs
-        guard changeManager.hasChanges || !insertedRowIDs.isEmpty else { return }
-
         for rowChange in changeManager.rowChanges {
             states[rowChange.rowID] = Self.makeState(for: rowChange, inserted: insertedRowIDs.contains(rowChange.rowID))
         }

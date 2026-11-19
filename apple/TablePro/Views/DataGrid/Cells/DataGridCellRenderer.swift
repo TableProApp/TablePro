@@ -10,17 +10,43 @@ import TableProTextEngine
 // The grid draws its cells rather than mounting a view per cell; the only state here is a bounded line cache.
 @MainActor
 final class DataGridCellRenderer {
+    // Keyed on the text a cell can show, so a long value hashes in constant time.
     private struct LineKey: Hashable {
-        let text: String
+        let shownText: String
+        let isClipped: Bool
         let font: NSFont
         let color: NSColor
         let mark: DataGridCellTextMark?
         let specialCharacterColor: NSColor?
     }
 
-    private struct LaidOutLine {
+    private final class LaidOutLine {
         let line: CTLine
+        let width: Double
         let specialCharacters: SpecialCharacterLine?
+        // A value keeps its column's width from one draw to the next.
+        private var truncation: (width: Double, line: CTLine?)?
+
+        init(line: CTLine, specialCharacters: SpecialCharacterLine?) {
+            self.line = line
+            self.specialCharacters = specialCharacters
+            width = CTLineGetTypographicBounds(line, nil, nil, nil)
+        }
+
+        // Nil when not even a truncated line fits, which leaves the ellipsis alone.
+        func fitted(to availableWidth: Double, ellipsis: CTLine) -> CTLine? {
+            guard width > availableWidth else { return line }
+            if let truncation, truncation.width == availableWidth { return truncation.line }
+            let truncated = CTLineCreateTruncatedLine(line, availableWidth, .end, ellipsis)
+            truncation = (availableWidth, truncated)
+            return truncated
+        }
+    }
+
+    private struct RowNumberKey: Hashable {
+        let number: Int
+        let font: NSFont
+        let color: NSColor
     }
 
     // Cleared wholesale rather than evicted one at a time: a miss costs one CTLine.
@@ -29,6 +55,8 @@ final class DataGridCellRenderer {
     private static let maximumLaidOutCharacters = 300
 
     private var lineCache: [LineKey: LaidOutLine] = [:]
+    private var rowNumberLines: [RowNumberKey: CTLine] = [:]
+    private var rowNumberMetrics: (font: NSFont, lineHeight: CGFloat, baselineOffset: CGFloat)?
 
     private let checkboxCell: NSButtonCell = {
         let cell = NSButtonCell()
@@ -41,10 +69,11 @@ final class DataGridCellRenderer {
 
     func invalidateCachedLines() {
         lineCache.removeAll(keepingCapacity: true)
+        rowNumberLines.removeAll(keepingCapacity: true)
     }
 
     func draw(_ appearance: DataGridCellAppearance, in rect: NSRect, controlView: NSView? = nil) {
-        guard rect.width > 0, rect.height > 0 else { return }
+        guard rect.width > 0, rect.height > 0, let context = NSGraphicsContext.current?.cgContext else { return }
 
         if let tint = appearance.backgroundTint {
             tint.setFill()
@@ -53,43 +82,64 @@ final class DataGridCellRenderer {
 
         let accessoryRect = appearance.accessory.frame(in: rect)
 
-        NSGraphicsContext.current?.saveGraphicsState()
-        NSBezierPath(rect: rect).addClip()
-        drawText(appearance, in: rect)
+        context.saveGState()
+        context.clip(to: rect)
+        drawText(appearance, in: rect, context: context)
         drawAccessory(appearance.accessoryRole, color: appearance.accessoryColor, in: accessoryRect)
         if let mark = appearance.checkboxMark, let controlView {
             drawCheckbox(mark, in: rect, controlView: controlView)
         }
-        NSGraphicsContext.current?.restoreGraphicsState()
+        context.restoreGState()
     }
 
     func drawRowNumber(_ number: Int, in rect: NSRect, font: NSFont, color: NSColor) {
-        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
-        let text = String(number) as NSString
-        let size = text.size(withAttributes: attributes)
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        let line = rowNumberLine(number, font: font, color: color)
+        let width = CTLineGetTypographicBounds(line, nil, nil, nil)
         let inset = DataGridMetrics.cellHorizontalInset
-        let origin = NSPoint(
-            x: max(rect.minX + inset, rect.maxX - inset - size.width),
-            y: rect.midY - size.height / 2
+        let metrics = rowNumberLineMetrics(font)
+        context.saveGState()
+        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        context.textPosition = CGPoint(
+            x: max(rect.minX + inset, rect.maxX - inset - width),
+            y: rect.midY - metrics.lineHeight / 2 + metrics.baselineOffset
         )
-        text.draw(at: origin, withAttributes: attributes)
+        CTLineDraw(line, context)
+        context.restoreGState()
     }
 
-    private func drawText(_ appearance: DataGridCellAppearance, in rect: NSRect) {
+    // String drawing's own line box, which the font's ascent and descent do not add up to.
+    private func rowNumberLineMetrics(_ font: NSFont) -> (lineHeight: CGFloat, baselineOffset: CGFloat) {
+        if let metrics = rowNumberMetrics, metrics.font == font { return (metrics.lineHeight, metrics.baselineOffset) }
+        let lineHeight = ("0" as NSString).size(withAttributes: [.font: font]).height
+        let baselineOffset = NSLayoutManager().defaultBaselineOffset(for: font)
+        rowNumberMetrics = (font, lineHeight, baselineOffset)
+        return (lineHeight, baselineOffset)
+    }
+
+    private func rowNumberLine(_ number: Int, font: NSFont, color: NSColor) -> CTLine {
+        let key = RowNumberKey(number: number, font: font, color: color)
+        if let cached = rowNumberLines[key] { return cached }
+        let text = NSAttributedString(string: String(number), attributes: [.font: font, .foregroundColor: color])
+        let line = CTLineCreateWithAttributedString(text as CFAttributedString)
+        if rowNumberLines.count >= Self.lineCacheLimit {
+            rowNumberLines.removeAll(keepingCapacity: true)
+        }
+        rowNumberLines[key] = line
+        return line
+    }
+
+    private func drawText(_ appearance: DataGridCellAppearance, in rect: NSRect, context: CGContext) {
         guard !appearance.text.isEmpty else { return }
         let availableWidth = appearance.accessory.availableTextWidth(in: rect)
-        guard availableWidth > 0, let context = NSGraphicsContext.current?.cgContext else { return }
+        guard availableWidth > 0 else { return }
 
         let laidOut = line(for: appearance.text, appearance: appearance)
-        let fullLine = laidOut.line
-        let typographicWidth = CTLineGetTypographicBounds(fullLine, nil, nil, nil)
-        let ellipsis = line(for: "\u{2026}", appearance: appearance).line
-        let ellipsisWidth = CTLineGetTypographicBounds(ellipsis, nil, nil, nil)
-        guard Double(availableWidth) >= ellipsisWidth else { return }
+        let ellipsis = line(for: "\u{2026}", appearance: appearance)
+        guard Double(availableWidth) >= ellipsis.width else { return }
 
-        let fits = typographicWidth <= Double(availableWidth)
-        let truncated = fits ? nil : CTLineCreateTruncatedLine(fullLine, Double(availableWidth), .end, ellipsis)
-        let lineToDraw = fits ? fullLine : (truncated ?? ellipsis)
+        let fitted = laidOut.fitted(to: Double(availableWidth), ellipsis: ellipsis.line)
+        let lineToDraw = fitted ?? ellipsis.line
 
         let font = appearance.font
         let baselineOffset = (rect.height - font.ascender + font.descender - font.leading) / 2 + font.ascender
@@ -100,7 +150,7 @@ final class DataGridCellRenderer {
         context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
         context.textPosition = CGPoint(x: textX, y: baseline)
         CTLineDraw(lineToDraw, context)
-        if let specialCharacters = laidOut.specialCharacters, fits || truncated != nil {
+        if let specialCharacters = laidOut.specialCharacters, fitted != nil {
             SpecialCharacterLine.draw(
                 specialCharacters.marks(drawnIn: lineToDraw),
                 fromX: textX,
@@ -115,8 +165,10 @@ final class DataGridCellRenderer {
     // The mark is part of the key: the same value struck through is a different drawing.
     private func line(for text: String, appearance: DataGridCellAppearance) -> LaidOutLine {
         let font = appearance.font
+        let clipped = text.clipped(toUTF16Units: Self.maximumLaidOutCharacters)
         let key = LineKey(
-            text: text,
+            shownText: clipped ?? text,
+            isClipped: clipped != nil,
             font: font,
             color: appearance.textColor,
             mark: appearance.textMark,
@@ -124,10 +176,7 @@ final class DataGridCellRenderer {
         )
         if let cached = lineCache[key] { return cached }
 
-        let source = text as NSString
-        var laidOut = source.length > Self.maximumLaidOutCharacters
-            ? source.substring(to: Self.maximumLaidOutCharacters) + "\u{2026}"
-            : text
+        var laidOut = clipped.map { $0 + "\u{2026}" } ?? text
         var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: appearance.textColor]
         appearance.textMark?.attributes.forEach { attributes[$0.key] = $0.value }
 

@@ -201,10 +201,9 @@ nonisolated final class CloudflareD1PluginDriver: PluginDatabaseDriver, @uncheck
     /// D1 fails a result over 50 MB from 2026-11-04 and answers each request with the whole result, so a read that
     /// names no limit is sent with one: one row past the cap, which tells a trimmed result from a complete one.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
-        guard rowCap > 0, let statement = Self.boundableStatement(query) else { return nil }
-        let sent = SQLStatementRowLimit.hasExplicitRowLimit(statement, countsTop: false, grammar: Self.lexicalGrammar)
-            ? query
-            : SQLStatementRowLimit.appendingLimit(rowCap + 1, to: statement)
+        guard let sent = SQLStatementRowLimit.boundedRead(query, rowCap: rowCap, grammar: Self.lexicalGrammar) else {
+            return nil
+        }
         let result = try await execute(query: sent)
         guard result.rows.count > rowCap else { return result }
         return PluginQueryResult(
@@ -217,31 +216,6 @@ nonisolated final class CloudflareD1PluginDriver: PluginDatabaseDriver, @uncheck
             statusMessage: result.statusMessage,
             columnMeta: result.columnMeta
         )
-    }
-
-    /// The one statement of `query`, past its terminator and any comment after it, when a trailing `LIMIT` is valid
-    /// on it: a SELECT, or a WITH list whose statement is a SELECT, with no compound term that is a bare VALUES list,
-    /// which SQLite takes no LIMIT after. Nil for several statements: D1 runs them all and answers with the first
-    /// one's rows, so a LIMIT appended to the last would bound the wrong one.
-    private static func boundableStatement(_ query: String) -> String? {
-        let grammar = lexicalGrammar
-        let statements = SQLStatementScanner.allStatements(in: query, grammar: grammar)
-        guard statements.count == 1, let statement = statements.first,
-              let keyword = SQLStatementRowLimit.leadingKeyword(statement, grammar: grammar)
-        else { return nil }
-        switch keyword {
-        case "SELECT":
-            return SQLStatementRowLimit.hasCompoundValuesTerm(statement, grammar: grammar) ? nil : statement
-        case "WITH":
-            guard let reading = SQLCommonTableExpressions.read(statement, grammar: grammar) else { return nil }
-            let main = (statement as NSString).substring(from: reading.mainStatement)
-            guard SQLStatementRowLimit.leadingKeyword(main, grammar: grammar) == "SELECT",
-                  !SQLStatementRowLimit.hasCompoundValuesTerm(main, grammar: grammar)
-            else { return nil }
-            return statement
-        default:
-            return nil
-        }
     }
 
     func executeBatch(queries: [String]) async throws -> [PluginQueryResult] {

@@ -422,9 +422,10 @@ struct TableRows: Sendable {
         hasAuthoritativeSchema: Bool? = nil
     ) -> Delta {
         var didChange = false
+        var typesChanged = false
         if let columnTypes, columnTypes != self.columnTypes {
             self.columnTypes = columnTypes
-            didChange = true
+            typesChanged = true
         }
         if let columnDefaults, columnDefaults != self.columnDefaults {
             self.columnDefaults = columnDefaults
@@ -469,7 +470,8 @@ struct TableRows: Sendable {
             self.hasAuthoritativeSchema = hasAuthoritativeSchema
             didChange = true
         }
-        return didChange ? .columnsReplaced : .none
+        if typesChanged { return .columnsReplaced }
+        return didChange ? .columnMetadataChanged : .none
     }
 
     static func from(

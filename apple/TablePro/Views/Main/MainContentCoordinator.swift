@@ -173,6 +173,7 @@ final class MainContentCoordinator: ObservableObject {
     let tabManager: QueryTabManager
     // This connection's catalog facts the main views read, so another connection's schema load wakes none of them.
     let catalogSnapshot: ConnectionCatalogSnapshot
+    private(set) lazy var sidebarCatalog = ConnectionSidebarCatalog(connectionId: connection.id, toolbarState: toolbarState)
     // Each tab stages its edits in its own manager; this one answers while no tab is selected.
     let idleChangeManager = DataChangeManager()
     var tabEdits: [UUID: TabEdits] = [:]

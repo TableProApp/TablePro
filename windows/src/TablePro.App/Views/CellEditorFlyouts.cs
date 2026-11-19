@@ -26,6 +26,35 @@ internal static class CellEditorFlyouts
     private const int FirstCalendarYear = 1800;
     private const int LastCalendarYear = 9000;
 
+    // As macOS opens them: a boolean toggles at once; an enum, a set, a date or a time opens its own editor.
+    public static void Open(CellEditor editor, CellEditRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        switch (editor)
+        {
+            case CellEditor.Toggle:
+                request.Commit(CellEditors.Toggled(request.Text));
+                break;
+            case CellEditor.Choice:
+                ShowChoice(request);
+                break;
+            case CellEditor.Choices:
+                ShowChoices(request);
+                break;
+            case CellEditor.Date:
+                ShowDate(request);
+                break;
+            case CellEditor.Time:
+                ShowTime(request);
+                break;
+            case CellEditor.Timestamp:
+                ShowTimestamp(request);
+                break;
+            default:
+                break;
+        }
+    }
+
     public static void ShowChoice(CellEditRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

@@ -535,7 +535,7 @@ internal static partial class Mapping
         _ => Native.TlsModeTag.VerifyFull,
     };
 
-    private static TlsMode Tls(Native.TlsModeTag mode) => mode switch
+    public static TlsMode Tls(Native.TlsModeTag mode) => mode switch
     {
         Native.TlsModeTag.Disable => TlsMode.Disable,
         Native.TlsModeTag.Prefer => TlsMode.Prefer,
@@ -599,6 +599,11 @@ internal static partial class Mapping
         Native.EditLock.ReadOnlyConnection => EditLock.ReadOnlyConnection,
         Native.EditLock.NoPrimaryKey => EditLock.NoPrimaryKey,
         Native.EditLock.KeyUnreadable => EditLock.KeyUnreadable,
+        Native.EditLock.NotOneSelect => EditLock.NotOneSelect,
+        Native.EditLock.MoreThanOneTable => EditLock.MoreThanOneTable,
+        Native.EditLock.Collapsed => EditLock.Collapsed,
+        Native.EditLock.Untraced => EditLock.Untraced,
+        Native.EditLock.KeyNotShown => EditLock.KeyNotShown,
         _ => EditLock.ColumnsChanged,
     };
 

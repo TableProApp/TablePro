@@ -42,6 +42,11 @@
             </AppBarButton>
             <AppBarButton x:Uid="RunButton" x:Name="RunButton" AutomationProperties.AutomationId="RunButton" Icon="Play" Click="OnRun" />
             <AppBarButton x:Uid="StopButton" x:Name="StopButton" AutomationProperties.AutomationId="StopButton" Icon="Stop" IsEnabled="False" Click="OnStop" />
+            <!-- Shown while the result's rows edit, as a table tab's; Ctrl+S in the grid saves them. -->
+            <AppBarSeparator x:Name="EditSeparator" Visibility="Collapsed" />
+            <AppBarButton x:Uid="SaveChangesButton" x:Name="SaveChangesButton" AutomationProperties.AutomationId="ResultSaveChangesButton" Icon="Save" IsEnabled="False" Click="OnSaveChanges" Visibility="Collapsed" />
+            <AppBarButton x:Uid="DiscardChangesButton" x:Name="DiscardChangesButton" AutomationProperties.AutomationId="ResultDiscardChangesButton" Icon="Undo" IsEnabled="False" Click="OnDiscardChanges" Visibility="Collapsed" />
+            <AppBarButton x:Uid="ResultEditPreviewButton" x:Name="PreviewSqlButton" AutomationProperties.AutomationId="ResultPreviewSqlButton" Icon="Preview" IsEnabled="False" Click="OnPreviewSql" Visibility="Collapsed" />
         </CommandBar>
 
         <editor:SqlEditor x:Name="SqlText" Grid.Row="1" AutomationProperties.AutomationId="SqlEditor" />
