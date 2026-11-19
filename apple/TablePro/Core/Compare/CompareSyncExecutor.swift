@@ -185,7 +185,6 @@ internal actor CompareSyncExecutor {
         )
         defer { ProcessInfo.processInfo.endActivity(activity) }
 
-        let grammar = SQLLexicalResolver.readings(for: target.databaseType, session: driver.sessionLexicalState).execution
         return try await gate.authorizing(request) {
             try await self.run(
                 runnable: runnable,
@@ -193,7 +192,6 @@ internal actor CompareSyncExecutor {
                 mode: mode,
                 settings: settings,
                 driver: driver,
-                grammar: grammar,
                 progress: progress,
                 nonTransactionalObjects: nonTransactionalObjects
             )
@@ -206,7 +204,6 @@ internal actor CompareSyncExecutor {
         mode: CompareSyncMode,
         settings: CompareSyncExecutionSettings,
         driver: any PluginDatabaseDriver,
-        grammar: SQLLexicalGrammar,
         progress: Progress,
         nonTransactionalObjects: Set<String>
     ) async throws -> CompareSyncRunResult {
@@ -223,17 +220,16 @@ internal actor CompareSyncExecutor {
         var stopped = false
         var cancelled = false
 
-        // Rolled back whole on any failure, so a statement sent after a refused one changes nothing a stop keeps.
-        var batches = usesTransaction && settings.errorHandling == .stopAndRollback
-            && driver.capabilities.contains(.statementBatches)
-        var position = 0
-
-        func record(_ statement: SyncStatement, answer: Result<Int, any Error>) -> Bool {
+        for statement in runnable {
+            if progress.isCancelled || Task.isCancelled {
+                cancelled = true
+                break
+            }
             var didExecute = false
             do {
-                let rowsAffected = try answer.get()
+                let result = try await driver.execute(query: statement.sql)
                 didExecute = true
-                try Self.verify(statement, rowsAffected: rowsAffected)
+                try Self.verify(statement, rowsAffected: result.rowsAffected)
                 /// A scope is only closed once its closing statement has actually run. Dropping it
                 /// before the call left a failed close with nothing to retry it, and the connection
                 /// went back to the pool still holding the session state.
@@ -256,51 +252,13 @@ internal actor CompareSyncExecutor {
                 ))
                 if settings.errorHandling != .skipAndContinue {
                     stopped = true
-                    return false
+                    break
                 }
             }
             completed += 1
             if completed % Self.progressBatchSize == 0 || completed == Int64(runnable.count) {
                 progress.completedUnitCount = completed
             }
-            return true
-        }
-
-        statements: while position < runnable.count {
-            if progress.isCancelled || Task.isCancelled {
-                cancelled = true
-                break
-            }
-            let stretch = batches ? Self.batchableStretch(of: runnable, from: position, grammar: grammar) : []
-            if stretch.count > 1 {
-                if let answers = await Self.answers(for: stretch, on: driver) {
-                    for (index, statement) in stretch.enumerated() {
-                        let answer: Result<Int, any Error> = index < answers.count
-                            ? answers[index]
-                            : .failure(CompareSyncError.unsupportedOperation(
-                                String(localized: "The driver did not report every statement it was sent.")
-                            ))
-                        guard record(statement, answer: answer) else { break statements }
-                    }
-                    position += stretch.count
-                    // A Stop during the batch could not reach the statements in it; the rollback still can.
-                    if progress.isCancelled || Task.isCancelled {
-                        cancelled = true
-                        break
-                    }
-                    continue
-                }
-                batches = false
-            }
-            let statement = runnable[position]
-            let answer: Result<Int, any Error>
-            do {
-                answer = .success(try await driver.execute(query: statement.sql).rowsAffected)
-            } catch {
-                answer = .failure(error)
-            }
-            guard record(statement, answer: answer) else { break }
-            position += 1
         }
         progress.completedUnitCount = completed
 
@@ -364,51 +322,6 @@ internal actor CompareSyncExecutor {
     }
 
     private static let progressBatchSize: Int64 = 25
-    private static let batchLimit = 200
-
-    // A statement that opens or closes a session scope runs alone, so the scope is tracked from its own answer, and so
-    // does a text holding more than one statement, which only a lone call sends whole.
-    private static func batchableStretch(
-        of statements: [SyncStatement],
-        from start: Int,
-        grammar: SQLLexicalGrammar
-    ) -> ArraySlice<SyncStatement> {
-        var end = start
-        while end < statements.count, end - start < batchLimit, statements[end].sessionEffect == nil,
-              SQLStatementScanner.executableStatements(in: statements[end].sql, grammar: grammar).count == 1 {
-            end += 1
-        }
-        return statements[start..<end]
-    }
-
-    // Nil when the driver sends these one at a time. The answers stop at the first failure.
-    private static func answers(
-        for statements: ArraySlice<SyncStatement>,
-        on driver: any PluginDatabaseDriver
-    ) async -> [Result<Int, any Error>]? {
-        let batch = statements.map { PluginBatchStatement(query: $0.sql, parameters: nil, context: PluginStatementContext()) }
-        let outcomes: [PluginBatchStatementOutcome]
-        do {
-            guard let answered = try await driver.executeStatements(batch) else { return nil }
-            outcomes = answered
-        } catch {
-            return [.failure(error)]
-        }
-        var answers: [Result<Int, any Error>] = []
-        for outcome in outcomes.prefix(batch.count) {
-            switch outcome {
-            case .succeeded(let rowsAffected, _):
-                answers.append(.success(rowsAffected))
-            case .failed(let error):
-                return answers + [.failure(error)]
-            @unknown default:
-                return answers + [.failure(CompareSyncError.unsupportedOperation(
-                    String(localized: "The driver answered a statement in a way this version of TablePro cannot read.")
-                ))]
-            }
-        }
-        return answers
-    }
 
     private static func kind(
         for mode: CompareSyncMode,
