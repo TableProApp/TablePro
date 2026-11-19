@@ -16,7 +16,7 @@ use base64::engine::general_purpose::STANDARD;
 use secrecy::{ExposeSecret, SecretString};
 
 use super::kdbx::{self, KdbxEntry};
-use crate::{ForeignKeychain, ForeignPlatform, KeychainRead};
+use crate::{DataProtection, ForeignKeychain, ForeignPlatform, KeychainRead};
 
 const BUILT_IN_KEY: &[u8; 16] = b"Proxy Config Sec";
 const BUILT_IN: &str = "BUILT_IN";
@@ -26,7 +26,7 @@ const CRYPT_32: &str = "CRYPT_32";
 pub(crate) enum Lookup {
     Found(SecretString),
     NotFound,
-    // The user refused the keychain, or the KeePass main key is one this platform cannot open.
+    // The user refused the keychain, or the KeePass main key is one this host cannot open.
     Stopped,
 }
 
@@ -40,6 +40,7 @@ pub(crate) struct CredentialStore {
     config_dir: PathBuf,
     platform: ForeignPlatform,
     keychain: Option<Arc<dyn ForeignKeychain>>,
+    protection: Option<Arc<dyn DataProtection>>,
     entries: Option<HashMap<String, KdbxEntry>>,
     loaded: bool,
     locked: bool,
@@ -55,10 +56,17 @@ impl CredentialStore {
             config_dir,
             platform,
             keychain,
+            protection: None,
             entries: None,
             loaded: false,
             locked: false,
         }
+    }
+
+    // A CRYPT_32 main key opens only through the user's data protection; without it the lookups stop.
+    #[must_use]
+    pub(crate) fn with_data_protection(self, protection: Option<Arc<dyn DataProtection>>) -> Self {
+        Self { protection, ..self }
     }
 
     pub(crate) fn service_name(uuid: &str) -> String {
@@ -143,12 +151,12 @@ impl CredentialStore {
         let main_key = match crate::files::read_capped(self.config_dir.join("c.pwd")) {
             Ok(data) => {
                 let (encryption, blob) = parse_main_key_file(std::str::from_utf8(&data).ok()?)?;
-                decrypt_main_key(&encryption, &blob)
+                decrypt_main_key(&encryption, &blob, self.protection.as_deref())
             }
             // The IDE reads the older `pdb.pwd`, raw bytes rather than YAML, only when `c.pwd` is missing.
             Err(error) if error.kind() == ErrorKind::NotFound => {
                 let blob = crate::files::read_capped(self.config_dir.join("pdb.pwd")).ok()?;
-                decrypt_main_key(legacy_encryption(self.platform), &blob)
+                decrypt_main_key(legacy_encryption(self.platform), &blob, self.protection.as_deref())
             }
             Err(_) => return None,
         };
@@ -172,11 +180,20 @@ fn legacy_encryption(platform: ForeignPlatform) -> &'static str {
 }
 
 // Every main key is decrypted here. CRYPT_32 is BUILT_IN wrapped in the Windows data protection API.
-fn decrypt_main_key(encryption: &str, blob: &[u8]) -> MainKey {
-    if encryption != BUILT_IN {
-        return MainKey::Locked;
-    }
-    decrypt_built_in(blob).map_or(MainKey::Unreadable, MainKey::Key)
+fn decrypt_main_key(encryption: &str, blob: &[u8], protection: Option<&dyn DataProtection>) -> MainKey {
+    let unsealed;
+    let built_in = match encryption {
+        BUILT_IN => blob,
+        CRYPT_32 => match protection.and_then(|protection| protection.unprotect(blob)) {
+            Some(inner) => {
+                unsealed = inner;
+                &unsealed
+            }
+            None => return MainKey::Locked,
+        },
+        _ => return MainKey::Locked,
+    };
+    decrypt_built_in(built_in).map_or(MainKey::Unreadable, MainKey::Key)
 }
 
 fn decrypt_built_in(blob: &[u8]) -> Option<Vec<u8>> {
@@ -277,6 +294,26 @@ mod tests {
         CredentialStore::new(dir.to_path_buf(), platform, None)
     }
 
+    const SEAL: &[u8] = b"sealed for this user:";
+
+    // Stands in for DPAPI: a blob opens when it carries this user's seal.
+    struct Sealed;
+
+    impl DataProtection for Sealed {
+        fn unprotect(&self, blob: &[u8]) -> Option<Vec<u8>> {
+            blob.strip_prefix(SEAL).map(<[u8]>::to_vec)
+        }
+    }
+
+    fn sealed(blob: &[u8]) -> Vec<u8> {
+        [SEAL, blob].concat()
+    }
+
+    fn protected_store(dir: &Path) -> CredentialStore {
+        CredentialStore::new(dir.to_path_buf(), ForeignPlatform::Windows, None)
+            .with_data_protection(Some(Arc::new(Sealed)))
+    }
+
     fn found(lookup: Lookup) -> String {
         match lookup {
             Lookup::Found(value) => value.expose_secret().to_owned(),
@@ -371,6 +408,55 @@ mod tests {
             store(dir.path(), ForeignPlatform::Windows).password("u"),
             Lookup::Stopped
         ));
+    }
+
+    #[test]
+    fn a_crypt_32_main_key_opens_through_the_users_data_protection() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let main_key = test_kdbx::bytes("main key", 64);
+        write_kdbx(
+            dir.path(),
+            &main_key,
+            &CredentialStore::service_name("u"),
+            "dpapi-secret",
+        );
+        let blob = STANDARD.encode(sealed(&test_kdbx::built_in_blob(&main_key)));
+        fs::write(
+            dir.path().join("c.pwd"),
+            format!("encryption: CRYPT_32\nisAutoGenerated: true\nvalue: !!binary {blob}\n"),
+        )
+        .expect("c.pwd");
+        let mut store = protected_store(dir.path());
+        assert_eq!(found(store.password("u")), "dpapi-secret");
+        assert!(store.kdbx_loaded());
+    }
+
+    #[test]
+    fn a_crypt_32_main_key_another_user_sealed_stops_the_lookups() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let main_key = test_kdbx::bytes("main key", 64);
+        write_kdbx(dir.path(), &main_key, &CredentialStore::service_name("u"), "p");
+        let blob = STANDARD.encode(test_kdbx::built_in_blob(&main_key));
+        fs::write(
+            dir.path().join("c.pwd"),
+            format!("encryption: CRYPT_32\nisAutoGenerated: true\nvalue: !!binary {blob}\n"),
+        )
+        .expect("c.pwd");
+        assert!(matches!(protected_store(dir.path()).password("u"), Lookup::Stopped));
+    }
+
+    #[test]
+    fn a_pdb_pwd_on_windows_opens_through_the_users_data_protection() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let main_key = test_kdbx::bytes("legacy main key", 64);
+        write_kdbx(
+            dir.path(),
+            &main_key,
+            &CredentialStore::service_name("old"),
+            "legacy-secret",
+        );
+        fs::write(dir.path().join("pdb.pwd"), sealed(&test_kdbx::built_in_blob(&main_key))).expect("pdb.pwd");
+        assert_eq!(found(protected_store(dir.path()).password("old")), "legacy-secret");
     }
 
     #[test]

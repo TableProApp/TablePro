@@ -18,6 +18,8 @@ internal interface IShell
 
     Task ImportAsync();
 
+    Task ImportFromAppAsync();
+
     Task OpenSampleAsync();
 
     void ShowSettings();

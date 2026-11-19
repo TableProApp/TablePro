@@ -1,4 +1,5 @@
 import Foundation
+import TableProConnectionLibrary
 import TableProModels
 
 nonisolated enum IntentConnectionLoader {
@@ -13,18 +14,7 @@ nonisolated enum IntentConnectionLoader {
     }
 
     static func decode(_ data: Data) -> [DatabaseConnection] {
-        guard let elements = try? JSONDecoder().decode([FailableConnection].self, from: data) else {
-            return []
-        }
-        return elements.compactMap(\.value)
-    }
-
-    private struct FailableConnection: Decodable {
-        let value: DatabaseConnection?
-
-        init(from decoder: Decoder) throws {
-            value = try? DatabaseConnection(from: decoder)
-        }
+        (try? LibraryFileRecords<DatabaseConnection>(decoding: data).elements) ?? []
     }
 
     private static var fileURL: URL? {

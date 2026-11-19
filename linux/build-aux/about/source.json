@@ -429,7 +429,7 @@
     },
     {
       "crate": "lcms2-sys",
-      "version": "4.0.7",
+      "version": "4.2.0",
       "paragraphs": [
         {
           "files": [

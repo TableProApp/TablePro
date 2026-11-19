@@ -9,13 +9,19 @@ internal static class ClipboardText
     private const int Attempts = 5;
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(20);
 
-    // False when the clipboard stayed held, and the text never reached it.
-    public static bool TrySet(string text)
+    // False when the clipboard stayed held, and the text never reached it. Text kept out of history skips Win+V's
+    // list and other devices, for writes the user did not ask for as a copy.
+    public static bool TrySet(string text, bool inHistory = true)
     {
         ArgumentNullException.ThrowIfNull(text);
         var package = new DataPackage();
         package.SetText(text);
-        if (!Retry(() => Clipboard.SetContent(package)))
+        var options = inHistory ? null : new ClipboardContentOptions { IsAllowedInHistory = false, IsRoamable = false };
+        // SetContentWithOptions says false where SetContent throws, so a false goes again as a throw does.
+        var set = options is null
+            ? Retry(() => Clipboard.SetContent(package))
+            : Retry(() => Clipboard.SetContentWithOptions(package, options));
+        if (!set)
         {
             return false;
         }
@@ -44,23 +50,36 @@ internal static class ClipboardText
         }
     }
 
-    private static bool Retry(Action call)
+    private static bool Retry(Action call) => Retry(() =>
+    {
+        call();
+        return true;
+    });
+
+    private static bool Retry(Func<bool> call)
     {
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                call();
-                return true;
+                if (call())
+                {
+                    return true;
+                }
             }
             catch (COMException) when (attempt < Attempts)
             {
-                Thread.Sleep(Pause);
+                // Held by another program for a moment; the next attempt may get it.
             }
             catch (COMException)
             {
                 return false;
             }
+            if (attempt >= Attempts)
+            {
+                return false;
+            }
+            Thread.Sleep(Pause);
         }
     }
 }
