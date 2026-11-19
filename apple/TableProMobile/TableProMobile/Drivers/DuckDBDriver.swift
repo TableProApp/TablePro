@@ -3,6 +3,7 @@ import Dispatch
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProSQLGrammar
 import TableProSQLQuoting
 
 nonisolated final class DuckDBDriver: DatabaseDriver, CatalogQuerying, ExportRowStreaming,
@@ -196,6 +197,7 @@ actor DuckDBActor {
     nonisolated let interruptHandle = DuckDBInterruptHandle()
     private(set) var database: duckdb_database?
     var connection: duckdb_connection?
+    private var taskThreads: DuckDBTaskThreads?
     // The transfer connections on `database`, which `close()` ends before the database.
     var transferLanes: [UInt64: DuckDBTransferLane] = [:]
     var lastTransferLane: UInt64 = 0
@@ -216,7 +218,7 @@ actor DuckDBActor {
         ("autoinstall_known_extensions", "false"),
         ("autoload_known_extensions", "false"),
         (DuckDBExpressionDepth.configurationOption, DuckDBExpressionDepth.limit),
-    ]
+    ] + DuckDBTaskThreads.sessionOptions
 
     func open(path: String) throws {
         _ = Self.registeredExtensions
@@ -256,6 +258,7 @@ actor DuckDBActor {
 
         database = db
         connection = conn
+        if let db { taskThreads = DuckDBTaskThreads(database: db) }
         if let conn { interruptHandle.attach(conn) }
     }
 
@@ -275,6 +278,8 @@ actor DuckDBActor {
             duckdb_disconnect(&connection)
             connection = nil
         }
+        taskThreads?.close()
+        taskThreads = nil
         if database != nil {
             duckdb_close(&database)
             database = nil
@@ -294,8 +299,7 @@ actor DuckDBActor {
         let startTime = Date()
         var result = duckdb_result()
 
-        if duckdb_query(connection, sql, &result) == DuckDBError {
-            let message = duckdb_result_error(&result).map { String(cString: $0) } ?? "Unknown DuckDB error"
+        if let message = run(sql, on: connection, into: &result) {
             duckdb_destroy_result(&result)
             throw DuckDBDriverError.queryFailed(message)
         }
@@ -340,6 +344,71 @@ actor DuckDBActor {
 
         defer { duckdb_destroy_result(&result) }
         return Self.decodeMaterialized(&result, plan: plan, rowsChanged: rowsChanged, startTime: startTime)
+    }
+
+    // Several statements run one at a time, split as the editor splits them, so a count one raises is taken over
+    // before the next runs, and a text DuckDB cannot parse runs none of them. The result is the one duckdb_query
+    // gives: the first with rows, else the last. Returns the error.
+    func run(_ sql: String, on connection: duckdb_connection, into result: inout duckdb_result) -> String? {
+        guard let taskThreads else {
+            return duckdb_query(connection, sql, &result) == DuckDBError ? Self.error(of: &result) : nil
+        }
+        var extracted: duckdb_extracted_statements?
+        defer { duckdb_destroy_extracted(&extracted) }
+        let count = duckdb_extract_statements(connection, sql, &extracted)
+        if let error = duckdb_extract_statements_error(extracted) {
+            return String(cString: error)
+        }
+        guard count > 1 else { return Self.run(sql, on: connection, taskThreads, into: &result) }
+        let statements = SQLStatementScanner.executableStatements(in: sql, grammar: Self.grammar)
+        guard statements.count == count else {
+            return "DuckDB reads \(count) statements here where TablePro splits \(statements.count); run them one at a time"
+        }
+        var kept: duckdb_result?
+        var keptHasRows = false
+        for statement in statements {
+            var current = duckdb_result()
+            if let failure = Self.run(statement.sql, on: connection, taskThreads, into: &current) {
+                duckdb_destroy_result(&current)
+                if var kept { duckdb_destroy_result(&kept) }
+                return failure
+            }
+            if kept != nil, keptHasRows {
+                duckdb_destroy_result(&current)
+                continue
+            }
+            if var earlier = kept { duckdb_destroy_result(&earlier) }
+            keptHasRows = duckdb_result_return_type(current) == DUCKDB_RESULT_TYPE_QUERY_RESULT
+            kept = current
+        }
+        if let kept { result = kept }
+        return nil
+    }
+
+    func followThreadCount(after type: duckdb_statement_type) {
+        guard !DuckDBTaskThreads.keepsCount(type) else { return }
+        taskThreads?.followCount()
+    }
+
+    private static let grammar = SQLLexicalReadings.resolve(
+        databaseTypeId: DatabaseType.duckdb.rawValue, declared: nil, session: nil
+    ).execution
+
+    private static func run(
+        _ sql: String,
+        on connection: duckdb_connection,
+        _ taskThreads: DuckDBTaskThreads,
+        into result: inout duckdb_result
+    ) -> String? {
+        let state = duckdb_query(connection, sql, &result)
+        if !DuckDBTaskThreads.keepsCount(duckdb_result_statement_type(result)) {
+            taskThreads.followCount()
+        }
+        return state == DuckDBError ? error(of: &result) : nil
+    }
+
+    private static func error(of result: inout duckdb_result) -> String {
+        duckdb_result_error(&result).map { String(cString: $0) } ?? "Unknown DuckDB error"
     }
 
     private static func decodeMaterialized(
