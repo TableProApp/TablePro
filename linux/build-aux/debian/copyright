@@ -12509,7 +12509,7 @@ License: Apache-2.0 or Expat
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
-Files: vendor/lcms2-6.2.0/*
+Files: vendor/lcms2-6.3.0/*
 Copyright: Kornel Lesiński
 License: Expat
  Copyright (c) Kornel Lesiński
@@ -12532,7 +12532,7 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/lcms2-sys-4.0.7/*
+Files: vendor/lcms2-sys-4.2.0/*
 Copyright: Kornel Lesiński <kornel@geekhood.net>
 License: Expat
 
@@ -25296,7 +25296,7 @@ Copyright: the IANA Time Zone Database contributors
 License: public-domain
  Unless specified below, all files in the tz code and data (including this LICENSE file) are in the public domain.
 
-Files: vendor/lcms2-sys-4.0.7/vendor/*
+Files: vendor/lcms2-sys-4.2.0/vendor/*
 Copyright: 2023 Marti Maria Saguer
 License: Expat
  MIT License
@@ -25322,7 +25322,7 @@ License: Expat
  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-Files: vendor/lcms2-sys-4.0.7/vendor/src/cmssm.c
+Files: vendor/lcms2-sys-4.2.0/vendor/src/cmssm.c
 Copyright: 2001 softSurfer
  2023 Marti Maria Saguer
  2001, softSurfer (www.softsurfer.com)

@@ -8312,7 +8312,7 @@ SOFTWARE.
 
 Used by:
 
-- lcms2 6.2.0
+- lcms2 6.3.0
 
 ~~~~text
 Copyright (c) Kornel Lesiński
@@ -9744,7 +9744,7 @@ SOFTWARE.
 
 Used by:
 
-- lcms2-sys 4.0.7
+- lcms2-sys 4.2.0
 
 ~~~~text
 MIT License
