@@ -34,6 +34,42 @@ struct AppStateSyncWiringTests {
         #expect(await transport.pullCount == 1)
     }
 
+    @Test("A saved query whose connection this build cannot read stays on the device, even marked for upload")
+    func unreadableOwnerKeepsItsQueriesLocal() async throws {
+        let ownerId = UUID()
+        try Data(#"[{"id":"\#(ownerId.uuidString)","name":"Unreadable","isSample":true}]"#.utf8)
+            .write(to: fixture.connectionsFile)
+        let transport = RecordingSyncTransport()
+        let state = makeSyncedState(transport: transport)
+        let owned = SavedQuery(name: "Owned", query: "SELECT 1", connectionId: ownerId)
+        let global = SavedQuery(name: "Global", query: "SELECT 2")
+        #expect(state.savedQueries.insert(owned))
+        #expect(state.savedQueries.insert(global))
+        #expect(!fixture.metadata.dirtyIds(for: .favorite).contains(owned.id.uuidString))
+        fixture.metadata.markDirty(owned.id.uuidString, type: .favorite)
+
+        await state.syncCoordinator.sync()
+
+        let pushed = await transport.pushedRecords.compactMap(SyncRecordMapper.toSavedQuery).map(\.id)
+        #expect(pushed == [global.id])
+    }
+
+    @Test("A pull leaves the saved queries of a connection this build cannot read as they are")
+    func unreadableOwnerQueriesSurviveAPull() async throws {
+        let ownerId = UUID()
+        try Data(#"[{"id":"\#(ownerId.uuidString)","name":"Unreadable","localOnly":true}]"#.utf8)
+            .write(to: fixture.connectionsFile)
+        let owned = SavedQuery(name: "Owned", query: "SELECT 1", connectionId: ownerId)
+        let deletion = SyncRecordMapper.recordID(type: .favorite, id: owned.id.uuidString, in: zoneID)
+        let transport = RecordingSyncTransport(remoteDeletions: [deletion])
+        let state = makeSyncedState(transport: transport)
+        #expect(state.savedQueries.insert(owned))
+
+        await state.syncCoordinator.sync()
+
+        #expect(state.savedQueries.contents.queries.map { $0.id } == [owned.id])
+    }
+
     @Test("A saved query made on the Mac reaches the saved queries and the file through the app's sync wiring")
     func pulledSavedQueryReachesTheLibrary() async {
         let folder = SavedQueryFolder(name: "Reports")

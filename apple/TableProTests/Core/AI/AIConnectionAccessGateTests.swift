@@ -232,6 +232,7 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
         let manager = DatabaseManager(connectionStorage: storage)
         manager.injectSession(ConnectionSession(connection: makeConnection(id: id, policy: .alwaysAllow)), for: id)
         defer { manager.removeSession(for: id) }
+        try FileManager.default.removeItem(at: fileURL.appendingPathExtension("backup"))
         try Data("not json".utf8).write(to: fileURL)
         storage.invalidateCache()
 

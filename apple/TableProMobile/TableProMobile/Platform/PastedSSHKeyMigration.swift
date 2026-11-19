@@ -1,4 +1,5 @@
 import Foundation
+import TableProConnectionLibrary
 import TableProModels
 
 nonisolated enum PastedSSHKeyMigration {
@@ -7,7 +8,7 @@ nonisolated enum PastedSSHKeyMigration {
     private static let privateKeyDataKey = "privateKeyData"
 
     static func pendingKeys(inLibraryFile data: Data) -> [UUID: String] {
-        guard let entries = try? JSONDecoder().decode([LegacyConnection].self, from: data) else { return [:] }
+        guard let entries = try? LibraryFileRecords<LegacyConnection>(decoding: data).elements else { return [:] }
         var keys: [UUID: String] = [:]
         for entry in entries {
             guard let key = entry.privateKeyData, !key.isEmpty, keys[entry.id] == nil else { continue }
@@ -16,24 +17,35 @@ nonisolated enum PastedSSHKeyMigration {
         return keys
     }
 
-    static func keysStillHeld(_ keys: [UUID: String], by connections: [DatabaseConnection]) -> [UUID: String] {
+    // A record this build cannot read keeps its key until the key reaches the Keychain.
+    static func keysStillHeld(
+        _ keys: [UUID: String],
+        by connections: [DatabaseConnection],
+        orUnreadable unreadableIds: Set<UUID> = []
+    ) -> [UUID: String] {
         guard !keys.isEmpty else { return [:] }
-        let holders = Set(connections.filter { $0.sshConfiguration != nil }.map(\.id))
+        let holders = Set(connections.filter { $0.sshConfiguration != nil }.map(\.id)).union(unreadableIds)
         return keys.filter { holders.contains($0.key) }
     }
 
+    // Only a record this build cannot read still carries a key, kept verbatim: one that reached the Keychain leaves it.
     static func libraryFile(_ encoded: Data, keeping keys: [UUID: String]) throws -> Data {
-        guard !keys.isEmpty,
-              var entries = try JSONSerialization.jsonObject(with: encoded) as? [[String: Any]] else {
+        guard !keys.isEmpty || encoded.range(of: Data(privateKeyDataKey.utf8)) != nil,
+              var entries = try JSONSerialization.jsonObject(with: encoded) as? [Any] else {
             return encoded
         }
         for index in entries.indices {
-            guard let idString = entries[index][idKey] as? String,
+            guard var entry = entries[index] as? [String: Any],
+                  let idString = entry[idKey] as? String,
                   let id = UUID(uuidString: idString),
-                  let key = keys[id],
-                  var ssh = entries[index][sshConfigurationKey] as? [String: Any] else { continue }
-            ssh[privateKeyDataKey] = key
-            entries[index][sshConfigurationKey] = ssh
+                  var ssh = entry[sshConfigurationKey] as? [String: Any] else { continue }
+            if let key = keys[id] {
+                ssh[privateKeyDataKey] = key
+            } else if ssh.removeValue(forKey: privateKeyDataKey) == nil {
+                continue
+            }
+            entry[sshConfigurationKey] = ssh
+            entries[index] = entry
         }
         return try JSONSerialization.data(withJSONObject: entries)
     }
