@@ -52,4 +52,20 @@ struct VimDocumentMarksTests {
         #expect(!engine.lastVisualLinewise)
         #expect(engine.lastInsertOffset == nil)
     }
+
+    @Test("A tab switch keeps a mark's column and the marks an undo can bring back")
+    func savedMarksKeepColumnsAndErasedMarks() {
+        buffer.editObserver = engine
+        buffer.setSelectedRange(NSRange(location: 13, length: 0))
+        keys("madd")
+        let saved = engine.documentMarks
+        #expect(!saved.isEmpty)
+
+        engine.documentDidReplace()
+        engine.restoreDocumentMarks(saved)
+        buffer.replaceCharacters(in: NSRange(location: 12, length: 0), with: "second line\n")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("`a")
+        #expect(pos == 13)
+    }
 }

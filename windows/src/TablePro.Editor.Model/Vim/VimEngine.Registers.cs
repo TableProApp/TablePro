@@ -150,15 +150,13 @@ public sealed partial class VimEngine
         }
         var edit = new VimMarkChange(change, _buffer);
         VimErasedMarks? restored = null;
-        if (change.RemovedLength == 0)
+        // An undo puts the removed text back by insertion or by replacing what took its place.
+        var index = ErasedMarks.FindLastIndex(record =>
+            record.Location == change.Offset && string.Equals(record.Text, change.InsertedText, StringComparison.Ordinal));
+        if (index >= 0)
         {
-            var index = ErasedMarks.FindLastIndex(record =>
-                record.Location == change.Offset && string.Equals(record.Text, change.InsertedText, StringComparison.Ordinal));
-            if (index >= 0)
-            {
-                restored = ErasedMarks[index];
-                ErasedMarks.RemoveAt(index);
-            }
+            restored = ErasedMarks[index];
+            ErasedMarks.RemoveAt(index);
         }
         var erased = new Dictionary<string, VimSavedMark>(StringComparer.Ordinal);
         foreach (var (name, offset) in Marks.ToList())
@@ -200,7 +198,7 @@ public sealed partial class VimEngine
             }
         }
         LastJumpOrigin = LastJumpOrigin is { } origin ? edit.Map(origin, removable: false)?.Offset : null;
-        LastInsertOffset = LastInsertOffset is { } insert ? edit.Map(insert, removable: false)?.Offset : null;
+        LastInsertOffset = LastInsertOffset is { } insert ? edit.Map(insert, removable: false, boundary: true)?.Offset : null;
         LastVisualStart = LastVisualStart is { } start ? edit.Map(start, removable: false)?.Offset : null;
         LastVisualEnd = LastVisualEnd is { } end ? edit.Map(end, removable: false)?.Offset : null;
     }

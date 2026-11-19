@@ -44,8 +44,9 @@ internal readonly struct VimMarkChange
     }
 
     // Null when the edit removes the line of a removable mark. KeepsColumn is false where the mark moved onto another
-    // line's text, as a join moves it.
-    public (int Offset, bool KeepsColumn)? Map(int offset, bool removable)
+    // line's text, as a join moves it. A boundary sits between characters, as the last insert position does, so it can
+    // stay at the end of its line rather than on the last character.
+    public (int Offset, bool KeepsColumn)? Map(int offset, bool removable, bool boundary = false)
     {
         if (offset < _location)
         {
@@ -57,7 +58,7 @@ internal readonly struct VimMarkChange
         }
         if (_keepsLines)
         {
-            return (KeepLineAndColumn(offset), true);
+            return (KeepLineAndColumn(offset, boundary), true);
         }
         if (_isLinewise)
         {
@@ -65,7 +66,7 @@ internal readonly struct VimMarkChange
         }
         if (offset >= _end)
         {
-            return _removesLineBreak ? (offset + _delta, false) : (KeepColumnOnFirstLine(offset), true);
+            return _removesLineBreak ? (offset + _delta, false) : (KeepColumnOnFirstLine(offset, boundary), true);
         }
         if (_removesLineBreak && offset > _location && _removed.LastIndexOf('\n', offset - _location - 1) >= 0)
         {
@@ -77,7 +78,7 @@ internal readonly struct VimMarkChange
             }
             return (_end + _delta, false);
         }
-        return (KeepColumnOnFirstLine(offset), true);
+        return (KeepColumnOnFirstLine(offset, boundary), true);
     }
 
     // The column of an offset in the removed text, on its line before the edit.
@@ -89,15 +90,15 @@ internal readonly struct VimMarkChange
     }
 
     // The first line keeps its start, so the offset keeps its column, up to the line's new last character.
-    private int KeepColumnOnFirstLine(int offset)
+    private int KeepColumnOnFirstLine(int offset, bool boundary)
     {
         var firstBreak = _inserted.IndexOf('\n');
         var contentEnd = firstBreak >= 0 ? _location + firstBreak : _lastLineContentEnd;
-        return Math.Min(offset, Math.Max(_firstLineStart, contentEnd - 1));
+        return Math.Min(offset, Math.Max(_firstLineStart, boundary ? contentEnd : contentEnd - 1));
     }
 
     // The mark's line is the same line of the new text, at the same column up to that line's last character.
-    private int KeepLineAndColumn(int offset)
+    private int KeepLineAndColumn(int offset, bool boundary)
     {
         var relative = Math.Min(offset - _location, _removed.Length);
         var line = 0;
@@ -113,7 +114,7 @@ internal readonly struct VimMarkChange
         var column = offset - lineStart;
         var newStart = line == 0 ? _firstLineStart : _location + NthBreak(_inserted, line) + 1;
         var newContentEnd = line < _breaks ? _location + NthBreak(_inserted, line + 1) : _lastLineContentEnd;
-        return newStart + Math.Min(column, Math.Max(0, newContentEnd - newStart - 1));
+        return newStart + Math.Min(column, Math.Max(0, newContentEnd - newStart - (boundary ? 0 : 1)));
     }
 
     private static int NthBreak(string text, int n)

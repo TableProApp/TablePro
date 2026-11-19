@@ -284,6 +284,38 @@ final class VimEngineMarksAndRegistersTests {
         #expect(pos == 13)
     }
 
+    @Test("Undo that replaces the pasted lines brings back the marks they took")
+    func undoingAReplacementRestoresTheMark() {
+        buffer = VimTextBufferMock(text: "foo\nbar\ntail\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        buffer.setSelectedRange(NSRange(location: 5, length: 0))
+        keys("ma")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        engine.register = VimRegister(text: "new\n", isLinewise: true)
+        key("V", shift: true)
+        keys("jp")
+        #expect(engine.marks["a"] == nil)
+        buffer.replaceCharacters(in: NSRange(location: 0, length: 4), with: "foo\nbar\n")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("`a")
+        #expect(pos == 5)
+    }
+
+    @Test("An edit before the last insert point on its line keeps the point past the last character")
+    func lastInsertPointStaysAtTheLineEnd() {
+        buffer = VimTextBufferMock(text: "abc\ntail\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        key("A", shift: true)
+        typeInTextView("X")
+        key("\u{1B}")
+        keys("0rYgi")
+        typeInTextView("Z")
+        key("\u{1B}")
+        #expect(buffer.text == "YbcXZ\ntail\n")
+    }
+
     @Test("A mark keeps its column through a line that shrinks and grows back")
     func markColumnSurvivesAShorterLine() {
         buffer = VimTextBufferMock(text: "abcdef\ntail\n")

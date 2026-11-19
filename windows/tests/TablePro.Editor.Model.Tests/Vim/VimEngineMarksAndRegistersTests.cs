@@ -1,3 +1,5 @@
+using TablePro.Editor.Model.Vim;
+
 namespace TablePro.Editor.Model.Tests.Vim;
 
 public sealed class VimEngineMarksAndRegistersTests
@@ -227,6 +229,23 @@ public sealed class VimEngineMarksAndRegistersTests
         s.Press("`a");
         Assert.Equal(Initial, s.Text);
         Assert.Equal(13, s.Caret);
+    }
+
+    [Fact]
+    public void UndoingAPasteOverTheMarkedLinesBringsTheMarkBack()
+    {
+        var s = new VimSession("foo\nbar\ntail\n", caret: 5);
+        s.Press("ma");
+        s.Engine.Register = new VimRegister("new\n", IsLinewise: true);
+        s.SetCaret(0);
+        s.Press("Vjp");
+        Assert.Equal("new\ntail\n", s.Text);
+        Assert.False(s.Engine.Marks.ContainsKey("a"));
+        s.Press("u");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal("foo\nbar\ntail\n", s.Text);
+        Assert.Equal(5, s.Caret);
     }
 
     [Fact]
