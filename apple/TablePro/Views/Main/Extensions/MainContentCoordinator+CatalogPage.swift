@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-// A first page built on a column list from the connection's catalog. Its SQL text says which queries were built on it.
+// A first page built on a column list from the connection's catalog. SQL text says which queries were built on which list.
 struct CatalogPage {
     enum Standing {
         case awaiting
@@ -18,9 +18,11 @@ struct CatalogPage {
     var key: String
     var tableName: String
     var scope: DatabaseScope
-    let list: SchemaColumnStore.Entry
-    let query: String
+    // Each query built on a list no read beside it confirmed: a rerun folds by that list and is judged as it ran.
+    var builtQueries: [String: SchemaColumnStore.Entry]
     var standing = Standing.awaiting
+    // The list the verdict that found the page outdated was read with, so Reload needs no read of its own.
+    var confirmed: SchemaColumnStore.Entry?
 }
 
 // Taken when a run starts, so the verdict describes the state that run was built from.
@@ -79,18 +81,26 @@ extension MainContentCoordinator {
             key: schemaColumnsKey(tableName, scope: scope),
             tableName: tableName,
             scope: scope,
-            list: list,
-            query: tab.content.query
+            builtQueries: [tab.content.query: list]
         )
         tabSessionRegistry.setCatalogPage(page, for: tabId)
     }
 
+    // Reload builds on a list it did not read, so its run is judged by the SQL it sends, like the first page's.
+    func noteCatalogPageQuery(ofTab tabId: UUID, builtOn list: SchemaColumnStore.Entry) {
+        guard var page = tabSessionRegistry.catalogPage(for: tabId),
+              let query = tabManager.tabs.first(where: { $0.id == tabId })?.content.query
+        else { return }
+        page.builtQueries[query] = list
+        tabSessionRegistry.setCatalogPage(page, for: tabId)
+    }
+
     func catalogPageList(of tab: QueryTab, sql: String) -> SchemaColumnStore.Entry? {
-        guard let page = tabSessionRegistry.catalogPage(for: tab.id), page.query == sql,
+        guard let page = tabSessionRegistry.catalogPage(for: tab.id),
               let tableName = tab.tableContext.tableName,
               page.key == schemaColumnsKey(tableName, scope: scope(for: tab))
         else { return nil }
-        return page.list
+        return page.builtQueries[sql]
     }
 
     func catalogPageCheck(for tab: QueryTab, sql: String, scope: DatabaseScope) -> CatalogPageCheck? {
@@ -104,7 +114,7 @@ extension MainContentCoordinator {
             scope: scope,
             hint: PluginManager.shared.defaultSortHint(for: connection.type, table: tableName),
             sql: sql,
-            isBuiltOnCatalog: page.query == sql,
+            isBuiltOnCatalog: page.builtQueries[sql] != nil,
             confirmedAtStart: schemaColumns.cached(page.key),
             awaitsConfirmation: page.standing == .awaiting
         )
@@ -165,8 +175,9 @@ extension MainContentCoordinator {
         if page.standing == .awaiting {
             discardCatalogColumns(of: page)
             page.standing = .outdated
-            tabSessionRegistry.setCatalogPage(page, for: tabId)
         }
+        page.confirmed = confirmed
+        tabSessionRegistry.setCatalogPage(page, for: tabId)
         guard page.standing == .outdated else { return }
         setOutdatedPageNotice(OutdatedPageNotice(tableName: page.tableName, resultSetId: activeResultSetId(of: tabId)), onTab: tabId)
     }
@@ -183,48 +194,48 @@ extension MainContentCoordinator {
         tabManager.tabs.first(where: { $0.id == tabId })?.display.activeResultSet?.id
     }
 
-    // Asks about unsaved edits as Refresh does, and ends as soon as the tab leaves the table it was asked on.
+    // Asks about unsaved edits as Refresh does; with none it reloads at once. The only wait is that question.
     func reloadOutdatedPage(tabId: UUID) {
         guard tabManager.selectedTabId == tabId,
               let tab = tabManager.tabs.first(where: { $0.id == tabId }),
               tab.tabType == .table, tab.outdatedPageNotice != nil,
-              let page = tabSessionRegistry.catalogPage(for: tabId), page.standing == .outdated
+              let page = tabSessionRegistry.catalogPage(for: tabId), page.standing == .outdated,
+              let confirmed = schemaColumns.cached(page.key) ?? page.confirmed
         else { return }
+        commitActiveGridEdit()
         let manager = changeManager(forTab: tabId)
-        // A run, Stop or retarget on the tab moves this, and Reload yields to it.
+        guard manager.hasChanges else {
+            reload(tabId, page: page, on: confirmed)
+            return
+        }
+        // A run, Stop or retarget while the question is up moves this, and Reload yields to it.
         let epoch = tabExecution.contentEpoch(for: tabId)
         let token = UUID()
         catalogPageReloads[tabId]?.task.cancel()
         let task = Task { [weak self] in
             guard let self else { return }
             defer { if catalogPageReloads[tabId]?.token == token { catalogPageReloads[tabId] = nil } }
-            guard stillShows(page, onTab: tabId, since: epoch) else { return }
-            if schemaColumns.cached(page.key) == nil {
-                await loadSchemaColumns(for: page.tableName, scope: page.scope)
-                guard stillShows(page, onTab: tabId, since: epoch) else { return }
-            }
-            guard let confirmed = schemaColumns.cached(page.key) else { return }
-            // After the read, so an edit made while it ran is asked about too.
-            if tabManager.selectedTabId == tabId { commitActiveGridEdit() }
-            if manager.hasChanges {
-                guard await confirmDiscardChanges(action: .refresh, window: contentWindow),
-                      stillShows(page, onTab: tabId, since: epoch)
-                else { return }
-                rowEditingCoordinator.restoreRowBufferToOriginals(forTab: tabId)
-                manager.clearChangesAndUndoHistory()
-            }
-            guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
-            let hint = PluginManager.shared.defaultSortHint(for: connection.type, table: page.tableName)
-            let sort = confirmedSortState(for: tab, builtOn: confirmed, hint: hint)
-            if sort != tab.sortState {
-                tabManager.mutate(tabId: tabId) {
-                    $0.sortState = sort
-                    $0.pagination.reset()
-                }
-            }
-            reloadTableTab(tabId, builtOn: confirmed)
+            guard await confirmDiscardChanges(action: .refresh, window: contentWindow),
+                  stillShows(page, onTab: tabId, since: epoch)
+            else { return }
+            rowEditingCoordinator.restoreRowBufferToOriginals(forTab: tabId)
+            manager.clearChangesAndUndoHistory()
+            reload(tabId, page: page, on: confirmed)
         }
         catalogPageReloads[tabId] = (token, task)
+    }
+
+    private func reload(_ tabId: UUID, page: CatalogPage, on confirmed: SchemaColumnStore.Entry) {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
+        let hint = PluginManager.shared.defaultSortHint(for: connection.type, table: page.tableName)
+        let sort = confirmedSortState(for: tab, builtOn: confirmed, hint: hint)
+        if sort != tab.sortState {
+            tabManager.mutate(tabId: tabId) {
+                $0.sortState = sort
+                $0.pagination.reset()
+            }
+        }
+        reloadTableTab(tabId, builtOn: confirmed)
     }
 
     private func stillShows(_ page: CatalogPage, onTab tabId: UUID, since epoch: Int) -> Bool {

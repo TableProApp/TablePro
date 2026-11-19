@@ -530,35 +530,6 @@ extension GlobalStateSuites {
             #expect(harness.standing == .outdated)
         }
 
-        @Test("A tab moved to another table while Reload reads the columns ends the Reload and the notice")
-        func retargetDuringReloadEndsIt() async throws {
-            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
-            let harness = try await makeHarness(
-                cataloged: [Self.column("id", key: true), Self.column("name")],
-                current: [Self.column("id", key: true), Self.column("name"), Self.column("email")]
-            )
-            defer { tearDown(harness, restoring: behavior) }
-            let tabId = harness.addUsersTab(hiding: ["name"])
-            try await harness.open(tabId)
-            #expect(harness.notice != nil)
-            harness.coordinator.schemaColumns.removeAll()
-            let gate = AsyncGate()
-            harness.driver.fetchColumnsGate = gate
-
-            harness.coordinator.reloadOutdatedPage(tabId: tabId)
-            try await waitUntil { harness.driver.fetchColumnsCallCount == 2 }
-            let reload = try #require(harness.coordinator.catalogPageReloads[tabId]?.task)
-            try harness.coordinator.tabManager.replaceTabContent(tableName: "orders", databaseType: .duckdb, databaseName: "db")
-            harness.coordinator.discardRowsForRetarget(ofTab: tabId)
-            await gate.open()
-            await reload.value
-            await harness.coordinator.queryTasks.task(for: tabId)?.value
-
-            #expect(harness.driver.executedUserQueries.count == 1)
-            #expect(harness.notice == nil)
-            #expect(harness.coordinator.tabSessionRegistry.catalogPage(for: tabId) == nil)
-        }
-
         @Test("A run stopped before its page lands withdraws from the column read it started")
         func stoppedRunWithdrawsItsColumnRead() async throws {
             let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
@@ -615,96 +586,6 @@ extension GlobalStateSuites {
             #expect(harness.driver.executedUserQueries[1].contains("email"))
         }
 
-        @Test("A Reload asked for just before the tab moves to another table never runs or re-sorts it")
-        func retargetBeforeReloadStartsEndsIt() async throws {
-            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
-            let harness = try await makeHarness(
-                cataloged: [Self.column("id", key: true), Self.column("code")],
-                current: [Self.column("id"), Self.column("code", key: true)]
-            )
-            defer { tearDown(harness, restoring: behavior) }
-            let tabId = harness.addUsersTab()
-            try await harness.open(tabId)
-            #expect(harness.notice != nil)
-            #expect(harness.entry != nil)
-
-            harness.coordinator.reloadOutdatedPage(tabId: tabId)
-            let reload = try #require(harness.coordinator.catalogPageReloads[tabId]?.task)
-            try harness.coordinator.tabManager.replaceTabContent(tableName: "orders", databaseType: .duckdb, databaseName: "db")
-            harness.coordinator.discardRowsForRetarget(ofTab: tabId)
-            await reload.value
-            await harness.coordinator.queryTasks.task(for: tabId)?.value
-
-            #expect(harness.driver.executedUserQueries.count == 1)
-            #expect(harness.tab.sortState == SortState())
-            #expect(harness.tab.tableContext.tableName == "orders")
-        }
-
-        @Test("An edit made while Reload reads the columns is asked about, and kept when the answer is no")
-        func editDuringReloadReadIsAskedAbout() async throws {
-            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
-            let harness = try await makeHarness(
-                cataloged: [Self.column("id", key: true), Self.column("name")],
-                current: [Self.column("id", key: true), Self.column("name"), Self.column("email")]
-            )
-            defer { tearDown(harness, restoring: behavior) }
-            let tabId = harness.addUsersTab(hiding: ["name"])
-            try await harness.open(tabId)
-            #expect(harness.notice != nil)
-            harness.coordinator.schemaColumns.removeAll()
-            let gate = AsyncGate()
-            harness.driver.fetchColumnsGate = gate
-
-            harness.coordinator.reloadOutdatedPage(tabId: tabId)
-            let reload = try #require(harness.coordinator.catalogPageReloads[tabId]?.task)
-            try await waitUntil { harness.driver.fetchColumnsCallCount == 2 }
-            let manager = harness.coordinator.changeManager(forTab: tabId)
-            manager.recordCellChange(
-                rowID: .existing(0), columnIndex: 0, columnName: "id", oldValue: "1", newValue: "2", originalRow: ["1"]
-            )
-            harness.coordinator.isShowingConfirmAlert = true
-            await gate.open()
-            await reload.value
-            await harness.coordinator.queryTasks.task(for: tabId)?.value
-            harness.coordinator.isShowingConfirmAlert = false
-
-            #expect(harness.driver.executedUserQueries.count == 1)
-            #expect(manager.hasChanges)
-            #expect(harness.notice != nil)
-        }
-
-        @Test("A Reload still reading the columns yields to Stop or a newer run on the tab", arguments: [true, false])
-        func reloadYieldsToStopOrANewerRun(stops: Bool) async throws {
-            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
-            let harness = try await makeHarness(
-                cataloged: [Self.column("id", key: true), Self.column("name")],
-                current: [Self.column("id", key: true), Self.column("name"), Self.column("email")]
-            )
-            defer { tearDown(harness, restoring: behavior) }
-            let tabId = harness.addUsersTab(hiding: ["name"])
-            try await harness.open(tabId)
-            #expect(harness.notice != nil)
-            harness.coordinator.schemaColumns.removeAll()
-            let gate = AsyncGate()
-            harness.driver.fetchColumnsGate = gate
-
-            harness.coordinator.reloadOutdatedPage(tabId: tabId)
-            let reload = try #require(harness.coordinator.catalogPageReloads[tabId]?.task)
-            try await waitUntil { harness.driver.fetchColumnsCallCount == 2 }
-            if stops {
-                harness.coordinator.stopExecution(for: tabId)
-            } else {
-                harness.coordinator.executeTableTabQueryDirectly(onTab: tabId, trigger: .autoRefresh, viewport: .keepPlace)
-            }
-            await gate.open()
-            await reload.value
-            try await harness.runUntilSettled(tabId, queries: stops ? 1 : 2)
-            await harness.coordinator.queryTasks.task(for: tabId)?.value
-
-            #expect(harness.driver.executedUserQueries.count == (stops ? 1 : 2))
-            #expect(harness.notice != nil)
-        }
-
         @Test("A renamed table keeps its notice under the new name, and Reload loads it there")
         func renamedTableKeepsItsNoticeAndReload() async throws {
             let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
@@ -728,6 +609,82 @@ extension GlobalStateSuites {
             #expect(harness.driver.executedUserQueries[1].contains("email"))
             #expect(harness.notice == nil)
             #expect(harness.standing == nil)
+        }
+
+        @Test("Reload builds on the list the verdict confirmed and reads no columns of its own")
+        func reloadReadsNoColumnsOfItsOwn() async throws {
+            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+            let harness = try await makeHarness(
+                cataloged: [Self.column("id", key: true), Self.column("name")],
+                current: [Self.column("id", key: true), Self.column("name"), Self.column("email")]
+            )
+            defer { tearDown(harness, restoring: behavior) }
+            let tabId = harness.addUsersTab(hiding: ["name"])
+            try await harness.open(tabId)
+            #expect(harness.notice != nil)
+            harness.coordinator.schemaColumns.removeAll()
+            let reads = harness.driver.fetchColumnsCallCount
+
+            harness.coordinator.reloadOutdatedPage(tabId: tabId)
+            #expect(harness.tab.content.query.contains("email"))
+            #expect(harness.driver.fetchColumnsCallCount == reads)
+
+            try await harness.runUntilSettled(tabId, queries: 2)
+            #expect(harness.notice == nil)
+            #expect(harness.standing == nil)
+        }
+
+        @Test("A Reload built on a list the table has since moved past keeps the notice once its own read shows that")
+        func reloadOnAnOlderConfirmedListKeepsTheNotice() async throws {
+            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+            let harness = try await makeHarness(
+                cataloged: [Self.column("id", key: true), Self.column("name")],
+                current: [Self.column("id", key: true), Self.column("name"), Self.column("email")]
+            )
+            defer { tearDown(harness, restoring: behavior) }
+            let tabId = harness.addUsersTab(hiding: ["name"])
+            try await harness.open(tabId)
+            #expect(harness.notice != nil)
+            harness.coordinator.schemaColumns.removeAll()
+            harness.driver.columnsToReturn["users"] = [
+                Self.column("id", key: true), Self.column("name"), Self.column("email"), Self.column("phone")
+            ]
+
+            harness.coordinator.reloadOutdatedPage(tabId: tabId)
+            try await harness.runUntilSettled(tabId, queries: 2)
+
+            #expect(harness.driver.executedUserQueries[1].contains("email"))
+            #expect(harness.driver.executedUserQueries[1].contains("phone") == false)
+            #expect(harness.tab.shownOutdatedPageNotice != nil)
+            #expect(harness.standing == .outdated)
+        }
+
+        @Test("Reload over unsaved edits asks first, and a No keeps the edits, the rows and the notice")
+        func reloadWithEditsAsksFirst() async throws {
+            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+            let harness = try await makeHarness(
+                cataloged: [Self.column("id", key: true), Self.column("name")],
+                current: [Self.column("id", key: true), Self.column("name"), Self.column("email")]
+            )
+            defer { tearDown(harness, restoring: behavior) }
+            let tabId = harness.addUsersTab(hiding: ["name"])
+            try await harness.open(tabId)
+            #expect(harness.notice != nil)
+            let manager = harness.coordinator.changeManager(forTab: tabId)
+            manager.recordCellChange(
+                rowID: .existing(0), columnIndex: 0, columnName: "id", oldValue: "1", newValue: "2", originalRow: ["1"]
+            )
+            harness.coordinator.isShowingConfirmAlert = true
+
+            harness.coordinator.reloadOutdatedPage(tabId: tabId)
+            let asking = try #require(harness.coordinator.catalogPageReloads[tabId]?.task)
+            await asking.value
+            await harness.coordinator.queryTasks.task(for: tabId)?.value
+            harness.coordinator.isShowingConfirmAlert = false
+
+            #expect(harness.driver.executedUserQueries.count == 1)
+            #expect(manager.hasChanges)
+            #expect(harness.notice != nil)
         }
 
         @Test("A dismissed notice stays down for later pages of the same query")

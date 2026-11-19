@@ -104,6 +104,7 @@ extension MainContentCoordinator {
         // A refresh retires the earlier exact count, else the automatic count refuses to re-derive rather than downgrade it to an estimate.
         tabManager.mutate(tabId: tabId) { $0.pagination.retireDerivedRowCount() }
         filterCoordinator.rebuildTableQuery(forTab: tabId, builtOn: schema)
+        if let schema { noteCatalogPageQuery(ofTab: tabId, builtOn: schema) }
         runQuery(onTab: tabId, viewport: .keepPlace)
         // The next tick counts from this load settling, not from the last one.
         if tabManager.selectedTabId == tabId {
