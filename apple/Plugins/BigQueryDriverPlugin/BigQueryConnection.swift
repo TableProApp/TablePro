@@ -670,7 +670,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
         request.httpBody = try JSONEncoder().encode(statement)
         let stop = BigQueryStopSignal()
         let submission = Task { [self] () throws -> BQQueryResponse in
-            try await decode(send(request, stop: stop))
+            try await decode(send(request, stop: stop, bodyLimit: BigQueryStatementPolicy.answerByteLimit))
         }
         do {
             return try await BigQueryStoppableRequest.value(
@@ -813,11 +813,15 @@ internal final class BigQueryConnection: @unchecked Sendable {
         return session
     }
 
-    private func send(_ request: URLRequest, stop: BigQueryStopSignal? = nil) async throws -> Data {
+    private func send(
+        _ request: URLRequest,
+        stop: BigQueryStopSignal? = nil,
+        bodyLimit: Int? = nil
+    ) async throws -> Data {
         let answer = try await BigQueryRequestLoop.run(
             isStopped: { stop?.isStopped == true },
             authorize: { try await accessToken() },
-            send: { token in try await perform(request, token: token) },
+            send: { token in try await perform(request, token: token, bodyLimit: bodyLimit) },
             refreshToken: { await tokenProvider.invalidateCachedToken() },
             backoff: { attempt in
                 Self.logger.info("BigQuery rate limited, retry \(attempt, privacy: .public)")
@@ -833,20 +837,31 @@ internal final class BigQueryConnection: @unchecked Sendable {
         return answer.data
     }
 
-    private func perform(_ request: URLRequest, token: String) async throws -> BigQueryRequestLoop.Answer {
+    private func perform(
+        _ request: URLRequest,
+        token: String,
+        bodyLimit: Int?
+    ) async throws -> BigQueryRequestLoop.Answer {
         let session = try currentSession()
         var authorized = request
         authorized.timeoutInterval = lock.withLock { connectDeadline }?.remainingSeconds()
             ?? requestTimeout.requestTimeoutInterval
         authorized.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
-            let (data, response) = try await session.data(for: authorized)
+            let (data, response): (Data, URLResponse)
+            if let bodyLimit {
+                (data, response) = try await BoundedHTTPRead.data(for: authorized, session: session, limit: bodyLimit)
+            } else {
+                (data, response) = try await session.data(for: authorized)
+            }
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw BigQueryError.invalidResponse
             }
             return BigQueryRequestLoop.Answer(status: httpResponse.statusCode, data: data)
         } catch let error as BigQueryError {
             throw error
+        } catch is BoundedHTTPRead.BodyTooLarge {
+            throw BigQueryError.invalidResponse
         } catch {
             throw BigQueryError.wrap(error)
         }

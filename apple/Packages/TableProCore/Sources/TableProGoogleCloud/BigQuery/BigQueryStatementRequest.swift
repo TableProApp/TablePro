@@ -14,6 +14,9 @@ public enum BigQueryStatementPolicy {
     // wait; past this the request is cancelled and the reference given up.
     public static let stoppedRequestLimit: Duration = .seconds(10)
 
+    // The server caps an answer at 10 MB; more than this is not BigQuery, and the read stops there.
+    public static let answerByteLimit = 32 * 1_024 * 1_024
+
     // jobs.query reports a statement the server refuses as an HTTP error, where jobs.insert reported it on the job.
     public static func isStatementRefusal(status: Int) -> Bool {
         status == 400 || status == 403 || status == 404
