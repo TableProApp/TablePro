@@ -578,7 +578,11 @@ mod tests {
             wait_until(WAIT, || test.window.is_active()).expect("the window to take the focus");
             let keys = KeyInjector::connect().expect("an X11 display");
             let bar: gtk::Widget = shell.imp().tab_bar.get().upcast();
-            wait_until(WAIT, || tab_widget(&bar, BAR_TAB, &page, None).is_some()).expect("the tab in the bar");
+            // The bar reveals itself once the second tab opens, and its tabs have no width until that allocates them.
+            wait_until(WAIT, || {
+                tab_widget(&bar, BAR_TAB, &page, None).is_some_and(|tab| tab.width() > 0)
+            })
+            .expect("the tab in the bar");
             let tab = tab_widget(&bar, BAR_TAB, &page, None).expect("the tab in the bar");
             let middle = (tab.width() as f32 / 2.0, tab.height() as f32 / 2.0);
             let field_open = || field(&shell).is_some_and(|(popover, _)| popover.is_visible());
