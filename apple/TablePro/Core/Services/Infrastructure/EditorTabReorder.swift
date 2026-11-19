@@ -72,7 +72,7 @@ internal struct EditorTabReorder: Equatable {
 internal enum EditorTabReorderResolver {
     /// `location` is measured in the track's *content* space, so it is unaffected by how far the
     /// track has scrolled. Tabs share the track equally, which is what makes a width enough to
-    /// place a point; `EditorTabStripLayout.tabWidth(forTrack:count:)` is the one that produced it.
+    /// place a point; `EditorTabStripLayout.tabWidth(forViewport:count:)` is the one that produced it.
     internal static func destination(
         forLocation location: CGFloat,
         tabWidth: CGFloat,

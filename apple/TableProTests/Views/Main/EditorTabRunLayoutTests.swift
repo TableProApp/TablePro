@@ -5,128 +5,148 @@
 
 import CoreGraphics
 import Foundation
+@testable import TablePro
 import Testing
 
-@testable import TablePro
-
 struct EditorTabRunLayoutTests {
-    private static let trackWidth: CGFloat = 604
+    private static let minimum = EditorTabStripLayout.minimumTabWidth
 
-    @Test("Tabs that fit share the track in one row")
-    func fittingTabsShareOneRow() {
-        let run = EditorTabRunLayoutBuilder.run(forTrack: Self.trackWidth, count: 3, overflow: .scroll)
+    @Test("Tabs that fit share the viewport equally and do not scroll")
+    func tabsThatFitShareTheViewport() {
+        let run = EditorTabRunLayout(viewportWidth: 1_180, count: 4)
 
-        #expect(run.rowCount == 1)
-        #expect(run.placements.count == 3)
-        #expect(run.tabWidth == 200)
-        #expect(run.placements.map(\.frame.minX) == [0, 200, 400])
-        #expect(run.placements.allSatisfy { $0.row == 0 })
+        #expect(run.tabWidth == 295)
+        #expect(run.contentWidth == 1_180)
+        #expect(run.maximumOffset == 0)
+        #expect(run.frames(offset: 0).map(\.width) == [295, 295, 295, 295])
     }
 
-    @Test("Scrolling keeps one row and lets the content run past the track")
-    func scrollingKeepsOneRow() {
-        let run = EditorTabRunLayoutBuilder.run(forTrack: Self.trackWidth, count: 12, overflow: .scroll)
+    @Test("Tabs stop shrinking at the minimum and the content runs past the viewport")
+    func crowdedTabsScroll() {
+        let run = EditorTabRunLayout(viewportWidth: 600, count: 10)
 
-        #expect(run.rowCount == 1)
-        #expect(run.tabWidth == EditorTabStripLayout.minimumTabWidth)
-        #expect(run.contentSize.width == EditorTabStripLayout.minimumTabWidth * 12)
-        #expect(run.contentSize.width > Self.trackWidth)
+        #expect(run.tabWidth == Self.minimum)
+        #expect(run.contentWidth == Self.minimum * 10)
+        #expect(run.maximumOffset == Self.minimum * 10 - 600)
     }
 
-    /// The whole point of the wrapped run: nothing is off screen, so a tab opened first is still
-    /// reachable however many followed it.
-    @Test("Wrapping never runs wider than the track")
-    func wrappingNeverOverflows() {
-        let run = EditorTabRunLayoutBuilder.run(forTrack: Self.trackWidth, count: 12, overflow: .rows)
-
-        #expect(run.tabsPerRow == 5)
-        #expect(run.rowCount == 3)
-        #expect(run.contentSize.width <= Self.trackWidth)
-        #expect(run.placements.map(\.row) == [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2])
-    }
-
-    @Test("A wrapped run stacks its rows by the row stride")
-    func wrappedRowsStack() {
-        let run = EditorTabRunLayoutBuilder.run(forTrack: Self.trackWidth, count: 7, overflow: .rows)
-        let second = run.placement(at: 5)
-
-        #expect(second?.row == 1)
-        #expect(second?.frame.minY == EditorTabStripLayout.rowStride)
-        #expect(second?.frame.minX == 0)
-    }
-
-    /// A narrow window still shows one tab per row rather than dividing by zero.
-    @Test("A track narrower than one tab keeps a single column")
-    func narrowTrackKeepsOneColumn() {
-        let run = EditorTabRunLayoutBuilder.run(forTrack: 40, count: 4, overflow: .rows)
-
-        #expect(run.tabsPerRow == 1)
-        #expect(run.rowCount == 4)
-    }
-
-    @Test("An empty run is empty rather than a single zero-width tab")
+    @Test("An empty run has no frames and nowhere to scroll")
     func emptyRun() {
-        #expect(EditorTabRunLayoutBuilder.run(forTrack: Self.trackWidth, count: 0, overflow: .scroll) == .empty)
-        #expect(EditorTabRunLayoutBuilder.run(forTrack: 0, count: 4, overflow: .scroll) == .empty)
+        let run = EditorTabRunLayout(viewportWidth: 600, count: 0)
+
+        #expect(run.frames(offset: 0).isEmpty)
+        #expect(run.maximumOffset == 0)
     }
 
-    @Test("A point inside a tab resolves to it, and the gap after a wrapped last row to nothing")
-    func hitTesting() {
-        let run = EditorTabRunLayoutBuilder.run(forTrack: Self.trackWidth, count: 6, overflow: .rows)
+    @Test("Neighbouring tabs share an edge at every offset", arguments: [0, 137, 480, 1_000] as [CGFloat])
+    func tabsLeaveNoGaps(offset: CGFloat) {
+        let frames = EditorTabRunLayout(viewportWidth: 600, count: 14).frames(offset: offset)
 
-        #expect(EditorTabRunLayoutBuilder.index(at: CGPoint(x: 10, y: 10), in: run) == 0)
-        #expect(EditorTabRunLayoutBuilder.index(at: CGPoint(x: 130, y: 10), in: run) == 1)
-        #expect(
-            EditorTabRunLayoutBuilder.index(
-                at: CGPoint(x: 400, y: EditorTabStripLayout.rowStride + 10),
-                in: run
-            ) == nil
-        )
+        for (leading, trailing) in zip(frames, frames.dropFirst()) {
+            #expect(leading.maxX == trailing.minX)
+        }
     }
 
-    @Test("The close button sits in the tab's leading accessory slot")
-    func closeButtonRect() throws {
-        let run = EditorTabRunLayoutBuilder.run(forTrack: Self.trackWidth, count: 3, overflow: .scroll)
-        let placement = try #require(run.placement(at: 1))
-        let rect = EditorTabRunLayoutBuilder.closeButtonRect(in: placement.frame)
+    @Test("Every tab stays inside the viewport while the run scrolls", arguments: [0, 137, 480, 1_080] as [CGFloat])
+    func tabsStayInsideTheViewport(offset: CGFloat) {
+        let run = EditorTabRunLayout(viewportWidth: 600, count: 14)
+        let origin = run.clamped(offset: offset)
 
-        #expect(rect.minX == 200 + EditorTabStripLayout.accessoryInset)
-        #expect(rect.width == EditorTabStripLayout.accessoryWidth)
-        #expect(rect.midY == EditorTabStripLayout.tabHeight / 2)
+        for frame in run.frames(offset: offset) {
+            #expect(frame.minX >= origin - 1)
+            #expect(frame.maxX <= origin + 600 + 1)
+        }
     }
 
-    /// One row is already the axis the reorder resolves along, so it is passed through untouched.
-    @Test("A single row projects onto its own x")
-    func singleRowLinearLocation() {
-        let run = EditorTabRunLayoutBuilder.run(forTrack: Self.trackWidth, count: 3, overflow: .scroll)
+    @Test("Tabs past the trailing edge narrow as they get further away")
+    func trailingTabsCollapse() {
+        let widths = EditorTabRunLayout(viewportWidth: 1_180, count: 20).frames(offset: 0).map(\.width)
 
-        #expect(EditorTabRunLayoutBuilder.linearLocation(of: CGPoint(x: 250, y: 5), in: run) == 250)
+        #expect(widths.prefix(6).allSatisfy { $0 == Self.minimum })
+        #expect(widths.allSatisfy { $0 <= Self.minimum })
+        // Edges land on whole points, so two far tabs can differ by one point either way.
+        let collapsing = Array(widths.dropFirst(7))
+        for (nearer, further) in zip(collapsing, collapsing.dropFirst()) {
+            #expect(further <= nearer + 1)
+        }
+        #expect(widths.last ?? Self.minimum < Self.minimum / 2)
     }
 
-    /// A wrapped run is projected onto the run it would have been unwrapped, so the reorder keeps
-    /// one rule with its midpoint hysteresis rather than growing a second one for rows.
-    @Test("A wrapped row contributes a whole row of tabs to the location")
-    func wrappedLinearLocation() {
-        let run = EditorTabRunLayoutBuilder.run(forTrack: Self.trackWidth, count: 12, overflow: .rows)
-        let secondRow = CGPoint(x: 30, y: EditorTabStripLayout.rowStride + 5)
+    @Test("Collapsed tabs fill the viewport up to its edge", arguments: [16, 40, 120])
+    func collapsedTabsReachTheEdge(count: Int) {
+        let run = EditorTabRunLayout(viewportWidth: 1_180, count: count)
 
-        #expect(
-            EditorTabRunLayoutBuilder.linearLocation(of: secondRow, in: run)
-                == run.tabWidth * CGFloat(run.tabsPerRow) + 30
-        )
+        #expect(run.frames(offset: 0).last?.maxX == 1_180)
+
+        let end = run.maximumOffset
+        #expect(run.frames(offset: end).first?.minX == end)
     }
 
-    /// A drag that leaves the strip above or below still resolves against the nearest row rather
-    /// than jumping to the start of the run.
-    @Test("A point above or below the run clamps to the first and last rows")
-    func clampedRows() {
-        let run = EditorTabRunLayoutBuilder.run(forTrack: Self.trackWidth, count: 12, overflow: .rows)
-        let rowWidth = run.tabWidth * CGFloat(run.tabsPerRow)
+    @Test("A point on a collapsed tab resolves to that tab's slot")
+    func collapsedTabResolvesToItsSlot() {
+        let run = EditorTabRunLayout(viewportWidth: 600, count: 10)
+        let frames = run.frames(offset: 0)
 
-        #expect(EditorTabRunLayoutBuilder.linearLocation(of: CGPoint(x: 10, y: -200), in: run) == 10)
-        #expect(
-            EditorTabRunLayoutBuilder.linearLocation(of: CGPoint(x: 10, y: 5_000), in: run)
-                == rowWidth * 2 + 10
-        )
+        for index in frames.indices where frames[index].width > 1 {
+            let location = run.slotLocation(ofContentX: frames[index].midX, offset: 0)
+            #expect(Int(location / run.tabWidth) == index, "tab \(index) resolved to \(location)")
+        }
+    }
+
+    @Test("Slots match the drawn run where nothing is collapsed")
+    func uniformRunMapsToItself() {
+        let run = EditorTabRunLayout(viewportWidth: 1_200, count: 4)
+
+        #expect(run.slotLocation(ofContentX: 450, offset: 0) == 450)
+    }
+
+    @Test("A point past either end resolves to that end of the run")
+    func pointsPastTheEndsClamp() {
+        let run = EditorTabRunLayout(viewportWidth: 600, count: 10)
+
+        #expect(run.slotLocation(ofContentX: -20, offset: 0) == 0)
+        #expect(run.slotLocation(ofContentX: 5_000, offset: 0) == run.contentWidth)
+    }
+
+    @Test("The first tab is full width at the start and the last one at the end")
+    func edgesAreFullWidthAtTheirEnds() {
+        let run = EditorTabRunLayout(viewportWidth: 600, count: 14)
+
+        #expect(run.frames(offset: 0).first?.width == Self.minimum)
+        #expect(run.frames(offset: run.maximumOffset).last?.width == Self.minimum)
+    }
+
+    @Test("An elastic overscroll lays out as the nearest real offset")
+    func overscrollClamps() {
+        let run = EditorTabRunLayout(viewportWidth: 600, count: 14)
+
+        #expect(run.frames(offset: -40) == run.frames(offset: 0))
+        #expect(run.frames(offset: run.maximumOffset + 40) == run.frames(offset: run.maximumOffset))
+    }
+
+    @Test("Revealing a tab shows it at full width from either side", arguments: [0, 5, 13])
+    func revealShowsTheTab(index: Int) {
+        let run = EditorTabRunLayout(viewportWidth: 800, count: 14)
+
+        for start in [0, run.maximumOffset / 2, run.maximumOffset] {
+            let offset = run.revealOffset(forTabAt: index, from: start)
+            #expect(run.frames(offset: offset)[index].width == Self.minimum)
+        }
+    }
+
+    @Test("A tab already showing does not move the run")
+    func revealLeavesAVisibleTabAlone() {
+        let run = EditorTabRunLayout(viewportWidth: 1_200, count: 14)
+        let offset = run.maximumOffset / 2
+        let index = Int((offset + 600) / run.tabWidth)
+
+        #expect(run.revealOffset(forTabAt: index, from: offset) == offset)
+    }
+
+    @Test("A run that fits never scrolls to reveal")
+    func revealOnARunThatFits() {
+        let run = EditorTabRunLayout(viewportWidth: 1_200, count: 4)
+
+        #expect(run.revealOffset(forTabAt: 3, from: 0) == 0)
     }
 }
