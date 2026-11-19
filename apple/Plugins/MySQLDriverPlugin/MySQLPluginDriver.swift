@@ -1074,7 +1074,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// reconnect.
     ///
     /// The `USE` stays unsent only while this session is proven on the database: the connection saw its own `USE`
-    /// succeed and every statement since stay put, and the footprint is clean. Every other case sends it.
+    /// succeed and every statement since stay put, and the footprint is clean. Every other case sends it. A `USE` left
+    /// out no longer resets `ROW_COUNT()` or the warning list, so they answer for the user's own last statement.
     func switchDatabase(to database: String) async throws {
         guard !flavor.isStarRocks else {
             return try await enterStarRocks(starrocksScope.entering(catalog: database))

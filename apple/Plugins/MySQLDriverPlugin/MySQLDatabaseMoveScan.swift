@@ -202,14 +202,6 @@ nonisolated internal enum MySQLDatabaseMoveScan {
     }
 }
 
-// Names what a `USE` resets: ROW_COUNT(), FOUND_ROWS(), the warning and error lists and their counts, the session
-// status counters and the profiling list. A word that only looks like one costs the `USE` a skip would have saved.
-internal func mysqlStatementReadsSessionDiagnostics(_ sql: String) -> Bool {
-    sessionDiagnosticsWords.contains { sql.range(of: $0, options: [.caseInsensitive, .literal]) != nil }
-}
-
-private let sessionDiagnosticsWords = ["ROW_COUNT", "FOUND_ROWS", "WARNING", "ERROR", "DIAGNOSTICS", "STATUS", "PROFIL"]
-
 // Advanced on the connection's queue, so it follows the order statements reach the server.
 nonisolated internal struct MySQLSessionDatabaseProof: Equatable, Sendable {
     private(set) var database: String?
