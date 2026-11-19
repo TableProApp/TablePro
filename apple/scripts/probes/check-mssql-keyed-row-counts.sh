@@ -52,8 +52,8 @@ ln -s "$ROOT/Plugins/MSSQLDriverPlugin/CFreeTDS" "$WORK/CFreeTDS"
 # The plugin target's sources: its folder plus the shared files the DriverPlugin template in project.yml adds.
 for source in "$ROOT"/Plugins/MSSQLDriverPlugin/*.swift "$ROOT"/Plugins/Shared/PluginConnectTimeout.swift \
     "$ROOT"/Plugins/Shared/PluginQueryTimeout.swift "$ROOT"/Plugins/Shared/PluginURLSessionTaskBox.swift \
-    "$ROOT"/Plugins/Shared/PluginRedirectRefusingDelegate.swift; do
-    ln -s "$source" "$WORK/Sources/Check/$(basename "$source")"
+    "$ROOT"/Plugins/Shared/PluginRedirectRefusingDelegate.swift "$ROOT"/Plugins/Shared/PluginNameSpellings.swift; do
+    [ -f "$source" ] && ln -s "$source" "$WORK/Sources/Check/$(basename "$source")"
 done
 
 cat > "$WORK/Package.swift" << MANIFEST

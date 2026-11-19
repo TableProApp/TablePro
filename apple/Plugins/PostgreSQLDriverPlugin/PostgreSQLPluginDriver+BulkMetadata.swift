@@ -75,7 +75,9 @@ extension PostgreSQLPluginDriver {
         keepsSpellingsApart: Bool
     ) throws -> [String: [PluginIndexInfo]] {
         if keepsSpellingsApart {
-            try PostgreSQLCatalogExport.requireDistinctSpellings((rows + spellingRows).compactMap { $0.first?.asText })
+            try PluginNameSpellings.requireDistinctSpellings(
+                (rows + spellingRows).compactMap { $0.first?.asText }, failure: PostgreSQLCatalogReadError.twinRelations
+            )
         }
         let ddl = PostgreSQLIndexQueries.indexDDL(rows: spellingRows)
         var indexes: [String: [PluginIndexInfo]] = [:]
