@@ -33,6 +33,7 @@ actor CassandraConnectionActor {
     private var session: OpaquePointer? // CassSession*
     private var currentKeyspace: String?
     private var resumePoints = CassandraResumePoints()
+    private var preparedBrowses = CassandraPreparedCache<OpaquePointer>()
     private static let cancellationPollMicroseconds: cass_duration_t = 50_000
     private static let queryPageSize: Int32 = 5_000
 
@@ -220,6 +221,7 @@ actor CassandraConnectionActor {
     }
 
     func close() {
+        preparedBrowses.removeAll().forEach { cass_prepared_free($0) }
         if let session {
             let closeFuture = cass_session_close(session)
             if let closeFuture {
@@ -251,7 +253,7 @@ actor CassandraConnectionActor {
         guard let session else {
             throw CassandraPluginError.notConnected
         }
-        forgetResumePointsUnlessRead(cql)
+        forgetBrowseStateUnlessRead(cql)
 
         let startTime = Date()
         do {
@@ -318,7 +320,7 @@ actor CassandraConnectionActor {
         }
 
         let startTime = Date()
-        forgetResumePointsUnlessRead(cql)
+        forgetBrowseStateUnlessRead(cql)
         try cancellation?.check()
         let prepared = try prepare(cql, on: session, cancellation: cancellation)
         defer { cass_prepared_free(prepared) }
@@ -367,17 +369,17 @@ actor CassandraConnectionActor {
         try cancellation.check()
         var browse = browse
         var ranFallback = false
-        let prepared: OpaquePointer
+        let prepared: PreparedBrowse
         do {
-            prepared = try prepare(browse.cql, on: session, cancellation: cancellation)
+            prepared = try preparedBrowse(browse.cql, on: session, cancellation: cancellation)
         } catch let error where !(error is CancellationError) {
             guard let fallback else { throw error }
             Self.logger.info("Browse refused, running it without TTL selectors: \(error.localizedDescription)")
             browse = fallback
             ranFallback = true
-            prepared = try prepare(browse.cql, on: session, cancellation: cancellation)
+            prepared = try preparedBrowse(browse.cql, on: session, cancellation: cancellation)
         }
-        defer { cass_prepared_free(prepared) }
+        defer { release(prepared) }
 
         let pageSize = CassandraResumePoints.pageSize(forLimit: browse.window.limit)
         let key = CassandraResumePoints.key(
@@ -391,11 +393,20 @@ actor CassandraConnectionActor {
 
         let read: (header: (columns: [String], typeNames: [String])?, rows: [[PluginCellValue]])
         do {
-            read = try self.walk(walk, from: resume, prepared: prepared, session: session, cancellation: cancellation)
-        } catch let error where resume != nil && !(error is CancellationError) {
-            Self.logger.info("Browse resume point refused, walking from the first row: \(error.localizedDescription)")
-            resumePoints.remove(key)
-            read = try self.walk(walk, from: nil, prepared: prepared, session: session, cancellation: cancellation)
+            do {
+                read = try self.walk(
+                    walk, from: resume, prepared: prepared.statement, session: session, cancellation: cancellation
+                )
+            } catch let error where resume != nil && !(error is CancellationError) {
+                Self.logger.info("Browse resume point refused, walking from the first row: \(error.localizedDescription)")
+                resumePoints.remove(key)
+                read = try self.walk(
+                    walk, from: nil, prepared: prepared.statement, session: session, cancellation: cancellation
+                )
+            }
+        } catch {
+            if !(error is CancellationError) { forget(prepared) }
+            throw error
         }
 
         let result = CassandraRawResult(
@@ -462,12 +473,53 @@ actor CassandraConnectionActor {
         return (header, rows)
     }
 
-    /// A statement that is not a read can change the rows a walk counted, so the points it left no longer mark
-    /// the rows they did.
-    private func forgetResumePointsUnlessRead(_ cql: String) {
+    // A statement that is not a read can change the rows a walk counted, so the points it left no longer mark the
+    // rows they did, and the table a prepared browse was bound to may have changed shape before the driver hears.
+    private func forgetBrowseStateUnlessRead(_ cql: String) {
         let leading = cql.drop { $0.isWhitespace || $0 == "(" }.prefix(6).uppercased()
         guard leading != "SELECT" else { return }
         resumePoints.removeAll()
+        preparedBrowses.removeAll().forEach { cass_prepared_free($0) }
+    }
+
+    // The cache owns a statement it holds, and nothing evicts one during a browse: this actor runs one at a time.
+    private struct PreparedBrowse {
+        let statement: OpaquePointer
+        let cacheKey: CassandraPreparedCache<OpaquePointer>.Key?
+    }
+
+    private func preparedBrowse(
+        _ cql: String,
+        on session: OpaquePointer,
+        cancellation: CassandraCancellation
+    ) throws -> PreparedBrowse {
+        guard CassandraBrowseSource(cql: cql)?.isReusable == true else {
+            return PreparedBrowse(statement: try prepare(cql, on: session, cancellation: cancellation), cacheKey: nil)
+        }
+        let key = CassandraPreparedCache<OpaquePointer>.Key(cql: cql, schemaVersion: Self.schemaVersion(of: session))
+        if let cached = preparedBrowses.handle(for: key) {
+            return PreparedBrowse(statement: cached, cacheKey: key)
+        }
+        let statement = try prepare(cql, on: session, cancellation: cancellation)
+        preparedBrowses.insert(statement, for: key).forEach { cass_prepared_free($0) }
+        return PreparedBrowse(statement: statement, cacheKey: key)
+    }
+
+    private func release(_ prepared: PreparedBrowse) {
+        guard prepared.cacheKey == nil else { return }
+        cass_prepared_free(prepared.statement)
+    }
+
+    // A reused statement the server refused is prepared again on the next page.
+    private func forget(_ prepared: PreparedBrowse) {
+        guard let key = prepared.cacheKey, let statement = preparedBrowses.remove(key) else { return }
+        cass_prepared_free(statement)
+    }
+
+    private static func schemaVersion(of session: OpaquePointer) -> UInt32 {
+        guard let schema = cass_session_get_schema_meta(session) else { return 0 }
+        defer { cass_schema_meta_free(schema) }
+        return cass_schema_meta_snapshot_version(schema)
     }
 
     private func prepare(
@@ -572,8 +624,16 @@ actor CassandraConnectionActor {
         return rows
     }
 
+    // The host moves the session before every scoped operation. Prepared browses name their keyspace and resume points
+    // are keyed on it, so this switch keeps both, where a `USE` typed in the editor clears them.
     func switchKeyspace(_ keyspace: String) throws {
-        _ = try executeQuery("USE \(SQLQuoting.identifier(keyspace))", consistency: nil)
+        guard let session else {
+            throw CassandraPluginError.notConnected
+        }
+        _ = try executePaged(
+            "USE \(SQLQuoting.identifier(keyspace))", pageSize: nil, consistency: nil, session: session,
+            cancellation: nil, startTime: Date()
+        )
         currentKeyspace = keyspace
     }
 
@@ -972,7 +1032,7 @@ actor CassandraConnectionActor {
         }
 
         guard !abort.isAborted else { return }
-        forgetResumePointsUnlessRead(cql)
+        forgetBrowseStateUnlessRead(cql)
 
         let pageSize: Int32 = 5_000
         let statement = cass_statement_new(cql, 0)

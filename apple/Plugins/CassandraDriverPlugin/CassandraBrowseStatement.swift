@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProCassandraCore
 import TableProPluginKit
 import TableProSQLQuoting
 
@@ -52,6 +53,17 @@ struct CassandraBrowseStatement: Equatable, Sendable {
     // The run keys its resume points on the CQL it sends.
     func sending(_ cql: String) -> CassandraBrowseStatement {
         CassandraBrowseStatement(window: window, cql: cql)
+    }
+
+    // The table in the keyspace the session is in, so a prepared copy reads that table however the session moves.
+    // Its lifetimes and resume points already belong to that keyspace.
+    func qualified(in keyspace: String?) -> CassandraBrowseStatement {
+        guard window.keyspace?.isEmpty != false, let keyspace, !keyspace.isEmpty,
+              let source = CassandraBrowseSource(cql: cql), source.keyspace == nil
+        else { return self }
+        var window = window
+        window.keyspace = keyspace
+        return CassandraBrowseStatement(window: window, cql: source.qualified(in: keyspace))
     }
 
     static func parse(_ text: String) -> CassandraBrowseStatement? {
