@@ -448,6 +448,26 @@ final class VimEngineMarksAndRegistersTests {
         #expect(pos == 63)
     }
 
+    @Test("An undo that folds the newest edits restores their marks, not an older edit's with the same text")
+    func undoMatchesTheNewestEditsFirst() {
+        buffer = VimTextBufferMock(text: "aaaa\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        buffer.setSelectedRange(NSRange(location: 3, length: 0))
+        keys("ma")
+        buffer.replaceCharacters(in: NSRange(location: 0, length: 2), with: "")
+        buffer.replaceCharacters(in: NSRange(location: 0, length: 0), with: "aa")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("ma")
+        buffer.replaceCharacters(in: NSRange(location: 0, length: 1), with: "")
+        buffer.replaceCharacters(in: NSRange(location: 0, length: 1), with: "")
+        buffer.replayUndo(in: NSRange(location: 0, length: 0), with: "aa")
+        buffer.setSelectedRange(NSRange(location: 2, length: 0))
+        keys("`a")
+        #expect(buffer.text == "aaaa\n")
+        #expect(pos == 0)
+    }
+
     @Test("A mark keeps its column through a line that shrinks and grows back")
     func markColumnSurvivesAShorterLine() {
         buffer = VimTextBufferMock(text: "abcdef\ntail\n")

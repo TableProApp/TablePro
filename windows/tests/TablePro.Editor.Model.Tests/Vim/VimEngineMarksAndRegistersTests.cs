@@ -337,6 +337,42 @@ public sealed class VimEngineMarksAndRegistersTests
     }
 
     [Fact]
+    public void AnUndoMatchesOnlyTheNewestEdits()
+    {
+        var s = new VimSession("aaaa\n", caret: 3);
+        s.Press("ma02xi");
+        s.Type("aa");
+        s.Escape();
+        s.Press("0mai");
+        // Two Delete presses the history joins into one change, the same text the earlier 2x removed.
+        s.Model.Delete(word: false);
+        s.Model.Delete(word: false);
+        s.Escape();
+        s.Press("u");
+        Assert.Equal("aaaa\n", s.Text);
+        Assert.Equal(0, s.Engine.Marks["a"]);
+    }
+
+    [Fact]
+    public void AnEngineOnADocumentWithStepsUndoneTellsARedoFromAnUndo()
+    {
+        var s = new VimSession("aaa\nbbb\n");
+        s.Engine.Dispose();
+        s.Model.Document.Replace(4, 4, string.Empty);
+        s.Model.Undo();
+        var engine = new VimEngine(s.Model, s, new VimRegisters());
+        s.SetCaret(5);
+        engine.Process("m");
+        engine.Process("a");
+        s.Model.Redo();
+        Assert.Equal("aaa\n", s.Text);
+        Assert.False(engine.Marks.ContainsKey("a"));
+        s.Model.Undo();
+        Assert.Equal("aaa\nbbb\n", s.Text);
+        Assert.Equal(5, engine.Marks["a"]);
+    }
+
+    [Fact]
     public void UndoingAChangeWithALongInsertPutsTheMarkBack()
     {
         var s = new VimSession(Initial, caret: 25);

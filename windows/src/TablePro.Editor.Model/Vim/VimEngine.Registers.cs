@@ -200,13 +200,16 @@ public sealed partial class VimEngine
         {
             RestorePositions(restored);
         }
+        var record = new VimEditRecord(change.Offset, change.RemovedText, change.InsertedText, before, undoes == true);
         // Only an edit on a line that holds a position can lose one, so typing elsewhere keeps the journal short and
-        // never pushes out the record an undo step still needs.
-        if (!touchesPositions && restored is null)
+        // never pushes out the record an undo step still needs. An edit that runs on from the newest record is kept
+        // too, since the undo history joins such a run into one change that only the whole run folded reverses.
+        var continuesRun = EditJournal.Count > 0 && EditJournal[^1].IsUndo == record.IsUndo
+            && EditJournal[^1].FollowedBy(record) is not null;
+        if (!touchesPositions && restored is null && !continuesRun)
         {
             return;
         }
-        var record = new VimEditRecord(change.Offset, change.RemovedText, change.InsertedText, before, undoes == true);
         EditJournal.Add(record);
         EditJournalTextLength += record.TextLength;
         // An undo step can hold a long run of typing, so the journal keeps thousands of edits, bounded by the text they
@@ -235,17 +238,12 @@ public sealed partial class VimEngine
         return _replayUndoes;
     }
 
-    // The newest record the edit reverses: an undo reverses only edits, a redo only undos. The undo history joins a run
-    // of keys, such as backspaces, into one edit, so the newest records are also tried folded together, oldest first.
-    // Records of the other direction are passed over: each is an undo of an edit already gone from the journal, so the
-    // two cancel out.
+    // Undo reverses the newest step first, so only the newest records, folded together, can match: an undo reverses
+    // only edits, a redo only undos. The undo history joins a run of keys, such as backspaces, into one edit, which is
+    // why more than one record may be folded. Records of the other direction are passed over: each is an undo of an
+    // edit already gone from the journal, so the two cancel out.
     private int ReversedJournalIndex(TextChange change, bool reversesUndo)
     {
-        var index = EditJournal.FindLastIndex(record => record.IsUndo == reversesUndo && record.IsReversedBy(change));
-        if (index >= 0)
-        {
-            return index;
-        }
         VimEditRecord? folded = null;
         for (var i = EditJournal.Count - 1; i >= 0; i--)
         {
@@ -254,14 +252,14 @@ public sealed partial class VimEngine
             {
                 continue;
             }
-            if (folded is null)
+            var combined = record;
+            if (folded is not null)
             {
-                folded = record;
-                continue;
-            }
-            if (record.FollowedBy(folded) is not { } combined)
-            {
-                return -1;
+                if (record.FollowedBy(folded) is not { } joined)
+                {
+                    return -1;
+                }
+                combined = joined;
             }
             if (combined.IsReversedBy(change))
             {

@@ -17,7 +17,8 @@ public sealed partial class VimEngine : IDisposable
     private string _commandLine = string.Empty;
     private int _depth;
     private UndoMark? _insertMark;
-    // The redo count the last replayed change saw, which tells an undo from a redo; null once any other edit lands.
+    // The redo count the last replayed change saw, or the engine found, which tells an undo from a redo; null once any
+    // other edit lands, as it empties the redo stack.
     private int? _replayRedoCount;
     private bool _replayUndoes;
     private (VimMode, string, string, string?) _shownStatus;
@@ -31,6 +32,8 @@ public sealed partial class VimEngine : IDisposable
         model.Document.Reset += OnDocumentReset;
         model.Document.Changed += OnDocumentChanged;
         model.SelectionsChanged += OnSelectionsChanged;
+        // A document can come with steps already undone, so the first replay may be a redo.
+        _replayRedoCount = model.Document.Undo.RedoCount;
         _shownStatus = StatusKey();
     }
 
