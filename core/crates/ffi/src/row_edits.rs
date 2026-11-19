@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Weak};
 
-use tablepro_core::column::{ColumnInfo, ResultColumn};
+use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnKind, ResultColumn, TemporalZone};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dml::BuildSqlError;
 use tablepro_core::edit::{
-    CellInput, EditContext, EditParseError, is_unchanged, new_draft_cell, parse_edit_text, read_only_reason,
-    value_for_column,
+    CellInput, EditContext, EditParseError, ResultLock, is_unchanged, new_draft_cell, parse_edit_text,
+    read_only_reason, result_source, result_target, value_for_column,
 };
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{RowIdentity, TableRef};
@@ -24,7 +24,7 @@ use tablepro_session::{OperationError, OperationKind, Session};
 use crate::cancel_token::{CancelToken, token};
 use crate::catalog::TableName;
 use crate::error::{BoxedErrorInfo, CoreError};
-use crate::results::{ResultSet, ValueKind};
+use crate::results::{ResultSet, ResultStore, ValueKind};
 use crate::runtime::on_runtime;
 
 // What the user put in a cell. An empty text means what `parse_edit_text` says it means for the column.
@@ -51,7 +51,7 @@ pub enum RowEdit {
     Delete { row: u64 },
 }
 
-// Why no row of the table, or of the page, can be changed.
+// Why no row of the table, of the page or of the query result can be changed.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum EditLock {
     ReadOnlyConnection,
@@ -60,6 +60,30 @@ pub enum EditLock {
     KeyUnreadable { column: String },
     // The page was read with other columns than the editor's catalog.
     ColumnsChanged,
+    // A query result's statement is not one SELECT (core ADR 0015).
+    NotOneSelect,
+    // A join, a subquery or a CTE.
+    MoreThanOneTable,
+    // DISTINCT, GROUP BY or an aggregate, so a row is not one row of the table.
+    Collapsed,
+    // The driver traced no column to the statement's table: a view, a temporary table, or an engine that reports none.
+    Untraced,
+    // The result leaves out part of the table's primary key.
+    KeyNotShown,
+}
+
+impl From<ResultLock> for EditLock {
+    fn from(lock: ResultLock) -> Self {
+        match lock {
+            ResultLock::NotOneSelect => Self::NotOneSelect,
+            ResultLock::MoreThanOneTable => Self::MoreThanOneTable,
+            ResultLock::Collapsed => Self::Collapsed,
+            ResultLock::Untraced => Self::Untraced,
+            ResultLock::NoPrimaryKey => Self::NoPrimaryKey,
+            ResultLock::KeyNotShown => Self::KeyNotShown,
+            ResultLock::ColumnsChanged => Self::ColumnsChanged,
+        }
+    }
 }
 
 // The Linux grid's rules: a saved row's key and a column the server fills are locked, a new row may set its key.
@@ -75,6 +99,14 @@ pub struct EditColumnInfo {
     pub takes_empty: bool,
     // A saved row's cell can be set to DEFAULT: a declared default, on an engine whose UPDATE takes one.
     pub takes_default: bool,
+    // What the column holds, so the app can offer an editor for it, such as a toggle for a boolean.
+    pub kind: ValueKind,
+    // An enum's or a set's labels in the type's order; empty for every other column.
+    pub labels: Vec<String>,
+    // A MySQL SET: the value is any combination of the labels.
+    pub multiple: bool,
+    // A typed time or timestamp is refused without its offset, as for PostgreSQL's timestamptz.
+    pub needs_offset: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -108,15 +140,28 @@ pub enum RowSaveOutcome {
     Unknown { error: BoxedErrorInfo, edit: Option<u32> },
 }
 
-// A table tab's rows as the save sees them: the catalog's columns, keyed by the primary key, as the Linux tracker keys
+// A table tab's rows, or a query result's, as the save sees them: keyed by the primary key, as the Linux tracker keys
 // them.
 #[derive(uniffi::Object)]
 pub struct TableEditor {
     session: Arc<Session>,
     tasks: Tasks,
     table: TableRef,
+    // The columns a save writes, one per column of the rows; a query result's column that writes none is generated.
     columns: Arc<[ColumnInfo]>,
     lock: Option<EditLock>,
+    layout: Layout,
+}
+
+enum Layout {
+    // A table tab's page holds the catalog's columns first, in the table's order.
+    Page,
+    // A query result keeps the columns it was read with; each writes the catalog column it traced to (core ADR 0015).
+    // Edits name rows of that one result, so rows of another statement can never be keyed against this table.
+    Result {
+        read: Arc<[ResultColumn]>,
+        rows: Weak<ResultStore>,
+    },
 }
 
 impl TableEditor {
@@ -155,6 +200,73 @@ impl TableEditor {
                 table,
                 columns,
                 lock,
+                layout: Layout::Page,
+            }))
+        })
+        .await
+    }
+
+    // `sql` is the statement the result was read with. The table's columns are read again, so a result read after the
+    // table changed locks rather than writes a column by its old place.
+    pub(crate) async fn open_result(
+        session: Arc<Session>,
+        tasks: Tasks,
+        sql: String,
+        rows: Arc<ResultSet>,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<Arc<Self>, CoreError> {
+        let cancel = token(cancel);
+        let runtime = tasks.clone();
+        on_runtime(&runtime, async move {
+            let read = rows.result_columns();
+            let held = Arc::downgrade(rows.store());
+            let locked = |session, tasks, read, lock: EditLock| {
+                Arc::new(Self {
+                    session,
+                    tasks,
+                    table: TableRef::new(None, String::new()),
+                    columns: Arc::from([]),
+                    lock: Some(lock),
+                    layout: Layout::Result {
+                        read,
+                        rows: held.clone(),
+                    },
+                })
+            };
+            if session.read_only() {
+                return Ok(locked(session, tasks, read, EditLock::ReadOnlyConnection));
+            }
+            let source = match result_source(&sql, session.grammar(), &read) {
+                Ok(source) => source,
+                Err(lock) => return Ok(locked(session, tasks, read, lock.into())),
+            };
+            let catalog = tokio::select! {
+                biased;
+                () = cancel.cancelled() => return Err(CoreError::Cancelled),
+                columns = session.refresh_columns(source.table.clone()) => columns?,
+            };
+            let target = match result_target(&source, &read, &catalog) {
+                Ok(target) => target,
+                Err(lock) => return Ok(locked(session, tasks, read, lock.into())),
+            };
+            let columns = read
+                .iter()
+                .zip(&target.positions)
+                .enumerate()
+                .map(
+                    |(index, (column, position))| match position.and_then(|position| catalog.get(position)) {
+                        Some(info) => info.clone(),
+                        None => unwritable(index, column),
+                    },
+                )
+                .collect();
+            Ok(Arc::new(Self {
+                session,
+                tasks,
+                table: target.table,
+                columns,
+                lock: None,
+                layout: Layout::Result { read, rows: held },
             }))
         })
         .await
@@ -175,14 +287,24 @@ impl TableEditor {
         }
     }
 
-    // The result set holds the page's columns first, which build_page lays out in the catalog's order.
-    fn check_layout(&self, rows: &[ResultColumn]) -> Result<(), CoreError> {
-        let same = rows.len() >= self.columns.len()
-            && self
-                .columns
-                .iter()
-                .zip(rows)
-                .all(|(catalog, read)| catalog.name == read.name);
+    // A page holds the catalog's columns first, which build_page lays out in the catalog's order; a query result is
+    // the one the editor was opened on, sorted or not.
+    fn check_layout(&self, set: &ResultSet, rows: &[ResultColumn]) -> Result<(), CoreError> {
+        let same = match &self.layout {
+            Layout::Page => {
+                rows.len() >= self.columns.len()
+                    && self
+                        .columns
+                        .iter()
+                        .zip(rows)
+                        .all(|(catalog, read)| catalog.name == read.name)
+            }
+            Layout::Result { read, rows: held } => {
+                std::ptr::eq(held.as_ptr(), Arc::as_ptr(set.store()))
+                    && rows.len() == read.len()
+                    && read.iter().zip(rows).all(|(opened, now)| opened.name == now.name)
+            }
+        };
         match same {
             true => Ok(()),
             false => Err(CoreError::failed(
@@ -246,7 +368,7 @@ impl TableEditor {
         let read = rows.result_columns();
         let reads_rows = edits.iter().any(|edit| !matches!(edit, RowEdit::Insert { .. }));
         if reads_rows {
-            self.check_layout(&read)?;
+            self.check_layout(rows, &read)?;
         }
         let deleted: HashSet<u64> = edits
             .iter()
@@ -395,13 +517,30 @@ impl TableEditor {
         }
     }
 
+    // Whether a copy of the row holds its values exactly. PostgreSQL's server text for a float, a time or money may not
+    // name the stored value (core ADR 0015), so such a query result row is not duplicated; a table page's are typed.
+    pub fn copies_exactly(&self, rows: Arc<ResultSet>, row: u64) -> bool {
+        match &self.layout {
+            Layout::Page => true,
+            Layout::Result { read, .. } => copies_exactly(read, &self.columns, &rows, row),
+        }
+    }
+
+    // The table a save writes, as the result's driver named it; None while a query result is locked.
+    pub fn table(&self) -> Option<TableName> {
+        (!self.table.name.is_empty()).then(|| TableName {
+            schema: self.table.schema.clone(),
+            name: self.table.name.clone(),
+        })
+    }
+
     // The page's own locks too: a lock here leaves every row of `rows` as it is.
     pub fn lock_for(&self, rows: Arc<ResultSet>) -> Option<EditLock> {
         if let Some(lock) = self.lock() {
             return Some(lock);
         }
         let read = rows.result_columns();
-        if self.check_layout(&read).is_err() {
+        if self.check_layout(&rows, &read).is_err() {
             return Some(EditLock::ColumnsChanged);
         }
         if rows.row_count() == 0 {
@@ -415,8 +554,12 @@ impl TableEditor {
         let dialect = self.session.current_dialect();
         self.columns
             .iter()
-            .map(|column| EditColumnInfo {
-                name: column.name.clone(),
+            .enumerate()
+            .map(|(index, column)| EditColumnInfo {
+                name: match &self.layout {
+                    Layout::Result { read, .. } => read.get(index).map_or_else(String::new, |read| read.name.clone()),
+                    Layout::Page => column.name.clone(),
+                },
                 editable: editable(column),
                 editable_in_new_row: editable_in_new_row(column),
                 new_row: match new_draft_cell(column) {
@@ -427,6 +570,20 @@ impl TableEditor {
                 primary_key: column.primary_key,
                 takes_empty: column.column_type.kind.accepts_empty_string(),
                 takes_default: takes_default(column, dialect.as_deref()),
+                kind: ValueKind::of_column(&column.column_type.kind),
+                labels: match &column.column_type.kind {
+                    ColumnKind::Enum { labels, .. } => labels.clone(),
+                    _ => Vec::new(),
+                },
+                multiple: matches!(column.column_type.kind, ColumnKind::Enum { multiple: true, .. }),
+                needs_offset: matches!(
+                    column.column_type.kind,
+                    ColumnKind::Time { with_offset: true, .. }
+                        | ColumnKind::Timestamp {
+                            zone: TemporalZone::Offset,
+                            ..
+                        }
+                ),
             })
             .collect()
     }
@@ -608,7 +765,36 @@ pub(crate) fn save_gate(level: SafeModeLevel) -> SaveGate {
     }
 }
 
-// The primary key columns in the table's order, the order a key is read in.
+// The values a copy takes, as Duplicate copies them: every column but the key and what the server fills.
+fn copies_exactly(read: &[ResultColumn], columns: &[ColumnInfo], rows: &ResultSet, row: u64) -> bool {
+    columns
+        .iter()
+        .enumerate()
+        .filter(|(_, column)| !column.primary_key && editable_in_new_row(column))
+        .all(|(index, column)| match rows.stored_value(row, index) {
+            None | Some(Value::Null) => true,
+            Some(value) => read
+                .get(index)
+                .is_some_and(|read| value_for_column(&value, &read.column_type, &column.column_type).is_some()),
+        })
+}
+
+// A NUL cannot be in an identifier, so no key lookup by name ever lands on this column, and no statement names it.
+fn unwritable(index: usize, column: &ResultColumn) -> ColumnInfo {
+    ColumnInfo {
+        name: format!("\0{index}"),
+        column_type: column.column_type.clone(),
+        nullable: true,
+        primary_key: false,
+        is_auto_increment: false,
+        is_generated: true,
+        partition_scoped: false,
+        default: ColumnDefault::None,
+        comment: None,
+    }
+}
+
+// The primary key columns in the editor's order, the order a key is read in.
 fn pk_identity(columns: &[ColumnInfo]) -> RowIdentity {
     RowIdentity::UniqueKey {
         columns: columns
@@ -793,6 +979,19 @@ fn lock_error(lock: &EditLock) -> CoreError {
             "edit.columns_changed",
             "the rows were read with other columns than the table has now",
         ),
+        EditLock::NotOneSelect => CoreError::failed("edit.not_one_select", "only the rows of one SELECT can be edited"),
+        EditLock::MoreThanOneTable => CoreError::failed(
+            "edit.more_than_one_table",
+            "rows from more than one table, a subquery or a CTE cannot be edited",
+        ),
+        EditLock::Collapsed => {
+            CoreError::failed("edit.collapsed", "grouped, distinct or computed rows cannot be edited")
+        }
+        EditLock::Untraced => CoreError::failed("edit.untraced", "only rows read straight from a table can be edited"),
+        EditLock::KeyNotShown => CoreError::failed(
+            "edit.key_not_shown",
+            "the result leaves out part of the table's primary key",
+        ),
     }
 }
 
@@ -802,4 +1001,60 @@ fn parse_error(error: EditParseError) -> CoreError {
 
 fn build_error(error: BuildSqlError) -> CoreError {
     CoreError::failed(error.code(), error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::column::{ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm};
+
+    use super::*;
+    use crate::results::ResultStore;
+
+    fn catalog(name: &str, kind: ColumnKind) -> ColumnInfo {
+        ColumnInfo {
+            name: name.to_owned(),
+            column_type: ColumnType {
+                name: name.to_owned(),
+                kind,
+                catalog: None,
+                dynamic_storage: false,
+                read_form: ReadForm::Native,
+            },
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            is_generated: false,
+            partition_scoped: false,
+            default: ColumnDefault::None,
+            comment: None,
+        }
+    }
+
+    #[test]
+    fn server_text_for_a_float_does_not_copy_and_an_integer_s_does() {
+        let read: Arc<[ResultColumn]> = vec![
+            ResultColumn::new("amount", ColumnType::untyped_text("float8")),
+            ResultColumn::new("count", ColumnType::untyped_text("int4")),
+        ]
+        .into();
+        let columns = [
+            catalog("amount", ColumnKind::Float(FloatWidth::F64)),
+            catalog(
+                "count",
+                ColumnKind::Integer(IntegerKind {
+                    width: IntegerWidth::W32,
+                    signed: true,
+                }),
+            ),
+        ];
+        let store = Arc::new(ResultStore::new(read.clone()));
+        store.append(&[
+            vec![Value::Text("0.1".to_owned()), Value::Text("7".to_owned())],
+            vec![Value::Null, Value::Text("8".to_owned())],
+        ]);
+        let rows = ResultSet::new(0, store);
+
+        assert!(!copies_exactly(&read, &columns, &rows, 0));
+        assert!(copies_exactly(&read, &columns, &rows, 1));
+    }
 }

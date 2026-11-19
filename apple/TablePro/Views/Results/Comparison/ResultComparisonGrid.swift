@@ -112,14 +112,20 @@ internal final class ResultComparisonGridModel: ObservableObject {
         right: ResultComparisonSide,
         pairing: ResultColumnPairing
     ) -> TableRows {
-        let rows = lines.enumerated().map { index, line in
-            row(at: index, for: line, left: left, right: right, pairing: pairing)
+        var rows = ContiguousArray<Row>()
+        rows.reserveCapacity(lines.count)
+        var absentColumns: [RowID: Set<Int>] = [:]
+        for (index, line) in lines.enumerated() {
+            let built = row(at: index, for: line, left: left, right: right, pairing: pairing)
+            rows.append(built.row)
+            if !built.absent.isEmpty { absentColumns[built.row.id] = built.absent }
         }
         return TableRows(
-            rows: ContiguousArray(rows),
+            rows: rows,
             columns: [String(localized: "Status"), String(localized: "Side")] + pairing.pairs.map(\.name),
             columnTypes: Array(repeating: ColumnType.text(rawType: nil), count: leadingColumnCount)
-                + pairing.pairs.map { displayType(for: $0, left: left, right: right) }
+                + pairing.pairs.map { displayType(for: $0, left: left, right: right) },
+            absentColumns: absentColumns
         )
     }
 
@@ -138,11 +144,12 @@ internal final class ResultComparisonGridModel: ObservableObject {
         left: ResultComparisonSide,
         right: ResultComparisonSide,
         pairing: ResultColumnPairing
-    ) -> Row {
+    ) -> (row: Row, absent: Set<Int>) {
         var values = ContiguousArray<PluginCellValue>()
         values.reserveCapacity(leadingColumnCount + pairing.pairs.count)
         values.append(.text(statusTitle(for: line.entry.kind)))
         values.append(.text(line.isLeft ? String(localized: "Left") : String(localized: "Right")))
+        let side = line.isLeft ? left : right
         let source = line.isLeft
             ? line.entry.leftRow.map { left.rows[$0] }
             : line.entry.rightRow.map { right.rows[$0] }
@@ -150,9 +157,9 @@ internal final class ResultComparisonGridModel: ObservableObject {
         for (position, pair) in pairing.pairs.enumerated() {
             let column = line.isLeft ? pair.left : pair.right
             values.append(source?[column] ?? .null)
-            if source?.isAbsent(column) == true { absent.insert(position + leadingColumnCount) }
+            if let source, side.isAbsent(source, column: column) { absent.insert(position + leadingColumnCount) }
         }
-        return Row(id: .existing(index), values: values, absentColumns: absent)
+        return (Row(id: .existing(index), values: values), absent)
     }
 
     private static func displayType(

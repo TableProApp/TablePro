@@ -130,6 +130,7 @@ public sealed class StoreTests : IDisposable
             WordWrap = true,
             HighlightCurrentStatement = false,
             CodeFolding = false,
+            VimMode = true,
             EditorLightScheme = "tablepro.github-light",
             EditorDarkScheme = "tablepro.dracula",
         };
@@ -141,6 +142,7 @@ public sealed class StoreTests : IDisposable
             Assert.False(fresh.WordWrap);
             Assert.True(fresh.HighlightCurrentStatement);
             Assert.True(fresh.CodeFolding);
+            Assert.False(fresh.VimMode);
             Assert.Null(fresh.EditorLightScheme);
             Assert.Null(fresh.EditorDarkScheme);
         }
@@ -148,6 +150,7 @@ public sealed class StoreTests : IDisposable
         Assert.Equal(saved, store.Load());
         var json = System.IO.File.ReadAllText(path);
         Assert.Contains("\"wordWrap\": true", json, StringComparison.Ordinal);
+        Assert.Contains("\"vimMode\": true", json, StringComparison.Ordinal);
         Assert.Contains("\"editorDarkScheme\": \"tablepro.dracula\"", json, StringComparison.Ordinal);
     }
 

@@ -9,49 +9,45 @@ import Testing
 
 @MainActor
 struct EditorTabContextMenuBuilderTests {
-    private final class Recorder {
-        var moved: [UUID] = []
-        var pinned: [(UUID, Bool)] = []
-    }
-
     private static let moveTitle = String(localized: "Move Tab to Connection…")
     private static let newWindowTitle = String(localized: "Move Tab to New Window")
 
     private func commands(
         offers: Bool,
         can: Bool,
-        recorder: Recorder = Recorder(),
+        recorder: EditorTabCommandRecorder = EditorTabCommandRecorder(),
         pinned: Bool = false,
         canCloseOthers: Bool = true,
         canCloseAll: Bool = true
     ) -> EditorTabCommands {
-        EditorTabCommands(
-            activate: { _ in },
-            keepOpen: { _ in },
-            canKeepOpen: { _ in false },
-            isPinned: { _ in pinned },
-            setPinned: { recorder.pinned.append(($0, $1)) },
-            close: { _ in },
-            closeOthers: { _ in },
-            canCloseOthers: { _ in canCloseOthers },
-            closeAll: {},
-            canCloseAll: { canCloseAll },
-            moveTab: { _, _ in },
-            canMove: { _, _ in true },
-            moveBy: { _, _ in },
-            tearOff: { _ in },
-            canTearOff: { _ in true },
-            moveToConnection: { recorder.moved.append($0) },
-            offersMoveToConnection: { _ in offers },
-            canMoveToConnection: { _ in can },
-            tooltip: { _ in "" }
+        .stub(
+            recorder: recorder,
+            isPinned: pinned,
+            canCloseOthers: canCloseOthers,
+            canCloseAll: canCloseAll,
+            offersMoveToConnection: offers,
+            canMoveToConnection: can
         )
+    }
+
+    @Test("Move Tab to New Window from the menu names no drop point")
+    func menuTearOffHasNoDropPoint() throws {
+        let tabId = UUID()
+        let recorder = EditorTabCommandRecorder()
+        let menu = EditorTabContextMenuBuilder.menu(for: tabId, commands: commands(offers: false, can: false, recorder: recorder))
+        let item = try #require(menu.items.first { $0.title == Self.newWindowTitle })
+
+        (item.target as? ClosureMenuTarget)?.fire()
+
+        #expect(recorder.tornOff.count == 1)
+        #expect(recorder.tornOff.first?.0 == tabId)
+        #expect(recorder.tornOff.first?.1 == nil)
     }
 
     @Test("A movable query tab offers Move Tab to Connection right after Move Tab to New Window")
     func queryTabOffersTheMove() throws {
         let tabId = UUID()
-        let recorder = Recorder()
+        let recorder = EditorTabCommandRecorder()
         let menu = EditorTabContextMenuBuilder.menu(for: tabId, commands: commands(offers: true, can: true, recorder: recorder))
         let titles = menu.items.map(\.title)
 
@@ -62,7 +58,7 @@ struct EditorTabContextMenuBuilderTests {
         let item = menu.items[move]
         #expect(item.isEnabled)
         (item.target as? ClosureMenuTarget)?.fire()
-        #expect(recorder.moved == [tabId])
+        #expect(recorder.movedToConnection == [tabId])
     }
 
     @Test("A query tab that cannot move now shows the item dimmed")
@@ -86,7 +82,7 @@ struct EditorTabContextMenuBuilderTests {
     @Test("An unpinned tab offers Pin Tab right after Keep Open, and choosing it pins that tab")
     func unpinnedTabOffersPin() throws {
         let tabId = UUID()
-        let recorder = Recorder()
+        let recorder = EditorTabCommandRecorder()
         let menu = EditorTabContextMenuBuilder.menu(
             for: tabId,
             commands: commands(offers: false, can: false, recorder: recorder)
@@ -105,7 +101,7 @@ struct EditorTabContextMenuBuilderTests {
 
     @Test("A pinned tab offers Unpin Tab, and choosing it unpins")
     func pinnedTabOffersUnpin() throws {
-        let recorder = Recorder()
+        let recorder = EditorTabCommandRecorder()
         let menu = EditorTabContextMenuBuilder.menu(
             for: UUID(),
             commands: commands(offers: false, can: false, recorder: recorder, pinned: true)

@@ -149,7 +149,11 @@ extension DataGridViewController {
 
 extension DataGridChange {
     var isStructural: Bool {
-        if case .rowsUpdated = self { return false }
-        return true
+        switch self {
+        case .reload, .columnsChanged, .rowsInserted, .rowsRemoved:
+            return true
+        case .columnMetadataChanged, .rowsUpdated, .allRowsRepainted:
+            return false
+        }
     }
 }

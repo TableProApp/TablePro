@@ -28,6 +28,14 @@ final class ExternalSchemaTracker: ObservableObject {
         namesByDatabase[Key(connectionId: connectionId, database: database)]?.contains(schema) ?? false
     }
 
+    func names(connectionId: UUID) -> [String: Set<String>] {
+        var names: [String: Set<String>] = [:]
+        for (key, schemas) in namesByDatabase where key.connectionId == connectionId {
+            names[key.database] = schemas
+        }
+        return names
+    }
+
     func load(connectionId: UUID, database: String, driver: DatabaseDriver) async {
         let key = Key(connectionId: connectionId, database: database)
         guard namesByDatabase[key] == nil else { return }

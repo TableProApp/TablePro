@@ -52,9 +52,9 @@ nonisolated internal struct LibSSH2ForwardChannelOpener: SSHForwardChannelOpenin
     }
 }
 
-// Opens the channel that carries forwarded traffic to the destination. The two libssh2
-// entry points behave identically to the caller: both return a channel that reads and
-// writes the same way, and both signal "not ready yet" with `LIBSSH2_ERROR_EAGAIN`.
+// Opens the channel that carries forwarded traffic to the destination, signalling "not ready yet" with
+// `LIBSSH2_ERROR_EAGAIN`. libssh2's direct-tcpip and streamlocal calls fix the window at 2 MiB, and a window
+// adjust after them is spent once: ssh2_channel_read refills only to the window the channel opened with.
 nonisolated internal enum LibSSH2ForwardChannel {
     // Another open or relay can read this channel's reply into libssh2's queue and leave the socket
     // quiet, so a quiet wait is a retry and only the deadline ends an open.
@@ -65,21 +65,16 @@ nonisolated internal enum LibSSH2ForwardChannel {
         destination: SSHForwardDestination,
         originPort: Int
     ) -> OpaquePointer? {
-        switch destination {
-        case .tcp(let host, let port):
-            return libssh2_channel_direct_tcpip_ex(
+        let request = destination.channelRequest(originHost: Self.originHost, originPort: originPort)
+        return request.message.withUnsafeBytes { message in
+            libssh2_channel_open_ex(
                 session,
-                host,
-                Int32(port),
-                Self.originHost,
-                Int32(originPort)
-            )
-        case .unixSocket(let path):
-            return libssh2_channel_direct_streamlocal_ex(
-                session,
-                path,
-                Self.originHost,
-                Int32(originPort)
+                request.channelType,
+                UInt32(request.channelType.utf8.count),
+                SSHForwardChannelRequest.receiveWindowBytes,
+                SSHForwardChannelRequest.maximumPacketBytes,
+                message.bindMemory(to: CChar.self).baseAddress,
+                UInt32(message.count)
             )
         }
     }

@@ -11,6 +11,8 @@ enum Delta: Equatable {
     case rowsInserted(IndexSet)
     case rowsRemoved(IndexSet)
     case columnsReplaced
+    // Keys, defaults, comments or enum labels arrived for the same columns, so no cell's text moved.
+    case columnMetadataChanged
     case fullReplace
 
     static let none = Delta.cellsChanged([])
@@ -21,7 +23,7 @@ enum Delta: Equatable {
             return !indices.isEmpty
         case .fullReplace:
             return true
-        case .cellChanged, .cellsChanged, .columnsReplaced:
+        case .cellChanged, .cellsChanged, .columnsReplaced, .columnMetadataChanged:
             return false
         }
     }

@@ -198,6 +198,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
+        ConnectSaved(connection);
+    }
+
+    private OpenConnection ConnectSaved(SavedConnection connection)
+    {
         var open = Open(new SessionConnection
         {
             ConnectionId = connection.Id,
@@ -208,6 +213,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         open.SetAiPolicy(connection.AiPolicy ?? AiPolicy.Ask);
         // The tags come from the library's snapshot, which names each one.
         _ = RefreshMarksAsync();
+        return open;
     }
 
     // A tab window picks too: a .sql file opens on its own connection, a database file in the primary window.
@@ -233,7 +239,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     }
 
     // As macOS's Open File: a .sql file goes to a query tab, any other file opens as a database.
-    private async Task OpenAnyFileAsync(string path)
+    internal async Task OpenAnyFileAsync(string path)
     {
         if (SqlSuffixes.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
         {
@@ -374,6 +380,35 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
     }
 
+    // The outcome lands in the Connections page's bar, as a file import's does.
+    public async Task ImportFromAppAsync()
+    {
+        if (_home is null)
+        {
+            _primary.Activate();
+            await _primary.ImportFromAppAsync();
+            return;
+        }
+
+        ShowHome();
+        if (await ImportFromAppDialog.RunAsync(Root, _workbench) is not { } ending)
+        {
+            return;
+        }
+
+        if (ending.Wrote)
+        {
+            _workbench.NotifyLibraryChanged();
+        }
+
+        if (ending.Outcome is { QueriesAdded: > 0 })
+        {
+            _workbench.NotifySavedQueriesChanged();
+        }
+
+        _home.ShowMessage(ImportFromAppDialog.Describe(ending), ImportFromAppDialog.Severity(ending));
+    }
+
     public async Task ExportConnectionsAsync()
     {
         if (_home is null)
@@ -434,9 +469,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     void IWorkspaceHost.WriteSessionNow() => _primary.WriteSessionBeforeSave();
 
-    internal void OpenFile(string path)
+    // No engine lets the core tell SQLite from DuckDB by the file's header.
+    internal void OpenFile(string path, string? engineId = null)
     {
-        Open(new SessionConnection { FilePath = path, Name = Path.GetFileName(path) });
+        Open(new SessionConnection { FilePath = path, Name = Path.GetFileName(path), EngineId = engineId ?? string.Empty });
     }
 
     // Each press on a tab asks for a window before any drag, so one is kept hidden for the same connection.
@@ -535,6 +571,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         // Another program may have changed an open .sql file while the window was in the background.
         Activated += async (_, args) =>
         {
+            // Notifications may have been turned on in Windows Settings while this window was in the back.
+            if (args.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                _settings?.ShowNotificationState();
+            }
+
             if (args.WindowActivationState != WindowActivationState.Deactivated && Workspace is { } workspace)
             {
                 await workspace.CheckFileAsync();
@@ -611,25 +653,24 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     // Another database of a server whose databases hold their own schemas opens as its own rail item, as Linux opens
     // it beside the connection; one already open, the connection's own included, is brought forward.
-    private void OpenDatabase(OpenConnection from, string database)
+    private OpenConnection? OpenDatabase(OpenConnection from, string database)
     {
         if (!IsPrimary)
         {
             _primary.Activate();
-            _primary.OpenDatabase(from, database);
-            return;
+            return _primary.OpenDatabase(from, database);
         }
 
         if (from.ConnectionId is not { } id)
         {
-            return;
+            return null;
         }
 
         var own = _open.FirstOrDefault(item => item.Matches(id, null) && item.Database is null);
         if (own?.Session?.Database == database)
         {
             Select(own);
-            return;
+            return own;
         }
 
         var open = Open(new SessionConnection
@@ -643,6 +684,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         open.SetAiPolicy(from.AiPolicy);
         open.SetTags(from.Tags);
         ShowCue(open);
+        return open;
     }
 
     private async void OnLibraryChanged(object? sender, EventArgs e) => await RefreshMarksAsync();
@@ -710,6 +752,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             }
         };
         open.View.CommandsChanged += async (_, _) => await OpenWaitingFilesAsync(open);
+        open.View.CommandsChanged += async (_, _) => await OpenLinkTargetAsync(open);
         open.View.Host = this;
         _open.Add(open);
         SessionChanged();
@@ -856,6 +899,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
         await open.DisconnectAsync();
         _open.Remove(open);
+        _linkTargets.Remove(open);
+        _drainingLinks.Remove(open);
         Rail.MenuItems.Remove(open.RailItem);
         if (ReferenceEquals(_front, open))
         {
@@ -1574,16 +1619,17 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
         MenuCopy.IsEnabled = tab is not null;
         MenuSelectAll.IsEnabled = tab is not null;
-        // A query tab never edits; a table tab says what its page can do now.
+        // A table tab says what its page can do now, a query tab what its result can.
         var table = tab as TableTabView;
+        var query = tab as QueryTabView;
         MenuFilterRows.IsEnabled = table is not null;
-        MenuSaveChanges.IsEnabled = table is { CanSave: true } || tab is QueryTabView;
-        MenuSaveAs.IsEnabled = tab is QueryTabView;
-        MenuDiscardChanges.IsEnabled = table is { CanDiscard: true };
-        MenuPreviewSql.IsEnabled = table is { CanPreview: true };
-        MenuAddRow.IsEnabled = table is { CanAddRow: true };
-        MenuDuplicateRow.IsEnabled = table is { CanChangeRows: true };
-        MenuDeleteRows.IsEnabled = table is { CanChangeRows: true };
+        MenuSaveChanges.IsEnabled = table is { CanSave: true } || query is not null;
+        MenuSaveAs.IsEnabled = query is not null;
+        MenuDiscardChanges.IsEnabled = table is { CanDiscard: true } || query is { CanDiscardRows: true };
+        MenuPreviewSql.IsEnabled = table is { CanPreview: true } || query is { CanPreviewRows: true };
+        MenuAddRow.IsEnabled = table is { CanAddRow: true } || query is { CanAddRow: true };
+        MenuDuplicateRow.IsEnabled = table is { CanChangeRows: true } || query is { CanChangeRows: true };
+        MenuDeleteRows.IsEnabled = table is { CanChangeRows: true } || query is { CanChangeRows: true };
         _primary._sessionEnd?.Update();
     }
 
@@ -1592,6 +1638,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private async void OnOpenFile(object sender, RoutedEventArgs e) => await OpenFileAsync();
 
     private async void OnImport(object sender, RoutedEventArgs e) => await ImportAsync();
+
+    private async void OnImportFromApp(object sender, RoutedEventArgs e) => await ImportFromAppAsync();
 
     private async void OnExportConnections(object sender, RoutedEventArgs e) => await ExportConnectionsAsync();
 
@@ -1832,25 +1880,78 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private async void OnDiscardChanges(object sender, RoutedEventArgs e)
     {
-        if (Workspace?.ActiveTab is TableTabView table)
+        switch (Workspace?.ActiveTab)
         {
-            await table.DiscardAsync();
+            case TableTabView table:
+                await table.DiscardAsync();
+                break;
+            case QueryTabView query:
+                await query.DiscardRowsAsync();
+                break;
+            default:
+                break;
         }
     }
 
     private async void OnPreviewSql(object sender, RoutedEventArgs e)
     {
-        if (Workspace?.ActiveTab is TableTabView table)
+        switch (Workspace?.ActiveTab)
         {
-            await table.PreviewAsync();
+            case TableTabView table:
+                await table.PreviewAsync();
+                break;
+            case QueryTabView query:
+                await query.PreviewRowsAsync();
+                break;
+            default:
+                break;
         }
     }
 
-    private void OnAddRow(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.AddRow();
+    private void OnAddRow(object sender, RoutedEventArgs e)
+    {
+        switch (Workspace?.ActiveTab)
+        {
+            case TableTabView table:
+                table.AddRow();
+                break;
+            case QueryTabView query:
+                query.AddRow();
+                break;
+            default:
+                break;
+        }
+    }
 
-    private void OnDuplicateRow(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.DuplicateRows();
+    private void OnDuplicateRow(object sender, RoutedEventArgs e)
+    {
+        switch (Workspace?.ActiveTab)
+        {
+            case TableTabView table:
+                table.DuplicateRows();
+                break;
+            case QueryTabView query:
+                query.DuplicateRows();
+                break;
+            default:
+                break;
+        }
+    }
 
-    private void OnDeleteRows(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as TableTabView)?.DeleteRows();
+    private void OnDeleteRows(object sender, RoutedEventArgs e)
+    {
+        switch (Workspace?.ActiveTab)
+        {
+            case TableTabView table:
+                table.DeleteRows();
+                break;
+            case QueryTabView query:
+                query.DeleteRows();
+                break;
+            default:
+                break;
+        }
+    }
 
     private async void OnDocumentation(object sender, RoutedEventArgs e) =>
         await Launcher.LaunchUriAsync(SettingsView.DocumentationUri);

@@ -44,6 +44,7 @@ tablepro-driver-mysql = { workspace = true, optional = true }
 tablepro-driver-postgres = { workspace = true, optional = true }
 tablepro-driver-redis = { workspace = true, optional = true }
 tablepro-driver-sqlite = { workspace = true, optional = true }
+tablepro-foreign-import.workspace = true
 tablepro-mcp.workspace = true
 tablepro-net.workspace = true
 tablepro-session = { workspace = true, features = ["in-process-ssh"] }

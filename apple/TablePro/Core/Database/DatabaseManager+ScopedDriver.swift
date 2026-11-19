@@ -451,7 +451,7 @@ extension DatabaseManager {
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         try await withSessionDriverTurn(scope: scope, sessionWork: sessionWork, readsOnly: readsOnly) { driver in
-            try await pin(driver, to: scope)
+            try await tracedPin(driver, to: scope)
             return try await body(driver)
         }
     }
@@ -466,7 +466,7 @@ extension DatabaseManager {
         try await withSessionDriverTurn(scope: scope, sessionWork: .independent, readsOnly: true) { driver in
             let route = tableReadRoute(for: scope)
             guard route == .sessionDriver else { return .moved(route) }
-            try await pin(driver, to: scope)
+            try await tracedPin(driver, to: scope)
             return .ran(try await body(driver))
         }
     }
@@ -767,12 +767,21 @@ extension DatabaseManager {
         )
     }
 
+    private func tracedPin(_ driver: DatabaseDriver, to scope: DatabaseScope) async throws {
+        TableLoadLeaseTiming.current?.noteLeaseAcquired()
+        try await pin(driver, to: scope)
+        TableLoadLeaseTiming.current?.notePinFinished()
+    }
+
     /// Moves the shared driver onto the scope. It writes no session state, so the
     /// sidebar and the toolbar do not follow a tab's operation.
     ///
-    /// The database switch is issued every time because nothing tracks where the driver
-    /// actually is: a reconnect, a Redis SELECT, another window, or a user typing
-    /// `USE other` all move it. The schema switch asks the driver, which does know.
+    /// The database switch is requested every time because the host does not track where
+    /// the driver actually is: a reconnect, a Redis SELECT, another window, or a user typing
+    /// `USE other` all move it. The driver owns the answer: MySQL and MariaDB leave out the
+    /// `USE` only while the session is proven on that database and its footprint is clean,
+    /// and every case they cannot prove still sends it. The schema switch asks the driver,
+    /// which does know.
     ///
     /// This runs inside the gate, so an engine that cannot move a live connection is
     /// re-checked here rather than trusting the route the caller computed before it

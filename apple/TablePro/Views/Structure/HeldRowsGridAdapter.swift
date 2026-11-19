@@ -54,10 +54,9 @@ final class HeldRowsGridAdapter: ObservableObject {
 
     // The rows were replaced.
     func setRows(_ rows: TableRows) {
-        let previousColumns = displayedRows.columns
         heldRows = rows
         displayedRows = sortsHeldRows ? TableRowsSorting.sorted(rows, by: model.store.sortState) : rows
-        model.reloadHeldRows(columnsChanged: previousColumns != rows.columns || model.columns.isEmpty)
+        model.reloadRows()
     }
 
     // The same rows with some cells drawn differently, as a checkbox after a toggle.
@@ -116,15 +115,5 @@ extension HeldRowsGridAdapter: DataGridActions {
 
     func gridSetCheckbox(_ isOn: Bool, rowIDs: [RowID], column: DataGridColumn) {
         checkboxChange?(isOn, rowIDs, column)
-    }
-}
-
-extension DataGridModel {
-    // Rows an owner holds were replaced; another column set rebuilds the view's columns before the reload.
-    func reloadHeldRows(columnsChanged: Bool) {
-        if columnsChanged {
-            apply(.columnsReplaced)
-        }
-        reloadRows()
     }
 }

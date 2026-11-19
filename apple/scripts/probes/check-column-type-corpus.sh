@@ -65,7 +65,7 @@ READY=()
 case "$ENGINE" in
     postgresql)
         FOLDER=PostgreSQLDriverPlugin CLASS=PostgreSQLPlugin C_MODULE=CLibPQ
-        PRODUCTS="TableProCoreTypes TableProKerberos TableProLogRedaction TableProPostgreSQLCore TableProSQLVocabulary"
+        PRODUCTS="TableProCoreTypes TableProGeometry TableProKerberos TableProLogRedaction TableProPostgreSQLCore TableProSQLVocabulary TableProTLSClientIdentity"
         LINK="$ROOT/Libs/libpq.a $ROOT/Libs/libpgcommon.a $ROOT/Libs/libpgport.a -lssl.3 -lcrypto.3 -lz -framework GSS -lcom_err"
         IMAGE=postgres:17-alpine PORT_IN=5432 PORT=15467 USER_DEFAULT=postgres DATABASE_DEFAULT=postgres
         DOCKER_ENV=(-e "POSTGRES_PASSWORD=$PASSWORD_DEFAULT")
@@ -73,7 +73,7 @@ case "$ENGINE" in
         ;;
     mysql | mariadb)
         FOLDER=MySQLDriverPlugin CLASS=MySQLPlugin C_MODULE=CMariaDB
-        PRODUCTS="TableProGeometry TableProLogRedaction TableProMySQLCore"
+        PRODUCTS="TableProCoreTypes TableProGeometry TableProKerberos TableProLogRedaction TableProMySQLCore TableProSQLQuoting TableProSQLVocabulary"
         LINK="$ROOT/Libs/libmariadb.a -lssl.3 -lcrypto.3 -liconv -lz"
         USER_DEFAULT=root DATABASE_DEFAULT=tp_corpus PORT_IN=3306
         if [ "$ENGINE" = mysql ]; then
@@ -187,11 +187,12 @@ link_sources csv "$PLUGINS/CSVExportPlugin"
 link_sources json "$PLUGINS/JSONExportPlugin"
 link_sources sql "$PLUGINS/SQLExportPlugin"
 [ "$FOLDER" = SQLiteDriverPlugin ] && link_sources spill "$PLUGINS/SharedSpill"
-for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox; do
+for shared in PluginConnectTimeout PluginExportOutputBuffer PluginHexText PluginQueryTimeout PluginURLSessionTaskBox; do
     ln -s "$PLUGINS/Shared/$shared.swift" "$SOURCES/shared_$shared.swift"
 done
 
 dependencies='.product(name: "TableProPluginKit", package: "TableProCore"),
+                .product(name: "TableProGzip", package: "TableProCore"),
                 .product(name: "TableProSQLGrammar", package: "TableProCore"),
                 .product(name: "TableProProcess", package: "TableProCore"),'
 for product in $PRODUCTS; do

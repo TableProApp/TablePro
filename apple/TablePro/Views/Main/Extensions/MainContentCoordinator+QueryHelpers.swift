@@ -222,13 +222,15 @@ extension MainContentCoordinator {
         tabId: UUID,
         connectionType: DatabaseType,
         needsMetadataFetch: Bool,
-        schemaTask: Task<FetchedTableSchema, Error>?
+        schemaTask: Task<FetchedTableSchema, Error>?,
+        traceToken: TableLoadTraceToken? = nil
     ) {
         guard needsMetadataFetch else {
             launchPhase2Count(
                 tableName: tableName,
                 tabId: tabId,
-                connectionType: connectionType
+                connectionType: connectionType,
+                traceToken: traceToken
             )
             return
         }
@@ -236,7 +238,8 @@ extension MainContentCoordinator {
             tableName: tableName,
             tabId: tabId,
             connectionType: connectionType,
-            schemaTask: schemaTask
+            schemaTask: schemaTask,
+            traceToken: traceToken
         )
     }
 
@@ -245,26 +248,30 @@ extension MainContentCoordinator {
         tabId: UUID,
         connectionType: DatabaseType,
         schemaTask: Task<FetchedTableSchema, Error>?,
-        countsRows: Bool = true
+        countsRows: Bool = true,
+        traceToken: TableLoadTraceToken? = nil
     ) {
         queryExecutionCoordinator.launchPhase2Work(
             tableName: tableName,
             tabId: tabId,
             connectionType: connectionType,
             schemaTask: schemaTask,
-            countsRows: countsRows
+            countsRows: countsRows,
+            traceToken: traceToken
         )
     }
 
     func launchPhase2Count(
         tableName: String,
         tabId: UUID,
-        connectionType: DatabaseType
+        connectionType: DatabaseType,
+        traceToken: TableLoadTraceToken? = nil
     ) {
         queryExecutionCoordinator.launchPhase2Count(
             tableName: tableName,
             tabId: tabId,
-            connectionType: connectionType
+            connectionType: connectionType,
+            traceToken: traceToken
         )
     }
 

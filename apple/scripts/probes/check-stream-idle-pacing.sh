@@ -52,7 +52,7 @@ LINK=""
 case "$ENGINE" in
     elasticsearch)
         FOLDER=ElasticsearchDriverPlugin PORT_DEFAULT=9200
-        PRODUCTS="TableProNumberFormatting TableProDocumentPath"
+        PRODUCTS="TableProElasticsearchCore TableProNumberFormatting TableProDocumentPath"
         ;;
     mongodb)
         FOLDER=MongoDBDriverPlugin PORT_DEFAULT=27017 C_MODULE=CLibMongoc

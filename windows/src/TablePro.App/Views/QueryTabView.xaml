@@ -7,6 +7,38 @@
     xmlns:local="using:TablePro.App.Views">
 
     <Grid>
+        <!-- Vim's mode badge, colored by mode as the macOS editor bar colors it. -->
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="VimModes">
+                <VisualState x:Name="VimNormal" />
+                <VisualState x:Name="VimInsert">
+                    <VisualState.Setters>
+                        <Setter Target="VimBadge.Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                        <Setter Target="VimBadge.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                        <Setter Target="VimModeText.Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="VimReplace">
+                    <VisualState.Setters>
+                        <Setter Target="VimBadge.Background" Value="{ThemeResource SystemFillColorCriticalBackgroundBrush}" />
+                        <Setter Target="VimModeText.Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="VimVisual">
+                    <VisualState.Setters>
+                        <Setter Target="VimBadge.Background" Value="{ThemeResource SystemFillColorCautionBackgroundBrush}" />
+                        <Setter Target="VimModeText.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="VimCommand">
+                    <VisualState.Setters>
+                        <Setter Target="VimBadge.Background" Value="{ThemeResource SystemFillColorAttentionBackgroundBrush}" />
+                        <Setter Target="VimModeText.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" MinHeight="96" />
@@ -22,14 +54,44 @@
             IsDynamicOverflowEnabled="True"
             VerticalContentAlignment="Center">
             <CommandBar.Content>
-                <TextBlock
-                    x:Name="StatusText"
-                    Margin="12,0"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="QueryStatus"
-                    AutomationProperties.LiveSetting="Polite"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Style="{StaticResource CaptionTextBlockStyle}" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Shown while Vim mode is on: the mode, or the command line being typed, then the keys still pending. -->
+                    <Border
+                        x:Name="VimBadge"
+                        Margin="12,0,0,0"
+                        Padding="6,1"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource ControlCornerRadius}"
+                        Visibility="Collapsed">
+                        <TextBlock
+                            x:Name="VimModeText"
+                            AutomationProperties.AutomationId="VimMode"
+                            FontFamily="Cascadia Mono, Consolas"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}" />
+                    </Border>
+                    <TextBlock
+                        x:Name="VimKeysText"
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="VimKeys"
+                        FontFamily="Cascadia Mono, Consolas"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Visibility="Collapsed" />
+                    <TextBlock
+                        x:Name="StatusText"
+                        Margin="12,0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="QueryStatus"
+                        AutomationProperties.LiveSetting="Polite"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}" />
+                </StackPanel>
             </CommandBar.Content>
             <!-- Shown where the server has more than one database; its label and its menu are set in code. -->
             <AppBarButton
@@ -42,6 +104,11 @@
             </AppBarButton>
             <AppBarButton x:Uid="RunButton" x:Name="RunButton" AutomationProperties.AutomationId="RunButton" Icon="Play" Click="OnRun" />
             <AppBarButton x:Uid="StopButton" x:Name="StopButton" AutomationProperties.AutomationId="StopButton" Icon="Stop" IsEnabled="False" Click="OnStop" />
+            <!-- Shown while the result's rows edit, as a table tab's; Ctrl+S in the grid saves them. -->
+            <AppBarSeparator x:Name="EditSeparator" Visibility="Collapsed" />
+            <AppBarButton x:Uid="SaveChangesButton" x:Name="SaveChangesButton" AutomationProperties.AutomationId="ResultSaveChangesButton" Icon="Save" IsEnabled="False" Click="OnSaveChanges" Visibility="Collapsed" />
+            <AppBarButton x:Uid="DiscardChangesButton" x:Name="DiscardChangesButton" AutomationProperties.AutomationId="ResultDiscardChangesButton" Icon="Undo" IsEnabled="False" Click="OnDiscardChanges" Visibility="Collapsed" />
+            <AppBarButton x:Uid="ResultEditPreviewButton" x:Name="PreviewSqlButton" AutomationProperties.AutomationId="ResultPreviewSqlButton" Icon="Preview" IsEnabled="False" Click="OnPreviewSql" Visibility="Collapsed" />
         </CommandBar>
 
         <editor:SqlEditor x:Name="SqlText" Grid.Row="1" AutomationProperties.AutomationId="SqlEditor" />

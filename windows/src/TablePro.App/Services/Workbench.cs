@@ -33,6 +33,9 @@ internal sealed partial class Workbench : IDisposable
     // Raised after Settings cleared the query history, so an open history pane reads it again.
     public event EventHandler? HistoryCleared;
 
+    // Raised after an import added saved queries, so an open saved queries pane reads them again.
+    public event EventHandler? SavedQueriesChanged;
+
     // Raised on the UI thread after the account's status or a sign-in's progress changed.
     public event EventHandler? AccountChanged;
 
@@ -158,6 +161,8 @@ internal sealed partial class Workbench : IDisposable
     }
 
     public void NotifyLibraryChanged() => LibraryChanged?.Invoke(this, EventArgs.Empty);
+
+    public void NotifySavedQueriesChanged() => SavedQueriesChanged?.Invoke(this, EventArgs.Empty);
 
     // Once, at launch, on the UI thread: the account restores the last sign-in and keeps the entitlement fresh.
     public void StartAccount(AccountConfiguration configuration, IAccountBrowser browser, Uri portal)

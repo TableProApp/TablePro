@@ -12,6 +12,8 @@ internal struct ResultComparisonSide: Sendable {
     internal let columns: [String]
     internal let columnTypes: [ColumnType]
     internal let rows: ContiguousArray<Row>
+    // The fields each row has none of, by row id.
+    internal let absentColumns: [RowID: Set<Int>]
     internal let isTruncated: Bool
     internal let primaryKeyColumns: [String]
 
@@ -21,6 +23,7 @@ internal struct ResultComparisonSide: Sendable {
         columns: [String],
         columnTypes: [ColumnType] = [],
         rows: ContiguousArray<Row>,
+        absentColumns: [RowID: Set<Int>] = [:],
         isTruncated: Bool = false,
         primaryKeyColumns: [String] = []
     ) {
@@ -29,12 +32,17 @@ internal struct ResultComparisonSide: Sendable {
         self.columns = columns
         self.columnTypes = columnTypes
         self.rows = rows
+        self.absentColumns = absentColumns
         self.isTruncated = isTruncated
         self.primaryKeyColumns = primaryKeyColumns
     }
 
     internal func columnType(at index: Int) -> ColumnType? {
         columnTypes.indices.contains(index) ? columnTypes[index] : nil
+    }
+
+    internal func isAbsent(_ row: Row, column: Int) -> Bool {
+        absentColumns[row.id]?.contains(column) == true
     }
 }
 
@@ -190,7 +198,7 @@ internal enum ResultComparisonEngine {
         rightByKey.reserveCapacity(right.rows.count)
         for index in right.rows.indices {
             try checkCancellation(at: index)
-            let key = keyPairs.map { token(right.rows[index], pairing.pairs[$0].right, kinds[$0]) }
+            let key = keyPairs.map { token(right.rows[index], pairing.pairs[$0].right, kinds[$0], in: right) }
             guard rightByKey.updateValue(index, forKey: key) == nil else {
                 throw duplicateKeyError(right.rows[index], keyPairs.map { pairing.pairs[$0].right }, onLeft: false)
             }
@@ -204,7 +212,7 @@ internal enum ResultComparisonEngine {
         for index in left.rows.indices {
             try checkCancellation(at: index)
             let leftRow = left.rows[index]
-            let key = keyPairs.map { token(leftRow, pairing.pairs[$0].left, kinds[$0]) }
+            let key = keyPairs.map { token(leftRow, pairing.pairs[$0].left, kinds[$0], in: left) }
             guard seenOnLeft.insert(key).inserted else {
                 throw duplicateKeyError(leftRow, keyPairs.map { pairing.pairs[$0].left }, onLeft: true)
             }
@@ -216,7 +224,7 @@ internal enum ResultComparisonEngine {
             let rightRow = right.rows[partner]
             let changed = compared.filter { pairIndex in
                 let pair = pairing.pairs[pairIndex]
-                return token(leftRow, pair.left, kinds[pairIndex]) != token(rightRow, pair.right, kinds[pairIndex])
+                return token(leftRow, pair.left, kinds[pairIndex], in: left) != token(rightRow, pair.right, kinds[pairIndex], in: right)
             }
             entries.append(ResultComparisonEntry(
                 kind: changed.isEmpty ? .same : .changed,
@@ -243,7 +251,7 @@ internal enum ResultComparisonEngine {
         var rightByValues: [[CellToken]: [Int]] = [:]
         for index in right.rows.indices {
             try checkCancellation(at: index)
-            let values = pairing.pairs.indices.map { token(right.rows[index], pairing.pairs[$0].right, kinds[$0]) }
+            let values = pairing.pairs.indices.map { token(right.rows[index], pairing.pairs[$0].right, kinds[$0], in: right) }
             rightByValues[values, default: []].append(index)
         }
 
@@ -254,7 +262,7 @@ internal enum ResultComparisonEngine {
 
         for index in left.rows.indices {
             try checkCancellation(at: index)
-            let values = pairing.pairs.indices.map { token(left.rows[index], pairing.pairs[$0].left, kinds[$0]) }
+            let values = pairing.pairs.indices.map { token(left.rows[index], pairing.pairs[$0].left, kinds[$0], in: left) }
             let next = taken[values, default: 0]
             guard let bucket = rightByValues[values], next < bucket.count else {
                 entries.append(ResultComparisonEntry(kind: .onlyLeft, leftRow: index, rightRow: nil))
@@ -281,8 +289,10 @@ internal enum ResultComparisonEngine {
         case instant(Int64)
     }
 
-    private static func token(_ row: Row, _ column: Int, _ kind: ValueComparisonKind) -> CellToken {
-        guard !row.isAbsent(column) else { return .absent }
+    private static func token(
+        _ row: Row, _ column: Int, _ kind: ValueComparisonKind, in side: ResultComparisonSide
+    ) -> CellToken {
+        guard !side.isAbsent(row, column: column) else { return .absent }
         switch row[column] {
         case .null:
             return .null

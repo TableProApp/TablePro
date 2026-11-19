@@ -380,6 +380,7 @@ extension MainContentCoordinator {
     // Marks the load in the same step: a cleared buffer with no load is "no result" to the status bar, which collapses until the fetch lands.
     func discardRowsForRetarget(ofTab tabId: UUID, resultsViewMode: ResultsViewMode? = nil) {
         guard tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
+        cancelPhase2Work(forTab: tabId)
         setActiveTableRows(TableRows(), for: tabId)
         tabManager.mutate(tabId: tabId) { tab in
             if let resultsViewMode {

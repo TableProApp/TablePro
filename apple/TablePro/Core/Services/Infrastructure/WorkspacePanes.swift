@@ -79,14 +79,7 @@ internal final class WorkspacePanes {
     internal let agentConversation: NSHostingController<AnyView>
 
     internal let sidebar: NSHostingController<AnyView>
-    /// The editor tab strip. It is a pane like the other three, built and kept alive per
-    /// connection, even though the window shows it in the titlebar accessory rather than in a
-    /// split item. Holding it here is what gives it the same `sizingOptions` firewall and the
-    /// same teardown as everything else the connection owns.
-    ///
-    /// It is the one pane that is not a bare hosting controller. AppKit owns the pointer over the
-    /// strip, so the SwiftUI view is wrapped in the view that owns it; see
-    /// `EditorTabStripPaneController`.
+    // Kept per connection like the other panes, though the window shows it in the titlebar accessory.
     internal let tabStrip: EditorTabStripPaneController
 
     /// Written by the one function that produces pane content, and read by the one that decides

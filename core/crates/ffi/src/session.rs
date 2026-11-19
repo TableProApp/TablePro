@@ -24,6 +24,7 @@ use crate::error::{BoxedErrorInfo, CoreError};
 use crate::filter::{self, FilterChoices, TableFilterArg};
 use crate::key_read::KeyReader;
 use crate::library::SafeModeTag;
+use crate::results::ResultSet;
 use crate::row_edits::TableEditor;
 use crate::run::{QueryRun, RunListener, RunOutcome, RunSink, RunState, TransactionStateTag};
 use crate::runtime::on_runtime;
@@ -552,6 +553,18 @@ impl DatabaseSession {
         cancel: Option<Arc<CancelToken>>,
     ) -> Result<Arc<TableEditor>, CoreError> {
         TableEditor::open(self.session.clone(), self.tasks.clone(), table, refresh, cancel).await
+    }
+
+    // A query result's rows as a save sees them, when its statement reads one table and the driver traced its columns
+    // (core ADR 0015); otherwise the editor carries the lock that says why not. `rows` is the run's only result set,
+    // read outside a transaction in the session's own database, which the app checks.
+    pub async fn result_editor(
+        &self,
+        sql: String,
+        rows: Arc<ResultSet>,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<Arc<TableEditor>, CoreError> {
+        TableEditor::open_result(self.session.clone(), self.tasks.clone(), sql, rows, cancel).await
     }
 
     // `database` is where the editor runs: an engine that binds it at connect opens there, another moves there.

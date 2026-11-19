@@ -264,6 +264,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         _disposed = true;
         Unhook();
         _highlighter?.Dispose();
+        _vim?.Dispose();
         StopStructure();
         ReleaseCaretLayer();
         ReleaseDevice();
@@ -448,6 +449,10 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         if (_caretBrush is not null)
         {
             _caretBrush.Color = _brushes.Palette.Caret;
+        }
+        if (_blockCaretBrush is not null)
+        {
+            _blockCaretBrush.Color = BlockCaretColor(_brushes.Palette.Caret);
         }
         ForgetLayouts();
         Invalidate();

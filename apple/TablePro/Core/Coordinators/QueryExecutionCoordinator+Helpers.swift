@@ -86,7 +86,7 @@ extension QueryExecutionCoordinator {
         let enumsReady = enumSetColumnNames.allSatisfy { tableRows.columnEnumValues[$0] != nil }
         let cached = tab.tableContext.tableName == tableName
             && !tableRows.columnDefaults.isEmpty
-            && !tab.tableContext.primaryKeyColumns.isEmpty
+            && (!tab.tableContext.primaryKeyColumns.isEmpty || tableRows.hasAuthoritativeSchema)
             && tableRows.foreignKeysFetched
             && enumsReady
         helpersLogger.info(
@@ -371,8 +371,11 @@ extension QueryExecutionCoordinator {
             isEditable: isEditable
         )
 
-        // The tab's own edits named rows of the result this replaces.
-        parent.changeManager(forTab: tabId).configureForTable(
+        // The tab's own edits named rows of the result this replaces. The reload above drew the new rows, so only
+        // marks it read from those edits are left to repaint.
+        let changeManager = parent.changeManager(forTab: tabId)
+        let hadStagedRows = !changeManager.changes.isEmpty || !changeManager.insertedRowIDs.isEmpty
+        changeManager.configureForTable(
             tableName: tableName ?? "",
             schemaName: parent.tabManager.tabs[idx].tableContext.schemaName,
             columns: columns,
@@ -380,7 +383,8 @@ extension QueryExecutionCoordinator {
             databaseType: conn.type,
             generatedColumns: generatedColumns,
             rowMatchPolicy: resolved.rowMatchPolicy,
-            columnTypeNames: newTableRows.columnTypeNames
+            columnTypeNames: newTableRows.columnTypeNames,
+            triggerReload: hadStagedRows
         )
 
         if trigger.recordsHistory {
@@ -432,14 +436,21 @@ extension QueryExecutionCoordinator {
         tabId: UUID,
         connectionType: DatabaseType,
         schemaTask: Task<FetchedTableSchema, Error>?,
-        countsRows: Bool = true
+        countsRows: Bool = true,
+        traceToken: TableLoadTraceToken? = nil
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let tab = parent.tabManager.tabs.first { $0.id == tabId }
         let resultSetId = tab?.display.activeResultSetId
         let scope = tab.flatMap(parent.scope(for:))
-        Task(priority: .utility) { [weak self, parent] in
+        let workToken = UUID()
+        TableLoadTracer.shared.beginPhase2(traceToken)
+        let task = Task(priority: .utility) { [weak self, parent] in
+            defer {
+                parent.finishPhase2Work(workToken, forTab: tabId)
+                TableLoadTracer.shared.endPhase2(traceToken)
+            }
             // The caller marked the total pending; every exit that skips `resolveRowCount` must release it, or Count Exactly never returns.
             guard let self else {
                 if countsRows { parent.releaseCountPending(for: tabId) }
@@ -448,42 +459,55 @@ extension QueryExecutionCoordinator {
             guard !parent.isTearingDown else { return }
 
             let schema = try? await schemaTask?.value
+            // Whoever cancelled this work took the pending mark back, and the tab is on other rows now.
+            guard !Task.isCancelled else { return }
             if schemaTask != nil, schema == nil {
-                helpersLogger.error("[fk] phase2 schema fetch failed or cancelled table=\(tableName, privacy: .private(mask: .hash))")
+                helpersLogger.error("[fk] phase2 schema fetch failed table=\(tableName, privacy: .private(mask: .hash))")
             }
 
-            await MainActor.run { [weak self] in
+            let countTask: Task<Void, Never>? = await MainActor.run { [weak self] in
                 guard let self else {
                     if countsRows { parent.releaseCountPending(for: tabId) }
-                    return
+                    return nil
                 }
                 if let schema {
                     applySchemaMetadata(schema, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
                 }
                 // A retarget or newer run owns the tab now with its own pending mark; clearing here would release the successor's.
-                guard countsRows, parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
+                guard countsRows, parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return nil }
                 resolveRowCount(
                     tableName: tableName,
                     tabId: tabId,
                     connectionType: connectionType
                 )
+                return parent.rowCountTasks[tabId]?.task
             }
 
-            guard !isNonSQL, let schema else { return }
-
-            let columnEnumValues = await parent.fetchEnumValues(
-                columnInfo: schema.columns,
-                tableName: tableName,
-                connectionType: connectionType,
-                scope: scope
-            )
-            guard !columnEnumValues.isEmpty else { return }
-
-            await MainActor.run { [weak self] in
-                guard let self, !Task.isCancelled else { return }
-                applyEnumValues(columnEnumValues, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
+            if !isNonSQL, let schema, !Task.isCancelled {
+                let columnEnumValues = await parent.fetchEnumValues(
+                    columnInfo: schema.columns,
+                    tableName: tableName,
+                    connectionType: connectionType,
+                    scope: scope
+                )
+                if !columnEnumValues.isEmpty, !Task.isCancelled {
+                    applyEnumValues(columnEnumValues, tabId: tabId, tableName: tableName, resultSetId: resultSetId)
+                }
             }
+            // Phase 2 ends with the last of its reads, and the count is one of them.
+            await countTask?.value
         }
+        parent.trackPhase2Work(
+            MainContentCoordinator.Phase2Work(
+                token: workToken,
+                tableName: tableName,
+                resultSetId: resultSetId,
+                countsRows: countsRows,
+                task: task,
+                schemaTask: schemaTask
+            ),
+            forTab: tabId
+        )
     }
 
     // `QueryTab.tableContext` tracks the newest run, so each result carries its own origin or edits hit whatever ran last (#2243).
@@ -582,7 +606,7 @@ extension QueryExecutionCoordinator {
             for (col, vals) in values {
                 rows.columnEnumValues[col] = vals
             }
-            return .columnsReplaced
+            return .columnMetadataChanged
         }
         parent.tabManager.mutate(tabId: tabId) { $0.metadataVersion += 1 }
     }
@@ -629,7 +653,7 @@ extension QueryExecutionCoordinator {
         changeManager.setGeneratedColumns(parsed.generatedColumns)
         changeManager.setRowMatchPolicy(parsed.rowMatchPolicy)
 
-        // The metadata delta rebuilt the model's columns; the foreign key arrows need the rows redrawn.
+        // The keys and generated columns above were set after the metadata delta drew the rows.
         let refreshed = isActiveTab(tabId)
         if refreshed {
             parent.existingGridModel(forTab: tabId)?.repaintAllRows()
@@ -642,12 +666,15 @@ extension QueryExecutionCoordinator {
     func launchPhase2Count(
         tableName: String,
         tabId: UUID,
-        connectionType: DatabaseType
+        connectionType: DatabaseType,
+        traceToken: TableLoadTraceToken? = nil
     ) {
+        TableLoadTracer.shared.beginPhase2(traceToken)
         resolveRowCount(
             tableName: tableName,
             tabId: tabId,
-            connectionType: connectionType
+            connectionType: connectionType,
+            traceToken: traceToken
         )
     }
 
@@ -655,7 +682,8 @@ extension QueryExecutionCoordinator {
     func resolveRowCount(
         tableName: String,
         tabId: UUID,
-        connectionType: DatabaseType
+        connectionType: DatabaseType,
+        traceToken: TableLoadTraceToken? = nil
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
         let countsAutomatically = PluginManager.shared.countsRowsAutomatically(for: connectionType)
@@ -665,35 +693,57 @@ extension QueryExecutionCoordinator {
         parent.tabManager.mutate(tabId: tabId) { $0.pagination.isCountPending = true }
 
         let task = Task(priority: .utility) { [weak self, parent] in
+            defer { TableLoadTracer.shared.endPhase2(traceToken) }
             guard let self else { return }
             guard !parent.isTearingDown else { return }
 
-            let prepared: (plan: RowCountPlan, count: ExactCountInput?, scope: DatabaseScope?) = await MainActor.run {
+            typealias PreparedCount = (
+                plan: RowCountPlan, count: ExactCountInput?, scope: DatabaseScope?, countScope: RowCountScope?
+            )
+            let prepared: PreparedCount = await MainActor.run {
                 guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }) else {
-                    return (.skip, nil, nil)
+                    return (.skip, nil, nil, nil)
                 }
                 let scope = parent.scope(for: tab)
-                let plan = Self.rowCountPlan(
+                let countScope = tab.rowCountScope(table: tableName)
+                var plan = Self.rowCountPlan(
                     isNonSQL: isNonSQL,
                     filterState: tab.filterState,
-                    approximateRowCount: tab.pagination.totalRowCount,
+                    // An exact total describes the filters it was counted under, not the table's size.
+                    approximateRowCount: tab.pagination.isApproximateRowCount ? tab.pagination.totalRowCount : nil,
                     threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan,
                     countsAutomatically: countsAutomatically,
-                    browseSearch: parent.filterCoordinator.activeBrowseSearch(for: tab.filterState)
+                    browseSearch: parent.filterCoordinator.activeBrowseSearch(for: tab.filterState),
+                    isSettled: tab.pagination.settledRowCountScope == countScope
                 )
-                guard case let .exactCount(filtered) = plan else { return (plan, nil, scope) }
+                guard let request = plan.countRequest else { return (plan, nil, scope, countScope) }
                 let queryColumns = parent.queryColumns(for: tab)
                 let rerun = tab.filterState.rerunFilters
-                let filters = filtered ? rerun.filters : []
+                let filters = request.filtered ? rerun.filters : []
                 let logicMode = rerun.logicMode
-                let sql = parent.queryBuilder.buildFilteredCountQuery(
-                    tableName: tableName,
-                    schemaName: tab.tableContext.schemaName,
-                    filters: filters,
-                    logicMode: logicMode,
-                    columns: queryColumns.columns,
-                    columnTypes: queryColumns.columnTypes
-                )
+                var sql = request.limit.flatMap { limit in
+                    parent.queryBuilder.buildCappedCountQuery(
+                        tableName: tableName,
+                        schemaName: tab.tableContext.schemaName,
+                        filters: filters,
+                        logicMode: logicMode,
+                        columns: queryColumns.columns,
+                        columnTypes: queryColumns.columnTypes,
+                        limit: limit
+                    )
+                }
+                if sql == nil {
+                    // An engine with no capped form it can run still gets the count it always had.
+                    plan = .exactCount(filtered: request.filtered)
+                    sql = parent.queryBuilder.buildFilteredCountQuery(
+                        tableName: tableName,
+                        schemaName: tab.tableContext.schemaName,
+                        filters: filters,
+                        logicMode: logicMode,
+                        columns: queryColumns.columns,
+                        columnTypes: queryColumns.columnTypes
+                    )
+                }
                 let input = ExactCountInput(
                     sql: sql,
                     filters: filters,
@@ -703,7 +753,7 @@ extension QueryExecutionCoordinator {
                         ? sql.map { parent.rawFilterRequest(sql: $0, canPrompt: false, scope: scope) }
                         : nil
                 )
-                return (plan, input, scope)
+                return (plan, input, scope, countScope)
             }
 
             // Nobody asked for this count, so nothing may ask the user about it: a refusal leaves the total unknown.
@@ -727,8 +777,17 @@ extension QueryExecutionCoordinator {
                     if ownsCount {
                         tab.pagination.isCountPending = false
                     }
-                    guard isCurrent, let applied = outcome?.appliedTotal else { return }
-                    tab.pagination.applyDerivedRowCount(applied.total, isApproximate: applied.isApproximate)
+                    guard isCurrent, let outcome else { return }
+                    if let applied = outcome.appliedTotal {
+                        tab.pagination.applyDerivedRowCount(applied.total, isApproximate: applied.isApproximate)
+                    }
+                    // The total on screen belongs to other filters, and this count could not replace it.
+                    if outcome == .failed, tab.pagination.hasExactRowCount {
+                        tab.pagination.retireDerivedRowCount()
+                    }
+                    if outcome.settlesScope {
+                        tab.pagination.settledRowCountScope = prepared.countScope
+                    }
                 }
             }
         }
@@ -757,7 +816,7 @@ extension QueryExecutionCoordinator {
         case let .filteredNonSQL(filters, logicMode):
             guard let count = try? await DatabaseManager.shared.withRowCountDriver(scope: scope, filtered: true, { driver in
                 try await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode)
-            }) else { return .clear }
+            }) else { return Task.isCancelled ? nil : .clear }
             return .count(count, isApproximate: false)
         case let .browseSearch(search, tableSizeLimit):
             do {
@@ -787,9 +846,27 @@ extension QueryExecutionCoordinator {
                 return count.map { RowCountOutcome.count($0, isApproximate: false) }
             } catch {
                 helpersLogger.warning("COUNT query failed for \(tableName): \(error.localizedDescription)")
-                return nil
+                return failedCountOutcome(error)
+            }
+        case let .cappedCount(_, limit):
+            guard let exactCount, let sql = exactCount.sql else { return nil }
+            do {
+                let count = try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
+                    try await ExactRowCounter.cappedCount(
+                        on: driver, countSQL: sql, safeModeIsReadOnly: exactCount.safeModeIsReadOnly
+                    )
+                }
+                return count.map { $0 >= limit ? .clear : .count($0, isApproximate: false) }
+            } catch {
+                helpersLogger.warning("Capped COUNT query failed for \(tableName): \(error.localizedDescription)")
+                return failedCountOutcome(error)
             }
         }
+    }
+
+    // A cancelled count says nothing about the table, so it may run again.
+    private static func failedCountOutcome(_ error: Error) -> RowCountOutcome? {
+        DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled ? nil : .failed
     }
 
     // A browse search never takes the table estimate (it covers the whole database); not clearing keeps Count Exactly across pages.
@@ -799,8 +876,10 @@ extension QueryExecutionCoordinator {
         approximateRowCount: Int?,
         threshold: Int,
         countsAutomatically: Bool = true,
-        browseSearch: BrowseSearchState? = nil
+        browseSearch: BrowseSearchState? = nil,
+        isSettled: Bool = false
     ) -> RowCountPlan {
+        if isSettled { return .skip }
         if let browseSearch {
             return countsAutomatically ? .browseSearch(browseSearch, tableSizeLimit: threshold) : .skip
         }
@@ -813,11 +892,13 @@ extension QueryExecutionCoordinator {
                 ? .approximate
                 : .filteredNonSQL(filters: rerun.filters, logicMode: rerun.logicMode)
         }
-        let exceedsThreshold = (approximateRowCount ?? 0) >= threshold
-        if !rerun.filters.isEmpty {
-            return exceedsThreshold ? .clear : .exactCount(filtered: true)
+        let isFiltered = !rerun.filters.isEmpty
+        if (approximateRowCount ?? 0) >= threshold {
+            return isFiltered ? .clear : .skip
         }
-        return exceedsThreshold ? .skip : .exactCount(filtered: false)
+        // Int.max is Always count, which asked for the exact total however long it takes.
+        guard approximateRowCount == nil, threshold < Int.max else { return .exactCount(filtered: isFiltered) }
+        return .cappedCount(filtered: isFiltered, limit: threshold + 1)
     }
 
     // The caller settles the window's task handle and spinner before this runs, so nothing here touches them.
@@ -897,18 +978,40 @@ enum RowCountPlan: Equatable {
     case approximate
     case browseSearch(BrowseSearchState, tableSizeLimit: Int)
     case exactCount(filtered: Bool)
+    // No estimate to judge the table by: a count that stops at `limit` rows.
+    case cappedCount(filtered: Bool, limit: Int)
     case filteredNonSQL(filters: [TableFilter], logicMode: FilterLogicMode)
+
+    var countRequest: (filtered: Bool, limit: Int?)? {
+        switch self {
+        case let .exactCount(filtered):
+            return (filtered, nil)
+        case let .cappedCount(filtered, limit):
+            return (filtered, limit)
+        default:
+            return nil
+        }
+    }
 }
 
 enum RowCountOutcome: Equatable {
     case count(Int, isApproximate: Bool)
     case clear
+    case failed
+
+    // An estimate can move with the next read; anything else stands until the filters change or the tab refreshes.
+    var settlesScope: Bool {
+        if case .count(_, isApproximate: true) = self { return false }
+        return true
+    }
 
     // Nil is no answer, not zero: an estimate <= 0 is unknown (un-analyzed tables report 0 or -1), so phase 1's estimate stays.
     var appliedTotal: (total: Int?, isApproximate: Bool)? {
         switch self {
         case .clear:
             return (nil, false)
+        case .failed:
+            return nil
         case let .count(value, isApproximate):
             guard value > 0 || (value == 0 && !isApproximate) else { return nil }
             return (value, isApproximate)

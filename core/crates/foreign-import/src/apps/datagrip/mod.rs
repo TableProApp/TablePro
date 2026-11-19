@@ -16,9 +16,9 @@ use crate::apps::jetbrains::{CredentialStore, Lookup};
 use crate::apps::{jdbc, resolve_key_path};
 use crate::collect::{PasswordOutcome, assemble};
 use crate::{
-    CollectedImport, ForeignApp, ForeignAppDirs, ForeignConnection, ForeignConnectionRecord, ForeignCredentials,
-    ForeignImportError, ForeignKeychain, ForeignPlatform, ForeignSsh, ForeignSshAuth, ForeignSsl, ForeignSslMode,
-    ImportRequest, Inventory, engine,
+    CollectedImport, DataProtection, ForeignApp, ForeignAppDirs, ForeignConnection, ForeignConnectionRecord,
+    ForeignCredentials, ForeignImportError, ForeignKeychain, ForeignPlatform, ForeignSsh, ForeignSshAuth, ForeignSsl,
+    ForeignSslMode, ImportRequest, Inventory, engine,
 };
 
 pub(crate) struct DataGrip {
@@ -26,6 +26,7 @@ pub(crate) struct DataGrip {
     home: PathBuf,
     platform: ForeignPlatform,
     keychain: Option<Arc<dyn ForeignKeychain>>,
+    protection: Option<Arc<dyn DataProtection>>,
 }
 
 struct ScannedSource {
@@ -51,21 +52,28 @@ impl DataGrip {
         home: PathBuf,
         platform: ForeignPlatform,
         keychain: Option<Arc<dyn ForeignKeychain>>,
+        protection: Option<Arc<dyn DataProtection>>,
     ) -> Self {
         Self {
             roots,
             home,
             platform,
             keychain,
+            protection,
         }
     }
 
-    pub(crate) fn locate(dirs: &ForeignAppDirs, keychain: Option<Arc<dyn ForeignKeychain>>) -> Self {
+    pub(crate) fn locate(
+        dirs: &ForeignAppDirs,
+        keychain: Option<Arc<dyn ForeignKeychain>>,
+        protection: Option<Arc<dyn DataProtection>>,
+    ) -> Self {
         Self::new(
             locations::jetbrains_roots(dirs),
             dirs.home.clone(),
             dirs.platform,
             keychain,
+            protection,
         )
     }
 
@@ -126,6 +134,7 @@ impl DataGrip {
 
     fn credential_store(&self, config_dir: &Path) -> CredentialStore {
         CredentialStore::new(config_dir.to_path_buf(), self.platform, self.keychain.clone())
+            .with_data_protection(self.protection.clone())
     }
 
     fn password_outcome(

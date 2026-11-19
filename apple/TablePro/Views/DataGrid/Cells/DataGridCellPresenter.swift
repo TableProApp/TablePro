@@ -228,23 +228,40 @@ final class DataGridCellPresenter {
         return (text, formatted.isFormatted)
     }
 
-    // Formats a whole row ahead of the viewport, for the background prewarm.
-    func cacheText(of row: Row, rows: TableRows, formats: [ValueDisplayFormat?], databaseType: DatabaseType?) {
-        guard let cache = model?.display.cache, cache.box(forID: row.id) == nil else { return }
-        let columnCount = rows.columns.count
-        let box = RowDisplayBox(ContiguousArray<String?>(repeating: nil, count: columnCount))
-        for dataIndex in 0..<min(row.values.count, columnCount) {
-            let type = dataIndex < rows.columnTypes.count ? rows.columnTypes[dataIndex] : nil
-            let format = dataIndex < formats.count ? formats[dataIndex] : nil
-            let formatted = CellDisplayFormatter.display(
-                row.values[dataIndex],
-                columnType: type,
-                displayFormat: format,
-                databaseType: databaseType
-            )
-            box.setText(formatted.text ?? row.values[dataIndex].asText ?? "", at: dataIndex, isFormatted: formatted.isFormatted)
+    // Copies the next rows of the window that have no text yet, and where the walk stopped.
+    func prewarmBatch(in window: Range<Int>, from start: Int) -> (batch: DataGridPrewarmBatch?, next: Int)? {
+        guard let model, start < window.upperBound else { return nil }
+        let rows = model.rows
+        let order = model.order
+        let cache = model.display.cache
+        var copied: [Row] = []
+        var index = start
+        while index < window.upperBound, copied.count < DataGridPrewarmBatch.rowLimit {
+            if let row = order.row(at: index, in: rows), cache.box(forID: row.id) == nil {
+                copied.append(row)
+            }
+            index += 1
         }
-        cache.setBox(box, forID: row.id)
+        guard !copied.isEmpty else { return (nil, index) }
+        let batch = DataGridPrewarmBatch(
+            rows: copied,
+            columnCount: rows.columns.count,
+            columnTypes: rows.columnTypes,
+            formats: model.store.displayFormats,
+            databaseType: model.configuration.traits.databaseType,
+            dateFormat: DateFormattingService.shared.currentFormat,
+            invalidations: cache.invalidations
+        )
+        return (batch, index)
+    }
+
+    // False when cached text was dropped while the batch formatted, so what came back may describe old values.
+    func installPrewarmed(_ formatted: sending [(id: RowID, box: RowDisplayBox)], of batch: DataGridPrewarmBatch) -> Bool {
+        guard let cache = model?.display.cache, cache.invalidations == batch.invalidations else { return false }
+        for (id, box) in formatted where cache.box(forID: id) == nil {
+            cache.setBox(box, forID: id)
+        }
+        return true
     }
 
     // MARK: - Appearance
@@ -285,9 +302,9 @@ final class DataGridCellPresenter {
                 rawValue: rawValue.asText,
                 placeholder: DataGridCellContent.placeholder(
                     for: rawValue,
-                    isAbsent: row.isAbsent(dataIndex),
+                    isAbsent: pass.rows.isAbsent(row.id, column: dataIndex),
                     isExpression: visualState.isExpression(columnIndex: dataIndex),
-                    unloadedByteCount: row.unloadedByteCount(dataIndex),
+                    unloadedByteCount: pass.rows.unloadedByteCount(row.id, column: dataIndex),
                     marksEmptyText: pass.marksEmptyText
                 )
             ),
@@ -334,9 +351,9 @@ final class DataGridCellPresenter {
         let rawValue = row.values[dataIndex]
         switch DataGridCellContent.placeholder(
             for: rawValue,
-            isAbsent: row.isAbsent(dataIndex),
+            isAbsent: rows.isAbsent(row.id, column: dataIndex),
             isExpression: model.changeState?.isExpression(rowID: row.id, columnIndex: dataIndex) ?? false,
-            unloadedByteCount: row.unloadedByteCount(dataIndex),
+            unloadedByteCount: rows.unloadedByteCount(row.id, column: dataIndex),
             marksEmptyText: model.configuration.marksEmptyText
         ) {
         case .null: return String(localized: "NULL")

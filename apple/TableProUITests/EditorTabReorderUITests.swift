@@ -1,8 +1,8 @@
 import XCTest
 
 // The strip lives in a titlebar accessory, so AppKit's own window drag claims every press on a tab
-// unless `EditorTabInteractionView` refuses `mouseDownCanMoveWindow`. Checking the order alone would
-// pass with the window sliding across the screen (#2438).
+// unless `EditorTabItemView` refuses `mouseDownCanMoveWindow`. Checking the order alone would pass
+// with the window sliding across the screen (#2438).
 final class EditorTabReorderUITests: UITestCase {
     func testDraggingATabReordersTheStripWithoutMovingTheWindow() throws {
         let tables = ["album", "artist", "genre"]

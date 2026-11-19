@@ -2,6 +2,7 @@
 
 mod account;
 mod ai;
+mod app_link;
 mod cancel_token;
 mod catalog;
 mod catalog_change;
@@ -20,6 +21,7 @@ mod error;
 mod export;
 mod favourites;
 mod filter;
+mod foreign_import;
 mod history;
 mod host;
 mod host_key;
@@ -56,6 +58,7 @@ pub use ai::{
     AiProviderInfo, AiProviderTag, AiReply, AiReplyEvent, AiReplyListener, AiRoleTag, AiSettingsArg, AiStopTag,
     ai_action_message, ai_address_is_valid, ai_host_of, ai_providers,
 };
+pub use app_link::{AppLinkInfo, parse_app_link};
 pub use cancel_token::CancelToken;
 pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, SchemaEntry, TableName};
 pub use catalog_change::{
@@ -73,6 +76,12 @@ pub use export::{ExportFormatTag, ExportProgress};
 pub use favourites::{DatabaseEnvironmentTag, FavouriteDatabaseInfo, FavouriteStore, FavouriteTableInfo};
 pub use filter::{
     CombinatorTag, FilterChoices, FilterColumn, FilterOpTag, FilterRuleArg, FilterValueArg, TableFilterArg,
+};
+pub use foreign_import::{
+    ExistingConnectionInfo, ForeignAppDirsArg, ForeignAppTag, ForeignConnectionChoice, ForeignConnectionRow,
+    ForeignImportChoices, ForeignImportOutcome, ForeignImportRequest, ForeignImportReview, ForeignQueryChoice,
+    ForeignQueryRow, ForeignSourceInfo, ForeignSslModeTag, PasswordOutcomeTag, PasswordSourceTag, QueryAvailabilityTag,
+    ResolutionTag, RowNoteInfo, SavedQuerySupportTag, TlsFileReasonTag,
 };
 pub use history::{
     HistoryCursorArg, HistoryEntryInfo, HistoryExportFormat, HistoryOutcomeTag, HistoryPageInfo, HistoryRun,

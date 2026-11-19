@@ -2,10 +2,8 @@ import SwiftUI
 import TableProPluginKit
 
 struct SidebarTreeView: View {
-    @ObservedObject private var databaseManager = DatabaseManager.shared
-    @ObservedObject private var schemaService = SchemaService.shared
-    // Read through the view model's listing scan; observed so a listing that lands redraws the verdicts.
-    @ObservedObject private var treeMetadata = DatabaseTreeMetadataService.shared
+    private var databaseManager: DatabaseManager { .shared }
+    private var schemaService: SchemaService { .shared }
 
     let connectionId: UUID
     @ObservedObject var viewModel: SidebarViewModel
@@ -14,6 +12,8 @@ struct SidebarTreeView: View {
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     weak var coordinator: MainContentCoordinator?
+    // Also carries the all-schema listing the view model's scan reads, so a listing that lands redraws the verdicts.
+    @ObservedObject var catalog: ConnectionSidebarCatalog
 
     @ObservedObject private var settingsManager = AppSettingsManager.shared
 
@@ -83,7 +83,8 @@ struct SidebarTreeView: View {
                         connectionId: connectionId,
                         database: activeDatabase,
                         databaseType: viewModel.databaseType,
-                        sidebarState: sidebarState
+                        sidebarState: sidebarState,
+                        catalog: catalog
                     )
                     treeList
                 }

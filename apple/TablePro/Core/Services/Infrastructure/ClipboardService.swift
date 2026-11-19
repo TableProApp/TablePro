@@ -22,17 +22,19 @@ extension GridRowsClipboardPayload {
     /// here, so the fields a row has none of travel with its values rather than each copy path
     /// deciding for itself whether to carry them.
     ///
-    /// `expressionColumns` are, per copied row, the data columns holding staged SQL.
+    /// `absentColumns` and `expressionColumns` are, per copied row, the data columns with no field and the data
+    /// columns holding staged SQL.
     init(
         columns: [String],
         copying copiedRows: [Row],
+        absentColumns: [Set<Int>],
         expressionColumns: [Set<Int>],
         projection: VisibleColumnProjection
     ) {
         var absentCells: [Int: Set<Int>] = [:]
         var expressionCells: [Int: Set<Int>] = [:]
-        for (index, row) in copiedRows.enumerated() {
-            let absent = projection.absentColumns(row.absentColumns)
+        for index in copiedRows.indices {
+            let absent = projection.absentColumns(absentColumns[safe: index] ?? [])
             if !absent.isEmpty { absentCells[index] = absent }
             let marked = projection.positions(of: expressionColumns[safe: index] ?? [])
             if !marked.isEmpty { expressionCells[index] = marked }

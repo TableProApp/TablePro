@@ -121,6 +121,142 @@ extension GlobalStateSuites {
             try await waitUntil { page.mountedRows == everyRow }
         }
 
+        private func mountedColumns(in grid: HostedDataGrid, row: Int = 0) -> IndexSet {
+            IndexSet((0..<grid.main.numberOfColumns).filter {
+                grid.main.view(atColumn: $0, row: row, makeIfNecessary: false) is DataGridAccessibilityCellView
+            })
+        }
+
+        private func columnsOnScreen(in grid: HostedDataGrid) -> IndexSet {
+            grid.main.columnIndexes(in: grid.main.visibleRect)
+        }
+
+        private func scroll(_ grid: HostedDataGrid, toColumn index: Int) {
+            grid.main.scroll(NSPoint(x: grid.main.rect(ofColumn: index).minX, y: grid.mainScrollView.contentView.bounds.minY))
+            grid.layout()
+        }
+
+        @Test("A wide table mounts the columns on screen, one each side and the row numbers")
+        func onlyColumnsOnScreenMount() async throws {
+            let wasActive = DataGridAccessibility.isActive
+            DataGridAccessibility.isActive = true
+            defer { DataGridAccessibility.isActive = wasActive }
+            let grid = HostedDataGrid(rows: GridFixtureRows.wide(rows: 10, columns: 60))
+            defer { grid.close() }
+
+            grid.controller.remountAccessibilityCells()
+            try await waitUntil { !mountedColumns(in: grid).isEmpty }
+
+            let onScreen = columnsOnScreen(in: grid)
+            let mounted = mountedColumns(in: grid)
+            try #require(!onScreen.isEmpty && onScreen.count < 30)
+            #expect(mounted.contains(0))
+            #expect(mounted.contains(integersIn: onScreen))
+            #expect(mounted.subtracting(onScreen).count <= 2)
+        }
+
+        @Test("A sideways scroll mounts the columns it brings in and unmounts the ones it leaves")
+        func scrollingSidewaysMovesTheMountedColumns() async throws {
+            let wasActive = DataGridAccessibility.isActive
+            DataGridAccessibility.isActive = true
+            defer { DataGridAccessibility.isActive = wasActive }
+            let grid = HostedDataGrid(rows: GridFixtureRows.wide(rows: 10, columns: 60))
+            defer { grid.close() }
+            grid.controller.remountAccessibilityCells()
+            try await waitUntil { mountedColumns(in: grid).contains(1) }
+
+            scroll(grid, toColumn: 40)
+
+            try await waitUntil { mountedColumns(in: grid).contains(integersIn: columnsOnScreen(in: grid)) }
+            let mounted = mountedColumns(in: grid)
+            #expect(mounted.contains(0))
+            #expect(mounted.contains(40))
+            #expect(!mounted.contains(1))
+        }
+
+        @Test("A cell that stays on screen through a sideways scroll keeps its view")
+        func aCellStayingOnScreenIsNotReplaced() async throws {
+            let wasActive = DataGridAccessibility.isActive
+            DataGridAccessibility.isActive = true
+            defer { DataGridAccessibility.isActive = wasActive }
+            let grid = HostedDataGrid(rows: GridFixtureRows.wide(rows: 10, columns: 60))
+            defer { grid.close() }
+            grid.controller.remountAccessibilityCells()
+            try await waitUntil { mountedColumns(in: grid).contains(2) }
+            let onScreen = columnsOnScreen(in: grid)
+            let before = Dictionary(uniqueKeysWithValues: onScreen.map { index in
+                (index, grid.main.view(atColumn: index, row: 0, makeIfNecessary: false))
+            })
+
+            scroll(grid, toColumn: 3)
+
+            let stays = onScreen.intersection(columnsOnScreen(in: grid))
+            try #require(stays.count > 1)
+            try await waitUntil { mountedColumns(in: grid).contains(integersIn: columnsOnScreen(in: grid)) }
+            for index in stays {
+                #expect(grid.main.view(atColumn: index, row: 0, makeIfNecessary: false) === before[index] ?? nil)
+            }
+        }
+
+        @Test("A row short of one column's stand-in gets it back on the next remount")
+        func aRowMissingOneColumnRemounts() async throws {
+            let wasActive = DataGridAccessibility.isActive
+            DataGridAccessibility.isActive = true
+            defer { DataGridAccessibility.isActive = wasActive }
+            let grid = HostedDataGrid(rows: GridFixtureRows.wide(rows: 10, columns: 60))
+            defer { grid.close() }
+            grid.controller.remountAccessibilityCells()
+            try await waitUntil { mountedColumns(in: grid).contains(2) }
+
+            DataGridAccessibility.isActive = false
+            grid.main.reloadData(forRowIndexes: IndexSet(integer: 0), columnIndexes: IndexSet(integer: 2))
+            DataGridAccessibility.isActive = true
+            try #require(!mountedColumns(in: grid).contains(2))
+
+            grid.controller.remountAccessibilityCells()
+
+            #expect(mountedColumns(in: grid).contains(2))
+        }
+
+        @Test("A frozen column keeps its stand-in however far the rest scrolls")
+        func frozenColumnsStayMounted() async throws {
+            let wasActive = DataGridAccessibility.isActive
+            DataGridAccessibility.isActive = true
+            defer { DataGridAccessibility.isActive = wasActive }
+            var layout = ColumnLayoutState()
+            layout.frozenColumnCount = 1
+            let grid = HostedDataGrid(
+                rows: GridFixtureRows.wide(rows: 10, columns: 60),
+                store: InMemoryDataGridStateStore(columnLayout: layout)
+            )
+            defer { grid.close() }
+            try #require(grid.controller.effectiveFrozenCount == 1)
+            let frozenIndex = try #require(grid.tableIndex(ofDisplayPosition: 0))
+
+            scroll(grid, toColumn: 40)
+            grid.controller.remountAccessibilityCells()
+
+            try await waitUntil { mountedColumns(in: grid).contains(40) }
+            #expect(mountedColumns(in: grid).contains(frozenIndex))
+        }
+
+        @Test("The active cell's column mounts off screen, so moving to it can be announced")
+        func activeCellColumnMountsOffScreen() async throws {
+            let wasActive = DataGridAccessibility.isActive
+            DataGridAccessibility.isActive = true
+            defer { DataGridAccessibility.isActive = wasActive }
+            let grid = HostedDataGrid(rows: GridFixtureRows.wide(rows: 10, columns: 60))
+            defer { grid.close() }
+            grid.controller.remountAccessibilityCells()
+            let index = try #require(grid.tableIndex(ofDisplayPosition: 50))
+            try #require(!columnsOnScreen(in: grid).contains(index))
+
+            grid.model.selectCell(GridCoord(row: 0, displayColumn: 50))
+
+            #expect(mountedColumns(in: grid).contains(index))
+            #expect(!columnsOnScreen(in: grid).contains(index))
+        }
+
         @Test("Only the rows on the page get a stand-in, however many a client reads")
         func onlyRowsOnThePageMount() async throws {
             let wasActive = DataGridAccessibility.isActive

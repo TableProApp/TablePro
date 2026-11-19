@@ -21,8 +21,8 @@ internal enum DataGridAccessibility {
     }
 }
 
-// NSTableView builds its AXCell tree from cell views only (probe P6), so while a client is attached each on-screen
-// cell of the main table mounts one of these. It draws nothing and takes no clicks.
+// NSTableView builds its AXCell tree from cell views only (probe P6), so while a client is attached the cells a reader
+// can reach on screen mount one of these. It draws nothing and takes no clicks.
 @MainActor
 final class DataGridAccessibilityCellView: NSTableCellView {
     static let reuseIdentifier = NSUserInterfaceItemIdentifier("data-grid-cell")
@@ -142,9 +142,37 @@ final class DataGridAccessibilityCellView: NSTableCellView {
 extension DataGridViewController {
     // Only the viewport mounts: walking the tree prepares every row, and 9,000 views behind a 1,000-row page
     // starved the main thread (#2392).
-    func mountsAccessibilityCell(forRow row: Int) -> Bool {
+    func mountsAccessibilityCell(forRow row: Int, tableColumn: NSTableColumn) -> Bool {
         let table = main.tableView
-        return NSLocationInRange(row, table.rows(in: table.visibleRect))
+        guard NSLocationInRange(row, table.rows(in: table.visibleRect)) else { return false }
+        guard let id = main.columnID(of: tableColumn),
+              let position = model.columns.displayPosition(of: id),
+              let index = main.tableIndex(forDisplayPosition: position, columns: model.columns) else { return true }
+        return accessibilityColumnIndexes().contains(index)
+    }
+
+    // The columns on screen and one more each side, so a reader can step onto the next column and scroll it in,
+    // with the row numbers, the frozen columns and the active cell's column wherever it sits.
+    private func accessibilityColumnIndexes() -> IndexSet {
+        let table = main.tableView
+        let columns = model.columns
+        var indexes = IndexSet()
+        for range in table.columnIndexes(in: table.visibleRect).rangeView {
+            indexes.insert(integersIn: max(range.lowerBound - 1, 0)..<min(range.upperBound + 1, table.numberOfColumns))
+        }
+        if main.hasRowNumberColumn {
+            indexes.insert(0)
+        }
+        for position in 0..<effectiveFrozenCount {
+            if let index = main.tableIndex(forDisplayPosition: position, columns: columns) {
+                indexes.insert(index)
+            }
+        }
+        if let active = model.selection.activeCell,
+           let index = main.tableIndex(forDisplayPosition: active.displayColumn, columns: columns) {
+            indexes.insert(index)
+        }
+        return indexes
     }
 
     func accessibilityCellView(for tableColumn: NSTableColumn, row: Int) -> NSView {
@@ -153,23 +181,35 @@ extension DataGridViewController {
             as? DataGridAccessibilityCellView) ?? DataGridAccessibilityCellView()
         let slot: DataGridPane.Slot = main.columnID(of: tableColumn).map { .data($0) } ?? .rowNumber
         cell.configure(controller: self, table: table, row: row, slot: slot)
+        mountedAccessibilityColumns.insert(table.column(withIdentifier: tableColumn.identifier))
         return cell
     }
 
-    // A row prepared off screen was answered with no view and is never asked again, so an on-screen row without
-    // its stand-in reloads. Asked of the rows themselves: a client's read prepares rows the grid never showed.
+    // A row prepared off screen was answered with no view and is never asked again, so an on-screen row whose
+    // stand-ins do not match the reachable columns reloads. Asked of the rows themselves: a client's read prepares rows
+    // the grid never showed. Only the cells that differ reload, so the cell a reader is on stays put.
     func remountAccessibilityCells(force: Bool = false) {
         guard DataGridAccessibility.isActive, !isEditingCell else { return }
         let table = main.tableView
         let visible = table.rows(in: table.visibleRect)
         let upperBound = min(visible.location + visible.length, table.numberOfRows)
         guard visible.location >= 0, upperBound > visible.location, table.numberOfColumns > 0 else { return }
-        let rows = IndexSet(integersIn: visible.location..<upperBound).filteredIndexSet { row in
-            guard table.rowView(atRow: row, makeIfNecessary: false) != nil else { return false }
-            return force || !(table.view(atColumn: 0, row: row, makeIfNecessary: false) is DataGridAccessibilityCellView)
+        let everyColumn = IndexSet(integersIn: 0..<table.numberOfColumns)
+        let columns = accessibilityColumnIndexes()
+        let candidates = columns.union(mountedAccessibilityColumns).intersection(everyColumn)
+        mountedAccessibilityColumns = columns
+        var rowsByOutdatedColumns: [IndexSet: IndexSet] = [:]
+        for row in visible.location..<upperBound where table.rowView(atRow: row, makeIfNecessary: false) != nil {
+            let outdated = force ? everyColumn : candidates.filteredIndexSet { index in
+                (table.view(atColumn: index, row: row, makeIfNecessary: false) is DataGridAccessibilityCellView) != columns.contains(index)
+            }
+            if !outdated.isEmpty {
+                rowsByOutdatedColumns[outdated, default: []].insert(row)
+            }
         }
-        guard !rows.isEmpty else { return }
-        table.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
+        for (outdated, rows) in rowsByOutdatedColumns {
+            table.reloadData(forRowIndexes: rows, columnIndexes: outdated)
+        }
     }
 
     // Rows also come on screen with no scroll: a fitted grid grows to its rows, a pane resizes, a page moves the
@@ -184,7 +224,7 @@ extension DataGridViewController {
         }
     }
 
-    // Clamped to the visible rows: AppKit would otherwise ask for every cell of a million-row selection.
+    // Clamped to what is mounted: AppKit would otherwise ask for every cell of a million-row selection.
     func accessibilitySelectedCells() -> [Any]? {
         let table = main.tableView
         let selection = model.selection
@@ -221,8 +261,10 @@ extension DataGridViewController {
         NSAccessibility.post(element: table, notification: .selectedCellsChanged)
         guard let active = current.activeCell, active != previous.activeCell,
               let index = main.tableIndex(forDisplayPosition: active.displayColumn, columns: model.columns),
-              active.row < table.numberOfRows,
-              let cell = table.view(atColumn: index, row: active.row, makeIfNecessary: false) as? DataGridAccessibilityCellView
+              active.row < table.numberOfRows else { return }
+        // The cell may have just left the columns on screen, and the reveal that follows comes after this announcement.
+        remountAccessibilityCells()
+        guard let cell = table.view(atColumn: index, row: active.row, makeIfNecessary: false) as? DataGridAccessibilityCellView
         else { return }
         NSAccessibility.post(element: cell, notification: .focusedUIElementChanged)
     }

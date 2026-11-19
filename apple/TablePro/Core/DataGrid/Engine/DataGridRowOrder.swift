@@ -63,6 +63,25 @@ struct DataGridRowOrder: Equatable {
         indexes.compactMap { rowID(at: $0, in: tableRows) }
     }
 
+    // Walks the rows without copying them: a Row holds four references, and a selection step reads a million ids.
+    func rowIDRuns(atDisplayIndexes indexes: IndexSet, in tableRows: TableRows) -> RowIDRuns {
+        var runs = RowIDRuns()
+        if let filteredIDs {
+            for range in indexes.rangeView {
+                for index in range.clamped(to: 0..<filteredIDs.count) {
+                    runs.append(filteredIDs[index])
+                }
+            }
+            return runs
+        }
+        tableRows.rows.withUnsafeBufferPointer { rows in
+            for range in indexes.rangeView {
+                runs.append(rowsIn: UnsafeBufferPointer(rebasing: rows[range.clamped(to: 0..<rows.count)]))
+            }
+        }
+        return runs
+    }
+
     func displayIndexes(of ids: some Sequence<RowID>, in tableRows: TableRows) -> IndexSet {
         IndexSet(ids.compactMap { displayIndex(of: $0, in: tableRows) })
     }

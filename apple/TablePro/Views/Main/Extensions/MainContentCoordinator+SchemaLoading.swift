@@ -173,10 +173,13 @@ extension MainContentCoordinator {
         _ tableName: String?,
         uncached: Bool,
         isView: Bool,
-        scope: DatabaseScope
+        scope: DatabaseScope,
+        knownColumns: [ColumnInfo]? = nil
     ) -> Task<FetchedTableSchema, Error>? {
         if let tableName, !tableName.isEmpty { prefetchForeignKeys(scope: scope) }
-        return QueryExecutor.schemaFetch(tableName: uncached ? tableName : nil, isView: isView, scope: scope)
+        return QueryExecutor.schemaFetch(
+            tableName: uncached ? tableName : nil, isView: isView, scope: scope, knownColumns: knownColumns
+        )
     }
 
     /// The table a tab's Table Info describes, or nil on a tab with no table of its own, such as a

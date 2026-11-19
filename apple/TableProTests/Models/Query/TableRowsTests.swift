@@ -530,7 +530,7 @@ struct TableRowsMetadataTests {
         )
     }
 
-    @Test("updateDisplayMetadata reports columnsReplaced when a field changes")
+    @Test("updateDisplayMetadata reports columnsReplaced when a column type changes")
     func updateDisplayMetadataDetectsChange() {
         var table = Self.makeTable()
         let delta = table.updateDisplayMetadata(columnTypes: [.integer(rawType: "INT")])
@@ -556,11 +556,11 @@ struct TableRowsMetadataTests {
         #expect(delta == .none)
     }
 
-    @Test("updateDisplayMetadata stores columnComments and reports columnsReplaced")
+    @Test("updateDisplayMetadata stores columnComments and reports columnMetadataChanged")
     func updateDisplayMetadataStoresComments() {
         var table = Self.makeTable()
         let delta = table.updateDisplayMetadata(columnComments: ["c1": "Primary key"])
-        #expect(delta == .columnsReplaced)
+        #expect(delta == .columnMetadataChanged)
         #expect(table.columnComments == ["c1": "Primary key"])
     }
 
@@ -735,7 +735,7 @@ struct TableRowsGeneratedColumnsTests {
     @Test("Updating the non-writable set reports a change")
     func updateReportsChange() {
         var table = TableRows.from(queryRows: [], columns: ["id"], columnTypes: [])
-        #expect(table.updateDisplayMetadata(generatedColumns: ["id"]) == .columnsReplaced)
+        #expect(table.updateDisplayMetadata(generatedColumns: ["id"]) == .columnMetadataChanged)
         #expect(table.generatedColumns == ["id"])
         #expect(table.updateDisplayMetadata(generatedColumns: ["id"]) == .none)
     }

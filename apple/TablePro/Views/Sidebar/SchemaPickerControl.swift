@@ -19,14 +19,21 @@ struct SchemaPickerControl: View {
     let databaseType: DatabaseType
     let coordinator: MainContentCoordinator?
 
-    @ObservedObject private var schemaService = SchemaService.shared
-    @ObservedObject private var databaseManager = DatabaseManager.shared
+    private var schemaService: SchemaService { .shared }
+    private var databaseManager: DatabaseManager { .shared }
+    @ObservedObject private var catalog: ConnectionSidebarCatalog
     @ObservedObject private var sidebarState: SharedSidebarState
 
-    init(connectionId: UUID, databaseType: DatabaseType, coordinator: MainContentCoordinator?) {
+    init(
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        coordinator: MainContentCoordinator?,
+        catalog: ConnectionSidebarCatalog
+    ) {
         self.connectionId = connectionId
         self.databaseType = databaseType
         self.coordinator = coordinator
+        self.catalog = catalog
         _sidebarState = ObservedObject(wrappedValue: SharedSidebarState.forConnection(connectionId))
     }
 

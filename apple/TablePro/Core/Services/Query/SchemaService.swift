@@ -1330,6 +1330,31 @@ final class SchemaService: ObservableObject {
     }
 }
 
+extension SchemaService {
+    // One schema of the catalog a connection shows, as a reader comparing it by value needs it.
+    struct ShownSchema {
+        let tables: SchemaState
+        let side: SideObjects
+        let isCurrent: Bool
+        let needsFetch: Bool
+    }
+
+    func shownSchemas(for connectionId: UUID) -> [String: ShownSchema] {
+        let states = catalogEntries(perSchemaStates, of: connectionId)
+        let sides = catalogEntries(perSchemaSideObjects, of: connectionId)
+        var shown: [String: ShownSchema] = [:]
+        for schema in Set(states.keys).union(sides.keys) {
+            shown[schema] = ShownSchema(
+                tables: states[schema] ?? .idle,
+                side: sides[schema] ?? SideObjects(),
+                isCurrent: isSchemaCurrent(for: connectionId, schema: schema),
+                needsFetch: schemaObjectsNeedFetch(for: connectionId, schema: schema)
+            )
+        }
+        return shown
+    }
+}
+
 extension SchemaService.SchemaKey {
     init(scope: DatabaseScope, schema: String) {
         self.init(connectionId: scope.connectionId, database: scope.database, schema: schema)

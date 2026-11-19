@@ -166,8 +166,8 @@ struct DocumentExportDataSourceTests {
         let source = QueryResultExportDataSource(detachedRows: rows, databaseTypeId: "MongoDB")
         let documents = try await collect(source)
         #expect(documents?.first?.fields.first?.canonicalJSON == "null")
-        #expect(rows.rows[0].exportSnapshot?.values == [.null])
-        #expect(rows.rows[0].exportSnapshot?.document.canonicalJSON.contains("secret") == false)
+        #expect(rows.exportSnapshot(of: rows.rows[0].id)?.values == [.null])
+        #expect(rows.exportSnapshot(of: rows.rows[0].id)?.document.canonicalJSON.contains("secret") == false)
     }
 
     @Test func documentMaskingPreservesOrGrowsTheSizeBound() {

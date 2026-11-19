@@ -57,6 +57,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         ]
     }
 
+    // In the class body so PGlite and KingbaseES, neither measured with these session settings, can turn them off.
+    var tunesCommunitySession: Bool { true }
+
     // In the class body so PGlite, which inherits the debugger conformance, can turn it off.
     var canDebugRoutines: Bool { true }
     var canFollowNotifications: Bool { true }
@@ -76,19 +79,28 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         core.onPostConnect = { [weak self] in
             try await self?.probeAfterConnect()
         }
+        core.connectPlan = core.makeConnectPlan(
+            reads: connectProbes.map { PostgreSQLCatalogRead(statement: $0.statement) },
+            stabilizesBrowseScans: tunesCommunitySession
+        )
+        core.directTLSMemory = tunesCommunitySession ? .shared : nil
         try await core.connect()
     }
 
-    /// Runs inside the connect's deadline and cancellation, before the connection is handed out.
-    func probeAfterConnect() async throws {
-        let probes: [(statement: String, apply: (Result<PluginQueryResult, Error>) -> Void)] = [
+    private var connectProbes: [(statement: String, apply: (Result<PluginQueryResult, Error>) -> Void)] {
+        [
             (PostgreSQLSessionFacts.probeQuery, applySessionFactsProbe),
             (PostgreSQLCatalogPresence.probeQuery, applyCatalogPresenceProbe),
             (PostGISTypes.probeQuery, applyPostgisProbe),
             (PostgreSQLSchemaQueries.enumTypeOidQuery, applyEnumProbe),
             (PgvectorTypes.probeQuery, applyVectorTypesProbe)
         ]
-        let reads = await core.executeCatalogReads(probes.map { $0.statement })
+    }
+
+    /// Runs inside the connect's deadline and cancellation, before the connection is handed out.
+    func probeAfterConnect() async throws {
+        let probes = connectProbes
+        let reads = await core.executeCatalogReads(probes.map { PostgreSQLCatalogRead(statement: $0.statement) })
         for (probe, read) in zip(probes, reads) {
             probe.apply(read)
         }
@@ -126,6 +138,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     var exportCatalog: PostgreSQLCatalogExport {
         PostgreSQLCatalogExport(
             read: { [self] statement, schema in try await catalogRead(statement, namesRelativeTo: schema).rows },
+            readAll: { [core] reads in
+                try await core.executeCatalogReads(reads, stopsAtFirstFailure: true).map { try $0.get().rows }
+            },
             currentSchema: core.currentSchema,
             capabilities: versionedCapabilities,
             catalogCapabilities: catalogCapabilities,

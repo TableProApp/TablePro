@@ -18,7 +18,11 @@ public sealed class TableEditor : IDisposable
             column.Nullable,
             column.PrimaryKey,
             column.TakesEmpty,
-            column.TakesDefault))];
+            column.TakesDefault,
+            Mapping.Kind(column.Kind),
+            column.Labels,
+            column.Multiple,
+            column.NeedsOffset))];
     }
 
     // Read again on each call, since a reconnect can make the connection read-only.
@@ -32,6 +36,17 @@ public sealed class TableEditor : IDisposable
     }
 
     public IReadOnlyList<EditColumn> Columns { get; }
+
+    // The table a save writes; null while a query result is locked.
+    public TableName? Table => _editor.Table() is { } table ? new TableName(table.Schema, table.Name) : null;
+
+    // A query result row whose values read as the server's text for a float, a time or money does not copy exactly.
+    public bool CopiesExactly(ResultSet rows, long row)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        return CoreCall.Run(() => _editor.CopiesExactly(rows.Handle, checked((ulong)row)));
+    }
 
     public EditStart GetEditStart(ResultSet rows, long row, int column)
     {

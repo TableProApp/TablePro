@@ -352,10 +352,10 @@
     <value>SQLite and DuckDB files on this PC</value>
   </data>
   <data name="ImportCard.Header" xml:space="preserve">
-    <value>Import a connections file</value>
+    <value>Import connections</value>
   </data>
   <data name="ImportCard.Description" xml:space="preserve">
-    <value>Connections exported from TablePro. Passwords are not in the file, so each one asks on its first connect.</value>
+    <value>From a TablePro connections file, or from another app on this PC.</value>
   </data>
   <data name="SampleCard.Header" xml:space="preserve">
     <value>Try the sample database</value>
@@ -770,6 +770,12 @@
   </data>
   <data name="NoMatches" xml:space="preserve">
     <value>No object matches</value>
+  </data>
+  <data name="VimModeName" xml:space="preserve">
+    <value>Vim mode: {0}</value>
+  </data>
+  <data name="VimRecording" xml:space="preserve">
+    <value>recording @{0}</value>
   </data>
   <data name="EditorName" xml:space="preserve">
     <value>SQL editor, {0}</value>
@@ -3903,6 +3909,15 @@ New fingerprint: {2}</value>
   <data name="FoldingSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Code folding</value>
   </data>
+  <data name="VimCard.Header" xml:space="preserve">
+    <value>Vim mode</value>
+  </data>
+  <data name="VimCard.Description" xml:space="preserve">
+    <value>Normal, Insert and Visual modes with Vim's motions, operators, registers and macros. :w runs the query and :q closes the tab.</value>
+  </data>
+  <data name="VimSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Vim mode</value>
+  </data>
   <data name="LightSchemeCard.Header" xml:space="preserve">
     <value>Light color scheme</value>
   </data>
@@ -4344,6 +4359,336 @@ New fingerprint: {2}</value>
   <data name="CatalogChangeStopped" xml:space="preserve">
     <value>The change was stopped. It may have run in part, so the objects are read again.</value>
   </data>
+  <data name="ImportAppFromFile.Text" xml:space="preserve">
+    <value>Import from file...</value>
+  </data>
+  <data name="ImportAppFromApp.Text" xml:space="preserve">
+    <value>Import from another app...</value>
+  </data>
+  <data name="ImportAppMenu.Text" xml:space="preserve">
+    <value>Import from another app...</value>
+  </data>
+  <data name="ImportAppTitle" xml:space="preserve">
+    <value>Import from another app</value>
+  </data>
+  <data name="ImportAppReviewTitle" xml:space="preserve">
+    <value>Import from {0}</value>
+  </data>
+  <data name="ImportAppSourcesHeader" xml:space="preserve">
+    <value>Choose the app to import from</value>
+  </data>
+  <data name="ImportAppLooking" xml:space="preserve">
+    <value>Looking for apps on this PC...</value>
+  </data>
+  <data name="ImportAppSourcesFailed" xml:space="preserve">
+    <value>TablePro couldn't look for other apps on this PC.</value>
+  </data>
+  <data name="ImportAppSourceFile" xml:space="preserve">
+    <value>Choose an export file to import</value>
+  </data>
+  <data name="ImportAppSourceNotFound" xml:space="preserve">
+    <value>Not found on this PC</value>
+  </data>
+  <data name="ImportAppSourceConnectionsOne" xml:space="preserve">
+    <value>1 connection found</value>
+  </data>
+  <data name="ImportAppSourceConnectionsMany" xml:space="preserve">
+    <value>{0} connections found</value>
+  </data>
+  <data name="ImportAppSourceQueriesOne" xml:space="preserve">
+    <value>1 saved query</value>
+  </data>
+  <data name="ImportAppSourceQueriesMany" xml:space="preserve">
+    <value>{0} saved queries</value>
+  </data>
+  <data name="ImportAppPasswords" xml:space="preserve">
+    <value>Import passwords</value>
+  </data>
+  <data name="ImportAppQueries" xml:space="preserve">
+    <value>Import saved queries</value>
+  </data>
+  <data name="ImportAppPasswords_DecryptedWhileReading" xml:space="preserve">
+    <value>Saved passwords are decrypted while reading</value>
+  </data>
+  <data name="ImportAppPasswords_PasswordFile" xml:space="preserve">
+    <value>Read from the password file of {0} when it keeps one there</value>
+  </data>
+  <data name="ImportAppPasswords_SystemStore" xml:space="preserve">
+    <value>{0} keeps passwords in the system's store, and Windows doesn't let TablePro read it</value>
+  </data>
+  <data name="ImportAppQueries_Scripts" xml:space="preserve">
+    <value>Scripts import with the connection they run on. Scripts with a default name start unchecked.</value>
+  </data>
+  <data name="ImportAppQueries_Consoles" xml:space="preserve">
+    <value>Query consoles import with their data source. Consoles with a default name start unchecked.</value>
+  </data>
+  <data name="ImportAppQueries_GlobalFolder" xml:space="preserve">
+    <value>{0} keeps saved queries apart from its connections, and TablePro keeps each with a connection</value>
+  </data>
+  <data name="ImportAppQueries_NotInExport" xml:space="preserve">
+    <value>The {0} export file has no saved queries</value>
+  </data>
+  <data name="ImportAppContinue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="ImportAppAction" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="ImportAppReading" xml:space="preserve">
+    <value>Reading connections from {0}...</value>
+  </data>
+  <data name="ImportAppRead_NotFound" xml:space="preserve">
+    <value>The files of {0} aren't where it keeps them.</value>
+  </data>
+  <data name="ImportAppRead_NothingFound" xml:space="preserve">
+    <value>{0} has no saved connections to import.</value>
+  </data>
+  <data name="ImportAppRead_Unreadable" xml:space="preserve">
+    <value>The connections of {0} couldn't be read. Its files may be from a version TablePro doesn't know.</value>
+  </data>
+  <data name="ImportAppRead_Library" xml:space="preserve">
+    <value>Your saved connections couldn't be read, so nothing was imported.</value>
+  </data>
+  <data name="ImportAppRead_Other" xml:space="preserve">
+    <value>The connections couldn't be read.</value>
+  </data>
+  <data name="ImportAppPasswordsLeftBehind" xml:space="preserve">
+    <value>Passwords stay where {0} keeps them, which Windows doesn't let TablePro read. Enter them when you connect.</value>
+  </data>
+  <data name="ImportAppPasswordsStopped" xml:space="preserve">
+    <value>Some passwords weren't read. Enter them when you connect.</value>
+  </data>
+  <data name="ImportAppConnectionsHeader" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="ImportAppQueriesHeader" xml:space="preserve">
+    <value>Saved queries</value>
+  </data>
+  <data name="ImportAppResolution" xml:space="preserve">
+    <value>If the connection is already there</value>
+  </data>
+  <data name="ImportAppResolution_Add" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="ImportAppResolution_AddCopy" xml:space="preserve">
+    <value>Add as copy</value>
+  </data>
+  <data name="ImportAppResolution_Replace" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="ImportAppResolution_KeepExisting" xml:space="preserve">
+    <value>Keep existing, add queries</value>
+  </data>
+  <data name="ImportAppMatches" xml:space="preserve">
+    <value>Matches “{0}”</value>
+  </data>
+  <data name="ImportAppNote_UnsupportedEngine" xml:space="preserve">
+    <value>TablePro can't open {0} connections</value>
+  </data>
+  <data name="ImportAppNote_SshKeyMissing" xml:space="preserve">
+    <value>SSH private key not found: {0}</value>
+  </data>
+  <data name="ImportAppNote_JumpHostKeyMissing" xml:space="preserve">
+    <value>Jump host key not found: {0}</value>
+  </data>
+  <data name="ImportAppNote_CaCertificateMissing" xml:space="preserve">
+    <value>CA certificate not found: {0}</value>
+  </data>
+  <data name="ImportAppNote_ClientCertificateMissing" xml:space="preserve">
+    <value>Client certificate not found: {0}</value>
+  </data>
+  <data name="ImportAppNote_ClientKeyMissing" xml:space="preserve">
+    <value>Client key not found: {0}</value>
+  </data>
+  <data name="ImportAppNote_TlsModeChanged" xml:space="preserve">
+    <value>SSL {0} becomes {1}</value>
+  </data>
+  <data name="ImportAppNote_TlsSettingsNotRead" xml:space="preserve">
+    <value>Its TLS settings couldn't be read, so it would connect without TLS</value>
+  </data>
+  <data name="ImportAppNote_TlsFromDriverDefault" xml:space="preserve">
+    <value>SSL {0} is on because the other app encrypts this connection by default</value>
+  </data>
+  <data name="ImportAppNote_TlsNotKept" xml:space="preserve">
+    <value>SSL {0} isn't kept: this engine connects without TLS</value>
+  </data>
+  <data name="ImportAppNote_CaFileNotKept" xml:space="preserve">
+    <value>CA certificate {0} isn't kept: {1}</value>
+  </data>
+  <data name="ImportAppNote_ClientIdentityNotKept" xml:space="preserve">
+    <value>The client certificate isn't kept: {0}</value>
+  </data>
+  <data name="ImportAppNote_SshNotKept" xml:space="preserve">
+    <value>The SSH tunnel isn't kept: a database file opens on this PC</value>
+  </data>
+  <data name="ImportAppNote_SshKeyNotKept" xml:space="preserve">
+    <value>SSH key {0} isn't kept</value>
+  </data>
+  <data name="ImportAppNote_JumpHostNotKept" xml:space="preserve">
+    <value>Jump host {0} isn't kept</value>
+  </data>
+  <data name="ImportAppNote_JumpHostPasswordNotKept" xml:space="preserve">
+    <value>Jump host {0} signs in through the SSH agent or the SSH config</value>
+  </data>
+  <data name="ImportAppNote_JumpHostKeyNotKept" xml:space="preserve">
+    <value>The key {1} of jump host {0} isn't kept</value>
+  </data>
+  <data name="ImportAppNote_FieldsNotKept" xml:space="preserve">
+    <value>Not kept: {0}</value>
+  </data>
+  <data name="ImportAppSsl_Disabled" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="ImportAppSsl_Preferred" xml:space="preserve">
+    <value>Preferred</value>
+  </data>
+  <data name="ImportAppSsl_Required" xml:space="preserve">
+    <value>Required</value>
+  </data>
+  <data name="ImportAppSsl_VerifyCa" xml:space="preserve">
+    <value>Verify CA</value>
+  </data>
+  <data name="ImportAppSsl_VerifyIdentity" xml:space="preserve">
+    <value>Verify identity</value>
+  </data>
+  <data name="ImportAppFileReason_EngineLacks" xml:space="preserve">
+    <value>this engine doesn't take one</value>
+  </data>
+  <data name="ImportAppFileReason_ModeLacks" xml:space="preserve">
+    <value>the SSL mode doesn't use it</value>
+  </data>
+  <data name="ImportAppFileReason_RelativePath" xml:space="preserve">
+    <value>its path isn't a full path</value>
+  </data>
+  <data name="ImportAppFileReason_Incomplete" xml:space="preserve">
+    <value>a certificate needs its key, and a key its certificate</value>
+  </data>
+  <data name="ImportAppQueryOn" xml:space="preserve">
+    <value>On {0}</value>
+  </data>
+  <data name="ImportAppQuery_NoConnection" xml:space="preserve">
+    <value>Not imported: TablePro keeps each saved query with a connection</value>
+  </data>
+  <data name="ImportAppQuery_ConnectionSkipped" xml:space="preserve">
+    <value>Not imported: its connection isn't imported</value>
+  </data>
+  <data name="ImportAppQuery_TooLarge" xml:space="preserve">
+    <value>Not imported: larger than a saved query can be</value>
+  </data>
+  <data name="ImportAppQuery_NameTooLong" xml:space="preserve">
+    <value>Not imported: its name is longer than a saved query's can be</value>
+  </data>
+  <data name="ImportAppQuery_AddedByAnotherRow" xml:space="preserve">
+    <value>Another query of this name is imported for its connection</value>
+  </data>
+  <data name="ImportAppSummaryConnectionsOne" xml:space="preserve">
+    <value>{0} of 1 connection selected</value>
+  </data>
+  <data name="ImportAppSummaryConnectionsMany" xml:space="preserve">
+    <value>{0} of {1} connections selected</value>
+  </data>
+  <data name="ImportAppSummaryQueriesOne" xml:space="preserve">
+    <value>{0} of 1 saved query selected</value>
+  </data>
+  <data name="ImportAppSummaryQueriesMany" xml:space="preserve">
+    <value>{0} of {1} saved queries selected</value>
+  </data>
+  <data name="ImportAppImporting" xml:space="preserve">
+    <value>Importing...</value>
+  </data>
+  <data name="ImportAppDone_ConnectionsOne" xml:space="preserve">
+    <value>Imported 1 connection.</value>
+  </data>
+  <data name="ImportAppDone_ConnectionsMany" xml:space="preserve">
+    <value>Imported {0} connections.</value>
+  </data>
+  <data name="ImportAppDone_QueriesAddedOne" xml:space="preserve">
+    <value>Added 1 saved query.</value>
+  </data>
+  <data name="ImportAppDone_QueriesAddedMany" xml:space="preserve">
+    <value>Added {0} saved queries.</value>
+  </data>
+  <data name="ImportAppDone_QueriesNotAddedOne" xml:space="preserve">
+    <value>1 saved query couldn't be added.</value>
+  </data>
+  <data name="ImportAppDone_QueriesNotAddedMany" xml:space="preserve">
+    <value>{0} saved queries couldn't be added.</value>
+  </data>
+  <data name="ImportAppDone_PasswordsNotKeptOne" xml:space="preserve">
+    <value>1 password couldn't be kept in Credential Manager.</value>
+  </data>
+  <data name="ImportAppDone_PasswordsNotKeptMany" xml:space="preserve">
+    <value>{0} passwords couldn't be kept in Credential Manager.</value>
+  </data>
+  <data name="ImportAppDone_Nothing" xml:space="preserve">
+    <value>Nothing was imported.</value>
+  </data>
+  <data name="ImportAppDone_Outdated" xml:space="preserve">
+    <value>The saved connections changed while you were deciding. Import again.</value>
+  </data>
+  <data name="ImportAppDone_Failed" xml:space="preserve">
+    <value>Nothing was imported.</value>
+  </data>
+  <data name="ResultEditPreviewButton.Label" xml:space="preserve">
+    <value>Preview SQL</value>
+  </data>
+  <data name="ResultEditDiscardRun" xml:space="preserve">
+    <value>Running the query will discard all unsaved changes.</value>
+  </data>
+  <data name="ResultEditDiscardDatabase" xml:space="preserve">
+    <value>Switching the database will discard all unsaved changes.</value>
+  </data>
+  <data name="ResultEditNotCopyable" xml:space="preserve">
+    <value>Rows of this result can't be duplicated, since some values were read as text that may not name them exactly.</value>
+  </data>
+  <data name="ResultEditSaveUnknown" xml:space="preserve">
+    <value>The save may have been written. Discard the changes to read the rows again before you save again.</value>
+  </data>
+  <data name="ResultEditSaveBlocked" xml:space="preserve">
+    <value>The last save may have been written. Discard the changes to read the rows again before you save.</value>
+  </data>
+  <data name="ResultEditNotOneSelect" xml:space="preserve">
+    <value>Only the rows of one SELECT can be edited.</value>
+  </data>
+  <data name="ResultEditMoreThanOneTable" xml:space="preserve">
+    <value>Rows from more than one table, a subquery or a CTE can't be edited.</value>
+  </data>
+  <data name="ResultEditCollapsed" xml:space="preserve">
+    <value>Grouped, distinct or computed rows can't be edited.</value>
+  </data>
+  <data name="ResultEditUntraced" xml:space="preserve">
+    <value>Only rows read straight from a table can be edited.</value>
+  </data>
+  <data name="ResultEditKeyNotShown" xml:space="preserve">
+    <value>The result leaves out part of the table's primary key, so its rows can't be edited.</value>
+  </data>
+  <data name="ResultEditNoPrimaryKey" xml:space="preserve">
+    <value>Rows of a table without a primary key can't be edited.</value>
+  </data>
+  <data name="ResultEditKeyUnreadable" xml:space="preserve">
+    <value>These rows can't be edited here, because their key can't be read back exactly.</value>
+  </data>
+  <data name="ResultEditColumnsChanged" xml:space="preserve">
+    <value>The table changed since the query ran. Run it again to edit its rows.</value>
+  </data>
+  <data name="ResultEditSeveralResults" xml:space="preserve">
+    <value>Rows can be edited when the run returns one result.</value>
+  </data>
+  <data name="ResultEditOpenTransaction" xml:space="preserve">
+    <value>Rows read inside an open transaction can't be edited here.</value>
+  </data>
+  <data name="ResultEditUnknownTransaction" xml:space="preserve">
+    <value>The server doesn't say whether a transaction is open, so these rows can't be edited here.</value>
+  </data>
+  <data name="ResultEditOtherDatabase" xml:space="preserve">
+    <value>Rows from another database than the connection's can't be edited here.</value>
+  </data>
+  <data name="ResultEditColumnsUnread" xml:space="preserve">
+    <value>The table's columns couldn't be read, so its rows can't be edited.</value>
+  </data>
+  <data name="ResultEditRunAgain" xml:space="preserve">
+    <value>Run the query again to edit its rows.</value>
+  </data>
   <data name="NewFromUrlButton.Label" xml:space="preserve">
     <value>New from URL</value>
   </data>
@@ -4508,6 +4853,135 @@ New fingerprint: {2}</value>
   </data>
   <data name="SummaryCopy" xml:space="preserve">
     <value>Copy {0}</value>
+  </data>
+  <data name="LinkQueryTitle" xml:space="preserve">
+    <value>Open query from link</value>
+  </data>
+  <data name="LinkQueryMessage" xml:space="preserve">
+    <value>A link asks to open this SQL in a new query tab on {0}. Nothing runs until you run it.</value>
+  </data>
+  <data name="LinkQueryOpen" xml:space="preserve">
+    <value>Open query</value>
+  </data>
+  <data name="LinkConnectionFailedTitle" xml:space="preserve">
+    <value>Connection failed</value>
+  </data>
+  <data name="LinkNoConnection" xml:space="preserve">
+    <value>No saved connection with ID "{0}".</value>
+  </data>
+  <data name="NotificationsHeader.Text" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="NotifyCard.Header" xml:space="preserve">
+    <value>Notify when long-running work finishes</value>
+  </data>
+  <data name="NotifyCard.Description" xml:space="preserve">
+    <value>Only when the result is somewhere you are not: another app in front, the window minimized, or another tab selected</value>
+  </data>
+  <data name="NotifySwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Notify when long-running work finishes</value>
+  </data>
+  <data name="NotifyAfterCard.Header" xml:space="preserve">
+    <value>Only after</value>
+  </data>
+  <data name="NotifyAfterCard.Description" xml:space="preserve">
+    <value>How long a query has to run to notify. Keep it below the query timeout.</value>
+  </data>
+  <data name="NotifyAfterBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Only after</value>
+  </data>
+  <data name="NotifyAfterSeconds" xml:space="preserve">
+    <value>{0} seconds</value>
+  </data>
+  <data name="NotifyAfterMinute" xml:space="preserve">
+    <value>1 minute</value>
+  </data>
+  <data name="NotifyAfterMinutes" xml:space="preserve">
+    <value>{0} minutes</value>
+  </data>
+  <data name="NotificationsOffBar.Title" xml:space="preserve">
+    <value>Notifications are off for TablePro</value>
+  </data>
+  <data name="NotificationsOffBar.Message" xml:space="preserve">
+    <value>Windows shows none, so the taskbar button flashes instead.</value>
+  </data>
+  <data name="NotificationsOffLink.Content" xml:space="preserve">
+    <value>Open notification settings</value>
+  </data>
+  <data name="NotifyRow" xml:space="preserve">
+    <value>1 row in {0}</value>
+  </data>
+  <data name="NotifyRows" xml:space="preserve">
+    <value>{0:N0} rows in {1}</value>
+  </data>
+  <data name="NotifyAffectedOne" xml:space="preserve">
+    <value>1 row changed in {0}</value>
+  </data>
+  <data name="NotifyAffected" xml:space="preserve">
+    <value>{0:N0} rows changed in {1}</value>
+  </data>
+  <data name="NotifyDone" xml:space="preserve">
+    <value>Finished in {0}</value>
+  </data>
+  <data name="NotifyFailed" xml:space="preserve">
+    <value>Failed after {0}</value>
+  </data>
+  <data name="CellEditAsText" xml:space="preserve">
+    <value>Edit as text</value>
+  </data>
+  <data name="CellSetValue" xml:space="preserve">
+    <value>Set</value>
+  </data>
+  <data name="CellDateName" xml:space="preserve">
+    <value>Date for {0}</value>
+  </data>
+  <data name="CellTimeName" xml:space="preserve">
+    <value>Time for {0}</value>
+  </data>
+  <data name="ResultModes.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Data or JSON</value>
+  </data>
+  <data name="ResultsDataView.Text" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="ResultsJsonView.Text" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="JsonModes" xml:space="preserve">
+    <value>Text or tree</value>
+  </data>
+  <data name="JsonTextMode" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="JsonTreeMode" xml:space="preserve">
+    <value>Tree</value>
+  </data>
+  <data name="CopyJson" xml:space="preserve">
+    <value>Copy JSON</value>
+  </data>
+  <data name="JsonTextName" xml:space="preserve">
+    <value>Rows as JSON</value>
+  </data>
+  <data name="JsonTreeName" xml:space="preserve">
+    <value>Rows as a JSON tree</value>
+  </data>
+  <data name="JsonRows" xml:space="preserve">
+    <value>Rows: {0:N0}</value>
+  </data>
+  <data name="JsonRowsOf" xml:space="preserve">
+    <value>Rows: {0:N0} of {1:N0}</value>
+  </data>
+  <data name="JsonRowsCapped" xml:space="preserve">
+    <value>{0} · The first {1:N0} only</value>
+  </data>
+  <data name="JsonRowsDeleted" xml:space="preserve">
+    <value>{0} · {1:N0} marked for deletion left out</value>
+  </data>
+  <data name="JsonTextCut" xml:space="preserve">
+    <value>{0} · The text shows its start; Copy JSON copies all of it</value>
+  </data>
+  <data name="JsonCopyFailed" xml:space="preserve">
+    <value>The JSON could not be put on the clipboard.</value>
   </data>
   <data name="AiHeader.Text" xml:space="preserve">
     <value>AI assistant</value>

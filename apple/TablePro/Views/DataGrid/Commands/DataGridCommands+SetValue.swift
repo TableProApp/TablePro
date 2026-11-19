@@ -157,7 +157,7 @@ extension DataGridCommands {
     func canRemoveField(_ cell: DataGridCommandCell) -> Bool {
         guard configuration.traits.supportsFieldRemoval, model.isColumnWritable(cell.column), !isRowDeleted(cell.rowID),
               let row = storedRow(cell.rowID) else { return false }
-        return cell.column.dataIndex < row.values.count && !row.isAbsent(cell.column.dataIndex)
+        return cell.column.dataIndex < row.values.count && !model.rows.isAbsent(row.id, column: cell.column.dataIndex)
     }
 
     func removeField(_ cell: DataGridCommandCell) {
@@ -174,13 +174,13 @@ extension DataGridCommands {
 @MainActor
 struct DataGridCellRecords {
     private let cells: [(rowID: RowID, columnID: DataGridColumnID)]
-    private let rows: [RowID: Row]
+    private let rows: [RowID: TableRows.RowRecord]
 
     init(_ cells: [DataGridCommandCell], in model: DataGridModel) {
         let tableRows = model.rows
-        var rows: [RowID: Row] = [:]
+        var rows: [RowID: TableRows.RowRecord] = [:]
         for cell in cells {
-            rows[cell.rowID] = tableRows.row(withID: cell.rowID)
+            rows[cell.rowID] = tableRows.record(withID: cell.rowID)
         }
         self.cells = cells.map { (rowID: $0.rowID, columnID: $0.column.id) }
         self.rows = rows
@@ -191,7 +191,7 @@ struct DataGridCellRecords {
         var resolved: [DataGridCommandCell] = []
         resolved.reserveCapacity(cells.count)
         for cell in cells {
-            guard let row = tableRows.row(withID: cell.rowID), row == rows[cell.rowID],
+            guard let record = tableRows.record(withID: cell.rowID), record == rows[cell.rowID],
                   let displayRow = model.displayIndex(of: cell.rowID),
                   let column = model.columns.column(id: cell.columnID) else { return nil }
             resolved.append(DataGridCommandCell(rowID: cell.rowID, row: displayRow, column: column))

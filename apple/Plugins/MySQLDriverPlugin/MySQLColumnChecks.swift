@@ -190,19 +190,33 @@ internal extension MySQLPluginDriver {
 
     /// Each column's own check, by column name. Empty off MariaDB, before its catalog has `LEVEL`, and when
     /// the catalog refuses: the columns then read as they did before checks were read at all.
-    func mariadbColumnChecks(table: String, schema: String?, columns: [String]) async throws -> [String: String] {
+    func mariadbColumnChecks(
+        table: String,
+        schema: String?,
+        columns: [String],
+        knownClauses: [String]? = nil
+    ) async throws -> [String: String] {
+        if knownClauses?.isEmpty == true { return [:] }
         let identity = serverIdentity
         guard identity.flavor.isMariaDB,
               MySQLCheckConstraints.source(banner: identity.banner, flavor: identity.flavor) == .informationSchema,
-              catalogVisibility.visibility(of: effectiveSchema(schema)) != .blind,
-              try await catalogHasColumn(.checkConstraintLevel),
-              await !resolvesToTemporaryTable(table, schema: schema)
+              catalogVisibility.visibility(of: effectiveSchema(schema)) != .blind
         else { return [:] }
+        if knownClauses == nil {
+            guard try await catalogHasColumn(.checkConstraintLevel),
+                  await !resolvesToTemporaryTable(table, schema: schema)
+            else { return [:] }
+        }
         do {
-            let result = try await execute(
-                ownStatement: MySQLColumnChecks.clausesQuery(schema: effectiveSchema(schema), table: table)
-            )
-            let clauses = result.rows.compactMap { $0[safe: 0]?.asText }
+            let clauses: [String]
+            if let knownClauses {
+                clauses = knownClauses
+            } else {
+                let result = try await execute(
+                    ownStatement: MySQLColumnChecks.clausesQuery(schema: effectiveSchema(schema), table: table)
+                )
+                clauses = result.rows.compactMap { $0[safe: 0]?.asText }
+            }
             guard !clauses.isEmpty else { return [:] }
             let ddl = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table, schema: schema))")
             guard let createTable = ddl.rows.first?[safe: 1]?.asText else { return [:] }

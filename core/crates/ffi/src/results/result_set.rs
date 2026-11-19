@@ -44,6 +44,10 @@ impl ResultSet {
         self.store.columns()
     }
 
+    pub(crate) fn store(&self) -> &Arc<ResultStore> {
+        &self.store
+    }
+
     pub(crate) fn extent(&self) -> tablepro_core::export::ResultExtent {
         self.store.extent()
     }

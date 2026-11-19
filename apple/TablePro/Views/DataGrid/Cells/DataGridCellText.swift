@@ -14,17 +14,13 @@ extension NSFont {
 
 internal extension String {
     var containsLineBreak: Bool {
-        let nsString = self as NSString
-        let length = nsString.length
-        guard length > 0 else { return false }
-        for index in 0..<length {
-            let character = nsString.character(at: index)
-            if character == 0x0A || character == 0x0D || character == 0x0B || character == 0x0C
-                || character == 0x85 || character == 0x2028 || character == 0x2029 {
+        var text = self
+        return text.withUTF8 { bytes in
+            for index in bytes.indices where Self.lineBreakLength(in: bytes, at: index) > 0 {
                 return true
             }
+            return false
         }
-        return false
     }
 
     var sanitizedForCellDisplay: String {
@@ -38,40 +34,70 @@ internal extension String {
 
     // What a cell shows while marks are off: the lone CR reads as the space it always did.
     var shownWithoutMarks: String {
-        guard utf16.contains(0x0D) else { return self }
+        guard utf8.contains(0x0D) else { return self }
         return replacingOccurrences(of: "\r", with: " ", options: .literal)
     }
 
+    // The first `limit` UTF-16 units, cut before a surrogate pair rather than through it; nil when the text fits.
+    func clipped(toUTF16Units limit: Int) -> String? {
+        guard utf8.count > limit else { return nil }
+        var text = self
+        return text.withUTF8 { bytes in
+            var units = 0
+            for index in bytes.indices where bytes[index] & 0xC0 != 0x80 {
+                units += bytes[index] >= 0xF0 ? 2 : 1
+                if units > limit {
+                    return String(bytes: bytes[..<index], encoding: .utf8)
+                }
+            }
+            return nil
+        }
+    }
+
+    // LF, VT, FF and CR are one byte, NEL two, the line and paragraph separators three.
+    private static func lineBreakLength(in bytes: UnsafeBufferPointer<UInt8>, at index: Int) -> Int {
+        switch bytes[index] {
+        case 0x0A, 0x0B, 0x0C, 0x0D:
+            return 1
+        case 0xC2:
+            return index + 1 < bytes.count && bytes[index + 1] == 0x85 ? 2 : 0
+        case 0xE2:
+            guard index + 2 < bytes.count, bytes[index + 1] == 0x80 else { return 0 }
+            return bytes[index + 2] == 0xA8 || bytes[index + 2] == 0xA9 ? 3 : 0
+        default:
+            return 0
+        }
+    }
+
     private func flattenedOntoOneLine(keepingLoneCarriageReturns: Bool) -> String {
-        let nsString = self as NSString
-        let length = nsString.length
-        guard length > 0 else { return self }
-
-        var mutable: NSMutableString?
-        var copiedUpTo = 0
-        for index in 0..<length {
-            let character = nsString.character(at: index)
-            guard character == 0x0A || character == 0x0D || character == 0x0B || character == 0x0C
-                || character == 0x85 || character == 0x2028 || character == 0x2029 else { continue }
-            if character == 0x0D, keepingLoneCarriageReturns,
-               index + 1 >= length || nsString.character(at: index + 1) != 0x0A {
-                continue
+        var text = self
+        let flattened: String? = text.withUTF8 { bytes in
+            var output: [UInt8] = []
+            var copiedUpTo = 0
+            var index = 0
+            while index < bytes.count {
+                let length = Self.lineBreakLength(in: bytes, at: index)
+                guard length > 0 else {
+                    index += 1
+                    continue
+                }
+                if bytes[index] == 0x0D, keepingLoneCarriageReturns,
+                   index + 1 >= bytes.count || bytes[index + 1] != 0x0A {
+                    index += 1
+                    continue
+                }
+                if output.isEmpty {
+                    output.reserveCapacity(bytes.count)
+                }
+                output.append(contentsOf: bytes[copiedUpTo..<index])
+                output.append(0x20)
+                index += length
+                copiedUpTo = index
             }
-
-            if mutable == nil {
-                mutable = NSMutableString(capacity: length)
-            }
-            if index > copiedUpTo {
-                mutable?.append(nsString.substring(with: NSRange(location: copiedUpTo, length: index - copiedUpTo)))
-            }
-            mutable?.append(" ")
-            copiedUpTo = index + 1
+            guard copiedUpTo > 0 else { return nil }
+            output.append(contentsOf: bytes[copiedUpTo...])
+            return String(bytes: output, encoding: .utf8)
         }
-
-        guard let result = mutable else { return self }
-        if copiedUpTo < length {
-            result.append(nsString.substring(with: NSRange(location: copiedUpTo, length: length - copiedUpTo)))
-        }
-        return result as String
+        return flattened ?? self
     }
 }

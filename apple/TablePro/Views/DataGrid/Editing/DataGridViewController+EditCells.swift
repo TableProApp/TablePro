@@ -11,7 +11,8 @@ extension DataGridViewController {
 
     func editCell(at coord: GridCoord) -> DataGridEditCell? {
         guard let row = model.row(at: coord.row), let column = model.columns.column(at: coord.displayColumn) else { return nil }
-        return DataGridEditCell(coord: coord, row: row, column: column)
+        let isUnloaded = model.rows.unloadedByteCount(row.id, column: column.dataIndex) != nil
+        return DataGridEditCell(coord: coord, row: row, column: column, isUnloaded: isUnloaded)
     }
 
     func editCell(for target: DataGridEditTarget) -> DataGridEditCell? {

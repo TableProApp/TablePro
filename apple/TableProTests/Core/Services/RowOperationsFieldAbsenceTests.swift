@@ -59,7 +59,7 @@ extension GlobalStateSuites {
             var mongoRows = rows()
             let added = try #require(mongo.addNewRow(tableRows: &mongoRows))
 
-            #expect(mongoRows.rows[0].absentColumns == [0, 1, 2])
+            #expect(mongoRows.absentColumns(of: mongoRows.rows[0].id) == [0, 1, 2])
             #expect(mongoChanges.changes.first?.absentColumns == [0, 1, 2])
             #expect(added.values == [.null, .null, .null])
 
@@ -67,7 +67,7 @@ extension GlobalStateSuites {
             var sqlRows = rows()
             _ = sql.addNewRow(tableRows: &sqlRows)
 
-            #expect(sqlRows.rows[0].absentColumns.isEmpty)
+            #expect(sqlRows.absentColumns(of: sqlRows.rows[0].id).isEmpty)
             #expect(sqlChanges.changes.first?.absentColumns.isEmpty == true)
         }
 
@@ -79,8 +79,8 @@ extension GlobalStateSuites {
             let nullKept = try #require(manager.duplicateRow(sourceRowIndex: 0, tableRows: &tableRows))
             let missingKept = try #require(manager.duplicateRow(sourceRowIndex: 1, tableRows: &tableRows))
 
-            #expect(tableRows.row(withID: nullKept.rowID)?.absentColumns.isEmpty == true)
-            #expect(tableRows.row(withID: missingKept.rowID)?.absentColumns == [2])
+            #expect(tableRows.absentColumns(of: nullKept.rowID).isEmpty)
+            #expect(tableRows.absentColumns(of: missingKept.rowID) == [2])
             #expect(changes.pending.insertedAbsentColumns(forRow: missingKept.rowID) == [2])
             #expect(missingKept.values[0] == .columnDefault)
         }
@@ -111,8 +111,8 @@ extension GlobalStateSuites {
             let (tableRows, result) = paste(clipboard, into: manager)
 
             #expect(result.pastedRows.count == 2)
-            #expect(tableRows.rows[0].absentColumns == [2])
-            #expect(tableRows.rows[1].absentColumns == [1, 2])
+            #expect(tableRows.absentColumns(of: tableRows.rows[0].id) == [2])
+            #expect(tableRows.absentColumns(of: tableRows.rows[1].id) == [1, 2])
         }
 
         @Test("A SQL paste leaves a column the copy did not carry NULL, as before")
@@ -124,7 +124,7 @@ extension GlobalStateSuites {
             let (tableRows, result) = paste(clipboard, into: manager)
 
             #expect(result.pastedRows.first?.values == ["1", "Ada", .null])
-            #expect(tableRows.rows[0].absentColumns.isEmpty)
+            #expect(tableRows.absentColumns(of: tableRows.rows[0].id).isEmpty)
         }
 
         @Test("Pasted text says nothing about fields, so a NULL in it leaves the field out of a document")
@@ -135,7 +135,7 @@ extension GlobalStateSuites {
 
             let (tableRows, _) = paste(clipboard, into: manager, parser: TSVRowParser())
 
-            #expect(tableRows.rows[0].absentColumns == [2])
+            #expect(tableRows.absentColumns(of: tableRows.rows[0].id) == [2])
         }
     }
 }

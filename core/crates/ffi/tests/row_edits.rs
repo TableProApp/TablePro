@@ -12,6 +12,7 @@ use tablepro_ffi::{
     CellChange, CellEdit, ConnectionRecord, ConnectionSecrets, Core, DatabaseSession, EditLock, EditStart,
     FileOpenRequest, HostConfig, HostSecretError, HostSecrets, ResultSet, RowEdit, RowSaveOutcome, RunListener,
     RunOutcome, RunSettings, SafeModeTag, SaveGate, SecretItemTag, SecretKindTag, TableName, TlsModeTag, TlsSettings,
+    ValueKind,
 };
 
 struct NoSecrets;
@@ -563,4 +564,78 @@ async fn a_new_row_leaves_a_blob_null_and_a_refresh_reads_the_columns_again() {
     assert_eq!(outcome, RowSaveOutcome::Saved { rows: Some(1) });
     assert_eq!(cached.columns().len(), 3);
     assert_eq!(refreshed.columns().len(), 4);
+}
+
+#[tokio::test]
+async fn a_column_says_what_it_holds_and_an_enum_names_its_labels() {
+    let dir = tempfile::tempdir().unwrap();
+    let request = FileOpenRequest {
+        path: dir.path().join("moods.duckdb").display().to_string(),
+        driver_id: Some("duckdb".to_owned()),
+        read_only: false,
+        create: true,
+    };
+    let core = core(dir.path());
+    let session = core.open_file(request, None).await.unwrap();
+    run(&session, "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')").await;
+    run(
+        &session,
+        "CREATE TABLE days (id INTEGER PRIMARY KEY, feeling mood, done BOOLEAN, happened DATE, logged TIMESTAMP)",
+    )
+    .await;
+    let days = TableName {
+        schema: None,
+        name: "days".to_owned(),
+    };
+
+    let columns = session.table_editor(days, false, None).await.unwrap().columns();
+
+    let kinds: Vec<_> = columns.iter().map(|column| column.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            ValueKind::Integer,
+            ValueKind::Text,
+            ValueKind::Bool,
+            ValueKind::Date,
+            ValueKind::Timestamp
+        ]
+    );
+    assert_eq!(columns[1].labels, ["sad", "ok", "happy"]);
+    assert!(!columns[1].multiple);
+    assert!(
+        columns
+            .iter()
+            .filter(|column| column.name != "feeling")
+            .all(|column| column.labels.is_empty())
+    );
+    assert!(columns.iter().all(|column| !column.needs_offset));
+}
+
+#[tokio::test]
+async fn a_timestamp_with_a_time_zone_needs_its_offset_typed() {
+    let dir = tempfile::tempdir().unwrap();
+    let request = FileOpenRequest {
+        path: dir.path().join("stamps.duckdb").display().to_string(),
+        driver_id: Some("duckdb".to_owned()),
+        read_only: false,
+        create: true,
+    };
+    let core = core(dir.path());
+    let session = core.open_file(request, None).await.unwrap();
+    run(
+        &session,
+        "CREATE TABLE stamps (id INTEGER PRIMARY KEY, zoned TIMESTAMPTZ, plain TIMESTAMP)",
+    )
+    .await;
+    let stamps = TableName {
+        schema: None,
+        name: "stamps".to_owned(),
+    };
+
+    let columns = session.table_editor(stamps, false, None).await.unwrap().columns();
+
+    let needs: Vec<_> = columns.iter().map(|column| column.needs_offset).collect();
+    assert_eq!(needs, [false, true, false]);
+    assert_eq!(columns[1].kind, ValueKind::TimestampWithOffset);
 }

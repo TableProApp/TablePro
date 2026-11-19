@@ -28,8 +28,8 @@ internal enum ClickHouseTabSeparatedBytes {
 
     // An Array, Map, Tuple or Nested value is written in ClickHouse's literal syntax with no TSV escaping over it,
     // so `['it\'s']` is already the value's text and unescaping it reads `['it's']`. Measured on ClickHouse 25.8.
-    static func value(_ field: ArraySlice<UInt8>, columnType: String) -> [UInt8] {
-        writesLiteralSyntax(columnType) ? Array(field) : unescape(field)
+    static func value(_ field: ArraySlice<UInt8>, writesLiteralSyntax: Bool) -> [UInt8] {
+        writesLiteralSyntax ? Array(field) : unescape(field)
     }
 
     static func writesLiteralSyntax(_ columnType: String) -> Bool {

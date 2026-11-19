@@ -138,8 +138,9 @@ final class AppState {
         }
     }
 
+    // A record this build cannot read still owns its secrets and files.
     private var loadedConnectionIds: Set<UUID>? {
-        loadStatus == .ready ? Set(connections.map(\.id)) : nil
+        loadStatus == .ready ? Set(connections.map(\.id)).union(storage.unreadableIds) : nil
     }
 
     // Separate from init, which skips it under tests, so a test can run the wiring the app runs.
@@ -163,6 +164,10 @@ final class AppState {
         syncCoordinator.getCurrentState = { [weak self] in
             guard let self, self.loadStatus == .ready else { return nil }
             return (self.connections, self.groups, self.tags)
+        }
+
+        syncCoordinator.unreadableConnectionIds = { [weak self] in
+            self?.storage.unreadableIds ?? []
         }
 
         syncCoordinator.getSavedQueries = { [weak self] in
@@ -260,8 +265,9 @@ final class AppState {
         return true
     }
 
+    // An owner whose record this build cannot read may be Local only, so its records stay on the device.
     private func syncsConnection(_ id: UUID) -> Bool {
-        connections.first { $0.id == id }?.participatesInSync ?? true
+        connections.first { $0.id == id }?.participatesInSync ?? !storage.unreadableIds.contains(id)
     }
 
     private func loadPersistedData() {
@@ -295,7 +301,7 @@ final class AppState {
         guard cleaned != loaded else { return }
         connectionsState = .loaded(cleaned)
         do {
-            try storage.save(cleaned, keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain)
+            try storage.save(cleaned, keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain, removingSecrets: true)
         } catch {
             Self.logger.error("Rewriting connections without MongoDB secrets failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
@@ -312,7 +318,7 @@ final class AppState {
         }
         Self.logger.info("Moved \(movedCount) pasted SSH keys out of the connections file, \(unstored.count) left for the next launch")
         do {
-            try storage.save(stored.connections, keepingPastedSSHKeys: unstored)
+            try storage.save(stored.connections, keepingPastedSSHKeys: unstored, removingSecrets: true)
         } catch {
             Self.logger.error("Rewriting connections without SSH keys failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
@@ -324,7 +330,11 @@ final class AppState {
     // A local change whose save failed is in memory only, so an equal pull saves it again rather than skip it.
     @discardableResult
     private func persist(connections: [DatabaseConnection], onlyIfSaved: Bool = false) -> Bool {
-        let heldKeys = PastedSSHKeyMigration.keysStillHeld(pastedSSHKeysAwaitingKeychain, by: connections)
+        let heldKeys = PastedSSHKeyMigration.keysStillHeld(
+            pastedSSHKeysAwaitingKeychain,
+            by: connections,
+            orUnreadable: storage.unreadableIds
+        )
         var saved = true
         do {
             try storage.save(connections, keepingPastedSSHKeys: heldKeys)
@@ -381,10 +391,11 @@ final class AppState {
 
     private func pruneLibraryPreferences() {
         guard loadStatus == .ready else { return }
+        let unreadableConnectionIds = storage.unreadableIds
         libraryPreferences.prune(
-            connectionIds: Set(connections.map(\.id)),
-            favoriteIds: Set(connections.filter(\.isFavorite).map(\.id)),
-            groupIds: Set(groups.map(\.id))
+            connectionIds: Set(connections.map(\.id)).union(unreadableConnectionIds),
+            favoriteIds: Set(connections.filter(\.isFavorite).map(\.id)).union(unreadableConnectionIds),
+            groupIds: Set(groups.map(\.id)).union(groupStorage.unreadableIds)
         )
     }
 
@@ -706,37 +717,4 @@ private enum LibraryPart {
     case connections
     case groups
     case tags
-}
-
-private struct StoredConnections {
-    let connections: [DatabaseConnection]
-    let pastedSSHKeys: [UUID: String]
-}
-
-private struct ConnectionPersistence {
-    let directory: URL
-
-    private var fileURL: URL? {
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("connections.json")
-    }
-
-    func save(_ connections: [DatabaseConnection], keepingPastedSSHKeys pastedSSHKeys: [UUID: String]) throws {
-        guard let fileURL else { return }
-        let encoder = JSONEncoder()
-        encoder.userInfo[.deviceLibraryFile] = true
-        let data = try PastedSSHKeyMigration.libraryFile(encoder.encode(connections), keeping: pastedSSHKeys)
-        try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-    }
-
-    func load() throws -> StoredConnections {
-        guard let fileURL, FileManager.default.fileExists(atPath: fileURL.path) else {
-            return StoredConnections(connections: [], pastedSSHKeys: [:])
-        }
-        let data = try Data(contentsOf: fileURL)
-        return StoredConnections(
-            connections: try JSONDecoder().decode([DatabaseConnection].self, from: data),
-            pastedSSHKeys: PastedSSHKeyMigration.pendingKeys(inLibraryFile: data)
-        )
-    }
 }
