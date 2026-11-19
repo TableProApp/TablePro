@@ -21,6 +21,7 @@ pub enum AppLinkInfo {
     OpenSettings {
         pane: Option<String>,
     },
+    StartMcpServer,
 }
 
 #[uniffi::export]
@@ -47,6 +48,7 @@ pub fn parse_app_link(link: String) -> Result<AppLinkInfo, CoreError> {
             sql,
         },
         AppLink::OpenSettings { pane } => AppLinkInfo::OpenSettings { pane },
+        AppLink::StartMcpServer => AppLinkInfo::StartMcpServer,
     })
 }
 
@@ -66,6 +68,14 @@ mod tests {
                 schema: None,
                 table: "users".to_owned(),
             })
+        );
+    }
+
+    #[test]
+    fn a_start_mcp_link_starts_the_server() {
+        assert_eq!(
+            parse_app_link("tablepro://integrations/start-mcp".to_owned()).ok(),
+            Some(AppLinkInfo::StartMcpServer)
         );
     }
 

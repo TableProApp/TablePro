@@ -17,9 +17,14 @@ public sealed class AppLinkTests
         Assert.Equal(new AppLink.OpenSettings("notifications"), AppLink.Parse("tablepro://settings/notifications"));
     }
 
+    [Fact]
+    public void AStartMcpLinkStartsTheServer() =>
+        Assert.Equal(new AppLink.StartMcpServer(), AppLink.Parse("tablepro://integrations/start-mcp"));
+
     [Theory]
     [InlineData("tablepro://connect/production", "link.invalid_id")]
     [InlineData("tablepro://import?name=Staging", "link.unknown_host")]
+    [InlineData("tablepro://integrations/pair?client=Raycast&challenge=c&redirect=raycast%3A%2F%2Fx", "link.malformed_path")]
     [InlineData("postgresql://db.example.com/shop", "link.invalid")]
     public void ALinkTheAppDoesNotReadThrowsItsCode(string link, string code) =>
         Assert.Equal(code, Assert.Throws<TableProException>(() => AppLink.Parse(link)).Code);

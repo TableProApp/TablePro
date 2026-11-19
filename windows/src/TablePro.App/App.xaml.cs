@@ -66,7 +66,10 @@ public partial class App : Application
 
         try
         {
-            SingleInstance.BringToFront(_window);
+            if (!MainWindow.OnlyStartsMcp(request))
+            {
+                SingleInstance.BringToFront(_window);
+            }
         }
         catch (Exception exception)
         {
