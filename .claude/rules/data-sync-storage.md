@@ -22,6 +22,10 @@ paths:
   - "apple/Plugins/*/*ExportModels.swift"
   - "apple/Plugins/*/*portOptions.swift"
   - "apple/TableProMobile/TableProMobile/Sync/**/*"
+  - "apple/TableProMobile/TableProMobile/Helpers/*Persistence.swift"
+  - "apple/TableProMobile/TableProMobile/Helpers/LibraryFile.swift"
+  - "apple/TableProMobile/TableProMobile/Platform/PastedSSHKeyMigration.swift"
+  - "apple/Packages/TableProCore/Sources/TableProConnectionLibrary/LibraryFileRecords.swift"
   - "apple/Packages/TableProCore/Sources/TableProSync/**/*"
   - "apple/TablePro/Models/Connection/DatabaseConnection.swift"
   - "apple/TablePro/Models/Connection/DatabaseType.swift"
@@ -181,9 +185,10 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Approved sign-ins with this Mac's own credentials (Entra, AWS profile or SSO, Google ADC or OAuth, Kerberos, `~/.pgpass`), per connection, field values and destination digest | UserDefaults `com.TablePro.localCredentialApprovals`, plus `com.TablePro.localCredentialApprovalsMigrated` for the one-time approval of this Mac's rows; device-local, never synced | `ConnectionApprovalStore.localCredentials` |
 | Snowflake SSO and MFA tokens, per host and user. A bare account's `NAME.USER` item stays for 0.83.1, which reads only that key | Keychain, device-local | `SnowflakeTokenCache` |
 | Whether `connections.json` was ever given an integrity tag, so a deleted tag reads as modified | Keychain `com.TablePro.connectionStoreStamped.<sha256 of path>`, device-local | `ConnectionStoreIntegrity` |
-| The last copy of `connections.json` and `credentialProfiles.json` that parsed, taken before each save with its tag, restored when the file no longer parses | `<file>.backup` and `<file>.backup.hmac` beside the file, device-local, never synced | `IntegrityStampedFileStore` |
+| `connections.json` and `credentialProfiles.json` as last saved, copied with the tag after each save, restored when the file no longer parses. A save that moves secrets out drops the old copy first or writes nothing | `<file>.backup` and `<file>.backup.hmac` beside the file, device-local, never synced | `IntegrityStampedFileStore` |
 | A `connections.json` or `credentialProfiles.json` that no longer parsed, set aside when its backup was restored; the next one replaces it | `<file>.unreadable` beside the file, device-local, never synced | `IntegrityStampedFileStore` |
 | Records this build cannot read from a file changed outside TablePro, which a save would otherwise sign; added to, never replaced | `<file>.unreadable-records` beside the file, device-local, never synced | `IntegrityStampedFileStore` |
+| iOS: `connections.json`, `groups.json` and `tags.json` as last saved, copied after each save, restored when the file no longer parses; the damaged file is kept and the next one replaces it. A save that moves secrets out drops the old copy first or writes nothing. Records the build cannot read stay in the file until a save writes a record with their id, and their ids keep their Keychain items, files and preferences, and keep what they own off iCloud | `<file>.backup` and `<file>.unreadable` beside the file, device-local, never synced | `LibraryFile` |
 | Whether Local only connections' secrets were copied to device-only items | UserDefaults `com.TablePro.localOnlySecretsKeptOnDevice`, device-local, never synced | `ConnectionStorage` |
 | iCloud Keychain copies of Local only secrets the keychain refused to remove, retried at launch | UserDefaults `com.TablePro.localOnlySyncedCopiesPendingRemoval`, device-local, never synced | `ConnectionStorage` |
 | Whether plugin secure fields moved out of `connections.json` into the Keychain, set only when every field moved and the save succeeded | UserDefaults `com.TablePro.pluginSecureFieldsMovedToKeychain`, device-local, never synced | `ConnectionStorage` |

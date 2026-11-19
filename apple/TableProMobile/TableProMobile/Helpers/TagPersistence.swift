@@ -2,26 +2,19 @@ import Foundation
 import TableProModels
 
 struct TagPersistence {
-    let directory: URL
+    private let file: LibraryFile<ConnectionTag>
 
-    private var fileURL: URL? {
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("tags.json")
+    init(directory: URL) {
+        file = LibraryFile(directory: directory, name: "tags.json")
     }
 
     func save(_ tags: [ConnectionTag]) throws {
-        guard let fileURL else { return }
-        let data = try JSONEncoder().encode(tags)
-        try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        try file.save(tags)
     }
 
     func load() throws -> [ConnectionTag] {
-        guard let fileURL else { return ConnectionTag.presets }
-        if !FileManager.default.fileExists(atPath: fileURL.path) {
-            return ConnectionTag.presets
-        }
-        let data = try Data(contentsOf: fileURL)
-        let tags = try JSONDecoder().decode([ConnectionTag].self, from: data)
-        return tags.isEmpty ? ConnectionTag.presets : tags
+        guard let tags = try file.load()?.elements else { return ConnectionTag.presets }
+        // Only a file with nothing in it takes the presets: a kept record with a preset's id would give way to them.
+        return tags.isEmpty && !file.holdsUnreadableRecords ? ConnectionTag.presets : tags
     }
 }

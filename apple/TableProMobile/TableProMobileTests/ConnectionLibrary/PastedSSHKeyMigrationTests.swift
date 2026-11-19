@@ -62,6 +62,30 @@ struct PastedSSHKeyMigrationTests {
         #expect(PastedSSHKeyMigration.pendingKeys(inLibraryFile: data) == [id: "FIRST"])
     }
 
+    @Test("A record it cannot read does not hide the keys of the others")
+    func unreadableRecordKeepsOtherKeys() throws {
+        let id = UUID()
+        let data = try JSONSerialization.data(withJSONObject: [
+            entry(id, ssh: ["privateKeyData": "KEY A"]),
+            ["name": "No id", "sshConfiguration": ["privateKeyData": "KEY B"]],
+            NSNull()
+        ] as [Any])
+
+        #expect(PastedSSHKeyMigration.pendingKeys(inLibraryFile: data) == [id: "KEY A"])
+    }
+
+    @Test("A kept key goes back into a file that also holds entries that are not objects")
+    func keptKeyBesideNonObjectEntries() throws {
+        let connection = tunnelled()
+        let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(connection))
+        let encoded = try JSONSerialization.data(withJSONObject: [object, NSNull(), "text"] as [Any])
+
+        let written = try PastedSSHKeyMigration.libraryFile(encoded, keeping: [connection.id: "KEY A"])
+
+        #expect(PastedSSHKeyMigration.pendingKeys(inLibraryFile: written) == [connection.id: "KEY A"])
+        #expect((try JSONSerialization.jsonObject(with: written) as? [Any])?.count == 3)
+    }
+
     @Test("A file it cannot read yields nothing to migrate")
     func unreadableFile() {
         #expect(PastedSSHKeyMigration.pendingKeys(inLibraryFile: Data("{ not json".utf8)).isEmpty)
@@ -94,6 +118,14 @@ struct PastedSSHKeyMigrationTests {
         let written = try PastedSSHKeyMigration.libraryFile(encoded, keeping: [plain.id: "KEY A", UUID(): "KEY B"])
 
         #expect(PastedSSHKeyMigration.pendingKeys(inLibraryFile: written).isEmpty)
+    }
+
+    @Test("A key of a connection this build cannot read is still held")
+    func unreadableConnectionKeepsItsKey() {
+        let unreadable = UUID()
+        let keys = [unreadable: "KEY A", UUID(): "KEY B"]
+
+        #expect(PastedSSHKeyMigration.keysStillHeld(keys, by: [], orUnreadable: [unreadable]) == [unreadable: "KEY A"])
     }
 
     @Test("Only keys whose connection still has SSH settings are still held")
