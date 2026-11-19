@@ -18,6 +18,7 @@ pub(super) const RENAME_TAB: &str = "rename-tab";
 // "Renaming a tab from the tab bar".
 const BAR_TAB: &str = "AdwTab";
 const OVERVIEW_TAB: &str = "AdwTabThumbnail";
+const ESCAPE_WATCH: &str = "tab-rename-escape";
 
 pub(super) struct RenameSeed {
     pub(super) shown: String,
@@ -206,11 +207,8 @@ fn rename_popover(seed: &RenameSeed, commit: impl Fn(String) + 'static) -> (gtk:
     let finished = Rc::new(Cell::new(false));
 
     // A change event, not a comparison: Return on an untouched `Query 3` must not keep it as a typed name.
-    let (typed, resumed) = (edited.clone(), cancelled.clone());
-    entry.connect_changed(move |_| {
-        typed.set(true);
-        resumed.set(false);
-    });
+    let typed = edited.clone();
+    entry.connect_changed(move |_| typed.set(true));
 
     let finish: Rc<dyn Fn(&gtk::Entry)> = {
         let (edited, finished) = (edited, finished);
@@ -229,9 +227,11 @@ fn rename_popover(seed: &RenameSeed, commit: impl Fn(String) + 'static) -> (gtk:
         }
     });
 
-    // Every way the popover hides emits the same `closed`, so Escape is told apart before GtkPopover sees it.
+    // Every way the popover hides emits the same `closed`, so Escape is told apart on its way up to GtkPopover.
+    // Bubbling from the entry, it arrives only once the input method let it through rather than ending a composition.
     let keys = gtk::EventControllerKey::new();
-    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    keys.set_name(Some(ESCAPE_WATCH));
+    keys.set_propagation_phase(gtk::PropagationPhase::Bubble);
     let escaped = cancelled.clone();
     keys.connect_key_pressed(move |_, keyval, _, _| {
         if keyval == gdk::Key::Escape {
@@ -239,7 +239,7 @@ fn rename_popover(seed: &RenameSeed, commit: impl Fn(String) + 'static) -> (gtk:
         }
         glib::Propagation::Proceed
     });
-    popover.add_controller(keys);
+    entry.add_controller(keys);
 
     let (on_close, field, dropped) = (finish, entry.downgrade(), cancelled.clone());
     popover.connect_closed(move |_| {
@@ -454,10 +454,10 @@ mod tests {
         open_editor(&workspace);
         let (popover, entry) = open_field(&shell, &page);
         entry.set_text("Dropped");
-        let controllers = popover.observe_controllers();
+        let controllers = entry.observe_controllers();
         let keys = (0..controllers.n_items())
             .filter_map(|position| controllers.item(position).and_downcast::<gtk::EventControllerKey>())
-            .find(|controller| controller.propagation_phase() == gtk::PropagationPhase::Capture)
+            .find(|controller| controller.name().as_deref() == Some(super::ESCAPE_WATCH))
             .expect("the field's Escape watch");
 
         keys.emit_by_name::<bool>("key-pressed", &[&gdk::Key::Escape, &0u32, &gdk::ModifierType::empty()]);
@@ -631,6 +631,43 @@ mod tests {
             keys.press(gdk::Key::Return, gdk::ModifierType::empty())
                 .expect("Return");
             wait_until(WAIT, || page.title() == "z").expect("the typed name");
+        }
+
+        #[gtk4::test]
+        fn escape_that_ends_a_composition_keeps_the_rename_for_focus_loss() {
+            let test = TestWindow::connected("RenameComposition");
+            let workspace = test.workspace();
+            let shell = shell_of(&workspace);
+            open_editor(&workspace);
+            let page = open_editor(&workspace);
+            KeyInjector::focus_only(&test.window);
+            wait_until(WAIT, || test.window.is_active()).expect("the window to take the focus");
+            let keys = KeyInjector::connect().expect("an X11 display");
+            keys.press(gdk::Key::F2, gdk::ModifierType::empty()).expect("F2");
+            wait_until(WAIT, || field(&shell).is_some_and(|(popover, _)| popover.is_visible()))
+                .expect("F2 to open the field");
+
+            for key in [gdk::Key::a, gdk::Key::b, gdk::Key::c] {
+                keys.press(key, gdk::ModifierType::empty()).expect("the key press");
+            }
+            // Ctrl+Shift+U starts a Unicode composition in GTK's own input method, and Escape ends only that.
+            keys.press(
+                gdk::Key::U,
+                gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::SHIFT_MASK,
+            )
+            .expect("the composition");
+            keys.press(gdk::Key::Escape, gdk::ModifierType::empty())
+                .expect("Escape");
+            drain_main_context();
+            let (popover, _) = field(&shell).expect("the field");
+            assert!(
+                popover.is_visible(),
+                "Escape that ended the composition closed the field"
+            );
+
+            popover.popdown();
+
+            wait_until(WAIT, || page.title() == "abc").expect("focus loss to keep the typed name");
         }
     }
 }
