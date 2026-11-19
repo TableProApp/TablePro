@@ -829,11 +829,13 @@ final class ConnectionStorage {
             + fieldIds.map { "com.TablePro.plugin.\($0).\(id)" }
     }
 
-    // Only the device-only items named by id alone: a plugin's secure field needs the record's type to be named.
+    // Found by the id they end with: naming a plugin's secure fields needs the type the record no longer gives, and
+    // one left behind would reach whatever later saves a record with that id. Device-only, as for a remote delete.
     func deleteSecrets(ofUnreadable ids: Set<UUID>) {
         for id in ids {
-            let keys = Self.secretKinds.map { "com.TablePro.\($0).\(id.uuidString)" }
-                + ["com.TablePro.plugin.\(ConnectionSecretOptions.mongoSessionTokenFieldId).\(id.uuidString)"]
+            let keys = keychain.deviceOnlyKeys(endingWith: ".\(id.uuidString)").filter { key in
+                key.hasPrefix("com.TablePro.") && !key.hasPrefix(CredentialProfileStorage.secretKeyPrefix)
+            }
             for key in keys {
                 keychain.delete(forKey: key, deviceOnly: true)
             }

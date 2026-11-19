@@ -26,7 +26,8 @@ final class CredentialProfileStorage {
     /// The prefix is load-bearing. `TableProMobile`'s `KeychainSecureStore.cleanOrphanedCredentials`
     /// sweeps `com.TablePro.password.` and deletes any item whose trailing UUID is not a saved
     /// connection, and a profile id is never a connection id.
-    private static let secretPrefix = "com.TablePro.credprofile."
+    static let secretKeyPrefix = "com.TablePro.credprofile."
+    private static let secretPrefix = secretKeyPrefix
 
     private let file: IntegrityStampedFileStore<CredentialProfile>
     private let keychain: any KeychainStoring

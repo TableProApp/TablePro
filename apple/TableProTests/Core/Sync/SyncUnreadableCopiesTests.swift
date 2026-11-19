@@ -69,15 +69,21 @@ struct SyncUnreadableCopiesTests {
         SyncRecordMapper.toCKRecord(TestFixtures.makeConnection(id: unreadableId, name: name), in: Self.zoneID)
     }
 
-    @Test("A deletion from iCloud removes a connection this Mac cannot read when its standing says it syncs")
+    @Test("A deletion from iCloud removes a connection this Mac cannot read, and every secret its id owns, when it syncs")
     func deletionRemovesAnUnreadableSyncedConnection() async throws {
         try writeLibrary(standing: .syncs)
+        let pluginKey = "com.TablePro.plugin.qdApiKey.\(unreadableId.uuidString)"
+        let keptKey = "com.TablePro.password.\(kept.id.uuidString)"
+        environment.keychain.writeString("api-key", forKey: pluginKey)
+        environment.keychain.writeString("password", forKey: keptKey)
         let coordinator = environment.makeCoordinator(transport: ScriptedSyncTransport(zoneID: Self.zoneID))
 
         #expect(await coordinator.applyPullResult(pull(deleted: [recordID]), settings: .default))
 
         #expect(try rows().compactMap { $0["id"] as? String } == [kept.id.uuidString])
         #expect(environment.connections.unreadableConnectionIds.isEmpty)
+        #expect(environment.keychain.readStringResult(forKey: pluginKey) == .notFound)
+        #expect(environment.keychain.readStringResult(forKey: keptKey) == .found("password"))
     }
 
     @Test("A Local only connection this Mac cannot read stays as it was when iCloud deletes its id")

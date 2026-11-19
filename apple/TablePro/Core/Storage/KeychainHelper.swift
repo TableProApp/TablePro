@@ -40,6 +40,8 @@ protocol KeychainStoring: Sendable {
     // Removes the iCloud Keychain copy, which removes it from every device. Refused while this Mac has no item of its own.
     @discardableResult
     func removeSyncedCopy(forKey key: String) -> Bool
+    // This Mac's own items whose key ends with the suffix, such as everything one connection id owns.
+    func deviceOnlyKeys(endingWith suffix: String) -> [String]
 }
 
 extension KeychainStoring {
@@ -61,6 +63,10 @@ extension KeychainStoring {
     func removeSyncedCopy(forKey key: String) -> Bool {
         true
     }
+
+    func deviceOnlyKeys(endingWith suffix: String) -> [String] {
+        []
+    }
 }
 
 struct KeychainCopiedItem: Sendable {
@@ -75,6 +81,13 @@ protocol KeychainItemStore: Sendable {
     // The first item the query matches, with its data and modification date.
     func copyItem(_ query: [String: Any]) -> KeychainCopiedItem
     func delete(_ query: [String: Any]) -> OSStatus
+    func accounts(_ query: [String: Any]) -> [String]
+}
+
+extension KeychainItemStore {
+    func accounts(_ query: [String: Any]) -> [String] {
+        []
+    }
 }
 
 struct SystemKeychainItemStore: KeychainItemStore {
@@ -103,6 +116,16 @@ struct SystemKeychainItemStore: KeychainItemStore {
 
     func delete(_ query: [String: Any]) -> OSStatus {
         SecItemDelete(query as CFDictionary)
+    }
+
+    func accounts(_ query: [String: Any]) -> [String] {
+        var query = query
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitAll
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]] else { return [] }
+        return items.compactMap { $0[kSecAttrAccount as String] as? String }
     }
 }
 
@@ -246,6 +269,12 @@ final class KeychainHelper: KeychainStoring {
 
     func delete(forKey key: String) {
         delete(forKey: key, deviceOnly: false)
+    }
+
+    func deviceOnlyKeys(endingWith suffix: String) -> [String] {
+        var query = baseQuery(forKey: "")
+        query.removeValue(forKey: kSecAttrAccount as String)
+        return items.accounts(query).filter { $0.hasSuffix(suffix) }
     }
 
     func delete(forKey key: String, deviceOnly: Bool) {
