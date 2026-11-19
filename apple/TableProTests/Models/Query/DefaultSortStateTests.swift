@@ -154,8 +154,8 @@ struct DataGridSettingsDefaultSortDecoderTests {
         #expect(decoded.defaultSortDirection == .descending)
     }
 
-    @Test("Missing key falls back to .none for upgrading users")
-    func missingKeyFallsBackToNone() throws {
+    @Test("A settings file that never saved the key takes the primary key default")
+    func missingKeyFallsBackToPrimaryKey() throws {
         let legacyJSON = """
         {
             "dateFormat": "yyyy-MM-dd HH:mm:ss",
@@ -173,7 +173,22 @@ struct DataGridSettingsDefaultSortDecoderTests {
 
         let settings = try JSONDecoder().decode(DataGridSettings.self, from: Data(legacyJSON.utf8))
 
+        #expect(settings.defaultSortBehavior == .primaryKey)
+    }
+
+    @Test("A saved choice of no sorting survives the new default")
+    func savedNoneIsKept() throws {
+        let saved = #"{ "defaultSortBehavior": "none" }"#
+
+        let settings = try JSONDecoder().decode(DataGridSettings.self, from: Data(saved.utf8))
+
         #expect(settings.defaultSortBehavior == .none)
+    }
+
+    @Test("A new install sorts table tabs by primary key")
+    func newInstallSortsByPrimaryKey() {
+        #expect(DataGridSettings.default.defaultSortBehavior == .primaryKey)
+        #expect(DataGridSettings().defaultSortBehavior == .primaryKey)
     }
 
     @Test("Explicit primaryKey value round-trips")

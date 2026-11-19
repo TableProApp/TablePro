@@ -139,11 +139,11 @@ extension MainContentCoordinator {
             }
             return
         }
+        await services.schemaRefreshService.syncAutocompleteProvider(connectionId: connectionId)
         await DatabaseTreeMetadataService.shared.loadDatabases(
             connectionId: connectionId,
             databaseType: connection.type
         )
-        await services.schemaRefreshService.syncAutocompleteProvider(connectionId: connectionId)
         pruneStaleSidebarState()
     }
 
