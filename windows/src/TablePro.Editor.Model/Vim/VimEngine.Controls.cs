@@ -51,9 +51,7 @@ public sealed partial class VimEngine
         }
         if (PendingOperator is not null)
         {
-            PendingOperator = null;
-            CountPrefix = 0;
-            OperatorCount = 0;
+            CancelPending();
             return true;
         }
         PerformNormalControl(control);

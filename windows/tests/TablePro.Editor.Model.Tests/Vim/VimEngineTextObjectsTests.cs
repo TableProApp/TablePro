@@ -179,7 +179,8 @@ public sealed class VimEngineTextObjectsTests
     {
         var s = new VimSession("para one\nstill one\n\npara two\n", caret: 3);
         s.Press("dip");
-        Assert.Equal("\n\npara two\n", s.Text);
+        Assert.Equal("\npara two\n", s.Text);
+        Assert.True(s.Engine.Register.IsLinewise);
     }
 
     [Fact]
@@ -228,5 +229,65 @@ public sealed class VimEngineTextObjectsTests
         var s = new VimSession("f(arg)\n", caret: 5);
         s.Press("di(");
         Assert.Equal("f()\n", s.Text);
+    }
+
+    [Fact]
+    public void YIPOnTheLastParagraphYanksItsLines()
+    {
+        var s = new VimSession("a\n\nb\nc", caret: 5);
+        s.Press("yip");
+        Assert.Equal("b\nc", s.Engine.Register.Text);
+        Assert.True(s.Engine.Register.IsLinewise);
+        Assert.Equal(3, s.Caret);
+    }
+
+    [Fact]
+    public void DIPOnTheLastParagraphDeletesItsLines()
+    {
+        var s = new VimSession("a\n\nb\nc", caret: 5);
+        s.Press("dip");
+        Assert.Equal("a\n\n", s.Text);
+    }
+
+    [Fact]
+    public void CIPLeavesOneEmptyLineToTypeOn()
+    {
+        var s = new VimSession("a\nb\n\nc\n", caret: 0);
+        s.Press("cip");
+        Assert.Equal("\n\nc\n", s.Text);
+        Assert.Equal(VimMode.Insert, s.Mode);
+    }
+
+    [Fact]
+    public void DIPOnBlankLinesDeletesTheBlankLines()
+    {
+        var s = new VimSession("a\n\n\nb\n", caret: 2);
+        s.Press("dip");
+        Assert.Equal("a\nb\n", s.Text);
+    }
+
+    [Fact]
+    public void DAPOnBlankLinesDeletesThemAndTheParagraphAfter()
+    {
+        var s = new VimSession("a\n\n\nb\nc\n\nd\n", caret: 2);
+        s.Press("dap");
+        Assert.Equal("a\n\nd\n", s.Text);
+    }
+
+    [Fact]
+    public void DAPOnTheLastParagraphTakesTheBlankLinesBeforeIt()
+    {
+        var s = new VimSession("a\n\nb\nc\n", caret: 3);
+        s.Press("dap");
+        Assert.Equal("a\n", s.Text);
+    }
+
+    [Fact]
+    public void VisualIPSwitchesToVisualLine()
+    {
+        var s = new VimSession("a\nb\n\nc\n", caret: 0);
+        s.Press("vip");
+        Assert.Equal(VimMode.VisualLine, s.Mode);
+        Assert.Equal((0, 4), s.Selection);
     }
 }

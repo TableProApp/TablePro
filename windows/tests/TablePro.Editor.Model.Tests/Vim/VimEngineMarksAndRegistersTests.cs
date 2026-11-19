@@ -158,4 +158,92 @@ public sealed class VimEngineMarksAndRegistersTests
         s.Press("\"ap");
         Assert.Contains("hello world\nsecond line\nhello world\nsecond line\n", s.Text, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void ALineTypedAboveAMarkMovesItDownWithItsLine()
+    {
+        var s = new VimSession(Initial, caret: 25);
+        s.Press("maggO");
+        s.Type("new");
+        s.Escape();
+        s.Press("`a");
+        Assert.Equal(29, s.Caret);
+    }
+
+    [Fact]
+    public void TextTypedBeforeAMarkOnItsLineKeepsItsColumn()
+    {
+        var s = new VimSession(Initial, caret: 6);
+        s.Press("ma0i");
+        s.Type("XX");
+        s.Escape();
+        s.Press("`a");
+        Assert.Equal(6, s.Caret);
+    }
+
+    [Fact]
+    public void ALinePastedAboveAMarkMovesItDown()
+    {
+        var s = new VimSession(Initial, caret: 25);
+        s.Press("maggyyP`a");
+        Assert.Equal(37, s.Caret);
+    }
+
+    [Fact]
+    public void ALineBroughtBackByUndoAboveAMarkMovesItDown()
+    {
+        var s = new VimSession(Initial, caret: 0);
+        s.Press("ddjmau`a");
+        Assert.Equal(Initial, s.Text);
+        Assert.Equal(24, s.Caret);
+    }
+
+    [Fact]
+    public void DeletingTheMarkedLineRemovesTheMark()
+    {
+        var s = new VimSession(Initial, caret: 13);
+        s.Press("madd");
+        Assert.False(s.Engine.Marks.ContainsKey("a"));
+    }
+
+    [Fact]
+    public void AJoinCarriesTheMarkWithItsText()
+    {
+        var s = new VimSession("hello world\n    second\n", caret: 16);
+        s.Press("maggJ`a");
+        Assert.Equal("hello world second\n", s.Text);
+        Assert.Equal(12, s.Caret);
+    }
+
+    [Fact]
+    public void AShiftedLineKeepsItsMark()
+    {
+        var s = new VimSession("one\ntwo\n", caret: 5);
+        s.Press("ma>>`a");
+        Assert.Equal(5, s.Caret);
+        s.Press("u`a");
+        Assert.Equal(5, s.Caret);
+    }
+
+    [Fact]
+    public void ThePreviousPositionMovesWithALineOpenedAboveIt()
+    {
+        var s = new VimSession(Initial, caret: 25);
+        s.Press("GO");
+        s.Escape();
+        s.Press("``");
+        Assert.Equal(26, s.Caret);
+    }
+
+    [Fact]
+    public void TheLastVisualSelectionMovesWithALineOpenedAboveIt()
+    {
+        var s = new VimSession("aa\nbb\ncc\n", caret: 3);
+        s.Press("vl");
+        s.Escape();
+        s.Press("ggO");
+        s.Escape();
+        s.Press("`<");
+        Assert.Equal(4, s.Caret);
+    }
 }

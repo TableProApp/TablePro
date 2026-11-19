@@ -274,7 +274,8 @@ public sealed partial class VimEngine : IDisposable
         return (int)Math.Min(motionCount * opCount, MaxCount);
     }
 
-    // Escape drops every prefix of a command still being typed, so nothing of it reaches the next key.
+    // Escape, leaving the command line or a motion that finds nothing ends the whole command, so no part of it
+    // reaches the next key.
     internal void CancelPending()
     {
         PendingOperator = null;
@@ -319,10 +320,16 @@ public sealed partial class VimEngine : IDisposable
         _insertMark = null;
     }
 
-    private bool HasPendingCommand => CountPrefix > 0 || OperatorCount > 0 || PendingOperator is not null || PendingG
-        || PendingFindChar is not null || PendingReplaceChar || PendingMarkSet || PendingMarkJumpExact is not null
-        || PendingRegisterSelect || SelectedRegister is not null || PendingReplaceCharForVisual || PendingZ
-        || PendingTextObject || PendingMacroTarget is not null || PendingBracket is not null;
+    private bool HasPendingCommand => WaitsForKey || CountPrefix > 0 || OperatorCount > 0 || SelectedRegister is not null;
+
+    // A key still waits for the rest of its command, not counting a count or a register already typed.
+    private bool WaitsForKey => PendingOperator is not null || PendingG || PendingFindChar is not null || PendingReplaceChar
+        || PendingMarkSet || PendingMarkJumpExact is not null || PendingRegisterSelect || PendingReplaceCharForVisual
+        || PendingZ || PendingTextObject || PendingMacroTarget is not null || PendingBracket is not null;
+
+    private bool TakesCharacterArgument => PendingFindChar is not null || PendingReplaceChar || PendingMarkSet
+        || PendingMarkJumpExact is not null || PendingZ || PendingTextObject || PendingMacroTarget is not null
+        || PendingBracket is not null;
 
     private void TrackPendingKeys(string key)
     {

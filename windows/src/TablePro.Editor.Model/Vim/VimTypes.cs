@@ -90,6 +90,14 @@ internal enum VimOperator
     Outdent,
 }
 
+// :help exclusive, :help inclusive, :help linewise.
+internal enum VimMotionKind
+{
+    Exclusive,
+    Inclusive,
+    Linewise,
+}
+
 internal sealed record VimFindCharRequest(bool Forward, bool Till);
 
 internal sealed record VimLastFindChar(string Char, bool Forward, bool Till);

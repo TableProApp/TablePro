@@ -155,4 +155,31 @@ public sealed class VimEnginePasteTests
         Assert.Equal("hello hello ld\nsecond line\nthird line\n", s.Text);
         Assert.Equal(VimMode.Normal, s.Mode);
     }
+
+    [Fact]
+    public void ALinewisePasteLeavesTheCursorOnTheFirstNonBlank()
+    {
+        var s = new VimSession("  ab\ncd\n", caret: 0);
+        s.Press("yyjp");
+        Assert.Equal("  ab\ncd\n  ab\n", s.Text);
+        Assert.Equal(10, s.Caret);
+    }
+
+    [Fact]
+    public void PBelowALastLineWithNoBreakAddsTheBreakFirst()
+    {
+        var s = new VimSession("a\nb", caret: 2);
+        s.Press("yyp");
+        Assert.Equal("a\nb\nb", s.Text);
+        Assert.Equal(4, s.Caret);
+    }
+
+    [Fact]
+    public void APasteOverSeveralLinesLeavesTheCursorAtItsStart()
+    {
+        var s = new VimSession("ab cd\nef\n", caret: 1);
+        s.Press("vjy$p");
+        Assert.Equal("ab cdb cd\nef\nef\n", s.Text);
+        Assert.Equal(5, s.Caret);
+    }
 }

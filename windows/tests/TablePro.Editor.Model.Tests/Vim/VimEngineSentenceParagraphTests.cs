@@ -105,4 +105,30 @@ public sealed class VimEngineSentenceParagraphTests
         s.Press(")");
         Assert.Equal(5, s.Caret);
     }
+
+    [Fact]
+    public void RightBraceOnTheLastParagraphStopsOnItsLastCharacter()
+    {
+        var s = new VimSession("aaa\nbbb\n", caret: 0);
+        s.Press("}");
+        Assert.Equal(6, s.Caret);
+    }
+
+    [Fact]
+    public void DoubleRightBracketWithCountGoesThatManySections()
+    {
+        var s = new VimSession("{\n a\n}\n{\n b\n}\n{\n c\n}\n", caret: 0);
+        s.Press("2]]");
+        Assert.Equal(14, s.Caret);
+    }
+
+    [Fact]
+    public void ParagraphAndSentenceMotionsSetThePreviousPosition()
+    {
+        var s = new VimSession("One. Two.\n\nThree.\n", caret: 0);
+        s.Press("}``");
+        Assert.Equal(0, s.Caret);
+        s.Press(")``");
+        Assert.Equal(0, s.Caret);
+    }
 }

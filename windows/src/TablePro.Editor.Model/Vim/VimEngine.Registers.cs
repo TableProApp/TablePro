@@ -62,38 +62,31 @@ public sealed partial class VimEngine
 
     private static bool IsUppercaseLetter(string name) => name.Length == 1 && char.IsUpper(name[0]);
 
+    // ' goes to the first character of the mark's line and takes whole lines after an operator; ` goes to the mark
+    // itself. An unset mark ends the command.
     internal void JumpToMark(string name, bool exact)
     {
-        var length = _buffer.Length;
-        var origin = _buffer.SelectedRange.Location;
-        if (name is "'" or "`")
+        int? mark = name switch
         {
-            if (LastJumpOrigin is { } previous)
-            {
-                _buffer.SetCaret(Math.Clamp(previous, 0, length));
-                LastJumpOrigin = origin;
-            }
+            "'" or "`" => LastJumpOrigin,
+            "<" => LastVisualStart,
+            ">" => LastVisualEnd,
+            _ => Marks.TryGetValue(name, out var offset) ? offset : null,
+        };
+        if (mark is not { } found)
+        {
+            ApplyMotion(null, VimMotionKind.Exclusive);
             return;
         }
-        if (name == "<" && LastVisualStart is { } start)
+        var clamped = Math.Clamp(found, 0, _buffer.Length);
+        if (exact)
         {
-            _buffer.SetCaret(Math.Clamp(start, 0, length));
-            LastJumpOrigin = origin;
-            return;
+            ApplyMotion(clamped, VimMotionKind.Exclusive, jump: true);
         }
-        if (name == ">" && LastVisualEnd is { } end)
+        else
         {
-            _buffer.SetCaret(Math.Clamp(end, 0, length));
-            LastJumpOrigin = origin;
-            return;
+            ApplyMotion(FirstNonBlankOffset(_buffer.LineRange(clamped).Location), VimMotionKind.Linewise, jump: true);
         }
-        if (!Marks.TryGetValue(name, out var offset))
-        {
-            return;
-        }
-        var clamped = Math.Clamp(offset, 0, length);
-        _buffer.SetCaret(exact ? clamped : FirstNonBlankOffset(_buffer.LineRange(clamped).Location));
-        LastJumpOrigin = origin;
     }
 
     internal void RecordVisualSelection(bool linewise)
@@ -134,30 +127,31 @@ public sealed partial class VimEngine
         }
     }
 
-    // Every change to the text, typed, pasted, undone or the engine's own, moves the marks with it.
+    // Every change to the text, typed, pasted, undone or the engine's own, moves the marks with it. Removing a named
+    // mark's line removes the mark; the other positions go to where the lines were.
     private void OnDocumentChanged(object? sender, TextChange change)
     {
-        if (Marks.Count == 0 && LastJumpOrigin is null && LastInsertOffset is null)
+        if (Marks.Count == 0 && LastJumpOrigin is null && LastInsertOffset is null && LastVisualStart is null
+            && LastVisualEnd is null)
         {
             return;
         }
+        var edit = new VimMarkChange(change, _buffer);
         foreach (var (key, offset) in Marks.ToList())
         {
-            Marks[key] = MapMark(offset, change);
+            if (edit.Map(offset, removable: true) is { } moved)
+            {
+                Marks[key] = moved;
+            }
+            else
+            {
+                Marks.Remove(key);
+            }
         }
-        LastJumpOrigin = LastJumpOrigin is { } origin ? MapMark(origin, change) : null;
-        LastInsertOffset = LastInsertOffset is { } insert ? MapMark(insert, change) : null;
-    }
-
-    private static int MapMark(int offset, TextChange change)
-    {
-        var removedEnd = change.Offset + change.RemovedLength;
-        if (offset >= removedEnd)
-        {
-            return offset + change.InsertedLength - change.RemovedLength;
-        }
-        // Inside replaced text a mark keeps its place where the new text reaches it, as a case change does.
-        return offset >= change.Offset ? Math.Min(offset, change.Offset + change.InsertedLength) : offset;
+        LastJumpOrigin = LastJumpOrigin is { } origin ? edit.Map(origin, removable: false) : null;
+        LastInsertOffset = LastInsertOffset is { } insert ? edit.Map(insert, removable: false) : null;
+        LastVisualStart = LastVisualStart is { } start ? edit.Map(start, removable: false) : null;
+        LastVisualEnd = LastVisualEnd is { } end ? edit.Map(end, removable: false) : null;
     }
 
     internal void NoteEdit(int offset)

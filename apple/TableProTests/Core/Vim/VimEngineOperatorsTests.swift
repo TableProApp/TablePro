@@ -633,6 +633,13 @@ final class VimEngineOperatorsTests {
         #expect(buffer.text == "aaa\nbb\n")
     }
 
+    @Test(">b from a line start shifts only the line the motion covers")
+    func indentBackwardWordFromALineStart() {
+        make("foo bar\nbaz\n", at: 8)
+        keys(">b")
+        #expect(buffer.text == "    foo bar\nbaz\n")
+    }
+
     @Test(">w shifts the whole line")
     func indentWithACharacterMotionShiftsTheLine() {
         make("hello world\n", at: 6)

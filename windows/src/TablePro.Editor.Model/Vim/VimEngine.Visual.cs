@@ -4,6 +4,17 @@ public sealed partial class VimEngine
 {
     private bool ProcessVisual(string key, bool shift)
     {
+        var consumed = ProcessVisualKey(key);
+        // A register named in Visual mode belongs to the command that ends it, used or not.
+        if (!_mode.IsVisual())
+        {
+            SelectedRegister = null;
+        }
+        return consumed;
+    }
+
+    private bool ProcessVisualKey(string key)
+    {
         var buffer = _buffer;
         if (PendingReplaceCharForVisual)
         {
@@ -18,6 +29,15 @@ public sealed partial class VimEngine
         {
             PendingTextObject = false;
             return key == Escape || ExecuteTextObject(key, PendingTextObjectAround);
+        }
+        if (PendingRegisterSelect)
+        {
+            PendingRegisterSelect = false;
+            if (key != Escape)
+            {
+                SelectedRegister = key == "\"" ? null : key;
+            }
+            return true;
         }
 
         var linewise = _mode == VimMode.VisualLine;
@@ -136,8 +156,11 @@ public sealed partial class VimEngine
                 buffer.SetCaret(Math.Min(buffer.SelectedRange.End, buffer.Length));
                 SetMode(VimMode.Insert);
                 return true;
+            case "\"":
+                PendingRegisterSelect = true;
+                return true;
             case "p" or "P":
-                PasteOverVisualSelection();
+                PasteOverVisualSelection(keepingRegister: key == "P", linewise);
                 return true;
             case "d" or "x":
             {
@@ -300,16 +323,22 @@ public sealed partial class VimEngine
         SetMode(VimMode.Normal);
     }
 
-    internal void PasteOverVisualSelection()
+    // p puts the text it replaces in the unnamed register, P leaves the registers as they were.
+    internal void PasteOverVisualSelection(bool keepingRegister, bool linewise)
     {
         var selection = _buffer.SelectedRange;
-        var text = Register.Text;
+        var text = ActivePasteRegister().Text;
         if (selection.Length <= 0)
         {
             SetMode(VimMode.Normal);
             return;
         }
+        var replaced = _buffer.Text(selection);
         _buffer.Replace(selection, text);
+        if (!keepingRegister)
+        {
+            WriteToActiveRegister(replaced, linewise, asDelete: true);
+        }
         _buffer.SetCaret(Math.Max(selection.Location, selection.Location + text.Length - 1));
         SetMode(VimMode.Normal);
     }

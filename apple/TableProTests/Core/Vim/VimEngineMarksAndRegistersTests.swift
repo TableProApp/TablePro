@@ -257,6 +257,14 @@ final class VimEngineMarksAndRegistersTests {
         #expect(engine.marks["a"] == nil)
     }
 
+    @Test("Shifting the marked line keeps the mark on its line and column")
+    func shiftKeepsTheMark() {
+        buffer.setSelectedRange(NSRange(location: 6, length: 0))
+        keys("ma>>`a")
+        #expect(buffer.text == "    hello world\nsecond line\nthird line\n")
+        #expect(pos == 6)
+    }
+
     @Test("A join carries the mark with its text")
     func joinCarriesTheMark() {
         buffer = VimTextBufferMock(text: "hello world\n    second\n")

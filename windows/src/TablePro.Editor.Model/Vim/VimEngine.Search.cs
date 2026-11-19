@@ -4,41 +4,42 @@ public sealed partial class VimEngine
 {
     internal void RunSearch(string pattern, bool forward)
     {
+        var origin = _buffer.SelectedRange.Location;
+        if (SearchTarget(pattern, forward) is { } target)
+        {
+            _buffer.SetCaret(target);
+            LastJumpOrigin = origin;
+        }
+    }
+
+    // Remembers the pattern for n and N, as a search does even when nothing matches.
+    internal int? SearchTarget(string pattern, bool forward)
+    {
         if (pattern.Length == 0)
         {
-            return;
+            return null;
         }
         LastSearchPattern = pattern;
         LastSearchForward = forward;
-        var origin = _buffer.SelectedRange.Location;
-        if (FindPattern(pattern, origin, forward, wholeWord: false) is { } target)
-        {
-            _buffer.SetCaret(target);
-            LastJumpOrigin = origin;
-        }
+        return FindPattern(pattern, _buffer.SelectedRange.Location, forward, wholeWord: false);
     }
 
-    internal void SearchNext(bool reverseDirection)
+    internal int? SearchNextTarget(int count, bool reverseDirection)
     {
         if (LastSearchPattern is not { } pattern)
         {
-            return;
+            return null;
         }
         var forward = reverseDirection ? !LastSearchForward : LastSearchForward;
-        var origin = _buffer.SelectedRange.Location;
-        if (FindPattern(pattern, origin, forward, wholeWord: false) is { } target)
-        {
-            _buffer.SetCaret(target);
-            LastJumpOrigin = origin;
-        }
+        return RepeatFind(pattern, _buffer.SelectedRange.Location, forward, wholeWord: false, count);
     }
 
-    internal void SearchWordUnderCursor(bool forward)
+    internal int? SearchWordUnderCursorTarget(bool forward, int count)
     {
         var pos = _buffer.SelectedRange.Location;
         if (pos >= _buffer.Length)
         {
-            return;
+            return null;
         }
         var start = pos;
         while (start > 0 && VimTextBuffer.IsWordChar(_buffer.CharAt(start - 1)))
@@ -52,16 +53,26 @@ public sealed partial class VimEngine
         }
         if (end <= start)
         {
-            return;
+            return null;
         }
         var word = _buffer.Text(new VimRange(start, end - start));
         LastSearchPattern = word;
         LastSearchForward = forward;
-        if (FindPattern(word, pos, forward, wholeWord: true) is { } target)
+        return RepeatFind(word, pos, forward, wholeWord: true, count);
+    }
+
+    private int? RepeatFind(string pattern, int origin, bool forward, bool wholeWord, int count)
+    {
+        var position = origin;
+        for (var i = 0; i < Math.Max(1, count); i++)
         {
-            _buffer.SetCaret(target);
-            LastJumpOrigin = pos;
+            if (FindPattern(pattern, position, forward, wholeWord) is not { } next)
+            {
+                return null;
+            }
+            position = next;
         }
+        return position;
     }
 
     // Literal and case-sensitive, wrapping past either end, as the macOS engine searches.

@@ -60,24 +60,24 @@ public sealed class VimCommandEdgeTests
     }
 
     [Fact]
-    public void AMarkMovesWithTextTypedBeforeIt()
+    public void AMarkKeepsItsColumnWhenTextIsTypedBeforeItOnItsLine()
     {
         var s = new VimSession("one two", caret: 4);
         s.Press("ma0i");
         s.Type("X");
         s.Escape();
         s.Press("`a");
-        Assert.Equal(5, s.Caret);
+        Assert.Equal(4, s.Caret);
     }
 
     [Fact]
-    public void AMarkMovesBackWithAnUndo()
+    public void AMarkKeepsItsColumnThroughAnUndoOnItsLine()
     {
         var s = new VimSession("one two", caret: 0);
         s.Press("x");
         s.Press("wmau`a");
         Assert.Equal("one two", s.Text);
-        Assert.Equal(4, s.Caret);
+        Assert.Equal(3, s.Caret);
     }
 
     [Fact]

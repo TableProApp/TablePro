@@ -546,4 +546,55 @@ public sealed class VimEngineNormalMotionsTests
         Assert.Equal(0, s.Caret);
         Assert.Equal("", s.Text);
     }
+
+    [Fact]
+    public void ACountBeforePercentGoesThatFarThroughTheText()
+    {
+        var s = At(0, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n");
+        s.Press("50%");
+        Assert.Equal(8, s.Caret);
+    }
+
+    [Fact]
+    public void ACountAboveAHundredBeforePercentDoesNotMove()
+    {
+        var s = At(2, "a\nb\n");
+        s.Press("101%");
+        Assert.Equal(2, s.Caret);
+        Assert.False(s.Engine.IsPending);
+    }
+
+    [Fact]
+    public void ACountBeforeHGoesToThatLineFromTheTop()
+    {
+        var s = At(6, "a\nb\nc\nd\n");
+        s.Press("2H");
+        Assert.Equal(2, s.Caret);
+    }
+
+    [Fact]
+    public void ACountBeforeLGoesToThatLineFromTheBottom()
+    {
+        var s = At(0, "a\nb\nc\nd\n");
+        s.Press("2L");
+        Assert.Equal(4, s.Caret);
+    }
+
+    [Fact]
+    public void ACountBeforeStarGoesToThatMatch()
+    {
+        var s = At(0, "foo x foo y foo z\n");
+        s.Press("2*");
+        Assert.Equal(12, s.Caret);
+    }
+
+    [Fact]
+    public void PercentSetsThePreviousPosition()
+    {
+        var s = At(0, "(a) b\n");
+        s.Press("%");
+        Assert.Equal(2, s.Caret);
+        s.Press("``");
+        Assert.Equal(0, s.Caret);
+    }
 }

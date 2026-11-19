@@ -30,25 +30,26 @@ public sealed partial class VimEngine
 
     internal void MoveUp(int count) => MoveVertically(-count);
 
+    // An operator takes the lines whole; on the first or last line it has nothing to take and the command ends.
     private void MoveVertically(int lines)
     {
         var pos = _buffer.SelectedRange.Location;
         var (line, column) = _buffer.LineAndColumn(pos);
         GoalColumn ??= column;
-        var target = _buffer.Offset(_buffer.StepLines(line, lines), GoalColumn ?? column);
-        if (PendingOperator is { } op)
-        {
-            var from = _buffer.FoldedLineRange(pos);
-            var to = _buffer.FoldedLineRange(target);
-            var start = Math.Min(from.Location, to.Location);
-            var end = Math.Max(from.End, to.End);
-            ExecuteOperatorOnRange(op, new VimRange(start, end - start), linewise: true);
-            PendingOperator = null;
-        }
-        else
+        var targetLine = _buffer.StepLines(line, lines);
+        var target = _buffer.Offset(targetLine, GoalColumn ?? column);
+        if (PendingOperator is not { } op)
         {
             _buffer.SetCaret(target);
+            return;
         }
+        GoalColumn = null;
+        if (targetLine == line)
+        {
+            CancelPending();
+            return;
+        }
+        Operate(op, pos, target, VimMotionKind.Linewise);
     }
 
     // gj and gk: rows on screen, so a wrapped line takes several steps and a closed fold one.
@@ -105,31 +106,49 @@ public sealed partial class VimEngine
         _buffer.SetCaret(_buffer.Offset(target, 0));
     }
 
-    internal void WordForward(int count)
+    // cw on a word changes to its end, as ce does; elsewhere w and W go to the next word's start.
+    internal void WordMotion(int count, bool bigWord)
+    {
+        var pos = _buffer.SelectedRange.Location;
+        if (PendingOperator == VimOperator.Change && pos < _buffer.Length && !VimTextBuffer.IsWhitespace(_buffer.CharAt(pos)))
+        {
+            int End(int offset) => bigWord ? _buffer.BigWordEnd(offset) : _buffer.WordEnd(offset);
+            var target = End(pos - 1);
+            for (var i = 1; i < count; i++)
+            {
+                target = End(target);
+            }
+            ApplyMotion(target, VimMotionKind.Inclusive);
+            return;
+        }
+        ApplyMotion(WordForwardTarget(count, bigWord), VimMotionKind.Exclusive);
+    }
+
+    // After an operator the last word stops at the end of its line, and from an empty line at the next line's start,
+    // which :help exclusive turns into the empty line.
+    private int? WordForwardTarget(int count, bool bigWord)
     {
         var pos = _buffer.SelectedRange.Location;
         var isOperator = PendingOperator is not null;
         for (var i = 0; i < count; i++)
         {
-            var previous = pos;
-            var next = _buffer.WordBoundary(forward: true, pos);
+            var next = bigWord ? _buffer.BigWordBoundary(forward: true, pos) : _buffer.WordBoundary(forward: true, pos);
             if (isOperator && i == count - 1)
             {
-                var previousLine = _buffer.LineRange(previous);
-                var nextLine = _buffer.LineRange(Math.Min(next, _buffer.Length));
-                if (previousLine.Location != nextLine.Location)
+                var line = _buffer.LineRange(pos);
+                if (_buffer.LineRange(Math.Min(next, _buffer.Length)).Location != line.Location)
                 {
-                    pos = ContentEnd(previousLine);
-                    break;
+                    var end = ContentEnd(line);
+                    if (end > line.Location)
+                    {
+                        return end;
+                    }
+                    return line.End < _buffer.Length ? line.End : null;
                 }
             }
             pos = next;
         }
-        if (!isOperator)
-        {
-            pos = ClampToContentPosition(pos);
-        }
-        _buffer.SetCaret(pos);
+        return pos;
     }
 
     internal int ClampToContentPosition(int offset)
@@ -164,21 +183,6 @@ public sealed partial class VimEngine
         for (var i = 0; i < count; i++)
         {
             pos = _buffer.WordEnd(pos);
-        }
-        _buffer.SetCaret(pos);
-    }
-
-    internal void BigWordForward(int count)
-    {
-        var pos = _buffer.SelectedRange.Location;
-        var isOperator = PendingOperator is not null;
-        for (var i = 0; i < count; i++)
-        {
-            pos = _buffer.BigWordBoundary(forward: true, pos);
-        }
-        if (!isOperator)
-        {
-            pos = ClampToContentPosition(pos);
         }
         _buffer.SetCaret(pos);
     }
@@ -238,36 +242,43 @@ public sealed partial class VimEngine
         return null;
     }
 
-    // An operator takes the lines whole, as j and k give them.
-    internal void MoveToFirstNonBlankOfLine(int lines)
+    // {count}%: the line that far through the text, as Vim rounds it.
+    internal int? PercentLineTarget(int count)
     {
-        if (PendingOperator is not null)
+        if (count > 100)
         {
-            MoveVertically(lines);
-            GoalColumn = null;
-            return;
+            return null;
         }
-        var (line, _) = _buffer.LineAndColumn(_buffer.SelectedRange.Location);
-        _buffer.SetCaret(FirstNonBlankOffset(_buffer.Offset(_buffer.StepLines(line, lines), 0)));
-        GoalColumn = null;
+        var lineCount = _buffer.LineCount;
+        var line = (int)Math.Clamp(((long)count * lineCount + 99) / 100 - 1, 0, lineCount - 1);
+        return FirstNonBlankOffset(_buffer.Offset(line, 0));
+    }
+
+    // Enter and + go down that many lines, - up, to the first character; at the first or last line they fail.
+    internal int? LineStepTarget(int lines)
+    {
+        var line = _buffer.LineAndColumn(_buffer.SelectedRange.Location).Line;
+        var target = _buffer.StepLines(line, lines);
+        return target == line ? null : FirstNonBlankOffset(_buffer.Offset(target, 0));
     }
 
     // H, M and L read the rows on screen, so a fold or a wrapped line between them counts as it shows; the rows stop
-    // at Vim's last line, never the empty one after a final break.
-    internal void JumpToVisibleLine(VimScroll position)
+    // at Vim's last line, never the empty one after a final break. A count is lines from the top for H and from the
+    // bottom for L.
+    internal int VisibleLineTarget(VimScroll position, int count)
     {
         var rows = _buffer.Model.Rows;
         var (firstLine, lastLine) = _buffer.VisibleLineRange();
         var (firstRow, lastRow) = _buffer.VisibleRows();
         lastRow = Math.Min(lastRow, rows.FirstRowOf(lastLine) + Math.Max(1, rows.RowsOf(lastLine)) - 1);
+        var skip = Math.Max(0, count - 1);
         var targetLine = position switch
         {
-            VimScroll.Top => firstLine,
-            VimScroll.Bottom => lastLine,
+            VimScroll.Top => Math.Min(_buffer.StepLines(firstLine, skip), lastLine),
+            VimScroll.Bottom => Math.Max(_buffer.StepLines(lastLine, -skip), firstLine),
             _ => rows.LineAtRow((firstRow + lastRow) / 2),
         };
-        _buffer.SetCaret(FirstNonBlankOffset(_buffer.Offset(Math.Min(targetLine, _buffer.LineCount - 1), 0)));
-        GoalColumn = null;
+        return FirstNonBlankOffset(_buffer.Offset(Math.Min(targetLine, _buffer.LineCount - 1), 0));
     }
 
     internal bool ExecuteFindChar(string target, VimFindCharRequest request)
@@ -345,36 +356,26 @@ public sealed partial class VimEngine
         // Not found: the command ends here, so an operator waiting on it does not reach the next motion.
         if (resolved is not { } finalPos)
         {
-            PendingOperator = null;
-            OperatorCount = 0;
+            CancelPending();
             return true;
         }
         if (request.Till)
         {
             finalPos = request.Forward ? Previous(finalPos) : CharacterEnd(finalPos);
         }
-        ExecuteMotion(() => _buffer.SetCaret(finalPos), inclusive: true);
+        // f and t take the character they reach; F and T stop short of the cursor's.
+        ExecuteMotion(() => _buffer.SetCaret(finalPos), inclusive: request.Forward);
         return true;
     }
 
-    internal void SentenceForward(int count)
+    internal int SentenceTarget(bool forward, int count)
     {
         var pos = _buffer.SelectedRange.Location;
         for (var i = 0; i < count; i++)
         {
-            pos = NextSentenceStart(pos);
+            pos = forward ? NextSentenceStart(pos) : PreviousSentenceStart(pos);
         }
-        _buffer.SetCaret(pos);
-    }
-
-    internal void SentenceBackward(int count)
-    {
-        var pos = _buffer.SelectedRange.Location;
-        for (var i = 0; i < count; i++)
-        {
-            pos = PreviousSentenceStart(pos);
-        }
-        _buffer.SetCaret(pos);
+        return pos;
     }
 
     private static bool EndsSentence(char c) => c is '.' or '!' or '?';
@@ -423,24 +424,14 @@ public sealed partial class VimEngine
         return 0;
     }
 
-    internal void ParagraphForward(int count)
+    internal int ParagraphTarget(bool forward, int count)
     {
         var pos = _buffer.SelectedRange.Location;
         for (var i = 0; i < count; i++)
         {
-            pos = NextParagraphBoundary(pos);
+            pos = forward ? NextParagraphBoundary(pos) : PreviousParagraphBoundary(pos);
         }
-        _buffer.SetCaret(pos);
-    }
-
-    internal void ParagraphBackward(int count)
-    {
-        var pos = _buffer.SelectedRange.Location;
-        for (var i = 0; i < count; i++)
-        {
-            pos = PreviousParagraphBoundary(pos);
-        }
-        _buffer.SetCaret(pos);
+        return pos;
     }
 
     internal int NextParagraphBoundary(int origin)
@@ -454,8 +445,11 @@ public sealed partial class VimEngine
                 return _buffer.Offset(line, 0);
             }
         }
-        return _buffer.Length > 0 ? _buffer.Length - 1 : 0;
+        return LastLineContentEnd();
     }
+
+    // Past the last character, so an operator takes it, and a plain motion steps back onto it.
+    private int LastLineContentEnd() => ContentEnd(_buffer.LineRange(_buffer.Offset(_buffer.LineCount - 1, 0)));
 
     internal int PreviousParagraphBoundary(int origin)
     {
@@ -470,34 +464,30 @@ public sealed partial class VimEngine
         return 0;
     }
 
-    internal void SectionForward()
+    // ]] and [[: the next or previous line that starts with {.
+    internal int SectionTarget(bool forward, int count)
     {
-        var (originLine, _) = _buffer.LineAndColumn(_buffer.SelectedRange.Location);
-        for (var line = originLine + 1; line < _buffer.LineCount; line++)
+        var line = _buffer.LineAndColumn(_buffer.SelectedRange.Location).Line;
+        var step = forward ? 1 : -1;
+        for (var i = 0; i < count; i++)
         {
-            var offset = _buffer.Offset(line, 0);
-            if (offset < _buffer.Length && _buffer.CharAt(offset) == '{')
+            var next = line + step;
+            while (next >= 0 && next < _buffer.LineCount)
             {
-                _buffer.SetCaret(offset);
-                return;
+                var offset = _buffer.Offset(next, 0);
+                if (offset < _buffer.Length && _buffer.CharAt(offset) == '{')
+                {
+                    break;
+                }
+                next += step;
             }
-        }
-        _buffer.SetCaret(Math.Max(0, _buffer.Length - 1));
-    }
-
-    internal void SectionBackward()
-    {
-        var (originLine, _) = _buffer.LineAndColumn(_buffer.SelectedRange.Location);
-        for (var line = originLine - 1; line >= 0; line--)
-        {
-            var offset = _buffer.Offset(line, 0);
-            if (offset < _buffer.Length && _buffer.CharAt(offset) == '{')
+            if (next < 0 || next >= _buffer.LineCount)
             {
-                _buffer.SetCaret(offset);
-                return;
+                return forward ? LastLineContentEnd() : 0;
             }
+            line = next;
         }
-        _buffer.SetCaret(0);
+        return _buffer.Offset(line, 0);
     }
 
     internal bool LineIsBlank(int line)

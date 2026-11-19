@@ -501,6 +501,14 @@ final class VimEngineVisualModeTests {
         #expect(buffer.string(in: sel) == "hello world")
     }
 
+    @Test("iw in Visual Line mode selects the word characterwise")
+    func innerWordLeavesVisualLine() {
+        make("hello world\nfoo\n", at: 0)
+        key("V", shift: true)
+        keys("iwd")
+        #expect(buffer.text == " world\nfoo\n")
+    }
+
     @Test("vip selects the paragraph's lines in Visual Line mode")
     func innerParagraphSwitchesToVisualLine() {
         make("a\nb\n\nc\n", at: 0)

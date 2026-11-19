@@ -153,52 +153,51 @@ struct VimMarkChange {
     private let location: Int
     private let end: Int
     private let delta: Int
+    private let removed: [unichar]
+    private let inserted: [unichar]
+    private let insertedBreaks: Int
     private let removesLineBreak: Bool
-    // Whole lines removed, inserted or replaced at a line start, as `dd`, `p` and `O` and their undo make.
+    // Whole lines removed or inserted at a line start, as `dd`, `p` and `O` and their undo make.
     private let isLinewise: Bool
+    // As many line breaks go in as come out, so every line keeps its marks, as a shift or a case change does.
+    private let keepsLines: Bool
     private let firstLineStart: Int
+    // Where the line holding the end of the removed text ends, in the text before the edit.
     private let endLineEnd: Int
-    // Where the line holding the edit's start ends once the edit is in.
-    private let firstLineContentEnd: Int
+    // Where the line holding the end of the inserted text ends, before its break, once the edit is in.
+    private let lastLineContentEnd: Int
 
     init(range: NSRange, replacement: String, in buffer: VimTextBuffer) {
-        let inserted = replacement as NSString
         location = range.location
         end = NSMaxRange(range)
-        delta = inserted.length - range.length
-        var removedBreak = false
-        var scan = range.location
-        while scan < end, !removedBreak {
-            let ch = buffer.character(at: scan)
-            removedBreak = ch == 0x0A || ch == 0x0D
-            scan += 1
-        }
-        removesLineBreak = removedBreak
+        removed = Array(buffer.string(in: range).utf16)
+        inserted = Array(replacement.utf16)
+        delta = inserted.count - removed.count
+        let removedBreaks = removed.filter { $0 == 0x0A }.count
+        insertedBreaks = inserted.filter { $0 == 0x0A }.count
+        removesLineBreak = removedBreaks > 0
+        keepsLines = removedBreaks == insertedBreaks
         let firstLine = buffer.lineRange(forOffset: range.location)
         firstLineStart = firstLine.location
-        let removedEndsWithBreak = range.length == 0 || buffer.character(at: end - 1) == 0x0A
-        let insertedEndsWithBreak = inserted.length == 0 || inserted.character(at: inserted.length - 1) == 0x0A
+        let removedEndsWithBreak = removed.last.map { $0 == 0x0A } ?? true
+        let insertedEndsWithBreak = inserted.last.map { $0 == 0x0A } ?? true
         isLinewise = range.location == firstLine.location && removedEndsWithBreak && insertedEndsWithBreak
         let endLine = buffer.lineRange(forOffset: end)
         endLineEnd = NSMaxRange(endLine)
-        let insertedBreak = inserted.rangeOfCharacter(from: .newlines)
-        if insertedBreak.location != NSNotFound {
-            firstLineContentEnd = range.location + insertedBreak.location
-        } else {
-            let endLineHasBreak = endLineEnd > endLine.location && buffer.character(at: endLineEnd - 1) == 0x0A
-            firstLineContentEnd = (endLineHasBreak ? endLineEnd - 1 : endLineEnd) + delta
-        }
+        let endLineHasBreak = endLineEnd > endLine.location && buffer.character(at: endLineEnd - 1) == 0x0A
+        lastLineContentEnd = (endLineHasBreak ? endLineEnd - 1 : endLineEnd) + delta
     }
 
     func map(_ offset: Int, removable: Bool, in buffer: VimTextBuffer) -> Int? {
         if offset < location { return offset }
+        if offset >= endLineEnd { return offset + delta }
+        if keepsLines { return keepingLineAndColumn(offset) }
         if isLinewise {
             if offset >= end { return offset + delta }
             return removable ? nil : location
         }
         if offset >= end {
-            if offset >= endLineEnd || removesLineBreak { return offset + delta }
-            return keepingColumn(offset)
+            return removesLineBreak ? offset + delta : keepingColumnOnFirstLine(offset)
         }
         if removesLineBreak {
             let line = buffer.lineRange(forOffset: offset)
@@ -207,11 +206,36 @@ struct VimMarkChange {
                 return end + delta
             }
         }
-        return keepingColumn(offset)
+        return keepingColumnOnFirstLine(offset)
     }
 
-    // The line keeps its start, so the offset keeps the column, up to the line's new last character.
-    private func keepingColumn(_ offset: Int) -> Int {
-        min(offset, max(firstLineStart, firstLineContentEnd - 1))
+    // The first line keeps its start, so the offset keeps its column, up to the line's new last character.
+    private func keepingColumnOnFirstLine(_ offset: Int) -> Int {
+        let firstBreak = inserted.firstIndex(of: 0x0A)
+        let contentEnd = firstBreak.map { location + $0 } ?? lastLineContentEnd
+        return min(offset, max(firstLineStart, contentEnd - 1))
+    }
+
+    // The mark's line is the same line of the new text, at the same column up to that line's last character.
+    private func keepingLineAndColumn(_ offset: Int) -> Int {
+        var line = 0
+        var lineStart = firstLineStart
+        for index in 0..<min(offset - location, removed.count) where removed[index] == 0x0A {
+            line += 1
+            lineStart = location + index + 1
+        }
+        let column = offset - lineStart
+        let newStart = line == 0 ? firstLineStart : location + nthBreak(line) + 1
+        let newContentEnd = line < insertedBreaks ? location + nthBreak(line + 1) : lastLineContentEnd
+        return newStart + min(column, max(0, newContentEnd - newStart - 1))
+    }
+
+    private func nthBreak(_ count: Int) -> Int {
+        var seen = 0
+        for (index, unit) in inserted.enumerated() where unit == 0x0A {
+            seen += 1
+            if seen == count { return index }
+        }
+        return inserted.count
     }
 }

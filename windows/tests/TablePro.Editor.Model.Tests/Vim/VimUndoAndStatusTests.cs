@@ -10,9 +10,8 @@ public sealed class VimUndoAndStatusTests
     public void AChangeAndTheTextTypedAfterItUndoAsOneStep()
     {
         var s = new VimSession("select name from t\n", caret: 7);
-        // cw takes the space after the word, as the macOS engine's does.
         s.Press("cw");
-        s.Type("id, title ");
+        s.Type("id, title");
         s.Escape();
         Assert.Equal("select id, title from t\n", s.Text);
         s.Press("u");

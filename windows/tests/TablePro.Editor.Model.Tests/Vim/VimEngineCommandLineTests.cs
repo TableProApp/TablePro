@@ -192,4 +192,49 @@ public sealed class VimEngineCommandLineTests
         s.Press(":wq");
         Assert.Equal(":wq", s.Engine.ModeLabel);
     }
+
+    [Fact]
+    public void ASearchAfterAnOperatorIsItsMotion()
+    {
+        var s = new VimSession(Initial);
+        s.Press("d/sec");
+        Enter(s);
+        Assert.Equal("second line\nthird line\n", s.Text);
+        Assert.Equal("hello world\n", s.Engine.Register.Text);
+        Assert.True(s.Engine.Register.IsLinewise);
+        Assert.Equal(VimMode.Normal, s.Mode);
+    }
+
+    [Fact]
+    public void ABackwardSearchAfterAnOperatorDeletesBackToTheMatch()
+    {
+        var s = new VimSession(Initial, caret: 6);
+        s.Press("d?ll");
+        Enter(s);
+        Assert.Equal("heworld\nsecond line\nthird line\n", s.Text);
+    }
+
+    [Fact]
+    public void ASearchWithNoMatchAfterAnOperatorEndsTheCommand()
+    {
+        var s = new VimSession(Initial);
+        s.Press("d/zzz");
+        Enter(s);
+        Assert.False(s.Engine.IsPending);
+        s.Press("w");
+        Assert.Equal(Initial, s.Text);
+        Assert.Equal(6, s.Caret);
+    }
+
+    [Fact]
+    public void AnExCommandAfterAnOperatorRunsAndDropsTheOperator()
+    {
+        var s = new VimSession(Initial);
+        s.Press("d:w");
+        Enter(s);
+        Assert.Equal(["w"], s.Commands);
+        s.Press("w");
+        Assert.Equal(Initial, s.Text);
+        Assert.Equal(6, s.Caret);
+    }
 }

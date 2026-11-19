@@ -10,17 +10,26 @@ public sealed partial class VimEngine
             PendingOperator = null;
             return true;
         }
+        // A paragraph is whole lines, every other object characters, and Visual mode takes the object's kind.
+        var linewise = key == "p";
         if (_mode.IsVisual())
         {
+            if (range.Length == 0)
+            {
+                return true;
+            }
             // The selection's ends become Visual's anchor and cursor, so the next motion grows it from there.
+            if (linewise != (_mode == VimMode.VisualLine))
+            {
+                SetMode(linewise ? VimMode.VisualLine : VimMode.Visual);
+            }
             VisualAnchor = range.Location;
-            CursorOffset = range.Length > 0 ? CharacterStart(range.End - 1) : range.Location;
-            _buffer.SetSelectedRange(range);
+            UpdateVisualSelection(range.End - 1, linewise);
             return true;
         }
         if (PendingOperator is { } op)
         {
-            ExecuteOperatorOnRange(op, range, linewise: false);
+            ExecuteOperatorOnRange(op, range, linewise);
             PendingOperator = null;
         }
         return true;
@@ -276,37 +285,44 @@ public sealed partial class VimEngine
         return around ? new VimRange(os, closeEnd - os) : new VimRange(oe + 1, closeStart - oe - 1);
     }
 
+    // Whole lines: the run of paragraph or blank lines at the cursor. ap adds the blank lines after a paragraph, or the
+    // paragraph after blank lines, and with nothing after it the blank lines before.
     private VimRange? ParagraphObject(int cursor, bool around)
     {
+        var lineCount = _buffer.LineCount;
         var (currentLine, _) = _buffer.LineAndColumn(cursor);
+        var blank = LineIsBlank(currentLine);
         var startLine = currentLine;
-        while (startLine > 0 && !LineIsBlank(startLine - 1))
+        while (startLine > 0 && LineIsBlank(startLine - 1) == blank)
         {
             startLine--;
         }
         var endLine = currentLine;
-        while (endLine < _buffer.LineCount - 1 && !LineIsBlank(endLine + 1))
+        while (endLine < lineCount - 1 && LineIsBlank(endLine + 1) == blank)
         {
             endLine++;
         }
-        var start = _buffer.Offset(startLine, 0);
-        var end = _buffer.LineRange(_buffer.Offset(endLine, 0)).End;
-        if (!around && end > start && _buffer.CharAt(end - 1) == '\n')
-        {
-            end--;
-        }
         if (around)
         {
-            var trailing = endLine;
-            while (trailing < _buffer.LineCount - 1 && LineIsBlank(trailing + 1))
+            var next = endLine;
+            while (next < lineCount - 1 && LineIsBlank(next + 1) != blank)
             {
-                trailing++;
+                next++;
             }
-            if (trailing > endLine)
+            if (next > endLine)
             {
-                end = _buffer.LineRange(_buffer.Offset(trailing, 0)).End;
+                endLine = next;
+            }
+            else if (!blank)
+            {
+                while (startLine > 0 && LineIsBlank(startLine - 1))
+                {
+                    startLine--;
+                }
             }
         }
+        var start = _buffer.Offset(startLine, 0);
+        var end = _buffer.LineRange(_buffer.Offset(endLine, 0)).End;
         return new VimRange(start, end - start);
     }
 }

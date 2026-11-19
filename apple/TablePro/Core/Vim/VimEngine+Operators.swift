@@ -23,8 +23,7 @@ extension VimEngine {
         pendingOperator = nil
         let start = min(origin, target)
         let end = max(origin, target)
-        // `>` and `<` shift whole lines whatever the motion.
-        if kind == .linewise || op == .indent || op == .outdent {
+        if kind == .linewise {
             executeOperatorOnRange(op, range: wholeLines(from: start, through: end, in: buffer), linewise: true, in: buffer)
             return
         }
@@ -41,6 +40,12 @@ extension VimEngine {
                 return
             }
             rangeEnd = characterStart(at: end - 1, in: buffer)
+        }
+        // `>` and `<` shift the lines the motion covers whatever its kind.
+        if op == .indent || op == .outdent {
+            let lines = wholeLines(from: start, through: max(start, rangeEnd - 1), in: buffer)
+            executeOperatorOnRange(op, range: lines, linewise: true, in: buffer)
+            return
         }
         // A delete over several lines from the indent to the end of a line takes the lines, as Vim's `d` does.
         if op == .delete, startsInIndent, rangeEnd > start,

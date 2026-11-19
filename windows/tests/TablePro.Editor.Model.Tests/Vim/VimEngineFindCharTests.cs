@@ -284,4 +284,31 @@ public sealed class VimEngineFindCharTests
         s.Press("l");
         Assert.Equal(1, s.Caret);
     }
+
+    [Fact]
+    public void DCapitalFStopsShortOfTheCharacterUnderTheCursor()
+    {
+        var s = new VimSession("abcdef\n", caret: 4);
+        s.Press("dFb");
+        Assert.Equal("aef\n", s.Text);
+        Assert.Equal("bcd", s.Engine.Register.Text);
+    }
+
+    [Fact]
+    public void DCapitalTKeepsTheTargetAndTheCharacterUnderTheCursor()
+    {
+        var s = new VimSession("abcdef\n", caret: 4);
+        s.Press("dTb");
+        Assert.Equal("abef\n", s.Text);
+        Assert.Equal("cd", s.Engine.Register.Text);
+    }
+
+    [Fact]
+    public void AFailedRepeatedFindDropsTheOperator()
+    {
+        var s = At(0);
+        s.Press("fbd;w");
+        Assert.Equal(Standard, s.Text);
+        Assert.Equal(20, s.Caret);
+    }
 }

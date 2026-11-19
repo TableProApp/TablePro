@@ -12,16 +12,14 @@ extension VimEngine {
             pendingOperator = nil
             return true
         }
-        // A paragraph is whole lines.
+        // A paragraph is whole lines, every other object characters, and Visual mode takes the object's kind.
         let linewise = key == "p"
         if mode.isVisual {
             // The object's start becomes Visual's anchor and its end the cursor, so the next motion extends it.
             guard range.length > 0 else { return true }
-            var visualLinewise = linewise
-            if case .visual(let lw) = mode { visualLinewise = visualLinewise || lw }
-            if visualLinewise != mode.isVisualLinewise { setMode(.visual(linewise: visualLinewise)) }
+            if linewise != mode.isVisualLinewise { setMode(.visual(linewise: linewise)) }
             visualAnchor = range.location
-            updateVisualSelection(cursorPos: NSMaxRange(range) - 1, linewise: visualLinewise, in: buffer)
+            updateVisualSelection(cursorPos: NSMaxRange(range) - 1, linewise: linewise, in: buffer)
             return true
         }
         if let op = pendingOperator {
