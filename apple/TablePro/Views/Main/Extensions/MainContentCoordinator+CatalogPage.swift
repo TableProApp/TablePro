@@ -183,14 +183,13 @@ extension MainContentCoordinator {
         tabManager.tabs.first(where: { $0.id == tabId })?.display.activeResultSet?.id
     }
 
-    // Asks about unsaved edits first, as Refresh does, and ends as soon as the tab leaves the table it was asked on.
+    // Asks about unsaved edits as Refresh does, and ends as soon as the tab leaves the table it was asked on.
     func reloadOutdatedPage(tabId: UUID) {
         guard tabManager.selectedTabId == tabId,
               let tab = tabManager.tabs.first(where: { $0.id == tabId }),
               tab.tabType == .table, tab.outdatedPageNotice != nil,
               let page = tabSessionRegistry.catalogPage(for: tabId), page.standing == .outdated
         else { return }
-        commitActiveGridEdit()
         let manager = changeManager(forTab: tabId)
         let token = UUID()
         catalogPageReloads[tabId]?.task.cancel()
@@ -198,6 +197,13 @@ extension MainContentCoordinator {
             guard let self else { return }
             defer { if catalogPageReloads[tabId]?.token == token { catalogPageReloads[tabId] = nil } }
             guard stillShows(page, onTab: tabId) else { return }
+            if schemaColumns.cached(page.key) == nil {
+                await loadSchemaColumns(for: page.tableName, scope: page.scope)
+                guard stillShows(page, onTab: tabId) else { return }
+            }
+            guard let confirmed = schemaColumns.cached(page.key) else { return }
+            // After the read, so an edit made while it ran is asked about too.
+            if tabManager.selectedTabId == tabId { commitActiveGridEdit() }
             if manager.hasChanges {
                 guard await confirmDiscardChanges(action: .refresh, window: contentWindow),
                       stillShows(page, onTab: tabId)
@@ -205,13 +211,7 @@ extension MainContentCoordinator {
                 rowEditingCoordinator.restoreRowBufferToOriginals(forTab: tabId)
                 manager.clearChangesAndUndoHistory()
             }
-            if schemaColumns.cached(page.key) == nil {
-                await loadSchemaColumns(for: page.tableName, scope: page.scope)
-            }
-            guard stillShows(page, onTab: tabId),
-                  let confirmed = schemaColumns.cached(page.key),
-                  let tab = tabManager.tabs.first(where: { $0.id == tabId })
-            else { return }
+            guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
             let hint = PluginManager.shared.defaultSortHint(for: connection.type, table: page.tableName)
             let sort = confirmedSortState(for: tab, builtOn: confirmed, hint: hint)
             if sort != tab.sortState {

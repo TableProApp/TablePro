@@ -552,6 +552,7 @@ extension GlobalStateSuites {
             harness.coordinator.discardRowsForRetarget(ofTab: tabId)
             await gate.open()
             await reload.value
+            await harness.coordinator.queryTasks.task(for: tabId)?.value
 
             #expect(harness.driver.executedUserQueries.count == 1)
             #expect(harness.notice == nil)
@@ -632,10 +633,44 @@ extension GlobalStateSuites {
             try harness.coordinator.tabManager.replaceTabContent(tableName: "orders", databaseType: .duckdb, databaseName: "db")
             harness.coordinator.discardRowsForRetarget(ofTab: tabId)
             await reload.value
+            await harness.coordinator.queryTasks.task(for: tabId)?.value
 
             #expect(harness.driver.executedUserQueries.count == 1)
             #expect(harness.tab.sortState == SortState())
             #expect(harness.tab.tableContext.tableName == "orders")
+        }
+
+        @Test("An edit made while Reload reads the columns is asked about, and kept when the answer is no")
+        func editDuringReloadReadIsAskedAbout() async throws {
+            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+            let harness = try await makeHarness(
+                cataloged: [Self.column("id", key: true), Self.column("name")],
+                current: [Self.column("id", key: true), Self.column("name"), Self.column("email")]
+            )
+            defer { tearDown(harness, restoring: behavior) }
+            let tabId = harness.addUsersTab(hiding: ["name"])
+            try await harness.open(tabId)
+            #expect(harness.notice != nil)
+            harness.coordinator.schemaColumns.removeAll()
+            let gate = AsyncGate()
+            harness.driver.fetchColumnsGate = gate
+
+            harness.coordinator.reloadOutdatedPage(tabId: tabId)
+            let reload = try #require(harness.coordinator.catalogPageReloads[tabId]?.task)
+            try await waitUntil { harness.driver.fetchColumnsCallCount == 2 }
+            let manager = harness.coordinator.changeManager(forTab: tabId)
+            manager.recordCellChange(
+                rowID: .existing(0), columnIndex: 0, columnName: "id", oldValue: "1", newValue: "2", originalRow: ["1"]
+            )
+            harness.coordinator.isShowingConfirmAlert = true
+            await gate.open()
+            await reload.value
+            await harness.coordinator.queryTasks.task(for: tabId)?.value
+            harness.coordinator.isShowingConfirmAlert = false
+
+            #expect(harness.driver.executedUserQueries.count == 1)
+            #expect(manager.hasChanges)
+            #expect(harness.notice != nil)
         }
 
         @Test("A dismissed notice stays down for later pages of the same query")
