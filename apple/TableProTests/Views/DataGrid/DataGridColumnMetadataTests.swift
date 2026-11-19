@@ -80,6 +80,26 @@ struct DataGridColumnMetadataTests {
         #expect(state.typedPopover == nil)
     }
 
+    @Test("A reload that takes away the edited column ends the edit and leaves no field mounted")
+    func reloadWithoutTheEditedColumnUnmountsTheField() throws {
+        let grid = EditingGrid()
+        defer { grid.tearDown() }
+        try #require(grid.controller.beginEditingCell(row: 0, displayColumn: 1))
+        grid.type("typed")
+
+        grid.owner.tableRows = TableRows.from(
+            queryRows: [[.text("1")]],
+            columns: ["city"],
+            columnTypes: [.text(rawType: "TEXT")]
+        )
+        grid.model.reloadRows()
+
+        #expect(!grid.controller.isEditingCell)
+        #expect(grid.model.columns.orderedNames == ["city"])
+        #expect(grid.cellView.superview == nil)
+        #expect(grid.window.firstResponder === grid.controller.main.tableView)
+    }
+
     @Test("Enum labels arriving after the rows give the column its accessory and keep the text")
     func enumLabelsRefreshThePresentation() throws {
         var configuration = DataGridConfiguration()
