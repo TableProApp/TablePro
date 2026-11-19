@@ -116,7 +116,8 @@ nonisolated enum LibPQPipelineAdmission {
             if CharacterSet.whitespacesAndNewlines.contains(scalar) {
                 index += 1
             } else if scalar == "-", index + 1 < scalars.count, scalars[index + 1] == "-" {
-                while index < scalars.count, scalars[index] != "\n" { index += 1 }
+                // The server ends a line comment at a carriage return too.
+                while index < scalars.count, scalars[index] != "\n", scalars[index] != "\r" { index += 1 }
             } else if scalar == "/", index + 1 < scalars.count, scalars[index + 1] == "*" {
                 var depth = 0
                 repeat {

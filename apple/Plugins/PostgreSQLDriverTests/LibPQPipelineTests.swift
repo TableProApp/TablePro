@@ -196,6 +196,8 @@ struct LibPQPipelineTests {
     @Test("A statement's leading keyword is read past comments the way the server reads them", arguments: [
         ("insert into t values (1)", "INSERT"),
         ("  -- note\n/* a /* nested */ b */ Update t set a = 1", "UPDATE"),
+        ("-- note\rCOMMIT\nWORK", "COMMIT"),
+        ("-- note\r\nINSERT INTO t VALUES (1)", "INSERT"),
         ("(SELECT 1)", nil),
         ("/* never closed", nil),
         ("", nil),
@@ -206,7 +208,7 @@ struct LibPQPipelineTests {
 
     @Test("Transaction control, COPY and session settings are never pipelined", arguments: [
         "BEGIN", "commit", "ROLLBACK TO SAVEPOINT a", "SAVEPOINT a", "COPY t FROM STDIN", "SET search_path = a",
-        "VACUUM t", "CALL p()", "DO $$ BEGIN END $$",
+        "VACUUM t", "CALL p()", "DO $$ BEGIN END $$", "-- note\rCOMMIT\nWORK",
     ])
     func refusesSessionStatements(text: String) {
         #expect(!LibPQPipelineAdmission.admits(text))
