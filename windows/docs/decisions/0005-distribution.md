@@ -1,6 +1,6 @@
 # 0005: Shipping the app: a self-contained, Native AOT MSIX bundle, signed with Artifact Signing, on winget
 
-- **Status**: Accepted
+- **Status**: Accepted; the package version, the beta channel and updates amended by [0020](0020-app-installer-updates.md)
 - **Date**: 2026-11-04
 
 ## Context

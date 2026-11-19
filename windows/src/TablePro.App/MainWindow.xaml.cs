@@ -594,6 +594,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             }
         };
         ShowRecentFiles();
+        WatchUpdates();
         _workbench.RecentFilesChanged += OnRecentFilesChanged;
         _workbench.SettingsChanged += OnSettingsChanged;
         _workbench.LibraryChanged += OnLibraryChanged;
@@ -635,7 +636,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         Close();
     }
 
-    private SettingsView Settings() => _settings ??= new SettingsView(_workbench);
+    private SettingsView Settings() => _settings ??= new SettingsView(_workbench, this);
 
     private void Restore(SessionState state)
     {
@@ -1200,29 +1201,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         RefreshTabTransfers();
         try
         {
-            var confirmed = new HashSet<IWorkspaceTab>();
-            // Apart from confirmed, so a run that ends during the question and leaves a transaction open is asked about.
-            var stopped = new HashSet<IWorkspaceTab>();
-            while (true)
+            if (!await ConfirmEndingAsync(windows, askAboutRunning))
             {
-                if (!await ConfirmTabsAsync(windows, confirmed))
-                {
-                    return;
-                }
-
-                // A tab whose transaction was confirmed is not asked again: that question says its work goes with it.
-                var running = askAboutRunning ? RunningQueries(windows, confirmed, stopped) : [];
-                if (running.Count == 0)
-                {
-                    break;
-                }
-
-                if (!await ConfirmStopRunningAsync(running))
-                {
-                    return;
-                }
-
-                stopped.UnionWith(running.Select(each => each.Tab));
+                return;
             }
 
             if (IsPrimary)
@@ -1240,6 +1221,35 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         {
             _primary._checkingClose = false;
             RefreshTabTransfers();
+        }
+    }
+
+    // The questions a close asks, which an update's restart asks too; false when one was cancelled.
+    private async Task<bool> ConfirmEndingAsync(List<MainWindow> windows, bool askAboutRunning)
+    {
+        var confirmed = new HashSet<IWorkspaceTab>();
+        // Apart from confirmed, so a run that ends during the question and leaves a transaction open is asked about.
+        var stopped = new HashSet<IWorkspaceTab>();
+        while (true)
+        {
+            if (!await ConfirmTabsAsync(windows, confirmed))
+            {
+                return false;
+            }
+
+            // A tab whose transaction was confirmed is not asked again: that question says its work goes with it.
+            var running = askAboutRunning ? RunningQueries(windows, confirmed, stopped) : [];
+            if (running.Count == 0)
+            {
+                return true;
+            }
+
+            if (!await ConfirmStopRunningAsync(running))
+            {
+                return false;
+            }
+
+            stopped.UnionWith(running.Select(each => each.Tab));
         }
     }
 

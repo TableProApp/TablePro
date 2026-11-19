@@ -29,6 +29,7 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `ci/live-servers.ps1`: starts one server the `Live/` interop tests reach on the x64 runner, for `windows.yml`.
 - `ci/desktop.ps1`: readies a hosted runner's desktop for UI work (privacy settings window, WSL console, display size, window dragging), for `windows.yml`, `release-windows.yml` and the grid gate.
 - `ci/winget-manifest.py`: writes a release's winget manifest, for `release-windows.yml`.
+- `ci/appinstaller.py`: a release's package version and channel, its App Installer file and the channel files on updates.tablepro.app, for `release-windows.yml` (`docs/decisions/0020-app-installer-updates.md`). Its tests run in CI's Lint job.
 - `scripts/engine-glyphs.py`: writes `src/TablePro.App/Resources/EngineGlyphs.xaml` from the macOS app's engine artwork. Run it after that artwork changes or an engine is added.
 - `scripts/package-assets.py`: writes the MSIX logos in `src/TablePro.App/Assets` from the app icon. Run it after the icon changes.
 - `scripts/editor-schemes.py`: writes `src/TablePro.Editor.Model/ColorSchemes.Themes.cs`, the editor's color schemes, from the macOS app's built-in themes. Run it after a theme changes.

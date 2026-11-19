@@ -23,4 +23,7 @@ internal interface IShell
     Task OpenSampleAsync();
 
     void ShowSettings();
+
+    // Asks what a close asks, then has Windows install the update the check found and restart the app.
+    Task InstallUpdateAsync();
 }

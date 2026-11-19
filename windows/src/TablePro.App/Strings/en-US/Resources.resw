@@ -5439,4 +5439,97 @@ New fingerprint: {2}</value>
   <data name="ClientWriteRun" xml:space="preserve">
     <value>Run</value>
   </data>
+  <data name="MenuCheckForUpdates" xml:space="preserve">
+    <value>Check for updates...</value>
+  </data>
+  <data name="MenuUpdateAvailable" xml:space="preserve">
+    <value>Update available...</value>
+  </data>
+  <data name="UpdateAvailableMessage" xml:space="preserve">
+    <value>TablePro {0} is available.</value>
+  </data>
+  <data name="UpdatedMessage" xml:space="preserve">
+    <value>TablePro was updated to {0}</value>
+  </data>
+  <data name="WhatsNewButton" xml:space="preserve">
+    <value>What's new</value>
+  </data>
+  <data name="UpdateInstallTitle" xml:space="preserve">
+    <value>Install TablePro {0}?</value>
+  </data>
+  <data name="UpdateInstallMessage" xml:space="preserve">
+    <value>TablePro restarts to install it.</value>
+  </data>
+  <data name="UpdateRestartButton" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+  <data name="UpdatesHeader.Text" xml:space="preserve">
+    <value>Software update</value>
+  </data>
+  <data name="UpdateVersion" xml:space="preserve">
+    <value>TablePro {0}</value>
+  </data>
+  <data name="UpdateUnsupported" xml:space="preserve">
+    <value>Only TablePro installed from its package checks for updates.</value>
+  </data>
+  <data name="UpdateChecking" xml:space="preserve">
+    <value>Checking for updates...</value>
+  </data>
+  <data name="UpdateNeverChecked" xml:space="preserve">
+    <value>Last checked: never</value>
+  </data>
+  <data name="UpdateLastChecked" xml:space="preserve">
+    <value>Last checked: {0}</value>
+  </data>
+  <data name="UpdateCheckButton" xml:space="preserve">
+    <value>Check now</value>
+  </data>
+  <data name="UpdateInstallButton" xml:space="preserve">
+    <value>Install update...</value>
+  </data>
+  <data name="UpdateAvailableHeadline" xml:space="preserve">
+    <value>TablePro {0} is available</value>
+  </data>
+  <data name="UpdateInstallingHeadline" xml:space="preserve">
+    <value>Installing TablePro {0}</value>
+  </data>
+  <data name="UpdateInstallingDetail" xml:space="preserve">
+    <value>{0}% done. TablePro restarts once it is installed.</value>
+  </data>
+  <data name="UpdateReadyHeadline" xml:space="preserve">
+    <value>TablePro {0} is ready to install</value>
+  </data>
+  <data name="UpdateRestartToFinish" xml:space="preserve">
+    <value>Restart TablePro to finish updating.</value>
+  </data>
+  <data name="UpdateCheckFailedReason" xml:space="preserve">
+    <value>Couldn't check for updates: {0}</value>
+  </data>
+  <data name="UpdateInstallFailedReason" xml:space="preserve">
+    <value>Couldn't install the update: {0}</value>
+  </data>
+  <data name="UpdateFileUnreadable" xml:space="preserve">
+    <value>Couldn't check for updates: the update file is not an App Installer file.</value>
+  </data>
+  <data name="UpdateFileOtherPackage" xml:space="preserve">
+    <value>Couldn't check for updates: the update file installs another app.</value>
+  </data>
+  <data name="UpdateChannelCard.Header" xml:space="preserve">
+    <value>Update channel</value>
+  </data>
+  <data name="UpdateChannelCard.Description" xml:space="preserve">
+    <value>Betas get new features first. Switching back to Stable keeps the beta you have until a newer release ships.</value>
+  </data>
+  <data name="UpdateChannelBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Update channel</value>
+  </data>
+  <data name="UpdateChannelStable.Content" xml:space="preserve">
+    <value>Stable</value>
+  </data>
+  <data name="UpdateChannelBeta.Content" xml:space="preserve">
+    <value>Beta</value>
+  </data>
+  <data name="WhatsNewLink.Content" xml:space="preserve">
+    <value>What's new in this version</value>
+  </data>
 </root>

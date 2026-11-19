@@ -47,6 +47,7 @@ public partial class App : Application
         _window.SessionSaved += (_, _) => ReleaseFolder();
         _window.Closed += (_, _) => ReleaseFolder();
         _window.ActivateRestored();
+        _window.StartUpdates();
         workbench.StartMcp(new McpBridge(DispatcherQueue.GetForCurrentThread(), () => _closed ? null : _window));
         // Off the first grid's path: the fallback fonts for non-Latin cells load in the background.
         DataGridView.WarmUpFonts();

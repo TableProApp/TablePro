@@ -1,4 +1,5 @@
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Tools;
 
 namespace TablePro.App.UITests;
 
@@ -35,6 +36,16 @@ public sealed partial class ShellTests
                 Assert.EndsWith(" " + version, shown, StringComparison.Ordinal);
             }
 
+            // A runner cannot install from an App Installer file (ADR 0020), so the check reads the release channel's file.
+            var card = app.Find("UpdateCard");
+            var checkedLine = Retry.WhileNull(
+                () => card.FindAllDescendants().Select(element => AppSession.TextOf(element)).FirstOrDefault(text =>
+                    text.StartsWith("Last checked: ", StringComparison.Ordinal)
+                    || text.StartsWith("Couldn't check for updates: Response status code", StringComparison.Ordinal)
+                    || text.StartsWith("Couldn't check for updates: the update file", StringComparison.Ordinal)),
+                AppSession.Wait,
+                throwOnTimeout: false).Result;
+            Assert.NotNull(checkedLine);
             app.Screenshot("package-settings");
 
             // The alias starts the console command with the package's identity, so it finds the same LocalState.
