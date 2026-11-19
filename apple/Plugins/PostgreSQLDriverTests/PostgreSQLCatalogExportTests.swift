@@ -170,6 +170,15 @@ struct PostgreSQLCatalogExportTests {
         #expect(grouped["lines"]?.first?.onUpdate == "NO ACTION")
     }
 
+    // Measured on 17.11: per column, `(a mood, b mood)` read `{happy,happy,sad,sad}` and the CREATE TYPE failed the restore.
+    @Test("A table's enum types are aggregated once per type, however many columns use one")
+    func dependentEnumTypesAggregateEachTypeOnce() {
+        let sql = PostgreSQLSchemaQueries.dependentEnumTypes(schema: "app", table: "orders")
+        #expect(sql.contains("SELECT DISTINCT a.atttypid"))
+        #expect(sql.contains("JOIN pg_catalog.pg_type t ON t.oid = used.atttypid"))
+        #expect(!sql.contains("JOIN pg_catalog.pg_type t ON t.oid = a.atttypid"))
+    }
+
     @Test("The approximate row count reads the planner's estimate")
     func approximateRowCount() async throws {
         let recorder = CatalogReadRecorder { _ in [["1200"].cells] }

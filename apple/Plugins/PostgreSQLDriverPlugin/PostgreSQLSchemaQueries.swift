@@ -184,21 +184,37 @@ nonisolated enum PostgreSQLSchemaQueries {
     private static let relkindsCreatedByTableDDL = "('r', 'p', 'f')"
 
     static func dependentEnumTypes(schema: String, table: String) -> String {
-        """
-        SELECT DISTINCT t.typname,
-               pg_catalog.array_agg(e.enumlabel ORDER BY e.enumsortorder)::text
-        FROM pg_catalog.pg_attribute a
-        JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
-        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+        dependentEnumTypesStatement(schema: schema, table: table)
+    }
+
+    // The per-table read with its relname predicate dropped and the table's name projected last.
+    static func schemaDependentEnumTypes(schema: String) -> String {
+        dependentEnumTypesStatement(schema: schema, table: nil)
+    }
+
+    // Each type once however many columns use it: aggregated per column, two columns of one enum wrote every label twice.
+    private static func dependentEnumTypesStatement(schema: String, table: String?) -> String {
+        let tablePredicate = table.map { "c.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))\n      AND " } ?? ""
+        let relation = table == nil ? ",\n       used.relname" : ""
+        let usedRelation = table == nil ? "c.relname, " : ""
+        let group = table == nil ? "used.relname, t.typname" : "t.typname"
+        return """
+        SELECT t.typname,
+               pg_catalog.array_agg(e.enumlabel ORDER BY e.enumsortorder)::text\(relation)
+        FROM (
+            SELECT DISTINCT \(usedRelation)a.atttypid
+            FROM pg_catalog.pg_attribute a
+            JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE \(tablePredicate)n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+              AND c.relkind IN \(relkindsCreatedByTableDDL)
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+        ) used
+        JOIN pg_catalog.pg_type t ON t.oid = used.atttypid
         JOIN pg_catalog.pg_enum e ON e.enumtypid = t.oid
-        WHERE c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
-          AND n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
-          AND c.relkind IN \(relkindsCreatedByTableDDL)
-          AND a.attnum > 0
-          AND NOT a.attisdropped
-        GROUP BY t.typname
-        ORDER BY t.typname
+        GROUP BY \(group)
+        ORDER BY \(group)
         """
     }
 

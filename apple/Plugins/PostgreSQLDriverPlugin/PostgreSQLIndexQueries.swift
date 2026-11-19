@@ -14,26 +14,36 @@ nonisolated enum PostgreSQLIndexQueries {
     static let restorableIndexPredicate = "(ix.indisvalid OR t.relkind = 'p') AND ix.indisready"
 
     static func standaloneIndexQuery(schema: String, table: String) -> String {
+        standaloneIndexStatement(schema: schema, table: table)
+    }
+
+    // The per-table read with its relname predicate dropped and the table's name projected last.
+    static func schemaStandaloneIndexQuery(schema: String) -> String {
+        standaloneIndexStatement(schema: schema, table: nil)
+    }
+
+    private static func standaloneIndexStatement(schema: String, table: String?) -> String {
         let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
-        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
+        let tablePredicate = table.map { "\n  AND t.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
+        let relation = table == nil ? ",\n    t.relname AS table_name" : ""
+        let order = table == nil ? "t.relname, i.relname" : "i.relname"
         return """
             SELECT
                 i.relname AS index_name,
                 pg_catalog.pg_get_indexdef(ix.indexrelid) AS definition,
-                (\(restorableIndexPredicate)) AS is_restorable
+                (\(restorableIndexPredicate)) AS is_restorable\(relation)
             FROM pg_catalog.pg_index ix
             JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
             JOIN pg_catalog.pg_class t ON t.oid = ix.indrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
-            WHERE n.nspname = \(schemaLiteral)
-              AND t.relname = \(tableLiteral)
+            WHERE n.nspname = \(schemaLiteral)\(tablePredicate)
               AND NOT EXISTS (
                 SELECT 1 FROM pg_catalog.pg_constraint con
                 WHERE con.conrelid = ix.indrelid
                   AND con.conindid = ix.indexrelid
                   AND con.contype IN ('p', 'u', 'x')
               )
-            ORDER BY i.relname
+            ORDER BY \(order)
             """
     }
 

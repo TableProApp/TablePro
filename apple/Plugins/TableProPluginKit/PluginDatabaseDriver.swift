@@ -353,9 +353,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var tableDDLIncludesForeignKeys: Bool { get }
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]]
     var providesBulkIndexFetch: Bool { get }
-    // Which of `fetchAllColumns`, `fetchAllForeignKeys` and `fetchAllIndexes` answer every table the way its own read
-    // does, so an export may read a schema once instead.
+    // Which `fetchAll...` reads answer every table the way its own read does, so an export may read a schema once
+    // instead. A table a declared read leaves out has none of that kind.
     var exportBulkReads: PluginExportBulkReads { get }
+    // `fetchIndexDDL`, `fetchCommentDDL`, `fetchDependentSequences` and `fetchDependentTypes` for every table of the
+    // schema, keyed by table name.
+    func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]]
+    func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]]
+    func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]]
+    func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]]
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata]
     var providesBulkTableMetadataFetch: Bool { get }
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata]
@@ -1169,6 +1175,11 @@ public extension PluginDatabaseDriver {
     var providesBulkIndexFetch: Bool { false }
 
     var exportBulkReads: PluginExportBulkReads { [] }
+
+    func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]] { [:] }
+    func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]] { [:] }
+    func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]] { [:] }
+    func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]] { [:] }
 
     /// Default: fetches indexes per-table sequentially (N+1 round-trips).
     /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.STATISTICS).
