@@ -9,7 +9,44 @@ import Foundation
 import SwiftTreeSitter
 import TableProTextEngine
 
+// A parse off the main thread reads this copy, so the text cannot change between its time slices.
+final class TextSnapshot: Sendable {
+    private let characters: ContiguousArray<UInt16>
+
+    init(characters: ContiguousArray<UInt16>) {
+        self.characters = characters
+    }
+
+    var readBlock: Parser.ReadBlock {
+        { [self] byteOffset, _ in
+            let location = byteOffset / 2
+            let end = min(location + TreeSitterClient.Constants.charsToReadInBlock, characters.count)
+            guard location <= end else { return nil }
+            return characters[location..<end].withUnsafeBytes { Data($0) }
+        }
+    }
+
+    var readCallback: SwiftTreeSitter.Predicate.TextProvider {
+        { [self] range, _ in
+            guard range.location >= 0, range.max <= characters.count else { return nil }
+            return String(decoding: characters[range.location..<range.max], as: UTF16.self)
+        }
+    }
+}
+
 extension TextView {
+    func createTextSnapshot() -> TextSnapshot {
+        let text = textStorage.mutableString
+        let length = text.length
+        let characters = ContiguousArray<UInt16>(unsafeUninitializedCapacity: length) { buffer, initializedCount in
+            if let base = buffer.baseAddress {
+                text.getCharacters(base, range: NSRange(location: 0, length: length))
+            }
+            initializedCount = length
+        }
+        return TextSnapshot(characters: characters)
+    }
+
     /// Creates a block for safely reading data into a parser's read block.
     ///
     /// If the thread is the main queue, executes synchronously.

@@ -42,7 +42,9 @@ internal enum DisplayedResultReader {
                 skippedDeleted += 1
                 return nil
             }
-            return projection.values(Self.values(of: row, defaulted: defaultedCells[row.id] ?? []))
+            return projection.values(Self.values(
+                of: row, unloaded: tableRows.unloadedColumns(of: row.id), defaulted: defaultedCells[row.id] ?? []
+            ))
         }
 
         return Output(
@@ -55,10 +57,10 @@ internal enum DisplayedResultReader {
     }
 
     // A value the page left on the server says so, rather than reading as NULL.
-    private static func values(of row: Row, defaulted: Set<Int>) -> [PluginCellValue] {
-        guard row.hasUnloadedValues || !defaulted.isEmpty else { return Array(row.values) }
+    private static func values(of row: Row, unloaded: [Int: Int], defaulted: Set<Int>) -> [PluginCellValue] {
+        guard !unloaded.isEmpty || !defaulted.isEmpty else { return Array(row.values) }
         var values = Array(row.values)
-        for (column, byteCount) in row.unloadedColumns where values.indices.contains(column) {
+        for (column, byteCount) in unloaded where values.indices.contains(column) {
             values[column] = .text(UnloadedValueText.notLoaded(byteCount: byteCount))
         }
         for column in defaulted where values.indices.contains(column) {

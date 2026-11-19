@@ -119,7 +119,7 @@ final class RowOperationsManager {
         uuidKeyForms: [Int: UUIDCellForm]
     ) -> RowCopy {
         var newValues = Array(source.values)
-        var absentColumns = source.absentColumns
+        var absentColumns = tableRows.absentColumns(of: source.id)
         var expressionColumns = changeManager.expressionColumns(forRow: source.id).filter { $0 < newValues.count }
         var prefilled: Set<Int> = []
 
@@ -193,8 +193,9 @@ final class RowOperationsManager {
                 insertedRowsToRemove.append(InsertedRowLocation(rowID: row.id, storageIndex: storageIndex))
             } else if !changeManager.isRowDeleted(row.id) {
                 existingRowsToDelete.append((rowID: row.id, originalRow: Array(row.values)))
-                if !row.absentColumns.isEmpty {
-                    deletedAbsentColumns[row.id] = row.absentColumns
+                let absent = tableRows.absentColumns(of: row.id)
+                if !absent.isEmpty {
+                    deletedAbsentColumns[row.id] = absent
                 }
             }
         }
@@ -367,6 +368,7 @@ final class RowOperationsManager {
         let payload = GridRowsClipboardPayload(
             columns: columns,
             copying: copiedRows,
+            absentColumns: copiedRows.map { tableRows.absentColumns(of: $0.id) },
             expressionColumns: copiedRows.map { changeManager.expressionColumns(forRow: $0.id) },
             projection: projection
         )

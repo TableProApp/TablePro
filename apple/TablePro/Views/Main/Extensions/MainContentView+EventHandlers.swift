@@ -193,8 +193,8 @@ extension MainContentView {
         trailingPaneState.inspector.editState.configure(
             rowIDs: selectedRows.map(\.id),
             allRows: stringRows,
-            absentCells: selectedRows.map(\.absentColumns),
-            unloadedCells: selectedRows.map { Set($0.unloadedColumns.keys) },
+            absentCells: selectedRows.map { tableRows.absentColumns(of: $0.id) },
+            unloadedCells: selectedRows.map { Set(tableRows.unloadedColumns(of: $0.id).keys) },
             expressionCells: selectedRows.map { changeManager.expressionColumns(forRow: $0.id) },
             columns: tableRows.columns,
             columnTypes: columnTypes,

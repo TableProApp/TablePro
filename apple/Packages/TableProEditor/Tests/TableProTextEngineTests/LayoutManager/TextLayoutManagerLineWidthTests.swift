@@ -112,6 +112,35 @@ struct TextLayoutManagerLineWidthTests {
         #expect(widthOf(textView) == original)
     }
 
+    @Test("Growing the widest line with wrapping off keeps the layout of every other line")
+    func growingTheWidestLineKeepsOtherLines() {
+        let textView = makeTextView("short\nnarrow\n" + longLine)
+        let frameWidth = textView.frame.width
+        let end = textView.textStorage.length
+
+        textView.textStorage.replaceCharacters(in: NSRange(location: end, length: 0), with: "xxxxxxxxxx")
+        let relaidOut = textView.layoutManager.layoutLines(in: everything)
+
+        #expect(relaidOut.count == 1)
+        #expect(textView.frame.width > frameWidth)
+        #expect(!textView.layoutManager.needsLayout)
+        #expect(textView.layoutManager.layoutLines(in: everything).isEmpty)
+    }
+
+    @Test("A new frame width lays out again while lines wrap to it")
+    func frameWidthInvalidatesWrappedLines() {
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        let textView = TextView(string: longLine, wrapLines: true)
+        scrollView.documentView = textView
+        textView.updateFrameIfNeeded()
+        textView.layoutManager.layoutLines(in: everything)
+
+        textView.frame.size.width += 100
+
+        #expect(textView.updateFrameIfNeeded())
+        #expect(textView.layoutManager.needsLayout)
+    }
+
     @Test("Invalidating line widths forgets them, off screen included")
     func invalidatingLineWidthsForgetsOffScreenWidths() {
         let textView = makeTextView(([longLine] + Array(repeating: "short", count: 300)).joined(separator: "\n"))

@@ -175,7 +175,9 @@ struct DataGridCommands {
         guard configuration.isEditable, model.isColumnWritable(cell.column), !isRowDeleted(cell.rowID),
               let row = storedRow(cell.rowID) else { return false }
         let dataIndex = cell.column.dataIndex
-        guard dataIndex < row.values.count, row.unloadedByteCount(dataIndex) == nil else { return false }
+        guard dataIndex < row.values.count, model.rows.unloadedByteCount(row.id, column: dataIndex) == nil else {
+            return false
+        }
         if cell.column.type?.isBlobType == true { return false }
         return row.values[dataIndex].asBytes == nil
     }
@@ -194,8 +196,7 @@ final class DataGridValueLoader {
     ) -> Bool {
         let rows = model.rows
         let pending = rowIDs.filter { rowID in
-            guard let row = rows.row(withID: rowID) else { return false }
-            return row.unloadedColumns.keys.contains { columns?.contains($0) ?? true }
+            rows.unloadedColumns(of: rowID).keys.contains { columns?.contains($0) ?? true }
         }
         guard !pending.isEmpty else { return true }
         // A retry that still finds a value missing would load forever.

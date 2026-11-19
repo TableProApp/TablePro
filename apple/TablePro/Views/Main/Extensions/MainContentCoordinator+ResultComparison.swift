@@ -104,6 +104,7 @@ extension MainContentCoordinator {
             columns: rows.columns,
             columnTypes: rows.columnTypes,
             rows: rows.rows,
+            absentColumns: rows.absentColumnsByRow,
             isTruncated: resultSet.isTruncated,
             primaryKeyColumns: primaryKey
         )

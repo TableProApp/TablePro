@@ -145,7 +145,7 @@ struct MaskingExportTests {
             databaseType: .mysql,
             driver: nil,
             fillUnloaded: { rows in
-                Dictionary(uniqueKeysWithValues: rows.map { ($0.id, [1: PluginCellValue.text("john@example.com")]) })
+                Dictionary(uniqueKeysWithValues: rows.map { ($0.row.id, [1: PluginCellValue.text("john@example.com")]) })
             }
         )
 
@@ -173,7 +173,7 @@ struct MaskingExportTests {
             fillUnloaded: { rows in
                 let pull = pulls.withLock { $0 }
                 pullsAtEachFill.withLock { $0.append(pull) }
-                return Dictionary(uniqueKeysWithValues: rows.map { ($0.id, [1: PluginCellValue.text("x")]) })
+                return Dictionary(uniqueKeysWithValues: rows.map { ($0.row.id, [1: PluginCellValue.text("x")]) })
             }
         )
         let stream = source.streamExportRows(table: "customers", databaseName: "")

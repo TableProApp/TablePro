@@ -17,9 +17,18 @@ extension MainContentCoordinator {
         for tabId: UUID,
         _ mutate: (inout TableRows) -> Delta
     ) -> Delta {
+        releaseActiveResultRows(forTab: tabId)
         let delta = tabSessionRegistry.updateTableRows(for: tabId, mutate)
         applyGridDelta(delta, forTab: tabId)
         return delta
+    }
+
+    // A result holding the buffer the write lands in makes that write copy every row. A switch away flushes the
+    // buffer back into it, so the result only lets go of rows the buffer still holds.
+    private func releaseActiveResultRows(forTab tabId: UUID) {
+        guard let active = tabManager.tabs.first(where: { $0.id == tabId })?.display.activeResultSet,
+              active.tableRows.sharesRows(with: tabSessionRegistry.tableRows(for: tabId)) else { return }
+        active.tableRows.releaseRows()
     }
 
     func setActiveTableRows(
