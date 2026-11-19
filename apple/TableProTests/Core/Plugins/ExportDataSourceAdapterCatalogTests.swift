@@ -44,6 +44,32 @@ private final class CatalogCommentStubDriver: PluginDriverStub, @unchecked Senda
     }
 }
 
+private final class SchemaReadStubDriver: PluginDriverStub, @unchecked Sendable {
+    private(set) var reads: [String] = []
+
+    var exportBulkReads: PluginExportBulkReads { [.indexDDL, .dependentTypes] }
+
+    func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]] {
+        reads.append("index \(schema ?? "")")
+        return ["orders": ["CREATE INDEX orders_day ON sales.orders (day)"]]
+    }
+
+    func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]] {
+        reads.append("comments \(schema ?? "")")
+        return ["orders": ["COMMENT ON TABLE sales.orders IS 'Orders'"]]
+    }
+
+    func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]] {
+        reads.append("sequences \(schema ?? "")")
+        return ["orders": [PluginSequenceInfo(name: "orders_id_seq", ddl: "CREATE SEQUENCE orders_id_seq;")]]
+    }
+
+    func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]] {
+        reads.append("types \(schema ?? "")")
+        return ["orders": [PluginEnumTypeInfo(name: "status", labels: ["new", "paid"])]]
+    }
+}
+
 struct ExportDataSourceAdapterCatalogTests {
     private func adapter(_ stub: CommentingStubDriver) -> ExportDataSourceAdapter {
         let driver = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .postgresql), pluginDriver: stub)
@@ -92,5 +118,24 @@ struct ExportDataSourceAdapterCatalogTests {
 
         #expect(indexes.map { $0.name } == ["orders_pkey"])
         #expect(stub.indexReads == ["sales.orders"])
+    }
+
+    @Test("Schema-wide export reads come from the driver in the container the export named, under the driver's gate")
+    func schemaReadsComeFromTheNamedContainer() async throws {
+        let stub = SchemaReadStubDriver()
+        let driver = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .postgresql), pluginDriver: stub)
+        let source = ExportDataSourceAdapter(driver: driver, databaseType: .postgresql)
+
+        let indexDDL = try await source.fetchAllIndexDDL(databaseName: "sales")
+        let commentDDL = try await source.fetchAllCommentDDL(databaseName: "sales")
+        let sequences = try await source.fetchAllDependentSequences(databaseName: "sales")
+        let types = try await source.fetchAllDependentTypes(databaseName: "sales")
+
+        #expect(source.bulkReads == [.indexDDL, .dependentTypes])
+        #expect(indexDDL == ["orders": ["CREATE INDEX orders_day ON sales.orders (day)"]])
+        #expect(commentDDL == ["orders": ["COMMENT ON TABLE sales.orders IS 'Orders'"]])
+        #expect(sequences["orders"]?.map { $0.ddl } == ["CREATE SEQUENCE orders_id_seq;"])
+        #expect(types["orders"]?.map { $0.labels } == [["new", "paid"]])
+        #expect(stub.reads == ["index sales", "comments sales", "sequences sales", "types sales"])
     }
 }
