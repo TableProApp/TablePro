@@ -74,17 +74,18 @@ extension MainContentCoordinator {
               let scope = scope(for: tab)
         else { return }
         forgetCatalogPage(ofTab: tabId)
-        catalogPages[tabId] = CatalogPage(
+        let page = CatalogPage(
             key: schemaColumnsKey(tableName, scope: scope),
             tableName: tableName,
             scope: scope,
             list: list,
             query: tab.content.query
         )
+        tabSessionRegistry.setCatalogPage(page, for: tabId)
     }
 
     func catalogPageList(of tab: QueryTab, sql: String) -> SchemaColumnStore.Entry? {
-        guard let page = catalogPages[tab.id], page.query == sql,
+        guard let page = tabSessionRegistry.catalogPage(for: tab.id), page.query == sql,
               let tableName = tab.tableContext.tableName,
               page.key == schemaColumnsKey(tableName, scope: scope(for: tab))
         else { return nil }
@@ -93,7 +94,7 @@ extension MainContentCoordinator {
 
     func catalogPageCheck(for tab: QueryTab, sql: String, scope: DatabaseScope) -> CatalogPageCheck? {
         guard tab.tabType == .table, let tableName = tab.tableContext.tableName,
-              let page = catalogPages[tab.id], page.key == schemaColumnsKey(tableName, scope: scope)
+              let page = tabSessionRegistry.catalogPage(for: tab.id), page.key == schemaColumnsKey(tableName, scope: scope)
         else { return nil }
         return CatalogPageCheck(
             pageId: page.id,
@@ -137,7 +138,7 @@ extension MainContentCoordinator {
 
     // Only the run that owns the tab calls this, in the turn it installs its page or shows its error.
     func settleCatalogPage(_ check: CatalogPageCheck?, confirmed: SchemaColumnStore.Entry?, installed: Bool) {
-        guard let check, var page = catalogPages[check.tab.id], page.id == check.pageId else { return }
+        guard let check, var page = tabSessionRegistry.catalogPage(for: check.tab.id), page.id == check.pageId else { return }
         let tabId = check.tab.id
         // A failed later run leaves the page on screen, and the notice with it.
         guard installed || page.standing == .awaiting else { return }
@@ -150,14 +151,14 @@ extension MainContentCoordinator {
             return
         }
         guard catalogPageIsOutdated(check, confirmed: confirmed) else {
-            catalogPages[tabId] = nil
+            tabSessionRegistry.setCatalogPage(nil, for: tabId)
             setOutdatedPageNotice(nil, onTab: tabId)
             return
         }
         if page.standing == .awaiting {
             discardCatalogColumns(of: page)
             page.standing = .outdated
-            catalogPages[tabId] = page
+            tabSessionRegistry.setCatalogPage(page, for: tabId)
         }
         guard page.standing == .outdated,
               let shown = tabManager.tabs.first(where: { $0.id == tabId })
@@ -181,7 +182,7 @@ extension MainContentCoordinator {
         guard tabManager.selectedTabId == tabId,
               let tab = tabManager.tabs.first(where: { $0.id == tabId }),
               tab.tabType == .table, tab.outdatedPageNotice != nil,
-              let page = catalogPages[tabId], page.standing == .outdated
+              let page = tabSessionRegistry.catalogPage(for: tabId), page.standing == .outdated
         else { return }
         commitActiveGridEdit()
         let manager = changeManager(forTab: tabId)
@@ -218,29 +219,28 @@ extension MainContentCoordinator {
     }
 
     private func stillShows(_ page: CatalogPage, onTab tabId: UUID) -> Bool {
-        guard !Task.isCancelled, !isTearingDown, catalogPages[tabId]?.id == page.id,
+        guard !Task.isCancelled, !isTearingDown, tabSessionRegistry.catalogPage(for: tabId)?.id == page.id,
               let tab = tabManager.tabs.first(where: { $0.id == tabId })
         else { return false }
         return tab.tableContext.tableName == page.tableName && scope(for: tab) == page.scope
     }
 
     func dismissOutdatedPageNotice(tabId: UUID) {
-        if var page = catalogPages[tabId], page.standing == .outdated {
+        if var page = tabSessionRegistry.catalogPage(for: tabId), page.standing == .outdated {
             page.standing = .dismissed
-            catalogPages[tabId] = page
+            tabSessionRegistry.setCatalogPage(page, for: tabId)
         }
         setOutdatedPageNotice(nil, onTab: tabId)
     }
 
     func forgetCatalogPage(ofTab tabId: UUID) {
         catalogPageReloads.removeValue(forKey: tabId)?.task.cancel()
-        catalogPages.removeValue(forKey: tabId)
+        tabSessionRegistry.setCatalogPage(nil, for: tabId)
     }
 
-    func forgetAllCatalogPages() {
+    func cancelCatalogPageReloads() {
         for reload in catalogPageReloads.values { reload.task.cancel() }
         catalogPageReloads.removeAll()
-        catalogPages.removeAll()
     }
 
     private func setOutdatedPageNotice(_ notice: OutdatedPageNotice?, onTab tabId: UUID) {

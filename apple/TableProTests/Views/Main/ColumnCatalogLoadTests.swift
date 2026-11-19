@@ -82,7 +82,7 @@ extension GlobalStateSuites {
             var tab: QueryTab { coordinator.tabManager.tabs[0] }
             var entry: SchemaColumnStore.Entry? { coordinator.schemaColumns.cached(key) }
             var notice: OutdatedPageNotice? { tab.outdatedPageNotice }
-            var standing: CatalogPage.Standing? { coordinator.catalogPages[tab.id]?.standing }
+            var standing: CatalogPage.Standing? { coordinator.tabSessionRegistry.catalogPage(for: tab.id)?.standing }
 
             func addUsersTab(hiding hidden: Set<String> = [], configure: (inout QueryTab) -> Void = { _ in }) -> UUID {
                 var tab = QueryTab(title: "users", query: "", tabType: .table)
@@ -189,7 +189,7 @@ extension GlobalStateSuites {
             await gate.open()
             await opening.value
             try await harness.runUntilSettled(tabId, queries: 1)
-            #expect(harness.coordinator.catalogPages[tabId] == nil)
+            #expect(harness.coordinator.tabSessionRegistry.catalogPage(for: tabId) == nil)
             #expect(harness.notice == nil)
         }
 
@@ -217,7 +217,7 @@ extension GlobalStateSuites {
             await gate.open()
             await opening.value
             try await harness.runUntilSettled(tabId, queries: 1)
-            #expect(harness.coordinator.catalogPages[tabId] == nil)
+            #expect(harness.coordinator.tabSessionRegistry.catalogPage(for: tabId) == nil)
             target.release()
             await catalogChanges.waitUntilIdle(connectionId: connectionId)
         }
@@ -487,7 +487,63 @@ extension GlobalStateSuites {
 
             #expect(harness.driver.executedUserQueries.count == 1)
             #expect(harness.notice == nil)
-            #expect(harness.coordinator.catalogPages[tabId] == nil)
+            #expect(harness.coordinator.tabSessionRegistry.catalogPage(for: tabId) == nil)
+        }
+
+        @Test("A run stopped before its page lands withdraws from the column read it started")
+        func stoppedRunWithdrawsItsColumnRead() async throws {
+            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+            let listed = [Self.column("id", key: true), Self.column("name")]
+            let harness = try await makeHarness(cataloged: listed, current: listed)
+            defer { tearDown(harness, restoring: behavior) }
+            let gate = AsyncGate()
+            harness.driver.fetchColumnsGate = gate
+            harness.driver.pausesNextUserQuery = true
+            let tabId = harness.addUsersTab()
+
+            await harness.coordinator.openTableTabQuery(tabId: tabId)
+            try await waitUntil {
+                harness.driver.isHoldingUserQuery && harness.coordinator.schemaColumns.waiterCount(for: harness.key) == 1
+            }
+            let run = try #require(harness.coordinator.queryTasks.task(for: tabId))
+
+            harness.coordinator.stopExecution(for: tabId)
+            harness.driver.resumeUserQuery()
+            await run.value
+
+            try await waitUntil { harness.coordinator.schemaColumns.waiterCount(for: harness.key) == 0 }
+            await gate.open()
+        }
+
+        @Test("A tab moved to another window keeps its notice, and Reload there loads the current columns")
+        func movedTabKeepsItsNoticeAndReload() async throws {
+            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+            let harness = try await makeHarness(
+                cataloged: [Self.column("id", key: true), Self.column("name")],
+                current: [Self.column("id", key: true), Self.column("name"), Self.column("email")]
+            )
+            defer { tearDown(harness, restoring: behavior) }
+            let tabId = harness.addUsersTab(hiding: ["name"])
+            try await harness.open(tabId)
+            #expect(harness.notice != nil)
+
+            let destination = CoordinatorFixture(connection: harness.fixture.connection)
+            destination.addTab(harness.coordinator.enrichedForPersistence(harness.tab))
+            let session = try #require(harness.coordinator.tabSessionRegistry.session(for: tabId))
+            destination.coordinator.tabSessionRegistry.register(session)
+            harness.coordinator.tabSessionRegistry.unregister(id: tabId)
+            harness.coordinator.tabManager.closeTab(id: tabId)
+
+            #expect(destination.coordinator.tabSessionRegistry.catalogPage(for: tabId)?.standing == .outdated)
+            #expect(destination.tabManager.tabs[0].shownOutdatedPageNotice != nil)
+
+            destination.coordinator.reloadOutdatedPage(tabId: tabId)
+            try await waitUntil {
+                harness.driver.executedUserQueries.count == 2
+                    && !destination.coordinator.tabExecution.isExecuting(tabId)
+                    && destination.tabManager.tabs[0].outdatedPageNotice == nil
+            }
+            #expect(harness.driver.executedUserQueries[1].contains("email"))
         }
 
         @Test("A dismissed notice stays down for later pages of the same query")

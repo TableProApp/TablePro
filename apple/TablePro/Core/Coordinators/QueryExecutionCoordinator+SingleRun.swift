@@ -108,6 +108,8 @@ extension QueryExecutionCoordinator {
             }
 
             let confirmation = parent.startCatalogConfirmation(for: catalogCheck)
+            // A run that ends before it needs the read withdraws from it, as a cancelled open does from its own.
+            defer { confirmation?.cancel() }
             let schemaTask = confirmation.map {
                 parent.startSchemaFetch(tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope, columnsFrom: $0)
             } ?? parent.startSchemaFetch(

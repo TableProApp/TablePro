@@ -25,6 +25,18 @@ final class TabSessionRegistry {
         sessions.removeAll()
     }
 
+    func catalogPage(for tabId: UUID) -> CatalogPage? {
+        sessions[tabId]?.catalogPage
+    }
+
+    func setCatalogPage(_ page: CatalogPage?, for tabId: UUID) {
+        guard let page else {
+            sessions[tabId]?.catalogPage = nil
+            return
+        }
+        ensureSession(for: tabId).catalogPage = page
+    }
+
     // MARK: - Row data access
 
     func tableRows(for tabId: UUID) -> TableRows {

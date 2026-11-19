@@ -76,8 +76,8 @@ extension MainContentCoordinator {
         prune(&erDiagramModels, keeping: openTabIds)
         discardTableHealthModels(tableHealthModels.keys.filter { !openTabIds.contains($0) })
         prune(&navigationHistories, keeping: openTabIds)
-        for tabId in Array(catalogPages.keys) + Array(catalogPageReloads.keys) where !openTabIds.contains(tabId) {
-            forgetCatalogPage(ofTab: tabId)
+        for tabId in Array(catalogPageReloads.keys) where !openTabIds.contains(tabId) {
+            catalogPageReloads.removeValue(forKey: tabId)?.task.cancel()
         }
         // The editor stores the outgoing tab's history on its next update, after the close forgot it.
         editorUndoHistories.forgetAll(except: openTabIds)

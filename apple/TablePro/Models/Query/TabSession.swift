@@ -51,6 +51,9 @@ final class TabSession: ObservableObject, Identifiable {
     /// and a tab whose last result was empty can be marked too. Not published: nothing draws it.
     var freshness: TableFreshness
 
+    // Kept with the rows, so a tab moved to another window keeps the list its query was built on.
+    var catalogPage: CatalogPage?
+
     init(id: UUID = UUID()) {
         self.id = id
         self.tableRows = TableRows()
