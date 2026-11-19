@@ -15,7 +15,8 @@ struct EditorTabStripViewTests {
     private func makeStrip(
         titles: [String] = ["Album", "Artist", "Customer"],
         width: CGFloat = Self.size.width,
-        recorder: EditorTabCommandRecorder = EditorTabCommandRecorder()
+        recorder: EditorTabCommandRecorder = EditorTabCommandRecorder(),
+        canRename: Bool = false
     ) -> (EditorTabStripView, NSWindow) {
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: NSSize(width: width, height: Self.size.height)),
@@ -25,7 +26,7 @@ struct EditorTabStripViewTests {
         )
         window.isReleasedWhenClosed = false
         let strip = EditorTabStripView(frame: NSRect(origin: .zero, size: window.frame.size))
-        strip.commands = .stub(recorder: recorder)
+        strip.commands = .stub(recorder: recorder, canRename: canRename)
         window.contentView = strip
         strip.apply(EditorTabItem.samples(titles: titles))
         strip.layoutSubtreeIfNeeded()
@@ -225,5 +226,30 @@ struct EditorTabStripViewTests {
         #expect(names.contains(String(localized: "Close Tab")))
         #expect(names.contains(String(localized: "Pin Tab")))
         #expect(!names.contains(String(localized: "Keep Open")))
+        #expect(!names.contains(String(localized: "Rename Tab")))
+    }
+
+    @Test("Assistive technology is offered Rename Tab on a tab that can take a name")
+    func accessibilityActionsOfferRename() throws {
+        let (strip, window) = makeStrip(canRename: true)
+        defer { window.orderOut(nil) }
+        let view = try #require(strip.itemView(for: strip.items[0].id))
+
+        let names = view.accessibilityCustomActions()?.map(\.name) ?? []
+        #expect(names.contains(String(localized: "Rename Tab")))
+    }
+
+    @Test("A double-click on a tab that can take a name does not keep it")
+    func doubleClickOnARenamableTabKeepsNothing() {
+        let recorder = EditorTabCommandRecorder()
+        let (strip, window) = makeStrip(recorder: recorder, canRename: true)
+        defer { window.orderOut(nil) }
+        let id = strip.items[1].id
+
+        strip.activate(id, click: EditorTabClick(clickCount: 1, hasModifiers: false))
+        strip.activate(id, click: EditorTabClick(clickCount: 2, hasModifiers: false))
+
+        #expect(recorder.activated == [id, id])
+        #expect(recorder.kept.isEmpty)
     }
 }

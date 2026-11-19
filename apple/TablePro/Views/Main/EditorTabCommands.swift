@@ -14,6 +14,11 @@ internal struct EditorTabCommands {
     internal let canKeepOpen: (UUID) -> Bool
     internal let isPinned: (UUID) -> Bool
     internal let setPinned: (UUID, Bool) -> Void
+    internal let canRename: (UUID) -> Bool
+    internal let renameSeed: (UUID) -> EditorTabRenameSeed?
+    internal let beginRename: (UUID) -> Void
+    // Returns the title the model settled on, so the label never shows the old name for a turn; nil once the tab is gone.
+    internal let rename: (UUID, String) -> String?
     internal let close: (UUID) -> Void
     internal let closeOthers: (UUID) -> Void
     internal let canCloseOthers: (UUID) -> Bool
@@ -30,4 +35,10 @@ internal struct EditorTabCommands {
     internal let moveToConnection: (UUID) -> Void
     internal let offersMoveToConnection: (UUID) -> Bool
     internal let canMoveToConnection: (UUID) -> Bool
+}
+
+internal struct EditorTabRenameSeed: Equatable {
+    internal let text: String
+    // The automatic name, which an emptied field returns the tab to.
+    internal let placeholder: String
 }

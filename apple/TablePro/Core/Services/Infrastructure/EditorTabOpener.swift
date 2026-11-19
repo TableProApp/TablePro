@@ -33,10 +33,8 @@ internal enum EditorTabOpener {
                 openingDatabaseName: openingDatabaseName
             )
         case .newEmptyTab:
-            let allTabs = MainContentCoordinator.allTabs(for: connection.id)
             tabManager.addTab(
                 initialQuery: payload.initialQuery,
-                title: QueryTabManager.nextQueryTitle(existingTabs: allTabs),
                 databaseName: payload.databaseName ?? openingDatabaseName,
                 claimFocus: true
             )
@@ -67,9 +65,11 @@ internal enum EditorTabOpener {
                 || payload.tabTitle != nil
                 || payload.sourceFileURL != nil
             guard hasContent else { return }
+            // A `Query N` from elsewhere is another window's number; this manager hands out its own.
+            let ownTitle = payload.tabTitle.flatMap { QueryTab.isDefaultQueryTitle($0) ? nil : $0 }
             tabManager.addTab(
                 initialQuery: payload.initialQuery,
-                title: payload.tabTitle,
+                title: ownTitle,
                 databaseName: payload.databaseName ?? openingDatabaseName,
                 sourceFileURL: payload.sourceFileURL,
                 sourceFileStamp: payload.sourceFileStamp,

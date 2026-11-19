@@ -46,7 +46,11 @@ internal final class EditorTabStripAccessoryController: NSTitlebarAccessoryViewC
     // Collapsing keeps every connection's strip built while the window shows a pane with no tabs.
     internal func setBandVisible(_ isVisible: Bool) {
         guard isHidden == isVisible else { return }
-        if !isVisible { resignFirstResponderInsideBand() }
+        if !isVisible {
+            // Ended by the strip, which gives focus back to where the edit took it from rather than to the window.
+            (paneHost.shown as? EditorTabStripPaneController)?.stripView.endRename(commit: true)
+            resignFirstResponderInsideBand()
+        }
         isHidden = !isVisible
     }
 

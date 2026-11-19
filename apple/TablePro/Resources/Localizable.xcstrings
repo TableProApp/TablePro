@@ -151977,6 +151977,9 @@
     "Rename label “%1$@” to “%2$@”" : {
 
     },
+    "Rename Tab" : {
+
+    },
     "Rename the selected label" : {
 
     },
@@ -183445,6 +183448,9 @@
           }
         }
       }
+    },
+    "Tab Name" : {
+
     },
     "Tab that came forward" : {
       "localizations" : {

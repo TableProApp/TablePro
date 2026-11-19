@@ -60,6 +60,15 @@ struct SharedLinkOpenerTests {
         #expect(recorder.opened == [SharedQueryOpen(sql: "SELECT 1", title: nil)])
     }
 
+    @Test("A share title with line breaks opens as a one-line tab name")
+    func multilineShareTitleIsOneLine() async {
+        let service = FakeShareService()
+        service.fetchResults = [.success(SharedQuery(kind: .query, title: "Top\nusers\t", sql: "SELECT 1"))]
+        let recorder = Recorder()
+        await makeOpener(service, recorder).open(token: Self.token)
+        #expect(recorder.opened == [SharedQueryOpen(sql: "SELECT 1", title: "Top users")])
+    }
+
     @Test("A password-protected share asks for the password and retries a wrong one")
     func passwordFlow() async {
         let service = FakeShareService()

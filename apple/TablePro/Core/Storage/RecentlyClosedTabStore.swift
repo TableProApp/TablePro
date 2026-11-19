@@ -23,6 +23,9 @@ internal extension RecentlyClosedTabEntry {
         if let url = tab.sourceFileURL {
             return QueryTab.fileDisplayTitle(for: url)
         }
+        if tab.automaticTitle != nil {
+            return tab.title
+        }
         return queryPreview ?? tab.title
     }
 

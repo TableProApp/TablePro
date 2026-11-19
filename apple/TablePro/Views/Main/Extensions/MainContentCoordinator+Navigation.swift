@@ -103,9 +103,10 @@ extension MainContentCoordinator {
             requestGridFocus()
         }
 
-        // In-place navigation would retarget the selected tab, and a pinned one is never retargeted.
-        let keepsPinnedTab = navigationModel == .inPlace && tabManager.selectedTab?.isPinned == true
-        if tabManager.tabs.isEmpty || keepsPinnedTab {
+        // In-place navigation would retarget the selected tab, and a pinned or named one is never retargeted.
+        let keepsSelectedTab = navigationModel == .inPlace
+            && (tabManager.selectedTab?.isPinned == true || tabManager.selectedTab?.isNamedByUser == true)
+        if tabManager.tabs.isEmpty || keepsSelectedTab {
             let didOpen = addFirstTableTab(
                 tableName: tableName,
                 currentDatabase: currentDatabase,

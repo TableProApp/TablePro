@@ -6,20 +6,13 @@
 import AppKit
 import Foundation
 
-/// What a click on a tab in the editor tab strip is asking for.
 internal enum EditorTabActivation: Equatable {
     case select
-    /// Select, then keep the tab: the double-click that turns a preview tab permanent.
+    // The double-click that keeps a preview tab, and names a tab that can take a name instead.
     case selectAndKeep
 }
 
-/// One click on a tab, reduced to the two things that decide what it means.
-///
-/// `NSEvent.clickCount` is only valid on a mouse-down or mouse-up and raises for anything else,
-/// so the type is checked here rather than at the call site. A tab's button also answers the
-/// keyboard and VoiceOver, and neither leaves a mouse event current: both resolve to nil, which
-/// the resolver reads as a plain selection. Keeping a tab from the keyboard goes through the
-/// "Keep Open" command instead.
+// The keyboard and VoiceOver leave no mouse event, so both read as a plain selection; "Keep Open" keeps a tab from the keyboard.
 internal struct EditorTabClick: Equatable {
     internal let clickCount: Int
     internal let hasModifiers: Bool
@@ -37,27 +30,14 @@ internal struct EditorTabClick: Equatable {
             .isEmpty
     }
 
-    /// Only the primary button. A control-click is the context-menu gesture and arrives as a left
-    /// mouse-down with a modifier, which `hasModifiers` then rejects.
+    // `clickCount` raises on any other event type, and a control-click arrives here with a modifier that `hasModifiers` rejects.
     private static func carriesClickCount(_ type: NSEvent.EventType) -> Bool {
         type == .leftMouseDown || type == .leftMouseUp
     }
 }
 
-/// Resolves a click on a tab into what it means, without reference to AppKit or to the strip.
-///
-/// The second click has to land on the tab the first one activated. Two clicks close enough in
-/// time and space arrive as one click of count two whichever view each of them hit, and tabs sit
-/// flush against each other, so a pair straddling a boundary would otherwise keep a tab the user
-/// only meant to select. `NSTableView` has the same exposure and lives with it, because its
-/// double-click opens the row the second click hit and a single click would have led there
-/// anyway; here it would change a tab's state without being asked.
-///
-/// Any count above one keeps the tab, rather than two exactly. That same coalescing carries the
-/// count on past two, so a double-click following a nearby click arrives as counts two and three:
-/// the two is refused by the guard above, and a strict `== 2` would refuse the three as well,
-/// leaving a genuine double-click doing nothing. Keeping is idempotent and one way, so acting on
-/// the three costs nothing.
+// Two clicks straddling a tab boundary coalesce into a count of two, so the second has to land on the tab the first activated.
+// Any count above one acts, since a double-click after a nearby click arrives as two and three, and acting again changes nothing.
 internal enum EditorTabActivationResolver {
     internal static func resolve(
         click: EditorTabClick?,

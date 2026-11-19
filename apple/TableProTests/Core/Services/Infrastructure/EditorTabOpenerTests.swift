@@ -299,6 +299,28 @@ struct EditorTabOpenerTests {
         #expect(manager.tabs.isEmpty)
     }
 
+    @Test("A query payload titled with another window's number opens under this window's own, and any other title is kept")
+    func payloadNumberGivesWayToTheManagersOwn() {
+        let connection = makeConnection()
+        let manager = QueryTabManager()
+        manager.addTab()
+
+        EditorTabOpener.apply(
+            EditorTabPayload(connectionId: connection.id, tabType: .query, initialQuery: "SELECT 1", tabTitle: "Query 1"),
+            to: manager,
+            connection: connection,
+            toolbarState: nil
+        )
+        EditorTabOpener.apply(
+            EditorTabPayload(connectionId: connection.id, tabType: .query, initialQuery: "SELECT 2", tabTitle: "Top users"),
+            to: manager,
+            connection: connection,
+            toolbarState: nil
+        )
+
+        #expect(manager.tabs.map(\.title) == ["Query 1", "Query 2", "Top users"])
+    }
+
     @Test("A query payload carrying a query opens a tab holding it")
     func queryPayloadOpensTab() {
         let connection = makeConnection()

@@ -288,18 +288,56 @@ final class QueryTabManager: ObservableObject {
     // MARK: - Tab Naming
 
     static func nextQueryTitle(existingTabs: [QueryTab]) -> String {
-        let maxNumber = existingTabs
+        "Query \(nextQueryNumber(existingTabs: existingTabs))"
+    }
+
+    // A named tab keeps its number reserved. Int.max is skipped, since a typed or saved title can carry it and one more traps.
+    static func nextQueryNumber(existingTabs: [QueryTab]) -> Int {
+        let highest = existingTabs
             .filter { $0.tabType == .query }
-            .compactMap { tab -> Int? in
-                guard tab.title.hasPrefix("Query ") else { return nil }
-                return Int(tab.title.dropFirst(6))
-            }
+            .flatMap { tab in [tab.title, tab.automaticTitle].compactMap { $0 } }
+            .compactMap(QueryTab.defaultQueryNumber(in:))
+            .filter { $0 != Int.max }
             .max() ?? 0
-        return "Query \(maxNumber + 1)"
+        return highest + 1
     }
 
     private func nextTitle() -> String {
         Self.nextQueryTitle(existingTabs: globalTabsProvider() + tabs)
+    }
+
+    // The strip is hidden with one tab, so there is nowhere to type the name.
+    func canRenameTab(id: UUID) -> Bool {
+        let strip = visibleTabs
+        guard strip.count >= 2, let tab = strip.first(where: { $0.id == id }) else { return false }
+        return tab.canBeRenamed
+    }
+
+    func renameTab(id: UUID, to text: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }), tabs[index].canBeRenamed else { return }
+        let tab = tabs[index]
+        var renamed = tab
+        if let name = EditorTabNameNormalizer.normalize(text) {
+            renamed.automaticTitle = tab.automaticName
+            renamed.title = name
+        } else {
+            guard let automatic = tab.automaticTitle else { return }
+            renamed.automaticTitle = nil
+            renamed.title = restoredAutomaticTitle(automatic, forTab: id)
+        }
+        guard renamed.title != tab.title || renamed.automaticTitle != tab.automaticTitle else { return }
+        tabs[index] = renamed
+        markTabRenamed(id)
+    }
+
+    // A number another tab took meanwhile, as after a move, gives way to the next free one; any other title may repeat.
+    private func restoredAutomaticTitle(_ automatic: String, forTab id: UUID) -> String {
+        let all = globalTabsProvider() + tabs
+        let isHeldElsewhere = all.contains {
+            $0.id != id && $0.tabType == .query && ($0.title == automatic || $0.automaticTitle == automatic)
+        }
+        guard isHeldElsewhere, QueryTab.isDefaultQueryTitle(automatic) else { return automatic }
+        return Self.nextQueryTitle(existingTabs: all)
     }
 
     // MARK: - Tab Management
@@ -683,6 +721,7 @@ final class QueryTabManager: ObservableObject {
         var tab = tabs[selectedIndex]
         tab.tabType = .table
         tab.title = Self.tabTitle(name: tableName, schema: schemaName, databaseType: databaseType)
+        tab.automaticTitle = nil
         // Built whole: a leftover field describes the previous table, and its primary keys matched a keyless table's edits.
         tab.tableContext = TabTableContext(
             tableName: tableName,

@@ -6,10 +6,14 @@
 import Foundation
 
 extension MainContentCoordinator {
-    /// Takes a tab rebuilt from the recently closed history into this connection's list, on the
-    /// terms a restored session brings its tabs back: a table tab gets its hidden columns and
-    /// filters before it loads, rather than a first page drawn without them.
+    // A table tab gets its hidden columns and filters before it loads, as a restored session's tabs do.
     internal func adoptRestoredTab(_ tab: QueryTab) {
+        var tab = tab
+        // A new tab can have taken the closed one's number while it was closed.
+        let openTabs = Self.allTabs(for: connectionId) + tabManager.tabs
+        if tab.renumbersOnCollision, tab.repeatsTitle(of: openTabs) {
+            tab.title = QueryTabManager.nextQueryTitle(existingTabs: openTabs)
+        }
         tabManager.adoptTab(tab, claimFocus: tab.tabType == .query)
         guard tab.tabType == .table, tab.tableContext.tableName != nil else { return }
         restoreLastHiddenColumnsForTable()

@@ -84,6 +84,7 @@ struct MenuValidationContext: Equatable {
     var canCloseTabsForOtherDatabases = false
     var canCloseAllTabs = false
     var canPinEditorTab = false
+    var canRenameEditorTab = false
     var canMoveTabToConnection = false
     var editorTabCount = 0
     // Read off the Select Tab item being validated; nil for any other item.
@@ -469,6 +470,11 @@ extension MainSplitViewController: NSMenuItemValidation {
         // Not `isConnected`: the SQL text is what moves, so a source that lost its connection can still hand it over.
         case #selector(moveTabToConnection(_:)): return context.canMoveTabToConnection
 
+        // The name is typed into the strip, which shows only with a second tab and never in Agent mode.
+        case #selector(renameEditorTab(_:)):
+            return context.isConnected && !context.isAgentMode && context.editorTabCount > 1
+                && context.canRenameEditorTab
+
         // Needs a connection on screen, which is what can hold a selection, not merely a window.
         case #selector(clearSelection(_:)): return context.isConnected
 
@@ -755,6 +761,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canCloseTabsForOtherDatabases: actions.canCloseTabsForOtherDatabases,
             canCloseAllTabs: actions.canCloseAllTabs,
             canPinEditorTab: actions.canTogglePinnedTab,
+            canRenameEditorTab: canRenameSelectedEditorTab,
             canMoveTabToConnection: canMoveSelectedTabToConnection,
             editorTabCount: actions.openTabCount,
             hasRecentTabToSwitchTo: hasRecentTabToSwitchTo,

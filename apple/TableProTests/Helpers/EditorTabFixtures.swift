@@ -14,6 +14,8 @@ internal final class EditorTabCommandRecorder {
     var closed: [UUID] = []
     var movedToConnection: [UUID] = []
     var pinned: [(UUID, Bool)] = []
+    var renameRequests: [UUID] = []
+    var renamed: [(UUID, String)] = []
     var tornOff: [(UUID, NSPoint?)] = []
     var newTabCount = 0
 }
@@ -24,6 +26,8 @@ extension EditorTabCommands {
         recorder: EditorTabCommandRecorder = EditorTabCommandRecorder(),
         connectionId: UUID = UUID(),
         isPinned: Bool = false,
+        canRename: Bool = false,
+        renameSeed: @escaping (UUID) -> EditorTabRenameSeed? = { _ in nil },
         canCloseOthers: Bool = true,
         canCloseAll: Bool = true,
         canTearOff: Bool = true,
@@ -38,6 +42,14 @@ extension EditorTabCommands {
             canKeepOpen: { _ in false },
             isPinned: { _ in isPinned },
             setPinned: { recorder.pinned.append(($0, $1)) },
+            canRename: { _ in canRename },
+            renameSeed: renameSeed,
+            beginRename: { recorder.renameRequests.append($0) },
+            // An emptied name goes back to the automatic one, as the model does.
+            rename: { id, text in
+                recorder.renamed.append((id, text))
+                return text.isEmpty ? renameSeed(id)?.placeholder : text
+            },
             close: { recorder.closed.append($0) },
             closeOthers: { _ in },
             canCloseOthers: { _ in canCloseOthers },

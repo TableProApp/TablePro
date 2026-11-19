@@ -903,7 +903,7 @@ final class MainContentCommandActions: ObservableObject {
         guard let tab = coordinator?.tabManager.tabs.first(where: { $0.id == tabId }),
               tab.tabType == .query else { return false }
         let content = tab.content.query
-        let suggestedName = tab.content.sourceFileURL?.lastPathComponent ?? "\(tab.title).sql"
+        let suggestedName = tab.content.sourceFileURL?.lastPathComponent ?? QueryTab.suggestedSaveName(forTitle: tab.title)
         guard let url = await chooseSaveURL(suggestedName) else { return false }
         do {
             try await SQLFileService.writeFile(content: content, to: url, encoding: .utf8)
@@ -915,7 +915,9 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.tabManager.mutate(tabId: tabId) { mutTab in
             mutTab.content.sourceFileURL = url
             FileTabBaseline.recordWrite(of: content, to: url, as: .utf8, in: &mutTab.content)
-            mutTab.title = url.deletingPathExtension().lastPathComponent
+            // The file names the tab from now on, as Open would name it.
+            mutTab.title = QueryTab.fileDisplayTitle(for: url)
+            mutTab.automaticTitle = nil
         }
         coordinator?.tabManager.markTabRenamed(tabId)
         return true

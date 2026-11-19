@@ -33,6 +33,9 @@ internal enum EditorTabStripLayout {
     // Below this a collapsed tab has no room for anything but its edge.
     internal static let minimumContentWidth: CGFloat = 44
 
+    // Keeps the name field and its focus ring inside the tab's capsule.
+    internal static let renameFieldInset: CGFloat = 8
+
     // The HIG's distance for showing a drag image.
     internal static let dragThreshold: CGFloat = 3
 
