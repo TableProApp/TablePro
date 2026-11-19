@@ -673,6 +673,38 @@ extension GlobalStateSuites {
             #expect(harness.notice != nil)
         }
 
+        @Test("A Reload still reading the columns yields to Stop or a newer run on the tab", arguments: [true, false])
+        func reloadYieldsToStopOrANewerRun(stops: Bool) async throws {
+            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+            let harness = try await makeHarness(
+                cataloged: [Self.column("id", key: true), Self.column("name")],
+                current: [Self.column("id", key: true), Self.column("name"), Self.column("email")]
+            )
+            defer { tearDown(harness, restoring: behavior) }
+            let tabId = harness.addUsersTab(hiding: ["name"])
+            try await harness.open(tabId)
+            #expect(harness.notice != nil)
+            harness.coordinator.schemaColumns.removeAll()
+            let gate = AsyncGate()
+            harness.driver.fetchColumnsGate = gate
+
+            harness.coordinator.reloadOutdatedPage(tabId: tabId)
+            let reload = try #require(harness.coordinator.catalogPageReloads[tabId]?.task)
+            try await waitUntil { harness.driver.fetchColumnsCallCount == 2 }
+            if stops {
+                harness.coordinator.stopExecution(for: tabId)
+            } else {
+                harness.coordinator.executeTableTabQueryDirectly(onTab: tabId, trigger: .autoRefresh, viewport: .keepPlace)
+            }
+            await gate.open()
+            await reload.value
+            try await harness.runUntilSettled(tabId, queries: stops ? 1 : 2)
+            await harness.coordinator.queryTasks.task(for: tabId)?.value
+
+            #expect(harness.driver.executedUserQueries.count == (stops ? 1 : 2))
+            #expect(harness.notice != nil)
+        }
+
         @Test("A dismissed notice stays down for later pages of the same query")
         func dismissedNoticeStaysDown() async throws {
             let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior

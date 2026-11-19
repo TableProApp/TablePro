@@ -191,22 +191,24 @@ extension MainContentCoordinator {
               let page = tabSessionRegistry.catalogPage(for: tabId), page.standing == .outdated
         else { return }
         let manager = changeManager(forTab: tabId)
+        // A run, Stop or retarget on the tab moves this, and Reload yields to it.
+        let epoch = tabExecution.contentEpoch(for: tabId)
         let token = UUID()
         catalogPageReloads[tabId]?.task.cancel()
         let task = Task { [weak self] in
             guard let self else { return }
             defer { if catalogPageReloads[tabId]?.token == token { catalogPageReloads[tabId] = nil } }
-            guard stillShows(page, onTab: tabId) else { return }
+            guard stillShows(page, onTab: tabId, since: epoch) else { return }
             if schemaColumns.cached(page.key) == nil {
                 await loadSchemaColumns(for: page.tableName, scope: page.scope)
-                guard stillShows(page, onTab: tabId) else { return }
+                guard stillShows(page, onTab: tabId, since: epoch) else { return }
             }
             guard let confirmed = schemaColumns.cached(page.key) else { return }
             // After the read, so an edit made while it ran is asked about too.
             if tabManager.selectedTabId == tabId { commitActiveGridEdit() }
             if manager.hasChanges {
                 guard await confirmDiscardChanges(action: .refresh, window: contentWindow),
-                      stillShows(page, onTab: tabId)
+                      stillShows(page, onTab: tabId, since: epoch)
                 else { return }
                 rowEditingCoordinator.restoreRowBufferToOriginals(forTab: tabId)
                 manager.clearChangesAndUndoHistory()
@@ -225,8 +227,9 @@ extension MainContentCoordinator {
         catalogPageReloads[tabId] = (token, task)
     }
 
-    private func stillShows(_ page: CatalogPage, onTab tabId: UUID) -> Bool {
+    private func stillShows(_ page: CatalogPage, onTab tabId: UUID, since epoch: Int) -> Bool {
         guard !Task.isCancelled, !isTearingDown, tabSessionRegistry.catalogPage(for: tabId)?.id == page.id,
+              tabExecution.isSameContent(epoch, for: tabId),
               let tab = tabManager.tabs.first(where: { $0.id == tabId })
         else { return false }
         return tab.tableContext.tableName == page.tableName && scope(for: tab) == page.scope
