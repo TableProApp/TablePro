@@ -38,6 +38,8 @@ internal final class EditorTabItemView: NSView {
 
     internal let closeButton: NSButton
     internal let titleField = NSTextField(labelWithString: "")
+    // Its own field, so a snapshot that rewrites the label never touches what is being typed.
+    internal private(set) var renameField: EditorTabRenameField?
     private let pinView = NSImageView()
     private let statusView = NSImageView()
     private let spinner = NSProgressIndicator()
@@ -161,18 +163,89 @@ internal final class EditorTabItemView: NSView {
 
     // The system bar shows the close button only under the pointer, on the selected tab too.
     private func updateCloseButton() {
-        closeButton.isHidden = !(isHovered && isWindowActive) || bounds.width < EditorTabStripLayout.minimumContentWidth
+        closeButton.isHidden = isRenaming
+            || !(isHovered && isWindowActive)
+            || bounds.width < EditorTabStripLayout.minimumContentWidth
+    }
+
+    // MARK: - Renaming
+
+    internal var isRenaming: Bool {
+        renameField?.isHidden == false
+    }
+
+    internal func beginRename(text: String, placeholder: String, delegate: any NSTextFieldDelegate) -> NSTextField {
+        let field = renameField ?? makeRenameField()
+        field.stringValue = text
+        field.placeholderString = placeholder
+        field.delegate = delegate
+        field.isHidden = false
+        updateCloseButton()
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        return field
+    }
+
+    @discardableResult
+    internal func endRename() -> String {
+        guard let field = renameField, !field.isHidden else { return "" }
+        field.validateEditing()
+        let text = field.stringValue
+        field.delegate = nil
+        field.isHidden = true
+        updateCloseButton()
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        return text
+    }
+
+    // The snapshot arrives a turn after the model changes, and the old name would show until then.
+    internal func showTitle(_ title: String) {
+        titleField.stringValue = title
+        needsLayout = true
+    }
+
+    private func makeRenameField() -> EditorTabRenameField {
+        let field = EditorTabRenameField()
+        field.isBezeled = false
+        field.drawsBackground = true
+        field.isEditable = true
+        field.isSelectable = true
+        field.focusRingType = .default
+        field.usesSingleLineMode = true
+        field.alignment = .center
+        field.font = Self.titleFont
+        (field.cell as? NSTextFieldCell)?.isScrollable = true
+        // The cell is what assistive technology reads; a label set on the field never reaches it.
+        field.cell?.setAccessibilityLabel(String(localized: "Tab Name"))
+        field.cell?.setAccessibilityIdentifier("editor-tab-rename-field")
+        field.isHidden = true
+        addSubview(field)
+        renameField = field
+        return field
     }
 
     override internal func layout() {
         super.layout()
         let metrics = EditorTabStripLayout.self
         let hasRoom = bounds.width >= metrics.minimumContentWidth
-        titleField.isHidden = !hasRoom
-        pinView.isHidden = !hasRoom || !item.isPinned
-        spinner.isHidden = !hasRoom
-        statusView.isHidden = !hasRoom || item.status == .idle || item.status == .running
+        let showsContent = hasRoom && !isRenaming
+        titleField.isHidden = !showsContent
+        pinView.isHidden = !showsContent || !item.isPinned
+        spinner.isHidden = !showsContent
+        statusView.isHidden = !showsContent || item.status == .idle || item.status == .running
         updateCloseButton()
+        if let renameField, isRenaming {
+            let inset = metrics.renameFieldInset
+            let height = ceil(renameField.intrinsicContentSize.height)
+            renameField.frame = CGRect(
+                x: inset,
+                y: bounds.midY - height / 2,
+                width: max(bounds.width - inset * 2, 0),
+                height: height
+            )
+            return
+        }
         guard hasRoom else { return }
 
         let slot = metrics.accessoryWidth
@@ -250,6 +323,8 @@ internal final class EditorTabItemView: NSView {
     override internal func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
         guard bounds.contains(local) else { return nil }
+        // A press in the name field places the caret rather than selecting the tab.
+        if let renameField, isRenaming, renameField.frame.contains(local) { return super.hitTest(point) }
         if !closeButton.isHidden, closeButton.frame.contains(local) { return closeButton }
         return self
     }
@@ -268,7 +343,10 @@ internal final class EditorTabItemView: NSView {
     }
 
     override internal func mouseUp(with event: NSEvent) {
+        // A drag clears the press, so only a release that stayed put reaches the strip.
+        guard pressLocation != nil else { return }
         pressLocation = nil
+        strip?.releaseClick(on: item.id)
     }
 
     override internal func otherMouseDown(with event: NSEvent) {
@@ -380,4 +458,10 @@ extension EditorTabItemView: NSDraggingSource {
     ) {
         strip?.dragDidEnd(of: self, at: screenPoint, operation: operation)
     }
+}
+
+// The strip sits in the titlebar, where a press on a view that allows it drags the window instead.
+@MainActor
+internal final class EditorTabRenameField: NSTextField {
+    override internal var mouseDownCanMoveWindow: Bool { false }
 }

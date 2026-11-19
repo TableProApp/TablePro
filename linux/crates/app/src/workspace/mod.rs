@@ -107,6 +107,7 @@ pub use sort_record::SortRecord;
 pub use tab_directory::TabDirectory;
 pub use tab_entry::TabEntry;
 pub use tab_record::TabRecord;
+pub(crate) use tab_record::normalized_tab_name;
 pub use tab_snapshot::TabSnapshot;
 pub use unknown_cause::UnknownCause;
 #[cfg(test)]

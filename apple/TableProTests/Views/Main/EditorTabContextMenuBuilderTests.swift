@@ -112,6 +112,32 @@ struct EditorTabContextMenuBuilderTests {
         #expect(recorder.pinned.first?.1 == false)
     }
 
+    @Test("A tab that can take a name offers Rename Tab right after Pin Tab, and choosing it edits that tab")
+    func renamableTabOffersRename() throws {
+        let tabId = UUID()
+        let recorder = EditorTabCommandRecorder()
+        let menu = EditorTabContextMenuBuilder.menu(for: tabId, commands: .stub(recorder: recorder, canRename: true))
+        let titles = menu.items.map(\.title)
+
+        let pin = try #require(titles.firstIndex(of: String(localized: "Pin Tab")))
+        let rename = menu.items[pin + 1]
+        #expect(rename.title == String(localized: "Rename Tab"))
+        #expect(rename.isEnabled)
+        #expect(!rename.title.hasSuffix("…"))
+
+        (rename.target as? ClosureMenuTarget)?.fire()
+        #expect(recorder.renameRequests == [tabId])
+    }
+
+    @Test("A tab that cannot take a name does not show Rename Tab")
+    func otherTabsHideRename() {
+        let menu = EditorTabContextMenuBuilder.menu(for: UUID(), commands: .stub(canRename: false))
+        let titles = menu.items.map(\.title)
+
+        #expect(!titles.contains(String(localized: "Rename Tab")))
+        #expect(titles.contains(String(localized: "Pin Tab")))
+    }
+
     @Test("Close Other Tabs and Close All Tabs dim when they would close nothing")
     func idleBulkClosesDim() {
         let menu = EditorTabContextMenuBuilder.menu(

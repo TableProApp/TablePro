@@ -303,6 +303,9 @@ mod tests {
                             draft,
                             file: None,
                             database: None,
+                            name: None,
+                            ordinal: None,
+                            untitled: false,
                         }],
                     },
                 )
@@ -442,6 +445,9 @@ mod tests {
                             draft,
                             file: None,
                             database: None,
+                            name: None,
+                            ordinal: None,
+                            untitled: false,
                         }],
                     },
                 )

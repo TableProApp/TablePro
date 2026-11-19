@@ -3,7 +3,10 @@
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use libadwaita as adw;
 
+use super::super::structure_target::StructureTarget;
+use super::super::tab_spec::TabSpec;
 use super::{open_editor, two_sessions};
 use crate::test_support::{descendants, wait_until};
 use crate::ui::session_window::tests::WAIT;
@@ -172,7 +175,7 @@ fn the_tab_menu_reaches_its_actions_from_the_bar_and_the_overview() {
         "no tab box or tab grid to open the menu from"
     );
     for parent in &parents {
-        for action in ["close-others", "close-after", "close"] {
+        for action in ["rename", "close-others", "close-after", "close"] {
             assert!(
                 parent.activate_action(&format!("tab.{action}"), None).is_ok(),
                 "tab.{action} is out of reach of {}",
@@ -210,6 +213,101 @@ fn the_tab_menu_dims_what_would_close_nothing() {
     assert!(
         enabled("close-others") && !enabled("close-after"),
         "the last tab has none after it"
+    );
+}
+
+#[gtk4::test]
+fn rename_is_offered_only_for_a_query_tab_with_no_file_beside_another_tab() {
+    let sessions = two_sessions("RenameOffered", "Other");
+    let (shell, first) = (&sessions.shell, &sessions.first);
+    let view = shell.tab_view();
+    let in_menu = |page: &adw::TabPage| {
+        view.emit_by_name::<()>("setup-menu", &[&Some(page.clone())]);
+        shell
+            .imp()
+            .tab_actions
+            .get()
+            .is_some_and(|group| group.is_action_enabled("rename"))
+    };
+    let by_key = || {
+        sessions
+            .test
+            .window
+            .lookup_action("rename-tab")
+            .is_some_and(|action| action.is_enabled())
+    };
+
+    let ours = open_editor(first);
+    assert!(
+        !in_menu(&ours) && !by_key(),
+        "a tab alone in the window offers a rename"
+    );
+
+    let theirs = open_editor(&sessions.second);
+    assert!(
+        in_menu(&ours) && in_menu(&theirs),
+        "a query tab beside another has no rename"
+    );
+    assert!(by_key(), "F2 is off on the query tab in front");
+
+    let draft = first
+        .with_model(|model| {
+            model.open_tab(TabSpec::Structure {
+                target: StructureTarget::NewDraft { schema: None },
+            })
+        })
+        .flatten()
+        .expect("a structure tab");
+    assert!(!in_menu(&draft) && !by_key(), "a structure tab offers a rename");
+
+    let path = sessions.test.dir().join("daily.sql");
+    crate::test_support::write_text_file(&path, "SELECT 1;");
+    let filed = first
+        .with_model(|model| {
+            model.open_tab(TabSpec::Editor {
+                initial_query: Some("SELECT 1;".to_owned()),
+                draft: None,
+                file: Some(crate::workspace::EditorFileRecord {
+                    uri: gio::File::for_path(&path).uri().to_string(),
+                    modified: false,
+                }),
+                database: None,
+                name: None,
+                ordinal: None,
+                untitled: false,
+            })
+        })
+        .flatten()
+        .expect("a tab bound to a file");
+    wait_until(WAIT, || filed.title() == "daily.sql (Fake)").expect("the file's name");
+    assert!(!in_menu(&filed) && !by_key(), "a tab bound to a file offers a rename");
+
+    view.set_selected_page(&ours);
+    assert!(by_key(), "F2 did not follow the tab in front");
+}
+
+#[gtk4::test]
+fn rename_opens_the_tab_menu_and_close_still_ends_it() {
+    let test = crate::ui::session_window::tests::TestWindow::connected("RenameInMenu");
+    let view = super::shell_of(&test.workspace()).tab_view();
+    let menu = view.menu_model().expect("the tab menu");
+    let first = menu.item_link(0, "section").expect("a first section");
+    let attribute = |name: &str| {
+        first
+            .item_attribute_value(0, name, None)
+            .and_then(|value| value.get::<String>())
+            .unwrap_or_default()
+    };
+
+    assert_eq!(attribute("action"), "tab.rename");
+    assert_eq!(attribute("label"), "_Rename Tab…");
+    assert_eq!(attribute("accel"), "F2", "the menu does not show the key");
+    let last = menu.item_link(menu.n_items() - 1, "section").expect("a last section");
+    assert_eq!(
+        last.item_attribute_value(last.n_items() - 1, "action", None)
+            .and_then(|value| value.get::<String>())
+            .as_deref(),
+        Some("tab.close")
     );
 }
 

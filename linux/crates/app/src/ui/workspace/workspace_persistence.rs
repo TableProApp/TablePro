@@ -192,6 +192,9 @@ fn tab_record(tab: &WorkspaceTab) -> Option<TabRecord> {
             draft: slot.draft,
             file: super::workspace_tabs::editor_file_record(&slot.editor),
             database: slot.editor.tab_database(),
+            name: slot.name.clone(),
+            ordinal: u32::try_from(slot.ordinal).ok(),
+            untitled: slot.is_untitled(),
         }),
         WorkspaceTab::Structure(slot) => match slot.mode {
             // A draft for a table that does not exist yet has nothing to
@@ -368,6 +371,15 @@ mod tests {
         }
 
         fn add_editor(&self) -> (adw::TabPage, DraftId) {
+            self.add_editor_as(1, crate::ui::workspace::editor_label::EditorLabel::Untitled(1), None)
+        }
+
+        fn add_editor_as(
+            &self,
+            ordinal: usize,
+            label: crate::ui::workspace::editor_label::EditorLabel,
+            name: Option<&str>,
+        ) -> (adw::TabPage, DraftId) {
             let editor = SqlEditor::new(SqlEditorInit {
                 initial_query: None,
                 settings: self.settings.get().clone(),
@@ -388,8 +400,9 @@ mod tests {
                     editor,
                     page: page.clone(),
                     draft,
-                    ordinal: 1,
-                    label: crate::ui::workspace::editor_label::EditorLabel::Untitled(1),
+                    ordinal,
+                    label,
+                    name: name.map(str::to_owned),
                 }),
             );
             (page, draft)
@@ -431,6 +444,38 @@ mod tests {
 
         assert_eq!(editor_drafts(&record), [first, second]);
         assert_eq!(record.active_tab, Some(1));
+    }
+
+    #[gtk4::test]
+    fn an_editor_record_carries_the_typed_name_the_number_and_whether_it_is_untitled() {
+        use crate::ui::workspace::editor_label::EditorLabel;
+        let fixture = Fixture::new();
+        fixture.add_editor_as(2, EditorLabel::Untitled(2), Some("Revenue"));
+        fixture.add_editor_as(
+            3,
+            EditorLabel::Query {
+                prefix: "SELECT 2;".to_owned(),
+                truncated: false,
+            },
+            None,
+        );
+
+        let record = workspace_record(&fixture.view, &fixture.tabs.borrow(), &fixture.index);
+
+        let saved: Vec<(Option<&str>, Option<u32>, bool)> = record
+            .tabs
+            .iter()
+            .filter_map(|tab| match tab {
+                TabRecord::Editor {
+                    name,
+                    ordinal,
+                    untitled,
+                    ..
+                } => Some((name.as_deref(), *ordinal, *untitled)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(saved, [(Some("Revenue"), Some(2), true), (None, Some(3), false)]);
     }
 
     #[gtk4::test]
@@ -506,6 +551,9 @@ mod tests {
                     draft: DraftId::new(),
                     file: None,
                     database: None,
+                    name: None,
+                    ordinal: None,
+                    untitled: false,
                 },
             ],
         };

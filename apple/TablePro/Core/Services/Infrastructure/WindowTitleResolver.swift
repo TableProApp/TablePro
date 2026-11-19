@@ -149,19 +149,10 @@ enum WindowTitleResolver {
         databaseType: DatabaseType?,
         queryLanguageName: String?
     ) -> String {
+        if let fixedTitle = tabType?.fixedTitle {
+            return fixedTitle
+        }
         switch tabType {
-        case .serverDashboard:
-            return String(localized: "Server Dashboard")
-        case .usersRoles:
-            return String(localized: "Users & Roles")
-        case .insights:
-            return String(localized: "Query Insights")
-        case .tableHealth:
-            return String(localized: "Table Health")
-        case .erDiagram:
-            return String(localized: "ER Diagram")
-        case .createTable:
-            return String(localized: "Create Table")
         case .objectSource:
             /// The tab already carries the object's identity as its title. Falling through would
             /// title the window "SQL Query" while its tab reads "Procedure: public.f(date)".

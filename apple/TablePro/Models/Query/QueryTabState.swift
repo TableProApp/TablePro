@@ -30,11 +30,26 @@ extension TabType {
     var isTransient: Bool {
         self == .routineDebug || self == .liveMessages
     }
+
+    // Read on every restore, since the saved title keeps the language it was created in.
+    var fixedTitle: String? {
+        switch self {
+        case .serverDashboard: String(localized: "Server Dashboard")
+        case .usersRoles: String(localized: "Users & Roles")
+        case .insights: String(localized: "Query Insights")
+        case .tableHealth: String(localized: "Table Health")
+        case .erDiagram: String(localized: "ER Diagram")
+        case .createTable: String(localized: "Create Table")
+        case .query, .table, .objectSource, .versionHistory, .tableListing, .routineDebug, .liveMessages: nil
+        }
+    }
 }
 
 struct PersistedTab: Codable {
     let id: UUID
     let title: String
+    // Absent from files older builds wrote, which then restore as automatic; they read the typed name from `title`.
+    var automaticTitle: String?
     var query: String
     let tabType: TabType
     let tableName: String?
@@ -69,6 +84,7 @@ struct PersistedTab: Codable {
     init(
         id: UUID,
         title: String,
+        automaticTitle: String? = nil,
         query: String,
         tabType: TabType,
         tableName: String?,
@@ -97,6 +113,7 @@ struct PersistedTab: Codable {
     ) {
         self.id = id
         self.title = title
+        self.automaticTitle = automaticTitle
         self.query = query
         self.tabType = tabType
         self.tableName = tableName
@@ -125,7 +142,7 @@ struct PersistedTab: Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, query, tabType, tableName, isView, objectTypeRawValue, databaseName, schemaName
+        case id, title, automaticTitle, query, tabType, tableName, isView, objectTypeRawValue, databaseName, schemaName
         case sourceFileURL, sourceFileEncoding, erDiagramSchemaKey, objectRef, versionHistorySubject, queryParameters
         case sortColumns, sortSource, restoredPage, restoredPageSize, cursorOffset, cursorLength
         case collapsedFoldRanges
@@ -139,6 +156,7 @@ struct PersistedTab: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? "Query"
+        automaticTitle = try container.decodeIfPresent(String.self, forKey: .automaticTitle)
         query = try container.decodeIfPresent(String.self, forKey: .query) ?? ""
         tabType = try container.decode(TabType.self, forKey: .tabType)
         tableName = try container.decodeIfPresent(String.self, forKey: .tableName)

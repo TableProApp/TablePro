@@ -31,9 +31,7 @@ struct WindowMenuTabCommandsTests {
         items.first { $0.action == action }
     }
 
-    /// AppKit inserts its own Show Previous Tab and Show Next Tab, on Control-Shift-Tab and
-    /// Control-Tab, into a Window menu that does not hold these two actions. Measured in 0.75: the
-    /// menu then listed both titles twice, and the inserted pair took Control-Tab first.
+    // Without these two actions AppKit inserts its own pair, which listed both titles twice in 0.75 and took Control-Tab.
     @Test("The menu owns the window-tab commands under their own names")
     func ownsWindowTabCommands() throws {
         let items = try windowItems()
@@ -87,6 +85,46 @@ struct WindowMenuTabCommandsTests {
         #expect(!MainSplitViewController.isEnabled(selector, context: context))
     }
 
+    @Test("Rename Tab follows Pin Tab and ships unbound")
+    func renameTabSitsAfterPinTab() throws {
+        let items = try windowItems()
+        let rename = try #require(item(for: #selector(MainSplitViewController.renameEditorTab(_:)), in: items))
+        let index = try #require(items.firstIndex(of: rename))
+
+        #expect(rename.title == String(localized: "Rename Tab"))
+        #expect(rename.keyEquivalent.isEmpty)
+        #expect(items[index - 1].action == #selector(MainSplitViewController.togglePinnedEditorTab(_:)))
+        #expect(KeyboardSettings.defaultShortcuts[.renameTab] == nil)
+        #expect(ShortcutAction.renameTab.category == .navigation)
+        #expect(ShortcutAction.renameTab.displayName == String(localized: "Rename Tab"))
+    }
+
+    @Test("Rename Tab dims with one tab, on a tab that cannot take a name, in Agent mode and while not connected")
+    func renameTabEnablement() {
+        let selector = #selector(MainSplitViewController.renameEditorTab(_:))
+        var context = MenuValidationContext()
+        context.isConnected = true
+        context.editorTabCount = 2
+        context.canRenameEditorTab = true
+        #expect(MainSplitViewController.isEnabled(selector, context: context))
+
+        var single = context
+        single.editorTabCount = 1
+        #expect(!MainSplitViewController.isEnabled(selector, context: single))
+
+        var ineligible = context
+        ineligible.canRenameEditorTab = false
+        #expect(!MainSplitViewController.isEnabled(selector, context: ineligible))
+
+        var agent = context
+        agent.isAgentMode = true
+        #expect(!MainSplitViewController.isEnabled(selector, context: agent))
+
+        var offline = context
+        offline.isConnected = false
+        #expect(!MainSplitViewController.isEnabled(selector, context: offline))
+    }
+
     @Test("Show Previous Tab and Show Next Tab keep the strip-order shortcuts")
     func stripOrderCommandsUnchanged() throws {
         let items = try windowItems()
@@ -98,9 +136,7 @@ struct WindowMenuTabCommandsTests {
         #expect(previous.keyEquivalentModifierMask == [.command, .shift])
     }
 
-    /// The chord a real keyboard produces, with the character AppKit derives: Control-Shift-Tab
-    /// reports U+0019 rather than a tab. Built from `CGEvent` so the characters are the ones a user
-    /// would type, not ones a test chose.
+    // Built from `CGEvent`, since Control-Shift-Tab reports U+0019 rather than a tab and a test must not choose the characters.
     private func typedTab(control: Bool, shift: Bool) throws -> NSEvent {
         let event = try #require(CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_Tab), keyDown: true))
         var flags: CGEventFlags = []
@@ -130,8 +166,7 @@ struct WindowMenuTabCommandsTests {
         #expect(dispatches(.switchToRecentTab, event: try typedTab(control: true, shift: true)) == false)
     }
 
-    /// A disabled item still takes its chord, and in a text view Control-Tab moves focus to the next
-    /// control, so a window with no tabs of either kind has to lose the key equivalents outright.
+    // A disabled item still takes its chord, which in a text view would otherwise move focus to the next control.
     @Test("Control-Tab is dropped where the key window holds no tabs, and kept where it does")
     func controlTabYieldsWithoutTabs() throws {
         let menu = MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
@@ -190,8 +225,7 @@ struct RecentTabMenuValidationTests {
         }
     }
 
-    /// Control-Tab is AppKit's window-tab chord. A window in a tab group with nothing to switch to in
-    /// its own strip still offers it, and the command switches the window's tabs instead.
+    // Control-Tab is AppKit's window-tab chord, so with no editor tab to switch to it switches the window's tabs.
     @Test("Enabled in a window tab group even with no editor tab to switch to")
     @MainActor
     func windowTabsKeepTheChord() {
@@ -222,9 +256,7 @@ struct RecentTabMenuValidationTests {
     }
 }
 
-/// Show Previous and Next Tab and Select Tab 1 to 9 move a strip's selection. Validated on
-/// `isConnected` alone they stayed lit in Agent mode, where no strip is drawn, and with a tab count
-/// that left them nothing to do.
+// Validated on `isConnected` alone these stayed lit in Agent mode, where no strip is drawn, and with nothing to switch to.
 struct TabNavigationMenuValidationTests {
     private func context(tabs: Int, agent: Bool = false, number: Int? = nil) -> MenuValidationContext {
         var context = MenuValidationContext()
@@ -260,7 +292,7 @@ struct TabNavigationMenuValidationTests {
         #expect(MainSplitViewController.isEnabled(numbered, context: context(tabs: 3, agent: true, number: 1)) == false)
     }
 
-    /// One tab shows no strip, and Select Tab 1 would reselect the tab already in front.
+    // One tab shows no strip, and Select Tab 1 would reselect the tab already in front.
     @Test("Select Tab 1 dims with a single tab")
     @MainActor
     func numberedDimsWithOneTab() throws {

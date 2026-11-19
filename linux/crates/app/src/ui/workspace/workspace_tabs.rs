@@ -26,6 +26,7 @@ use super::editor_label::EditorLabel;
 use super::structure_target::StructureTarget;
 use super::tab_factory::EditorPreview;
 use super::tab_index::TabIndex;
+use super::tab_rename::RenameSeed;
 use super::tab_spec::{TabSpec, TablePage};
 use super::workspace_persistence::reopen;
 use super::{
@@ -156,11 +157,21 @@ impl WorkspaceModel {
             TabRecord::Diagram { schema, places } => TabSpec::Diagram { schema, places },
             // Its text is on disk already, or there is none to keep, so
             // nothing is written until the user types.
-            TabRecord::Editor { draft, file, database } => TabSpec::Editor {
+            TabRecord::Editor {
+                draft,
+                file,
+                database,
+                name,
+                ordinal,
+                untitled,
+            } => TabSpec::Editor {
                 initial_query: Some(drafts.remove(&draft).unwrap_or_default()),
                 draft: Some(draft),
                 file,
                 database,
+                name,
+                ordinal: ordinal.and_then(|ordinal| usize::try_from(ordinal).ok()),
+                untitled,
             },
             TabRecord::Key { key } => TabSpec::Key { key },
         };
@@ -210,12 +221,7 @@ impl WorkspaceModel {
     }
 
     pub(super) fn open_editor_tab(&mut self, initial_query: Option<String>) {
-        self.open_editor(TabSpec::Editor {
-            initial_query,
-            draft: None,
-            file: None,
-            database: None,
-        });
+        self.open_editor(TabSpec::new_editor(initial_query));
     }
 
     pub(super) fn open_sql_in_editor(&mut self, sql: String, database: Option<String>) {
@@ -229,6 +235,9 @@ impl WorkspaceModel {
             draft: None,
             file: None,
             database: database.filter(|database| own.as_deref() != Some(database.as_str())),
+            name: None,
+            ordinal: None,
+            untitled: false,
         });
     }
 
@@ -258,6 +267,9 @@ impl WorkspaceModel {
                 modified: false,
             }),
             database: None,
+            name: None,
+            ordinal: None,
+            untitled: false,
         });
     }
 
@@ -337,6 +349,9 @@ impl WorkspaceModel {
             WorkspaceTab::Key(slot) => slot.tab.shutdown(),
         }
         let page = removed.page().clone();
+        if let Some(shell) = self.shell.upgrade() {
+            shell.cancel_rename_of(&page);
+        }
         self.index.remove(&page);
         self.move_focus_off(&page);
         // Only a page the view is closing can be finished; one closed from here, as a dropped table's
@@ -684,35 +699,84 @@ impl WorkspaceModel {
     /// a moment later. Only the first `PREVIEW_CHARS` are read here, so a
     /// long script costs nothing to type in.
     pub(super) fn on_editor_tab_content_changed(&self, id: Uuid) {
-        {
+        let untitled_changed = {
             let mut tabs = self.workspace_tabs.borrow_mut();
             let Some(WorkspaceTab::Editor(slot)) = tabs.get_mut(&id) else {
                 return;
             };
+            let was_untitled = slot.is_untitled();
             let buffer = slot.editor.buffer();
             if slot.editor.file().is_none() {
                 slot.label = EditorPreview::read(&buffer).label(slot.ordinal);
             }
             self.drafts.schedule(&self.draft_scope(), slot.draft, &buffer);
-        }
+            slot.is_untitled() != was_untitled
+        };
         self.retitle_tab(id);
+        // Typing writes only the draft, and a stale mark would restore typed text as `Query N`.
+        if untitled_changed {
+            self.persist_workspace_state();
+        }
     }
 
     /// A tab saved to a file is named after it, shows whether its text
     /// is saved, and is restored with it.
     pub(super) fn on_editor_tab_file_changed(&self, id: Uuid) {
+        let bound = {
+            let mut tabs = self.workspace_tabs.borrow_mut();
+            let Some(WorkspaceTab::Editor(slot)) = tabs.get_mut(&id) else {
+                return;
+            };
+            slot.editor.file().map(|file| {
+                slot.label = EditorLabel::file(&file);
+                slot.name = None;
+                slot.page.clone()
+            })
+        };
+        if let (Some(page), Some(shell)) = (bound, self.shell.upgrade()) {
+            shell.cancel_rename_of(&page);
+            shell.refresh_rename_action();
+        }
+        self.retitle_tab(id);
+        self.refresh_unsaved();
+        self.persist_workspace_state();
+    }
+
+    pub(super) fn on_rename_tab(&self, id: Uuid, text: &str) {
+        let name = crate::workspace::normalized_tab_name(text);
         {
             let mut tabs = self.workspace_tabs.borrow_mut();
             let Some(WorkspaceTab::Editor(slot)) = tabs.get_mut(&id) else {
                 return;
             };
-            if let Some(file) = slot.editor.file() {
-                slot.label = EditorLabel::file(&file);
+            // The file may have come while the field was open, and its name wins.
+            if slot.editor.file().is_some() || slot.name == name {
+                return;
             }
+            slot.name = name;
         }
         self.retitle_tab(id);
-        self.refresh_unsaved();
         self.persist_workspace_state();
+    }
+
+    // From the slot, not the page: the page's title carries the connection a shared bar adds.
+    pub(super) fn rename_seed(&self, id: Uuid) -> Option<RenameSeed> {
+        let tabs = self.workspace_tabs.borrow();
+        let Some(WorkspaceTab::Editor(slot)) = tabs.get(&id) else {
+            return None;
+        };
+        if slot.editor.file().is_some() {
+            return None;
+        }
+        let automatic = super::tab_title::resolve_tab_title(
+            &super::tab_identity::TabIdentity::Editor(slot.label.clone()),
+            self.naming.get(),
+        )
+        .label;
+        Some(RenameSeed {
+            shown: slot.name.clone().unwrap_or_else(|| automatic.clone()),
+            automatic,
+        })
     }
 
     pub(super) fn on_editor_tab_database_changed(&self, id: Uuid) {
@@ -933,6 +997,9 @@ fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
             query: whole_text(&s.editor.buffer()),
             file: editor_file_record(&s.editor),
             database: s.editor.tab_database(),
+            name: s.name.clone(),
+            ordinal: s.ordinal,
+            untitled: s.is_untitled(),
         }),
         WorkspaceTab::Table(s) => Some(ClosedTabDescriptor::Table {
             schema: s.schema.clone(),
@@ -964,13 +1031,23 @@ impl WorkspaceModel {
     /// Open again a tab this session closed, which the shell kept.
     pub(super) fn on_reopen_closed_tab(&mut self, descriptor: ClosedTabDescriptor) {
         match descriptor {
-            ClosedTabDescriptor::Editor { query, file, database } => {
-                let initial = if query.is_empty() { None } else { Some(query) };
+            // Text the user cleared, or an empty file, comes back empty rather than as the sample statement.
+            ClosedTabDescriptor::Editor {
+                query,
+                file,
+                database,
+                name,
+                ordinal,
+                untitled,
+            } => {
                 self.open_editor(TabSpec::Editor {
-                    initial_query: initial,
+                    initial_query: Some(query),
                     draft: None,
                     file,
                     database,
+                    name,
+                    ordinal: Some(ordinal),
+                    untitled,
                 });
             }
             ClosedTabDescriptor::Table {

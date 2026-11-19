@@ -170,6 +170,7 @@ pub struct WorkspaceShell {
     /// Set from `create-window` until libadwaita attaches the tab it
     /// declined to put in a new window.
     pub(super) declined_tear_out: Cell<bool>,
+    pub(super) rename: RefCell<Option<super::tab_rename::RenameEdit>>,
 }
 
 #[glib::object_subclass]
@@ -193,6 +194,13 @@ impl ObjectImpl for WorkspaceShell {
     fn constructed(&self) {
         self.parent_constructed();
         super::workspace_shell::describe_buttons(&self.obj());
+    }
+
+    // The rename popover is parented on a template child, which keeps no list of extra children to unparent.
+    fn dispose(&self) {
+        if let Some(edit) = self.rename.take() {
+            edit.release();
+        }
     }
 }
 

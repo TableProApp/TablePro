@@ -1455,6 +1455,15 @@
   <data name="MenuCloseThisTab" xml:space="preserve">
     <value>Close tab</value>
   </data>
+  <data name="MenuRenameTab" xml:space="preserve">
+    <value>Rename tab</value>
+  </data>
+  <data name="MenuRenameTabKeys" xml:space="preserve">
+    <value>F2</value>
+  </data>
+  <data name="TabRenameBoxName" xml:space="preserve">
+    <value>Tab name</value>
+  </data>
   <data name="TabWindowTitle" xml:space="preserve">
     <value>{0} - TablePro</value>
   </data>

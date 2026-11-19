@@ -118,6 +118,25 @@ struct QueryTabConnectionMoveTests {
         #expect(move(tab, existingTabs: existing).title == "Monthly report")
     }
 
+    @Test("A tab the user named Query 1 keeps the name on a move, and stays named")
+    func typedDefaultTitleIsKept() {
+        var tab = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        tab.automaticTitle = "Query 4"
+
+        let moved = move(tab, existingTabs: [QueryTab(title: "Query 1", tabType: .query)])
+
+        #expect(moved.title == "Query 1")
+        #expect(moved.automaticTitle == "Query 4")
+    }
+
+    @Test("A file tab titled Query 1 keeps the file's name on a move")
+    func fileTabTitleIsKept() {
+        var tab = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        tab.content.sourceFileURL = URL(fileURLWithPath: "/tmp/Query 1")
+
+        #expect(move(tab, existingTabs: [QueryTab(title: "Query 1", tabType: .query)]).title == "Query 1")
+    }
+
     @Test("Only numbered Query titles count as defaults")
     func defaultTitleDetection() {
         #expect(QueryTab.isDefaultQueryTitle("Query 1"))

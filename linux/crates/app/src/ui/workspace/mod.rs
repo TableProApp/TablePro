@@ -33,6 +33,7 @@ mod structure_target;
 mod tab_factory;
 mod tab_identity;
 mod tab_index;
+mod tab_rename;
 mod tab_spec;
 mod tab_title;
 mod table_naming;
@@ -307,6 +308,9 @@ pub enum ClosedTabDescriptor {
         query: String,
         file: Option<crate::workspace::EditorFileRecord>,
         database: Option<String>,
+        name: Option<String>,
+        ordinal: usize,
+        untitled: bool,
     },
     Table {
         schema: Option<String>,
@@ -343,6 +347,14 @@ pub struct EditorTabSlot {
     /// What the tab is named after, kept so titling the tabs again does
     /// not read the buffer.
     pub label: editor_label::EditorLabel,
+    // Apart from `label`, which goes on following the text, so clearing the name brings back the current one.
+    pub name: Option<String>,
+}
+
+impl EditorTabSlot {
+    pub(crate) fn is_untitled(&self) -> bool {
+        matches!(self.label, editor_label::EditorLabel::Untitled(_))
+    }
 }
 
 pub struct StructureTabSlot {
@@ -447,7 +459,13 @@ impl WorkspaceTab {
     pub(crate) fn identity(&self) -> tab_identity::TabIdentity {
         use tab_identity::TabIdentity;
         match self {
-            WorkspaceTab::Editor(slot) => TabIdentity::Editor(slot.label.clone()),
+            WorkspaceTab::Editor(slot) => match &slot.name {
+                Some(name) => TabIdentity::NamedEditor {
+                    name: name.clone(),
+                    automatic: slot.label.clone(),
+                },
+                None => TabIdentity::Editor(slot.label.clone()),
+            },
             WorkspaceTab::Structure(slot) => TabIdentity::Structure(structure_target::StructureTarget::of(
                 slot.schema.as_deref(),
                 &slot.table,
@@ -707,6 +725,10 @@ pub(crate) enum WorkspaceInput {
     },
     /// Ctrl+Shift+T reopens a tab this session closed last.
     ReopenClosedTab(ClosedTabDescriptor),
+    RenameTab {
+        id: Uuid,
+        text: String,
+    },
     /// A browse tab's F5.
     RefreshTab(Uuid),
     /// Bring the tab to the front, for a notification about it.
@@ -1491,6 +1513,7 @@ impl WorkspaceModel {
             WorkspaceInput::Share { tab, subject } => self.on_share(tab, *subject),
             WorkspaceInput::ExportEnded { tab, outcome } => self.on_export_ended(tab, outcome),
             WorkspaceInput::ReopenClosedTab(tab) => self.on_reopen_closed_tab(tab),
+            WorkspaceInput::RenameTab { id, text } => self.on_rename_tab(id, &text),
             WorkspaceInput::RefreshTab(id) => self.on_refresh_tab(id),
             WorkspaceInput::FocusTab(id) => self.focus_tab(id),
             WorkspaceInput::AskAssistant(request) => self.on_ask_assistant(*request),

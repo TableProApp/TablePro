@@ -7616,6 +7616,7 @@ dependencies = [
  "tracing",
  "tracing-log",
  "tracing-subscriber",
+ "unicode-segmentation",
  "unicode-width",
  "uuid",
  "x11rb",

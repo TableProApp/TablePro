@@ -317,4 +317,29 @@ struct SourceFileEncodingSaveTests {
         #expect(await harness.actions.saveSelectedFileAwaiting())
         #expect(try Data(contentsOf: copy) == Data(appended.utf8))
     }
+
+    @Test("Save As suggests a plain file name for a named tab, then the file names the tab as Open would")
+    func saveAsHandsTheNameToTheFile() async throws {
+        let harness = makeHarness()
+        defer { harness.coordinator.teardown() }
+        let folder = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("report.sql")
+        harness.coordinator.tabManager.addTab(initialQuery: "SELECT 1")
+        let id = try #require(harness.coordinator.tabManager.selectedTabId)
+        harness.coordinator.tabManager.renameTab(id: id, to: "Q3/Q4: totals")
+        var suggested: String?
+        harness.actions.chooseSaveURL = { name in
+            suggested = name
+            return url
+        }
+
+        #expect(await harness.actions.saveFileAsAwaiting())
+
+        let saved = try #require(tab(id, in: harness.coordinator))
+        #expect(suggested == "Q3-Q4- totals.sql")
+        #expect(saved.title == QueryTab.fileDisplayTitle(for: url))
+        #expect(saved.title == "report.sql")
+        #expect(!saved.isNamedByUser)
+    }
 }

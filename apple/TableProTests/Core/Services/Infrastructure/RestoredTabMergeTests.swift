@@ -143,5 +143,39 @@ struct RestoredTabMergeTests {
         #expect(result.renamedTabIds.isEmpty)
     }
 
+    @Test("A present tab the user named Query 1 is kept beside a saved Query 1")
+    func typedDefaultPresentTitleIsKept() {
+        let saved = [queryTab("Query 1")]
+        var present = queryTab("Query 1")
+        present.automaticTitle = "Query 2"
+
+        let result = merge(restored: saved, present: [present], presentSelection: present.id)
+
+        #expect(result.tabs.map(\.title) == ["Query 1", "Query 1"])
+        #expect(result.renamedTabIds.isEmpty)
+    }
+
+    @Test("A present file tab titled Query 1 keeps the file's name beside a saved Query 1")
+    func presentFileTabTitleIsKept() {
+        let saved = [queryTab("Query 1")]
+        let present = queryTab("Query 1", file: "Query 1")
+
+        let result = merge(restored: saved, present: [present], presentSelection: present.id)
+
+        #expect(result.tabs.map(\.title) == ["Query 1", "Query 1"])
+        #expect(result.renamedTabIds.isEmpty)
+    }
+
+    @Test("A present table tab titled Query 1 is never renumbered as a query number")
+    func presentTableTabTitleIsKept() {
+        let saved = [queryTab("Query 1")]
+        let present = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .table, tableName: "Query 1")
+
+        let result = merge(restored: saved, present: [present], presentSelection: present.id)
+
+        #expect(result.tabs.map(\.title) == ["Query 1", "Query 1"])
+        #expect(result.renamedTabIds.isEmpty)
+    }
+
     // MARK: - Restore decision
 }

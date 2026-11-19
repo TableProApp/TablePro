@@ -124,6 +124,8 @@ pub const ACCELERATORS: &[Accelerator] = &[
         &["F5", "<Primary>r"],
         Listed(Tabs),
     ),
+    // F2 renames, as in GNOME Files; a grid cell takes it first, in the capture phase, to edit.
+    local(WorkspaceShell, BUBBLE, "win.rename-tab", &["F2"], Listed(Tabs)),
     local(BrowseTab, BUBBLE, "browse.filter", &["<Primary>f"], Listed(BrowseTable)),
     // F5 as in GNOME Files, and Ctrl+R as the GNOME HIG names Reload.
     local(

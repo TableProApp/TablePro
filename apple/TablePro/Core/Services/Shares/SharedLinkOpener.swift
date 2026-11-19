@@ -69,8 +69,8 @@ internal final class SharedLinkOpener {
                     await finish(saying: String(localized: "This shared result hides its SQL, so there is nothing to open."))
                     return
                 }
-                let title = shared.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                presentation.openQuery(SharedQueryOpen(sql: sql, title: title.isEmpty ? nil : title))
+                // The sharer's title becomes a tab name, so it gets the rules a typed one does.
+                presentation.openQuery(SharedQueryOpen(sql: sql, title: EditorTabNameNormalizer.normalize(shared.title)))
                 return
             case .failure(.passwordRequired):
                 guard let entered = await presentation.askPassword(.required) else { return finishCancelled() }
