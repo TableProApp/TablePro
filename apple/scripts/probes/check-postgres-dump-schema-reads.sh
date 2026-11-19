@@ -10,7 +10,8 @@
 #
 # Usage: scripts/probes/check-postgres-dump-schema-reads.sh [host] [port]
 # Environment: PGUSER (default the current user), PGPASSWORD, PSQL, PROBE_APPLE_ROOT (the apple/ folder to build,
-# default this checkout's), PROBE_DATABASE (default tablepro_dump_schema_reads_check), which it creates and drops.
+# default this checkout's), PROBE_DATABASE (default tablepro_dump_schema_reads_check): a database that must not exist
+# yet, which it creates and drops.
 # Prints OK, or BUG with the lines that differ. Exits 0, 1 on a difference, 2 when it cannot run.
 set -euo pipefail
 
@@ -20,13 +21,17 @@ HOST="${1:-127.0.0.1}"
 PORT="${2:-5432}"
 USER_NAME="${PGUSER:-$(id -un)}"
 DATABASE="${PROBE_DATABASE:-tablepro_dump_schema_reads_check}"
+[[ "$DATABASE" =~ ^[a-z_][a-z0-9_]*$ ]] || { echo "FAIL: PROBE_DATABASE must be a plain lowercase name" >&2; exit 2; }
 PSQL="${PSQL:-$(command -v psql || true)}"
 [[ -n "$PSQL" ]] || { echo "FAIL: psql not found; set PSQL" >&2; exit 2; }
 
 WORK="$(mktemp -d)"
+CREATED=0
 cleanup() {
-    "$PSQL" -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d postgres -c "DROP DATABASE IF EXISTS $DATABASE" \
-        > /dev/null 2>&1 || true
+    if [[ $CREATED -eq 1 ]]; then
+        "$PSQL" -X -q -h "$HOST" -p "$PORT" -U "$USER_NAME" -d postgres -c "DROP DATABASE IF EXISTS $DATABASE" \
+            > /dev/null 2>&1 || true
+    fi
     rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -89,7 +94,12 @@ if ! (cd "$WORK" && swift build --jobs 2 > "$WORK/build.log" 2>&1); then
     exit 2
 fi
 
-run_sql -d postgres -c "DROP DATABASE IF EXISTS $DATABASE" -c "CREATE DATABASE $DATABASE" > /dev/null
+if [[ -n "$(run_sql -d postgres -Atc "SELECT 1 FROM pg_catalog.pg_database WHERE datname = '$DATABASE'")" ]]; then
+    echo "FAIL: database $DATABASE already exists; drop it or set PROBE_DATABASE" >&2
+    exit 2
+fi
+run_sql -d postgres -c "CREATE DATABASE $DATABASE" > /dev/null
+CREATED=1
 run_sql -d "$DATABASE" > /dev/null <<'SQL'
 SET client_min_messages = warning;
 CREATE SCHEMA shop;
