@@ -58,11 +58,20 @@ final class DataDictionaryExportPlugin: ObservableObject, ExportFormatPlugin, Se
         var objects: [DataDictionaryObject] = []
         objects.reserveCapacity(tables.count)
         var groups: [[UInt8]: DataDictionaryGroupReads] = [:]
-        let groupSizes = Dictionary(grouping: tables) { PluginExportSpelling.key($0.databaseName) }.mapValues(\.count)
+        let twins = PluginExportSpelling.twins(among: tables)
+        let groupSizes = Dictionary(grouping: tables.filter { !twins.contains(PluginExportSpelling.ObjectKey($0)) }) {
+            PluginExportSpelling.key($0.databaseName)
+        }.mapValues(\.count)
         for (index, table) in tables.enumerated() {
             try progress.checkCancellation()
             progress.setCurrentTable(table.qualifiedName, index: index + 1)
             let group = PluginExportSpelling.key(table.databaseName)
+            guard !twins.contains(PluginExportSpelling.ObjectKey(table)) else {
+                objects.append(try await DataDictionaryReader.read(
+                    table, from: dataSource, progress: progress, failures: &failures
+                ))
+                continue
+            }
             if groups[group] == nil {
                 groups[group] = try await DataDictionaryGroupReads.read(
                     databaseName: table.databaseName,

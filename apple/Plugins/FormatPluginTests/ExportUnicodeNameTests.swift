@@ -28,12 +28,14 @@ private func same(_ lhs: String, _ rhs: String) -> Bool {
 }
 
 // A server that keeps names apart by their bytes. A group read answers by the String keys PluginKit hands back, and
-// throws when two relations of the schema would share a key, as PostgreSQL's export reads do.
+// throws when two relations of the schema would share a key, as PostgreSQL's export reads do, or merges them into one
+// entry, as a source on PluginKit's String-keyed reads does.
 private final class ByteExactCatalog: PluginExportDataSource, @unchecked Sendable {
     let databaseTypeId = "PostgreSQL"
     let bulkReads: PluginExportBulkReads
     let relations: [Relation]
     var failingColumnGroups = false
+    var mergesTwins = false
     // A group answer keyed by this spelling only, as a source that merged two spellings returns it.
     var columnGroupAnswer: [String: [PluginColumnInfo]]?
     private let lock = NSLock()
@@ -60,9 +62,9 @@ private final class ByteExactCatalog: PluginExportDataSource, @unchecked Sendabl
         var answer: [String: [Value]] = [:]
         for relation in relations where same(relation.schema, schema) {
             if let known = answer.index(forKey: relation.name), !same(answer[known].key, relation.name) {
-                throw TwinNames()
+                guard mergesTwins else { throw TwinNames() }
             }
-            answer[relation.name] = values(relation)
+            answer[relation.name, default: []] += values(relation)
         }
         return answer
     }
@@ -189,9 +191,13 @@ struct ExportUnicodeNameTests {
         Relation(schema: "uni", name: composed, columns: [column("id", identity: .always), column("a")]),
     ]
 
-    @Test("Two tables whose names differ only in Unicode form are both dumped, each with its own columns and keys")
-    func twinTablesAreBothDumped() async throws {
+    @Test(
+        "Two tables whose names differ only in Unicode form are both dumped, each with its own columns and keys",
+        arguments: [false, true]
+    )
+    func twinTablesAreBothDumped(mergingSource: Bool) async throws {
         let source = ByteExactCatalog(Self.twinTables)
+        source.mergesTwins = mergingSource
         let output = try await dump([table(decomposed, in: "uni"), table(composed, in: "uni")], from: source)
 
         #expect(output.warnings.isEmpty)
@@ -312,6 +318,27 @@ struct ExportUnicodeNameTests {
         #expect(source.calls.contains { same($0, "columns \(decomposed)") })
         #expect(text.contains("own_col"))
         #expect(!text.contains("borrowed_col"))
+    }
+
+    @Test("The Data Dictionary reads alone two tables named alike, even from a source that merges them")
+    func dictionaryReadsTwinRelationsAlone() async throws {
+        let source = ByteExactCatalog([
+            Relation(schema: "uni", name: composed, columns: [column("first_col")]),
+            Relation(schema: "uni", name: decomposed, columns: [column("second_col")]),
+            Relation(schema: "uni", name: "plain", columns: [column("p_col")]),
+            Relation(schema: "uni", name: "other", columns: [column("o_col")]),
+        ], bulkReads: [.columns, .foreignKeys, .indexes])
+        source.mergesTwins = true
+        let text = try await dictionary(
+            [table(composed, in: "uni"), table(decomposed, in: "uni"), table("plain", in: "uni"), table("other", in: "uni")],
+            from: source
+        )
+
+        #expect(source.calls.filter { $0.hasPrefix("columns ") }.count == 2)
+        #expect(source.calls.filter { $0.hasPrefix("all columns") }.count == 1)
+        #expect(text.components(separatedBy: "first_col").count == 2)
+        #expect(text.components(separatedBy: "second_col").count == 2)
+        #expect(text.contains("p_col"))
     }
 
     @Test("A key to one of two same-named tables links to that table's own section")

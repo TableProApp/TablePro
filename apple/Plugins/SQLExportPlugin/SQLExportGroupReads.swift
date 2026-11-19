@@ -15,13 +15,15 @@ nonisolated final class SQLExportGroupReads {
         init(
             kind: PluginExportBulkReads,
             objects: [PluginExportTable],
+            twins: Set<PluginExportSpelling.ObjectKey>,
             readsEveryGroup: Bool = false,
             fetch: @escaping (String) async throws -> [String: [Value]]
         ) {
             self.kind = kind
             self.readsEveryGroup = readsEveryGroup
-            self.groupSizes = Dictionary(grouping: objects) { PluginExportSpelling.key($0.databaseName) }
-                .mapValues(\.count)
+            self.groupSizes = Dictionary(grouping: objects.filter { !twins.contains(PluginExportSpelling.ObjectKey($0)) }) {
+                PluginExportSpelling.key($0.databaseName)
+            }.mapValues(\.count)
             self.fetch = fetch
         }
     }
@@ -31,6 +33,7 @@ nonisolated final class SQLExportGroupReads {
     private let dataSource: any PluginExportDataSource
     private let progress: PluginExportProgress
     private let rowLimit: Int
+    private let twins: Set<PluginExportSpelling.ObjectKey>
     private let columnReads: GroupRead<PluginColumnInfo>
     private let foreignKeyReads: GroupRead<PluginForeignKeyInfo>
     private let indexDDLReads: GroupRead<String>
@@ -44,27 +47,30 @@ nonisolated final class SQLExportGroupReads {
         tables: [PluginExportTable],
         commentedObjects: [PluginExportTable],
         indexedObjects: [PluginExportTable],
+        everyObject: [PluginExportTable] = [],
         rowLimit: Int = PluginRowLimits.emergencyMax
     ) {
         self.dataSource = dataSource
         self.progress = progress
         self.rowLimit = rowLimit
-        columnReads = GroupRead(kind: .columns, objects: [], readsEveryGroup: true) {
+        let twins = PluginExportSpelling.twins(among: everyObject)
+        self.twins = twins
+        columnReads = GroupRead(kind: .columns, objects: [], twins: twins, readsEveryGroup: true) {
             try await dataSource.fetchAllColumns(databaseName: $0)
         }
-        foreignKeyReads = GroupRead(kind: .foreignKeys, objects: [], readsEveryGroup: true) {
+        foreignKeyReads = GroupRead(kind: .foreignKeys, objects: [], twins: twins, readsEveryGroup: true) {
             try await dataSource.fetchAllForeignKeys(databaseName: $0)
         }
-        indexDDLReads = GroupRead(kind: .indexDDL, objects: indexedObjects) {
+        indexDDLReads = GroupRead(kind: .indexDDL, objects: indexedObjects, twins: twins) {
             try await dataSource.fetchAllIndexDDL(databaseName: $0)
         }
-        commentDDLReads = GroupRead(kind: .commentDDL, objects: commentedObjects) {
+        commentDDLReads = GroupRead(kind: .commentDDL, objects: commentedObjects, twins: twins) {
             try await dataSource.fetchAllCommentDDL(databaseName: $0)
         }
-        sequenceReads = GroupRead(kind: .dependentSequences, objects: tables) {
+        sequenceReads = GroupRead(kind: .dependentSequences, objects: tables, twins: twins) {
             try await dataSource.fetchAllDependentSequences(databaseName: $0)
         }
-        typeReads = GroupRead(kind: .dependentTypes, objects: tables) {
+        typeReads = GroupRead(kind: .dependentTypes, objects: tables, twins: twins) {
             try await dataSource.fetchAllDependentTypes(databaseName: $0)
         }
     }
@@ -110,7 +116,8 @@ nonisolated final class SQLExportGroupReads {
         for object: PluginExportTable,
         alone: () async throws -> [Value]
     ) async throws -> [Value] {
-        guard let group = try await groupAnswer(read, databaseName: object.databaseName) else {
+        guard !twins.contains(PluginExportSpelling.ObjectKey(object)),
+              let group = try await groupAnswer(read, databaseName: object.databaseName) else {
             return try await alone()
         }
         switch PluginExportSpelling.entry(object.name, in: group) {

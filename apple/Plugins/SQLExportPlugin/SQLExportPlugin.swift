@@ -349,7 +349,8 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
             progress: progress,
             tables: structure.filter { $0.kind.carriesRows },
             commentedObjects: structure.filter { Self.commentedKinds.contains($0.kind) },
-            indexedObjects: structure.filter { $0.kind.carriesRows || $0.kind == .materializedView })
+            indexedObjects: structure.filter { $0.kind.carriesRows || $0.kind == .materializedView },
+            everyObject: tables)
     }
 
     // The phases after the rows read none, so they move the status instead: iOS expires a background task that stalls.
