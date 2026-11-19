@@ -92,7 +92,9 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
     ) async throws -> ExportFormatResult {
         // Read once: every window shares this plugin, and a cap re-read per table could start at 1 MiB and end unbounded.
         let options = settings
-        let run = ExportRun(options: options)
+        let run = ExportRun(
+            options: options,
+            groupReads: groupReads(for: tables, dataSource: dataSource, progress: progress))
         var statementTally = SQLExportStatementTally()
 
         let actualDestination: URL
@@ -261,6 +263,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
     // What one export records. Every window and scene shares the plugin, so none of it lives on the instance.
     private final class ExportRun {
         let options: SQLExportOptions
+        let groupReads: SQLExportGroupReads
         var ddlFailures: [String] = []
         // Apart from ddlFailures, whose summary says "table structure": these tables lost only their indexes.
         var indexFailures: [String] = []
@@ -277,14 +280,30 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
         // Unqualified names across two containers send one schema's rows into the other's table.
         var exportSpansContainers = false
 
-        init(options: SQLExportOptions) {
+        init(options: SQLExportOptions, groupReads: SQLExportGroupReads) {
             self.options = options
+            self.groupReads = groupReads
         }
 
         func noteDependentObjectFailure(_ sanitizedTableName: String) {
             guard !dependentObjectFailures.contains(sanitizedTableName) else { return }
             dependentObjectFailures.append(sanitizedTableName)
         }
+    }
+
+    // Each kind counted over the objects its phase reads, with the filters those phases use.
+    private func groupReads(
+        for tables: [PluginExportTable],
+        dataSource: any PluginExportDataSource,
+        progress: PluginExportProgress
+    ) -> SQLExportGroupReads {
+        let structure = tables.filter { optionValue($0, at: 0) }
+        return SQLExportGroupReads(
+            dataSource: dataSource,
+            progress: progress,
+            tables: structure.filter { $0.kind.carriesRows },
+            commentedObjects: structure.filter { Self.commentedKinds.contains($0.kind) },
+            indexedObjects: structure.filter { $0.kind.carriesRows || $0.kind == .materializedView })
     }
 
     // The phases after the rows read none, so they move the status instead: iOS expires a background task that stalls.
@@ -540,8 +559,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
 
         for table in structureTables {
             do {
-                let sequences = try await dataSource.fetchDependentSequences(
-                    table: table.name, databaseName: table.databaseName)
+                let sequences = try await run.groupReads.dependentSequences(for: table)
                 for seq in sequences where !run.emittedSequenceNames.contains(seq.name) {
                     run.emittedSequenceNames.insert(seq.name)
                     let quotedName = dataSource.quoteIdentifier(seq.name)
@@ -560,8 +578,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
             }
 
             do {
-                let enumTypes = try await dataSource.fetchDependentTypes(
-                    table: table.name, databaseName: table.databaseName)
+                let enumTypes = try await run.groupReads.dependentTypes(for: table)
                 for enumType in enumTypes where !emittedTypeNames.contains(enumType.name) {
                     emittedTypeNames.insert(enumType.name)
                     let quotedName = dataSource.quoteIdentifier(enumType.name)
@@ -641,8 +658,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
         guard Self.commentedKinds.contains(object.kind) else { return }
         let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(object.name)
         do {
-            let statements = try await dataSource.fetchCommentDDL(
-                table: object.name, databaseName: object.databaseName)
+            let statements = try await run.groupReads.commentDDL(for: object)
             guard !statements.isEmpty else { return }
             for statement in statements {
                 try writer.write(dataSource.scriptText(for: statement) + dataSource.dumpStatementEnd)
@@ -873,8 +889,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
             finishing.advance()
             let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(object.name)
             do {
-                let statements = try await dataSource.fetchIndexDDL(
-                    table: object.name, databaseName: object.databaseName)
+                let statements = try await run.groupReads.indexDDL(for: object)
                 for statement in statements {
                     try writer.write(dataSource.scriptText(for: statement) + dataSource.dumpStatementEnd)
                     emittedAnything = true
