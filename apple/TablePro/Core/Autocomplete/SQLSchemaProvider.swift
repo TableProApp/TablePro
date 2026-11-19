@@ -552,6 +552,7 @@ actor SQLSchemaProvider {
         let key = cacheKey(table: table, schema: schema)
         guard generation == tableListGeneration, !columns.isEmpty, listedSpellings(of: key) == [table] else { return }
         staleColumnKeys.remove(key)
+        staleRereadsStarted.remove(key)
         if columnCache.updateValue(columns, forKey: key) == nil {
             columnAccessOrder.append(key)
         }

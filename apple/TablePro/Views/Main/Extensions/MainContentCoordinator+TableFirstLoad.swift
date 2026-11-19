@@ -168,7 +168,7 @@ extension MainContentCoordinator {
         }
     }
 
-    private func applyResolvedDefaultSort(at index: Int, hint: DefaultSortHint) -> Bool {
+    func applyResolvedDefaultSort(at index: Int, hint: DefaultSortHint) -> Bool {
         let tab = tabManager.tabs[index]
         guard wantsDefaultSort(for: tab, hint: hint) else { return false }
 

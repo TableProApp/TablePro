@@ -1080,6 +1080,13 @@ final class MainContentCoordinator: ObservableObject {
 
     // App-built SELECTs skip dangerous-query checks but keep safe mode. Returns the confirmation task when Safe Mode asks first.
     @discardableResult
+    func tableLoadAsksFirst(_ tab: QueryTab) -> Bool {
+        let level = safeModeLevel
+        let asksBeforeFirstLoad = level.appliesToAllQueries && level.requiresConfirmation
+            && tab.execution.lastExecutedAt == nil
+        return asksBeforeFirstLoad || rawFilterNeedsReadOnlyGate(Self.browseFilters(tab.filterState))
+    }
+
     func executeTableTabQueryDirectly(
         onTab tabId: UUID,
         trigger: TableLoadTrigger = .userInitiated,
@@ -1094,11 +1101,7 @@ final class MainContentCoordinator: ObservableObject {
             return nil
         }
 
-        let level = safeModeLevel
-        let asksBeforeFirstLoad = level.appliesToAllQueries && level.requiresConfirmation
-            && tab.execution.lastExecutedAt == nil
-        let gatesRawFilter = rawFilterNeedsReadOnlyGate(Self.browseFilters(tab.filterState))
-        guard asksBeforeFirstLoad || gatesRawFilter else {
+        guard tableLoadAsksFirst(tab) else {
             executeQueryInternal(sql, onTab: tabId, isAutoLoad: true, trigger: trigger, viewport: viewport, source: .sameSource)
             return nil
         }

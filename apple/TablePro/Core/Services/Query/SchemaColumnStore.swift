@@ -12,6 +12,10 @@ final class SchemaColumnStore {
         /// Positional, because `FilterSQLGenerator` pairs names and types by index. A name this
         /// table does not have returns no types at all, since a shorter list would type every
         /// value after the gap against the wrong column.
+        func describesSameTable(as other: Entry) -> Bool {
+            columns == other.columns && primaryKeys == other.primaryKeys && columnTypes == other.columnTypes
+        }
+
         func columnTypes(aligningWith names: [String]) -> [ColumnType] {
             let aligned = names.compactMap { columnTypes[$0] }
             return aligned.count == names.count ? aligned : []

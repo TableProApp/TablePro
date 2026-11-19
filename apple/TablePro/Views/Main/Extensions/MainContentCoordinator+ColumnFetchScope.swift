@@ -181,49 +181,78 @@ extension MainContentCoordinator {
         tab.tabType == .table && cachedSchemaColumns(for: tab)?.isVerified == false
     }
 
-    // The definition read beside the rows confirms a list the load took on trust.
+    // The definition read beside the rows confirms the list the load took on trust.
     func verifySchemaColumns(
         after schemaTask: Task<FetchedTableSchema, Error>?,
         ofTable tableName: String?,
         in scope: DatabaseScope,
         readBy claim: TabExecutionClaim,
+        builtOn used: SchemaColumnStore.Entry?,
         epoch: Int
     ) {
-        guard let schemaTask, let tableName else { return }
+        guard let schemaTask, let tableName, let used else { return }
         Task { [weak self] in
             guard let schema = try? await schemaTask.value, let self else { return }
-            self.adoptVerifiedColumns(schema.columns, of: tableName, in: scope, readBy: claim, epoch: epoch)
+            self.adoptVerifiedColumns(schema.columns, of: tableName, in: scope, readBy: claim, builtOn: used, epoch: epoch)
         }
     }
 
-    // Loads again only when the confirmed list changes what the page selects, and never over staged edits.
+    // Each load compares the list it was built on, so a load that ran while another confirmed the list corrects itself.
+    // One that differs in a name, a key or a type loads the page again: the select list, the default sort and a
+    // filter's literals all come from it. Never over unsaved work, and never a load that asks before it runs.
     func adoptVerifiedColumns(
         _ columns: [ColumnInfo],
         of tableName: String,
         in scope: DatabaseScope,
         readBy claim: TabExecutionClaim,
+        builtOn used: SchemaColumnStore.Entry,
         epoch: Int
     ) {
         let key = schemaColumnsKey(tableName, scope: scope)
         guard !columns.isEmpty, !isTearingDown,
               epoch == schemaColumns.verificationEpoch,
-              schemaColumns.cached(key)?.isVerified == false,
               tabSessionRegistry.definitionIsCurrent(asOf: claim.startedAt, for: claim.tabId)
         else { return }
-        let selectedBefore = columnSelection(ofTab: claim.tabId, table: tableName, in: scope)
-        schemaColumns.store(SchemaColumnStore.Entry(fetchedColumns: columns, classifier: schemaColumnClassifier), for: key)
-        guard let selectedBefore,
-              selectedBefore != columnSelection(ofTab: claim.tabId, table: tableName, in: scope),
-              existingChangeManager(forTab: claim.tabId)?.hasChanges != true
+        let confirmed = SchemaColumnStore.Entry(fetchedColumns: columns, classifier: schemaColumnClassifier)
+        if schemaColumns.cached(key)?.isVerified == false {
+            schemaColumns.store(confirmed, for: key)
+        }
+        guard !confirmed.describesSameTable(as: used),
+              let index = tabManager.tabs.firstIndex(where: { $0.id == claim.tabId }),
+              tabManager.tabs[index].tableContext.tableName == tableName,
+              self.scope(for: tabManager.tabs[index]) == scope,
+              !holdsUnsavedWork(tabManager.tabs[index]),
+              !tableLoadAsksFirst(tabManager.tabs[index])
         else { return }
-        requeryWithColumnScope(forTab: claim.tabId)
+        if confirmed.primaryKeys != used.primaryKeys, tabManager.tabs[index].sortState.source == .defaultSort {
+            tabManager.mutate(at: index) { $0.sortState = SortState() }
+            _ = applyResolvedDefaultSort(
+                at: index,
+                hint: PluginManager.shared.defaultSortHint(for: connection.type, table: tableName)
+            )
+        }
+        let tabId = claim.tabId
+        Task { [weak self] in
+            guard let self, await self.rebuildColumnScopedQuery(forTab: tabId),
+                  let tab = self.tabManager.tabs.first(where: { $0.id == tabId }),
+                  !self.holdsUnsavedWork(tab)
+            else { return }
+            self.runQuery(onTab: tabId, viewport: .keepPlace)
+        }
     }
 
-    // The server refused a page built on a list taken on trust: read the columns afresh and load once more.
+    // The server refused a page built on a list taken on trust: read the columns afresh and load once more. Only an
+    // answer from the server earns it, never a lost connection, and never a page with a filter the user wrote, whose
+    // functions must not run twice for one click. A load that asks before it runs is not sent again either.
     func reloadAfterStaleColumns(_ error: Error, claim: TabExecutionClaim, trigger: TableLoadTrigger) -> Bool {
-        guard !DatabaseCancellationDiagnosis.isCancellation(error), !Task.isCancelled, !isTearingDown,
+        guard !DatabaseCancellationDiagnosis.isCancellation(error),
+              !CommitOutcomeDiagnosis.isConnectionLoss(error),
+              !Task.isCancelled, !isTearingDown,
               tabManager.selectedTabId == claim.tabId,
               let tab = tabManager.tabs.first(where: { $0.id == claim.tabId }),
+              Self.rawFilterExpressions(Self.browseFilters(tab.filterState)).isEmpty,
+              !holdsUnsavedWork(tab),
+              !tableLoadAsksFirst(tab),
               let tableName = tab.tableContext.tableName,
               let scope = scope(for: tab)
         else { return false }
@@ -241,19 +270,6 @@ extension MainContentCoordinator {
             await self?.openTableTabQuery(tabId: claim.tabId, trigger: trigger)
         }
         return true
-    }
-
-    private struct ColumnSelection: Equatable {
-        let columns: [String]?
-        let lengthColumns: [String]
-    }
-
-    private func columnSelection(ofTab tabId: UUID, table: String, in scope: DatabaseScope) -> ColumnSelection? {
-        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }),
-              tab.tableContext.tableName == table,
-              self.scope(for: tab) == scope
-        else { return nil }
-        return ColumnSelection(columns: selectColumns(for: tab), lengthColumns: unloadedValueLengthColumns(for: tab))
     }
 
     func columnsForVisibilityPicker(for tab: QueryTab, resultColumns: [String]) -> [String] {
