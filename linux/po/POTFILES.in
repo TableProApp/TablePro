@@ -703,6 +703,7 @@ crates/app/src/ui/workspace/structure_target.rs
 crates/app/src/ui/workspace/tab_factory.rs
 crates/app/src/ui/workspace/tab_identity.rs
 crates/app/src/ui/workspace/tab_index.rs
+crates/app/src/ui/workspace/tab_rename.rs
 crates/app/src/ui/workspace/tab_spec.rs
 crates/app/src/ui/workspace/tab_title.rs
 crates/app/src/ui/workspace/table_naming.rs

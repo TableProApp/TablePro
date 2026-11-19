@@ -48,7 +48,8 @@ public sealed partial class QueryTabView
         SqlFileStamp? fileStamp = null,
         bool fileUnsaved = false,
         SqlFileRead? onDisk = null,
-        IReadOnlyList<int>? foldedLines = null)
+        IReadOnlyList<int>? foldedLines = null,
+        string? customTitle = null)
     {
         var engineId = share.Session.EngineId;
         var restoring = filePath is not null && onDisk is null;
@@ -79,7 +80,8 @@ public sealed partial class QueryTabView
             filePath,
             onDisk,
             restoring: restoring,
-            resultEdits: this);
+            resultEdits: this,
+            customTitle: customTitle);
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", _model.Title));
         ShowDatabase();
         _model.StateChanged += (_, _) => OnModelStateChanged();
@@ -159,6 +161,11 @@ public sealed partial class QueryTabView
 
     public string Title => _model.Title;
 
+    // The rename box's placeholder, and a number no new tab may take while a typed name hides it.
+    public string AutomaticTitle => _model.AutomaticTitle;
+
+    public bool CanRename => _model.CanRename;
+
     public TabKind Kind => _model.Kind;
 
     public bool IsRunning => _model.IsRunning;
@@ -220,6 +227,8 @@ public sealed partial class QueryTabView
     public void Stop() => _model.Stop();
 
     public void FocusContent() => SqlText.Focus(FocusState.Programmatic);
+
+    public void Rename(string name) => _model.Rename(name);
 
     // Null with no statement at the caret, which the status line then says.
     internal string? AssistantStatement()

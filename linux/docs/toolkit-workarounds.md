@@ -10,6 +10,14 @@ The places the app steps around a GTK, libadwaita, GtkSourceView, IBus or gtk-rs
 - **Test.** `a_tab_dropped_outside_every_window_stays_where_it_was` in `crates/app/src/ui/session_window/tests/sessions.rs`.
 - **Remove when** the floor's libadwaita offers a way to decline a detach, or tab groups: use it, and drop the position restore for this case.
 
+## Renaming a tab from the tab bar
+
+- **What libadwaita does.** `AdwTabBar` has no editable title, no title widget of the app's own and no way to reach a tab's widget: the tab is the private `AdwTab`, whose label is bound to its page's title (`src/adw-tab.ui`), and it allocates only its own template children (`src/adw-tab.c`). The bar's press handler ignores the press count (`pressed_cb` in `src/adw-tab-box.c`), and neither the bar nor the view has a signal for a double-click. The overview's tabs are the private `AdwTabThumbnail`. Both have a readable `page` property. This is the documented design, not a defect.
+- **Seen in.** libadwaita 1.9.0 and 1.10.0.
+- **Workaround.** Rename opens a `GtkPopover` with a `GtkEntry`, as GNOME Files renames a file (`crates/app/src/ui/workspace/tab_rename.rs`). It points at the tab: the widget named `AdwTab` under the bar, or `AdwTabThumbnail` under an open overview, whose `page` is the tab's page, found by type name and read only after checking the property's type. When neither is on screen, as on a narrow window, it points at the header's title, and failing that at the overview. A capture-phase `GtkGestureClick` on the bar starts it when a double-click is released, if the first press and the release picked the same `AdwTab` and not a button inside it.
+- **Test.** `the_field_points_at_the_tab_in_the_bar_or_in_the_open_overview` and `real_keys::a_double_click_on_a_tab_renames_it_and_escape_leaves_it_as_it_was` in `crates/app/src/ui/workspace/tab_rename.rs`.
+- **Remove when** the floor's libadwaita offers an editable tab title or a double-click signal: use it.
+
 ## A sidebar the user can widen
 
 - **What libadwaita does.** `AdwOverlaySplitView` sizes its sidebar as a fraction of its own width between `min-sidebar-width` and `max-sidebar-width`, and has no divider to drag. `GtkPaned` has one, but has no collapsed overlay, no breakpoints and no header bar integration. This is the documented design, not a defect.

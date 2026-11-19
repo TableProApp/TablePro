@@ -76,7 +76,8 @@ public sealed partial class ShellTests
         app.Click(app.Find("FileMenu"), () => app.TryFindMenuItem("Move tab to new window") is not null);
         app.FindMenuItem("Move tab to new window").Patterns.Invoke.Pattern.Invoke();
         var child = app.WaitForWindow(SampleWindow);
-        Assert.Equal(string.Empty, AppSession.EditorText(app.FindEditor("Query 1")).Trim());
+        // Query 1 still holds its number in the other window.
+        Assert.Equal(string.Empty, AppSession.EditorText(app.FindEditor("Query 2")).Trim());
         var tab = Tab(app.Find("Tabs", child), "Query 1")!;
         var strip = AddTabButton(app.Find("Tabs"));
         app.Drag(child, () => Center(tab.BoundingRectangle), () => Center(strip.BoundingRectangle),
@@ -203,7 +204,8 @@ public sealed partial class ShellTests
         app.Screenshot("35-window-close-transaction", torn);
         app.Find("PrimaryButton", torn).AsButton().Invoke();
         app.WaitForClose(SampleWindow);
-        app.TypeInto("Query 1", "SELECT COUNT(*) FROM Track WHERE TrackId = 1 AND Name = 'Pending';");
+        // The tab the primary kept took the next number, since Query 1 still held its own in the closed window.
+        app.TypeInto("Query 2", "SELECT COUNT(*) FROM Track WHERE TrackId = 1 AND Name = 'Pending';");
         app.Chord(() => AppSession.TextOf(app.Find("QueryStatus")).StartsWith("Rows: 1", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
         Assert.Equal("0", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "0"));

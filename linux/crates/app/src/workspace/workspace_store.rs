@@ -628,6 +628,9 @@ mod tests {
                 draft: DraftId::new(),
                 file: None,
                 database: None,
+                name: None,
+                ordinal: None,
+                untitled: false,
             }],
         };
 
@@ -777,6 +780,9 @@ mod tests {
                     draft: DraftId::new(),
                     file: None,
                     database: None,
+                    name: None,
+                    ordinal: None,
+                    untitled: false,
                 })
                 .collect(),
         };

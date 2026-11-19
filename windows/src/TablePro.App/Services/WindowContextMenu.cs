@@ -10,14 +10,25 @@ namespace TablePro.App.Services;
 
 internal sealed unsafe partial class WindowContextMenu : IDisposable
 {
+    private const uint NonClientDestroy = 0x0082;
+    private const uint NonClientLeftButtonDown = 0x00A1;
+    private const uint NonClientLeftButtonDoubleClick = 0x00A3;
+    private const uint NonClientRightButtonUp = 0x00A5;
+    private const nuint Caption = 2;
+
     private readonly IntPtr _window;
     private readonly Func<PointInt32, bool> _show;
+    private readonly Action<PointInt32> _pressed;
+    private readonly Func<PointInt32, bool> _doubleClicked;
     private GCHandle _handle;
 
-    public WindowContextMenu(Window window, Func<PointInt32, bool> show)
+    public WindowContextMenu(
+        Window window, Func<PointInt32, bool> show, Action<PointInt32> pressed, Func<PointInt32, bool> doubleClicked)
     {
         _window = WindowNative.GetWindowHandle(window);
         _show = show;
+        _pressed = pressed;
+        _doubleClicked = doubleClicked;
         _handle = GCHandle.Alloc(this);
         if (!SetWindowSubclass(_window, &WindowProcedure, 1, (nuint)GCHandle.ToIntPtr(_handle)))
         {
@@ -43,25 +54,41 @@ internal sealed unsafe partial class WindowContextMenu : IDisposable
         try
         {
             var menu = (WindowContextMenu)GCHandle.FromIntPtr((nint)data).Target!;
-            // Tear-out tab headers are caption regions, whose right-click never reaches XAML ContextRequested.
-            if (message == 0x00A5 && wParam == 2 && menu._show(new PointInt32(
-                    unchecked((short)(long)lParam), unchecked((short)((long)lParam >> 16)))))
+            if (wParam == Caption)
             {
-                return 0;
+                switch (message)
+                {
+                    // Tear-out tab headers are caption regions, whose right-click never reaches XAML ContextRequested.
+                    case NonClientRightButtonUp when menu._show(PointOf(lParam)):
+                        return 0;
+
+                    // Nor does a double-click reach DoubleTapped there; 0 keeps DefWindowProc from maximizing.
+                    case NonClientLeftButtonDoubleClick when menu._doubleClicked(PointOf(lParam)):
+                        return 0;
+                    case NonClientLeftButtonDown:
+                        menu._pressed(PointOf(lParam));
+                        break;
+                    default:
+                        break;
+                }
             }
 
-            if (message == 0x0082)
+            if (message == NonClientDestroy)
             {
                 menu.Dispose();
             }
         }
         catch (Exception exception)
         {
-            Trace.TraceError("Tab context menu: {0}", exception);
+            Trace.TraceError("Tab caption input: {0}", exception);
         }
 
         return DefSubclassProc(window, message, wParam, lParam);
     }
+
+    // Screen coordinates, signed, since a second display can sit left of or above the first.
+    private static PointInt32 PointOf(nint lParam) =>
+        new(unchecked((short)(long)lParam), unchecked((short)((long)lParam >> 16)));
 
     [LibraryImport("comctl32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

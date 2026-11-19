@@ -155,10 +155,13 @@ internal sealed class AppSession : IDisposable
         FlaUI.Core.Input.Wait.UntilInputIsProcessed();
     }
 
-    public void DoubleClick(AutomationElement element)
+    public void DoubleClick(AutomationElement element, Func<bool> landed, Window? window = null) =>
+        Again(() => DoubleClick(element, window), landed, "The double-click", window);
+
+    public void DoubleClick(AutomationElement element, Window? window = null)
     {
         var point = PointOf(element);
-        Front();
+        Front(window);
         Mouse.DoubleClick(point);
         FlaUI.Core.Input.Wait.UntilInputIsProcessed();
     }

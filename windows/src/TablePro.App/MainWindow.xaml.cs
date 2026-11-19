@@ -463,6 +463,13 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     void IWorkspaceHost.WriteSessionNow() => _primary.WriteSessionBeforeSave();
 
+    // The front connection alone would miss the primary strip while another rail item is in front.
+    IEnumerable<WorkspaceView> IWorkspaceHost.WorkspacesOf(DatabaseSession session) =>
+        _primary.AllWindows
+            .SelectMany(window => window._open)
+            .Where(open => ReferenceEquals(open.Session, session))
+            .Select(open => open.View);
+
     internal void OpenFile(string path)
     {
         Open(new SessionConnection { FilePath = path, Name = Path.GetFileName(path) });
@@ -543,7 +550,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         AppWindow.SetPresenter(_presenter);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        var tabContextMenu = new WindowContextMenu(this, point => Workspace?.ShowTabContextMenu(point) == true);
+        var tabContextMenu = new WindowContextMenu(
+            this,
+            point => Workspace?.ShowTabContextMenu(point) == true,
+            point => Workspace?.TabPressed(point),
+            point => Workspace?.RenameTabAt(point) == true);
         Closed += (_, _) => tabContextMenu.Dispose();
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         if (MicaController.IsSupported())

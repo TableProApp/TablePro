@@ -16,11 +16,12 @@ use super::super::{Workspace, WorkspaceInput, WorkspaceTab};
 use super::{open_editor, shell_of, two_sessions};
 use crate::runtime::DeliverInput;
 use crate::services::pending_structure::PendingStructure;
-use crate::test_support::{finish_on_main, wait_until};
+use crate::test_support::{drain_main_context, finish_on_main, wait_until};
 use crate::ui::SessionWindowInput;
+use crate::ui::editor::SqlEditor;
 use crate::ui::session_window::tests::{TestWindow, WAIT, editors};
 use crate::ui::structure_tab::StructureMode;
-use crate::workspace::{TabRecord, WorkspaceRecord};
+use crate::workspace::{TabRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceRecord};
 
 fn modified(page: &adw::TabPage) -> bool {
     page.icon().and_downcast::<gio::ThemedIcon>().is_some_and(|icon| {
@@ -185,6 +186,9 @@ fn restored_workspace_selects_saved_active_tab() {
                         draft: DraftId::new(),
                         file: None,
                         database: None,
+                        name: None,
+                        ordinal: None,
+                        untitled: false,
                     },
                     orders,
                 ],
@@ -231,6 +235,9 @@ fn a_restored_editor_tab_keeps_its_file_and_its_unsaved_changes() {
                         modified: true,
                     }),
                     database: None,
+                    name: None,
+                    ordinal: None,
+                    untitled: false,
                 }],
             },
         )
@@ -403,4 +410,308 @@ fn a_tab_moved_to_another_database_names_it() {
     wait_until(WAIT, || page.title() == "Query 1 (analytics)").expect("the tab to name its database");
     let tooltip = page.tooltip().map(|tooltip| tooltip.to_string()).unwrap_or_default();
     assert_eq!(tooltip, "Query 1\nanalytics");
+}
+
+fn rename(workspace: &Workspace, page: &adw::TabPage, text: &str) {
+    let id = workspace.tab_id(page).expect("one of the session's tabs");
+    workspace
+        .sender()
+        .expect("the workspace's input")
+        .deliver(WorkspaceInput::RenameTab {
+            id,
+            text: text.to_owned(),
+        });
+}
+
+fn typed_name(workspace: &Workspace, page: &adw::TabPage) -> Option<String> {
+    let id = workspace.tab_id(page)?;
+    workspace
+        .read(|model| match model.workspace_tabs.borrow().get(&id) {
+            Some(WorkspaceTab::Editor(slot)) => slot.name.clone(),
+            _ => None,
+        })
+        .flatten()
+}
+
+fn editor_of(page: &adw::TabPage) -> SqlEditor {
+    page.child().downcast::<SqlEditor>().expect("an editor tab")
+}
+
+fn text_of(page: &adw::TabPage) -> String {
+    let buffer = editor_of(page).buffer();
+    buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string()
+}
+
+fn tooltip_of(page: &adw::TabPage) -> String {
+    page.tooltip().map(|tooltip| tooltip.to_string()).unwrap_or_default()
+}
+
+fn titles(view: &adw::TabView) -> Vec<String> {
+    (0..view.n_pages())
+        .map(|index| view.nth_page(index).title().to_string())
+        .collect()
+}
+
+#[gtk4::test]
+fn a_typed_name_titles_the_tab_and_the_window_and_typing_keeps_it() {
+    let test = TestWindow::connected("TypedTabName");
+    let workspace = test.workspace();
+    let page = open_editor(&workspace);
+    let heading = shell_of(&workspace).imp().window_title.get();
+
+    rename(&workspace, &page, "  Monthly\nrevenue ");
+
+    wait_until(WAIT, || page.title() == "Monthly revenue").expect("the typed name");
+    assert_eq!(tooltip_of(&page), "Query 1", "the hover lost the automatic title");
+    assert_eq!(heading.title(), "Monthly revenue");
+    wait_until(WAIT, || {
+        test.window.title().as_deref() == Some("Monthly revenue (Fake) - TablePro")
+    })
+    .expect("the window's title");
+
+    editor_of(&page).buffer().set_text("SELECT * FROM orders");
+
+    wait_until(WAIT, || tooltip_of(&page) == "SELECT * FROM orders").expect("the hover to follow the text");
+    assert_eq!(page.title(), "Monthly revenue", "typing replaced the typed name");
+}
+
+#[gtk4::test]
+fn an_empty_name_brings_back_the_title_the_text_gives_now() {
+    let test = TestWindow::connected("EmptyTabName");
+    let workspace = test.workspace();
+    let page = open_editor(&workspace);
+    rename(&workspace, &page, "Revenue");
+    wait_until(WAIT, || page.title() == "Revenue").expect("the typed name");
+    editor_of(&page).buffer().set_text("SELECT * FROM orders");
+    drain_main_context();
+
+    rename(&workspace, &page, " \u{200B}\t");
+
+    wait_until(WAIT, || page.title() == "SELECT * FROM orders").expect("the automatic title");
+    assert_eq!(typed_name(&workspace, &page), None);
+}
+
+// Numbering reads the tabs' numbers, never their titles.
+#[gtk4::test]
+fn a_typed_query_number_is_not_renumbered_by_a_new_tab() {
+    let test = TestWindow::connected("TypedQueryNumber");
+    let workspace = test.workspace();
+    let view = shell_of(&workspace).tab_view();
+    let first = open_editor(&workspace);
+    open_editor(&workspace);
+    rename(&workspace, &first, "Query 3");
+    wait_until(WAIT, || typed_name(&workspace, &first).as_deref() == Some("Query 3")).expect("the typed name");
+
+    open_editor(&workspace);
+
+    assert_eq!(titles(&view), ["Query 3", "Query 2", "Query 3"]);
+    assert_eq!(typed_name(&workspace, &first).as_deref(), Some("Query 3"));
+}
+
+#[gtk4::test]
+fn a_typed_name_takes_the_connection_after_it_in_a_shared_bar() {
+    let sessions = two_sessions("SharedBarTypedName", "Other");
+    let ours = open_editor(&sessions.first);
+    open_editor(&sessions.second);
+
+    rename(&sessions.first, &ours, "Revenue");
+
+    wait_until(WAIT, || ours.title() == "Revenue (Fake)").expect("the name and the connection");
+    assert_eq!(tooltip_of(&ours), "Query 1\nFake");
+}
+
+#[gtk4::test]
+fn a_file_takes_over_from_a_typed_name() {
+    let test = TestWindow::connected("FileOverTypedName");
+    let workspace = test.workspace();
+    let page = open_editor(&workspace);
+    rename(&workspace, &page, "Revenue");
+    wait_until(WAIT, || page.title() == "Revenue").expect("the typed name");
+    let path = test.dir().join("daily.sql");
+    crate::test_support::write_text_file(&path, "SELECT 1;");
+    let editor = editor_of(&page);
+
+    finish_on_main(WAIT, async move {
+        editor.insert_file(gio::File::for_path(&path), true).await
+    })
+    .expect("the file to load");
+
+    wait_until(WAIT, || page.title() == "daily.sql").expect("the file's name");
+    assert_eq!(typed_name(&workspace, &page), None);
+    rename(&workspace, &page, "Revenue");
+    drain_main_context();
+    assert_eq!(page.title(), "daily.sql", "a file-bound tab took a typed name");
+}
+
+// A notification can show on the lock screen: never the script's text.
+#[gtk4::test]
+fn a_notification_names_a_tab_by_its_typed_name_or_its_file_else_its_number() {
+    let test = TestWindow::connected("NoticeLabels");
+    let workspace = test.workspace();
+    let path = test.dir().join("daily.sql");
+    crate::test_support::write_text_file(&path, "SELECT 1;");
+    let text = open_editor(&workspace);
+    editor_of(&text).buffer().set_text("SELECT secret FROM vault");
+    let named = open_editor(&workspace);
+    rename(&workspace, &named, "Revenue");
+    wait_until(WAIT, || named.title() == "Revenue").expect("the typed name");
+    workspace.with_model(|model| {
+        model.open_tab(TabSpec::Editor {
+            initial_query: Some("SELECT 1;".to_owned()),
+            draft: None,
+            file: Some(crate::workspace::EditorFileRecord {
+                uri: gio::File::for_path(&path).uri().to_string(),
+                modified: false,
+            }),
+            database: None,
+            name: None,
+            ordinal: None,
+            untitled: false,
+        })
+    });
+    let filed = shell_of(&workspace).tab_view().selected_page().expect("the file's tab");
+    wait_until(WAIT, || filed.title() == "daily.sql").expect("the file's name");
+    let notice = |page: &adw::TabPage| workspace.notice_label(workspace.tab_id(page).expect("a tab"));
+
+    assert_eq!(notice(&named).as_deref(), Some("Revenue"));
+    assert_eq!(notice(&filed).as_deref(), Some("daily.sql"));
+    assert_eq!(notice(&text).as_deref(), Some("Query 1"));
+}
+
+// The sample statement is not blank, so only the saved mark keeps a new tab `Query N` after a restart.
+#[gtk4::test]
+fn a_restored_tab_keeps_its_number_and_its_typed_name() {
+    let test = TestWindow::picker("RestoreNumberAndName");
+    let scope = WorkspaceFileName::for_key(&test.key()).draft_scope();
+    let drafts = tablepro_storage::DraftStore::new(test.services.storage.paths().drafts_dir());
+    let (sample, named, typed) = (DraftId::new(), DraftId::new(), DraftId::new());
+    for (draft, text) in [(sample, "SELECT 1;"), (named, "SELECT 1;"), (typed, "SELECT 2;")] {
+        drafts.write_blocking(&scope, draft, text).expect("the draft");
+    }
+    let editor = |draft, name: Option<&str>, ordinal, untitled| TabRecord::Editor {
+        draft,
+        file: None,
+        database: None,
+        name: name.map(str::to_owned),
+        ordinal: Some(ordinal),
+        untitled,
+    };
+    let store = test.services.storage.workspaces().clone();
+    store
+        .schedule(
+            &test.key(),
+            WorkspaceRecord {
+                active_tab: Some(0),
+                tabs: vec![
+                    editor(sample, None, 3, true),
+                    editor(named, Some("Revenue"), 1, true),
+                    editor(typed, None, 2, false),
+                ],
+            },
+        )
+        .expect("the record to queue");
+    finish_on_main(WAIT, store.flush(&test.key()))
+        .expect("the flush to end")
+        .expect("the record written");
+
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("workspace");
+    let workspace = test.workspace();
+    let view = shell_of(&workspace).tab_view();
+    wait_until(WAIT, || view.n_pages() == 3).expect("the saved tabs");
+
+    assert_eq!(titles(&view), ["Query 3", "Revenue", "SELECT 2;"]);
+    assert_eq!(tooltip_of(&view.nth_page(1)), "Query 1");
+    assert_eq!(text_of(&view.nth_page(0)), "SELECT 1;");
+}
+
+#[gtk4::test]
+fn typing_in_a_new_tab_saves_that_it_is_no_longer_untitled() {
+    let test = TestWindow::connected("UntitledMarkSaved");
+    wait_until(WAIT, || !test.window.settling()).expect("the saved tabs read");
+    let workspace = test.workspace();
+    let page = open_editor(&workspace);
+    let store = test.services.storage.workspaces().clone();
+    let saved_untitled = || match finish_on_main(WAIT, store.load(&test.key())).expect("the load to end") {
+        WorkspaceLoad::Restored(record) => record.tabs.iter().find_map(|tab| match tab {
+            TabRecord::Editor { untitled, .. } => Some(*untitled),
+            _ => None,
+        }),
+        _ => None,
+    };
+    wait_until(WAIT, || saved_untitled() == Some(true)).expect("the new tab saved as untitled");
+
+    editor_of(&page).buffer().set_text("SELECT * FROM orders");
+
+    wait_until(WAIT, || saved_untitled() == Some(false)).expect("the typed text to drop the mark");
+}
+
+#[gtk4::test]
+fn a_reopened_tab_keeps_its_typed_name() {
+    let test = TestWindow::connected("ReopenTypedName");
+    let workspace = test.workspace();
+    let view = shell_of(&workspace).tab_view();
+    let named = open_editor(&workspace);
+    open_editor(&workspace);
+    rename(&workspace, &named, "Revenue");
+    wait_until(WAIT, || named.title() == "Revenue").expect("the typed name");
+    view.close_page(&named);
+    wait_until(WAIT, || view.n_pages() == 1).expect("the tab to close");
+
+    WidgetExt::activate_action(&test.window, "win.reopen-closed-tab", None).expect("win.reopen-closed-tab");
+
+    wait_until(WAIT, || view.n_pages() == 2).expect("the tab back");
+    let reopened = view.selected_page().expect("the reopened tab in front");
+    assert_eq!(reopened.title(), "Revenue");
+    assert_eq!(tooltip_of(&reopened), "Query 1");
+}
+
+#[gtk4::test]
+fn a_reopened_new_tab_keeps_its_number_unless_another_tab_took_it() {
+    let test = TestWindow::connected("ReopenNumber");
+    let workspace = test.workspace();
+    let view = shell_of(&workspace).tab_view();
+    open_editor(&workspace);
+    let second = open_editor(&workspace);
+    open_editor(&workspace);
+    let reopen = || {
+        let before = view.n_pages();
+        WidgetExt::activate_action(&test.window, "win.reopen-closed-tab", None).expect("win.reopen-closed-tab");
+        wait_until(WAIT, || view.n_pages() == before + 1).expect("the tab back");
+        view.selected_page().expect("the reopened tab in front")
+    };
+
+    view.close_page(&second);
+    wait_until(WAIT, || view.n_pages() == 2).expect("Query 2 to close");
+    assert_eq!(reopen().title(), "Query 2");
+
+    let second = view.selected_page().expect("Query 2 again");
+    view.close_page(&second);
+    wait_until(WAIT, || view.n_pages() == 2).expect("Query 2 to close again");
+    open_editor(&workspace);
+    assert_eq!(reopen().title(), "Query 4", "two tabs share a number");
+    let mut all = titles(&view);
+    all.sort();
+    assert_eq!(all, ["Query 1", "Query 2", "Query 3", "Query 4"]);
+}
+
+#[gtk4::test]
+fn a_reopened_emptied_tab_comes_back_empty() {
+    let test = TestWindow::connected("ReopenEmptied");
+    let workspace = test.workspace();
+    let view = shell_of(&workspace).tab_view();
+    open_editor(&workspace);
+    let emptied = open_editor(&workspace);
+    editor_of(&emptied).buffer().set_text("");
+    drain_main_context();
+    view.close_page(&emptied);
+    wait_until(WAIT, || view.n_pages() == 1).expect("the tab to close");
+
+    WidgetExt::activate_action(&test.window, "win.reopen-closed-tab", None).expect("win.reopen-closed-tab");
+
+    wait_until(WAIT, || view.n_pages() == 2).expect("the tab back");
+    let reopened = view.selected_page().expect("the reopened tab in front");
+    assert_eq!(text_of(&reopened), "", "the sample statement came back");
+    assert_eq!(reopened.title(), "Query 2");
 }

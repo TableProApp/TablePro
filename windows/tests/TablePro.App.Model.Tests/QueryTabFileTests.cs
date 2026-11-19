@@ -501,6 +501,81 @@ public sealed class QueryTabFileTests : IDisposable
         Assert.Equal("select 'kept';", _view.WholeText);
     }
 
+    [Fact]
+    public void AFileTabIsNotRenamedAndIgnoresANameTheSessionKept()
+    {
+        var path = Write("report.sql", Encoding.UTF8.GetBytes("select 1;"));
+        _view.WholeText = "select 1;";
+        var open = Tab(path, SqlFile.Read(path));
+        var restored = new QueryTab(
+            "report.sql",
+            _session,
+            _view,
+            _results,
+            DataModel.Relational,
+            () => new AppSettings(),
+            files: _files,
+            filePath: path,
+            onDisk: SqlFile.Read(path),
+            customTitle: "Monthly report");
+
+        Assert.False(open.CanRename);
+        Assert.False(open.Rename("Monthly report"));
+        Assert.Equal("report.sql", open.Title);
+        Assert.Equal("report.sql", restored.Title);
+        Assert.Null(restored.CustomTitle);
+        Assert.Null(restored.Snapshot().CustomTitle);
+    }
+
+    [Fact]
+    public async Task SavingANamedTabSuggestsItsNameAndTheFileNameTakesOver()
+    {
+        var path = Path.Combine(_directory, "monthly.sql");
+        _files.Picked = path;
+        var tab = Tab();
+        tab.Rename("Monthly report");
+
+        Assert.True(await tab.SaveAsync());
+
+        Assert.Equal<(string, string?)>([("Monthly report.sql", null)], _files.Picks);
+        Assert.Equal("monthly.sql", tab.Title);
+        Assert.Null(tab.CustomTitle);
+        Assert.False(tab.CanRename);
+        var snapshot = tab.Snapshot();
+        Assert.Equal(("monthly.sql", null), (snapshot.Title, snapshot.CustomTitle));
+    }
+
+    [Theory]
+    [InlineData("totals.sql")]
+    [InlineData("totals.SQL")]
+    [InlineData("totals.pgsql")]
+    public async Task ANameWithItsExtensionIsSuggestedWithoutASecondOneAndADismissedPickerKeepsIt(string name)
+    {
+        var tab = Tab();
+        tab.Rename(name);
+
+        Assert.False(await tab.SaveAsync());
+
+        Assert.Equal<(string, string?)>([(name, null)], _files.Picks);
+        Assert.Equal(name, tab.Title);
+        Assert.Equal(name, tab.CustomTitle);
+    }
+
+    [Fact]
+    public async Task AFailedSaveKeepsTheTypedName()
+    {
+        _files.Picked = Path.Combine(_directory, "missing", "report.sql");
+        var tab = Tab();
+        tab.Rename("Monthly report");
+
+        Assert.False(await tab.SaveAsync());
+
+        Assert.Single(_files.Failures);
+        Assert.Null(tab.FilePath);
+        Assert.Equal("Monthly report", tab.Title);
+        Assert.True(tab.CanRename);
+    }
+
     private QueryTab Restoring(string path) => new(
         "report.sql",
         _session,

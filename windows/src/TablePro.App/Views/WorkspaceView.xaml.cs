@@ -68,6 +68,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     private string? _listedOwnDatabase;
     private CancellationTokenSource? _listingDatabases;
 
+    // One rename at a time; starting another commits this one.
+    private TabRename? _renaming;
+
+    // A caption double-click renames only the tab both presses hit, never one that slid under a closed tab's X.
+    private TabViewItem? _pressedTab;
+
     internal WorkspaceView(Workbench workbench, OpenConnection connection)
     {
         _workbench = workbench;
@@ -339,7 +345,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         };
     }
 
-    // A query tab's snapshot is its fixed title and its text, so the text is copied out again only once it changed.
+    // The text is copied out again only once it changed; a rename and every other state change drop the copy.
     private SessionTab SnapshotOf(ITabContent content)
     {
         if (content.Editor?.Document is not { } document)
@@ -385,6 +391,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         _session = null;
         EndAssistant();
         _exporting?.Cancel();
+        FinishRename(commit: false, focus: false);
         Tabs.CanTearOutTabs = false;
         _watching?.Cancel();
         _watching = null;
@@ -440,7 +447,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 restored?.FileStamp,
                 restored?.FileUnsaved ?? false,
                 onDisk,
-                restored?.FoldedLines),
+                restored?.FoldedLines,
+                restored?.CustomTitle),
             Symbol.Document,
             index);
     }
@@ -632,7 +640,9 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             return;
         }
 
-        Restore(closed.Tab, Math.Min(closed.Index, Tabs.TabItems.Count));
+        // A new tab may have taken the closed one's number meanwhile, as the lowest free one.
+        var tab = QueryTitles.Reopened(closed.Tab, TakenQueryTitles(), Strings.Get("QueryTabTitle"));
+        Restore(tab, Math.Min(closed.Index, Tabs.TabItems.Count));
         CommandsChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1159,21 +1169,33 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         return true;
     }
 
-    private string NextQueryTitle()
+    // leaving is a tab moving to another window, which keeps its number there.
+    private string NextQueryTitle(QueryTabView? leaving = null) =>
+        QueryTitles.Next(TakenQueryTitles(leaving), Strings.Get("QueryTabTitle"));
+
+    // Every window of the session counts, and a typed name still holds the number it hides, so no two tabs read alike.
+    private HashSet<string> TakenQueryTitles(QueryTabView? leaving = null)
     {
-        var taken = Tabs.TabItems.OfType<TabViewItem>()
+        IEnumerable<WorkspaceView> workspaces = _session is { } session && Host is { } host
+            ? host.WorkspacesOf(session).Append(this).Distinct()
+            : [this];
+        var tabs = workspaces
+            .SelectMany(workspace => workspace.Tabs.TabItems.OfType<TabViewItem>())
             .Select(item => item.Content)
-            .OfType<QueryTabView>()
-            .Select(view => view.Title)
-            .ToHashSet(StringComparer.CurrentCulture);
-        for (var number = 1; ; number++)
+            .OfType<QueryTabView>();
+        if (leaving is not null)
         {
-            var title = Strings.Format("QueryTabTitle", number);
-            if (!taken.Contains(title))
-            {
-                return title;
-            }
+            tabs = tabs.Append(leaving);
         }
+
+        var taken = new HashSet<string>(StringComparer.CurrentCulture);
+        foreach (var tab in tabs)
+        {
+            taken.Add(tab.Title);
+            taken.Add(tab.AutomaticTitle);
+        }
+
+        return taken;
     }
 
     private void AddTab(ITabContent content, Symbol icon, int? index = null)
@@ -1200,6 +1222,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
 
         item.ContextRequested += OnTabContextRequested;
+        item.KeyDown += OnTabKeyDown;
+        item.DoubleTapped += OnTabDoubleTapped;
         if (item.Content is ITabContent content)
         {
             content.StateChanged += OnTabStateChanged;
@@ -1261,9 +1285,25 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     }
 
     // The tab keeps its content, its connection and its run; only this workspace lets go of it.
-    internal void Release(TabViewItem item)
+    internal void Release(TabViewItem item) => Release(item, closed: false);
+
+    // closed: the tab closed, rather than moving to another strip.
+    private void Release(TabViewItem item, bool closed)
     {
+        if (ReferenceEquals(_renaming?.Item, item))
+        {
+            // A move keeps what was typed, as focus leaving the box would.
+            FinishRename(commit: !closed, focus: false);
+        }
+
+        if (ReferenceEquals(_pressedTab, item))
+        {
+            _pressedTab = null;
+        }
+
         item.ContextRequested -= OnTabContextRequested;
+        item.KeyDown -= OnTabKeyDown;
+        item.DoubleTapped -= OnTabDoubleTapped;
         if (item.Content is ITabContent content)
         {
             content.StateChanged -= OnTabStateChanged;
@@ -1307,11 +1347,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             definition.OpenInEditorRequested -= OnOpenInEditor;
         }
 
+        var leaving = closed ? null : item.Content as QueryTabView;
         Tabs.TabItems.Remove(item);
         // Native tear-out cannot drop back into an empty primary strip.
         if (Tabs.TabItems.Count == 0 && Host is { IsPrimary: true })
         {
-            NewQueryTab();
+            NewQueryTab(title: NextQueryTitle(leaving));
         }
 
         UpdateElsewhereBar();
@@ -1328,12 +1369,17 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     }
 
     // Before the workspace leaves its window, while TabView can still reach the window to unmark its strip.
-    public void Leave() => Tabs.CanTearOutTabs = false;
+    public void Leave()
+    {
+        FinishRename(commit: true, focus: false);
+        Tabs.CanTearOutTabs = false;
+    }
 
+    // A rename keeps it off: the box would be a caption, where a press drags the tab instead of placing the caret.
     internal void UpdateTearOut()
     {
         Tabs.CanTearOutTabs = false;
-        if (Tabs.IsLoaded && _session is not null && Host is { CanMoveTabs: true })
+        if (_renaming is null && Tabs.IsLoaded && _session is not null && Host is { CanMoveTabs: true })
         {
             Tabs.CanTearOutTabs = true;
             _stripOrigin = Tabs.TransformToVisual(null).TransformPoint(default);
@@ -1364,7 +1410,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     private void OnFileSaved(object? sender, string path) => FileUsed?.Invoke(this, path);
 
     // A .sql file's tab is named for the file, with a dot while its text differs from the file, as Notepad marks it.
-    private static void ShowHeader(TabViewItem item)
+    private void ShowHeader(TabViewItem item)
     {
         if (item.Content is not ITabContent content)
         {
@@ -1372,7 +1418,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
 
         var dirty = content is QueryTabView { IsDirty: true };
-        item.Header = dirty ? Strings.Format("TabTitleUnsaved", content.Title) : content.Title;
+        // A run ending during a rename would otherwise put the title back over the box.
+        if (!ReferenceEquals(_renaming?.Item, item))
+        {
+            item.Header = dirty ? Strings.Format("TabTitleUnsaved", content.Title) : content.Title;
+        }
+
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, content.Title);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(
             item, dirty ? Strings.Get("TabUnsavedStatus") : string.Empty);
@@ -1380,6 +1431,12 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
     private void OnTabStateChanged(object? sender, EventArgs e)
     {
+        // A save that gave the tab a file ends the edit, since the file's name takes over.
+        if (_renaming is { } renaming && ReferenceEquals(renaming.Tab, sender) && !renaming.Tab.CanRename)
+        {
+            FinishRename(commit: false, focus: false);
+        }
+
         if (Tabs.TabItems.OfType<TabViewItem>().FirstOrDefault(item => ReferenceEquals(item.Content, sender)) is { } changed)
         {
             ShowHeader(changed);
@@ -1428,7 +1485,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     // Built when asked for, since a menu keeps the window it first opened in and a tab can move to another.
     private void OnTabContextRequested(UIElement sender, ContextRequestedEventArgs args)
     {
-        if (sender is not TabViewItem item)
+        // The rename box shows its own menu for its text.
+        if (sender is not TabViewItem item || ReferenceEquals(_renaming?.Item, item))
         {
             return;
         }
@@ -1439,25 +1497,107 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
     internal bool ShowTabContextMenu(Windows.Graphics.PointInt32 screenPoint)
     {
+        if (TabAt(screenPoint, out _) is not { } item)
+        {
+            return false;
+        }
+
         var point = XamlRoot.CoordinateConverter.ConvertScreenToLocal(screenPoint);
+        ShowTabContextMenu(item, XamlRoot.Content.TransformToVisual(item).TransformPoint(point));
+        return true;
+    }
+
+    // Every caption press, the window's own title bar included, which finds no tab.
+    internal void TabPressed(Windows.Graphics.PointInt32 screenPoint) => _pressedTab = TabAt(screenPoint, out _);
+
+    // A caption double-click; false leaves it to the window, which maximizes or restores.
+    internal bool RenameTabAt(Windows.Graphics.PointInt32 screenPoint)
+    {
+        var pressed = _pressedTab;
+        _pressedTab = null;
+        if (TabAt(screenPoint, out var onClose) is not { Content: QueryTabView { CanRename: true } } item
+            || onClose
+            || !ReferenceEquals(item, pressed))
+        {
+            return false;
+        }
+
+        StartRenameSoon(item);
+        return true;
+    }
+
+    // The tab under a point on the screen, and whether the point is on that tab's close button.
+    private TabViewItem? TabAt(Windows.Graphics.PointInt32 screenPoint, out bool onClose)
+    {
+        onClose = false;
+        if (XamlRoot is not { } root)
+        {
+            return null;
+        }
+
+        var point = root.CoordinateConverter.ConvertScreenToLocal(screenPoint);
         foreach (var item in Tabs.TabItems.OfType<TabViewItem>().Where(item => item.IsLoaded))
         {
-            var bounds = item.TransformToVisual(null).TransformBounds(
-                new Windows.Foundation.Rect(0, 0, item.ActualWidth, item.ActualHeight));
-            if (bounds.Contains(point))
+            if (BoundsOf(item).Contains(point))
             {
-                ShowTabContextMenu(item, XamlRoot.Content.TransformToVisual(item).TransformPoint(point));
-                return true;
+                onClose = Part(item, "CloseButton") is { Visibility: Visibility.Visible } close
+                    && BoundsOf(close).Contains(point);
+                return item;
             }
         }
 
-        return false;
+        return null;
+    }
+
+    private static Windows.Foundation.Rect BoundsOf(FrameworkElement element) =>
+        element.TransformToVisual(null).TransformBounds(
+            new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
+
+    // TabViewItem keeps its close button as a template part, with no property to reach it.
+    private static FrameworkElement? Part(DependencyObject root, string name)
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is FrameworkElement element && element.Name == name)
+            {
+                return element;
+            }
+
+            if (Part(child, name) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     private void ShowTabContextMenu(TabViewItem item, Windows.Foundation.Point? position)
     {
         Tabs.SelectedItem = item;
         var menu = new MenuFlyout();
+        if (item.Content is QueryTabView { CanRename: true })
+        {
+            var rename = new MenuFlyoutItem
+            {
+                Text = Strings.Get("MenuRenameTab"),
+                Icon = new SymbolIcon(Symbol.Rename),
+                KeyboardAcceleratorTextOverride = Strings.Get("MenuRenameTabKeys"),
+            };
+            var chosen = false;
+            rename.Click += (_, _) => chosen = true;
+            // Once the menu has handed focus back, which would otherwise take it from the box as it opens.
+            menu.Closed += (_, _) =>
+            {
+                if (chosen)
+                {
+                    StartRenameSoon(item);
+                }
+            };
+            menu.Items.Add(rename);
+        }
+
         var move = new MenuFlyoutItem
         {
             Text = Strings.Get("MenuMoveToNewWindow"),
@@ -1478,6 +1618,202 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         {
             menu.ShowAt(item);
         }
+    }
+
+    // On the tab itself, never as an accelerator: F2 in the grid edits a cell.
+    private void OnTabKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.F2
+            && _renaming is null
+            && sender is TabViewItem { Content: QueryTabView { CanRename: true } } item
+            && ReferenceEquals(e.OriginalSource, item))
+        {
+            e.Handled = true;
+            StartRename(item);
+        }
+    }
+
+    // While tear-out is off the strip is no caption, so a double-click arrives here instead of at the window.
+    private void OnTabDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (_renaming is null
+            && sender is TabViewItem { Content: QueryTabView { CanRename: true } } item
+            && !InButton(e.OriginalSource as DependencyObject, item))
+        {
+            e.Handled = true;
+            StartRenameSoon(item);
+        }
+    }
+
+    private static bool InButton(DependencyObject? element, DependencyObject within)
+    {
+        for (; element is not null && !ReferenceEquals(element, within); element = VisualTreeHelper.GetParent(element))
+        {
+            if (element is ButtonBase)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // After the input that asked for it, so the press's or the menu's own focus change cannot close the box at once.
+    private void StartRenameSoon(TabViewItem item) =>
+        _ = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => StartRename(item));
+
+    // The header becomes a box over the title, so the name is typed where it shows.
+    private void StartRename(TabViewItem item)
+    {
+        if (item.Content is not QueryTabView { CanRename: true } tab || !Tabs.TabItems.Contains(item))
+        {
+            return;
+        }
+
+        FinishRename(commit: true, focus: false);
+        // Selected before the box takes focus, since a new selection focuses the tab's editor.
+        Tabs.SelectedItem = item;
+        var box = new TextBox
+        {
+            Text = tab.Title,
+            PlaceholderText = tab.AutomaticTitle,
+            FontSize = 12,
+            MinWidth = 0,
+            MinHeight = 0,
+            Padding = new Thickness(6, 2, 6, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            IsSpellCheckEnabled = false,
+            IsTextPredictionEnabled = false,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(box, "TabRenameBox");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(box, Strings.Get("TabRenameBoxName"));
+        _renaming = new TabRename(item, tab, box, item.HorizontalContentAlignment, Tabs.CanReorderTabs);
+        UpdateTearOut();
+        // A drag that starts in the box selects text rather than moving the tab.
+        Tabs.CanReorderTabs = false;
+        item.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        item.Header = box;
+        box.KeyDown += OnRenameKeyDown;
+        box.KeyUp += OnRenameKeyUp;
+        box.LostFocus += OnRenameLostFocus;
+        item.UpdateLayout();
+        if (box.IsLoaded)
+        {
+            ReadyRenameBox(box);
+        }
+        else
+        {
+            box.Loaded += OnRenameBoxLoaded;
+        }
+    }
+
+    private void OnRenameBoxLoaded(object sender, RoutedEventArgs e)
+    {
+        var box = (TextBox)sender;
+        box.Loaded -= OnRenameBoxLoaded;
+        ReadyRenameBox(box);
+    }
+
+    // Watched once the seeded text is in, so only a change the user makes counts as an edit.
+    private void ReadyRenameBox(TextBox box)
+    {
+        if (!ReferenceEquals(_renaming?.Box, box))
+        {
+            return;
+        }
+
+        box.TextChanging += OnRenameTextChanging;
+        box.Focus(FocusState.Keyboard);
+        box.SelectAll();
+    }
+
+    // Typing with focus counts even when it gives the same text back; a paste from the box's menu has no focus.
+    private void OnRenameTextChanging(TextBox sender, TextBoxTextChangingEventArgs args)
+    {
+        if (args.IsContentChanging
+            && _renaming is { } renaming
+            && ReferenceEquals(renaming.Box, sender)
+            && (sender.FocusState != FocusState.Unfocused || sender.Text != renaming.OpenedWith))
+        {
+            renaming.Edited = true;
+        }
+    }
+
+    // TabViewItem moves to the next tab on an arrow the box does not take at its ends, which would end the edit.
+    private void OnRenameKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (_renaming is not { } renaming || !ReferenceEquals(renaming.Box, sender))
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case VirtualKey.Enter or VirtualKey.Escape:
+                renaming.Pressed = e.Key;
+                e.Handled = true;
+                break;
+            case VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down or VirtualKey.Home
+                or VirtualKey.End:
+                e.Handled = true;
+                break;
+            default:
+                break;
+        }
+    }
+
+    // On the key's release after its press here: the Enter that chose the menu item is released over the box.
+    private void OnRenameKeyUp(object sender, KeyRoutedEventArgs e)
+    {
+        if (_renaming is { Pressed: { } pressed } renaming && ReferenceEquals(renaming.Box, sender) && e.Key == pressed)
+        {
+            e.Handled = true;
+            FinishRename(commit: pressed == VirtualKey.Enter, focus: true);
+        }
+    }
+
+    // Focus leaving commits, as a rename does in Windows; the box's own menu takes focus only while it shows.
+    private void OnRenameLostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_renaming is { } renaming
+            && ReferenceEquals(renaming.Box, sender)
+            && renaming.Box.FocusState == FocusState.Unfocused
+            && renaming.Box.ContextFlyout is not { IsOpen: true }
+            && renaming.Box.SelectionFlyout is not { IsOpen: true })
+        {
+            FinishRename(commit: true, focus: false);
+        }
+    }
+
+    // A commit with no edit since the box opened keeps an automatic title automatic.
+    private void FinishRename(bool commit, bool focus)
+    {
+        if (_renaming is not { } renaming)
+        {
+            return;
+        }
+
+        _renaming = null;
+        var box = renaming.Box;
+        box.KeyDown -= OnRenameKeyDown;
+        box.KeyUp -= OnRenameKeyUp;
+        box.LostFocus -= OnRenameLostFocus;
+        box.TextChanging -= OnRenameTextChanging;
+        box.Loaded -= OnRenameBoxLoaded;
+        if (focus)
+        {
+            renaming.Tab.FocusContent();
+        }
+
+        renaming.Item.HorizontalContentAlignment = renaming.Alignment;
+        Tabs.CanReorderTabs = renaming.Reorders;
+        if (commit && renaming.Edited)
+        {
+            renaming.Tab.Rename(box.Text);
+        }
+
+        ShowHeader(renaming.Item);
+        UpdateTearOut();
     }
 
     // Each press on a tab may start a drag out of the strip, so the window is asked for before any drag.
@@ -1524,7 +1860,16 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
     }
 
-    private Task CloseTabAsync(TabViewItem item) => _tabs.CloseAsync(item);
+    // Closing a tab drops what was typed in its rename box.
+    private Task CloseTabAsync(TabViewItem item)
+    {
+        if (ReferenceEquals(_renaming?.Item, item))
+        {
+            FinishRename(commit: false, focus: false);
+        }
+
+        return _tabs.CloseAsync(item);
+    }
 
     IReadOnlyList<TabViewItem> IWorkspaceTabsView<TabViewItem>.Items => [.. Tabs.TabItems.OfType<TabViewItem>()];
 
@@ -1534,7 +1879,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
     Task<bool> IWorkspaceTabsView<TabViewItem>.ConfirmCloseHeldAsync(IWorkspaceTab tab) => ConfirmCloseHeldAsync(tab);
 
-    void IWorkspaceTabsView<TabViewItem>.Remove(TabViewItem item) => Release(item);
+    void IWorkspaceTabsView<TabViewItem>.Remove(TabViewItem item) => Release(item, closed: true);
 
     private async Task<bool> ConfirmCloseHeldAsync(IWorkspaceTab content)
     {
@@ -2569,4 +2914,26 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
     private void OnEditConnection(object sender, RoutedEventArgs e) => EditRequested?.Invoke(this, EventArgs.Empty);
 
     private void OnCopyDetails(object sender, RoutedEventArgs e) => CopyText(_failureDetails);
+
+    // The header a rename swapped for its box, and what the strip allowed before it.
+    private sealed class TabRename(
+        TabViewItem item, QueryTabView tab, TextBox box, HorizontalAlignment alignment, bool reorders)
+    {
+        public TabViewItem Item { get; } = item;
+
+        public QueryTabView Tab { get; } = tab;
+
+        public TextBox Box { get; } = box;
+
+        public HorizontalAlignment Alignment { get; } = alignment;
+
+        public bool Reorders { get; } = reorders;
+
+        public string OpenedWith { get; } = box.Text;
+
+        public bool Edited { get; set; }
+
+        // Enter or Escape pressed in the box, which its release then acts on.
+        public VirtualKey? Pressed { get; set; }
+    }
 }

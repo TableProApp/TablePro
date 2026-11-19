@@ -18,6 +18,10 @@ pub(crate) enum TabSpec {
         file: Option<EditorFileRecord>,
         /// The database the editor bar moved a restored tab to.
         database: Option<String>,
+        name: Option<String>,
+        // Kept only while no open tab has it, so two tabs never share a number.
+        ordinal: Option<usize>,
+        untitled: bool,
     },
     Table {
         table: TableRef,
@@ -38,6 +42,20 @@ pub(crate) enum TabSpec {
     Key {
         key: String,
     },
+}
+
+impl TabSpec {
+    pub(crate) fn new_editor(initial_query: Option<String>) -> Self {
+        Self::Editor {
+            initial_query,
+            draft: None,
+            file: None,
+            database: None,
+            name: None,
+            ordinal: None,
+            untitled: false,
+        }
+    }
 }
 
 /// Where a table tab opens in its rows.
