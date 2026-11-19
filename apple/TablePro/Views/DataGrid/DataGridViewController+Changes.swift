@@ -80,7 +80,7 @@ extension DataGridViewController {
         remountAccessibilityCells(force: true)
     }
 
-    // Only an accessory that came or went can move a width, and a wider column can leave the frozen pane with its editor.
+    // Only an accessory that came or went can move a width, and a wider column can leave the frozen pane with an open editor.
     private func columnMetadataDidChange() {
         let changed = presenter.refreshColumnPresentations()
         if changed.isEmpty {
@@ -89,6 +89,7 @@ extension DataGridViewController {
             suspendFieldEditing(unmounting: true)
             reconcileColumns(widening: changed)
             resumeFieldEditing()
+            followRowChangesWithPopovers()
         }
         redrawVisibleRows()
     }
