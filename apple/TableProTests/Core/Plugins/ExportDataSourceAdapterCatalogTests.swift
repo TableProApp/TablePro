@@ -70,6 +70,42 @@ private final class SchemaReadStubDriver: PluginDriverStub, @unchecked Sendable 
     }
 }
 
+// The shared reads answer the sidebar and completion; the export's own reads throw where a String key would merge two
+// names, so this stub tells the two apart by what each returns.
+private final class ExportReadStubDriver: PluginDriverStub, @unchecked Sendable {
+    private(set) var reads: [String] = []
+
+    func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        reads.append("shared columns \(schema ?? "")")
+        return [:]
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        reads.append("export columns \(schema ?? "")")
+        return ["orders": [PluginColumnInfo(name: "id", dataType: "bigint")]]
+    }
+
+    func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        reads.append("shared foreign keys \(schema ?? "")")
+        return [:]
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        reads.append("export foreign keys \(schema ?? "")")
+        return ["orders": [PluginForeignKeyInfo(name: "fk", column: "c", referencedTable: "c", referencedColumn: "id")]]
+    }
+
+    func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
+        reads.append("shared indexes \(schema ?? "")")
+        return [:]
+    }
+
+    func fetchAllIndexesForExport(schema: String?) async throws -> [String: [PluginIndexInfo]] {
+        reads.append("export indexes \(schema ?? "")")
+        return ["orders": [PluginIndexInfo(name: "orders_pkey", columns: ["id"], isPrimary: true)]]
+    }
+}
+
 struct ExportDataSourceAdapterCatalogTests {
     private func adapter(_ stub: CommentingStubDriver) -> ExportDataSourceAdapter {
         let driver = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .postgresql), pluginDriver: stub)
@@ -137,5 +173,21 @@ struct ExportDataSourceAdapterCatalogTests {
         #expect(sequences["orders"]?.map { $0.ddl } == ["CREATE SEQUENCE orders_id_seq;"])
         #expect(types["orders"]?.map { $0.labels } == [["new", "paid"]])
         #expect(stub.reads == ["index sales", "comments sales", "sequences sales", "types sales"])
+    }
+
+    @Test("An export's column, key and index group reads come from the driver's export reads, not the shared ones")
+    func groupReadsUseTheExportReads() async throws {
+        let stub = ExportReadStubDriver()
+        let driver = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .postgresql), pluginDriver: stub)
+        let source = ExportDataSourceAdapter(driver: driver, databaseType: .postgresql)
+
+        let columns = try await source.fetchAllColumns(databaseName: "sales")
+        let foreignKeys = try await source.fetchAllForeignKeys(databaseName: "sales")
+        let indexes = try await source.fetchAllIndexes(databaseName: "sales")
+
+        #expect(columns["orders"]?.map { $0.name } == ["id"])
+        #expect(foreignKeys["orders"]?.map { $0.name } == ["fk"])
+        #expect(indexes["orders"]?.map { $0.name } == ["orders_pkey"])
+        #expect(stub.reads == ["export columns sales", "export foreign keys sales", "export indexes sales"])
     }
 }

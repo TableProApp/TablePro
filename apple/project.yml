@@ -135,6 +135,11 @@ targetTemplates:
       - Plugins/Shared/PluginExportOutputBuffer.swift
       - Plugins/Shared/PluginHexText.swift
 
+  # What an export that reads a schema at once shares for matching its names.
+  ExportGroupReads:
+    sources:
+      - Plugins/Shared/PluginExportSpelling.swift
+
   # A bundled plugin's folder compiled again with its tests and no host app. It links the same
   # TableProPluginKit framework the plugin does: a package product that depended on the package's
   # TableProPluginKit would give the plugin code its own copy of PluginKit's types.
@@ -700,7 +705,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.MarkdownExportPlugin
 
   DataDictionaryExport:
-    templates: [DriverPlugin]
+    templates: [DriverPlugin, ExportGroupReads]
     templateAttributes:
       folder: DataDictionaryExportPlugin
       principalClass: DataDictionaryExportPlugin
@@ -745,7 +750,7 @@ targets:
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/DuckDBDriverPlugin/CDuckDB
 
   SQLExport:
-    templates: [DriverPlugin, ExportOutput]
+    templates: [DriverPlugin, ExportOutput, ExportGroupReads]
     templateAttributes:
       folder: SQLExportPlugin
       principalClass: SQLExportPlugin

@@ -149,8 +149,8 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
             let definitionObjects = tables.filter { !$0.kind.carriesRows }
 
             try writeHeader(to: writer, dataSource: dataSource)
-            let columnsByTable = await prefetchColumns(tables: rowObjects, dataSource: dataSource, run: run)
-            let fkMap = await prefetchForeignKeys(tables: rowObjects, dataSource: dataSource, run: run)
+            let columnsByTable = try await prefetchColumns(tables: rowObjects, progress: progress, run: run)
+            let fkMap = try await prefetchForeignKeys(tables: rowObjects, progress: progress, run: run)
             let sortedTables = topologicallySort(rowObjects, fkMap: fkMap, run: run)
             noteContainerSpan(of: tables, run: run)
             try writeDependencyCycleNote(to: writer, run: run)
@@ -276,9 +276,11 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
         // Kept in the export tree's order, the only one left once no parent-first order exists.
         var tablesUnorderedByCycle: [String] = []
         // A sequence ticked and also a table's default is reached twice, and a second CREATE SEQUENCE fails the restore.
-        var emittedSequenceNames: Set<String> = []
+        var emittedSequenceNames: Set<[UInt8]> = []
         // Unqualified names across two containers send one schema's rows into the other's table.
         var exportSpansContainers = false
+        private let containerNames = SortNames()
+        private var tableNames: [[UInt8]: SortNames] = [:]
 
         init(options: SQLExportOptions, groupReads: SQLExportGroupReads) {
             self.options = options
@@ -288,6 +290,50 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
         func noteDependentObjectFailure(_ sanitizedTableName: String) {
             guard !dependentObjectFailures.contains(sanitizedTableName) else { return }
             dependentObjectFailures.append(sanitizedTableName)
+        }
+
+        func node(for table: PluginExportTable) -> ForeignKeyTopologicalSort.Table {
+            node(named: table.name, in: table.containerName)
+        }
+
+        // The key as the sort reads it: the parent it names, in the referencing table's container when it names none.
+        func sortKey(_ key: PluginForeignKeyInfo, from table: PluginExportTable) -> PluginForeignKeyInfo {
+            let parent = node(named: key.referencedTable, in: key.referencedSchema ?? table.containerName)
+            return PluginForeignKeyInfo(
+                name: key.name,
+                column: key.column,
+                referencedTable: parent.name,
+                referencedColumn: key.referencedColumn,
+                referencedDatabase: key.referencedDatabase,
+                referencedSchema: key.referencedSchema == nil ? nil : parent.schema ?? "",
+                onDelete: key.onDelete,
+                onUpdate: key.onUpdate
+            )
+        }
+
+        private func node(named name: String, in container: String?) -> ForeignKeyTopologicalSort.Table {
+            let container = container ?? ""
+            let key = PluginExportSpelling.key(container)
+            let names = tableNames[key] ?? SortNames()
+            tableNames[key] = names
+            return ForeignKeyTopologicalSort.Table(name: names.name(name), schema: containerNames.name(container))
+        }
+    }
+
+    // ForeignKeyTopologicalSort keys a table by a String, which equates names the server keeps apart (NFC and NFD
+    // spellings), so a later spelling of a name already seen gets a name of its own.
+    private final class SortNames {
+        private var spellings: [String: [[UInt8]]] = [:]
+
+        func name(_ name: String) -> String {
+            let bytes = PluginExportSpelling.key(name)
+            var known = spellings[name, default: []]
+            let index = known.firstIndex(of: bytes) ?? known.count
+            if index == known.count {
+                known.append(bytes)
+                spellings[name] = known
+            }
+            return index == 0 ? name : "\(name)\u{0}\(index)"
         }
     }
 
@@ -303,7 +349,8 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
             progress: progress,
             tables: structure.filter { $0.kind.carriesRows },
             commentedObjects: structure.filter { Self.commentedKinds.contains($0.kind) },
-            indexedObjects: structure.filter { $0.kind.carriesRows || $0.kind == .materializedView })
+            indexedObjects: structure.filter { $0.kind.carriesRows || $0.kind == .materializedView },
+            everyObject: tables)
     }
 
     // The phases after the rows read none, so they move the status instead: iOS expires a background task that stalls.
@@ -393,74 +440,55 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
         try writer.write("-- Database Type: \(dataSource.databaseTypeId)\n\n")
     }
 
-    private struct ExportGroup {
-        let databaseName: String
-        let container: String?
-    }
-
-    private func exportGroups(in tables: [PluginExportTable]) -> [ExportGroup] {
-        var seen: Set<String> = []
-        return tables
-            .filter { seen.insert($0.databaseName).inserted }
-            .map { ExportGroup(databaseName: $0.databaseName, container: $0.containerName) }
-    }
-
-    private func node(for table: PluginExportTable) -> ForeignKeyTopologicalSort.Table {
-        ForeignKeyTopologicalSort.Table(name: table.name, schema: table.containerName)
-    }
-
-    private func metadataKey(_ tableName: String, in group: ExportGroup) -> String {
-        ForeignKeyTopologicalSort.Table(name: tableName, schema: group.container).identifier
-    }
-
     private func prefetchForeignKeys(
         tables: [PluginExportTable],
-        dataSource: any PluginExportDataSource,
+        progress: PluginExportProgress,
         run: ExportRun
-    ) async -> [String: [PluginForeignKeyInfo]] {
-        var merged: [String: [PluginForeignKeyInfo]] = [:]
-        var anyGroupFailed = false
-        for group in exportGroups(in: tables) {
+    ) async throws -> [String: [PluginForeignKeyInfo]] {
+        var foreignKeys: [String: [PluginForeignKeyInfo]] = [:]
+        var anyReadFailed = false
+        for table in tables {
             do {
-                let fetched = try await dataSource.fetchAllForeignKeys(databaseName: group.databaseName)
-                for (tableName, foreignKeys) in fetched {
-                    merged[metadataKey(tableName, in: group)] = foreignKeys
-                }
+                foreignKeys[run.node(for: table).identifier] = try await run.groupReads.foreignKeys(for: table)
             } catch {
+                try Self.rethrowIfCancelled(error, progress: progress)
                 Self.logger.warning("Failed to fetch foreign keys: \(error.localizedDescription)")
-                anyGroupFailed = true
+                anyReadFailed = true
             }
         }
-        if anyGroupFailed {
+        if anyReadFailed {
             run.metadataWarnings.append(String(localized:
                 "Could not fetch foreign keys, so foreign key constraints may be missing from the export."))
         }
-        return merged
+        return foreignKeys
     }
 
     private func prefetchColumns(
         tables: [PluginExportTable],
-        dataSource: any PluginExportDataSource,
+        progress: PluginExportProgress,
         run: ExportRun
-    ) async -> [String: [PluginColumnInfo]] {
-        var merged: [String: [PluginColumnInfo]] = [:]
-        var anyGroupFailed = false
-        for group in exportGroups(in: tables) {
+    ) async throws -> [String: [PluginColumnInfo]] {
+        var columns: [String: [PluginColumnInfo]] = [:]
+        var anyReadFailed = false
+        for table in tables {
             do {
-                let fetched = try await dataSource.fetchAllColumns(databaseName: group.databaseName)
-                for (tableName, columns) in fetched {
-                    merged[metadataKey(tableName, in: group)] = columns
-                }
+                columns[run.node(for: table).identifier] = try await run.groupReads.columns(for: table)
             } catch {
+                try Self.rethrowIfCancelled(error, progress: progress)
                 Self.logger.warning("Failed to fetch columns: \(error.localizedDescription)")
-                anyGroupFailed = true
+                anyReadFailed = true
             }
         }
-        if anyGroupFailed {
+        if anyReadFailed {
             run.metadataWarnings.append(String(localized:
                 "Could not fetch column metadata, so identity and generated columns may not round-trip correctly."))
         }
-        return merged
+        return columns
+    }
+
+    private static func rethrowIfCancelled(_ error: Error, progress: PluginExportProgress) throws {
+        if error is CancellationError || error is PluginExportCancellationError { throw error }
+        try progress.checkCancellation()
     }
 
     private func topologicallySort(
@@ -469,10 +497,17 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
         run: ExportRun
     ) -> [PluginExportTable] {
         let byIdentifier = Dictionary(
-            tables.map { (node(for: $0).identifier, $0) },
+            tables.map { (run.node(for: $0).identifier, $0) },
             uniquingKeysWith: { first, _ in first })
-        let ordering = ForeignKeyTopologicalSort.order(tables.map { node(for: $0) }, foreignKeysByTable: fkMap)
-        run.tablesUnorderedByCycle = ordering.unorderedByCycle.map { $0.identifier }
+        var sortKeys: [String: [PluginForeignKeyInfo]] = [:]
+        for table in tables {
+            let identifier = run.node(for: table).identifier
+            sortKeys[identifier] = fkMap[identifier]?.map { run.sortKey($0, from: table) }
+        }
+        let ordering = ForeignKeyTopologicalSort.order(tables.map { run.node(for: $0) }, foreignKeysByTable: sortKeys)
+        run.tablesUnorderedByCycle = ordering.unorderedByCycle.compactMap { byIdentifier[$0.identifier] }.map {
+            ForeignKeyTopologicalSort.Table(name: $0.name, schema: $0.containerName).identifier
+        }
         return ordering.tables.compactMap { byIdentifier[$0.identifier] }
     }
 
@@ -553,15 +588,15 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
         to writer: SQLExportFileWriter,
         run: ExportRun
     ) async throws {
-        var emittedTypeNames: Set<String> = []
+        var emittedTypeNames: Set<[UInt8]> = []
         let structureTables = tables.filter { optionValue($0, at: 0) }
         let statementEnd = dataSource.dumpStatementEnd
 
         for table in structureTables {
             do {
                 let sequences = try await run.groupReads.dependentSequences(for: table)
-                for seq in sequences where !run.emittedSequenceNames.contains(seq.name) {
-                    run.emittedSequenceNames.insert(seq.name)
+                for seq in sequences where !run.emittedSequenceNames.contains(PluginExportSpelling.key(seq.name)) {
+                    run.emittedSequenceNames.insert(PluginExportSpelling.key(seq.name))
                     let quotedName = dataSource.quoteIdentifier(seq.name)
                     if optionValue(table, at: 1) {
                         try writer.write(
@@ -579,8 +614,8 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
 
             do {
                 let enumTypes = try await run.groupReads.dependentTypes(for: table)
-                for enumType in enumTypes where !emittedTypeNames.contains(enumType.name) {
-                    emittedTypeNames.insert(enumType.name)
+                for enumType in enumTypes where !emittedTypeNames.contains(PluginExportSpelling.key(enumType.name)) {
+                    emittedTypeNames.insert(PluginExportSpelling.key(enumType.name))
                     let quotedName = dataSource.quoteIdentifier(enumType.name)
                     if optionValue(table, at: 1) {
                         try writer.write(
@@ -697,7 +732,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
             try writer.write("-- \(label): \(sanitizedName)\n")
             try writer.write("-- --------------------------------------------------------\n\n")
             if object.kind == .sequence {
-                guard run.emittedSequenceNames.insert(object.name).inserted else { continue }
+                guard run.emittedSequenceNames.insert(PluginExportSpelling.key(object.name)).inserted else { continue }
             }
             do {
                 let ddl = ddlRewriter(for: dataSource, options: run.options)
@@ -821,7 +856,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
             try progress.checkCancellation()
             tally.merge(try await writeTableData(
                 table: table,
-                columnInfo: columnsByTable[node(for: table).identifier] ?? [],
+                columnInfo: columnsByTable[run.node(for: table).identifier] ?? [],
                 dataSource: dataSource,
                 to: writer,
                 progress: progress,
@@ -845,7 +880,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
         // Only for DDL that leaves foreign keys out (PostgreSQL, Oracle): MySQL and SQL Server reject a duplicate one.
         if !dataSource.tableDDLIncludesForeignKeys {
             for table in sortedTables where optionValue(table, at: 0) {
-                let fks = fkMap[node(for: table).identifier] ?? []
+                let fks = fkMap[run.node(for: table).identifier] ?? []
                 let grouped = groupForeignKeysByConstraint(fks)
                 for group in grouped {
                     let alter = renderAddConstraintFK(table: table, group: group, dataSource: dataSource, run: run)
@@ -858,7 +893,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
         // `setval` and `pg_get_serial_sequence` are PostgreSQL's own; any other engine reads them as a syntax error.
         if SqlDialect.from(databaseTypeId: dataSource.databaseTypeId) == .postgres {
             for table in sortedTables where optionValue(table, at: 2) && table.kind.carriesRows {
-                let columns = columnsByTable[node(for: table).identifier] ?? []
+                let columns = columnsByTable[run.node(for: table).identifier] ?? []
                 for column in columns where column.isIdentity {
                     let setval = renderIdentitySetval(
                         table: table, columnName: column.name, dataSource: dataSource, run: run)
@@ -938,7 +973,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
 
     // CREATE TABLE comes back from the driver verbatim, so a spanning export says it cannot qualify that statement.
     private func noteContainerSpan(of tables: [PluginExportTable], run: ExportRun) {
-        let containers = Set(tables.map { $0.containerName ?? "" })
+        let containers = Set(tables.map { PluginExportSpelling.key($0.containerName ?? "") })
         run.exportSpansContainers = containers.count > 1
         guard run.exportSpansContainers else { return }
         run.metadataWarnings.append(String(

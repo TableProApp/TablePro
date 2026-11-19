@@ -127,6 +127,7 @@ targets:
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
       # Data export and import: the format plugins both apps run, without the macOS option panes.
       - ../Plugins/Shared/PluginExportOutputBuffer.swift
+      - ../Plugins/Shared/PluginExportSpelling.swift
       - ../Plugins/Shared/PluginHexText.swift
       - path: ../Plugins/CSVExportPlugin
         excludes:

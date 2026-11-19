@@ -146,7 +146,7 @@ nonisolated struct PostgreSQLMobileExportCatalog: MobileExportCatalog {
     }
 
     func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] {
-        try await catalog.fetchAllColumns(schema: schema(databaseName))
+        try await catalog.fetchAllColumnsForExport(schema: schema(databaseName))
     }
 
     func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] {
@@ -154,7 +154,7 @@ nonisolated struct PostgreSQLMobileExportCatalog: MobileExportCatalog {
     }
 
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] {
-        try await catalog.fetchAllForeignKeys(schema: schema(databaseName))
+        try await catalog.fetchAllForeignKeysForExport(schema: schema(databaseName))
     }
 
     func fetchIndexDDL(table: String, databaseName: String) async throws -> [String] {

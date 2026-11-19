@@ -57,21 +57,31 @@ final class DataDictionaryExportPlugin: ObservableObject, ExportFormatPlugin, Se
         var failures = DataDictionaryReadFailures()
         var objects: [DataDictionaryObject] = []
         objects.reserveCapacity(tables.count)
-        var groups: [String: DataDictionaryGroupReads] = [:]
-        let groupSizes = Dictionary(grouping: tables, by: \.databaseName).mapValues(\.count)
+        var groups: [[UInt8]: DataDictionaryGroupReads] = [:]
+        let twins = PluginExportSpelling.twins(among: tables)
+        let groupSizes = Dictionary(grouping: tables.filter { !twins.contains(PluginExportSpelling.ObjectKey($0)) }) {
+            PluginExportSpelling.key($0.databaseName)
+        }.mapValues(\.count)
         for (index, table) in tables.enumerated() {
             try progress.checkCancellation()
             progress.setCurrentTable(table.qualifiedName, index: index + 1)
-            if groups[table.databaseName] == nil {
-                groups[table.databaseName] = try await DataDictionaryGroupReads.read(
+            let group = PluginExportSpelling.key(table.databaseName)
+            guard !twins.contains(PluginExportSpelling.ObjectKey(table)) else {
+                objects.append(try await DataDictionaryReader.read(
+                    table, from: dataSource, progress: progress, failures: &failures
+                ))
+                continue
+            }
+            if groups[group] == nil {
+                groups[group] = try await DataDictionaryGroupReads.read(
                     databaseName: table.databaseName,
-                    objectCount: groupSizes[table.databaseName] ?? 0,
+                    objectCount: groupSizes[group] ?? 0,
                     from: dataSource,
                     progress: progress
                 )
             }
             objects.append(try await DataDictionaryReader.read(
-                table, from: dataSource, group: groups[table.databaseName], progress: progress, failures: &failures
+                table, from: dataSource, group: groups[group], progress: progress, failures: &failures
             ))
         }
         try progress.checkCancellation()
@@ -145,8 +155,9 @@ enum DataDictionaryReader {
     ) async throws -> DataDictionaryObject {
         var object = DataDictionaryObject(name: table.name, container: table.containerName, kind: table.kind)
         do {
-            if let columns = group?.columns?[table.name] {
-                object.columns = columns
+            if let columns = group?.columns,
+               case .answered(let answered) = PluginExportSpelling.entry(table.name, in: columns) {
+                object.columns = answered
             } else {
                 object.columns = try await dataSource.fetchColumns(table: table.name, databaseName: table.databaseName)
             }
@@ -158,10 +169,8 @@ enum DataDictionaryReader {
 
         // Every kind, as the Structure tab reads them: SQL Server indexes a view.
         do {
-            if let indexes = group?.indexes {
-                object.indexes = indexes[table.name] ?? []
-            } else {
-                object.indexes = try await dataSource.fetchIndexes(table: table.name, databaseName: table.databaseName)
+            object.indexes = try await answer(table.name, in: group?.indexes) {
+                try await dataSource.fetchIndexes(table: table.name, databaseName: table.databaseName)
             }
         } catch {
             try rethrowIfCancelled(error, progress: progress)
@@ -171,12 +180,8 @@ enum DataDictionaryReader {
 
         if table.kind == .table {
             do {
-                if let foreignKeys = group?.foreignKeys {
-                    object.foreignKeys = foreignKeys[table.name] ?? []
-                } else {
-                    object.foreignKeys = try await dataSource.fetchForeignKeys(
-                        table: table.name, databaseName: table.databaseName
-                    )
+                object.foreignKeys = try await answer(table.name, in: group?.foreignKeys) {
+                    try await dataSource.fetchForeignKeys(table: table.name, databaseName: table.databaseName)
                 }
             } catch {
                 try rethrowIfCancelled(error, progress: progress)
@@ -193,6 +198,20 @@ enum DataDictionaryReader {
             failures.comments.append(table.qualifiedName)
         }
         return object
+    }
+
+    // A table a group read leaves out has none of that kind; one it holds only in another spelling is read alone.
+    private static func answer<Value>(
+        _ name: String,
+        in group: [String: [Value]]?,
+        alone: () async throws -> [Value]
+    ) async throws -> [Value] {
+        guard let group else { return try await alone() }
+        switch PluginExportSpelling.entry(name, in: group) {
+        case .answered(let values): return values
+        case .absent: return []
+        case .otherSpelling: return try await alone()
+        }
     }
 
     static func rethrowIfCancelled(_ error: Error, progress: PluginExportProgress) throws {
