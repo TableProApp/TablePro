@@ -67,67 +67,122 @@ nonisolated final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, S
 
             let stream = try await source.elements()
 
-            for try await element in stream {
+            // What one failed statement does to the run, the same whether it ran alone or in a batch.
+            func handleFailure(_ error: any Error, statement: String, lineNumber: Int) async throws {
+                if error is PluginImportCancellationError { throw PluginImportCancellationError() }
+                if error is CancellationError { throw CancellationError() }
+                switch errorMode {
+                case .stopAndRollback:
+                    throw PluginImportError.statementFailed(
+                        statement: statement,
+                        line: lineNumber,
+                        underlyingError: error
+                    )
+
+                case .stopAndCommit:
+                    let statementError = error
+                    if useTransaction {
+                        do {
+                            try await sink.commitTransaction()
+                            didCommit = true
+                        } catch {
+                            Self.logger.warning("Failed to commit partial import")
+                        }
+                    }
+                    if options.disableForeignKeyChecks {
+                        do {
+                            try await sink.enableForeignKeyChecks()
+                        } catch {
+                            Self.logger.warning("Failed to re-enable foreign key checks")
+                        }
+                    }
+                    throw PluginImportError.statementFailed(
+                        statement: statement,
+                        line: lineNumber,
+                        underlyingError: statementError
+                    )
+
+                case .skipAndContinue:
+                    skippedCount += 1
+                    if errors.count < maxErrors {
+                        let snippet = (statement as NSString).length > 200
+                            ? String(statement.prefix(200)) + "..."
+                            : statement
+                        errors.append(.init(
+                            statement: snippet,
+                            line: lineNumber,
+                            errorMessage: error.localizedDescription
+                        ))
+                    }
+                    progress.incrementStatement()
+                }
+            }
+
+            // Only inside the import's transaction, never in Skip mode: a stop rolls back or commits what ran before the
+            // failure, and the server runs nothing after it.
+            var pending = SQLImportBatch()
+
+            // `next` is the element the file was read for while the batch waited, nil when reading it failed.
+            func flush(readAhead: Bool, next: PluginImportStatement? = nil) async throws {
+                guard !pending.isEmpty else { return }
                 try progress.checkCancellation()
+                let statements = pending.take()
+                do {
+                    try await sink.execute(statements: statements, readAhead: readAhead)
+                    executedCount += statements.count
+                    for _ in statements { progress.incrementStatement() }
+                    // A Stop during the batch could not reach the statements in it; the rollback still can.
+                    try progress.checkCancellation()
+                } catch let failure as PluginImportBatchFailure {
+                    let ran = min(max(failure.index, 0), statements.count)
+                    executedCount += ran
+                    for _ in 0..<ran { progress.incrementStatement() }
+                    if ran < statements.count {
+                        let failed = statements[ran]
+                        try await handleFailure(failure.underlying, statement: failed.text, lineNumber: failed.line)
+                    } else if let next {
+                        try await handleFailure(failure.underlying, statement: next.text, lineNumber: next.line)
+                    } else {
+                        // Past text the file could not read: the import ends as a read failure does, whatever the mode.
+                        throw failure.underlying
+                    }
+                } catch {
+                    // Refused before any of them ran, as the first one alone would have been.
+                    try await handleFailure(error, statement: statements[0].text, lineNumber: statements[0].line)
+                }
+            }
+
+            var elements = stream.makeAsyncIterator()
+            while true {
+                let element: PluginImportElement
+                do {
+                    guard let read = try await elements.next() else { break }
+                    element = read
+                } catch {
+                    // One at a time, the statements before text the file cannot read would have run first. When they
+                    // changed how the session reads text, the read failure may be theirs, and that is the error instead.
+                    try await flush(readAhead: true)
+                    throw error
+                }
+                try progress.checkCancellation()
+                if useTransaction, case .statement(let statement, let lineNumber) = element, sink.batches(statement) {
+                    pending.append(PluginImportStatement(text: statement, line: lineNumber))
+                    if pending.isFull { try await flush(readAhead: false) }
+                    continue
+                }
                 let statement = element.statementText
                 let lineNumber = element.lineNumber
+                try await flush(readAhead: true, next: PluginImportStatement(text: statement, line: lineNumber))
 
                 do {
                     try await Self.run(element, on: sink, progress: progress)
                     executedCount += 1
                     progress.incrementStatement()
-                } catch is PluginImportCancellationError {
-                    throw PluginImportCancellationError()
-                } catch is CancellationError {
-                    throw CancellationError()
                 } catch {
-                    switch errorMode {
-                    case .stopAndRollback:
-                        throw PluginImportError.statementFailed(
-                            statement: statement,
-                            line: lineNumber,
-                            underlyingError: error
-                        )
-
-                    case .stopAndCommit:
-                        let statementError = error
-                        if useTransaction {
-                            do {
-                                try await sink.commitTransaction()
-                                didCommit = true
-                            } catch {
-                                Self.logger.warning("Failed to commit partial import")
-                            }
-                        }
-                        if options.disableForeignKeyChecks {
-                            do {
-                                try await sink.enableForeignKeyChecks()
-                            } catch {
-                                Self.logger.warning("Failed to re-enable foreign key checks")
-                            }
-                        }
-                        throw PluginImportError.statementFailed(
-                            statement: statement,
-                            line: lineNumber,
-                            underlyingError: statementError
-                        )
-
-                    case .skipAndContinue:
-                        skippedCount += 1
-                        if errors.count < maxErrors {
-                            let snippet = (statement as NSString).length > 200
-                                ? String(statement.prefix(200)) + "..."
-                                : statement
-                            errors.append(.init(
-                                statement: snippet,
-                                line: lineNumber,
-                                errorMessage: error.localizedDescription
-                            ))
-                        }
-                        progress.incrementStatement()
-                    }
+                    try await handleFailure(error, statement: statement, lineNumber: lineNumber)
                 }
             }
+            try await flush(readAhead: false)
 
             if useTransaction {
                 try await sink.commitTransaction()

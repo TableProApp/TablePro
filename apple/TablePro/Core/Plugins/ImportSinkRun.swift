@@ -139,6 +139,55 @@ internal final class ImportSinkRun: @unchecked Sendable {
         }
     }
 
+    // One admission for statements sent together; each that ran is recorded as `data` records one. Nil when the driver
+    // declined them, and nothing was sent. Not interruptible: a Pause waits for the batch, as it waits for a statement.
+    internal func statements(
+        _ texts: [String],
+        operation: () async throws -> [BatchedStatementOutcome]?
+    ) async throws -> [BatchedStatementOutcome]? {
+        try await admitted(.data) {
+            if self.commitMode == .manual { try self.refuseWriteOutsideTransaction() }
+            let before = self.run.snapshot.currentState
+            let hadAuthority = self.lock.withLock { self.ownsTransaction }
+            let answered: [BatchedStatementOutcome]?
+            do {
+                answered = try await operation()
+            } catch {
+                // A driver that throws may have sent some of them, as `data` assumes of a write that throws.
+                self.run.record {
+                    $0.recordError(error)
+                    if let index = self.fileIndex {
+                        $0.effects[index]?.admittedWrite = true
+                        $0.effects[index]?.failedWrite = true
+                    }
+                }
+                await self.observe()
+                throw error
+            }
+            guard let outcomes = answered else { return nil }
+            if let index = self.fileIndex {
+                self.run.record { $0.effects[index]?.admittedWrite = true }
+            }
+            for (text, outcome) in zip(texts, outcomes) {
+                self.noteStatement(text)
+                switch outcome {
+                case .succeeded:
+                    if let index = self.fileIndex { self.run.record { $0.effects[index]?.statements += 1 } }
+                case .failed(let error):
+                    self.run.record {
+                        $0.recordError(error)
+                        if let index = self.fileIndex { $0.effects[index]?.failedWrite = true }
+                    }
+                }
+            }
+            await self.observe()
+            for (text, outcome) in zip(texts, outcomes) where outcome.succeeded {
+                self.noteCompletedStatement(text, before: before, wasOwned: hadAuthority)
+            }
+            return outcomes
+        }
+    }
+
     // Decided at the first write, before a GO line resets the holder: outside a transaction each statement commits.
     private func refuseWriteOutsideTransaction() throws {
         let holder = run.snapshot.holder

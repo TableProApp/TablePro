@@ -178861,6 +178861,9 @@
         }
       }
     },
+    "Statements sent together changed how the database reads text after the import had read past them, so the import stopped there. Import the file again with Wrap in transaction turned off." : {
+
+    },
     "Statements TablePro generated and ran" : {
       "localizations" : {
         "fr" : {
