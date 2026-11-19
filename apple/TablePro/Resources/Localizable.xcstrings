@@ -17595,6 +17595,9 @@
         }
       }
     },
+    "A statement changed how the database reads text after the statements behind it were read, so the import was rolled back. Run it again with Wrap in transaction turned off." : {
+
+    },
     "A statement failed in the transaction, so it can only be rolled back." : {
 
     },
@@ -192704,6 +192707,9 @@
         }
       }
     },
+    "The driver answered a statement in a way this version of TablePro cannot read." : {
+
+    },
     "The driver cannot delete %lld rows marked for deletion." : {
       "localizations" : {
         "fr" : {
@@ -192763,6 +192769,9 @@
           }
         }
       }
+    },
+    "The driver did not report every statement it was sent." : {
+
     },
     "The driver returned part of the listing." : {
       "localizations" : {
