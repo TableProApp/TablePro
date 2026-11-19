@@ -229,6 +229,14 @@
                                     <ComboBoxItem x:Uid="AiPolicyNever" />
                                 </ComboBox>
                             </toolkit:SettingsCard>
+                            <!-- In ExternalAccess's order: Blocked, ReadOnly, ReadWrite. -->
+                            <toolkit:SettingsCard x:Uid="ExternalAccessCard" x:Name="ExternalAccessCard">
+                                <ComboBox x:Name="ExternalAccessBox" x:Uid="ExternalAccessBox" MinWidth="240" AutomationProperties.AutomationId="ExternalAccessBox" SelectionChanged="OnExternalAccessChanged">
+                                    <ComboBoxItem x:Uid="ExternalAccessBlocked" />
+                                    <ComboBoxItem x:Uid="ExternalAccessReadOnly" />
+                                    <ComboBoxItem x:Uid="ExternalAccessReadWrite" />
+                                </ComboBox>
+                            </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="ConnectionTimeoutCard">
                                 <TextBox x:Name="TimeoutBox" x:Uid="ConnectionTimeoutBox" MinWidth="120" InputScope="Number" />
                             </toolkit:SettingsCard>

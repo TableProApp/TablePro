@@ -5298,4 +5298,145 @@ New fingerprint: {2}</value>
   <data name="MenuAiOptimize.AccessKey" xml:space="preserve">
     <value>O</value>
   </data>
+  <data name="McpHeader.Text" xml:space="preserve">
+    <value>MCP server</value>
+  </data>
+  <data name="McpServerCard.Header" xml:space="preserve">
+    <value>Enable MCP server</value>
+  </data>
+  <data name="McpServerCard.Description" xml:space="preserve">
+    <value>AI clients and the tablepro command on this computer can use your saved connections while TablePro is open. Each connection's External clients level decides what they may do.</value>
+  </data>
+  <data name="McpServerSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>MCP server</value>
+  </data>
+  <data name="McpStatusCard.Header" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="McpRetryButton.Content" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <data name="McpPortCard.Header" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="McpPortCard.Description" xml:space="preserve">
+    <value>On 127.0.0.1, which only this computer can reach.</value>
+  </data>
+  <data name="McpPortBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>MCP server port</value>
+  </data>
+  <data name="McpAddressCard.Header" xml:space="preserve">
+    <value>Address</value>
+  </data>
+  <data name="McpCopyAddressButton.Content" xml:space="preserve">
+    <value>Copy address</value>
+  </data>
+  <data name="McpTokenCard.Header" xml:space="preserve">
+    <value>Authorization header</value>
+  </data>
+  <data name="McpTokenCard.Description" xml:space="preserve">
+    <value>Give a client the address and this header, which carries the access token. The token is kept in Windows Credential Manager and shown only when copied.</value>
+  </data>
+  <data name="McpCopyHeaderButton.Content" xml:space="preserve">
+    <value>Copy header</value>
+  </data>
+  <data name="McpRegenerateButton.Content" xml:space="preserve">
+    <value>Regenerate token...</value>
+  </data>
+  <data name="McpClientsExpander.Header" xml:space="preserve">
+    <value>Clients</value>
+  </data>
+  <data name="McpClientsNone" xml:space="preserve">
+    <value>No client has connected since the server started.</value>
+  </data>
+  <data name="McpClientsSeen" xml:space="preserve">
+    <value>The clients that connected since the server started.</value>
+  </data>
+  <data name="McpClientSeen" xml:space="preserve">
+    <value>Version {0}, last connected at {1}</value>
+  </data>
+  <data name="McpStatusOff" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="McpStatusStarting" xml:space="preserve">
+    <value>Starting...</value>
+  </data>
+  <data name="McpStatusRunning" xml:space="preserve">
+    <value>Running on port {0}</value>
+  </data>
+  <data name="McpFailurePortInUse" xml:space="preserve">
+    <value>Port {0} is in use by another program. Choose another port.</value>
+  </data>
+  <data name="McpFailureListen" xml:space="preserve">
+    <value>TablePro could not listen on port {0}.</value>
+  </data>
+  <data name="McpFailureNoRandomness" xml:space="preserve">
+    <value>The system's random number source failed, so no access token could be made.</value>
+  </data>
+  <data name="McpFailureInterrupted" xml:space="preserve">
+    <value>The server stopped unexpectedly.</value>
+  </data>
+  <data name="McpFailureToken" xml:space="preserve">
+    <value>The access token could not be read or kept. {0}</value>
+  </data>
+  <data name="McpRegenerateTitle" xml:space="preserve">
+    <value>Regenerate the access token?</value>
+  </data>
+  <data name="McpRegenerateMessage" xml:space="preserve">
+    <value>Clients that use the current token are refused until you give them the new one.</value>
+  </data>
+  <data name="McpRegenerateConfirm" xml:space="preserve">
+    <value>Regenerate</value>
+  </data>
+  <data name="McpRegenerated" xml:space="preserve">
+    <value>A new access token is made. Copy the header to your clients.</value>
+  </data>
+  <data name="McpAddressCopied" xml:space="preserve">
+    <value>The address is copied.</value>
+  </data>
+  <data name="McpHeaderCopied" xml:space="preserve">
+    <value>The header is copied, with the access token in it.</value>
+  </data>
+  <data name="McpCopyFailed" xml:space="preserve">
+    <value>The clipboard could not be written. Try again.</value>
+  </data>
+  <data name="ExternalAccessCard.Header" xml:space="preserve">
+    <value>External clients</value>
+  </data>
+  <data name="ExternalAccessCard.Description" xml:space="preserve">
+    <value>MCP clients and the tablepro command can read the schema and the data. Every write is refused.</value>
+  </data>
+  <data name="ExternalAccessBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>External clients level</value>
+  </data>
+  <data name="ExternalAccessBlocked.Content" xml:space="preserve">
+    <value>Blocked</value>
+  </data>
+  <data name="ExternalAccessReadOnly.Content" xml:space="preserve">
+    <value>Read only</value>
+  </data>
+  <data name="ExternalAccessReadWrite.Content" xml:space="preserve">
+    <value>Read and write</value>
+  </data>
+  <data name="ExternalAccessBlockedDescription" xml:space="preserve">
+    <value>MCP clients and the tablepro command do not see this connection.</value>
+  </data>
+  <data name="ExternalAccessReadOnlyDescription" xml:space="preserve">
+    <value>MCP clients and the tablepro command can read the schema and the data. Every write is refused.</value>
+  </data>
+  <data name="ExternalAccessReadWriteDescription" xml:space="preserve">
+    <value>MCP clients and the tablepro command can also write. Each statement waits for your approval in its window, and Safe Mode's Read only still refuses it.</value>
+  </data>
+  <data name="ClientWriteTitle" xml:space="preserve">
+    <value>Run statement from MCP client?</value>
+  </data>
+  <data name="ClientWriteMessage" xml:space="preserve">
+    <value>An MCP client asks to change the database on {0}.</value>
+  </data>
+  <data name="ClientWriteDestructive" xml:space="preserve">
+    <value>An MCP client asks to drop or empty a table, or change every row of one, on {0}.</value>
+  </data>
+  <data name="ClientWriteRun" xml:space="preserve">
+    <value>Run</value>
+  </data>
 </root>

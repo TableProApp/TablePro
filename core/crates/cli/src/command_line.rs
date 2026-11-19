@@ -209,12 +209,13 @@ pub(crate) struct CompletionArgs {
     pub(crate) shell: Shell,
 }
 
-// PowerShell comes with the Windows app, where clap writes it as well.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum Shell {
     Bash,
     Zsh,
     Fish,
+    #[value(name = "powershell")]
+    Pwsh,
 }
 
 impl Shell {
@@ -223,6 +224,7 @@ impl Shell {
             Self::Bash => clap_complete::aot::Shell::Bash,
             Self::Zsh => clap_complete::aot::Shell::Zsh,
             Self::Fish => clap_complete::aot::Shell::Fish,
+            Self::Pwsh => clap_complete::aot::Shell::PowerShell,
         }
     }
 }
@@ -311,7 +313,7 @@ mod tests {
             &["tablepro", "describe", "-c", "S", "--ddl", "--format", "json", "orders"],
             &["tablepro", "export", "-c", "S", "orders"],
             &["tablepro", "export", "-c", "S", "--format", "xlsx", "orders"],
-            &["tablepro", "completion", "powershell"],
+            &["tablepro", "completion", "nushell"],
             &["tablepro", "help", "nosuch"],
         ];
 

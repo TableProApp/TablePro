@@ -7,6 +7,7 @@ mod cancel_token;
 mod catalog;
 mod catalog_change;
 mod cloud;
+pub mod command_line;
 mod connection_url;
 mod core_handle;
 #[cfg(windows)]
@@ -28,6 +29,7 @@ mod import;
 mod key_read;
 mod library;
 mod masking;
+mod mcp;
 mod prompter;
 mod references;
 mod results;
@@ -92,12 +94,15 @@ pub use import::{
 };
 pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
 pub use library::{
-    AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, GroupRecord, ImportSummary, LibrarySnapshot,
-    SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings, check_jump_hosts,
+    AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, ExternalAccessTag, GroupRecord, ImportSummary,
+    LibrarySnapshot, SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings, check_jump_hosts,
 };
 pub use masking::{
     MaskReason, MaskStyleTag, MaskSuggestionInfo, PersonalDataHitInfo, SensitiveKindTag, ShareColumnChoice,
     ShareColumnMasking, ShareRefusal, ShareSummary,
+};
+pub use mcp::{
+    McpAppHost, McpListener, McpService, McpStatusTag, McpWriteRequest, SeenClientInfo, mcp_address, mcp_default_port,
 };
 pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag, PromptReasonTag, PromptRequest};
 pub use references::{FollowedReference, ReferenceRefusal, RowReferenceChoice, RowReferences, TableKeys};

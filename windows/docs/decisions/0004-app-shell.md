@@ -1,6 +1,6 @@
 # 0004: The app shell: one window, a rail of connections, a page per surface
 
-- **Status**: Accepted; packaging amended by [0005](0005-distribution.md), table reads by [0007](0007-browsing-a-connection.md)
+- **Status**: Accepted; packaging amended by [0005](0005-distribution.md), table reads by [0007](0007-browsing-a-connection.md), the execution alias by [0019](0019-mcp-server-and-command-line.md)
 - **Date**: 2026-11-02
 
 ## Context

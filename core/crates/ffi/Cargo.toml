@@ -25,9 +25,15 @@ engines = [
     "dep:tablepro-driver-sqlite",
 ]
 
+[[bin]]
+# The Windows package's tablepro command, beside TablePro.exe (src/command_line/mod.rs).
+name = "tablepro-cli"
+path = "src/bin/tablepro-cli.rs"
+
 [dependencies]
 tablepro-account.workspace = true
 tablepro-ai.workspace = true
+tablepro-cli.workspace = true
 tablepro-core.workspace = true
 tablepro-driver-cassandra = { workspace = true, optional = true }
 tablepro-driver-clickhouse = { workspace = true, optional = true }
@@ -39,6 +45,8 @@ tablepro-driver-postgres = { workspace = true, optional = true }
 tablepro-driver-redis = { workspace = true, optional = true }
 tablepro-driver-sqlite = { workspace = true, optional = true }
 tablepro-foreign-import.workspace = true
+tablepro-mcp.workspace = true
+tablepro-net.workspace = true
 tablepro-session = { workspace = true, features = ["in-process-ssh"] }
 tablepro-ssh = { workspace = true, features = ["in-process"] }
 tablepro-storage.workspace = true
@@ -47,6 +55,7 @@ chrono.workspace = true
 futures.workspace = true
 secrecy.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tokio-util.workspace = true

@@ -232,6 +232,48 @@
                 Style="{StaticResource CaptionTextBlockStyle}"
                 TextWrapping="Wrap" />
 
+            <TextBlock x:Uid="McpHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Uid="McpServerCard" x:Name="McpServerCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE968;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="McpServerSwitch" x:Uid="McpServerSwitch" AutomationProperties.AutomationId="McpServerSwitch" Toggled="OnMcpServerToggled" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="McpStatusCard" x:Name="McpStatusCard" AutomationProperties.AutomationId="McpStatusCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Globe" /></toolkit:SettingsCard.HeaderIcon>
+                <Button x:Uid="McpRetryButton" x:Name="McpRetryButton" AutomationProperties.AutomationId="McpRetryButton" Click="OnMcpRetry" Visibility="Collapsed" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="McpPortCard" x:Name="McpPortCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE839;" /></toolkit:SettingsCard.HeaderIcon>
+                <NumberBox
+                    x:Name="McpPortBox"
+                    x:Uid="McpPortBox"
+                    AutomationProperties.AutomationId="McpPortBox"
+                    Maximum="65535"
+                    Minimum="1024"
+                    SpinButtonPlacementMode="Compact"
+                    ValueChanged="OnMcpPortChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="McpAddressCard" x:Name="McpAddressCard" AutomationProperties.AutomationId="McpAddressCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Link" /></toolkit:SettingsCard.HeaderIcon>
+                <Button x:Uid="McpCopyAddressButton" AutomationProperties.AutomationId="McpCopyAddressButton" Click="OnCopyMcpAddress" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="McpTokenCard" x:Name="McpTokenCard" AutomationProperties.AutomationId="McpTokenCard">
+                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Permissions" /></toolkit:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Uid="McpCopyHeaderButton" x:Name="McpCopyHeaderButton" AutomationProperties.AutomationId="McpCopyHeaderButton" Click="OnCopyMcpHeader" />
+                    <Button x:Uid="McpRegenerateButton" x:Name="McpRegenerateButton" AutomationProperties.AutomationId="McpRegenerateButton" Click="OnRegenerateMcpToken" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsExpander x:Uid="McpClientsExpander" x:Name="McpClientsExpander" AutomationProperties.AutomationId="McpClientsExpander">
+                <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="People" /></toolkit:SettingsExpander.HeaderIcon>
+            </toolkit:SettingsExpander>
+            <TextBlock
+                x:Name="McpNoteText"
+                AutomationProperties.AutomationId="McpNoteText"
+                AutomationProperties.LiveSetting="Polite"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextWrapping="Wrap" />
+
             <TextBlock x:Uid="AboutHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsExpander x:Name="AboutExpander" x:Uid="AboutExpander" AutomationProperties.AutomationId="AboutExpander">
                 <toolkit:SettingsExpander.HeaderIcon>

@@ -108,6 +108,14 @@ public sealed class TableProCore : IDisposable
         return new TableProAccount(service, wake);
     }
 
+    // One per app: its tools reach the saved connections connected through this core, and the app through host.
+    public McpServer OpenMcpServer(IMcpAppHost host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        var wake = new McpWake();
+        return new McpServer(CoreCall.Run(() => _core.McpServer(new McpAppHostAdapter(host), wake)), wake);
+    }
+
     public async Task<DatabaseSession> OpenFileAsync(
         FileOpenOptions options,
         CancellationToken cancellationToken = default)

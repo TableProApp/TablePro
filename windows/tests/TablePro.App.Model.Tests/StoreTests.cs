@@ -185,6 +185,28 @@ public sealed class StoreTests : IDisposable
         Assert.Equal(20, cut.NullDisplay.Length);
     }
 
+    // The tablepro command reads these two names from the file (core/crates/ffi/src/command_line/app_files.rs).
+    [Fact]
+    public void TheMcpServerStartsOffOnItsPortAndKeepsTheNamesTheCommandReads()
+    {
+        var path = File("settings.json");
+        var store = new SettingsStore(path);
+        var defaults = store.Load();
+
+        store.Save(new AppSettings { McpServerEnabled = true, McpServerPort = 24000 });
+        var written = System.IO.File.ReadAllText(path);
+        System.IO.File.WriteAllText(path, """{ "mcpServerPort": 80 }""");
+        var low = store.Load();
+        System.IO.File.WriteAllText(path, """{ "mcpServerPort": 70000 }""");
+
+        Assert.False(defaults.McpServerEnabled);
+        Assert.Equal(23508, defaults.McpServerPort);
+        Assert.Contains("\"mcpServerEnabled\": true", written, StringComparison.Ordinal);
+        Assert.Contains("\"mcpServerPort\": 24000", written, StringComparison.Ordinal);
+        Assert.Equal(1024, low.McpServerPort);
+        Assert.Equal(65535, store.Load().McpServerPort);
+    }
+
     [Fact]
     public void ANewTableTabPagesByAThousandRowsAsOnMacOS()
     {

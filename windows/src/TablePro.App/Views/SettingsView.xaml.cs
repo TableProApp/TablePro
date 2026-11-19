@@ -36,9 +36,16 @@ public sealed partial class SettingsView : UserControl
         {
             _workbench.AccountChanged -= OnAccountChanged;
             _workbench.AccountChanged += OnAccountChanged;
+            _workbench.McpChanged -= OnMcpChanged;
+            _workbench.McpChanged += OnMcpChanged;
             ShowAccount();
+            ShowMcp();
         };
-        Unloaded += (_, _) => _workbench.AccountChanged -= OnAccountChanged;
+        Unloaded += (_, _) =>
+        {
+            _workbench.AccountChanged -= OnAccountChanged;
+            _workbench.McpChanged -= OnMcpChanged;
+        };
     }
 
     public void ShowAbout()
@@ -107,6 +114,7 @@ public sealed partial class SettingsView : UserControl
         NotifyAfterCard.IsEnabled = settings.NotifyLongWork;
         ShowNotificationState();
         LoadAssistant();
+        LoadMcp();
         _loading = false;
     }
 

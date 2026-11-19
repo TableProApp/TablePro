@@ -16,25 +16,34 @@ internal static class WindowDialogs
     // An answered dialog no longer counts as open, though it still plays its closing transition.
     public static bool IsOpen(XamlRoot? root) => root is not null && OpenRoots.Contains(root);
 
-    // A dialog nobody asked for just then, as a link from another launch, waits for the window and any open dialog.
-    public static async Task<ContentDialogResult> ShowWhenFreeAsync(ContentDialog dialog, FrameworkElement owner)
+    // A dialog nobody asked for just then waits for the window and any open dialog; a cancel while it waits gives None.
+    public static async Task<ContentDialogResult> ShowWhenFreeAsync(
+        ContentDialog dialog, FrameworkElement owner, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dialog);
         ArgumentNullException.ThrowIfNull(owner);
-        while (true)
+        try
         {
-            if (owner.XamlRoot is null || !owner.IsLoaded)
+            while (true)
             {
-                await LoadedAsync(owner).ConfigureAwait(true);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (owner.XamlRoot is null || !owner.IsLoaded)
+                {
+                    await LoadedAsync(owner).WaitAsync(cancellationToken).ConfigureAwait(true);
+                }
+                else if (OpenRoots.Count > 0 || _closing > 0 || _waiting > 0)
+                {
+                    await ChangedAsync().WaitAsync(cancellationToken).ConfigureAwait(true);
+                }
+                else
+                {
+                    return await ShowNowAsync(dialog, owner).ConfigureAwait(true);
+                }
             }
-            else if (OpenRoots.Count > 0 || _closing > 0 || _waiting > 0)
-            {
-                await ChangedAsync().ConfigureAwait(true);
-            }
-            else
-            {
-                return await ShowNowAsync(dialog, owner).ConfigureAwait(true);
-            }
+        }
+        catch (OperationCanceledException)
+        {
+            return ContentDialogResult.None;
         }
     }
 

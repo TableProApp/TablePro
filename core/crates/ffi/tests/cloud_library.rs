@@ -99,6 +99,7 @@ async fn saved(library: &ConnectionLibrary, name: &str) -> String {
         last_opened_ms: None,
         tags: Vec::new(),
         ai_policy: None,
+        external_access: None,
     };
     library.save(record, ConnectionSecrets::default()).await.unwrap().id
 }

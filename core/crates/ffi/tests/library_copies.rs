@@ -129,6 +129,7 @@ fn record(name: &str) -> ConnectionRecord {
         last_opened_ms: None,
         tags: Vec::new(),
         ai_policy: None,
+        external_access: None,
     }
 }
 

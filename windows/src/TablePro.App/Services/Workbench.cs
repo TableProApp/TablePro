@@ -3,7 +3,7 @@ using TablePro.Interop;
 
 namespace TablePro.App.Services;
 
-internal sealed class Workbench : IDisposable
+internal sealed partial class Workbench : IDisposable
 {
     private readonly SettingsStore _settings;
     private readonly CancellationTokenSource _lifetime = new();
@@ -121,10 +121,17 @@ internal sealed class Workbench : IDisposable
 
         var pruneAgain = next.HistoryRetentionDays != Settings.HistoryRetentionDays
             || next.HistoryMaxEntries != Settings.HistoryMaxEntries;
+        var serverMoved = next.McpServerEnabled != Settings.McpServerEnabled
+            || next.McpServerPort != Settings.McpServerPort;
         Settings = next;
         SaveSettings();
         DisplaySettings.Update(next);
         SettingsChanged?.Invoke(this, EventArgs.Empty);
+        if (serverMoved)
+        {
+            ApplyMcpSettings();
+        }
+
         if (pruneAgain && _history is { IsCompletedSuccessfully: true, Result: { } history })
         {
             _ = PruneHistoryAsync(history);

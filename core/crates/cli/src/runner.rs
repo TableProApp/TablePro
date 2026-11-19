@@ -16,7 +16,7 @@ pub fn run(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Exit {
-    let mut console = Console::new(out, err, host.terminal());
+    let mut console = Console::new(out, err, host.terminal()).naming(host.places());
     let version = host.app_version();
     let cli = match command_line::parse(args, &version) {
         Ok(cli) => cli,
@@ -197,12 +197,83 @@ pub(crate) mod tests {
 
     #[test]
     fn each_shell_gets_its_completion_script() {
-        for (shell, start) in [("zsh", "#compdef tablepro"), ("bash", "_tablepro()"), ("fish", "")] {
+        for (shell, start) in [
+            ("zsh", "#compdef tablepro"),
+            ("bash", "_tablepro()"),
+            ("fish", ""),
+            ("powershell", "\nusing namespace System.Management.Automation"),
+        ] {
             let (exit, out, _) = invoke(&STOPPED, &["tablepro", "completion", shell]);
             assert_eq!(exit, Exit::Success, "{shell}");
             assert!(out.starts_with(start), "{shell}: {out}");
             assert!(out.contains("query"), "{shell}");
         }
+        let (_, powershell, _) = invoke(&STOPPED, &["tablepro", "completion", "powershell"]);
+        assert!(
+            powershell.contains("Register-ArgumentCompleter -Native -CommandName 'tablepro'"),
+            "{powershell}"
+        );
+    }
+
+    // A host that keeps its MCP switch in Settings, as the Windows app does.
+    #[derive(Clone)]
+    struct Named(Offline);
+
+    impl Host for Named {
+        fn app_version(&self) -> String {
+            self.0.app_version()
+        }
+
+        fn app_running(&self) -> bool {
+            self.0.app_running()
+        }
+
+        fn server_enabled(&self) -> Result<bool, HostError> {
+            self.0.server_enabled()
+        }
+
+        fn server_port(&self) -> Result<u16, HostError> {
+            self.0.server_port()
+        }
+
+        fn verify_peer(&self, peer: SocketAddr, local: SocketAddr) -> Result<(), HostError> {
+            self.0.verify_peer(peer, local)
+        }
+
+        fn token(&self) -> Result<Option<String>, HostError> {
+            self.0.token()
+        }
+
+        fn terminal(&self) -> Terminal {
+            self.0.terminal()
+        }
+
+        fn places(&self) -> crate::host::Places {
+            crate::host::Places {
+                mcp_settings: "Settings > MCP",
+                token_store: "Credential Manager",
+            }
+        }
+    }
+
+    #[test]
+    fn a_refusal_names_the_settings_of_the_app_it_came_with() {
+        let off = Named(Offline {
+            running: true,
+            enabled: false,
+            ..STOPPED
+        });
+
+        let (exit, _, err) = invoke(&off, &["tablepro", "connections"]);
+        let (_, _, status) = invoke(&off, &["tablepro", "status"]);
+
+        assert_eq!(exit, Exit::Refused);
+        assert_eq!(
+            err,
+            "tablepro: TablePro's MCP server is off. Turn on Settings > MCP > Enable MCP Server, then run the command \
+again.\n"
+        );
+        assert!(status.ends_with(&err), "{status}");
     }
 
     #[test]

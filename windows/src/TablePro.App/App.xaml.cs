@@ -11,6 +11,8 @@ namespace TablePro.App;
 public partial class App : Application
 {
     private MainWindow? _window;
+    private Workbench? _workbench;
+    private AppPresence? _presence;
     private bool _closed;
 
     public App()
@@ -35,6 +37,8 @@ public partial class App : Application
         Directory.CreateDirectory(folder);
         var core = TableProCore.CreateWithSystemSecrets(new HostConfiguration(AppStorage.Version, folder));
         var workbench = new Workbench(core, folder);
+        _workbench = workbench;
+        _presence = AppPresence.Hold(folder);
         workbench.StartAccount(
             AccountSetup.Configuration(folder),
             new SystemBrowser(DispatcherQueue.GetForCurrentThread()),
@@ -43,6 +47,7 @@ public partial class App : Application
         _window.SessionSaved += (_, _) => ReleaseFolder();
         _window.Closed += (_, _) => ReleaseFolder();
         _window.ActivateRestored();
+        workbench.StartMcp(new McpBridge(DispatcherQueue.GetForCurrentThread(), () => _closed ? null : _window));
         // Off the first grid's path: the fallback fonts for non-Latin cells load in the background.
         DataGridView.WarmUpFonts();
         if (LaunchRequest() is { IsEmpty: false } request)
@@ -96,6 +101,13 @@ public partial class App : Application
         }
 
         _closed = true;
+        // Before the next launch on this folder takes over, which listens on the same port.
+        _presence?.Dispose();
+        if (_workbench is { } workbench)
+        {
+            _ = workbench.StopMcpAsync();
+        }
+
         FinishNotifications.Stop();
         try
         {

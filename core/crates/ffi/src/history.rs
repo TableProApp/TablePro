@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::HistoryRecording;
 use tablepro_session::Session;
 use tablepro_session::runtime::Tasks;
@@ -93,6 +94,18 @@ impl QueryHistoryStore {
             Err(error) => tracing::warn!(%error, "could not prune the query history"),
         }
         Ok(Arc::new(Self { history, tasks }))
+    }
+}
+
+impl QueryHistoryStore {
+    // A statement an MCP client ran, under the editor's rules.
+    pub(crate) async fn record_entry(&self, entry: NewEntry, dialect: Arc<dyn SqlDialect>) {
+        if withheld(entry.connection_id, &entry.query, dialect.as_ref()) {
+            return;
+        }
+        if let Err(error) = self.history.record(entry).await {
+            tracing::warn!(%error, "could not record an MCP client's statement");
+        }
     }
 }
 
@@ -217,13 +230,7 @@ fn kept(session: &Session, run: HistoryRun) -> Option<NewEntry> {
         tracing::debug!(%connection, "no dialect, so the run is not recorded");
         return None;
     };
-    // The store refuses it anyway, and reading it for secrets would lex it once per way the server may read it.
-    if run.sql.len() > MAX_QUERY_BYTES {
-        tracing::debug!(%connection, "a run too large for the history was not recorded");
-        return None;
-    }
-    if let HistoryRecording::Withhold(reason) = dialect.history_recording(&run.sql) {
-        tracing::debug!(%connection, ?reason, "a run was kept out of the history");
+    if withheld(connection, &run.sql, dialect.as_ref()) {
         return None;
     }
     let metadata = session.metadata();
@@ -339,4 +346,17 @@ impl std::fmt::Debug for QueryHistoryStore {
             .field("path", &self.history.path())
             .finish_non_exhaustive()
     }
+}
+
+fn withheld(connection: Uuid, sql: &str, dialect: &dyn SqlDialect) -> bool {
+    // The store refuses it anyway, and reading it for secrets would lex it once per way the server may read it.
+    if sql.len() > MAX_QUERY_BYTES {
+        tracing::debug!(%connection, "a run too large for the history was not recorded");
+        return true;
+    }
+    if let HistoryRecording::Withhold(reason) = dialect.history_recording(sql) {
+        tracing::debug!(%connection, ?reason, "a run was kept out of the history");
+        return true;
+    }
+    false
 }
