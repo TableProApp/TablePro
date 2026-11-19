@@ -163,17 +163,9 @@ public sealed partial class VimEngine
         UpdateVisualSelection(_buffer.Offset(_buffer.StepLines(line, lines), column), linewise);
     }
 
-    internal int HalfVisibleLineCount()
-    {
-        var (first, last) = _buffer.VisibleLineRange();
-        return Math.Max(1, (last - first + 1) / 2);
-    }
+    internal int HalfVisibleLineCount() => Math.Max(1, _buffer.VisibleLineCount() / 2);
 
-    internal int VisibleLineSpan()
-    {
-        var (first, last) = _buffer.VisibleLineRange();
-        return Math.Max(1, last - first + 1);
-    }
+    internal int VisibleLineSpan() => _buffer.VisibleLineCount();
 
     internal void ScrollByLines(int delta)
     {

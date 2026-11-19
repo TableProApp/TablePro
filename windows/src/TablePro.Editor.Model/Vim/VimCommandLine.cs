@@ -65,6 +65,23 @@ public static class VimCommandLine
         return Count(argument, tabs ?? CountLimit, null) is { } number ? new VimExCommand.SelectTab(number) : null;
     }
 
+    // The 0-based tab a tab command selects in a strip of count tabs: a number past the strip is its last tab, and a move
+    // wraps round, reduced before it is added so no offset overflows. Null for a command that selects none.
+    public static int? TargetTab(VimExCommand command, int current, int count)
+    {
+        if (count <= 0)
+        {
+            return null;
+        }
+        return command switch
+        {
+            VimExCommand.SelectTab select => Math.Clamp(select.Number, 1, count) - 1,
+            VimExCommand.SelectAdjacentTab adjacent =>
+                ((Math.Clamp(current, 0, count - 1) + adjacent.Offset % count) % count + count) % count,
+            _ => null,
+        };
+    }
+
     // Read a digit at a time, so a count of any length neither overflows nor leaves the bound. A modulus reduces a move
     // by a multiple of the tab count, which lands where it started, to less than one lap.
     private static int? Count(string text, int cap, int? modulus)

@@ -61,6 +61,27 @@ public sealed class VimTests
         }
     });
 
+    // An input method commits a word at once; Replace mode overwrites a character for each of its characters.
+    [Fact]
+    public Task ReplaceModeOverwritesACharacterForEachCommittedOne() => WinUiApp.RunAsync(async () =>
+    {
+        var editor = new SqlEditor { Text = "abcd", IsVimEnabled = true };
+        try
+        {
+            Assert.True(await EditorHost.ShowAsync(editor), "the editor drew no frame");
+            Type(editor, "R");
+            Assert.True(editor.RouteVimText("\u4E2D\u6587", shift: false));
+            Assert.Equal("\u4E2D\u6587cd", editor.Document.GetText());
+            Assert.True(Key(editor, VirtualKey.Back));
+            Assert.Equal("\u4E2Dbcd", editor.Document.GetText());
+        }
+        finally
+        {
+            EditorHost.Clear();
+            editor.Dispose();
+        }
+    });
+
     [Fact]
     public Task VimTakesItsOwnControlChordsAndLeavesTheRest() => WinUiApp.RunAsync(async () =>
     {

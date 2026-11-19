@@ -174,6 +174,24 @@ public sealed class VimFoldsAndRowsTests
         Assert.Equal(3, s.Caret);
     }
 
+    // Six rows show line 0, the fold over lines 1 to 20, and lines 21 to 24, so a page is six lines.
+    [Fact]
+    public void APageCountsAClosedFoldOnce()
+    {
+        var text = string.Concat(Enumerable.Range(0, 40).Select(line => $"line {line}\n"));
+        var s = new VimSession(text, caret: 0);
+        s.Model.Rows.Folds.Fold(new FoldRegion(1, 20));
+        s.Visible = (0, 5);
+        s.Press("\u0006");
+        Assert.Equal(25, s.Model.Document.GetLineFromOffset(s.Caret));
+        s.SetCaret(0);
+        s.Press("\u0004");
+        Assert.Equal(22, s.Model.Document.GetLineFromOffset(s.Caret));
+        s.SetCaret(0);
+        s.Press("v\u0006");
+        Assert.Equal(25, s.Model.Document.GetLineFromOffset(s.Engine.CursorPosition));
+    }
+
     [Fact]
     public void ControlEScrollsAndKeepsTheCaretOnScreen()
     {

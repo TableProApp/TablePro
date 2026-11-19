@@ -188,4 +188,25 @@ public sealed class VimEngineTabCommandsTests
         Assert.Equal<VimExCommand?>(new VimExCommand.RunQuery(), Handle("w"));
         Assert.Equal<VimExCommand?>(new VimExCommand.CloseTab(), Handle("q"));
     }
+
+    [Theory]
+    [InlineData(int.MaxValue)]
+    [InlineData(int.MinValue)]
+    [InlineData(int.MaxValue - 1)]
+    [InlineData(int.MinValue + 1)]
+    [InlineData(-4)]
+    [InlineData(7)]
+    public void AnyOffsetSelectsATabWithoutOverflow(int offset)
+    {
+        Assert.Equal((offset % 3 + 3) % 3, VimCommandLine.TargetTab(new VimExCommand.SelectAdjacentTab(offset), 0, 3));
+    }
+
+    [Fact]
+    public void ATabNumberPastTheStripIsTheLastTab()
+    {
+        Assert.Equal(2, VimCommandLine.TargetTab(new VimExCommand.SelectTab(9), 0, 3));
+        Assert.Equal(0, VimCommandLine.TargetTab(new VimExCommand.SelectTab(1), 2, 3));
+        Assert.Null(VimCommandLine.TargetTab(new VimExCommand.CloseTab(), 0, 3));
+        Assert.Null(VimCommandLine.TargetTab(new VimExCommand.SelectTab(1), 0, 0));
+    }
 }

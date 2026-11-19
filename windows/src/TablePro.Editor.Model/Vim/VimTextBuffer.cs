@@ -161,9 +161,19 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
         Model.SetCaret(location + change.InsertedLength);
     }
 
-    public void Undo() => Model.Undo();
+    public void Undo()
+    {
+        Document.Undo.Checkpoint([.. Model.Selections]);
+        Model.Undo();
+        Document.Undo.Restart([.. Model.Selections]);
+    }
 
-    public void Redo() => Model.Redo();
+    public void Redo()
+    {
+        Document.Undo.Checkpoint([.. Model.Selections]);
+        Model.Redo();
+        Document.Undo.Restart([.. Model.Selections]);
+    }
 
     public string IndentString() => Model.Options.InsertSpaces ? new string(' ', IndentWidth()) : "\t";
 
@@ -175,6 +185,23 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
         var (first, last) = VisibleRows();
         var lastLine = LineCount - 1;
         return (Math.Min(Model.Rows.LineAtRow(first), lastLine), Math.Min(Model.Rows.LineAtRow(last), lastLine));
+    }
+
+    // Lines on screen, a closed fold counted once, for the page and half-page motions.
+    public int VisibleLineCount()
+    {
+        var (first, last) = VisibleLineRange();
+        var count = last - first + 1;
+        foreach (var (hiddenFirst, hiddenLast) in Model.Rows.Folds.Hidden)
+        {
+            var from = Math.Max(hiddenFirst, first);
+            var to = Math.Min(hiddenLast, last);
+            if (to >= from)
+            {
+                count -= to - from + 1;
+            }
+        }
+        return Math.Max(1, count);
     }
 
     public (int First, int Last) VisibleRows()

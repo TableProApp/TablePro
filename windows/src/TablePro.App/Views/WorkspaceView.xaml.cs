@@ -1129,32 +1129,20 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         await LoadTreeAsync(refresh: true).ConfigureAwait(true);
     }
 
-    // Vim's :q closes the tab it was typed in; a tab number past the strip is its last tab, and a move wraps round.
+    // Vim's :q closes the tab it was typed in; the tab commands select as VimCommandLine.TargetTab reads them.
     private void OnTabCommandRequested(object? sender, VimExCommand command)
     {
-        var count = Tabs.TabItems.Count;
-        if (count == 0)
+        if (command is VimExCommand.CloseTab)
         {
-            return;
+            var typedIn = Tabs.TabItems.OfType<TabViewItem>().FirstOrDefault(item => ReferenceEquals(item.Content, sender));
+            if (typedIn is not null)
+            {
+                _ = CloseTabAsync(typedIn);
+            }
         }
-
-        switch (command)
+        else if (VimCommandLine.TargetTab(command, Tabs.SelectedIndex, Tabs.TabItems.Count) is { } target)
         {
-            case VimExCommand.CloseTab:
-                var typedIn = Tabs.TabItems.OfType<TabViewItem>().FirstOrDefault(item => ReferenceEquals(item.Content, sender));
-                if (typedIn is not null)
-                {
-                    _ = CloseTabAsync(typedIn);
-                }
-
-                break;
-            case VimExCommand.SelectTab select:
-                Tabs.SelectedIndex = Math.Clamp(select.Number, 1, count) - 1;
-                break;
-            case VimExCommand.SelectAdjacentTab adjacent:
-                var current = Math.Max(0, Tabs.SelectedIndex);
-                Tabs.SelectedIndex = ((current + adjacent.Offset % count) % count + count) % count;
-                break;
+            Tabs.SelectedIndex = target;
         }
     }
 

@@ -84,14 +84,19 @@ public sealed partial class SqlEditor
         {
             return false;
         }
-        if (_vim.Mode.IsInsert())
+        if (_vim.Mode == VimMode.Insert)
         {
             return ProcessVim(text, shift);
         }
+        // Replace mode overwrites a character for each one typed, so a committed word goes a character at a time.
         var elements = StringInfo.GetTextElementEnumerator(text);
         while (elements.MoveNext())
         {
-            ProcessVim(elements.GetTextElement(), shift);
+            var element = elements.GetTextElement();
+            if (!ProcessVim(element, shift))
+            {
+                TypeText(element);
+            }
         }
         return true;
     }

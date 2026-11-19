@@ -92,6 +92,32 @@ public sealed class VimUndoAndStatusTests
     }
 
     [Fact]
+    public void AnUndoInAReplayedMacroUndoesTheMacrosOwnStep()
+    {
+        var s = new VimSession("abcd", caret: 0);
+        s.Press("x");
+        s.Press("qqxuq");
+        Assert.Equal("bcd", s.Text);
+        s.Press("@q");
+        Assert.Equal("bcd", s.Text);
+        s.Press("u");
+        Assert.Equal("abcd", s.Text);
+    }
+
+    [Fact]
+    public void ARedoInAReplayedMacroRedoesWhatItsUndoTook()
+    {
+        var s = new VimSession("abcd", caret: 0);
+        s.Press("x");
+        s.Press("qqu\u0012q");
+        Assert.Equal("bcd", s.Text);
+        s.Press("@q");
+        Assert.Equal("bcd", s.Text);
+        s.Press("u");
+        Assert.Equal("abcd", s.Text);
+    }
+
+    [Fact]
     public void PendingKeysShowWhileACommandIsTyped()
     {
         var s = new VimSession("one two\n");

@@ -23,7 +23,7 @@ public sealed class UndoGroup
 
     internal List<TextChange> Changes { get; } = [];
 
-    internal IReadOnlyList<Selection>? Before { get; }
+    internal IReadOnlyList<Selection>? Before { get; set; }
 
     internal IReadOnlyList<Selection>? After { get; set; }
 }
@@ -163,6 +163,35 @@ public sealed class UndoHistory
     }
 
     internal UndoMark Mark() => new(_undo.Count, _undo.Count > 0 ? _undo[^1] : null);
+
+    // Closes the step being built as one of its own, so an undo inside a step that is still open, as a replayed
+    // macro's u, undoes what the step did so far and not the step before it.
+    internal void Checkpoint(IReadOnlyList<Selection> selections)
+    {
+        if (_current is null || _current.Changes.Count == 0)
+        {
+            return;
+        }
+        var operation = _current;
+        operation.After = selections;
+        _redo.Clear();
+        _undo.Add(operation);
+        if (_undo.Count > Limit)
+        {
+            _undo.RemoveAt(0);
+        }
+        _canJoin = false;
+        _current = new UndoGroup(operation.Kind, selections);
+    }
+
+    // Where the open step starts, once an undo inside it has moved the carets.
+    internal void Restart(IReadOnlyList<Selection> selections)
+    {
+        if (_current is { Changes.Count: 0 } open)
+        {
+            open.Before = selections;
+        }
+    }
 
     // Joins every step taken since the mark into one, as Vim undoes an insert whole. An undo past the mark in
     // between leaves the steps as they are.
