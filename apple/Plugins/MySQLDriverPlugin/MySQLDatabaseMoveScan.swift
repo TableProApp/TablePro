@@ -43,6 +43,10 @@ nonisolated internal enum MySQLDatabaseMoveScan {
             let byte = bytes[index]
             if isSpace(byte) {
                 index += 1
+            } else if depth > 0, startsPlainComment(bytes, at: index) {
+                // A comment inside one: MySQL closes `/*M!` at the first `*/`, MariaDB lets one level nest.
+                move.runsOpaqueCode = true
+                return move
             } else if let marker = executableMarkerLength(in: bytes, at: index) {
                 depth += 1
                 sawExecutableComment = true
@@ -215,7 +219,9 @@ nonisolated internal struct MySQLSessionDatabaseProof: Equatable, Sendable {
         self.database = database
     }
 
+    // By bytes: `==` on strings takes a composed and a decomposed accent as one name, and the server does not.
     func proves(_ database: String) -> Bool {
-        !database.isEmpty && self.database == database
+        guard let entered = self.database, !database.isEmpty else { return false }
+        return entered.utf8.elementsEqual(database.utf8)
     }
 }

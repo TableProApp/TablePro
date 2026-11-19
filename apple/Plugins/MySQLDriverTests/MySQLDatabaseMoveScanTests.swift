@@ -32,7 +32,6 @@ struct MySQLDatabaseMoveScanTests {
         "/*!40101 */ /*!40101 USE other */",
         "/*!99999 x */ USE other",
         "/*!99999 '*/ USE other; -- ' */",
-        "/*!40101 /*!99999 x */ USE other */",
     ])
     func everySpellingOfUseIsSeen(sql: String) {
         let move = MySQLDatabaseMoveScan.move(of: sql)
@@ -68,6 +67,9 @@ struct MySQLDatabaseMoveScanTests {
         "IF 1 THEN EXECUTE IMMEDIATE 'USE other'; END IF",
         "WHILE 1 DO SELECT 1; END WHILE",
         "/*!40101 -- */ USE other\n */",
+        "/*M!100000 SELECT '/*' */ USE other",
+        "/*!40101 /* note */ USE other */",
+        "/*!40101 /*!99999 x */ USE other */",
     ])
     func opaqueCodeIsNotTrusted(sql: String) {
         let move = MySQLDatabaseMoveScan.move(of: sql)
@@ -145,7 +147,9 @@ struct MySQLDatabaseMoveScanTests {
         let empty = String(repeating: "/*!50000 */ ", count: 40_000)
         #expect(MySQLDatabaseMoveScan.move(of: empty + "USE other").changesDatabase)
         let nested = String(repeating: "/*!50000 ", count: 40_000)
-        #expect(MySQLDatabaseMoveScan.move(of: nested + "USE other").changesDatabase)
+        #expect(MySQLDatabaseMoveScan.move(of: nested + "USE other").runsOpaqueCode)
+        let long = "SELECT 1" + String(repeating: " ", count: 2_000_000)
+        #expect(MySQLDatabaseMoveScan.move(of: long).staysOnDatabase)
     }
 
     @Test("A chain of version comments too long to read counts as opaque")
@@ -169,6 +173,14 @@ struct MySQLDatabaseMoveScanTests {
         #expect(!proof.proves("MAIN"))
         #expect(!proof.proves("other"))
         #expect(!proof.proves(""))
+    }
+
+    @Test("A composed and a decomposed accent are two databases")
+    func proofComparesBytes() {
+        var proof = MySQLSessionDatabaseProof()
+        proof.noteEntered("caf\u{E9}")
+        #expect(proof.proves("caf\u{E9}"))
+        #expect(!proof.proves("cafe\u{301}"))
     }
 
     @Test("A proven statement keeps the proof")

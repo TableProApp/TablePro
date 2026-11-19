@@ -1100,7 +1100,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func sessionMayStay(on database: String) -> Bool {
         sessionLock.withLock {
-            _activeDatabase == database && footprint.isClean
+            _activeDatabase.utf8.elementsEqual(database.utf8) && footprint.isClean
                 && MySQLServerVersion.keepsDatabaseBetweenStatements(banner: _serverVersion, flavor: _flavor)
         }
     }
