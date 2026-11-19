@@ -201534,6 +201534,10 @@
         }
       }
     },
+    "This build of DuckDB does not accept running its tasks on threads TablePro starts" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This build of DuckDB does not accept the storage version that keeps files readable by DuckDB 1.x" : {
       "extractionState" : "manual",
       "generatesSymbol" : false

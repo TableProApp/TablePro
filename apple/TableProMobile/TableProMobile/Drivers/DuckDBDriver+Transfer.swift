@@ -189,8 +189,7 @@ extension DuckDBActor {
         }
         var result = duckdb_result()
         guard !parameters.isEmpty else {
-            if duckdb_query(connection, sql, &result) == DuckDBError {
-                let message = duckdb_result_error(&result).map { String(cString: $0) } ?? "Unknown DuckDB error"
+            if let message = run(sql, on: connection, into: &result) {
                 duckdb_destroy_result(&result)
                 throw DuckDBDriverError.queryFailed(message)
             }
@@ -204,7 +203,9 @@ extension DuckDBActor {
         }
         defer { duckdb_destroy_prepare(&statement) }
         try Self.bind(parameters, to: prepared)
-        if duckdb_execute_prepared(prepared, &result) == DuckDBError {
+        let state = duckdb_execute_prepared(prepared, &result)
+        followThreadCount(after: duckdb_prepared_statement_type(prepared))
+        if state == DuckDBError {
             let message = duckdb_result_error(&result).map { String(cString: $0) } ?? "Unknown DuckDB error"
             duckdb_destroy_result(&result)
             throw DuckDBDriverError.queryFailed(message)

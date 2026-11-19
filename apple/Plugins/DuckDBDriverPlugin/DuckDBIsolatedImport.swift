@@ -14,7 +14,7 @@ enum DuckDBIsolatedImport {
         ("autoload_known_extensions", "false"),
         ("allow_community_extensions", "false"),
         (DuckDBExpressionDepth.configurationOption, DuckDBExpressionDepth.limit),
-    ]
+    ] + DuckDBTaskThreads.openOptions
 
     // duckdb_set_config rejects allowed_directories, and DuckDB refuses to change it once external access is off.
     static func lockdownStatements(allowing folder: String) -> [String] {
@@ -56,6 +56,8 @@ enum DuckDBIsolatedImport {
             throw DuckDBPluginError.connectionFailed("Failed to open DuckDB database at '\(file)': \(detail)")
         }
         defer { DuckDBExpressionDepth.close(&database) }
+        let taskThreads = database.map { DuckDBTaskThreads(database: $0) }
+        defer { taskThreads?.close() }
 
         var handle: duckdb_connection?
         guard duckdb_connect(database, &handle) != DuckDBError, let connection = handle else {

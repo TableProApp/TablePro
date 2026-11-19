@@ -42,6 +42,7 @@ actor DuckDBConnectionActor {
     nonisolated var unownedExecutor: UnownedSerialExecutor { executor.asUnownedSerialExecutor() }
 
     private var database: duckdb_database?
+    private var taskThreads: DuckDBTaskThreads?
     private var connection: duckdb_connection?
     // Renders the rows of a result the session's own connection is still producing.
     private var renderConnection: duckdb_connection?
@@ -291,6 +292,12 @@ actor DuckDBConnectionActor {
                 String(localized: "This build of DuckDB does not accept a limit on how deep an expression nests")
             )
         }
+        for option in DuckDBTaskThreads.sessionOptions
+            where duckdb_set_config(config, option.name, option.value) == DuckDBError {
+            throw DuckDBPluginError.connectionFailed(
+                String(localized: "This build of DuckDB does not accept running its tasks on threads TablePro starts")
+            )
+        }
         if !spec.allowsPersistentSecrets {
             guard duckdb_set_config(config, "allow_persistent_secrets", "false") != DuckDBError else {
                 throw DuckDBPluginError.connectionFailed(
@@ -365,6 +372,7 @@ actor DuckDBConnectionActor {
             throw error
         }
         database = db
+        taskThreads = DuckDBTaskThreads(database: openedDB)
         connection = conn
         renderConnection = renderConn
         renderSettings = [:]
@@ -382,6 +390,8 @@ actor DuckDBConnectionActor {
             duckdb_disconnect(&connection)
             connection = nil
         }
+        taskThreads?.close()
+        taskThreads = nil
         if database != nil {
             duckdb_close(&database)
             database = nil
@@ -559,6 +569,9 @@ actor DuckDBConnectionActor {
 
         var result = duckdb_result()
         let state = streams ? duckdb_execute_prepared_streaming(stmt, &result) : duckdb_execute_prepared(stmt, &result)
+        if !DuckDBTaskThreads.keepsCount(statementType) {
+            taskThreads?.followCount()
+        }
         guard state != DuckDBError else {
             let message = Self.errorMessage(from: &result)
             duckdb_destroy_result(&result)
