@@ -13,7 +13,7 @@ final class LibraryFile<Element: Codable> {
     private let label: String
     // Records the last load could not decode; every save writes them back after the decoded ones.
     private var unreadable: [UnreadableLibraryRecord] = []
-    // Set by a save that takes secrets out until the old backup is gone, so a later save cannot leave it behind.
+    // Set by a save that takes secrets out until the old copies are gone, so a later save cannot leave them behind.
     private var backupHoldsRemovedSecrets = false
 
     var backupURL: URL { fileURL.appendingPathExtension("backup") }
@@ -61,9 +61,10 @@ final class LibraryFile<Element: Codable> {
         let encoded = try LibraryFileRecords.encoded(elements, keeping: unreadable, using: encoder)
         let data = try finish(encoded.data)
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        // The backup still holds the secrets taken out, so a save that cannot drop it writes nothing.
+        // The backup and a damaged copy still hold the secrets taken out; a save that cannot drop them writes nothing.
         if backupHoldsRemovedSecrets {
-            try removeBackup()
+            try removeIfPresent(backupURL)
+            try removeIfPresent(unreadableURL)
             backupHoldsRemovedSecrets = false
         }
         try data.write(to: fileURL, options: Self.writeOptions)
@@ -97,13 +98,13 @@ final class LibraryFile<Element: Codable> {
             Self.logger.error(
                 "Could not keep a backup of \(self.label, privacy: .public): \(LogRedaction.publicDescription(of: error), privacy: .public)"
             )
-            try? removeBackup()
+            try? removeIfPresent(backupURL)
         }
     }
 
-    private func removeBackup() throws {
+    private func removeIfPresent(_ url: URL) throws {
         do {
-            try FileManager.default.removeItem(at: backupURL)
+            try FileManager.default.removeItem(at: url)
         } catch let error as CocoaError where error.code == .fileNoSuchFile {
             return
         }

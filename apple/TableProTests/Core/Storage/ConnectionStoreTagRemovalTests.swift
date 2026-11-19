@@ -231,7 +231,9 @@ struct ConnectionStoreTagRemovalTests {
         #expect(store.save([StampedRow(id: 1, name: "secret")]))
         #expect(store.save([StampedRow(id: 1, name: "secret"), StampedRow(id: 2, name: "Two")]))
 
+        try Data("secret".utf8).write(to: store.unreadableURL)
         #expect(store.save([StampedRow(id: 1, name: "moved"), StampedRow(id: 2, name: "Two")], removingSecrets: true))
+        #expect(!FileManager.default.fileExists(atPath: store.unreadableURL.path))
 
         let backup = try Data(contentsOf: store.backupURL)
         let current = try Data(contentsOf: fileURL)

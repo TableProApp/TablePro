@@ -105,9 +105,11 @@ final class IntegrityStampedFileStore<Element: Codable> {
         let encoded: (data: Data, kept: [UnreadableLibraryRecord])
         do {
             encoded = try LibraryFileRecords.encoded(elements, keeping: preserved, using: encoder)
-            // The backup still holds the secrets this save takes out, so a save that cannot drop it writes nothing.
+            // The backup and a damaged copy still hold the secrets this save takes out; a save that cannot drop them
+            // writes nothing.
             if removingSecrets {
                 try removeBackup()
+                try removeIfPresent(unreadableURL)
             }
             try encoded.data.write(to: fileURL, options: .atomic)
         } catch {

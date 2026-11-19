@@ -812,12 +812,16 @@ struct AppStateLibraryTests {
         #expect(!(try String(contentsOf: backupURL, encoding: .utf8)).contains(keyMarker))
     }
 
-    @Test("A key moved into the secure store leaves no copy in the backup")
+    @Test("A key moved into the secure store leaves no copy in the backup or in a damaged file kept beside it")
     func movedKeyLeavesNoBackupCopy() throws {
-        _ = try writeLegacyLibrary(id: UUID())
+        let legacy = try writeLegacyLibrary(id: UUID())
         let backupURL = fixture.connectionsFile.appendingPathExtension("backup")
+        let damagedURL = fixture.connectionsFile.appendingPathExtension("unreadable")
+        try legacy.prefix(legacy.count - 1).write(to: damagedURL)
 
         _ = makeState(syncEnabled: false, secureStore: MockSecureStore())
+
+        #expect(!FileManager.default.fileExists(atPath: damagedURL.path))
 
         #expect(!(try String(contentsOf: backupURL, encoding: .utf8)).contains(keyMarker))
         #expect(try Data(contentsOf: backupURL) == Data(contentsOf: fixture.connectionsFile))
