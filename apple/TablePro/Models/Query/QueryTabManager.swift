@@ -345,6 +345,7 @@ final class QueryTabManager: ObservableObject {
     func addTab(
         initialQuery: String? = nil,
         title: String? = nil,
+        keepsTitle: Bool = false,
         databaseName: String = "",
         sourceFileURL: URL? = nil,
         sourceFileStamp: FileStamp? = nil,
@@ -374,6 +375,10 @@ final class QueryTabManager: ObservableObject {
             tabTitle = nextTitle()
         }
         var newTab = QueryTab(title: tabTitle, tabType: .query)
+        // Held as a name, so a move or a restore never renumbers it; clearing it comes back to the same title.
+        if keepsTitle, title != nil, sourceFileURL == nil {
+            newTab.automaticTitle = tabTitle
+        }
 
         if let query = initialQuery {
             newTab.content.query = query

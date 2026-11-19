@@ -646,6 +646,9 @@ mod tests {
             keys.press(gdk::Key::F2, gdk::ModifierType::empty()).expect("F2");
             wait_until(WAIT, || field(&shell).is_some_and(|(popover, _)| popover.is_visible()))
                 .expect("F2 to open the field");
+            // GTK's own input method, whatever the runner loads: the Flatpak test environment has IBus.
+            let (_, entry) = field(&shell).expect("the field");
+            entry.set_im_module(Some("gtk-im-context-simple"));
 
             for key in [gdk::Key::a, gdk::Key::b, gdk::Key::c] {
                 keys.press(key, gdk::ModifierType::empty()).expect("the key press");

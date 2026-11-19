@@ -65,11 +65,11 @@ internal enum EditorTabOpener {
                 || payload.tabTitle != nil
                 || payload.sourceFileURL != nil
             guard hasContent else { return }
-            // A `Query N` from elsewhere is another window's number; this manager hands out its own.
-            let ownTitle = payload.tabTitle.flatMap { QueryTab.isDefaultQueryTitle($0) ? nil : $0 }
+            // A payload's title was chosen elsewhere, a shared link's by its author, so one reading `Query N` is no number to renumber.
             tabManager.addTab(
                 initialQuery: payload.initialQuery,
-                title: ownTitle,
+                title: payload.tabTitle,
+                keepsTitle: payload.tabTitle.map(QueryTab.isDefaultQueryTitle) ?? false,
                 databaseName: payload.databaseName ?? openingDatabaseName,
                 sourceFileURL: payload.sourceFileURL,
                 sourceFileStamp: payload.sourceFileStamp,
