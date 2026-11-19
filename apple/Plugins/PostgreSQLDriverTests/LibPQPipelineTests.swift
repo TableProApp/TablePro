@@ -11,7 +11,7 @@ import Testing
 struct LibPQPipelineTests {
     private static let inserts = (1...3).map { "INSERT INTO events VALUES (\($0))" }
 
-    private static func server(failing: String? = nil) throws -> LibPQScriptedServer {
+    private static func server(failing: String? = nil, closingAfter: String? = nil) throws -> LibPQScriptedServer {
         try LibPQScriptedServer(
             status: { query, earlier in
                 (earlier + [query]).contains("BEGIN") ? LibPQScriptedServer.inTransaction : LibPQScriptedServer.idle
@@ -21,7 +21,7 @@ struct LibPQPipelineTests {
                 if query == failing {
                     return .init(failure: .init(sqlState: "23505", message: "duplicate key value violates unique constraint"))
                 }
-                return .init(completion: "INSERT 0 1")
+                return .init(completion: "INSERT 0 1", closesSessionAtSync: query == closingAfter)
             }
         )
     }
@@ -93,6 +93,26 @@ struct LibPQPipelineTests {
         #expect(server.parsedStatements == Array(Self.inserts.prefix(2)))
         #expect(await connection.transactionState() == .inError)
         _ = try await connection.executeQuery("ROLLBACK")
+    }
+
+    @Test("A session lost after the last answer but before the Sync fails that last statement")
+    func lostBeforeSyncFailsTheLastStatement() async throws {
+        let server = try Self.server(closingAfter: Self.inserts[2])
+        defer { server.close() }
+        server.start()
+        let connection = try await Self.connected(to: server)
+        defer { connection.disconnect() }
+        _ = try await connection.executeQuery("BEGIN")
+
+        let outcomes = try #require(try await connection.executePipeline(Self.statements(Self.inserts)))
+
+        #expect(outcomes.count == 3)
+        #expect(Self.rowCounts(Array(outcomes.prefix(2))) == [1, 1])
+        guard case .failed = outcomes[2] else {
+            Issue.record("The statement whose Sync never came should fail")
+            return
+        }
+        #expect(connection.hasLostConnection)
     }
 
     @Test("Outside a transaction block the pipeline is declined and nothing is sent")
@@ -198,6 +218,27 @@ struct LibPQPipelineTests {
     ])
     func admitsOrdinaryStatements(text: String) {
         #expect(LibPQPipelineAdmission.admits(text))
+    }
+
+    @Test("A tally whose every statement answered but whose exchange broke fails the last statement")
+    func tallyFailsLastWhenSyncIsLost() {
+        var tally = LibPQPipelineTally(total: 2, startedAt: Date())
+        tally.sent = 2
+        for _ in 0..<2 {
+            tally.take(.completed(rowsAffected: 1, commandTag: "INSERT 0 1"))
+            _ = tally.endStatement()
+        }
+        struct Lost: Error {}
+
+        let outcomes = tally.outcomes(cutShort: Lost())
+
+        #expect(outcomes.count == 2)
+        #expect(Self.rowCounts([outcomes[0]]) == [1])
+        guard case .failed(let error) = outcomes[1] else {
+            Issue.record("The last statement should carry the loss")
+            return
+        }
+        #expect(error is Lost)
     }
 
     @Test("A tally stops at the first failure and names a cut-short statement only when one was never answered")

@@ -60,8 +60,8 @@ nonisolated struct LibPQPipelineTally {
         return true
     }
 
-    // Stops at the first failure; an aborted statement never ran, so it has no outcome. `cutShort` is the failure of
-    // the first statement with no answer, when the exchange ended before every one was read.
+    // Stops at the first failure; an aborted statement never ran, so it has no outcome. `cutShort` is why the exchange
+    // ended early: the failure of the first statement with no answer, or of the last one when its Sync never came.
     func outcomes(cutShort: (any Error)?) -> [PluginBatchStatementOutcome] {
         var outcomes: [PluginBatchStatementOutcome] = []
         answers: for (answer, time) in zip(answers, times) {
@@ -75,7 +75,12 @@ nonisolated struct LibPQPipelineTally {
                 break answers
             }
         }
-        if let cutShort, outcomes.count < total { outcomes.append(.failed(cutShort)) }
+        guard let cutShort else { return outcomes }
+        if outcomes.count < total {
+            outcomes.append(.failed(cutShort))
+        } else if !outcomes.isEmpty {
+            outcomes[outcomes.count - 1] = .failed(cutShort)
+        }
         return outcomes
     }
 

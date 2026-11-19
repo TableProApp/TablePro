@@ -41,6 +41,8 @@ final class LibPQScriptedServer: @unchecked Sendable {
         var copyIn: CopyIn?
         // The command tag in place of `SELECT <row count>`, such as `INSERT 0 1`.
         var completion: String?
+        // Closes the session at the next Sync instead of answering it, so every reply but the ReadyForQuery arrives.
+        var closesSessionAtSync = false
     }
 
     struct CopyIn: Sendable {
@@ -175,6 +177,7 @@ final class LibPQScriptedServer: @unchecked Sendable {
 
         var statement: Statement?
         var failed = false
+        var closesAtSync = false
         while let type = receive(client, 1)?.first, let body = receiveBody(client) {
             var reply: [UInt8] = []
             switch type {
@@ -214,7 +217,9 @@ final class LibPQScriptedServer: @unchecked Sendable {
             case UInt8(ascii: "E"):
                 guard !failed, let statement else { break }
                 guard execute(statement.answer, on: client, failed: &failed) else { return }
+                closesAtSync = closesAtSync || statement.answer.closesSessionAtSync
             case UInt8(ascii: "S"):
+                if closesAtSync { return }
                 var state = statement.map { status($0.query, $0.earlier) } ?? Self.idle
                 if failed, state == Self.inTransaction { state = Self.failedTransaction }
                 reply = Self.message("Z", [state])
