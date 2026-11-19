@@ -13,13 +13,14 @@ namespace TablePro.Editor;
 public sealed partial class SqlEditor
 {
     private readonly CaretBlink _blink = new();
-    private readonly List<Vector2> _caretSpots = [];
+    private readonly List<CaretSpot> _caretSpots = [];
     private readonly List<SpriteVisual> _caretSprites = [];
     private DispatcherQueueTimer? _blinkTimer;
     private InputActivationListener? _activation;
     private ContainerVisual? _caretLayer;
     private InsetClip? _caretClip;
     private CompositionColorBrush? _caretBrush;
+    private CompositionColorBrush? _blockCaretBrush;
     private int _caretsPlaced;
     private uint _caretPixels;
     private bool _hooked;
@@ -31,6 +32,9 @@ public sealed partial class SqlEditor
     internal bool IsInActiveWindow => _activation?.State == InputActivationState.Activated;
 
     internal bool IsCaretShown => _caretLayer is { IsVisible: true } && _caretsPlaced > 0;
+
+    // The first caret's block width from the last frame; 0 for a bar.
+    internal float FirstCaretBlockWidth => _caretSpots.Count > 0 ? _caretSpots[0].BlockWidth : 0;
 
     // Each time a blink, focus or the window showed or hid the carets.
     internal int CaretToggles { get; private set; }
@@ -146,6 +150,7 @@ public sealed partial class SqlEditor
         }
         var compositor = ElementCompositionPreview.GetElementVisual(_panel).Compositor;
         _caretBrush = compositor.CreateColorBrush(_brushes?.Palette.Caret ?? default);
+        _blockCaretBrush = compositor.CreateColorBrush(BlockCaretColor(_brushes?.Palette.Caret ?? default));
         _caretClip = compositor.CreateInsetClip();
         _caretLayer = compositor.CreateContainerVisual();
         _caretLayer.Clip = _caretClip;
@@ -176,18 +181,19 @@ public sealed partial class SqlEditor
         _caretClip!.LeftInset = gutter;
         for (var i = 0; i < _caretSpots.Count; i++)
         {
-            var spot = _caretSpots[i];
+            var (spot, blockWidth) = _caretSpots[i];
             if (i == _caretSprites.Count)
             {
-                var created = layer.Compositor.CreateSpriteVisual();
-                created.Brush = _caretBrush;
-                _caretSprites.Add(created);
+                _caretSprites.Add(layer.Compositor.CreateSpriteVisual());
             }
             var sprite = _caretSprites[i];
+            sprite.Brush = blockWidth > 0 ? _blockCaretBrush : _caretBrush;
             var top = MathF.Round(spot.Y * scaleY) / scaleY;
             var bottom = MathF.Round((spot.Y + lineHeight) * scaleY) / scaleY;
-            sprite.Offset = new Vector3(MathF.Round(spot.X * scaleX) / scaleX, top, 0);
-            sprite.Size = new Vector2(caretWidth, bottom - top);
+            var left = MathF.Round(spot.X * scaleX) / scaleX;
+            var spriteWidth = blockWidth > 0 ? MathF.Round((spot.X + blockWidth) * scaleX) / scaleX - left : caretWidth;
+            sprite.Offset = new Vector3(left, top, 0);
+            sprite.Size = new Vector2(Math.Max(spriteWidth, caretWidth), bottom - top);
             if (i >= _caretsPlaced)
             {
                 layer.Children.InsertAtTop(sprite);
@@ -242,5 +248,14 @@ public sealed partial class SqlEditor
         _caretClip = null;
         _caretBrush?.Dispose();
         _caretBrush = null;
+        _blockCaretBrush?.Dispose();
+        _blockCaretBrush = null;
     }
+
+    // The caret's color over the character it covers, so the character still reads, as the macOS block does.
+    private static Windows.UI.Color BlockCaretColor(Windows.UI.Color caret) =>
+        Windows.UI.Color.FromArgb((byte)(caret.A * 2 / 5), caret.R, caret.G, caret.B);
+
+    // Width 0 is a bar caret at the system width; more is Vim's block over a character.
+    private readonly record struct CaretSpot(Vector2 Position, float BlockWidth);
 }

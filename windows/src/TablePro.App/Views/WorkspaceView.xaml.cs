@@ -12,6 +12,7 @@ using TablePro.App.Services;
 using TablePro.DataGrid.Model;
 using TablePro.Editor;
 using TablePro.Editor.Model;
+using TablePro.Editor.Model.Vim;
 using TablePro.Interop;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
@@ -1128,6 +1129,35 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         await LoadTreeAsync(refresh: true).ConfigureAwait(true);
     }
 
+    // Vim's :q closes the tab it was typed in; a tab number past the strip is its last tab, and a move wraps round.
+    private void OnTabCommandRequested(object? sender, VimExCommand command)
+    {
+        var count = Tabs.TabItems.Count;
+        if (count == 0)
+        {
+            return;
+        }
+
+        switch (command)
+        {
+            case VimExCommand.CloseTab:
+                var typedIn = Tabs.TabItems.OfType<TabViewItem>().FirstOrDefault(item => ReferenceEquals(item.Content, sender));
+                if (typedIn is not null)
+                {
+                    _ = CloseTabAsync(typedIn);
+                }
+
+                break;
+            case VimExCommand.SelectTab select:
+                Tabs.SelectedIndex = Math.Clamp(select.Number, 1, count) - 1;
+                break;
+            case VimExCommand.SelectAdjacentTab adjacent:
+                var current = Math.Max(0, Tabs.SelectedIndex);
+                Tabs.SelectedIndex = ((current + adjacent.Offset % count) % count + count) % count;
+                break;
+        }
+    }
+
     private bool SelectTab(int position)
     {
         var count = Tabs.TabItems.Count;
@@ -1225,6 +1255,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             query.SaveQueryRequested += OnSaveQueryRequested;
             query.OpenFilesRequested += OnOpenFilesRequested;
             query.FileSaved += OnFileSaved;
+            query.TabCount = () => Tabs.TabItems.Count;
+            query.TabCommandRequested += OnTabCommandRequested;
             AttachAssistant(query);
         }
         else if (item.Content is DefinitionTabView definition)
@@ -1288,6 +1320,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             query.SaveQueryRequested -= OnSaveQueryRequested;
             query.OpenFilesRequested -= OnOpenFilesRequested;
             query.FileSaved -= OnFileSaved;
+            query.TabCount = static () => 0;
+            query.TabCommandRequested -= OnTabCommandRequested;
             DetachAssistant(query);
         }
         else if (item.Content is DefinitionTabView definition)

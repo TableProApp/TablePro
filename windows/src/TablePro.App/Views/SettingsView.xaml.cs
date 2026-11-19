@@ -94,6 +94,7 @@ public sealed partial class SettingsView : UserControl
         WordWrapSwitch.IsOn = settings.WordWrap;
         StatementSwitch.IsOn = settings.HighlightCurrentStatement;
         FoldingSwitch.IsOn = settings.CodeFolding;
+        VimSwitch.IsOn = settings.VimMode;
         FillSchemes(LightSchemeBox, dark: false, settings.EditorLightScheme);
         FillSchemes(DarkSchemeBox, dark: true, settings.EditorDarkScheme);
         FillFamilies(GridFontBox, SqlEditor.InstalledFontFamilies(monospacedOnly: false), settings.GridFontFamily, "GridFontDefault");
@@ -239,6 +240,15 @@ public sealed partial class SettingsView : UserControl
         {
             var folding = FoldingSwitch.IsOn;
             _workbench.UpdateSettings(settings => settings with { CodeFolding = folding });
+        }
+    }
+
+    private void OnVimToggled(object sender, RoutedEventArgs e)
+    {
+        if (!_loading)
+        {
+            var vim = VimSwitch.IsOn;
+            _workbench.UpdateSettings(settings => settings with { VimMode = vim });
         }
     }
 

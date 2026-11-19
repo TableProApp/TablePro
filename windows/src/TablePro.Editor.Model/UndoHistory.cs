@@ -9,6 +9,8 @@ public enum EditKind
     Other,
 }
 
+internal readonly record struct UndoMark(int Count, UndoGroup? Top);
+
 public sealed class UndoGroup
 {
     internal UndoGroup(EditKind kind, IReadOnlyList<Selection>? before)
@@ -158,6 +160,32 @@ public sealed class UndoHistory
     {
         IsReplaying = true;
         return new ReplayScope(this);
+    }
+
+    internal UndoMark Mark() => new(_undo.Count, _undo.Count > 0 ? _undo[^1] : null);
+
+    // Joins every step taken since the mark into one, as Vim undoes an insert whole. An undo past the mark in
+    // between leaves the steps as they are.
+    internal void Coalesce(UndoMark mark)
+    {
+        if (_current is not null || _undo.Count - mark.Count < 2)
+        {
+            return;
+        }
+        if (mark.Count > 0 && !ReferenceEquals(_undo[mark.Count - 1], mark.Top))
+        {
+            return;
+        }
+        var first = _undo[mark.Count];
+        var merged = new UndoGroup(EditKind.Other, first.Before);
+        for (var i = mark.Count; i < _undo.Count; i++)
+        {
+            merged.Changes.AddRange(_undo[i].Changes);
+        }
+        merged.After = _undo[^1].After;
+        _undo.RemoveRange(mark.Count, _undo.Count - mark.Count);
+        _undo.Add(merged);
+        _canJoin = false;
     }
 
     private static bool Joins(UndoGroup top, UndoGroup next)

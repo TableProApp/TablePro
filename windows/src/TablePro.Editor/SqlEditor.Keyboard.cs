@@ -28,7 +28,11 @@ public sealed partial class SqlEditor
         {
             return;
         }
-        e.Handled = HandleKey(e.Key, Down(VirtualKey.Control), Down(VirtualKey.Shift), Down(VirtualKey.Menu));
+        var control = Down(VirtualKey.Control);
+        var shift = Down(VirtualKey.Shift);
+        var alt = Down(VirtualKey.Menu);
+        // Vim sees a key before the editor's own commands, and the app's accelerators come after both.
+        e.Handled = RouteVimKey(e.Key, control, shift, alt) || HandleKey(e.Key, control, shift, alt);
         if (!e.Handled)
         {
             base.OnKeyDown(e);
@@ -204,7 +208,10 @@ public sealed partial class SqlEditor
         }
         var text = char.IsLowSurrogate(c) && _pendingHighSurrogate != 0 ? new string([_pendingHighSurrogate, c]) : c.ToString();
         _pendingHighSurrogate = '\0';
-        TypeText(text);
+        if (!RouteVimText(text, Down(VirtualKey.Shift)))
+        {
+            TypeText(text);
+        }
         e.Handled = true;
     }
 

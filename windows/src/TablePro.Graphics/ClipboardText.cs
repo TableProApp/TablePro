@@ -9,13 +9,25 @@ internal static class ClipboardText
     private const int Attempts = 5;
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(20);
 
-    // False when the clipboard stayed held, and the text never reached it.
-    public static bool TrySet(string text)
+    // False when the clipboard stayed held, and the text never reached it. Text kept out of history skips Win+V's
+    // list and other devices, for writes the user did not ask for as a copy.
+    public static bool TrySet(string text, bool inHistory = true)
     {
         ArgumentNullException.ThrowIfNull(text);
         var package = new DataPackage();
         package.SetText(text);
-        if (!Retry(() => Clipboard.SetContent(package)))
+        var options = inHistory ? null : new ClipboardContentOptions { IsAllowedInHistory = false, IsRoamable = false };
+        if (!Retry(() =>
+            {
+                if (options is null)
+                {
+                    Clipboard.SetContent(package);
+                }
+                else
+                {
+                    _ = Clipboard.SetContentWithOptions(package, options);
+                }
+            }))
         {
             return false;
         }

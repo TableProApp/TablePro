@@ -10,6 +10,7 @@ using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.DataGrid;
 using TablePro.Editor;
+using TablePro.Editor.Model.Vim;
 using TablePro.Interop;
 
 namespace TablePro.App.Views;
@@ -82,6 +83,9 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         SqlText.ContextMenuOpening += OnEditorMenuOpening;
         SqlText.TextChanged += OnTextChanged;
         SqlText.FilesDropped += (_, paths) => OpenFilesRequested?.Invoke(this, paths);
+        SqlText.VimStatusChanged += (_, _) => ShowVimStatus();
+        SqlText.VimCommand += OnVimCommand;
+        ShowVimStatus();
         if (rolledBack)
         {
             RolledBackBar.Title = Strings.Get("RolledBackTitle");
@@ -123,6 +127,12 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
 
     // Set by the workspace: whether its assistant may be asked now, which the AI commands follow.
     internal Func<bool> AssistantReady { get; set; } = static () => false;
+
+    // :q, :tabnext, :tabprevious, gt and gT from Vim; the workspace closes or selects the tab.
+    internal event EventHandler<VimExCommand>? TabCommandRequested;
+
+    // Set by the workspace: the tabs in its strip, which Vim's tab counts are measured against.
+    internal Func<int> TabCount { get; set; } = static () => 0;
 
     // The database the tab runs in; null for the connection's.
     internal string? Database => _model.Database;
@@ -610,6 +620,48 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     }
 
     private void OnRun(object sender, RoutedEventArgs e) => Run();
+
+    // :w runs the query, as the macOS editor's does.
+    private void OnVimCommand(object? sender, string command)
+    {
+        switch (VimCommandLine.Parse(command, TabCount()))
+        {
+            case VimExCommand.RunQuery:
+                Run();
+                break;
+            case { } tabCommand:
+                TabCommandRequested?.Invoke(this, tabCommand);
+                break;
+        }
+    }
+
+    private void ShowVimStatus()
+    {
+        if (SqlText.Vim is not { } vim)
+        {
+            VimBadge.Visibility = Visibility.Collapsed;
+            VimKeysText.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var label = vim.ModeLabel;
+        VimModeText.Text = label;
+        AutomationProperties.SetName(VimModeText, Strings.Format("VimModeName", label));
+        VimBadge.Visibility = Visibility.Visible;
+        var state = vim.Mode switch
+        {
+            VimMode.Insert => "VimInsert",
+            VimMode.Replace => "VimReplace",
+            VimMode.Visual or VimMode.VisualLine => "VimVisual",
+            VimMode.CommandLine => "VimCommand",
+            _ => "VimNormal",
+        };
+        VisualStateManager.GoToState(this, state, false);
+        var keys = vim.RecordingRegister is { } register
+            ? (vim.PendingKeys + " " + Strings.Format("VimRecording", register)).Trim()
+            : vim.PendingKeys;
+        VimKeysText.Text = keys;
+        VimKeysText.Visibility = keys.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     private void OnRolledBackBarClosed(InfoBar sender, InfoBarClosedEventArgs args) =>
         RolledBackBar.Visibility = Visibility.Collapsed;
