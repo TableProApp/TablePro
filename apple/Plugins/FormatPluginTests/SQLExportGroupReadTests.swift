@@ -121,6 +121,38 @@ private final class CatalogSource: PluginExportDataSource, @unchecked Sendable {
     }
 }
 
+// Answers the group read for the NFC spelling of café only, and each table's own read for whatever it is asked.
+private final class UnicodeNameSource: PluginExportDataSource, @unchecked Sendable {
+    static let composed = "caf\u{E9}"
+    static let decomposed = "cafe\u{301}"
+    let databaseTypeId = "PostgreSQL"
+    let bulkReads: PluginExportBulkReads = [.commentDDL]
+    private(set) var tableReads: [String] = []
+
+    func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+
+    func fetchTableDDL(table: String, databaseName: String) async throws -> String { "" }
+
+    func execute(query: String) async throws -> PluginQueryResult {
+        PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+    }
+
+    func quoteIdentifier(_ identifier: String) -> String { "\"\(identifier)\"" }
+    func escapeStringLiteral(_ value: String) -> String { value }
+    func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? { nil }
+
+    func fetchAllCommentDDL(databaseName: String) async throws -> [String: [String]] {
+        [Self.composed: ["COMMENT ON TABLE composed"]]
+    }
+
+    func fetchCommentDDL(table: String, databaseName: String) async throws -> [String] {
+        tableReads.append(table)
+        return ["COMMENT ON VIEW decomposed"]
+    }
+}
+
 struct SQLExportGroupReadTests {
     private static let everyRead: PluginExportBulkReads = [.indexDDL, .commentDDL, .dependentSequences, .dependentTypes]
 
@@ -212,6 +244,25 @@ struct SQLExportGroupReadTests {
         #expect(try await reads.indexDDL(for: tables[0]).count == 1)
         #expect(try await reads.indexDDL(for: tables[1]).count == 1)
         #expect(source.calls == ["all index", "index orders", "index totals"])
+    }
+
+    @Test("A name Swift equates with a group key but the server keeps apart reads its own answer")
+    func unicodeFormOfAGroupKeyReadsAlone() async throws {
+        let source = UnicodeNameSource()
+        let table = Self.object(UnicodeNameSource.composed, .table)
+        let view = Self.object(UnicodeNameSource.decomposed, .view)
+        let reads = SQLExportGroupReads(
+            dataSource: source,
+            progress: PluginExportProgress(progress: Progress(totalUnitCount: 1)),
+            tables: [table],
+            commentedObjects: [table, view],
+            indexedObjects: [table]
+        )
+
+        #expect(try await reads.commentDDL(for: table) == ["COMMENT ON TABLE composed"])
+        #expect(try await reads.commentDDL(for: view) == ["COMMENT ON VIEW decomposed"])
+        #expect(source.tableReads.count == 1)
+        #expect(source.tableReads.first?.unicodeScalars.elementsEqual(UnicodeNameSource.decomposed.unicodeScalars) == true)
     }
 
     @Test("A cancelled group read is rethrown rather than answered table by table")

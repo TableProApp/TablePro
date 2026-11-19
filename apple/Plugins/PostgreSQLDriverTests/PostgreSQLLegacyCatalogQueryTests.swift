@@ -34,7 +34,6 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLIndexQueries.schemaStandaloneIndexQuery(schema: "public"),
             PostgreSQLCommentStatements.schemaCatalogQuery(schema: "public"),
             PostgreSQLSchemaQueries.schemaDependentEnumTypes(schema: "public"),
-            PostgreSQLSequenceQueries.schemaDependentSequenceList(schema: "public", source: .sequenceParameters),
             PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: "public", table: "orders"),
             PostgreSQLSchemaQueries.tableDDLColumnsQuery(schema: "public", table: "orders", capabilities: legacy),
             PostgreSQLSchemaQueries.rebuildColumnsQuery(schema: "public", table: "orders", capabilities: legacy),
@@ -83,7 +82,7 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLIndexQueries.schemaStandaloneIndexQuery(schema: hostile),
             PostgreSQLCommentStatements.schemaCatalogQuery(schema: hostile),
             PostgreSQLSchemaQueries.schemaDependentEnumTypes(schema: hostile),
-            PostgreSQLSequenceQueries.schemaDependentSequenceList(schema: hostile, source: .sequencesView),
+            PostgreSQLSequenceQueries.schemaDependentSequenceList(schema: hostile),
             PostgreSQLTableListing.query(
                 schema: hostile, includeMaterializedViews: true, includeForeignTables: true
             ),

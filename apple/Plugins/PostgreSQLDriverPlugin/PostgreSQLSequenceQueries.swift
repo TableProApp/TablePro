@@ -158,61 +158,16 @@ nonisolated enum PostgreSQLSequenceQueries {
         source: Source,
         named sequence: String? = nil
     ) -> String {
-        sequenceStatement(schema: schema, dependency: table.map(Dependency.table) ?? .none, source: source, named: sequence)
-    }
-
-    // The per-table dependent listing for every table of the schema at once: one row per table and sequence, with the
-    // table's name projected last, read through the same `pg_depend` rows the per-table predicate tests.
-    static func schemaDependentSequenceList(schema: String, source: Source) -> String {
-        sequenceStatement(schema: schema, dependency: .everyTable, source: source, named: nil)
-    }
-
-    private enum Dependency {
-        case none
-        case table(String)
-        case everyTable
-    }
-
-    private static func sequenceStatement(
-        schema: String,
-        dependency: Dependency,
-        source: Source,
-        named sequence: String?
-    ) -> String {
         let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
-        let (predicate, join, everyTable): (String, String, Bool) = switch dependency {
-        case .none: ("", "", false)
-        case .table(let table): (dependencyPredicate(schemaLiteral: schemaLiteral, table: table), "", false)
-        case .everyTable: ("", dependentTablesJoin(schemaLiteral: schemaLiteral), true)
-        }
+        let dependency = table.map { dependencyPredicate(schemaLiteral: schemaLiteral, table: $0) } ?? ""
         switch source {
         case .sequencesView:
             let nameFilter = sequence.map { "\n                  AND s.sequencename = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
-            let relation = everyTable ? ",\n       dependent.table_name" : ""
-            let order = everyTable ? "dependent.table_name, s.sequencename" : "s.sequencename"
-            return """
-                SELECT s.sequencename,
-                       s.start_value,
-                       s.min_value,
-                       s.max_value,
-                       s.increment_by,
-                       s.cycle,
-                       s.last_value,
-                       false AS needs_last_value_read,
-                       s.data_type::text,
-                       s.cache_size,
-                       \(ownerColumns(sequence: "c.oid"))\(relation)
-                FROM pg_catalog.pg_sequences s
-                JOIN pg_catalog.pg_namespace n ON n.nspname = s.schemaname
-                JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid AND c.relname = s.sequencename\(join)
-                WHERE s.schemaname = \(schemaLiteral)\(nameFilter)\(predicate)
-                ORDER BY \(order)
-                """
+            return sequencesViewStatement(
+                schemaLiteral: schemaLiteral, filter: nameFilter + dependency, join: "", relation: "", order: "s.sequencename"
+            )
         case .sequenceParameters:
             let nameFilter = sequence.map { "\n                        AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
-            let relation = everyTable ? ",\n       s.table_name" : ""
-            let innerRelation = everyTable ? ",\n           dependent.table_name" : ""
-            let order = everyTable ? "s.table_name, s.relname" : "s.relname"
             return """
                 SELECT s.relname,
                        \(parameter("start_value")),
@@ -224,21 +179,62 @@ nonisolated enum PostgreSQLSequenceQueries {
                        s.readable,
                        NULL::text AS data_type,
                        NULL::bigint AS cache_size,
-                       \(ownerColumns(sequence: "s.oid"))\(relation)
+                       \(ownerColumns(sequence: "s.oid"))
                 FROM (
                     SELECT c.oid,
                            c.relname,
                            pg_catalog.has_sequence_privilege(c.oid, 'SELECT,USAGE,UPDATE') AS can_read_parameters,
-                           pg_catalog.has_sequence_privilege(c.oid, 'SELECT') AS readable\(innerRelation)
+                           pg_catalog.has_sequence_privilege(c.oid, 'SELECT') AS readable
                     FROM pg_catalog.pg_class c
-                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\(join)
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                     WHERE c.relkind = 'S'
-                        AND n.nspname = \(schemaLiteral)\(nameFilter)\(predicate)
+                        AND n.nspname = \(schemaLiteral)\(nameFilter)\(dependency)
                     OFFSET 0
                 ) s
-                ORDER BY \(order)
+                ORDER BY s.relname
                 """
         }
+    }
+
+    // The per-table pg_sequences listing for every table of the schema at once: one row per table and sequence, the
+    // table's name projected last, read through the same `pg_depend` rows the per-table predicate tests. Before
+    // pg_sequences each last value is a read of its own, which a schema-wide read would make for every sequence.
+    static func schemaDependentSequenceList(schema: String) -> String {
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
+        return sequencesViewStatement(
+            schemaLiteral: schemaLiteral,
+            filter: "",
+            join: dependentTablesJoin(schemaLiteral: schemaLiteral),
+            relation: ",\n       dependent.table_name",
+            order: "dependent.table_name, s.sequencename"
+        )
+    }
+
+    private static func sequencesViewStatement(
+        schemaLiteral: String,
+        filter: String,
+        join: String,
+        relation: String,
+        order: String
+    ) -> String {
+        """
+            SELECT s.sequencename,
+                   s.start_value,
+                   s.min_value,
+                   s.max_value,
+                   s.increment_by,
+                   s.cycle,
+                   s.last_value,
+                   false AS needs_last_value_read,
+                   s.data_type::text,
+                   s.cache_size,
+                   \(ownerColumns(sequence: "c.oid"))\(relation)
+            FROM pg_catalog.pg_sequences s
+            JOIN pg_catalog.pg_namespace n ON n.nspname = s.schemaname
+            JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid AND c.relname = s.sequencename\(join)
+            WHERE s.schemaname = \(schemaLiteral)\(filter)
+            ORDER BY \(order)
+            """
     }
 
     private static func ownerColumns(sequence: String) -> String {

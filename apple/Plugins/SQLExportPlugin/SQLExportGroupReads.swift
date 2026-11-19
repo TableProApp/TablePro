@@ -88,7 +88,10 @@ nonisolated final class SQLExportGroupReads {
         guard let group = try await groupAnswer(read, databaseName: object.databaseName) else {
             return try await alone()
         }
-        return group[object.name] ?? []
+        guard let index = group.index(forKey: object.name) else { return [] }
+        // Swift equates NFC and NFD spellings the server keeps apart, so a key spelled otherwise is another relation's.
+        guard group[index].key.utf8.elementsEqual(object.name.utf8) else { return try await alone() }
+        return group[index].value
     }
 
     private func groupAnswer<Value>(

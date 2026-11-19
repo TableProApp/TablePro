@@ -241,12 +241,18 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
 
     // MARK: - Schema-wide export reads
 
+    // The sequence read only where pg_sequences lists each last value: before it, each is a read of its own.
+    var schemaDDLReads: PluginExportBulkReads {
+        let reads: PluginExportBulkReads = [.indexDDL, .commentDDL, .dependentTypes]
+        return includesSequencesCatalog ? reads.union(.dependentSequences) : reads
+    }
+
     private func rowsByRelation(_ statement: String) async throws -> [String: [[PluginCellValue]]] {
         try Self.rowsByRelation(try await rows(statement))
     }
 
-    // Keyed by the relation each row names last. A read at the row ceiling may have stopped inside a relation, so it
-    // throws and the export reads each table alone.
+    // Keyed by the relation each row names last. A read at the row ceiling may have stopped inside a relation, and
+    // Swift equates names the server keeps apart (NFC and NFD spellings), so either throws and each table reads alone.
     static func rowsByRelation(
         _ answer: [[PluginCellValue]],
         ceiling: Int = PluginRowLimits.emergencyMax
@@ -257,6 +263,9 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
         var grouped: [String: [[PluginCellValue]]] = [:]
         for row in answer {
             guard let relation = row.last?.asText else { continue }
+            if let known = grouped.index(forKey: relation), !grouped[known].key.utf8.elementsEqual(relation.utf8) {
+                throw PostgreSQLCatalogReadError(message: "Two relations share the name \(relation) in different Unicode forms")
+            }
             grouped[relation, default: []].append(row)
         }
         return grouped
@@ -292,29 +301,15 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
     }
 
     func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]] {
-        let resolvedSchema = schema ?? currentSchema
-        let source = PostgreSQLSequenceQueries.source(hasSequencesCatalog: includesSequencesCatalog)
-        let grouped = try await rowsByRelation(
-            PostgreSQLSequenceQueries.schemaDependentSequenceList(schema: resolvedSchema, source: source)
-        )
-        var lastValues: [String: String?] = [:]
-        var sequences: [String: [PluginSequenceInfo]] = [:]
-        for (table, rows) in grouped {
-            var resolved: [PluginSequenceInfo] = []
-            for definition in PostgreSQLSequenceQueries.definitions(from: rows) {
-                guard definition.needsLastValueRead else {
-                    resolved.append(PluginSequenceInfo(name: definition.name, ddl: definition.ddl))
-                    continue
-                }
-                if lastValues[definition.name] == nil {
-                    lastValues[definition.name] = .some(await lastValue(schema: resolvedSchema, sequence: definition.name))
-                }
-                let read = definition.withLastValue(lastValues[definition.name] ?? nil)
-                resolved.append(PluginSequenceInfo(name: read.name, ddl: read.ddl))
-            }
-            sequences[table] = resolved
+        guard includesSequencesCatalog else {
+            throw PostgreSQLCatalogReadError(message: "This server has no pg_sequences to read every table's sequences from")
         }
-        return sequences
+        let grouped = try await rowsByRelation(
+            PostgreSQLSequenceQueries.schemaDependentSequenceList(schema: schema ?? currentSchema)
+        )
+        return grouped.mapValues { rows in
+            PostgreSQLSequenceQueries.definitions(from: rows).map { PluginSequenceInfo(name: $0.name, ddl: $0.ddl) }
+        }
     }
 
     // MARK: - Sequences

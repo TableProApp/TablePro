@@ -22,7 +22,7 @@ extension PostgreSQLPluginDriver {
 
     // Each is the per-table read with its table predicate dropped, decoded by the same row reader.
     var exportBulkReads: PluginExportBulkReads {
-        [.columns, .foreignKeys, .indexes, .indexDDL, .commentDDL, .dependentSequences, .dependentTypes]
+        exportCatalog.schemaDDLReads.union([.columns, .foreignKeys, .indexes])
     }
 
     func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]] {

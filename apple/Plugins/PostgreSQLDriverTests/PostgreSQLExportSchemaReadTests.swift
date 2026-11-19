@@ -48,17 +48,16 @@ struct PostgreSQLExportSchemaReadTests {
             .replacingOccurrences(of: "c.relname = 'orders'\n      AND ", with: ""))
     }
 
-    @Test("The schema-wide sequence read joins the default dependencies of every table in the schema, in either source")
+    @Test("The schema-wide sequence read joins the default dependencies of every table in the schema")
     func schemaSequenceReadJoinsEveryTable() {
-        for source in [PostgreSQLSequenceQueries.Source.sequencesView, .sequenceParameters] {
-            let sql = PostgreSQLSequenceQueries.schemaDependentSequenceList(schema: "app", source: source)
-            #expect(sql.contains("SELECT DISTINCT t.relname AS table_name, d.refobjid"))
-            #expect(sql.contains("d.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass"))
-            #expect(sql.contains("WHERE tn.nspname = 'app'"))
-            #expect(sql.contains(") dependent ON dependent.refobjid = c.oid"))
-            #expect(!sql.contains("t.relname = '"))
-            #expect(!sql.contains("EXISTS ("))
-        }
+        let sql = PostgreSQLSequenceQueries.schemaDependentSequenceList(schema: "app")
+        #expect(sql.contains("FROM pg_catalog.pg_sequences s"))
+        #expect(sql.contains("SELECT DISTINCT t.relname AS table_name, d.refobjid"))
+        #expect(sql.contains("d.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass"))
+        #expect(sql.contains("WHERE tn.nspname = 'app'"))
+        #expect(sql.contains(") dependent ON dependent.refobjid = c.oid"))
+        #expect(!sql.contains("t.relname = '"))
+        #expect(!sql.contains("EXISTS ("))
     }
 
     @Test("The schema-wide index DDL gives each table what its own read gives")
@@ -140,35 +139,43 @@ struct PostgreSQLExportSchemaReadTests {
         #expect(grouped["events"]?.map { $0.name } == ["mood"])
     }
 
-    @Test("A sequence two tables default from is read once for its last value and written the same for both")
-    func sharedSequenceReadsItsLastValueOnce() async throws {
-        let shared: [String?] = ["shared", "100", "1", "9223372036854775807", "5", "f", nil, "t", nil, nil, nil, nil, nil]
-        let own: [String?] = ["orders_id_seq", "1", "1", "2147483647", "1", "f", nil, "t", nil, nil, "orders", "id", "a"]
-        let schemaRead = PostgreSQLSequenceQueries.schemaDependentSequenceList(schema: "app", source: .sequenceParameters)
-        let ordersRead = PostgreSQLSequenceQueries.sequenceList(
-            schema: "app", dependentOnTable: "orders", source: .sequenceParameters
-        )
-        let sharedValue = PostgreSQLSequenceQueries.lastValue(schema: "app", sequence: "shared")
-        let ownValue = PostgreSQLSequenceQueries.lastValue(schema: "app", sequence: "orders_id_seq")
+    @Test("A sequence two tables default from is written the same for both, as each table's own read writes it")
+    func sharedSequenceMatchesTheTableRead() async throws {
+        let shared: [String?] = ["shared", "100", "1", "9223372036854775807", "5", "f", "140", "f", "bigint", "1", nil, nil, nil]
+        let own: [String?] = ["orders_id_seq", "1", "1", "2147483647", "1", "f", "7", "f", "integer", "1", "orders", "id", "a"]
+        let schemaRead = PostgreSQLSequenceQueries.schemaDependentSequenceList(schema: "app")
+        let ordersRead = PostgreSQLSequenceQueries.sequenceList(schema: "app", dependentOnTable: "orders", source: .sequencesView)
         let recorder = CatalogReadRecorder { statement in
             switch statement {
             case schemaRead: Self.tagged([own, shared], "orders") + Self.tagged([shared], "customers")
             case ordersRead: [own.cells, shared.cells]
-            case sharedValue: [["140"].cells]
-            case ownValue: [["7"].cells]
             default: []
             }
         }
-        let catalog = Self.catalog(recorder, capabilities: Self.legacy)
+        let catalog = Self.catalog(recorder)
 
         let grouped = try await catalog.fetchAllDependentSequences(schema: nil)
-        #expect(recorder.statements.filter { $0 == sharedValue }.count == 1)
-
         let ordersAlone = try await catalog.fetchDependentSequences(table: "orders", schema: nil)
+
+        #expect(catalog.schemaDDLReads.contains(.dependentSequences))
         #expect(grouped["orders"]?.map { $0.name } == ordersAlone.map { $0.name })
         #expect(grouped["orders"]?.map { $0.ddl } == ordersAlone.map { $0.ddl })
         #expect(grouped["customers"]?.map { $0.ddl } == ordersAlone.filter { $0.name == "shared" }.map { $0.ddl })
         #expect(grouped["customers"]?.first?.ddl.contains("setval('\"shared\"', 140, true)") == true)
+    }
+
+    // Each last value is a statement of its own there, so a schema-wide read would make one per sequence in the schema.
+    @Test("Before pg_sequences the sequences are left to each table's own read")
+    func legacySequencesStayPerTable() async {
+        let recorder = CatalogReadRecorder()
+        let catalog = Self.catalog(recorder, capabilities: Self.legacy)
+
+        #expect(!catalog.schemaDDLReads.contains(.dependentSequences))
+        #expect(catalog.schemaDDLReads.contains(.indexDDL))
+        await #expect(throws: PostgreSQLCatalogReadError.self) {
+            try await catalog.fetchAllDependentSequences(schema: nil)
+        }
+        #expect(recorder.reads.isEmpty)
     }
 
     @Test("A schema-wide read at the row ceiling throws rather than answer for a table it may have cut short")
@@ -180,5 +187,17 @@ struct PostgreSQLExportSchemaReadTests {
         let grouped = try PostgreSQLCatalogExport.rowsByRelation(rows + Self.tagged([["c"]], "lines"), ceiling: 4)
         #expect(grouped["orders"]?.count == 2)
         #expect(grouped["lines"]?.count == 1)
+    }
+
+    // Measured on 17.11: a table named café in NFC and a view named café in NFD sit side by side in one schema.
+    @Test("Two relations whose names differ only in Unicode form make the schema-wide read throw rather than merge")
+    func unicodeFormsOfOneNameThrow() {
+        let composed = "caf\u{E9}"
+        let decomposed = "cafe\u{301}"
+        #expect(composed == decomposed)
+        let rows = Self.tagged([["a"]], composed) + Self.tagged([["b"]], decomposed)
+        #expect(throws: PostgreSQLCatalogReadError.self) {
+            try PostgreSQLCatalogExport.rowsByRelation(rows)
+        }
     }
 }

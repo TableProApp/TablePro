@@ -71,12 +71,7 @@ struct PostgreSQLCatalogQualificationTests {
             ("schemaStandaloneIndexQuery", PostgreSQLIndexQueries.schemaStandaloneIndexQuery(schema: schema)),
             ("schemaCommentQuery", PostgreSQLCommentStatements.schemaCatalogQuery(schema: schema)),
             ("schemaDependentEnumTypes", PostgreSQLSchemaQueries.schemaDependentEnumTypes(schema: schema)),
-            ("schemaDependentSequences", PostgreSQLSequenceQueries.schemaDependentSequenceList(
-                schema: schema, source: .sequencesView
-            )),
-            ("schemaDependentSequencesLegacy", PostgreSQLSequenceQueries.schemaDependentSequenceList(
-                schema: schema, source: .sequenceParameters
-            )),
+            ("schemaDependentSequences", PostgreSQLSequenceQueries.schemaDependentSequenceList(schema: schema)),
             ("postGISProbe", PostGISTypes.probeQuery),
             ("schemaOwnerAndComment", PostgreSQLSchemaManagementQueries.ownerAndComment(schema: schema)),
             ("schemaGrants", PostgreSQLSchemaManagementQueries.grants(schema: schema)),
