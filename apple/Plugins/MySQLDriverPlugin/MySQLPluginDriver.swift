@@ -1072,18 +1072,35 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The clock still moves, because a database switch is the user using the connection: leaving
     /// it alone let the idle timer fire seconds after a switch and charge the next click a full
     /// reconnect.
+    ///
+    /// The `USE` stays unsent only while this session is proven on the database: the connection saw its own `USE`
+    /// succeed and every statement since stay put, and the footprint is clean. Every other case sends it.
     func switchDatabase(to database: String) async throws {
         guard !flavor.isStarRocks else {
             return try await enterStarRocks(starrocksScope.entering(catalog: database))
         }
-        _ = try await executeWithReconnect(
-            query: "USE \(quoteIdentifier(database))",
-            isRetry: false,
-            countsAsActivity: false
-        )
+        let conn = try await requireConnection()
+        defer { endOperation(on: conn) }
+        do {
+            try await conn.enterDatabase(
+                database,
+                statement: "USE \(quoteIdentifier(database))",
+                mayStay: { [weak self] in self?.sessionMayStay(on: database) ?? false }
+            )
+        } catch {
+            await refreshTransactionFlag(after: error, on: conn)
+            throw error
+        }
         sessionLock.withLock {
             _activeDatabase = database
             lastActivity = ContinuousClock.now
+        }
+    }
+
+    private func sessionMayStay(on database: String) -> Bool {
+        sessionLock.withLock {
+            _activeDatabase == database && footprint.isClean
+                && MySQLServerVersion.keepsDatabaseBetweenStatements(banner: _serverVersion, flavor: _flavor)
         }
     }
 

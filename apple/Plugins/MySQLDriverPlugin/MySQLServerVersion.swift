@@ -51,6 +51,24 @@ nonisolated internal enum MySQLServerVersion {
         }
     }
 
+    // None of these has been measured, and each can hand a session to another backend.
+    private static func namesProxy(_ banner: String?) -> Bool {
+        guard let banner else { return false }
+        let name = banner.lowercased()
+        return ["maxscale", "proxysql", "vitess"].contains(where: name.contains)
+    }
+
+    // The forks and named proxies keep their `USE` before every statement.
+    static func keepsDatabaseBetweenStatements(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        guard !namesProxy(banner) else { return false }
+        switch flavor {
+        case .mysql, .mariadb:
+            return true
+        case .tidb, .oceanbase, .databend, .starrocks:
+            return false
+        }
+    }
+
     /// `COLUMNS.GENERATION_EXPRESSION` arrived with generated columns: MySQL 5.7.6, MariaDB 10.2.
     /// MariaDB 10.1 has the columns but not the catalog column.
     static func hasGenerationExpression(banner: String?, flavor: MySQLServerFlavor) -> Bool {

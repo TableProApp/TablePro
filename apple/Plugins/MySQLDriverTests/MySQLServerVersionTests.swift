@@ -1,6 +1,23 @@
 import Testing
 
 struct MySQLServerVersionTests {
+    @Test("Only MySQL and MariaDB may keep a session on its database between statements")
+    func measuredFlavorsKeepTheDatabase() {
+        #expect(MySQLServerVersion.keepsDatabaseBetweenStatements(banner: "8.4.11", flavor: .mysql))
+        #expect(MySQLServerVersion.keepsDatabaseBetweenStatements(banner: "13.0.2-MariaDB", flavor: .mariadb))
+        #expect(!MySQLServerVersion.keepsDatabaseBetweenStatements(banner: "8.0.11-TiDB-v8.5.1", flavor: .tidb(version: nil)))
+        #expect(!MySQLServerVersion.keepsDatabaseBetweenStatements(banner: "5.7.25", flavor: .oceanbase(version: nil)))
+        #expect(!MySQLServerVersion.keepsDatabaseBetweenStatements(banner: "8.0.33", flavor: .starrocks))
+        #expect(!MySQLServerVersion.keepsDatabaseBetweenStatements(banner: "8.0.0", flavor: .databend))
+    }
+
+    @Test("A proxy that names itself keeps its USE before every statement")
+    func namedProxiesKeepTheirUse() {
+        #expect(!MySQLServerVersion.keepsDatabaseBetweenStatements(banner: "10.11.6-MariaDB-maxscale", flavor: .mariadb))
+        #expect(!MySQLServerVersion.keepsDatabaseBetweenStatements(banner: "8.0.31 (ProxySQL)", flavor: .mysql))
+        #expect(!MySQLServerVersion.keepsDatabaseBetweenStatements(banner: "8.0.30-Vitess", flavor: .mysql))
+    }
+
     @Test("MariaDB 10.1 has generated columns but no GENERATION_EXPRESSION column")
     func generationExpressionFloor() {
         #expect(!MySQLServerVersion.hasGenerationExpression(banner: "10.1.48-MariaDB", flavor: .mariadb))

@@ -148,6 +148,13 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private var baselineSelectLimit: UInt64?
     private var hasCapturedBaselineSelectLimit = false
 
+    // Only touched from `queue`.
+    internal var databaseProof = MySQLSessionDatabaseProof()
+
+    // Set where a `USE` was left out. That `USE` used to reset the cap, so the next statement does it. Only touched
+    // from `queue`.
+    private var selectLimitMayHaveMoved = false
+
     // Whether this session already waits long enough for a streaming reader. Only touched from `queue`.
     private var hasStreamingWriteTimeout = false
 
@@ -405,6 +412,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             self.baselineSelectLimit = nil
             self.hasCapturedBaselineSelectLimit = false
             self.hasStreamingWriteTimeout = false
+            self.databaseProof = MySQLSessionDatabaseProof()
+            self.selectLimitMayHaveMoved = false
 
             let threadId = mysql_thread_id(handle)
             self.stateLock.lock()
@@ -852,17 +861,26 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         statement query: String,
         on mysql: UnsafeMutablePointer<MYSQL>
     ) throws {
-        /// Only trustworthy while this connection holds no limit of its own: a statement misread as
-        /// single-row would otherwise keep a stale cap installed and end early under it, and the
-        /// client would compare that short count against the current cap and call it complete.
-        if appliedSelectLimit == nil, rowCap != nil, mysqlStatementReturnsAtMostOneRow(query) {
-            return
+        let desired = mysqlClampedRowCap(rowCap).map { mysqlSelectLimitRows(forRowCap: $0) }
+        let action: MySQLSelectLimitAction
+        if selectLimitMayHaveMoved, appliedSelectLimit != nil {
+            action = mysqlSelectLimitActionAfterSkippedUse(
+                desired: desired,
+                returnsAtMostOneRow: desired != nil && mysqlStatementReturnsAtMostOneRow(query)
+            )
+        } else {
+            /// Only trustworthy while this connection holds no limit of its own: a statement misread as
+            /// single-row would otherwise keep a stale cap installed and end early under it, and the
+            /// client would compare that short count against the current cap and call it complete.
+            if appliedSelectLimit == nil, rowCap != nil, mysqlStatementReturnsAtMostOneRow(query) {
+                return
+            }
+            action = mysqlSelectLimitAction(applied: appliedSelectLimit, desired: desired)
         }
 
-        let desired = mysqlClampedRowCap(rowCap).map { mysqlSelectLimitRows(forRowCap: $0) }
         let sessionFlavor = flavor
         let statement: String
-        switch mysqlSelectLimitAction(applied: appliedSelectLimit, desired: desired) {
+        switch action {
         case .none:
             return
         case .apply(let rows):
@@ -888,7 +906,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             guard appliedSelectLimit == nil else { throw error }
             return
         }
-        appliedSelectLimit = desired
+        appliedSelectLimit = action == .reset ? nil : desired
+        selectLimitMayHaveMoved = false
     }
 
     private func isExpectedInterruption(errno: UInt32, message: String, wasTruncated: Bool) -> Bool {
@@ -903,6 +922,23 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
             return try executeQuerySync(queryToRun, rowCap: rowCap, byteLimit: byteLimit)
+        }
+    }
+
+    // Decided on `queue`, after every statement queued ahead of this one has run.
+    func enterDatabase(
+        _ database: String,
+        statement: String,
+        mayStay: @escaping @Sendable () -> Bool
+    ) async throws {
+        try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
+            if databaseProof.proves(database), !sessionEndedByKill, mayStay() {
+                selectLimitMayHaveMoved = selectLimitMayHaveMoved || appliedSelectLimit != nil
+                return
+            }
+            _ = try executeQuerySync(statement)
+            databaseProof.noteEntered(database)
         }
     }
 
