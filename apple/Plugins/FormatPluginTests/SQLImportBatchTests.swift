@@ -15,6 +15,8 @@ private final class BatchingSink: PluginImportDataSink, @unchecked Sendable {
     let databaseTypeId = "PostgreSQL"
     var events: [String] = []
     var failing: Set<String> = []
+    var refusesBatches = false
+    var stopsDuringBatch: Progress?
 
     func execute(statement: String) async throws {
         events.append(statement)
@@ -27,6 +29,8 @@ private final class BatchingSink: PluginImportDataSink, @unchecked Sendable {
 
     func execute(statements: [PluginImportStatement]) async throws {
         events.append("batch \(statements.count)")
+        if refusesBatches { throw Refused() }
+        stopsDuringBatch?.cancel()
         for (index, statement) in statements.enumerated() where failing.contains(statement.text) {
             throw PluginImportBatchFailure(index: index, underlying: Refused())
         }
@@ -68,7 +72,8 @@ struct SQLImportBatchTests {
     private func runImport(
         _ statements: [String],
         errorHandling: ImportErrorHandling = .stopAndRollback,
-        sink: BatchingSink
+        sink: BatchingSink,
+        progress: Progress = Progress()
     ) async -> Result<PluginImportResult, any Error> {
         let plugin = SQLImportPlugin()
         let original = plugin.settings
@@ -80,7 +85,7 @@ struct SQLImportBatchTests {
             return .success(try await plugin.performImport(
                 source: LineSource(statements),
                 sink: sink,
-                progress: PluginImportProgress(progress: Progress())
+                progress: PluginImportProgress(progress: progress)
             ))
         } catch {
             return .failure(error)
@@ -112,6 +117,37 @@ struct SQLImportBatchTests {
         }
         #expect(statement == statements[1])
         #expect(line == 2)
+        #expect(sink.events == ["begin", "batch 3", "rollback"])
+    }
+
+    @Test("A batch refused before any statement ran fails as its first statement would have")
+    func refusedBatchNamesItsFirstStatement() async {
+        let sink = BatchingSink()
+        sink.refusesBatches = true
+
+        let outcome = await runImport(Self.inserts(3), sink: sink)
+
+        guard case .failure(let error) = outcome,
+              case .statementFailed(_, let line, _) = error as? PluginImportError else {
+            Issue.record("The import should have failed at the batch's first statement")
+            return
+        }
+        #expect(line == 1)
+        #expect(sink.events == ["begin", "batch 3", "rollback"])
+    }
+
+    @Test("A Stop that lands while the last batch runs rolls the import back instead of committing it")
+    func stopDuringLastBatchRollsBack() async {
+        let sink = BatchingSink()
+        let progress = Progress()
+        sink.stopsDuringBatch = progress
+
+        let outcome = await runImport(Self.inserts(3), sink: sink, progress: progress)
+
+        guard case .failure = outcome else {
+            Issue.record("A stopped import should not succeed")
+            return
+        }
         #expect(sink.events == ["begin", "batch 3", "rollback"])
     }
 

@@ -283,6 +283,11 @@ internal actor CompareSyncExecutor {
                         guard record(statement, answer: answer) else { break statements }
                     }
                     position += stretch.count
+                    // A Stop during the batch could not reach the statements in it; the rollback still can.
+                    if progress.isCancelled || Task.isCancelled {
+                        cancelled = true
+                        break
+                    }
                     continue
                 }
                 batches = false

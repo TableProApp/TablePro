@@ -15,6 +15,7 @@ private final class BatchingSyncDriver: PluginDriverStub, @unchecked Sendable {
     var events: [String] = []
     var failing: Set<String> = []
     var rowsAffected = 1
+    var stopsDuringBatch: Progress?
 
     var capabilities: PluginCapabilities { [.statementBatches] }
     var supportsTransactions: Bool { true }
@@ -28,6 +29,7 @@ private final class BatchingSyncDriver: PluginDriverStub, @unchecked Sendable {
 
     func executeStatements(_ statements: [PluginBatchStatement]) async throws -> [PluginBatchStatementOutcome]? {
         events.append("batch \(statements.map(\.query).joined(separator: " | "))")
+        stopsDuringBatch?.cancel()
         var outcomes: [PluginBatchStatementOutcome] = []
         for statement in statements {
             if failing.contains(statement.query) { return outcomes + [.failed(Refused())] }
@@ -46,7 +48,8 @@ struct CompareSyncExecutorBatchTests {
         _ statements: [SyncStatement],
         errorHandling: ImportErrorHandling = .stopAndRollback,
         mode: CompareSyncMode = .data,
-        driver: BatchingSyncDriver
+        driver: BatchingSyncDriver,
+        progress: Progress = Progress()
     ) async throws -> CompareSyncRunResult {
         var settings = CompareSyncExecutionSettings()
         settings.errorHandling = errorHandling
@@ -62,7 +65,7 @@ struct CompareSyncExecutorBatchTests {
                 color: .blue
             ),
             driver: driver,
-            progress: Progress()
+            progress: progress
         )
     }
 
@@ -115,6 +118,19 @@ struct CompareSyncExecutorBatchTests {
         #expect(result.outcomes[0].didExecute)
         #expect(result.outcomes[0].error != nil)
         #expect(result.rolledBack)
+    }
+
+    @Test("A Stop that lands while the last batch runs still rolls the run back")
+    func stopDuringLastBatchRollsBack() async throws {
+        let driver = BatchingSyncDriver()
+        let progress = Progress()
+        driver.stopsDuringBatch = progress
+
+        let result = try await run(Self.inserts.map { statement($0) }, driver: driver, progress: progress)
+
+        #expect(result.cancelled)
+        #expect(result.rolledBack)
+        #expect(driver.events.last == "rollback")
     }
 
     @Test("Stop and commit keeps every statement alone, since a count check does not end the transaction")

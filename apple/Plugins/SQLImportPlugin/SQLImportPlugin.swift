@@ -130,6 +130,8 @@ nonisolated final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, S
                     try await sink.execute(statements: statements)
                     executedCount += statements.count
                     for _ in statements { progress.incrementStatement() }
+                    // A Stop during the batch could not reach the statements in it; the rollback still can.
+                    try progress.checkCancellation()
                 } catch let failure as PluginImportBatchFailure {
                     let index = min(max(failure.index, 0), statements.count - 1)
                     executedCount += index
@@ -137,6 +139,9 @@ nonisolated final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, S
                     try await handleFailure(
                         failure.underlying, statement: statements[index].text, lineNumber: statements[index].line
                     )
+                } catch {
+                    // Refused before any of them ran, as the first one alone would have been.
+                    try await handleFailure(error, statement: statements[0].text, lineNumber: statements[0].line)
                 }
             }
 
