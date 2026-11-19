@@ -130,6 +130,15 @@ final class SyncChangeTracker: Sendable {
         metadataStorage.releaseOwnersKeptOffSync(owners)
     }
 
+    @MainActor
+    func recordConnectionStanding(syncing: Set<UUID>, keptOff: Set<UUID>, unreadable: Set<UUID>) {
+        metadataStorage.recordConnectionStanding(syncing: syncing, keptOff: keptOff, unreadable: unreadable)
+    }
+
+    func standing(ofConnection id: UUID) -> SyncStanding {
+        metadataStorage.standing(ofConnection: id)
+    }
+
     // MARK: - Query
 
     func dirtyRecords(for type: SyncRecordType) -> Set<String> {

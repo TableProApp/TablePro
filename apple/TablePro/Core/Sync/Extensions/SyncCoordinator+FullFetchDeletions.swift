@@ -70,8 +70,14 @@ extension SyncCoordinator {
     // Only the settings records a deletion acts on are listed: column layouts and themes.
     private func localRecordIds() async -> [(type: SyncRecordType, ids: [String])] {
         let tableFolderIds = tableFolderSyncIds()
+        let connections = services.connectionStorage
+        // A copy this Mac cannot read counts when its standing says it syncs.
+        let unreadableSynced = connections.unreadableConnectionIds.filter { changeTracker.standing(ofConnection: $0) == .syncs }
         var listed: [(type: SyncRecordType, ids: [String])] = [
-            (.connection, services.connectionStorage.loadConnections().filter(\.participatesInSync).map { $0.id.uuidString }),
+            (
+                .connection,
+                (connections.loadConnections().filter(\.participatesInSync).map(\.id) + unreadableSynced).map(\.uuidString)
+            ),
             (.group, services.groupStorage.loadGroups().map { $0.id.uuidString }),
             (.tag, services.tagStorage.loadTags().map { $0.id.uuidString }),
             (.tableFavorite, services.favoriteTablesStorage.loadFavorites().map { FavoriteTablesStorage.syncId(for: $0) }),

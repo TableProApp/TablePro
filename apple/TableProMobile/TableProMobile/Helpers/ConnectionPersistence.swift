@@ -18,11 +18,12 @@ struct ConnectionPersistence {
     func save(
         _ connections: [DatabaseConnection],
         keepingPastedSSHKeys pastedSSHKeys: [UUID: String],
-        removingSecrets: Bool = false
+        removingSecrets: Bool = false,
+        removingUnreadable removedIds: Set<UUID> = []
     ) throws {
         let encoder = JSONEncoder()
         encoder.userInfo[.deviceLibraryFile] = true
-        try file.save(connections, using: encoder, removingSecrets: removingSecrets) {
+        try file.save(connections, using: encoder, removingSecrets: removingSecrets, removingUnreadable: removedIds) {
             try PastedSSHKeyMigration.libraryFile($0, keeping: pastedSSHKeys)
         }
     }

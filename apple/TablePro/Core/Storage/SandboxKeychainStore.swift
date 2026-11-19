@@ -38,6 +38,12 @@ internal final class SandboxKeychainStore: KeychainStoring {
         _ = persist(items)
     }
 
+    internal func deviceOnlyKeys(endingWith suffix: String) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return load().keys.filter { $0.hasSuffix(suffix) }
+    }
+
     private func load() -> [String: String] {
         file.read().value ?? [:]
     }

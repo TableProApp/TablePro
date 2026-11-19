@@ -8,8 +8,10 @@ struct TagPersistence {
         file = LibraryFile(directory: directory, name: "tags.json")
     }
 
-    func save(_ tags: [ConnectionTag]) throws {
-        try file.save(tags)
+    var unreadableIds: Set<UUID> { file.unreadableIds }
+
+    func save(_ tags: [ConnectionTag], removingUnreadable removedIds: Set<UUID> = []) throws {
+        try file.save(tags, removingUnreadable: removedIds)
     }
 
     func load() throws -> [ConnectionTag] {
