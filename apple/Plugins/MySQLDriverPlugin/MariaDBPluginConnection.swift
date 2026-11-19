@@ -257,6 +257,16 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         stateLock.withLock { _flightGeneration == generation }
     }
 
+    private func beginFlight(_ generation: Int) {
+        stateLock.withLock { _flightGeneration = generation }
+    }
+
+    // A kill still on its way would land on the statement queued behind the flight, so the cancel queue drains first.
+    private func endFlight() {
+        stateLock.withLock { _flightGeneration = nil }
+        cancelQueue.sync {}
+    }
+
     private var _sessionMayEnd: @Sendable () -> Bool = { false }
 
     /// Whether the client deadline may end the session to stop a statement, answered by the driver
@@ -983,6 +993,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
         appliedSelectLimit = rows
         selectLimitMayHaveMoved = false
+        if cancellationGate.isCancelled(generation) {
+            killStatementOnServer(on: mysql, generation: generation)
+        }
         return mysql_read_query_result(mysql) == 0 ? 0 : 1
     }
 
@@ -1155,6 +1168,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         )
         if cancellationGate.isCancelled(generation) { throw CancellationError() }
 
+        // The read waits behind the cap, and a kill landing between the two is dropped, so a Stop keeps killing until
+        // the read is done.
+        if flightRows != nil {
+            beginFlight(generation)
+        }
+        defer {
+            if flightRows != nil { endFlight() }
+        }
         let queryStatus: Int32
         if let flightRows {
             queryStatus = try sendWithSelectLimit(query, rows: flightRows, on: mysql, generation: generation)
@@ -1326,12 +1347,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             databaseProof.observe(statement)
         }
 
-        stateLock.withLock { _flightGeneration = generation }
-        defer {
-            stateLock.withLock { _flightGeneration = nil }
-            // A kill still on its way would land on the statement queued behind the flight.
-            cancelQueue.sync {}
-        }
+        beginFlight(generation)
+        defer { endFlight() }
 
         for statement in statements {
             guard statement.withCString({ mysql_send_query(mysql, $0, UInt(statement.utf8.count)) }) == 0 else {
