@@ -11,9 +11,6 @@ public sealed partial class VimEngine : IDisposable
 
     private const int MaxCount = 999_999;
 
-    // Starts a recorded editor key; no typed text element is this character followed by more.
-    private const string EditorKeyToken = "\uE000";
-
     private readonly VimTextBuffer _buffer;
     private readonly StringBuilder _pendingKeys = new();
     private VimMode _mode;
@@ -40,15 +37,6 @@ public sealed partial class VimEngine : IDisposable
         _buffer.Model.Document.Reset -= OnDocumentReset;
         _buffer.Model.Document.Changed -= OnDocumentChanged;
         _buffer.Model.SelectionsChanged -= OnSelectionsChanged;
-    }
-
-    // An Insert-mode key the editor handled, which a macro being recorded keeps.
-    public void RecordEditorKey(VimEditorKey key)
-    {
-        if (MacroRecording is { } target && Registers.Macros.TryGetValue(target, out var keys))
-        {
-            keys.Add(new VimKeystroke(EditorKeyText(key), Shift: key.Shift));
-        }
     }
 
     // A caret moved by an arrow or a click starts a new undo step within the insert, as Vim splits it there.

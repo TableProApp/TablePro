@@ -53,6 +53,21 @@ public sealed class VimUndoAndStatusTests
     }
 
     [Fact]
+    public void ARedoneInsertPutsTheCaretWhereEscapeLeftIt()
+    {
+        var s = new VimSession(string.Empty);
+        s.Press("i");
+        s.Type("abc");
+        s.Escape();
+        Assert.Equal(2, s.Caret);
+        s.Press("u\u0012");
+        Assert.Equal("abc", s.Text);
+        Assert.Equal(2, s.Caret);
+        s.Press("x");
+        Assert.Equal("ab", s.Text);
+    }
+
+    [Fact]
     public void ACountedCommandIsOneStep()
     {
         var s = new VimSession("1\n2\n3\n4\n", caret: 0);

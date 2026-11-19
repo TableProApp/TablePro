@@ -193,16 +193,21 @@ public sealed class UndoHistory
         }
     }
 
-    // Joins every step taken since the mark into one, as Vim undoes an insert whole. An undo past the mark in
-    // between leaves the steps as they are.
-    internal void Coalesce(UndoMark mark)
+    // Joins every step taken since the mark into one, as Vim undoes an insert whole, ending where the carets are now, as
+    // Escape left them. An undo past the mark in between leaves the steps as they are.
+    internal void Coalesce(UndoMark mark, IReadOnlyList<Selection> after)
     {
-        if (_current is not null || _undo.Count - mark.Count < 2)
+        if (_current is not null || _undo.Count <= mark.Count)
         {
             return;
         }
         if (mark.Count > 0 && !ReferenceEquals(_undo[mark.Count - 1], mark.Top))
         {
+            return;
+        }
+        if (_undo.Count - mark.Count == 1)
+        {
+            _undo[^1].After = after;
             return;
         }
         var first = _undo[mark.Count];
@@ -211,7 +216,7 @@ public sealed class UndoHistory
         {
             merged.Changes.AddRange(_undo[i].Changes);
         }
-        merged.After = _undo[^1].After;
+        merged.After = after;
         _undo.RemoveRange(mark.Count, _undo.Count - mark.Count);
         _undo.Add(merged);
         _canJoin = false;

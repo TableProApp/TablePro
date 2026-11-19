@@ -6,10 +6,6 @@ namespace TablePro.Editor.Model.Tests.Vim;
 // A Vim engine over a real editor model, for the ports of the macOS suites in apple/TableProTests/Core/Vim.
 internal sealed class VimSession : IVimHost
 {
-    public const int LeftKey = 37;
-
-    public const int RightKey = 39;
-
     public VimSession(string text = "", int caret = 0, VimRegisters? registers = null)
     {
         // The macOS mock types exactly what it is given, so brackets are not closed for it.
@@ -32,8 +28,6 @@ internal sealed class VimSession : IVimHost
     public List<string> Clipboard { get; } = [];
 
     public List<string> Commands { get; } = [];
-
-    public List<VimEditorKey> EditorKeys { get; } = [];
 
     public List<VimFold> Folds { get; } = [];
 
@@ -100,14 +94,4 @@ internal sealed class VimSession : IVimHost
     void IVimHost.Fold(VimFold command) => Folds.Add(command);
 
     void IVimHost.Command(string command) => Commands.Add(command);
-
-    // The editor's own Left and Right, which the macro tests record.
-    void IVimHost.ReplayEditorKey(VimEditorKey key)
-    {
-        EditorKeys.Add(key);
-        if (key.Code is LeftKey or RightKey)
-        {
-            Model.Move(key.Code == LeftKey ? CaretMove.Left : CaretMove.Right, extend: key.Shift);
-        }
-    }
 }

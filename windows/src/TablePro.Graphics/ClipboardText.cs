@@ -17,17 +17,11 @@ internal static class ClipboardText
         var package = new DataPackage();
         package.SetText(text);
         var options = inHistory ? null : new ClipboardContentOptions { IsAllowedInHistory = false, IsRoamable = false };
-        if (!Retry(() =>
-            {
-                if (options is null)
-                {
-                    Clipboard.SetContent(package);
-                }
-                else
-                {
-                    _ = Clipboard.SetContentWithOptions(package, options);
-                }
-            }))
+        // SetContentWithOptions says false where SetContent throws, so a false goes again as a throw does.
+        var set = options is null
+            ? Retry(() => Clipboard.SetContent(package))
+            : Retry(() => Clipboard.SetContentWithOptions(package, options));
+        if (!set)
         {
             return false;
         }
@@ -56,23 +50,36 @@ internal static class ClipboardText
         }
     }
 
-    private static bool Retry(Action call)
+    private static bool Retry(Action call) => Retry(() =>
+    {
+        call();
+        return true;
+    });
+
+    private static bool Retry(Func<bool> call)
     {
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                call();
-                return true;
+                if (call())
+                {
+                    return true;
+                }
             }
             catch (COMException) when (attempt < Attempts)
             {
-                Thread.Sleep(Pause);
+                // Held by another program for a moment; the next attempt may get it.
             }
             catch (COMException)
             {
                 return false;
             }
+            if (attempt >= Attempts)
+            {
+                return false;
+            }
+            Thread.Sleep(Pause);
         }
     }
 }

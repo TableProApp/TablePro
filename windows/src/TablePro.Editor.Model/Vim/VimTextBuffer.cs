@@ -219,7 +219,7 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
 
     public UndoMark UndoMark() => Document.Undo.Mark();
 
-    public void CoalesceUndo(UndoMark mark) => Document.Undo.Coalesce(mark);
+    public void CoalesceUndo(UndoMark mark) => Document.Undo.Coalesce(mark, [.. Model.Selections]);
 
     public void BeginCommand() => Document.Undo.Begin(EditKind.Other, [.. Model.Selections]);
 

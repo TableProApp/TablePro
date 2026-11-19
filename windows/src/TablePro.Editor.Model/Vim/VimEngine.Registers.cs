@@ -1,5 +1,3 @@
-using System.Globalization;
-
 namespace TablePro.Editor.Model.Vim;
 
 public sealed partial class VimEngine
@@ -267,12 +265,7 @@ public sealed partial class VimEngine
         {
             foreach (var (key, shift) in keys)
             {
-                // An editor key goes to the editor first, or Replace mode would write its token as text.
-                if (IsEditorKeyToken(key))
-                {
-                    TypeLeftToEditor(key);
-                }
-                else if (!Process(key, shift) && _mode.IsInsert())
+                if (!Process(key, shift) && _mode.IsInsert())
                 {
                     TypeLeftToEditor(key);
                 }
@@ -285,36 +278,9 @@ public sealed partial class VimEngine
         }
     }
 
-    private static bool IsEditorKeyToken(string key) =>
-        key.Length > EditorKeyToken.Length && key.StartsWith(EditorKeyToken, StringComparison.Ordinal);
-
-    // The token is the key's code and its Ctrl, Shift and Alt as 0 or 1: "\uE000" "37,100".
-    private static string EditorKeyText(VimEditorKey key) => EditorKeyToken + Format(key.Code) + ","
-        + (key.Control ? "1" : "0") + (key.Shift ? "1" : "0") + (key.Alt ? "1" : "0");
-
-    private static VimEditorKey? ParseEditorKey(string key)
-    {
-        var body = key.AsSpan(EditorKeyToken.Length);
-        var comma = body.IndexOf(',');
-        if (comma < 0 || body.Length != comma + 4
-            || !int.TryParse(body[..comma], NumberStyles.None, CultureInfo.InvariantCulture, out var code))
-        {
-            return null;
-        }
-        return new VimEditorKey(code, body[comma + 1] == '1', body[comma + 2] == '1', body[comma + 3] == '1');
-    }
-
     private void TypeLeftToEditor(string key)
     {
         var model = _buffer.Model;
-        if (IsEditorKeyToken(key))
-        {
-            if (ParseEditorKey(key) is { } editorKey)
-            {
-                _buffer.Host.ReplayEditorKey(editorKey);
-            }
-            return;
-        }
         switch (key)
         {
             case "\r" or "\n":

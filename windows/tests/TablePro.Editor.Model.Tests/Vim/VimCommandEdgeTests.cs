@@ -116,26 +116,6 @@ public sealed class VimCommandEdgeTests
     }
 
     [Fact]
-    public void AMacroReplaysTheMovesInsertModeLeftToTheEditor()
-    {
-        var registers = new VimRegisters();
-        var s = new VimSession(string.Empty, registers: registers);
-        s.Press("qqi");
-        s.Type("ab");
-        s.Engine.BreakInsertUndo();
-        s.Model.Move(CaretMove.Left, extend: false);
-        s.Engine.RecordEditorKey(new VimEditorKey(VimSession.LeftKey));
-        s.Type("X");
-        s.Escape();
-        s.Press("q");
-        Assert.Equal("aXb", s.Text);
-
-        var replay = new VimSession(string.Empty, registers: registers);
-        replay.Press("@q");
-        Assert.Equal("aXb", replay.Text);
-    }
-
-    [Fact]
     public void VisualLineOnAFoldAtTheEndOfTheTextKeepsItClosed()
     {
         var s = new VimSession("x;\nselect a,\n  b,\n  c", caret: 3);
@@ -148,25 +128,6 @@ public sealed class VimCommandEdgeTests
     }
 
     [Fact]
-    public void AReplaceModeMacroReplaysItsMovesAsMoves()
-    {
-        var registers = new VimRegisters();
-        var s = new VimSession("abcd", registers: registers);
-        s.Press("qqRX");
-        s.Engine.BreakInsertUndo();
-        s.Model.Move(CaretMove.Left, extend: false);
-        s.Engine.RecordEditorKey(new VimEditorKey(VimSession.LeftKey));
-        s.Press("Y");
-        s.Escape();
-        s.Press("q");
-        Assert.Equal("Ybcd", s.Text);
-
-        var replay = new VimSession("abcd", registers: registers);
-        replay.Press("@q");
-        Assert.Equal("Ybcd", replay.Text);
-    }
-
-    [Fact]
     public void ResetDropsACommandWaitingInVisualMode()
     {
         var s = new VimSession("abcd", caret: 0);
@@ -176,24 +137,6 @@ public sealed class VimCommandEdgeTests
         s.Press("vl");
         Assert.Equal("abcd", s.Text);
         Assert.Equal((0, 2), s.Selection);
-    }
-
-    [Fact]
-    public void AMacroHandsBackTheEditorKeysItRecordedWithTheirModifiers()
-    {
-        var registers = new VimRegisters();
-        var s = new VimSession(string.Empty, registers: registers);
-        var wordLeft = new VimEditorKey(VimSession.LeftKey, Control: true);
-        s.Press("qqi");
-        s.Type("one two");
-        s.Engine.RecordEditorKey(wordLeft);
-        s.Escape();
-        s.Press("q");
-
-        var replay = new VimSession(string.Empty, registers: registers);
-        replay.Press("@q");
-        Assert.Equal([wordLeft], replay.EditorKeys);
-        Assert.Equal("one two", replay.Text);
     }
 
     [Fact]

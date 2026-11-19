@@ -57,7 +57,7 @@ public sealed partial class SqlEditor
     }
 
     // Also for tests that drive the editor without input: Vim first, then the editor's own commands. A key Insert mode
-    // leaves to the editor is kept in a macro being recorded, and one that moves the caret splits the insert's undo step.
+    // leaves to the editor that moves the caret splits the insert's undo step.
     internal bool HandleVimKey(VirtualKey key, bool control, bool shift, bool alt)
     {
         if (_vim is not { } vim)
@@ -70,17 +70,11 @@ public sealed partial class SqlEditor
         {
             return true;
         }
-        var insert = vim.Mode.IsInsert();
-        if (insert && MovesTheCaret(down.Key))
+        if (vim.Mode.IsInsert() && MovesTheCaret(down.Key))
         {
             vim.BreakInsertUndo();
         }
-        var handled = HandleKey(key, control, shift, alt);
-        if (handled && insert && route.Kind == VimRouteKind.Editor)
-        {
-            vim.RecordEditorKey(new VimEditorKey((int)key, control, shift, alt));
-        }
-        return handled;
+        return HandleKey(key, control, shift, alt);
     }
 
     // A typed character goes to Vim first; Insert mode leaves it to the editor.
@@ -207,8 +201,5 @@ public sealed partial class SqlEditor
         public void Fold(VimFold command) => editor.FoldForVim(command);
 
         public void Command(string command) => editor.VimCommand?.Invoke(editor, command);
-
-        public void ReplayEditorKey(VimEditorKey key) =>
-            editor.HandleKey((VirtualKey)key.Code, key.Control, key.Shift, key.Alt);
     }
 }

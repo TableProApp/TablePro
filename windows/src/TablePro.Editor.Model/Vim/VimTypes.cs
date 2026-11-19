@@ -34,13 +34,7 @@ public interface IVimHost
 
     // An ex command, or gt and gT as "tabnext" and "tabprevious"; VimCommandLine reads it.
     void Command(string command);
-
-    // A key Insert mode left to the editor while a macro was recorded, done again as the macro replays.
-    void ReplayEditorKey(VimEditorKey key);
 }
-
-// A key Insert mode left to the editor, by its virtual key code, which a recorded macro hands back to replay.
-public readonly record struct VimEditorKey(int Code, bool Control = false, bool Shift = false, bool Alt = false);
 
 public enum VimScroll
 {
