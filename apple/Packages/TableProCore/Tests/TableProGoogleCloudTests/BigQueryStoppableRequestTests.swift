@@ -78,7 +78,7 @@ struct BigQueryStoppableRequestTests {
         await gate.arrived(1)
 
         running.cancel()
-        await clock.waitUntilSleeping()
+        await waitForSleepers(2, on: clock)
         clock.advance(by: .seconds(1))
 
         await #expect(throws: CancellationError.self) { try await running.value }
