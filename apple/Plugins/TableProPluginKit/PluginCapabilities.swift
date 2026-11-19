@@ -50,6 +50,4 @@ public struct PluginCapabilities: OptionSet, Sendable {
     // The driver runs a `COPY ... FROM STDIN` and sends its rows through
     // `PluginDatabaseDriver.copyFromStandardInput(statement:rows:context:)`.
     public static let copyFromStandardInput = PluginCapabilities(rawValue: 1 << 25)
-    // `PluginDatabaseDriver.executeStatements(_:)` can answer, though it may still decline a given batch.
-    public static let statementBatches = PluginCapabilities(rawValue: 1 << 26)
 }

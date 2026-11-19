@@ -36,7 +36,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        var capabilities: PluginCapabilities = [
+        [
             .parameterizedQueries,
             .transactions,
             .alterTableDDL,
@@ -55,9 +55,6 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .enforcesReadOnlyMode,
             .copyFromStandardInput,
         ]
-        // Pipelines were measured on PostgreSQL alone, not on PGlite or KingbaseES.
-        if tunesCommunitySession { capabilities.insert(.statementBatches) }
-        return capabilities
     }
 
     // In the class body so PGlite and KingbaseES, neither measured with these session settings, can turn them off.
