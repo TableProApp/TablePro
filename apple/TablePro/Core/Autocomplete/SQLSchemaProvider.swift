@@ -35,6 +35,8 @@ actor SQLSchemaProvider {
     private var columnTasks: [ColumnCacheKey: Task<[ColumnInfo]?, Never>] = [:]
     // Kept through a refresh of the same scope and answered until a newer read replaces them.
     private var staleColumnKeys: Set<ColumnCacheKey> = []
+    // One re-read per stale key and refresh, so a server that refuses it is not asked on every keystroke.
+    private var staleRereadsStarted: Set<ColumnCacheKey> = []
     private var loadTask: Task<Void, Never>?
     private var eagerLoadSchema: String?
 
@@ -178,7 +180,7 @@ actor SQLSchemaProvider {
         if let cached = columnCache[key] {
             columnAccessOrder.removeAll { $0 == key }
             columnAccessOrder.append(key)
-            if staleColumnKeys.remove(key) != nil, columnTasks[key] == nil {
+            if staleColumnKeys.contains(key), columnTasks[key] == nil, staleRereadsStarted.insert(key).inserted {
                 refreshStaleColumns(forKey: key, table: tableName, schema: schema)
             }
             return cached
@@ -223,6 +225,7 @@ actor SQLSchemaProvider {
         columnTasks[key] = nil
         guard let columns = fetched else { return nil }
         staleColumnKeys.remove(key)
+        staleRereadsStarted.remove(key)
         if columnCache.updateValue(columns, forKey: key) == nil {
             columnAccessOrder.append(key)
         }
@@ -230,7 +233,6 @@ actor SQLSchemaProvider {
         return columns
     }
 
-    // One read per reset: the key left the stale set, so a server that refuses it is not asked on every keystroke.
     private func refreshStaleColumns(forKey key: ColumnCacheKey, table: String, schema: String?) {
         guard let task = startColumnRead(forKey: key, table: table, schema: schema) else { return }
         Task { _ = await self.commitColumnRead(task, forKey: key) }
@@ -241,6 +243,7 @@ actor SQLSchemaProvider {
             let evicted = columnAccessOrder.removeFirst()
             columnCache.removeValue(forKey: evicted)
             staleColumnKeys.remove(evicted)
+            staleRereadsStarted.remove(evicted)
             foreignKeyCache.removeValue(forKey: evicted)
         }
     }
@@ -346,6 +349,7 @@ actor SQLSchemaProvider {
             self.columnCache.removeAll()
             self.columnAccessOrder.removeAll()
             self.staleColumnKeys.removeAll()
+            self.staleRereadsStarted.removeAll()
         }
         self.columnTasks.removeAll()
         self.foreignKeyCache.removeAll()
@@ -361,13 +365,12 @@ actor SQLSchemaProvider {
         noteTableListWritten()
     }
 
-    // A table the new list no longer names is gone. A schema the list does not cover says nothing about its tables.
+    // Only a table the new list names keeps its columns: an emptied schema leaves nothing in the list to say it is gone.
     private func markColumnsStale(listedIn newTables: [TableInfo]) {
         let listed = Set(newTables.map { cacheKey(table: $0.name, schema: $0.schema) })
-        let listedSchemas = Set(listed.map(\.schema))
-        let dropped = columnCache.keys.filter { !listed.contains($0) && listedSchemas.contains($0.schema) }
-        removeColumns(forKeys: Set(dropped))
+        removeColumns(forKeys: Set(columnCache.keys.filter { !listed.contains($0) }))
         staleColumnKeys = Set(columnCache.keys)
+        staleRereadsStarted.removeAll()
     }
 
     private func removeColumns(forKeys keys: Set<ColumnCacheKey>) {
@@ -375,6 +378,7 @@ actor SQLSchemaProvider {
         for key in keys { columnCache.removeValue(forKey: key) }
         columnAccessOrder.removeAll { keys.contains($0) }
         staleColumnKeys.subtract(keys)
+        staleRereadsStarted.subtract(keys)
     }
 
     /// Reads nothing. The next editor request or no-reference completion refills it.
@@ -384,6 +388,7 @@ actor SQLSchemaProvider {
         columnCache.removeAll()
         columnAccessOrder.removeAll()
         staleColumnKeys.removeAll()
+        staleRereadsStarted.removeAll()
         columnTasks.removeAll()
         foreignKeyCache.removeAll()
         foreignKeyTasks.removeAll()

@@ -79,19 +79,60 @@ struct SQLSchemaProviderRefreshTests {
         #expect(await Self.names(provider).isEmpty)
     }
 
-    @Test("A schema the refreshed list does not cover keeps its columns")
-    func unlistedSchemaKeepsItsColumns() async {
+    @Test("Dropping the last table of the scope drops its columns")
+    func emptiedScopeDropsColumns() async {
+        let driver = MockDatabaseDriver()
+        driver.columnsToReturn = ["users": [Self.column("id")]]
+        let provider = await Self.loaded(driver)
+        _ = await Self.names(provider)
+
+        driver.columnsToReturn = [:]
+        await provider.resetForDatabase("db", tables: [], driver: driver)
+
+        #expect(await provider.allColumnsFromCachedTables().isEmpty)
+        #expect(await Self.names(provider).isEmpty)
+    }
+
+    @Test("A bulk read replaces an entry whose own re-read failed")
+    func bulkReadReplacesAFailedReread() async throws {
+        let reads = ReadCounter()
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { _, _ in
+                guard await reads.next() == 1 else { throw DatabaseError.queryFailed("connection lost") }
+                return [Self.column("id")]
+            },
+            fetchAllColumns: { ["users": [Self.column("id"), Self.column("email")]] }
+        )
+        let provider = SQLSchemaProvider(metadataSource: source)
+        let driver = MockDatabaseDriver()
+        await provider.resetForDatabase("db", tables: [Self.users], driver: driver)
+        #expect(await Self.names(provider) == ["id"])
+        await provider.requestColumnPreload()
+        await provider.waitForEagerColumnLoad()
+
+        await provider.resetForDatabase("db", tables: [Self.users], driver: driver)
+        #expect(await Self.names(provider) == ["id"])
+        try await waitUntil { await reads.count == 2 }
+        await provider.renewColumnPreload()
+        await provider.waitForEagerColumnLoad()
+
+        #expect(await Self.names(provider) == ["id", "email"])
+    }
+
+    @Test("A table of a schema the refreshed list no longer names loses its columns")
+    func unlistedSchemaLosesItsColumns() async {
         let driver = MockDatabaseDriver()
         driver.columnsToReturn = ["orders": [Self.column("id")]]
         let listed = TestFixtures.makeTableInfo(name: "users", schema: "public")
-        let provider = await Self.loaded(driver, tables: [listed])
-        let before = await provider.getColumns(for: "orders", schema: "sales").map(\.name)
-        #expect(before == ["id"])
-
-        await provider.resetForDatabase("db", tables: [listed], driver: driver)
-        driver.columnsToReturn = [:]
-
+        let orders = TestFixtures.makeTableInfo(name: "orders", schema: "sales")
+        let provider = await Self.loaded(driver, tables: [listed, orders])
         #expect(await provider.getColumns(for: "orders", schema: "sales").map(\.name) == ["id"])
+
+        driver.columnsToReturn = [:]
+        await provider.resetForDatabase("db", tables: [listed], driver: driver)
+
+        #expect(await provider.allColumnsFromCachedTables().isEmpty)
+        #expect(await provider.getColumns(for: "orders", schema: "sales").isEmpty)
     }
 
     @Test("Moving to another database drops the columns at once")
