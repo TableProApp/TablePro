@@ -120,6 +120,22 @@ struct PastedSSHKeyMigrationTests {
         #expect(PastedSSHKeyMigration.pendingKeys(inLibraryFile: written).isEmpty)
     }
 
+    @Test("A key no longer held leaves the file, and one with no id to file it under stays")
+    func movedKeyLeavesKeptRecords() throws {
+        let moved = UUID()
+        let encoded = try JSONSerialization.data(withJSONObject: [
+            entry(moved, ssh: ["privateKeyData": "KEY A"]),
+            ["name": "No id", "sshConfiguration": ["privateKeyData": "KEY B"]]
+        ] as [Any])
+
+        let written = try PastedSSHKeyMigration.libraryFile(encoded, keeping: [:])
+
+        let text = try #require(String(data: written, encoding: .utf8))
+        #expect(!text.contains("KEY A"))
+        #expect(text.contains("KEY B"))
+        #expect((try JSONSerialization.jsonObject(with: written) as? [Any])?.count == 2)
+    }
+
     @Test("A key of a connection this build cannot read is still held")
     func unreadableConnectionKeepsItsKey() {
         let unreadable = UUID()

@@ -788,6 +788,30 @@ struct AppStateLibraryTests {
         #expect(metadata.dirtyIds(for: .connection).isEmpty)
     }
 
+    @Test("A key in a connection this build cannot read moves into the secure store and out of the file")
+    func unreadableConnectionKeyMoves() throws {
+        let id = UUID()
+        let unreadable: [String: Any] = [
+            "id": id.uuidString,
+            "name": "Unreadable",
+            "sshConfiguration": ["privateKeyData": legacyKey(for: id)]
+        ]
+        try JSONSerialization.data(withJSONObject: [unreadable]).write(to: fixture.connectionsFile)
+        let store = MockSecureStore()
+
+        let state = makeState(syncEnabled: false, secureStore: store)
+
+        #expect(state.loadStatus == .ready)
+        #expect(try store.retrieve(forKey: "com.TablePro.sshkeydata.\(id.uuidString)")?.contains(keyMarker) == true)
+        let rows = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.connectionsFile)) as? [NSDictionary]
+        )
+        #expect(rows.compactMap { $0["id"] as? String } == [id.uuidString])
+        #expect(!(try String(contentsOf: fixture.connectionsFile, encoding: .utf8)).contains(keyMarker))
+        let backupURL = fixture.connectionsFile.appendingPathExtension("backup")
+        #expect(!(try String(contentsOf: backupURL, encoding: .utf8)).contains(keyMarker))
+    }
+
     @Test("A key moved into the secure store leaves no copy in the backup")
     func movedKeyLeavesNoBackupCopy() throws {
         _ = try writeLegacyLibrary(id: UUID())

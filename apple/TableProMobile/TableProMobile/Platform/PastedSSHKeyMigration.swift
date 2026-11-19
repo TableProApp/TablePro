@@ -28,8 +28,9 @@ nonisolated enum PastedSSHKeyMigration {
         return keys.filter { holders.contains($0.key) }
     }
 
+    // Only a record this build cannot read still carries a key, kept verbatim: one that reached the Keychain leaves it.
     static func libraryFile(_ encoded: Data, keeping keys: [UUID: String]) throws -> Data {
-        guard !keys.isEmpty,
+        guard !keys.isEmpty || encoded.range(of: Data(privateKeyDataKey.utf8)) != nil,
               var entries = try JSONSerialization.jsonObject(with: encoded) as? [Any] else {
             return encoded
         }
@@ -37,9 +38,12 @@ nonisolated enum PastedSSHKeyMigration {
             guard var entry = entries[index] as? [String: Any],
                   let idString = entry[idKey] as? String,
                   let id = UUID(uuidString: idString),
-                  let key = keys[id],
                   var ssh = entry[sshConfigurationKey] as? [String: Any] else { continue }
-            ssh[privateKeyDataKey] = key
+            if let key = keys[id] {
+                ssh[privateKeyDataKey] = key
+            } else if ssh.removeValue(forKey: privateKeyDataKey) == nil {
+                continue
+            }
             entry[sshConfigurationKey] = ssh
             entries[index] = entry
         }
