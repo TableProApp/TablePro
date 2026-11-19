@@ -208,32 +208,43 @@ struct DataDictionaryGroupReads {
     var foreignKeys: [String: [PluginForeignKeyInfo]]?
     var indexes: [String: [PluginIndexInfo]]?
 
+    // A read that reached the row limit may have stopped inside a table, so it is not taken as that table's answer.
     static func read(
         databaseName: String,
         objectCount: Int,
         from dataSource: any PluginExportDataSource,
-        progress: PluginExportProgress
+        progress: PluginExportProgress,
+        rowLimit: Int = PluginRowLimits.emergencyMax
     ) async throws -> DataDictionaryGroupReads {
         var reads = DataDictionaryGroupReads()
         let bulk = dataSource.bulkReads
         guard objectCount > 1 else { return reads }
         if bulk.contains(.columns) {
-            reads.columns = try await attempt(progress) { try await dataSource.fetchAllColumns(databaseName: databaseName) }
+            reads.columns = try await attempt(progress, rowLimit) {
+                try await dataSource.fetchAllColumns(databaseName: databaseName)
+            }
         }
         if bulk.contains(.indexes) {
-            reads.indexes = try await attempt(progress) { try await dataSource.fetchAllIndexes(databaseName: databaseName) }
+            reads.indexes = try await attempt(progress, rowLimit) {
+                try await dataSource.fetchAllIndexes(databaseName: databaseName)
+            }
         }
         if bulk.contains(.foreignKeys) {
-            reads.foreignKeys = try await attempt(progress) {
+            reads.foreignKeys = try await attempt(progress, rowLimit) {
                 try await dataSource.fetchAllForeignKeys(databaseName: databaseName)
             }
         }
         return reads
     }
 
-    private static func attempt<T>(_ progress: PluginExportProgress, _ read: () async throws -> T) async throws -> T? {
+    private static func attempt<Element>(
+        _ progress: PluginExportProgress,
+        _ rowLimit: Int,
+        _ read: () async throws -> [String: [Element]]
+    ) async throws -> [String: [Element]]? {
         do {
-            return try await read()
+            let answer = try await read()
+            return answer.values.reduce(0) { $0 + $1.count } < rowLimit ? answer : nil
         } catch {
             try DataDictionaryReader.rethrowIfCancelled(error, progress: progress)
             return nil

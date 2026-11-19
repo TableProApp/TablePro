@@ -133,6 +133,23 @@ struct DataDictionaryGroupReadTests {
         #expect(source.calls == ["all columns", "all indexes", "all foreign keys", "columns orgs", "columns users"])
     }
 
+    @Test("A group read that reached the row limit is set aside, since it may have stopped inside a table")
+    func groupReadAtTheRowLimitFallsBack() async throws {
+        let source = GroupReadingSource(bulkReads: [.columns, .foreignKeys, .indexes])
+
+        let reads = try await DataDictionaryGroupReads.read(
+            databaseName: "public",
+            objectCount: 2,
+            from: source,
+            progress: PluginExportProgress(progress: Progress(totalUnitCount: 0)),
+            rowLimit: 3
+        )
+
+        #expect(reads.columns == nil)
+        #expect(reads.indexes?.isEmpty == false)
+        #expect(reads.foreignKeys?.isEmpty == false)
+    }
+
     @Test("A group of one object is read on its own")
     func singleObjectReadsAlone() async throws {
         let source = GroupReadingSource(bulkReads: [.columns, .foreignKeys, .indexes])
