@@ -302,9 +302,9 @@ final class DataGridCellPresenter {
                 rawValue: rawValue.asText,
                 placeholder: DataGridCellContent.placeholder(
                     for: rawValue,
-                    isAbsent: row.isAbsent(dataIndex),
+                    isAbsent: pass.rows.isAbsent(row.id, column: dataIndex),
                     isExpression: visualState.isExpression(columnIndex: dataIndex),
-                    unloadedByteCount: row.unloadedByteCount(dataIndex),
+                    unloadedByteCount: pass.rows.unloadedByteCount(row.id, column: dataIndex),
                     marksEmptyText: pass.marksEmptyText
                 )
             ),
@@ -351,9 +351,9 @@ final class DataGridCellPresenter {
         let rawValue = row.values[dataIndex]
         switch DataGridCellContent.placeholder(
             for: rawValue,
-            isAbsent: row.isAbsent(dataIndex),
+            isAbsent: rows.isAbsent(row.id, column: dataIndex),
             isExpression: model.changeState?.isExpression(rowID: row.id, columnIndex: dataIndex) ?? false,
-            unloadedByteCount: row.unloadedByteCount(dataIndex),
+            unloadedByteCount: rows.unloadedByteCount(row.id, column: dataIndex),
             marksEmptyText: model.configuration.marksEmptyText
         ) {
         case .null: return String(localized: "NULL")

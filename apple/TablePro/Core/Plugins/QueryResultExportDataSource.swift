@@ -16,7 +16,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
     private let rows: [[PluginCellValue]]
     private let exportDocuments: [PluginExportDocument?]
     // Row index to the row, for rows holding values the page left on the server.
-    private let unloadedRows: [Int: Row]
+    private let unloadedRows: [Int: UnloadedRow]
     private let fillUnloaded: UnloadedValueFill?
 
     private static let filledChunkSize = 50
@@ -36,7 +36,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         columnTypeNames: [String],
         rows: [[PluginCellValue]],
         exportDocuments: [PluginExportDocument?] = [],
-        unloadedRows: [Int: Row] = [:],
+        unloadedRows: [Int: UnloadedRow] = [:],
         fillUnloaded: UnloadedValueFill? = nil,
         databaseTypeId: String,
         quoteIdentifier: @escaping (String) -> String,
@@ -62,15 +62,17 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         fillUnloaded: UnloadedValueFill? = nil
     ) {
         let quoting = Self.quoting(for: databaseType, driver: driver)
-        var unloadedRows: [Int: Row] = [:]
-        for (index, row) in tableRows.rows.enumerated() where row.hasUnloadedValues {
-            unloadedRows[index] = row
+        var unloadedRows: [Int: UnloadedRow] = [:]
+        if tableRows.hasUnloadedValues {
+            for (index, row) in tableRows.rows.enumerated() {
+                unloadedRows[index] = tableRows.unloadedRow(withID: row.id)
+            }
         }
         self.init(
             columns: tableRows.columns,
             columnTypeNames: Self.columnTypeNames(of: tableRows),
             rows: tableRows.rows.map { Array($0.values) },
-            exportDocuments: tableRows.rows.map { $0.exportSnapshot?.document(matching: $0) },
+            exportDocuments: tableRows.rows.map { tableRows.exportDocument(of: $0) },
             unloadedRows: unloadedRows,
             fillUnloaded: fillUnloaded.map { Self.masking($0, by: tableRows.masks) },
             databaseTypeId: databaseType.rawValue,
@@ -89,7 +91,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
             columns: tableRows.columns,
             columnTypeNames: Self.columnTypeNames(of: tableRows),
             rows: rows,
-            exportDocuments: selected.map { $0.exportSnapshot?.document(matching: $0) },
+            exportDocuments: selected.map { tableRows.exportDocument(of: $0) },
             databaseTypeId: databaseTypeId,
             quoteIdentifier: SQLEscaping.quoteIdentifier,
             escapeStringLiteral: SQLEscaping.escapeStringLiteral
@@ -181,7 +183,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
     // Pulled a chunk at a time, so a chunk is read only once the exporter has written the one before.
     private static func streamFilling(
         _ snapshot: [[PluginCellValue]],
-        unloadedRows: [Int: Row],
+        unloadedRows: [Int: UnloadedRow],
         fill: @escaping UnloadedValueFill,
         header: PluginStreamHeader
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -201,7 +203,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
     private static func filledChunk(
         _ range: Range<Int>,
         of snapshot: [[PluginCellValue]],
-        unloadedRows: [Int: Row],
+        unloadedRows: [Int: UnloadedRow],
         fill: UnloadedValueFill
     ) async throws -> PluginStreamElement {
         var chunk = Array(snapshot[range])
@@ -209,9 +211,9 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         guard !pending.isEmpty else { return .rows(chunk) }
         let filled = try await fill(pending)
         for index in range {
-            guard let row = unloadedRows[index] else { continue }
-            for column in row.unloadedColumns.keys {
-                guard let value = filled[row.id]?[column] else { throw UnloadedValueError.rowsNotFound }
+            guard let unloaded = unloadedRows[index] else { continue }
+            for column in unloaded.columns.keys {
+                guard let value = filled[unloaded.row.id]?[column] else { throw UnloadedValueError.rowsNotFound }
                 chunk[index - range.lowerBound][column] = value
             }
         }

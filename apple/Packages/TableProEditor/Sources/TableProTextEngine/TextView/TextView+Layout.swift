@@ -104,7 +104,10 @@ extension TextView {
         if didUpdate {
             needsLayout = true
             needsDisplay = true
-            layoutManager.setNeedsLayout()
+            // Unwrapped lines are typeset at an unbounded width, so the frame's width cannot move a line break.
+            if wrapLines {
+                layoutManager.setNeedsLayout()
+            }
         }
 
         if isSelectable {

@@ -172,9 +172,10 @@ struct ResultComparisonEngineTests {
     @Test("A field the document lacks is not the same as an explicit NULL")
     func absentIsNotNull() throws {
         let left = side(["id", "tag"], [["1", nil]])
-        var lacking = left.rows
-        lacking[0].absentColumns = [1]
-        let right = ResultComparisonSide(title: "Result", detail: "Query", columns: ["id", "tag"], rows: lacking)
+        let right = ResultComparisonSide(
+            title: "Result", detail: "Query", columns: ["id", "tag"], rows: left.rows,
+            absentColumns: [left.rows[0].id: [1]]
+        )
 
         #expect(kinds(try compare(left, right, key: ["id"])) == [.changed])
         #expect(kinds(try compare(left, right)) == [.onlyLeft, .onlyRight])

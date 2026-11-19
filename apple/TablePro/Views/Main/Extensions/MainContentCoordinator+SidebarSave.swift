@@ -69,13 +69,13 @@ extension MainContentCoordinator {
                         columnName: field.columnName,
                         oldValue: oldValue,
                         newValue: write.value,
-                        oldIsAbsent: resolvedRow.isAbsent(field.columnIndex),
+                        oldIsAbsent: tableRows.isAbsent(resolvedRow.id, column: field.columnIndex),
                         newIsAbsent: field.removesField,
                         newIsExpression: write.isExpression
                     )
                 },
                 originalRow: originalRow,
-                absentColumns: resolvedRow.absentColumns
+                absentColumns: tableRows.absentColumns(of: resolvedRow.id)
             )
         }
     }

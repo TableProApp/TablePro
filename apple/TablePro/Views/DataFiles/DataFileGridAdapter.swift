@@ -90,6 +90,7 @@ extension DataFileGridAdapter: DataGridActions {
             gridRows: GridRowsClipboardPayload(
                 columns: projection.columns(tableRows.columns),
                 copying: copied,
+                absentColumns: copied.map { tableRows.absentColumns(of: $0.id) },
                 expressionColumns: copied.map { _ in [] },
                 projection: projection
             )

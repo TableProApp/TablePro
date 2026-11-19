@@ -60,7 +60,7 @@ extension MainContentCoordinator {
         guard let tab = tabManager.selectedTab else { return true }
         let rows = tabSessionRegistry.tableRows(for: tab.id)
         let ids = rowIDs.filter { id in
-            rows.row(withID: id)?.unloadedColumns.keys.contains { columns?.contains($0) ?? true } == true
+            rows.unloadedColumns(of: id).keys.contains { columns?.contains($0) ?? true }
         }
         guard !ids.isEmpty else { return true }
         let tabId = tab.id
@@ -81,16 +81,15 @@ extension MainContentCoordinator {
 
     func loadInspectorRowValues(tabId: UUID, rowID: RowID) async {
         guard tabManager.selectedTabId == tabId,
-              let row = tabSessionRegistry.tableRows(for: tabId).row(withID: rowID),
-              row.hasUnloadedValues else { return }
-        await loadUnloadedValues(tabId: tabId, rowIDs: [row.id])
+              tabSessionRegistry.tableRows(for: tabId).hasUnloadedValues(rowID) else { return }
+        await loadUnloadedValues(tabId: tabId, rowIDs: [rowID])
     }
 
     @discardableResult
     func loadUnloadedValues(tabId: UUID, rowIDs: [RowID], columns: IndexSet? = nil) async -> Bool {
         guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return false }
         let tableRows = tabSessionRegistry.tableRows(for: tabId)
-        let rows = rowIDs.compactMap { tableRows.row(withID: $0) }.filter(\.hasUnloadedValues)
+        let rows = rowIDs.compactMap { tableRows.unloadedRow(withID: $0) }
         guard !rows.isEmpty else { return true }
         let lease = DriverLeaseOwner()
         guard let reader = unloadedValueReader(for: tab, lease: lease) else { return false }
@@ -167,14 +166,14 @@ extension MainContentCoordinator {
     }
 
     private func readUnloadedValues(
-        of rows: [Row],
+        of rows: [UnloadedRow],
         columns: IndexSet?,
         tableColumns: [String],
         reader: UnloadedValueReader
     ) async throws -> UnloadedValueRead {
-        let pending = rows.compactMap { row -> (row: Row, columns: [Int])? in
-            let unloaded = row.unloadedColumns.keys.filter { columns?.contains($0) ?? true }.sorted()
-            return unloaded.isEmpty ? nil : (row, unloaded)
+        let pending = rows.compactMap { unloaded -> (row: Row, byteCounts: [Int: Int], columns: [Int])? in
+            let wanted = unloaded.columns.keys.filter { columns?.contains($0) ?? true }.sorted()
+            return wanted.isEmpty ? nil : (unloaded.row, unloaded.columns, wanted)
         }
         guard !pending.isEmpty else { return UnloadedValueRead() }
 
@@ -188,7 +187,7 @@ extension MainContentCoordinator {
             let key = keyIndices.map { storedValue(of: entry.row, column: $0) }
             guard !key.contains(where: \.isNull) else { continue }
             keyByRow[entry.row.id] = key
-            let bytes = entry.columns.reduce(0) { $0 + (entry.row.unloadedColumns[$1] ?? 0) }
+            let bytes = entry.columns.reduce(0) { $0 + (entry.byteCounts[$1] ?? 0) }
             requests.append(UnloadedValueReader.Request(key: key, byteCount: bytes))
         }
 
@@ -209,7 +208,7 @@ extension MainContentCoordinator {
 
     func rowsWithUnloadedValues() -> Set<RowID> {
         guard let tabId = tabManager.selectedTab?.id else { return [] }
-        return Set(tabSessionRegistry.tableRows(for: tabId).rows.lazy.filter(\.hasUnloadedValues).map(\.id))
+        return tabSessionRegistry.tableRows(for: tabId).rowIDsWithUnloadedValues
     }
 
     // The server holds the row under its key as last read, not as a pending edit has it.

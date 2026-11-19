@@ -646,7 +646,7 @@ final class DataGridModel: ObservableObject {
         let row = rows.rows[storageIndex]
         let dataIndex = column.dataIndex
         guard dataIndex < row.values.count, changeState?.isRowDeleted(edit.rowID) != true else { return nil }
-        guard row.unloadedByteCount(dataIndex) == nil else { return nil }
+        guard rows.unloadedByteCount(row.id, column: dataIndex) == nil else { return nil }
 
         let newValue: PluginCellValue
         let isExpression: Bool
@@ -681,9 +681,9 @@ final class DataGridModel: ObservableObject {
 
         let oldValue = row.values[dataIndex]
         let absence = FieldAbsence(
-            wasAbsent: row.isAbsent(dataIndex),
+            wasAbsent: rows.isAbsent(row.id, column: dataIndex),
             isAbsent: removesField,
-            originalRow: row.absentColumns
+            originalRow: rows.absentColumns(of: row.id)
         )
         let wasExpression = changeState?.isExpression(rowID: row.id, columnIndex: dataIndex) ?? false
         guard oldValue != newValue || absence.wasAbsent != absence.isAbsent || wasExpression != isExpression else {
