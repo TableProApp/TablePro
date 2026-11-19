@@ -12,6 +12,8 @@ actor RecordingSyncTransport: IOSSyncTransport {
     private(set) var pushedRecords: [CKRecord] = []
     private(set) var pushedDeletions: [CKRecord.ID] = []
     private(set) var pullCount = 0
+    private var fetchable: [CKRecord.ID: CKRecord] = [:]
+    private(set) var fetchedRecordIDs: [CKRecord.ID] = []
     private(set) var subscriptionSaves = 0
     private var subscriptionError: (any Error)?
     private var beforeAccountRead: (@Sendable () async -> Void)?
@@ -30,6 +32,11 @@ actor RecordingSyncTransport: IOSSyncTransport {
     func answerPulls(with records: [CKRecord], deletions: [CKRecord.ID] = []) {
         remoteRecords = records
         remoteDeletions = deletions
+    }
+
+    // Served to a fetch by id, as the server holds it.
+    func serveOnFetch(_ record: CKRecord) {
+        fetchable[record.recordID] = record
     }
 
     // Runs inside every account read, before any download starts.
@@ -71,7 +78,8 @@ actor RecordingSyncTransport: IOSSyncTransport {
     }
 
     func fetch(recordIDs: [CKRecord.ID]) async throws -> [CKRecord.ID: CKRecord] {
-        [:]
+        fetchedRecordIDs.append(contentsOf: recordIDs)
+        return fetchable.filter { recordIDs.contains($0.key) }
     }
 
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {

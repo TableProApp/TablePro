@@ -152,8 +152,9 @@ struct IOSImportLibraryStore: ImportLibraryStore {
         return ConnectionImportWrite(added: added, replaced: replaced)
     }
 
+    // With the records this build cannot read, which keep their ids.
     func existingConnectionIds() -> Set<UUID> {
-        Set(appState.connections.map(\.id))
+        Set(appState.connections.map(\.id)).union(appState.unreadableCopies.connections)
     }
 
     func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) {

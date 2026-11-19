@@ -14,6 +14,13 @@ public struct Tombstone: Codable, Equatable, Sendable {
     }
 }
 
+// A record's part in sync as this device last read it, for a copy it can no longer read.
+public enum SyncStanding: Equatable, Sendable {
+    case syncs
+    case keptOff
+    case unknown
+}
+
 public enum SyncAccountChange: Equatable, Sendable {
     case firstSeen
     case unchanged
@@ -209,6 +216,90 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         }
     }
 
+    // MARK: - Copies This Device Cannot Read
+
+    // Record names a pull changed while this device's copy could not be read. Not applied, since a re-encode by
+    // this build would drop what it cannot read, so a build that reads the copy fetches those records by id.
+    public var changesHeldForUnreadableCopies: Set<String> {
+        get { stringSet("changesHeldForUnreadableCopies") }
+        set { saveStringSet(newValue, key: "changesHeldForUnreadableCopies") }
+    }
+
+    // Record names a pull deleted while this device could not tell whether its unreadable copy syncs.
+    public var deletionsHeldForUnreadableCopies: Set<String> {
+        get { stringSet("deletionsHeldForUnreadableCopies") }
+        set { saveStringSet(newValue, key: "deletionsHeldForUnreadableCopies") }
+    }
+
+    // The held changes to fetch by id, since a delta never resends them: those whose copy reads now. One whose copy is
+    // gone, or no longer syncs, is dropped. `syncing` names every stored copy that syncs, read or not.
+    public func readableHeldChanges(syncing: Set<String>, unreadable: Set<String>) -> Set<String> {
+        let held = changesHeldForUnreadableCopies.intersection(syncing)
+        if held != changesHeldForUnreadableCopies {
+            changesHeldForUnreadableCopies = held
+        }
+        return held.subtracting(unreadable)
+    }
+
+    // A held deletion is due once its copy reads; one whose record the server sent again was saved after it, so it
+    // settles without applying. The caller removes what it settled once the pull is saved.
+    public func heldDeletions(live: Set<String>, unreadable: Set<String>) -> (due: Set<String>, settled: Set<String>) {
+        let held = deletionsHeldForUnreadableCopies
+        guard !held.isEmpty else { return ([], []) }
+        let due = held.subtracting(live).subtracting(unreadable)
+        return (due, due.union(held.intersection(live)))
+    }
+
+    // MARK: - Connection Standing
+
+    // Whether each connection takes part in sync, by id and outside the record, so one the store can no longer read
+    // keeps the standing it last had: a Local only copy shares its id with a record iCloud may still hold.
+    public func connectionsKnownToSync() -> Set<UUID> {
+        Set(stringSet("connectionsKnownToSync").compactMap(UUID.init(uuidString:)))
+    }
+
+    public func connectionsKeptOffSync() -> Set<UUID> {
+        Set(stringSet("connectionsKeptOffSync").compactMap(UUID.init(uuidString:)))
+    }
+
+    public func standing(ofConnection id: UUID) -> SyncStanding {
+        if connectionsKeptOffSync().contains(id) { return .keptOff }
+        return connectionsKnownToSync().contains(id) ? .syncs : .unknown
+    }
+
+    // Of the unread copies a deletion names, the ones to remove: those that sync. A Local only one stays, and one with
+    // no standing recorded waits in the held deletions for a build that reads it.
+    public func unreadableConnectionsRemoved(byDeletionOf ids: Set<UUID>) -> Set<UUID> {
+        var removed: Set<UUID> = []
+        var held: Set<String> = []
+        for id in ids {
+            switch standing(ofConnection: id) {
+            case .syncs:
+                removed.insert(id)
+            case .keptOff:
+                continue
+            case .unknown:
+                held.insert(SyncRecordType.connection.recordName(for: id.uuidString))
+            }
+        }
+        if !held.isEmpty {
+            deletionsHeldForUnreadableCopies.formUnion(held)
+        }
+        return removed
+    }
+
+    // Read records set their standing, an unread one keeps its last, and one no longer stored loses it.
+    public func recordConnectionStanding(syncing: Set<UUID>, keptOff: Set<UUID>, unreadable: Set<UUID>) {
+        let known = syncing.union(connectionsKnownToSync().intersection(unreadable))
+        let off = keptOff.union(connectionsKeptOffSync().intersection(unreadable))
+        if known != connectionsKnownToSync() {
+            saveStringSet(Set(known.map(\.uuidString)), key: "connectionsKnownToSync")
+        }
+        if off != connectionsKeptOffSync() {
+            saveStringSet(Set(off.map(\.uuidString)), key: "connectionsKeptOffSync")
+        }
+    }
+
     // MARK: - Last Sync Date
 
     public var lastSyncDate: Date? {
@@ -258,6 +349,8 @@ public final class SyncMetadataStorage: @unchecked Sendable {
     private func forgetServerPosition() {
         saveToken(nil)
         deferredDeletions = []
+        changesHeldForUnreadableCopies = []
+        deletionsHeldForUnreadableCopies = []
         userDefaults.removeObject(forKey: key("lastSyncDate"))
     }
 
@@ -284,6 +377,8 @@ public final class SyncMetadataStorage: @unchecked Sendable {
     public func clearAll() {
         saveToken(nil)
         deferredDeletions = []
+        changesHeldForUnreadableCopies = []
+        deletionsHeldForUnreadableCopies = []
         zoneState = .unknown
         userDefaults.removeObject(forKey: key("lastSyncDate"))
         userDefaults.removeObject(forKey: key("lastAccountId"))
@@ -301,6 +396,18 @@ public final class SyncMetadataStorage: @unchecked Sendable {
 
     private func key(_ suffix: String) -> String {
         "\(prefix).\(suffix)"
+    }
+
+    private func stringSet(_ suffix: String) -> Set<String> {
+        Set(userDefaults.stringArray(forKey: key(suffix)) ?? [])
+    }
+
+    private func saveStringSet(_ values: Set<String>, key suffix: String) {
+        guard !values.isEmpty else {
+            userDefaults.removeObject(forKey: key(suffix))
+            return
+        }
+        userDefaults.set(values.sorted(), forKey: key(suffix))
     }
 
     private func dirtyKey(_ type: SyncRecordType) -> String {

@@ -78,6 +78,12 @@ final class CredentialProfileStorage {
         return profiles.sorted { $0.sortOrder < $1.sortOrder }
     }
 
+    // Loads first, so the answer does not depend on whether anything has read the file yet.
+    var unreadableProfileIds: Set<UUID> {
+        _ = loadProfiles()
+        return file.unreadableIds
+    }
+
     func profile(for id: UUID) -> CredentialProfile? {
         loadProfiles().first { $0.id == id }
     }

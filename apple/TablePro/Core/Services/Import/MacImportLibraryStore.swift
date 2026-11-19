@@ -103,8 +103,9 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
         return write
     }
 
+    // With the records this build cannot read, which keep their ids.
     func existingConnectionIds() -> Set<UUID> {
-        Set(connections.loadConnections().map(\.id))
+        Set(connections.loadConnections().map(\.id)).union(connections.unreadableConnectionIds)
     }
 
     // A file's credential is the secret itself: a key document given as a path would read a key file on this Mac.

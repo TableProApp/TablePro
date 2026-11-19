@@ -742,9 +742,14 @@ final class SyncCoordinator: ObservableObject {
         settings: SyncSettings,
         echoGuard: SyncEchoGuard?
     ) async -> Bool {
-        guard await applyPullResult(result, settings: settings, echoGuard: echoGuard, isFullFetch: isFullFetch) else {
+        let transport = transport
+        let recovery = await recoveringHeldChanges(into: result, zoneID: await transport.currentZoneID) {
+            try await transport.fetch(recordIDs: $0)
+        }
+        guard await applyPullResult(recovery.result, settings: settings, echoGuard: echoGuard, isFullFetch: isFullFetch) else {
             return false
         }
+        settleRecoveredHeldChanges(recovery.recovered)
         if isFullFetch {
             seedLocalThemesIfPending(after: result)
             await finishSavedQueriesRefill(after: result, settings: settings)
@@ -762,12 +767,15 @@ final class SyncCoordinator: ObservableObject {
         let settings = settings ?? services.appSettingsStorage.loadSync()
         let zoneID = await transport.currentZoneID
         let deferred = deferredDeletions(dueIn: result, settings: settings, zoneID: zoneID)
+        // Read once, before anything is applied: a reload after the pull wrote the library would write it again.
+        let unreadableNames = unreadableRecordNames()
+        let held = heldDeletions(dueIn: result, settings: settings, unreadable: unreadableNames, zoneID: zoneID)
         // Read before anything is applied, while the local stores still hold every record the fetch is checked against.
         let pushed = echoGuard?.pushedRecordIDs ?? []
         let missing = isFullFetch
             ? await deletionsProvenByFullFetch(result, settings: settings, zoneID: zoneID, pushed: pushed)
             : []
-        let deletedRecordIDs = (result.deletedRecordIDs + deferred.due + missing).filter { recordID in
+        let deletedRecordIDs = (result.deletedRecordIDs + deferred.due + held.due + missing).filter { recordID in
             echoGuard?.withholdsDeletion(recordID, tracker: changeTracker) != true
         }
         let pendingEdits = await recordNamesWithPendingEdits()
@@ -778,6 +786,7 @@ final class SyncCoordinator: ObservableObject {
         )
         let storesPersisted = applyRemoteChanges(
             admitted,
+            unreadableNames: unreadableNames,
             deletedRecordIDs: deletedRecordIDs,
             settings: settings,
             echoGuard: echoGuard
@@ -801,13 +810,16 @@ final class SyncCoordinator: ObservableObject {
             metadataStorage.saveToken(newToken)
         }
 
-        // Only what the local copy took: a record of a category this Mac does not sync stays out until a full fetch applies it.
+        // Only what the local copy took: a record of a category this Mac does not sync stays out until a full fetch
+        // applies it, and one whose copy here it cannot read until a build that reads the copy fetches it.
         recordCache.store(admitted.changedRecords.filter { record in
             echoGuard?.withholds(record.recordID, tracker: changeTracker) != true
                 && SyncRecordType(rawValue: record.recordType).map { settings.syncs($0) } == true
+                && !unreadableNames.contains(record.recordID.recordName)
         })
-        recordCache.remove(result.deletedRecordIDs + deferred.due + missing)
+        recordCache.remove(result.deletedRecordIDs + deferred.due + held.due + missing)
         settleDeferredDeletions(deferred, after: result, settings: settings)
+        settleHeldDeletions(held)
 
         Self.logger.info(
             "Pull completed: \(result.changedRecords.count) changed, \(result.deletedRecordIDs.count) deleted"
@@ -845,6 +857,7 @@ final class SyncCoordinator: ObservableObject {
     /// not commit its token: the batch has to arrive again.
     private func applyRemoteChanges(
         _ result: PullResult,
+        unreadableNames: Set<String>,
         deletedRecordIDs: [CKRecord.ID],
         settings: SyncSettings,
         echoGuard: SyncEchoGuard?
@@ -854,6 +867,7 @@ final class SyncCoordinator: ObservableObject {
         changeTracker.isSuppressed = true
         let effects = applyRemoteRecords(
             result.changedRecords,
+            unreadableNames: unreadableNames,
             deletedRecordIDs: deletedRecordIDs,
             settings: settings,
             echoGuard: echoGuard
@@ -869,6 +883,7 @@ final class SyncCoordinator: ObservableObject {
 
     private func applyRemoteRecords(
         _ changedRecords: [CKRecord],
+        unreadableNames: Set<String>,
         deletedRecordIDs: [CKRecord.ID],
         settings: SyncSettings,
         echoGuard: SyncEchoGuard?
@@ -888,6 +903,7 @@ final class SyncCoordinator: ObservableObject {
         let databaseFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteDatabase).map(\.id))
         var tableFolderRecords: [CKRecord] = []
         var connectionBatch: RemoteConnectionBatch?
+        var heldNames: Set<String> = []
 
         func persistConnectionBatch() {
             guard let batch = connectionBatch else { return }
@@ -905,6 +921,13 @@ final class SyncCoordinator: ObservableObject {
                 continue
             }
             guard let type = SyncRecordType(rawValue: record.recordType), settings.syncs(type) else { continue }
+            // A Local only copy never takes a remote change, read or not.
+            if unreadableNames.contains(record.recordID.recordName) {
+                if !isKeptOffSync(record.recordID.recordName) {
+                    heldNames.insert(record.recordID.recordName)
+                }
+                continue
+            }
             // A record whose apply can read or write the library sees every connection record before it.
             if !Self.leavesConnectionLibraryAlone(type) {
                 persistConnectionBatch()
@@ -950,6 +973,7 @@ final class SyncCoordinator: ObservableObject {
         }
         persistConnectionBatch()
         applyRemoteTableFolderRecords(tableFolderRecords)
+        holdChanges(heldNames)
 
         var effects = applyRemoteDeletions(
             SyncPendingDeletions.parse(deletedRecordIDs, settings: settings),

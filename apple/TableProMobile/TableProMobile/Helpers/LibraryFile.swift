@@ -49,16 +49,18 @@ final class LibraryFile<Element: Codable> {
     }
 
     // `finishing` rewrites the encoded list before it is written, as the pasted SSH key migration does.
+    // `removingUnreadable` drops kept records by id, as a deletion another device made does.
     func save(
         _ elements: [Element],
         using encoder: JSONEncoder = JSONEncoder(),
         removingSecrets: Bool = false,
+        removingUnreadable removedIds: Set<UUID> = [],
         finishing finish: (Data) throws -> Data = { $0 }
     ) throws {
         if removingSecrets {
             backupHoldsRemovedSecrets = true
         }
-        let encoded = try LibraryFileRecords.encoded(elements, keeping: unreadable, using: encoder)
+        let encoded = try LibraryFileRecords.encoded(elements, keeping: unreadable, removing: removedIds, using: encoder)
         let data = try finish(encoded.data)
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         // The backup and a damaged copy still hold the secrets taken out; a save that cannot drop them writes nothing.

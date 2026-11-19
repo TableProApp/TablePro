@@ -108,6 +108,11 @@ final class ConnectionStorage {
         let connections = storedConnections.map { stored in
             stored.toConnection()
         }
+        syncTracker.recordConnectionStanding(
+            syncing: Set(connections.filter(\.participatesInSync).map(\.id)),
+            keptOff: Set(connections.filter { !$0.participatesInSync }.map(\.id)),
+            unreadable: file.unreadableIds
+        )
 
         let migrated = Self.numberingUnrankedGroups(connections)
         if migrated != connections, storeIsTrusted {
@@ -129,21 +134,39 @@ final class ConnectionStorage {
 
     // False refuses dependent writes (sync marks, keychain items), or a password goes while its record stays.
     // `byUser` false is a write the app makes itself, which never clears a failed integrity check.
+    // `removingUnreadable` drops records this build cannot read, by id, as a deletion another device made does.
     @discardableResult
-    func saveConnections(_ connections: [DatabaseConnection], byUser: Bool = true, removingSecrets: Bool = false) -> Bool {
+    func saveConnections(
+        _ connections: [DatabaseConnection],
+        byUser: Bool = true,
+        removingSecrets: Bool = false,
+        removingUnreadable removedIds: Set<UUID> = []
+    ) -> Bool {
         let previous = loadConnections()
         guard !lastLoadFailed else {
             Self.logger.error("Refused to save over connections.json: it could not be read")
             return false
         }
-        guard persist(connections, byUser: byUser, removingSecrets: removingSecrets) else { return false }
+        guard persist(connections, byUser: byUser, removingSecrets: removingSecrets, removingUnreadable: removedIds) else {
+            return false
+        }
         moveSecretsWhoseScopeChanged(from: previous, to: connections)
         return true
     }
 
     @discardableResult
-    private func persist(_ connections: [DatabaseConnection], byUser: Bool = true, removingSecrets: Bool = false) -> Bool {
-        guard file.save(connections.map { StoredConnection(from: $0) }, byUser: byUser, removingSecrets: removingSecrets) else {
+    private func persist(
+        _ connections: [DatabaseConnection],
+        byUser: Bool = true,
+        removingSecrets: Bool = false,
+        removingUnreadable removedIds: Set<UUID> = []
+    ) -> Bool {
+        guard file.save(
+            connections.map { StoredConnection(from: $0) },
+            byUser: byUser,
+            removingSecrets: removingSecrets,
+            removingUnreadable: removedIds
+        ) else {
             return false
         }
         fileWriteCount += 1
@@ -211,7 +234,8 @@ final class ConnectionStorage {
             replaced.append(updated)
         }
 
-        var knownIds = Set(connections.map(\.id))
+        // A record this build cannot read keeps its id, so the import leaves it alone.
+        var knownIds = Set(connections.map(\.id)).union(file.unreadableIds)
         var added: [DatabaseConnection] = []
         for incoming in adding {
             guard knownIds.insert(incoming.id).inserted else { continue }
@@ -803,6 +827,17 @@ final class ConnectionStorage {
         }
         return Self.secretKinds.map { "com.TablePro.\($0).\(id)" }
             + fieldIds.map { "com.TablePro.plugin.\($0).\(id)" }
+    }
+
+    // Only the device-only items named by id alone: a plugin's secure field needs the record's type to be named.
+    func deleteSecrets(ofUnreadable ids: Set<UUID>) {
+        for id in ids {
+            let keys = Self.secretKinds.map { "com.TablePro.\($0).\(id.uuidString)" }
+                + ["com.TablePro.plugin.\(ConnectionSecretOptions.mongoSessionTokenFieldId).\(id.uuidString)"]
+            for key in keys {
+                keychain.delete(forKey: key, deviceOnly: true)
+            }
+        }
     }
 
     // Removing an iCloud Keychain item removes it from every device, so only a delete the other devices follow does.

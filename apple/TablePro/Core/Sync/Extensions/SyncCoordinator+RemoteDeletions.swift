@@ -93,19 +93,31 @@ extension SyncCoordinator {
         return effects
     }
 
+    // A deletion applies by id: a copy this Mac cannot read goes when its standing says it syncs, never when Local only.
     private func applyRemoteConnectionDeletions(_ ids: Set<UUID>) -> Bool {
         guard !ids.isEmpty else { return true }
         var connections = services.connectionStorage.loadConnections()
-        let deletedIds = ids.subtracting(connections.filter(\.localOnly).map(\.id))
+        let unreadable = ids.intersection(services.connectionStorage.unreadableConnectionIds)
+        let removedUnreadable = metadataStorage.unreadableConnectionsRemoved(byDeletionOf: unreadable)
+        let deletedIds = ids
+            .subtracting(connections.filter(\.localOnly).map(\.id))
+            .subtracting(unreadable)
+            .union(removedUnreadable)
         guard !deletedIds.isEmpty else { return true }
         let removed = connections.filter { deletedIds.contains($0.id) }
         connections.removeAll { deletedIds.contains($0.id) }
-        guard services.connectionStorage.saveConnections(connections, byUser: false) else {
+        guard services.connectionStorage.saveConnections(
+            connections,
+            byUser: false,
+            removingUnreadable: removedUnreadable
+        ) else {
             Self.logger.error("Failed to apply remote connection deletions: persistence error")
             return false
         }
         changeTracker.discardDirty(.connection, ids: deletedIds.map(\.uuidString))
+        forgetHeldChanges(ofConnections: removedUnreadable)
         services.connectionStorage.deleteSecrets(of: removed, origin: .remote)
+        services.connectionStorage.deleteSecrets(ofUnreadable: removedUnreadable)
         ConnectionLocalState.purge(
             connectionIds: deletedIds,
             origin: .remote,
@@ -175,6 +187,13 @@ extension SyncCoordinator {
         guard !profileIds.isEmpty else { return true }
 
         var profiles = services.credentialProfileStorage.loadProfiles()
+        // Unlinking needs the profile, so the deletion of one this Mac cannot read waits for a build that reads it.
+        let unreadable = profileIds.intersection(services.credentialProfileStorage.unreadableProfileIds)
+        if !unreadable.isEmpty {
+            metadataStorage.deletionsHeldForUnreadableCopies.formUnion(
+                unreadable.map { SyncRecordType.credentialProfile.recordName(for: $0.uuidString) }
+            )
+        }
         let deleted = profiles.filter { profileIds.contains($0.id) }
         profiles.removeAll { profileIds.contains($0.id) }
 
@@ -185,7 +204,8 @@ extension SyncCoordinator {
             return false
         }
         guard services.credentialProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
-        changeTracker.discardDirty(.credentialProfile, ids: profileIds.map(\.uuidString))
+        // A held deletion keeps the mark, so the edit made here still counts when the copy reads.
+        changeTracker.discardDirty(.credentialProfile, ids: profileIds.subtracting(unreadable).map(\.uuidString))
         for profile in deleted {
             services.credentialProfileStorage.deleteSecrets(for: profile)
         }

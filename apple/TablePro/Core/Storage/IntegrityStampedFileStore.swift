@@ -99,12 +99,18 @@ final class IntegrityStampedFileStore<Element: Codable> {
     }
 
     // False when nothing reached disk, so a caller writing keychain items or tombstones aborts. `byUser` false is a
-    // write nobody asked for, such as a sync pull, which is not consent either.
+    // write nobody asked for, such as a sync pull, which is not consent either. `removingUnreadable` drops kept
+    // records by id, as a deletion another device made does.
     @discardableResult
-    func save(_ elements: [Element], byUser: Bool = true, removingSecrets: Bool = false) -> Bool {
+    func save(
+        _ elements: [Element],
+        byUser: Bool = true,
+        removingSecrets: Bool = false,
+        removingUnreadable removedIds: Set<UUID> = []
+    ) -> Bool {
         let encoded: (data: Data, kept: [UnreadableLibraryRecord])
         do {
-            encoded = try LibraryFileRecords.encoded(elements, keeping: preserved, using: encoder)
+            encoded = try LibraryFileRecords.encoded(elements, keeping: preserved, removing: removedIds, using: encoder)
             // The backup and a damaged copy still hold the secrets this save takes out; a save that cannot drop them
             // writes nothing.
             if removingSecrets {
