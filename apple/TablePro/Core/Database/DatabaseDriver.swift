@@ -146,7 +146,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     var supportsStatementBatches: Bool { get }
 
-    // Nil when the driver sends these one by one; `runStatements` is what callers use.
+    // In order, stopping at the first failure. Nil when the driver sends these one at a time.
     func executeStatements(_ statements: [BatchedStatement]) async throws -> [BatchedStatementOutcome]?
 
     /// Whether ``copyFromStandardInput(statement:rows:context:)`` sends a `COPY ... FROM STDIN` its rows.

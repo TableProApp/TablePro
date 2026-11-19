@@ -43,7 +43,7 @@ struct PluginDriverAdapterStatementBatchTests {
     }
 
     @Test("A statement the host would refuse ends the batch there, and only the ones before it are sent")
-    func refusedStatementEndsTheBatch() async {
+    func refusedStatementEndsTheBatch() async throws {
         let driver = ReportingDriver()
         let statements = [
             BatchedStatement(sql: "INSERT INTO t VALUES (1)"),
@@ -51,7 +51,7 @@ struct PluginDriverAdapterStatementBatchTests {
             BatchedStatement(sql: "INSERT INTO t VALUES (3)"),
         ]
 
-        let outcomes = await adapter(driver).runStatements(statements)
+        let outcomes = try await adapter(driver).executeStatements(statements) ?? []
 
         #expect(driver.batches.map { $0.map(\.query) } == [["INSERT INTO t VALUES (1)"]])
         #expect(outcomes.count == 2)
@@ -64,14 +64,14 @@ struct PluginDriverAdapterStatementBatchTests {
     }
 
     @Test("A driver that answers fewer statements than it was sent fails the first one it left out")
-    func missingAnswerFails() async {
+    func missingAnswerFails() async throws {
         let driver = ReportingDriver()
         driver.answersFewer = true
 
-        let outcomes = await adapter(driver).runStatements([
+        let outcomes = try await adapter(driver).executeStatements([
             BatchedStatement(sql: "DELETE FROM t WHERE id = 1"),
             BatchedStatement(sql: "DELETE FROM t WHERE id = 2"),
-        ])
+        ]) ?? []
 
         #expect(outcomes.count == 2)
         #expect(outcomes[0].succeeded)
@@ -79,10 +79,10 @@ struct PluginDriverAdapterStatementBatchTests {
     }
 
     @Test("Parameters reach the driver bound, and a text without them goes as text")
-    func carriesParameters() async {
+    func carriesParameters() async throws {
         let driver = ReportingDriver()
 
-        _ = await adapter(driver).runStatements([
+        _ = try await adapter(driver).executeStatements([
             BatchedStatement(sql: "UPDATE t SET a = $1", parameters: ["x"]),
             BatchedStatement(sql: "DELETE FROM t"),
         ])
@@ -92,16 +92,16 @@ struct PluginDriverAdapterStatementBatchTests {
         #expect(sent.last?.parameters == nil)
     }
 
-    @Test("A declined batch runs each statement alone and stops at the first failure")
-    func declinedBatchStopsAtFailure() async {
+    @Test("A batch the driver declines comes back nil, with nothing sent")
+    func declinedBatchIsNil() async throws {
         let driver = ReportingDriver()
         driver.declines = true
-        driver.failing = ["INSERT INTO t VALUES (2)"]
 
-        let outcomes = await adapter(driver).runStatements((1...3).map { BatchedStatement(sql: "INSERT INTO t VALUES (\($0))") })
+        let outcomes = try await adapter(driver).executeStatements(
+            (1...3).map { BatchedStatement(sql: "INSERT INTO t VALUES (\($0))") }
+        )
 
-        #expect(driver.alone == ["INSERT INTO t VALUES (1)", "INSERT INTO t VALUES (2)"])
-        #expect(outcomes.count == 2)
-        #expect(!outcomes[1].succeeded)
+        #expect(outcomes == nil)
+        #expect(driver.alone.isEmpty)
     }
 }

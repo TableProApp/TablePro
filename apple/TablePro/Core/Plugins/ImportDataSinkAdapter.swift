@@ -284,15 +284,27 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     func execute(statements: [PluginImportStatement]) async throws {
         let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
+        let lexicalState = driver.sessionLexicalState
         let texts = statements.map(\.text)
         let driver = self.driver
-        let operation: () async -> [BatchedStatementOutcome] = {
-            await driver.runStatements(texts.map { BatchedStatement(sql: $0) })
+        let send: () async throws -> [BatchedStatementOutcome]? = {
+            try await driver.executeStatements(texts.map { BatchedStatement(sql: $0) })
         }
-        let outcomes = if let importControl {
-            try await importControl.statements(texts, operation: operation)
+        let answered = if let importControl {
+            try await importControl.statements(texts, operation: send)
         } else {
-            await operation()
+            try await send()
+        }
+        // Declined, as outside a transaction block: each goes alone, through its own admission, as before batches.
+        guard let outcomes = answered else {
+            for (index, statement) in statements.enumerated() {
+                do {
+                    try await execute(statement: statement.text, line: statement.line)
+                } catch {
+                    throw PluginImportBatchFailure(index: index, underlying: error)
+                }
+            }
+            return
         }
         for (index, (statement, outcome)) in zip(statements, outcomes).enumerated() {
             noteNameHazards(in: statement.text, grammar: grammar)
@@ -304,6 +316,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
                 index: outcomes.count,
                 underlying: DatabaseError.queryFailed(String(localized: "The driver did not report every statement it was sent."))
             )
+        }
+        // The file's next statements were split before these ran, under the rules a statement here changed.
+        guard driver.sessionLexicalState == lexicalState else {
+            try await rollbackTransaction()
+            throw PluginImportBatchFailure(index: statements.count - 1, underlying: ImportReadingRulesChanged())
         }
     }
 
@@ -539,5 +556,15 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             )
         }
         return try await operation()
+    }
+}
+
+// A rollback, whatever the error mode: statements read under rules that no longer held may have run as other text.
+internal struct ImportReadingRulesChanged: LocalizedError {
+    var errorDescription: String? {
+        String(localized: """
+            A statement changed how the database reads text after the statements behind it were read, so the import \
+            was rolled back. Run it again with Wrap in transaction turned off.
+            """)
     }
 }
