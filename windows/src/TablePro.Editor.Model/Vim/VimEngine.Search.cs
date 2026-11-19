@@ -2,10 +2,10 @@ namespace TablePro.Editor.Model.Vim;
 
 public sealed partial class VimEngine
 {
-    internal void RunSearch(string pattern, bool forward)
+    internal void RunSearch(string pattern, bool forward, int count = 1)
     {
         var origin = _buffer.SelectedRange.Location;
-        if (SearchTarget(pattern, forward) is { } target)
+        if (SearchTarget(pattern, forward, count) is { } target)
         {
             _buffer.SetCaret(target);
             LastJumpOrigin = origin;
@@ -13,7 +13,7 @@ public sealed partial class VimEngine
     }
 
     // Remembers the pattern for n and N, as a search does even when nothing matches.
-    internal int? SearchTarget(string pattern, bool forward)
+    internal int? SearchTarget(string pattern, bool forward, int count = 1)
     {
         if (pattern.Length == 0)
         {
@@ -21,7 +21,7 @@ public sealed partial class VimEngine
         }
         LastSearchPattern = pattern;
         LastSearchForward = forward;
-        return FindPattern(pattern, _buffer.SelectedRange.Location, forward, wholeWord: false);
+        return RepeatFind(pattern, _buffer.SelectedRange.Location, forward, wholeWord: false, count);
     }
 
     internal int? SearchNextTarget(int count, bool reverseDirection)

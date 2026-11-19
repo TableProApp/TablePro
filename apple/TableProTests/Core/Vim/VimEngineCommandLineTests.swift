@@ -257,6 +257,15 @@ final class VimEngineCommandLineTests {
         #expect(engine.mode == .normal)
     }
 
+    @Test("A count before d/ deletes up to that many matches")
+    func countedOperatorSearch() {
+        buffer = VimTextBufferMock(text: "x one x two x three x\n")
+        engine = VimEngine(buffer: buffer)
+        keys("2d/x")
+        enter()
+        #expect(buffer.text == "x three x\n")
+    }
+
     @Test("d/ with no match deletes nothing and ends the command")
     func operatorSearchWithoutMatchEndsTheCommand() {
         keys("d/zzz")

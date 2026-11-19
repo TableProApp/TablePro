@@ -79,6 +79,11 @@ public sealed partial class VimEngine
             return;
         }
         var clamped = Math.Clamp(found, 0, _buffer.Length);
+        if (name is not ("'" or "`" or "<" or ">") && MarkColumns.TryGetValue(name, out var column))
+        {
+            var line = _buffer.LineRange(clamped);
+            clamped = Math.Min(line.Location + column, Math.Max(line.Location, ContentEnd(line) - 1));
+        }
         if (exact)
         {
             ApplyMotion(clamped, VimMotionKind.Exclusive, jump: true);
@@ -127,31 +132,77 @@ public sealed partial class VimEngine
         }
     }
 
+    internal void SetMark(string name, int offset)
+    {
+        Marks[name] = offset;
+        MarkColumns[name] = offset - _buffer.LineRange(offset).Location;
+    }
+
     // Every change to the text, typed, pasted, undone or the engine's own, moves the marks with it. Removing a named
-    // mark's line removes the mark; the other positions go to where the lines were.
+    // mark's line removes the mark, and putting the same text back where it was, as undo does, restores it; the other
+    // positions go to where the lines were.
     private void OnDocumentChanged(object? sender, TextChange change)
     {
-        if (Marks.Count == 0 && LastJumpOrigin is null && LastInsertOffset is null && LastVisualStart is null
-            && LastVisualEnd is null)
+        if (Marks.Count == 0 && ErasedMarks.Count == 0 && LastJumpOrigin is null && LastInsertOffset is null
+            && LastVisualStart is null && LastVisualEnd is null)
         {
             return;
         }
         var edit = new VimMarkChange(change, _buffer);
-        foreach (var (key, offset) in Marks.ToList())
+        VimErasedMarks? restored = null;
+        if (change.RemovedLength == 0)
+        {
+            var index = ErasedMarks.FindLastIndex(record =>
+                record.Location == change.Offset && string.Equals(record.Text, change.InsertedText, StringComparison.Ordinal));
+            if (index >= 0)
+            {
+                restored = ErasedMarks[index];
+                ErasedMarks.RemoveAt(index);
+            }
+        }
+        var erased = new Dictionary<string, VimSavedMark>(StringComparer.Ordinal);
+        foreach (var (name, offset) in Marks.ToList())
         {
             if (edit.Map(offset, removable: true) is { } moved)
             {
-                Marks[key] = moved;
+                Marks[name] = moved.Offset;
+                if (!moved.KeepsColumn)
+                {
+                    MarkColumns.Remove(name);
+                }
             }
             else
             {
-                Marks.Remove(key);
+                var column = MarkColumns.TryGetValue(name, out var kept) ? kept : edit.OldColumn(offset);
+                erased[name] = new VimSavedMark(offset - change.Offset, column);
+                Marks.Remove(name);
+                MarkColumns.Remove(name);
             }
         }
-        LastJumpOrigin = LastJumpOrigin is { } origin ? edit.Map(origin, removable: false) : null;
-        LastInsertOffset = LastInsertOffset is { } insert ? edit.Map(insert, removable: false) : null;
-        LastVisualStart = LastVisualStart is { } start ? edit.Map(start, removable: false) : null;
-        LastVisualEnd = LastVisualEnd is { } end ? edit.Map(end, removable: false) : null;
+        foreach (var record in ErasedMarks)
+        {
+            record.Location = edit.Map(record.Location, removable: false)?.Offset ?? record.Location;
+        }
+        if (erased.Count > 0)
+        {
+            ErasedMarks.Add(new VimErasedMarks(change.Offset, change.RemovedText, erased));
+            if (ErasedMarks.Count > 20)
+            {
+                ErasedMarks.RemoveAt(0);
+            }
+        }
+        if (restored is not null)
+        {
+            foreach (var (name, saved) in restored.Marks)
+            {
+                Marks[name] = restored.Location + saved.Relative;
+                MarkColumns[name] = saved.Column;
+            }
+        }
+        LastJumpOrigin = LastJumpOrigin is { } origin ? edit.Map(origin, removable: false)?.Offset : null;
+        LastInsertOffset = LastInsertOffset is { } insert ? edit.Map(insert, removable: false)?.Offset : null;
+        LastVisualStart = LastVisualStart is { } start ? edit.Map(start, removable: false)?.Offset : null;
+        LastVisualEnd = LastVisualEnd is { } end ? edit.Map(end, removable: false)?.Offset : null;
     }
 
     internal void NoteEdit(int offset)

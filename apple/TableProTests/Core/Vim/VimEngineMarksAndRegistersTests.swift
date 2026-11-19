@@ -265,6 +265,38 @@ final class VimEngineMarksAndRegistersTests {
         #expect(pos == 6)
     }
 
+    @Test("Undoing the delete of a marked line brings the mark back")
+    func undoingTheDeleteRestoresTheMark() {
+        buffer.setSelectedRange(NSRange(location: 13, length: 0))
+        keys("madd")
+        buffer.replaceCharacters(in: NSRange(location: 12, length: 0), with: "second line\n")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("`a")
+        #expect(pos == 13)
+    }
+
+    @Test("Undoing the delete brings the mark back over one set since, as Vim does")
+    func undoingTheDeleteRestoresTheMarkOverANewerOne() {
+        buffer.setSelectedRange(NSRange(location: 13, length: 0))
+        keys("maddggma")
+        buffer.replaceCharacters(in: NSRange(location: 12, length: 0), with: "second line\n")
+        keys("`a")
+        #expect(pos == 13)
+    }
+
+    @Test("A mark keeps its column through a line that shrinks and grows back")
+    func markColumnSurvivesAShorterLine() {
+        buffer = VimTextBufferMock(text: "abcdef\ntail\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        keys("$ma0xxxi")
+        typeInTextView("abc")
+        key("\u{1B}")
+        keys("`a")
+        #expect(buffer.text == "abcdef\ntail\n")
+        #expect(pos == 5)
+    }
+
     @Test("A join carries the mark with its text")
     func joinCarriesTheMark() {
         buffer = VimTextBufferMock(text: "hello world\n    second\n")

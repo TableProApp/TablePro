@@ -303,6 +303,17 @@ public sealed class VimEngineFindCharTests
         Assert.Equal("cd", s.Engine.Register.Text);
     }
 
+    [Theory]
+    [InlineData("d;w")]
+    [InlineData("d,w")]
+    public void ARepeatedFindWithNothingToRepeatEndsTheCommand(string keys)
+    {
+        var s = new VimSession("one two three\n", caret: 0);
+        s.Press(keys);
+        Assert.Equal("one two three\n", s.Text);
+        Assert.Equal(4, s.Caret);
+    }
+
     [Fact]
     public void AFailedRepeatedFindDropsTheOperator()
     {

@@ -104,6 +104,11 @@ final class VimEngine {
     var visualAnchor: Int = 0
     var lastInsertOffset: Int?
     var replaceModeEdits: [VimReplaceModeEdit] = []
+    var searchCount: Int = 1
+    // The column each named mark was set at, kept past the end of a line that shrinks, as Vim keeps it.
+    var markColumns: [Character: Int] = [:]
+    // Named marks a deleted line took, so undoing the delete brings them back.
+    var erasedMarks: [VimErasedMarks] = []
 
     var buffer: VimTextBuffer?
 
@@ -177,6 +182,7 @@ final class VimEngine {
         pendingMacroTarget = nil
         pendingMacroCount = 1
         pendingBracket = nil
+        searchCount = 1
     }
 
     // A key that still waits for the rest of its command, not counting a count or a register already typed.

@@ -259,6 +259,22 @@ public sealed class VimEngineTextObjectsTests
     }
 
     [Fact]
+    public void ALineOfOnlySpacesEndsTheParagraphForDIP()
+    {
+        var s = new VimSession("SELECT 1;\n   \nSELECT 2;\n", caret: 0);
+        s.Press("dip");
+        Assert.Equal("   \nSELECT 2;\n", s.Text);
+    }
+
+    [Fact]
+    public void DAPTakesALineOfOnlySpacesAsTheBlankLineAfter()
+    {
+        var s = new VimSession("a\n   \nb\n", caret: 0);
+        s.Press("dap");
+        Assert.Equal("b\n", s.Text);
+    }
+
+    [Fact]
     public void DIPOnBlankLinesDeletesTheBlankLines()
     {
         var s = new VimSession("a\n\n\nb\n", caret: 2);

@@ -48,7 +48,7 @@ extension VimEngine {
         }
         if pendingMarkSet {
             pendingMarkSet = false
-            marks[char] = buffer.selectedRange().location
+            setMark(char, at: buffer.selectedRange().location, in: buffer)
             return true
         }
         if let exact = pendingMarkJumpExact {
@@ -330,12 +330,18 @@ extension VimEngine {
             pendingFindChar = VimFindCharRequest(forward: false, till: true)
             return true
         case ";":
-            guard let last = lastFindChar else { return true }
+            guard let last = lastFindChar else {
+                applyMotion(to: nil, kind: .exclusive, in: buffer)
+                return true
+            }
             let req = VimFindCharRequest(forward: last.forward, till: last.till)
             _ = executeFindChar(last.char, request: req, in: buffer)
             return true
         case ",":
-            guard let last = lastFindChar else { return true }
+            guard let last = lastFindChar else {
+                applyMotion(to: nil, kind: .exclusive, in: buffer)
+                return true
+            }
             let req = VimFindCharRequest(forward: !last.forward, till: last.till)
             _ = executeFindChar(last.char, request: req, in: buffer)
             return true
@@ -377,6 +383,8 @@ extension VimEngine {
             return true
 
         case "?", "/", ":":
+            // A count before a search finds that many matches, as `2d/x` deletes up to the second x.
+            searchCount = char == ":" ? 1 : consumeCount()
             countPrefix = 0
             operatorCount = 0
             setMode(.commandLine(buffer: String(char)))

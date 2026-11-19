@@ -291,21 +291,21 @@ public sealed partial class VimEngine
     {
         var lineCount = _buffer.LineCount;
         var (currentLine, _) = _buffer.LineAndColumn(cursor);
-        var blank = LineIsBlank(currentLine);
+        var blank = LineIsWhite(currentLine);
         var startLine = currentLine;
-        while (startLine > 0 && LineIsBlank(startLine - 1) == blank)
+        while (startLine > 0 && LineIsWhite(startLine - 1) == blank)
         {
             startLine--;
         }
         var endLine = currentLine;
-        while (endLine < lineCount - 1 && LineIsBlank(endLine + 1) == blank)
+        while (endLine < lineCount - 1 && LineIsWhite(endLine + 1) == blank)
         {
             endLine++;
         }
         if (around)
         {
             var next = endLine;
-            while (next < lineCount - 1 && LineIsBlank(next + 1) != blank)
+            while (next < lineCount - 1 && LineIsWhite(next + 1) != blank)
             {
                 next++;
             }
@@ -315,7 +315,7 @@ public sealed partial class VimEngine
             }
             else if (!blank)
             {
-                while (startLine > 0 && LineIsBlank(startLine - 1))
+                while (startLine > 0 && LineIsWhite(startLine - 1))
                 {
                     startLine--;
                 }

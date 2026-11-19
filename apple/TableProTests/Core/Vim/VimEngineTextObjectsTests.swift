@@ -351,6 +351,13 @@ final class VimEngineTextObjectsTests {
         #expect(engine.mode == .insert)
     }
 
+    @Test("A line of only spaces ends the paragraph for dip")
+    func whiteLineEndsTheParagraph() {
+        make("SELECT 1;\n   \nSELECT 2;\n", at: 0)
+        keys("dip")
+        #expect(buffer.text == "   \nSELECT 2;\n")
+    }
+
     @Test("dip on blank lines deletes the blank lines")
     func deleteInnerParagraphOnBlankLines() {
         make("a\n\n\nb\n", at: 2)

@@ -59,7 +59,7 @@ public sealed partial class VimEngine
         if (PendingMarkSet)
         {
             PendingMarkSet = false;
-            Marks[key] = buffer.SelectedRange.Location;
+            SetMark(key, buffer.SelectedRange.Location);
             return true;
         }
         if (PendingMarkJumpExact is { } exact)
@@ -392,16 +392,25 @@ public sealed partial class VimEngine
             case "T":
                 PendingFindChar = new VimFindCharRequest(Forward: false, Till: true);
                 return true;
+            // With no find to repeat, ; and , fail and end the command.
             case ";":
                 if (LastFindChar is { } last)
                 {
                     ExecuteFindChar(last.Char, new VimFindCharRequest(last.Forward, last.Till));
+                }
+                else
+                {
+                    ApplyMotion(null, VimMotionKind.Exclusive);
                 }
                 return true;
             case ",":
                 if (LastFindChar is { } previous)
                 {
                     ExecuteFindChar(previous.Char, new VimFindCharRequest(!previous.Forward, previous.Till));
+                }
+                else
+                {
+                    ApplyMotion(null, VimMotionKind.Exclusive);
                 }
                 return true;
 
@@ -445,10 +454,13 @@ public sealed partial class VimEngine
                 return true;
 
             case "/" or "?" or ":":
-                CountPrefix = 0;
-                OperatorCount = 0;
+            {
+                var count = ConsumeCount();
+                // A count before a search finds that many matches, as 2d/x deletes up to the second x.
+                SearchCount = key == ":" ? 1 : count;
                 SetMode(VimMode.CommandLine, key);
                 return true;
+            }
 
             case "%":
                 if (CountPrefix > 0 || OperatorCount > 0)

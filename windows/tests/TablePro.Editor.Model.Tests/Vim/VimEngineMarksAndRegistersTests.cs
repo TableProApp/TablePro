@@ -207,6 +207,41 @@ public sealed class VimEngineMarksAndRegistersTests
     }
 
     [Fact]
+    public void UndoingTheDeleteBringsTheMarkBackOverOneSetSince()
+    {
+        var s = new VimSession(Initial, caret: 13);
+        s.Press("maddggmau");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal(13, s.Caret);
+    }
+
+    [Fact]
+    public void UndoingTheDeleteOfAMarkedLineBringsTheMarkBack()
+    {
+        var s = new VimSession(Initial, caret: 13);
+        s.Press("madd");
+        Assert.False(s.Engine.Marks.ContainsKey("a"));
+        s.Press("u");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal(Initial, s.Text);
+        Assert.Equal(13, s.Caret);
+    }
+
+    [Fact]
+    public void AMarkKeepsItsColumnThroughALineThatShrinksAndGrowsBack()
+    {
+        var s = new VimSession("abcdef\ntail\n", caret: 0);
+        s.Press("$ma0xxxi");
+        s.Type("abc");
+        s.Escape();
+        s.Press("`a");
+        Assert.Equal("abcdef\ntail\n", s.Text);
+        Assert.Equal(5, s.Caret);
+    }
+
+    [Fact]
     public void AJoinCarriesTheMarkWithItsText()
     {
         var s = new VimSession("hello world\n    second\n", caret: 16);

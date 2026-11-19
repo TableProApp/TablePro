@@ -179,6 +179,14 @@ public sealed partial class VimEngine : IDisposable
 
     internal List<VimReplaceModeEdit> ReplaceModeEdits { get; } = [];
 
+    internal int SearchCount { get; set; } = 1;
+
+    // The column each named mark was set at, kept past the end of a line that shrinks, as Vim keeps it.
+    internal Dictionary<string, int> MarkColumns { get; private set; } = new(StringComparer.Ordinal);
+
+    // Named marks a deleted line took, so undoing the delete brings them back.
+    internal List<VimErasedMarks> ErasedMarks { get; } = [];
+
     public bool Process(char key, bool shift = false) => Process(key.ToString(), shift);
 
     // True when the engine took the key; false leaves it to the editor, as typing in Insert mode is.
@@ -294,6 +302,7 @@ public sealed partial class VimEngine : IDisposable
         PendingMacroTarget = null;
         PendingMacroCount = 1;
         PendingBracket = null;
+        SearchCount = 1;
     }
 
     // A paste, a click or a menu command moves the selection Visual mode was built on, so the mode ends with it.
@@ -309,6 +318,8 @@ public sealed partial class VimEngine : IDisposable
     private void OnDocumentReset(object? sender, EventArgs e)
     {
         Marks = new Dictionary<string, int>(StringComparer.Ordinal);
+        MarkColumns = new Dictionary<string, int>(StringComparer.Ordinal);
+        ErasedMarks.Clear();
         LastVisualStart = null;
         LastVisualEnd = null;
         LastVisualLinewise = false;

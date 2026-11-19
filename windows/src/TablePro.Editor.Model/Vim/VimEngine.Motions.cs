@@ -400,7 +400,7 @@ public sealed partial class VimEngine
                 }
             }
         }
-        return length > 0 ? length - 1 : 0;
+        return LastLineContentEnd();
     }
 
     internal int PreviousSentenceStart(int origin)
@@ -488,6 +488,21 @@ public sealed partial class VimEngine
             line = next;
         }
         return _buffer.Offset(line, 0);
+    }
+
+    // A line of only blanks ends a paragraph for ip and ap, though not for { and }.
+    internal bool LineIsWhite(int line)
+    {
+        var range = _buffer.LineRange(_buffer.Offset(line, 0));
+        var end = ContentEnd(range);
+        for (var scan = range.Location; scan < end; scan++)
+        {
+            if (_buffer.CharAt(scan) is not (' ' or '\t' or '\r'))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     internal bool LineIsBlank(int line)

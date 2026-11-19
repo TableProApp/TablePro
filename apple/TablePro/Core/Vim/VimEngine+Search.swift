@@ -6,21 +6,28 @@
 import Foundation
 
 extension VimEngine {
-    func runSearch(pattern: String, forward: Bool) {
+    func runSearch(pattern: String, forward: Bool, count: Int = 1) {
         guard let buffer else { return }
         let origin = buffer.selectedRange().location
-        if let target = searchTarget(pattern: pattern, forward: forward, in: buffer) {
+        if let target = searchTarget(pattern: pattern, forward: forward, count: count, in: buffer) {
             buffer.setSelectedRange(NSRange(location: target, length: 0))
             lastJumpOrigin = origin
         }
     }
 
     // Remembers the pattern for `n` and `N`, as a search does even when nothing matches.
-    func searchTarget(pattern: String, forward: Bool, in buffer: VimTextBuffer) -> Int? {
+    func searchTarget(pattern: String, forward: Bool, count: Int = 1, in buffer: VimTextBuffer) -> Int? {
         guard !pattern.isEmpty else { return nil }
         lastSearchPattern = pattern
         lastSearchForward = forward
-        return findPattern(pattern, from: buffer.selectedRange().location, forward: forward, wholeWord: false, in: buffer)
+        var position = buffer.selectedRange().location
+        for _ in 0..<max(1, count) {
+            guard let next = findPattern(pattern, from: position, forward: forward, wholeWord: false, in: buffer) else {
+                return nil
+            }
+            position = next
+        }
+        return position
     }
 
     func searchNextTarget(count: Int, reverseDirection: Bool, in buffer: VimTextBuffer) -> Int? {

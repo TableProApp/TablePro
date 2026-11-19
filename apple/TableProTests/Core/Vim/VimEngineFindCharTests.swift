@@ -336,6 +336,15 @@ final class VimEngineFindCharTests {
         #expect(pos == 20)
     }
 
+    @Test("d; with no find to repeat drops the operator")
+    func repeatFindWithNothingToRepeatDropsTheOperator() {
+        buffer = VimTextBufferMock(text: "one two three\n")
+        engine = VimEngine(buffer: buffer)
+        keys("d;w")
+        #expect(buffer.text == "one two three\n")
+        #expect(pos == 4)
+    }
+
     @Test("dF stops short of the character under the cursor")
     func dCapitalFIsExclusive() {
         buffer = VimTextBufferMock(text: "abcdef\n")

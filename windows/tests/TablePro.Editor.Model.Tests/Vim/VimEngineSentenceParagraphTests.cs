@@ -107,6 +107,22 @@ public sealed class VimEngineSentenceParagraphTests
     }
 
     [Fact]
+    public void RightParenOnTheLastSentenceStopsOnTheLastCharacter()
+    {
+        var s = new VimSession("abc", caret: 0);
+        s.Press(")");
+        Assert.Equal(2, s.Caret);
+    }
+
+    [Fact]
+    public void DRightParenOnTheLastSentenceDeletesToTheEndOfTheText()
+    {
+        var s = new VimSession("abc", caret: 0);
+        s.Press("d)");
+        Assert.Equal(string.Empty, s.Text);
+    }
+
+    [Fact]
     public void RightBraceOnTheLastParagraphStopsOnItsLastCharacter()
     {
         var s = new VimSession("aaa\nbbb\n", caret: 0);

@@ -214,6 +214,37 @@ public sealed class VimEngineCommandLineTests
         Assert.Equal("heworld\nsecond line\nthird line\n", s.Text);
     }
 
+    [Theory]
+    [InlineData("2d/x")]
+    [InlineData("d2/x")]
+    public void ACountWithASearchAfterAnOperatorDeletesUpToThatMatch(string keys)
+    {
+        var s = new VimSession("x one x two x three x\n");
+        s.Press(keys);
+        Enter(s);
+        Assert.Equal("x three x\n", s.Text);
+    }
+
+    [Fact]
+    public void ACountBeforeASearchGoesToThatMatch()
+    {
+        var s = new VimSession("x one x two x three x\n");
+        s.Press("2/x");
+        Enter(s);
+        Assert.Equal(12, s.Caret);
+    }
+
+    [Fact]
+    public void LeavingTheCommandLineDropsTheSearchCount()
+    {
+        var s = new VimSession("x one x two x three x\n");
+        s.Press("2/");
+        s.Escape();
+        s.Press("/x");
+        Enter(s);
+        Assert.Equal(6, s.Caret);
+    }
+
     [Fact]
     public void ASearchWithNoMatchAfterAnOperatorEndsTheCommand()
     {

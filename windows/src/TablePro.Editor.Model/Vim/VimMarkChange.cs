@@ -43,27 +43,29 @@ internal readonly struct VimMarkChange
         _lastLineContentEnd = hasBreak ? lastLine.End - 1 : lastLine.End;
     }
 
-    public int? Map(int offset, bool removable)
+    // Null when the edit removes the line of a removable mark. KeepsColumn is false where the mark moved onto another
+    // line's text, as a join moves it.
+    public (int Offset, bool KeepsColumn)? Map(int offset, bool removable)
     {
         if (offset < _location)
         {
-            return offset;
+            return (offset, true);
         }
         if (offset >= _endLineEnd)
         {
-            return offset + _delta;
+            return (offset + _delta, true);
         }
         if (_keepsLines)
         {
-            return KeepLineAndColumn(offset);
+            return (KeepLineAndColumn(offset), true);
         }
         if (_isLinewise)
         {
-            return offset >= _end ? offset + _delta : removable ? null : _location;
+            return offset >= _end ? (offset + _delta, true) : removable ? null : (_location, false);
         }
         if (offset >= _end)
         {
-            return _removesLineBreak ? offset + _delta : KeepColumnOnFirstLine(offset);
+            return _removesLineBreak ? (offset + _delta, false) : (KeepColumnOnFirstLine(offset), true);
         }
         if (_removesLineBreak && offset > _location && _removed.LastIndexOf('\n', offset - _location - 1) >= 0)
         {
@@ -71,11 +73,19 @@ internal readonly struct VimMarkChange
             var lineEnd = nextBreak >= 0 ? _location + nextBreak + 1 : _endLineEnd;
             if (lineEnd <= _end)
             {
-                return removable ? null : _location;
+                return removable ? null : (_location, false);
             }
-            return _end + _delta;
+            return (_end + _delta, false);
         }
-        return KeepColumnOnFirstLine(offset);
+        return (KeepColumnOnFirstLine(offset), true);
+    }
+
+    // The column of an offset in the removed text, on its line before the edit.
+    public int OldColumn(int offset)
+    {
+        var relative = Math.Clamp(offset - _location, 0, _removed.Length);
+        var lastBreak = relative > 0 ? _removed.LastIndexOf('\n', relative - 1) : -1;
+        return offset - (lastBreak >= 0 ? _location + lastBreak + 1 : _firstLineStart);
     }
 
     // The first line keeps its start, so the offset keeps its column, up to the line's new last character.
@@ -115,4 +125,16 @@ internal readonly struct VimMarkChange
         }
         return index;
     }
+}
+
+internal readonly record struct VimSavedMark(int Relative, int Column);
+
+// The named marks one edit removed with their lines, and the text it removed, so putting the text back restores them.
+internal sealed class VimErasedMarks(int location, string text, Dictionary<string, VimSavedMark> marks)
+{
+    public int Location { get; set; } = location;
+
+    public string Text { get; } = text;
+
+    public Dictionary<string, VimSavedMark> Marks { get; } = marks;
 }

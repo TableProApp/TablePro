@@ -33,6 +33,8 @@ extension VimEngine {
 
     func restoreDocumentMarks(_ saved: VimDocumentMarks) {
         marks = saved.marks
+        markColumns = [:]
+        erasedMarks = []
         lastVisualStart = saved.lastVisualStart
         lastVisualEnd = saved.lastVisualEnd
         lastVisualLinewise = saved.lastVisualLinewise
@@ -95,7 +97,12 @@ extension VimEngine {
             applyMotion(to: nil, kind: .exclusive, in: buffer)
             return
         }
-        let clamped = min(max(0, offset), buffer.length)
+        var clamped = min(max(0, offset), buffer.length)
+        if let column = markColumns[name] {
+            let lineStart = buffer.lineRange(forOffset: clamped).location
+            let lastCharacter = max(lineStart, contentEnd(ofLineAt: clamped, in: buffer) - 1)
+            clamped = min(lineStart + column, lastCharacter)
+        }
         if exact {
             applyMotion(to: clamped, kind: .exclusive, jump: true, in: buffer)
         } else {
@@ -132,19 +139,67 @@ extension VimEngine {
         }
     }
 
+    func setMark(_ name: Character, at offset: Int, in buffer: VimTextBuffer) {
+        marks[name] = offset
+        markColumns[name] = offset - buffer.lineRange(forOffset: offset).location
+    }
+
     // Called before every edit, typed, pasted, undone or the engine's own. A mark keeps its line and column, as Vim's
     // do (`:help mark-motions`): lines added or removed before it move it, a join carries it with its text, and
-    // removing its whole line removes a named mark and moves the others to where the lines were.
+    // removing its whole line removes a named mark, which the undo that puts the line back restores.
     func textWillChange(in range: NSRange, with replacement: String) {
-        guard let buffer, !marks.isEmpty || lastJumpOrigin != nil || lastInsertOffset != nil
+        guard let buffer, !marks.isEmpty || !erasedMarks.isEmpty || lastJumpOrigin != nil || lastInsertOffset != nil
             || lastVisualStart != nil || lastVisualEnd != nil else { return }
+        var restored: VimErasedMarks?
+        if range.length == 0,
+           let index = erasedMarks.lastIndex(where: { $0.location == range.location && $0.text == replacement }) {
+            restored = erasedMarks.remove(at: index)
+        }
         let change = VimMarkChange(range: range, replacement: replacement, in: buffer)
-        marks = marks.compactMapValues { change.map($0, removable: true, in: buffer) }
-        lastJumpOrigin = lastJumpOrigin.flatMap { change.map($0, removable: false, in: buffer) }
-        lastInsertOffset = lastInsertOffset.flatMap { change.map($0, removable: false, in: buffer) }
-        lastVisualStart = lastVisualStart.flatMap { change.map($0, removable: false, in: buffer) }
-        lastVisualEnd = lastVisualEnd.flatMap { change.map($0, removable: false, in: buffer) }
+        var erased: [Character: VimSavedMark] = [:]
+        for (name, offset) in marks {
+            if let mapped = change.map(offset, removable: true, in: buffer) {
+                marks[name] = mapped.offset
+                if !mapped.keepsColumn { markColumns[name] = nil }
+            } else {
+                let column = markColumns[name] ?? offset - buffer.lineRange(forOffset: offset).location
+                erased[name] = VimSavedMark(relative: offset - range.location, column: column)
+                marks[name] = nil
+                markColumns[name] = nil
+            }
+        }
+        erasedMarks = erasedMarks.compactMap { record in
+            var moved = record
+            moved.location = change.map(record.location, removable: false, in: buffer)?.offset ?? record.location
+            return moved
+        }
+        if !erased.isEmpty {
+            erasedMarks.append(VimErasedMarks(location: range.location, text: buffer.string(in: range), marks: erased))
+            if erasedMarks.count > 20 { erasedMarks.removeFirst() }
+        }
+        if let restored {
+            for (name, saved) in restored.marks {
+                marks[name] = restored.location + saved.relative
+                markColumns[name] = saved.column
+            }
+        }
+        lastJumpOrigin = lastJumpOrigin.flatMap { change.map($0, removable: false, in: buffer)?.offset }
+        lastInsertOffset = lastInsertOffset.flatMap { change.map($0, removable: false, in: buffer)?.offset }
+        lastVisualStart = lastVisualStart.flatMap { change.map($0, removable: false, in: buffer)?.offset }
+        lastVisualEnd = lastVisualEnd.flatMap { change.map($0, removable: false, in: buffer)?.offset }
     }
+}
+
+struct VimSavedMark {
+    let relative: Int
+    let column: Int
+}
+
+// The named marks one delete removed with its lines, and the text it removed.
+struct VimErasedMarks {
+    var location: Int
+    let text: String
+    var marks: [Character: VimSavedMark]
 }
 
 // One edit, read from the text before it, as Vim's line-based mark adjustment sees it.
@@ -188,25 +243,27 @@ struct VimMarkChange {
         lastLineContentEnd = (endLineHasBreak ? endLineEnd - 1 : endLineEnd) + delta
     }
 
-    func map(_ offset: Int, removable: Bool, in buffer: VimTextBuffer) -> Int? {
-        if offset < location { return offset }
-        if offset >= endLineEnd { return offset + delta }
-        if keepsLines { return keepingLineAndColumn(offset) }
+    // Nil when the edit removes the line of a removable mark. `keepsColumn` is false where the mark moved onto
+    // another line's text, as a join moves it.
+    func map(_ offset: Int, removable: Bool, in buffer: VimTextBuffer) -> (offset: Int, keepsColumn: Bool)? {
+        if offset < location { return (offset, true) }
+        if offset >= endLineEnd { return (offset + delta, true) }
+        if keepsLines { return (keepingLineAndColumn(offset), true) }
         if isLinewise {
-            if offset >= end { return offset + delta }
-            return removable ? nil : location
+            if offset >= end { return (offset + delta, true) }
+            return removable ? nil : (location, false)
         }
         if offset >= end {
-            return removesLineBreak ? offset + delta : keepingColumnOnFirstLine(offset)
+            return removesLineBreak ? (offset + delta, false) : (keepingColumnOnFirstLine(offset), true)
         }
         if removesLineBreak {
             let line = buffer.lineRange(forOffset: offset)
             if line.location > firstLineStart {
-                if NSMaxRange(line) <= end { return removable ? nil : location }
-                return end + delta
+                if NSMaxRange(line) <= end { return removable ? nil : (location, false) }
+                return (end + delta, false)
             }
         }
-        return keepingColumnOnFirstLine(offset)
+        return (keepingColumnOnFirstLine(offset), true)
     }
 
     // The first line keeps its start, so the offset keeps its column, up to the line's new last character.

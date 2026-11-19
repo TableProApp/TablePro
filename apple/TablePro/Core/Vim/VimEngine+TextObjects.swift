@@ -232,18 +232,18 @@ extension VimEngine {
     func paragraphObject(at cursor: Int, around: Bool, in buffer: VimTextBuffer) -> NSRange? {
         let lineCount = buffer.lineCount
         let currentLine = buffer.lineAndColumn(forOffset: cursor).line
-        let blank = lineIsBlank(currentLine, in: buffer)
+        let blank = lineIsWhite(currentLine, in: buffer)
         var startLine = currentLine
-        while startLine > 0 && lineIsBlank(startLine - 1, in: buffer) == blank { startLine -= 1 }
+        while startLine > 0 && lineIsWhite(startLine - 1, in: buffer) == blank { startLine -= 1 }
         var endLine = currentLine
-        while endLine < lineCount - 1 && lineIsBlank(endLine + 1, in: buffer) == blank { endLine += 1 }
+        while endLine < lineCount - 1 && lineIsWhite(endLine + 1, in: buffer) == blank { endLine += 1 }
         if around {
             var next = endLine
-            while next < lineCount - 1 && lineIsBlank(next + 1, in: buffer) != blank { next += 1 }
+            while next < lineCount - 1 && lineIsWhite(next + 1, in: buffer) != blank { next += 1 }
             if next > endLine {
                 endLine = next
             } else if !blank {
-                while startLine > 0 && lineIsBlank(startLine - 1, in: buffer) { startLine -= 1 }
+                while startLine > 0 && lineIsWhite(startLine - 1, in: buffer) { startLine -= 1 }
             }
         }
         let start = buffer.offset(forLine: startLine, column: 0)

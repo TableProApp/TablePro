@@ -692,6 +692,14 @@ final class VimEngineNormalMotionsTests {
         #expect(engine.register.isLinewise)
     }
 
+    @Test("d) on the last sentence deletes to the end of the text")
+    func deleteToSentenceEndAtTheEndOfTheText() {
+        buffer = VimTextBufferMock(text: "abc")
+        engine = VimEngine(buffer: buffer)
+        keys("d)")
+        #expect(buffer.text == "")
+    }
+
     @Test("} on the last paragraph stops on its last character")
     func braceOnTheLastParagraphStopsOnTheLastCharacter() {
         buffer = VimTextBufferMock(text: "aaa\nbbb\n")

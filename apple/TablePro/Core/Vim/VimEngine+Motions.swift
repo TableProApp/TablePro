@@ -335,7 +335,7 @@ extension VimEngine {
             }
             i += 1
         }
-        return buffer.length > 0 ? buffer.length - 1 : 0
+        return lastLineContentEnd(in: buffer)
     }
 
     func previousSentenceStart(before origin: Int, in buffer: VimTextBuffer) -> Int {
@@ -417,6 +417,19 @@ extension VimEngine {
             line = next
         }
         return buffer.offset(forLine: line, column: 0)
+    }
+
+    // A line of only blanks ends a paragraph for `ip` and `ap`, though not for `{` and `}`.
+    func lineIsWhite(_ line: Int, in buffer: VimTextBuffer) -> Bool {
+        let start = buffer.offset(forLine: line, column: 0)
+        let end = contentEnd(ofLineAt: start, in: buffer)
+        var scan = start
+        while scan < end {
+            let ch = buffer.character(at: scan)
+            guard ch == 0x20 || ch == 0x09 || ch == 0x0D else { return false }
+            scan += 1
+        }
+        return true
     }
 
     func lineIsBlank(_ line: Int, in buffer: VimTextBuffer) -> Bool {

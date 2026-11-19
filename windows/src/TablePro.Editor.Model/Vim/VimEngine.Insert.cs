@@ -126,11 +126,11 @@ public sealed partial class VimEngine
                     // A search after an operator is its motion, as d/foo deletes up to foo.
                     if (PendingOperator is not null)
                     {
-                        ApplyMotion(SearchTarget(body, forward: prefix == '/'), VimMotionKind.Exclusive);
+                        ApplyMotion(SearchTarget(body, forward: prefix == '/', SearchCount), VimMotionKind.Exclusive);
                     }
                     else
                     {
-                        RunSearch(body, forward: prefix == '/');
+                        RunSearch(body, forward: prefix == '/', SearchCount);
                     }
                 }
                 else

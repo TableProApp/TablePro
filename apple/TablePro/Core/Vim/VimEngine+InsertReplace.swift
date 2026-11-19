@@ -106,10 +106,10 @@ extension VimEngine {
             if prefix == "/" || prefix == "?" {
                 // A search after an operator is its motion, as `d/foo` deletes up to foo.
                 if pendingOperator != nil, let buffer {
-                    let target = searchTarget(pattern: body, forward: prefix == "/", in: buffer)
+                    let target = searchTarget(pattern: body, forward: prefix == "/", count: searchCount, in: buffer)
                     applyMotion(to: target, kind: .exclusive, in: buffer)
                 } else {
-                    runSearch(pattern: body, forward: prefix == "/")
+                    runSearch(pattern: body, forward: prefix == "/", count: searchCount)
                 }
             } else {
                 onCommand?(body)
