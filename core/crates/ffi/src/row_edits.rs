@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
-use tablepro_core::column::{ColumnDefault, ColumnInfo, ResultColumn};
+use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnKind, ResultColumn, TemporalZone};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dml::BuildSqlError;
 use tablepro_core::edit::{
@@ -99,6 +99,14 @@ pub struct EditColumnInfo {
     pub takes_empty: bool,
     // A saved row's cell can be set to DEFAULT: a declared default, on an engine whose UPDATE takes one.
     pub takes_default: bool,
+    // What the column holds, so the app can offer an editor for it, such as a toggle for a boolean.
+    pub kind: ValueKind,
+    // An enum's or a set's labels in the type's order; empty for every other column.
+    pub labels: Vec<String>,
+    // A MySQL SET: the value is any combination of the labels.
+    pub multiple: bool,
+    // A typed time or timestamp is refused without its offset, as for PostgreSQL's timestamptz.
+    pub needs_offset: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -562,6 +570,20 @@ impl TableEditor {
                 primary_key: column.primary_key,
                 takes_empty: column.column_type.kind.accepts_empty_string(),
                 takes_default: takes_default(column, dialect.as_deref()),
+                kind: ValueKind::of_column(&column.column_type.kind),
+                labels: match &column.column_type.kind {
+                    ColumnKind::Enum { labels, .. } => labels.clone(),
+                    _ => Vec::new(),
+                },
+                multiple: matches!(column.column_type.kind, ColumnKind::Enum { multiple: true, .. }),
+                needs_offset: matches!(
+                    column.column_type.kind,
+                    ColumnKind::Time { with_offset: true, .. }
+                        | ColumnKind::Timestamp {
+                            zone: TemporalZone::Offset,
+                            ..
+                        }
+                ),
             })
             .collect()
     }

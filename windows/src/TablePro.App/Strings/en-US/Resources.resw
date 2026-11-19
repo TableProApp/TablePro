@@ -4854,6 +4854,135 @@ New fingerprint: {2}</value>
   <data name="SummaryCopy" xml:space="preserve">
     <value>Copy {0}</value>
   </data>
+  <data name="LinkQueryTitle" xml:space="preserve">
+    <value>Open query from link</value>
+  </data>
+  <data name="LinkQueryMessage" xml:space="preserve">
+    <value>A link asks to open this SQL in a new query tab on {0}. Nothing runs until you run it.</value>
+  </data>
+  <data name="LinkQueryOpen" xml:space="preserve">
+    <value>Open query</value>
+  </data>
+  <data name="LinkConnectionFailedTitle" xml:space="preserve">
+    <value>Connection failed</value>
+  </data>
+  <data name="LinkNoConnection" xml:space="preserve">
+    <value>No saved connection with ID "{0}".</value>
+  </data>
+  <data name="NotificationsHeader.Text" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="NotifyCard.Header" xml:space="preserve">
+    <value>Notify when long-running work finishes</value>
+  </data>
+  <data name="NotifyCard.Description" xml:space="preserve">
+    <value>Only when the result is somewhere you are not: another app in front, the window minimized, or another tab selected</value>
+  </data>
+  <data name="NotifySwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Notify when long-running work finishes</value>
+  </data>
+  <data name="NotifyAfterCard.Header" xml:space="preserve">
+    <value>Only after</value>
+  </data>
+  <data name="NotifyAfterCard.Description" xml:space="preserve">
+    <value>How long a query has to run to notify. Keep it below the query timeout.</value>
+  </data>
+  <data name="NotifyAfterBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Only after</value>
+  </data>
+  <data name="NotifyAfterSeconds" xml:space="preserve">
+    <value>{0} seconds</value>
+  </data>
+  <data name="NotifyAfterMinute" xml:space="preserve">
+    <value>1 minute</value>
+  </data>
+  <data name="NotifyAfterMinutes" xml:space="preserve">
+    <value>{0} minutes</value>
+  </data>
+  <data name="NotificationsOffBar.Title" xml:space="preserve">
+    <value>Notifications are off for TablePro</value>
+  </data>
+  <data name="NotificationsOffBar.Message" xml:space="preserve">
+    <value>Windows shows none, so the taskbar button flashes instead.</value>
+  </data>
+  <data name="NotificationsOffLink.Content" xml:space="preserve">
+    <value>Open notification settings</value>
+  </data>
+  <data name="NotifyRow" xml:space="preserve">
+    <value>1 row in {0}</value>
+  </data>
+  <data name="NotifyRows" xml:space="preserve">
+    <value>{0:N0} rows in {1}</value>
+  </data>
+  <data name="NotifyAffectedOne" xml:space="preserve">
+    <value>1 row changed in {0}</value>
+  </data>
+  <data name="NotifyAffected" xml:space="preserve">
+    <value>{0:N0} rows changed in {1}</value>
+  </data>
+  <data name="NotifyDone" xml:space="preserve">
+    <value>Finished in {0}</value>
+  </data>
+  <data name="NotifyFailed" xml:space="preserve">
+    <value>Failed after {0}</value>
+  </data>
+  <data name="CellEditAsText" xml:space="preserve">
+    <value>Edit as text</value>
+  </data>
+  <data name="CellSetValue" xml:space="preserve">
+    <value>Set</value>
+  </data>
+  <data name="CellDateName" xml:space="preserve">
+    <value>Date for {0}</value>
+  </data>
+  <data name="CellTimeName" xml:space="preserve">
+    <value>Time for {0}</value>
+  </data>
+  <data name="ResultModes.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Data or JSON</value>
+  </data>
+  <data name="ResultsDataView.Text" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="ResultsJsonView.Text" xml:space="preserve">
+    <value>JSON</value>
+  </data>
+  <data name="JsonModes" xml:space="preserve">
+    <value>Text or tree</value>
+  </data>
+  <data name="JsonTextMode" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="JsonTreeMode" xml:space="preserve">
+    <value>Tree</value>
+  </data>
+  <data name="CopyJson" xml:space="preserve">
+    <value>Copy JSON</value>
+  </data>
+  <data name="JsonTextName" xml:space="preserve">
+    <value>Rows as JSON</value>
+  </data>
+  <data name="JsonTreeName" xml:space="preserve">
+    <value>Rows as a JSON tree</value>
+  </data>
+  <data name="JsonRows" xml:space="preserve">
+    <value>Rows: {0:N0}</value>
+  </data>
+  <data name="JsonRowsOf" xml:space="preserve">
+    <value>Rows: {0:N0} of {1:N0}</value>
+  </data>
+  <data name="JsonRowsCapped" xml:space="preserve">
+    <value>{0} · The first {1:N0} only</value>
+  </data>
+  <data name="JsonRowsDeleted" xml:space="preserve">
+    <value>{0} · {1:N0} marked for deletion left out</value>
+  </data>
+  <data name="JsonTextCut" xml:space="preserve">
+    <value>{0} · The text shows its start; Copy JSON copies all of it</value>
+  </data>
+  <data name="JsonCopyFailed" xml:space="preserve">
+    <value>The JSON could not be put on the clipboard.</value>
+  </data>
   <data name="AiHeader.Text" xml:space="preserve">
     <value>AI assistant</value>
   </data>

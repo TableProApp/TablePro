@@ -85,6 +85,7 @@ public sealed partial class QueryTabView
         ShowDatabase();
         _model.StateChanged += (_, _) => OnModelStateChanged();
         _model.FileSaved += (_, path) => FileSaved?.Invoke(this, path);
+        _model.RunEnded += (_, end) => RunEnded?.Invoke(this, end);
         Results.StatusChanged += (_, status) =>
         {
             _resultsStatus = status;
@@ -101,6 +102,7 @@ public sealed partial class QueryTabView
         // The cell editor takes focus as it opens and gives it back as it closes, so Save and the closes follow it.
         grid.LostFocus += (_, _) => EditStateMayHaveChanged();
         Results.MessagesBox.GotFocus += (_, _) => _target = EditTarget.Messages;
+        Results.JsonTextBox.GotFocus += (_, _) => _target = EditTarget.Messages;
         grid.ContextRequested += OnGridContextRequested;
         grid.CellEditStarting += OnCellEditStarting;
         grid.CellEditCommitting += OnCellEditCommitting;
@@ -131,6 +133,14 @@ public sealed partial class QueryTabView
         await _model.LoadRestoredFileAsync(stamp, unsaved).ConfigureAwait(true);
 
     public event EventHandler? StateChanged;
+
+    // A run the user started ended; the workspace holding the tab decides whether it notifies.
+    internal event EventHandler<RunEnd>? RunEnded;
+
+    // The tab's notification, which a later run's replaces.
+    internal string NoticeKey { get; } = Guid.NewGuid().ToString("N");
+
+    internal string? ShownDatabase => _model.ShownDatabase;
 
     // .sql files dropped on the editor; the workspace opens each in a tab of its own.
     public event EventHandler<IReadOnlyList<string>>? OpenFilesRequested;
@@ -189,10 +199,9 @@ public sealed partial class QueryTabView
 
     public DataGridView? Grid => Results.GridView;
 
-    public bool GridIsTarget => _target == EditTarget.Grid;
+    public bool GridIsTarget => _target == EditTarget.Grid && Results.ShowsGrid;
 
-    public TextBox? MessagesTarget =>
-        _target == EditTarget.Messages && Results.MessagesBox.Visibility == Visibility.Visible ? Results.MessagesBox : null;
+    public TextBox? MessagesTarget => _target == EditTarget.Messages ? Results.ShownText : null;
 
     internal ResultsPane ResultsView => Results;
 
@@ -747,7 +756,8 @@ public sealed partial class QueryTabView
         }
 
         grid.FocusCell(row, _model.FirstColumnToFill);
-        grid.BeginEdit();
+        // A new row is typed into, so a boolean first column opens its text box rather than toggling.
+        grid.BeginTextEdit();
     }
 
     public void DuplicateRows()
@@ -809,6 +819,8 @@ public sealed partial class QueryTabView
             {
                 edited.Edits = edits;
                 grid.EditsChanged();
+                // The selection's figures and the JSON read the pending edits too.
+                Results.RefreshSummary();
             }
         }
 
@@ -832,7 +844,24 @@ public sealed partial class QueryTabView
             return;
         }
 
-        e.Text = text;
+        // A result's columns pick their editor as a table tab's do (docs/decisions/0018, Type editors).
+        var column = e.InPlace ? null : _model.ResultEdits?.Columns.ElementAtOrDefault(e.Column);
+        var editor = column is null ? CellEditor.Text : CellEditors.For(column);
+        if (column is null || editor == CellEditor.Text)
+        {
+            e.Text = text;
+            return;
+        }
+
+        e.Cancel = true;
+        var grid = Results.GridView;
+        var shown = Results.ShownSet;
+        var cell = (grid.FocusedRow, grid.FocusedColumn);
+        var (row, at) = (e.Row, e.Column);
+        bool IsCurrent() => ReferenceEquals(shown, Results.ShownSet) && cell == (grid.FocusedRow, grid.FocusedColumn);
+        CellEditorFlyouts.Open(
+            editor,
+            new CellEditRequest(grid, column, text, IsCurrent, value => ShowRefusal(_model.CommitEdit(row, at, value))));
     }
 
     // A refusal keeps the editor open with the reason on it; a focus loss closes the editor, so the status says it too.

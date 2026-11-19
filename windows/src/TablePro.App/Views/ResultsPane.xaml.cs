@@ -33,12 +33,21 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     private Action? _goToError;
     private Action? _fix;
     private SelectionSummary? _summary;
+    private readonly JsonResultView _jsonView = new() { Visibility = Visibility.Collapsed };
+    private bool _showsJson;
+    private CancellationTokenSource? _jsonWrite;
+    private bool _jsonStale;
 
     private static readonly TimeSpan SummaryDelay = TimeSpan.FromMilliseconds(150);
+
+    // Rows that arrive together, or edits made in a row, are written once.
+    private static readonly TimeSpan JsonDelay = TimeSpan.FromMilliseconds(100);
 
     public ResultsPane()
     {
         InitializeComponent();
+        Grid.SetRow(_jsonView, 1);
+        ResultsArea.Children.Add(_jsonView);
         Placeholder.Text = Strings.Get("ResultsEmpty");
         ResultGrid.SizeColumnsToContent = true;
         ResultGrid.ShowsCellTips = true;
@@ -67,6 +76,17 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     public DataGridView GridView => ResultGrid;
 
     public TextBox MessagesBox => MessagesText;
+
+    internal TextBox JsonTextBox => _jsonView.TextBox;
+
+    // The text the Edit menu's Copy and Select All reach once text had focus: the messages or the JSON, whichever shows.
+    internal TextBox? ShownText =>
+        MessagesText.Visibility == Visibility.Visible ? MessagesText
+        : _jsonView.ShowsText ? _jsonView.TextBox
+        : null;
+
+    // JSON hides the grid, so Copy and Select All must not reach its selection.
+    internal bool ShowsGrid => ResultGrid.Visibility == Visibility.Visible;
 
     // The columns of the set the grid shows.
     public IReadOnlyList<ResultColumn> Columns { get; private set; } = [];
@@ -132,6 +152,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         ResultGrid.FrozenColumnCount = arranged.Frozen;
         ResultGrid.Sort = ToDisplay(_sort);
         QueueSummary();
+        QueueJson();
     }
 
     private GridSort ToData(GridSort sort) =>
@@ -449,6 +470,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
             if (ReferenceEquals(held, _picked))
             {
                 ResultGrid.RowsChanged();
+                QueueJson(rowsArrived: true);
                 if (ended)
                 {
                     ShowPickedLabel();
@@ -468,8 +490,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         _sorted = null;
         Columns = first.Result.Columns;
         ShowData(first.Set, first.Result.Columns, sort);
-        ResultGrid.Visibility = Visibility.Visible;
-        Placeholder.Visibility = Visibility.Collapsed;
+        ShowResultViews();
         // The grid disposed the old set's cursor in SetData.
         DisposeSets(held, sorted);
         ListAllInPicker();
@@ -559,13 +580,12 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         ResultGrid.SetData(null);
         _sort = GridSort.None;
         QueueSummary();
-        ResultGrid.Visibility = Visibility.Collapsed;
-        Placeholder.Visibility = Visibility.Visible;
         _held = [];
         _picked = null;
         _leaving = null;
         _sorted = null;
         Columns = [];
+        ShowResultViews();
         DisposeSets(held, sorted);
         ListAllInPicker();
         ShownMayHaveChanged();
@@ -579,6 +599,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
             _shown = ShownSet;
             ShownSetChanged?.Invoke(this, EventArgs.Empty);
         }
+
+        QueueJson();
     }
 
     // Each set shows in the table tab's layout from its first draw, so its widths fit the columns it shows.
@@ -772,11 +794,130 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         ViewBar.SelectedItem = view == ResultsView.Messages ? MessagesItem : ResultsItem;
         ResultsArea.Visibility = view == ResultsView.Results ? Visibility.Visible : Visibility.Collapsed;
         MessagesText.Visibility = view == ResultsView.Messages ? Visibility.Visible : Visibility.Collapsed;
+        ShowResultViews();
         QueueSummary();
     }
 
-    // A table tab's edits change what the selected cells hold.
-    internal void RefreshSummary() => QueueSummary();
+    // The grid stays under the JSON view with its rows, selection and edits, so Data finds it as it was left.
+    private void ShowResultViews()
+    {
+        var shown = _picked is not null;
+        ResultGrid.Visibility = shown && !_showsJson ? Visibility.Visible : Visibility.Collapsed;
+        _jsonView.Visibility = shown && _showsJson ? Visibility.Visible : Visibility.Collapsed;
+        Placeholder.Visibility = shown ? Visibility.Collapsed : Visibility.Visible;
+        BottomBar.Visibility = shown && _view == ResultsView.Results ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnResultModeChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        var json = ReferenceEquals(sender.SelectedItem, JsonModeItem);
+        // The bar's own first selection comes here while the pane is still being built.
+        if (json == _showsJson)
+        {
+            return;
+        }
+
+        _showsJson = json;
+        ShowResultViews();
+        QueueSummary();
+        QueueJson();
+        if (!json)
+        {
+            // Written again from the rows as they stand the next time JSON is picked.
+            _jsonView.Clear();
+        }
+    }
+
+    // A table tab's edits change what the selected cells and the JSON hold.
+    internal void RefreshSummary()
+    {
+        QueueSummary();
+        QueueJson();
+    }
+
+    // A change stops the write before it, but arriving rows wait for the one under way, so a stream still gets written.
+    private void QueueJson(bool rowsArrived = false)
+    {
+        if (rowsArrived && _jsonWrite is not null)
+        {
+            _jsonStale = true;
+            return;
+        }
+
+        _jsonStale = false;
+        _jsonWrite?.Cancel();
+        _jsonWrite = null;
+        if (!_showsJson)
+        {
+            return;
+        }
+
+        if (_picked is null || ResultGrid.Data is not { } data)
+        {
+            _jsonView.Clear();
+            return;
+        }
+
+        var range = ResultGrid.SelectionRange;
+        var (first, count) = ResultGrid.SelectionKind == SelectionKind.Rows && !range.IsEmpty
+            ? (range.FirstRow, range.RowCount)
+            : (0, int.MaxValue);
+        var cancel = new CancellationTokenSource();
+        _jsonWrite = cancel;
+        _ = WriteJsonAsync(data, (data as EditedGridData)?.Edits, ShownSet, Columns, first, count, cancel);
+    }
+
+    private async Task WriteJsonAsync(IGridData data, GridEdits? edits, ResultSet? set,
+        IReadOnlyList<ResultColumn> columns, int first, int count, CancellationTokenSource cancel)
+    {
+        try
+        {
+            await Task.Delay(JsonDelay, cancel.Token).ConfigureAwait(true);
+            var (json, tree) = await Task.Run(() =>
+            {
+                // The cursor that reads each value's kind belongs to this thread, as the grid data's reader does.
+                using var kinds = set is null ? null : new ResultSetKinds(set, columns.Count);
+                var written = RowsJson.Write(data, edits, columns, kinds, first, count, cancel.Token);
+                return (written, JsonTree.Parse(written.Text));
+            }, cancel.Token).ConfigureAwait(true);
+            if (ReferenceEquals(_jsonWrite, cancel))
+            {
+                _jsonView.Show(json, tree);
+            }
+            else
+            {
+                tree.Dispose();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException) when (cancel.IsCancellationRequested)
+        {
+            // The pane let go of the set while this read it.
+        }
+        catch (TableProException exception)
+        {
+            if (ReferenceEquals(_jsonWrite, cancel))
+            {
+                _jsonView.ShowFailure(Strings.Error(exception.Error));
+            }
+        }
+        finally
+        {
+            var current = ReferenceEquals(_jsonWrite, cancel);
+            if (current)
+            {
+                _jsonWrite = null;
+            }
+
+            cancel.Dispose();
+            if (current && _jsonStale)
+            {
+                QueueJson();
+            }
+        }
+    }
 
     // One cell says no more than itself, so the readout waits for two; each change stops the count before it.
     private void QueueSummary()
@@ -784,7 +925,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         _summing?.Cancel();
         _summing = null;
         var range = ResultGrid.SelectionRange;
-        if (_view != ResultsView.Results || ResultGrid.Data is not { } data || range.CellCount < 2)
+        if (_view != ResultsView.Results || _showsJson || ResultGrid.Data is not { } data || range.CellCount < 2)
         {
             ShowSummary(null);
             return;
@@ -866,7 +1007,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         if (summary is null)
         {
             SummaryFlyout.Hide();
-            SummaryBar.Visibility = Visibility.Collapsed;
+            SummaryButton.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -877,7 +1018,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         SummaryButton.Content = text;
         AutomationProperties.SetName(SummaryButton, text);
         ToolTipService.SetToolTip(SummaryButton, text);
-        SummaryBar.Visibility = Visibility.Visible;
+        SummaryButton.Visibility = Visibility.Visible;
     }
 
     // Built as it opens, with a Copy for each figure, so a figure copies the digits it shows.

@@ -1255,6 +1255,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             query.SaveQueryRequested += OnSaveQueryRequested;
             query.OpenFilesRequested += OnOpenFilesRequested;
             query.FileSaved += OnFileSaved;
+            query.RunEnded += OnRunEnded;
             query.TabCount = () => Tabs.TabItems.Count;
             query.TabCommandRequested += OnTabCommandRequested;
             AttachAssistant(query);
@@ -1320,6 +1321,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             query.SaveQueryRequested -= OnSaveQueryRequested;
             query.OpenFilesRequested -= OnOpenFilesRequested;
             query.FileSaved -= OnFileSaved;
+            query.RunEnded -= OnRunEnded;
             query.TabCount = static () => 0;
             query.TabCommandRequested -= OnTabCommandRequested;
             DetachAssistant(query);
