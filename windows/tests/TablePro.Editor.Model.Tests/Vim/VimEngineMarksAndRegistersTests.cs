@@ -300,6 +300,21 @@ public sealed class VimEngineMarksAndRegistersTests
     }
 
     [Fact]
+    public void ASecondUndoSkipsTheRecordTheFirstUndoMade()
+    {
+        var s = new VimSession("aaa\nbbb\n", caret: 6);
+        s.Press("magggJ");
+        // A typed newline where the join took one out, so the first undo makes the edit the join made.
+        s.Model.NewLine();
+        Assert.Equal("aaa\nbbb\n", s.Text);
+        s.Press("uu");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal("aaa\nbbb\n", s.Text);
+        Assert.Equal(6, s.Caret);
+    }
+
+    [Fact]
     public void UndoingAJoinPutsTheMarkBackOnItsLine()
     {
         var s = new VimSession("hello world\n    second\n", caret: 16);

@@ -17,6 +17,9 @@ public sealed partial class VimEngine : IDisposable
     private string _commandLine = string.Empty;
     private int _depth;
     private UndoMark? _insertMark;
+    // The redo count the last replayed change saw, which tells an undo from a redo; null once any other edit lands.
+    private int? _replayRedoCount;
+    private bool _replayUndoes;
     private (VimMode, string, string, string?) _shownStatus;
 
     public VimEngine(EditorModel model, IVimHost host, VimRegisters? registers = null)
@@ -320,6 +323,7 @@ public sealed partial class VimEngine : IDisposable
         Marks = new Dictionary<string, int>(StringComparer.Ordinal);
         MarkColumns = new Dictionary<string, int>(StringComparer.Ordinal);
         EditJournal.Clear();
+        _replayRedoCount = null;
         LastVisualStart = null;
         LastVisualEnd = null;
         LastVisualLinewise = false;

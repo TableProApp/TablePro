@@ -163,8 +163,9 @@ extension VimEngine {
     // Called before every edit, typed, pasted, undone or the engine's own. A mark keeps its line and column, as Vim's
     // do (`:help mark-motions`): lines added or removed before it move it, a join carries it with its text, and
     // removing its whole line removes a named mark. Each edit is kept with the positions from before it, so an undo or
-    // redo that reverses it puts them back, as Vim's undo restores its marks. Typing the same text back is not undo.
-    func textWillChange(in range: NSRange, with replacement: String, isUndoOrRedo: Bool = false) {
+    // redo that reverses it puts them back, as Vim's undo restores its marks. Typing the same text back is not undo,
+    // and an undo reverses only edits, a redo only undos.
+    func textWillChange(in range: NSRange, with replacement: String, source: VimEditSource = .edit) {
         guard let buffer else { return }
         let hasPositions = !marks.isEmpty || lastJumpOrigin != nil || lastInsertOffset != nil
             || lastVisualStart != nil || lastVisualEnd != nil
@@ -172,7 +173,7 @@ extension VimEngine {
         let removedText = buffer.string(in: range)
         let before = positionSnapshot
         var restored: VimPositionSnapshot?
-        if isUndoOrRedo, let index = reversedJournalIndex(range: range, replacement: replacement) {
+        if source != .edit, let index = reversedJournalIndex(range: range, replacement: replacement, source: source) {
             restored = editJournal[index].positions
             editJournal.removeSubrange(index...)
         }
@@ -193,20 +194,25 @@ extension VimEngine {
             location: range.location,
             removedText: removedText,
             insertedText: replacement,
-            positions: before
+            positions: before,
+            isUndo: source == .undo
         ))
         if editJournal.count > 100 { editJournal.removeFirst() }
     }
 
     // The newest record the edit reverses. An editor may undo a run of keys, such as backspaces, as one edit, so the
     // newest records are also tried folded together, oldest first.
-    private func reversedJournalIndex(range: NSRange, replacement: String) -> Int? {
-        if let index = editJournal.lastIndex(where: { $0.isReversed(by: range, replacement: replacement) }) {
+    private func reversedJournalIndex(range: NSRange, replacement: String, source: VimEditSource) -> Int? {
+        let reversesUndo = source == .redo
+        if let index = editJournal.lastIndex(where: {
+            $0.isUndo == reversesUndo && $0.isReversed(by: range, replacement: replacement)
+        }) {
             return index
         }
-        guard var folded = editJournal.last else { return nil }
+        guard var folded = editJournal.last, folded.isUndo == reversesUndo else { return nil }
         for index in stride(from: editJournal.count - 2, through: max(0, editJournal.count - 50), by: -1) {
-            guard let combined = editJournal[index].followed(by: folded) else { return nil }
+            guard editJournal[index].isUndo == reversesUndo,
+                  let combined = editJournal[index].followed(by: folded) else { return nil }
             if combined.isReversed(by: range, replacement: replacement) { return index }
             folded = combined
         }
@@ -238,11 +244,17 @@ struct VimPositionSnapshot {
 
 // One edit, and the positions from before it. Undo reverses edits newest first, so the reversing edit finds its
 // record at the end of the journal, past any whose undo the editor folded into one step.
+enum VimEditSource {
+    case edit, undo, redo
+}
+
 struct VimEditRecord {
     let location: Int
     let removedText: String
     let insertedText: String
     let positions: VimPositionSnapshot
+    // An undo's own edit, which only a redo reverses.
+    let isUndo: Bool
 
     func isReversed(by range: NSRange, replacement: String) -> Bool {
         range.location == location && range.length == (insertedText as NSString).length && replacement == removedText
@@ -265,7 +277,8 @@ struct VimEditRecord {
             location: min(location, next.location),
             removedText: before + (removed as String) + after,
             insertedText: keptHead + (nextInserted as String) + keptTail,
-            positions: positions
+            positions: positions,
+            isUndo: isUndo
         )
     }
 }

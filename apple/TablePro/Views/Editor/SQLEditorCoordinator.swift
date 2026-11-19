@@ -254,8 +254,8 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     func textView(_ textView: TextView, willReplaceContentsIn range: NSRange, with string: String) {
         guard let vimEngine else { return }
         let undoManager = textView.undoManager
-        let isUndoOrRedo = undoManager?.isUndoing == true || undoManager?.isRedoing == true
-        vimEngine.textWillChange(in: range, with: string, isUndoOrRedo: isUndoOrRedo)
+        let source: VimEditSource = undoManager?.isUndoing == true ? .undo : undoManager?.isRedoing == true ? .redo : .edit
+        vimEngine.textWillChange(in: range, with: string, source: source)
     }
 
     func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {

@@ -377,6 +377,23 @@ final class VimEngineMarksAndRegistersTests {
         #expect(pos == 6)
     }
 
+    @Test("Two undos in a row restore the marks from before the first edit, not from the first undo")
+    func consecutiveUndosRestoreTheOriginalMark() {
+        buffer = VimTextBufferMock(text: "aaa\nbbb\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        buffer.setSelectedRange(NSRange(location: 6, length: 0))
+        keys("magg")
+        keys("gJ")
+        buffer.replaceCharacters(in: NSRange(location: 3, length: 0), with: "\n")
+        buffer.replayUndo(in: NSRange(location: 3, length: 1), with: "")
+        buffer.replayUndo(in: NSRange(location: 3, length: 0), with: "\n")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("`a")
+        #expect(buffer.text == "aaa\nbbb\n")
+        #expect(pos == 6)
+    }
+
     @Test("A mark keeps its column through a line that shrinks and grows back")
     func markColumnSurvivesAShorterLine() {
         buffer = VimTextBufferMock(text: "abcdef\ntail\n")

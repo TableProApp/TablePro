@@ -131,7 +131,13 @@ internal sealed record VimPositionSnapshot(
 
 // One edit and the positions from before it. Undo reverses edits newest first, so the reversing edit finds its record
 // at the end of the journal.
-internal sealed record VimEditRecord(int Location, string RemovedText, string InsertedText, VimPositionSnapshot Positions)
+// IsUndo marks an undo's own edit, which only a redo reverses.
+internal sealed record VimEditRecord(
+    int Location,
+    string RemovedText,
+    string InsertedText,
+    VimPositionSnapshot Positions,
+    bool IsUndo)
 {
     public bool IsReversedBy(TextChange change) => change.Offset == Location && change.RemovedLength == InsertedText.Length
         && string.Equals(change.InsertedText, RemovedText, StringComparison.Ordinal);
@@ -153,6 +159,7 @@ internal sealed record VimEditRecord(int Location, string RemovedText, string In
             Math.Min(Location, next.Location),
             before + RemovedText + after,
             keptHead + next.InsertedText + keptTail,
-            Positions);
+            Positions,
+            IsUndo);
     }
 }

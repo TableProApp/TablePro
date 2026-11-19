@@ -144,6 +144,11 @@ public sealed partial class VimEngine
     // marks.
     private void OnDocumentChanged(object? sender, TextChange change)
     {
+        bool? undoes = _buffer.Model.Document.Undo.IsReplaying ? ReplayUndoes() : null;
+        if (undoes is null)
+        {
+            _replayRedoCount = null;
+        }
         var hasPositions = Marks.Count > 0 || LastJumpOrigin is not null || LastInsertOffset is not null
             || LastVisualStart is not null || LastVisualEnd is not null;
         if (!hasPositions && EditJournal.Count == 0)
@@ -159,7 +164,7 @@ public sealed partial class VimEngine
             LastVisualEnd);
         VimPositionSnapshot? restored = null;
         // Only undo and redo reverse an edit; typing back what an earlier edit removed, past later edits, is a new edit.
-        var index = _buffer.Model.Document.Undo.IsReplaying ? ReversedJournalIndex(change) : -1;
+        var index = undoes is { } undo ? ReversedJournalIndex(change, reversesUndo: !undo) : -1;
         if (index >= 0)
         {
             restored = EditJournal[index].Positions;
@@ -190,26 +195,43 @@ public sealed partial class VimEngine
         {
             RestorePositions(restored);
         }
-        EditJournal.Add(new VimEditRecord(change.Offset, change.RemovedText, change.InsertedText, before));
+        EditJournal.Add(new VimEditRecord(change.Offset, change.RemovedText, change.InsertedText, before, undoes == true));
         if (EditJournal.Count > 100)
         {
             EditJournal.RemoveAt(0);
         }
     }
 
-    // The newest record the edit reverses. The undo history joins a run of keys, such as backspaces, into one edit, so
-    // the newest records are also tried folded together, oldest first.
-    private int ReversedJournalIndex(TextChange change)
+    // Whether the undo history is undoing, not redoing. An edit empties the redo stack, so the first replay after one
+    // undoes; after that an undo takes a step onto the redo stack and a redo takes one off.
+    private bool ReplayUndoes()
     {
-        var index = EditJournal.FindLastIndex(record => record.IsReversedBy(change));
-        if (index >= 0 || EditJournal.Count == 0)
+        var redoCount = _buffer.Model.Document.Undo.RedoCount;
+        if (_replayRedoCount is not { } seen)
+        {
+            _replayUndoes = true;
+        }
+        else if (redoCount != seen)
+        {
+            _replayUndoes = redoCount > seen;
+        }
+        _replayRedoCount = redoCount;
+        return _replayUndoes;
+    }
+
+    // The newest record the edit reverses: an undo reverses only edits, a redo only undos. The undo history joins a run
+    // of keys, such as backspaces, into one edit, so the newest records are also tried folded together, oldest first.
+    private int ReversedJournalIndex(TextChange change, bool reversesUndo)
+    {
+        var index = EditJournal.FindLastIndex(record => record.IsUndo == reversesUndo && record.IsReversedBy(change));
+        if (index >= 0 || EditJournal.Count == 0 || EditJournal[^1].IsUndo != reversesUndo)
         {
             return index;
         }
         var folded = EditJournal[^1];
         for (var i = EditJournal.Count - 2; i >= Math.Max(0, EditJournal.Count - 50); i--)
         {
-            if (EditJournal[i].FollowedBy(folded) is not { } combined)
+            if (EditJournal[i].IsUndo != reversesUndo || EditJournal[i].FollowedBy(folded) is not { } combined)
             {
                 return -1;
             }

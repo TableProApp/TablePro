@@ -189,15 +189,15 @@ final class VimTextBufferMock: VimTextBuffer {
 
     // Puts text back as the editor's undo does, which the engine tells apart from typing.
     func replayUndo(in range: NSRange, with string: String) {
-        isReplayingUndo = true
-        defer { isReplayingUndo = false }
+        editSource = .undo
+        defer { editSource = .edit }
         replaceCharacters(in: range, with: string)
     }
 
-    private var isReplayingUndo = false
+    private var editSource: VimEditSource = .edit
 
     func replaceCharacters(in range: NSRange, with string: String) {
-        editObserver?.textWillChange(in: range, with: string, isUndoOrRedo: isReplayingUndo)
+        editObserver?.textWillChange(in: range, with: string, source: editSource)
         let mutable = NSMutableString(string: text)
         mutable.replaceCharacters(in: range, with: string)
         text = mutable as String
