@@ -225,6 +225,13 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         set { saveStringSet(newValue, key: "changesHeldForUnreadableCopies") }
     }
 
+    // Record names of unread copies a pull deleted, removed by the next save of their file; the account that sent
+    // the deletion owns it, like the rest of the server position.
+    public var removalsPendingForUnreadableCopies: Set<String> {
+        get { stringSet("removalsPendingForUnreadableCopies") }
+        set { saveStringSet(newValue, key: "removalsPendingForUnreadableCopies") }
+    }
+
     // Record names a pull deleted while this device could not tell whether its unreadable copy syncs.
     public var deletionsHeldForUnreadableCopies: Set<String> {
         get { stringSet("deletionsHeldForUnreadableCopies") }
@@ -351,6 +358,7 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         deferredDeletions = []
         changesHeldForUnreadableCopies = []
         deletionsHeldForUnreadableCopies = []
+        removalsPendingForUnreadableCopies = []
         userDefaults.removeObject(forKey: key("lastSyncDate"))
     }
 
@@ -379,6 +387,7 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         deferredDeletions = []
         changesHeldForUnreadableCopies = []
         deletionsHeldForUnreadableCopies = []
+        removalsPendingForUnreadableCopies = []
         zoneState = .unknown
         userDefaults.removeObject(forKey: key("lastSyncDate"))
         userDefaults.removeObject(forKey: key("lastAccountId"))

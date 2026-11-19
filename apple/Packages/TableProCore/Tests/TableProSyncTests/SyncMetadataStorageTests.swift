@@ -355,11 +355,13 @@ struct SyncMetadataStorageTests {
         _ = storage.adoptAccount("first")
         storage.changesHeldForUnreadableCopies = ["Connection_A"]
         storage.deletionsHeldForUnreadableCopies = ["Connection_B"]
+        storage.removalsPendingForUnreadableCopies = ["Connection_C"]
 
         _ = storage.adoptAccount("second")
 
         #expect(storage.changesHeldForUnreadableCopies.isEmpty)
         #expect(storage.deletionsHeldForUnreadableCopies.isEmpty)
+        #expect(storage.removalsPendingForUnreadableCopies.isEmpty)
     }
 
     @Test("A held deletion falls due once its copy reads, and settles unapplied when the server sent the record again")

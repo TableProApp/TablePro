@@ -48,8 +48,6 @@ final class AppState {
     @ObservationIgnored private var pastedSSHKeysAwaitingKeychain: [UUID: String] = [:]
     // A failed save leaves the change in memory only, so sync must not take an equal download as already saved.
     @ObservationIgnored private var unsavedLibraryParts: Set<LibraryPart> = []
-    // Unread copies another device deleted, removed by the next save of their file so their ids stay protected until then.
-    @ObservationIgnored private var unreadableCopiesToRemove = UnreadableCopies()
     let libraryPreferences: ConnectionLibraryPreferences
     let sshProvider: IOSSSHProvider
     let secureStore: any SecureStore
@@ -351,7 +349,9 @@ final class AppState {
             by: connections,
             orUnreadable: storage.unreadableIds
         )
-        let removedUnreadable = unreadableCopiesToRemove.connections
+        // Only a copy still kept unread: one a newer build reads now is a live record.
+        let pendingRemovals = pendingUnreadableRemovals.connections
+        let removedUnreadable = pendingRemovals.intersection(storage.unreadableIds)
         var saved = true
         do {
             try storage.save(connections, keepingPastedSSHKeys: heldKeys, removingUnreadable: removedUnreadable)
@@ -365,6 +365,7 @@ final class AppState {
         pastedSSHKeysAwaitingKeychain = heldKeys
         if saved {
             recordConnectionStanding()
+            settleUnreadableRemovals(UnreadableCopies(connections: pendingRemovals))
             purgeRemovedUnreadable(removedUnreadable)
         }
         pruneLibraryPreferences()
@@ -375,8 +376,9 @@ final class AppState {
     private func persist(groups: [ConnectionGroup], onlyIfSaved: Bool = false) -> Bool {
         var saved = true
         do {
-            try groupStorage.save(groups, removingUnreadable: unreadableCopiesToRemove.groups)
-            unreadableCopiesToRemove.groups = []
+            let pending = pendingUnreadableRemovals.groups
+            try groupStorage.save(groups, removingUnreadable: pending.intersection(groupStorage.unreadableIds))
+            settleUnreadableRemovals(UnreadableCopies(groups: pending))
         } catch {
             saved = false
             Self.logger.error("Failed to save groups: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
@@ -392,8 +394,9 @@ final class AppState {
     private func persist(tags: [ConnectionTag], onlyIfSaved: Bool = false) -> Bool {
         var saved = true
         do {
-            try tagStorage.save(tags, removingUnreadable: unreadableCopiesToRemove.tags)
-            unreadableCopiesToRemove.tags = []
+            let pending = pendingUnreadableRemovals.tags
+            try tagStorage.save(tags, removingUnreadable: pending.intersection(tagStorage.unreadableIds))
+            settleUnreadableRemovals(UnreadableCopies(tags: pending))
         } catch {
             saved = false
             Self.logger.error("Failed to save tags: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
@@ -408,15 +411,24 @@ final class AppState {
         UnreadableCopies(connections: storage.unreadableIds, groups: groupStorage.unreadableIds, tags: tagStorage.unreadableIds)
     }
 
+    // Unread copies another device deleted, removed by the next save of their file so their ids stay protected until
+    // then. Kept with the sync metadata, which an account switch clears.
+    private var pendingUnreadableRemovals: UnreadableCopies {
+        UnreadableCopies(recordNames: syncCoordinator.metadata.removalsPendingForUnreadableCopies)
+    }
+
+    private func settleUnreadableRemovals(_ removed: UnreadableCopies) {
+        guard !removed.isEmpty else { return }
+        syncCoordinator.metadata.removalsPendingForUnreadableCopies.subtract(removed.recordNames)
+    }
+
     // Marked unsaved, so the merge that follows writes each file even when its list is unchanged. A record the server
     // lists again was saved after the deletion still waiting from an earlier pull.
     private func removeWithNextSave(_ deleted: UnreadableCopies, keeping listed: UnreadableCopies) {
-        unreadableCopiesToRemove.connections.subtract(listed.connections)
-        unreadableCopiesToRemove.groups.subtract(listed.groups)
-        unreadableCopiesToRemove.tags.subtract(listed.tags)
-        unreadableCopiesToRemove.connections.formUnion(deleted.connections)
-        unreadableCopiesToRemove.groups.formUnion(deleted.groups)
-        unreadableCopiesToRemove.tags.formUnion(deleted.tags)
+        let metadata = syncCoordinator.metadata
+        metadata.removalsPendingForUnreadableCopies = metadata.removalsPendingForUnreadableCopies
+            .subtracting(listed.recordNames)
+            .union(deleted.recordNames)
         if !deleted.connections.isEmpty { unsavedLibraryParts.insert(.connections) }
         if !deleted.groups.isEmpty { unsavedLibraryParts.insert(.groups) }
         if !deleted.tags.isEmpty { unsavedLibraryParts.insert(.tags) }
@@ -425,7 +437,6 @@ final class AppState {
     // What belonged to a connection another device deleted goes with it, as for one this device could read.
     private func purgeRemovedUnreadable(_ ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
-        unreadableCopiesToRemove.connections.subtract(ids)
         localState.purge(ids)
         sessionModels.purge(ids)
         savedQueries.removeRecords(ofConnections: ids, tombstoning: false)
