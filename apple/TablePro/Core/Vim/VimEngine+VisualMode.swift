@@ -49,7 +49,7 @@ extension VimEngine {
             buffer.setSelectedRange(NSRange(location: pos, length: 0))
             return true
 
-        case "h", "j", "k", "l", "w", "b", "e", "0", "$", "G", "^", "_":
+        case "h", "j", "k", "l", "w", "b", "e", "0", "$", "G", "^", "_", "\r", "+", "-":
             let cursorPos = visualCursorEnd(buffer: buffer)
             let newPos: Int
             switch char {
@@ -75,6 +75,10 @@ extension VimEngine {
                 newPos = lineEnd > lineRange.location
                     && lineEnd <= buffer.length
                     && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+            case "\r", "+", "-":
+                let (line, _) = buffer.lineAndColumn(forOffset: cursorPos)
+                let targetLine = char == "-" ? max(0, line - 1) : min(buffer.lineCount - 1, line + 1)
+                newPos = firstNonBlankOffset(from: buffer.offset(forLine: targetLine, column: 0), in: buffer)
             case "G":
                 newPos = max(0, buffer.length - 1)
             case "^", "_":
@@ -141,7 +145,6 @@ extension VimEngine {
             recordVisualSelection(linewise: isLinewise, in: buffer)
             if sel.length > 0 {
                 writeToActiveRegister(text: buffer.string(in: sel), linewise: isLinewise, asDelete: true)
-                adjustMarksForEdit(in: sel, replacementLength: 0)
                 buffer.replaceCharacters(in: sel, with: "")
             }
             setMode(.normal)

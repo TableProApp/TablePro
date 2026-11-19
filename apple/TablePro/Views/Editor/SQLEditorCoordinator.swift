@@ -252,6 +252,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
 
     func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
         vimEngine?.invalidateLineCache()
+        vimEngine?.noteTextChange(in: range, replacementLength: (string as NSString).length)
         foldPreview.dismiss()
 
         let isLargeDocument = textView.textStorage.length > Self.languageServiceLengthLimit

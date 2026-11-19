@@ -144,15 +144,23 @@ extension VimEngine {
         }
     }
 
-    func adjustMarksForEdit(in editRange: NSRange, replacementLength: Int) {
-        let delta = replacementLength - editRange.length
-        guard delta != 0 else { return }
+    // Every change to the text, typed, pasted, undone or the engine's own, moves the marks with it.
+    func noteTextChange(in editRange: NSRange, replacementLength: Int) {
+        guard !marks.isEmpty || lastJumpOrigin != nil || lastInsertOffset != nil else { return }
         for (key, offset) in marks {
-            if offset >= editRange.location + editRange.length {
-                marks[key] = offset + delta
-            } else if offset >= editRange.location {
-                marks[key] = editRange.location
-            }
+            marks[key] = Self.mapMark(offset, through: editRange, replacementLength: replacementLength)
         }
+        lastJumpOrigin = lastJumpOrigin.map { Self.mapMark($0, through: editRange, replacementLength: replacementLength) }
+        lastInsertOffset = lastInsertOffset.map {
+            Self.mapMark($0, through: editRange, replacementLength: replacementLength)
+        }
+    }
+
+    // Inside replaced text a mark keeps its place where the new text reaches it, as a case change does.
+    nonisolated static func mapMark(_ offset: Int, through editRange: NSRange, replacementLength: Int) -> Int {
+        if offset >= NSMaxRange(editRange) {
+            return offset + replacementLength - editRange.length
+        }
+        return offset >= editRange.location ? min(offset, editRange.location + replacementLength) : offset
     }
 }

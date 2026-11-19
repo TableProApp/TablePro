@@ -16,8 +16,13 @@ final class VimEngineMarksAndRegistersTests {
     private var buffer: VimTextBufferMock!
 
     init() {
-        buffer = VimTextBufferMock(text: "hello world\nsecond line\nthird line\n")
-        engine = VimEngine(buffer: buffer)
+        let buffer = VimTextBufferMock(text: "hello world\nsecond line\nthird line\n")
+        let engine = VimEngine(buffer: buffer)
+        buffer.onReplace = { [weak engine] range, length in
+            engine?.noteTextChange(in: range, replacementLength: length)
+        }
+        self.buffer = buffer
+        self.engine = engine
     }
 
     private func keys(_ chars: String) {

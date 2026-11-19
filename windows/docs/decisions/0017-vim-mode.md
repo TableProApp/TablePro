@@ -13,7 +13,8 @@ The macOS editor has a Vim mode behind its Key bindings setting (`apple/TablePro
 
 - `TablePro.Editor.Model/Vim` is a port of the macOS engine to C#, so its tests run on any machine (`tests/TablePro.Editor.Model.Tests/Vim`, one suite per macOS suite plus the Windows additions). A key is one text element; control keys come as their control characters.
 - It works on the editor model through `VimTextBuffer`: a character is a grapheme cluster (`StringInfo`), as macOS's composed character sequence is; `f` and `t` compare characters canonically, and `~`, `gU` and `gu` use Unicode's full case mapping, so `ß` becomes `SS`, as Swift's does.
-- Each key the engine takes is one undo step, and an insert is one step from the key that started it to Escape (`UndoHistory.Coalesce`), as Vim undoes it. A macro replayed by `@` is one step, and it types what Insert mode typed while it was recorded.
+- Each key the engine takes is one undo step, and an insert is one step from the key that started it to Escape (`UndoHistory.Coalesce`), as Vim undoes it; an arrow or a click inside the insert starts a new step. A macro replayed by `@` is one step, `u` inside it undoes the macro's own changes (`UndoHistory.Checkpoint`), and it types and moves as Insert mode did while it was recorded.
+- Marks move with every change to the text, typed, pasted or undone, not only the engine's deletes. Escape drops every prefix of a command, an operator included; `%` takes a pending operator; a count before `p` pastes the chosen register each time; a Visual text object moves Visual's anchor and cursor; Enter, `+` and `-` go to a line's first character. The same fixes went into the macOS engine with its suites.
 - Registers and macros are the app's, shared by every editor (`VimRegisters.Shared`), as Vim keeps them across buffers. Each yank and delete also reaches the clipboard, as on macOS, but kept out of clipboard history and other devices (`ClipboardContentOptions`), since Vim writes on every `x`.
 
 ### Folds and wrapped lines
@@ -26,7 +27,7 @@ The macOS editor has a Vim mode behind its Key bindings setting (`apple/TablePro
 
 - Characters reach the engine first, from `CharacterReceived` and from TSF: outside Insert mode an input method's text is Vim's keys. Other keys go through `VimKeyRouter` before the editor's own commands, and the app's accelerators come after both.
 - Normal and Visual take the Ctrl chords Vim defines (A, B, D, E, F, H, N, P, R, U, X, Y); Insert and Replace take Ctrl+D, T, U and W. Every other chord, Ctrl+Shift and Alt are the editor's and the app's, so Ctrl+C, Ctrl+V, Ctrl+Z, Ctrl+S and Ctrl+Enter keep their Windows meaning. Ctrl+[ is Escape.
-- Arrows, Home, End, Page Up, Page Down, Delete, Backspace and Enter are their Vim keys outside Insert mode. Escape with nothing to cancel in Normal mode is the editor's, so it still closes find and drops extra carets.
+- Arrows, Home, End, Page Up, Page Down, Delete, Backspace and Enter are their Vim keys outside Insert mode (`h`, `l`, `k`, `j`, `0`, `$`, Ctrl+B, Ctrl+F, `x`, `h` and Enter). Escape with nothing to cancel in Normal mode is the editor's, so it still closes find and drops extra carets.
 - The Edit menu sends its keys to the editor directly ([0004](0004-app-shell.md)), so Select All, Copy and Paste from the menu do what they say in any mode.
 
 ### Screen

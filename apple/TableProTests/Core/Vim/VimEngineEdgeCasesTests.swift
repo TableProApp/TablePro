@@ -261,6 +261,104 @@ final class VimEngineEdgeCasesTests {
         keys("l")
         #expect(pos == 1, "reset() must clear count and pending operator")
     }
+
+    // MARK: - Cancelled Prefixes
+
+    @Test
+    func escapeCancelsAnOperatorWaitingForAFindCharacter() {
+        make("one two", at: 0)
+        keys("df")
+        escape()
+        keys("w")
+        #expect(buffer.text == "one two")
+        #expect(pos == 4)
+    }
+
+    @Test
+    func escapeDropsTheCountBeforeAnOperator() {
+        make("abcdef", at: 0)
+        keys("3d")
+        escape()
+        keys("x")
+        #expect(buffer.text == "bcdef")
+    }
+
+    // MARK: - Visual Text Objects
+
+    @Test
+    func aMotionAfterAVisualTextObjectGrowsItsSelection() {
+        make("one two", at: 1)
+        keys("viw")
+        #expect(buffer.selectedRange() == NSRange(location: 0, length: 3))
+        keys("l")
+        #expect(buffer.selectedRange() == NSRange(location: 0, length: 4))
+        #expect(engine.cursorOffset == 3)
+    }
+
+    // MARK: - Counted Paste From A Register
+
+    @Test
+    func aCountedPasteFromARegisterPastesItEachTime() {
+        make("ab\n", at: 0)
+        keys("\"ayl")
+        keys("lyl")
+        #expect(engine.register.text == "b")
+        keys("\"a2p")
+        #expect(buffer.text == "abaa\n")
+    }
+
+    // MARK: - Marks Follow Edits
+
+    @Test
+    func aMarkMovesWithTextPastedBeforeIt() {
+        make("one two", at: 4)
+        let current = engine
+        buffer.onReplace = { [weak current] range, length in
+            current?.noteTextChange(in: range, replacementLength: length)
+        }
+        keys("ma")
+        keys("0yl")
+        key("P", shift: true)
+        keys("`a")
+        #expect(buffer.text == "oone two")
+        #expect(pos == 5)
+    }
+
+    // MARK: - Percent With An Operator
+
+    @Test
+    func percentAfterAnOperatorTakesTheBracketsAndWhatIsBetweenThem() {
+        make("(a) foo", at: 0)
+        keys("y%")
+        #expect(engine.register.text == "(a)")
+        keys("d%")
+        #expect(buffer.text == " foo")
+    }
+
+    @Test
+    func percentWithNoBracketDropsTheOperator() {
+        make("abc", at: 0)
+        keys("d%")
+        #expect(engine.pendingOperator == nil)
+        keys("l")
+        #expect(buffer.text == "abc")
+        #expect(pos == 1)
+    }
+
+    // MARK: - Enter, Plus And Minus
+
+    @Test
+    func enterAndPlusGoToTheNextLinesFirstCharacterAndMinusBack() {
+        make("a\n  b\n  c\n", at: 0)
+        keys("\r")
+        #expect(pos == 4)
+        keys("+")
+        #expect(pos == 8)
+        keys("2-")
+        #expect(pos == 0)
+        keys("d\r")
+        #expect(buffer.text == "  c\n")
+    }
 }
 
 // swiftlint:enable file_length type_body_length
