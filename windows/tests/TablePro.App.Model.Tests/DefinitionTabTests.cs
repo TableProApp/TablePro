@@ -286,4 +286,7 @@ internal sealed class DefinitionSession : ITabSession
         bool refresh,
         CancellationToken cancellationToken) =>
         throw new NotSupportedException();
+
+    public Task<ITableEditor> OpenResultEditorAsync(string sql, ResultSet? rows, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
 }

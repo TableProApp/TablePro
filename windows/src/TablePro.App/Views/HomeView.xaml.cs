@@ -1167,6 +1167,12 @@ public sealed partial class HomeView : UserControl
 
     private async void OnImport(object sender, RoutedEventArgs e) => await _shell.ImportAsync().ConfigureAwait(true);
 
+    private async void OnImportFromApp(object sender, RoutedEventArgs e) =>
+        await _shell.ImportFromAppAsync().ConfigureAwait(true);
+
+    private void OnImportCard(object sender, RoutedEventArgs e) =>
+        FlyoutBase.ShowAttachedFlyout((FrameworkElement)sender);
+
     private async void OnExportConnections(object sender, RoutedEventArgs e) => await ExportConnectionsAsync().ConfigureAwait(true);
 
     private async void OnSample(object sender, RoutedEventArgs e) => await _shell.OpenSampleAsync().ConfigureAwait(true);

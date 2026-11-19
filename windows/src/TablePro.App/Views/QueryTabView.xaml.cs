@@ -9,6 +9,7 @@ using Microsoft.Windows.Storage.Pickers;
 using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.DataGrid;
+using TablePro.DataGrid.Model;
 using TablePro.Editor;
 using TablePro.Interop;
 
@@ -17,14 +18,18 @@ namespace TablePro.App.Views;
 // What a query tab asks its workspace's assistant; Error is the server's, for Fix.
 internal sealed record AssistantRequest(AiAction Action, string Statement, string? Error = null);
 
-// The editor over the run's results; the run, the close and the transaction are QueryTab's.
-public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabView, IQueryFileView, IShareSource, IExportSource
+// The editor over the run's results; the run, the close, the transaction and the result's edits are QueryTab's.
+public sealed partial class QueryTabView
+    : UserControl, ITabContent, IQueryTabView, IQueryFileView, IResultEditView, IShareSource, IExportSource
 {
     // In the order macOS lists them, after the editor's own commands.
     private static readonly AiAction[] EditorActions = [AiAction.Review, AiAction.Explain, AiAction.Optimize];
 
     private readonly QueryTab _model;
     private EditTarget _target;
+
+    // What the results pane last said, which the status shows again once a save of the rows ends.
+    private string _resultsStatus = string.Empty;
     private bool _listingDatabases;
     private bool _editQueued;
     private bool _closed;
@@ -48,6 +53,12 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         var engineId = share.Session.EngineId;
         var restoring = filePath is not null && onDisk is null;
         InitializeComponent();
+        Results.ShowsEdits = true;
+        var grid = Results.GridView;
+        grid.DefaultText = Strings.Get("GridDefaultText");
+        grid.EditedStatus = Strings.Get("GridEditedStatus");
+        grid.NewRowStatus = Strings.Get("GridNewRowStatus");
+        grid.DeletedStatus = Strings.Get("GridDeletedStatus");
         SqlText.Text = onDisk?.Text ?? sql ?? string.Empty;
         SqlText.Lexer = new CoreSqlLexer(Grammars.For(engineId));
         DisplaySettings.Follow(SqlText);
@@ -67,18 +78,32 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
             this,
             filePath,
             onDisk,
-            restoring: restoring);
+            restoring: restoring,
+            resultEdits: this);
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", _model.Title));
         ShowDatabase();
         _model.StateChanged += (_, _) => OnModelStateChanged();
         _model.FileSaved += (_, path) => FileSaved?.Invoke(this, path);
-        Results.StatusChanged += (_, status) => StatusText.Text = status;
+        Results.StatusChanged += (_, status) =>
+        {
+            _resultsStatus = status;
+            StatusText.Text = status;
+        };
         Results.SortRequested += async (_, sort) => await _model.SortAsync(sort).ConfigureAwait(true);
         Results.ResultPicked += (_, _) => _model.ResultPicked();
         SqlText.GotFocus += (_, _) => _target = EditTarget.Editor;
-        Results.GridView.GotFocus += (_, _) => _target = EditTarget.Grid;
+        grid.GotFocus += (_, _) =>
+        {
+            _target = EditTarget.Grid;
+            EditStateMayHaveChanged();
+        };
+        // The cell editor takes focus as it opens and gives it back as it closes, so Save and the closes follow it.
+        grid.LostFocus += (_, _) => EditStateMayHaveChanged();
         Results.MessagesBox.GotFocus += (_, _) => _target = EditTarget.Messages;
-        Results.GridView.ContextRequested += OnGridContextRequested;
+        grid.ContextRequested += OnGridContextRequested;
+        grid.CellEditStarting += OnCellEditStarting;
+        grid.CellEditCommitting += OnCellEditCommitting;
+        grid.DeleteRequested += (_, _) => DeleteRows();
         SqlText.ContextMenuOpening += OnEditorMenuOpening;
         SqlText.TextChanged += OnTextChanged;
         SqlText.FilesDropped += (_, paths) => OpenFilesRequested?.Invoke(this, paths);
@@ -94,6 +119,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         {
             LoadRestoredFile(fileStamp, fileUnsaved);
         }
+
+        UpdateEditing();
     }
 
     private async void LoadRestoredFile(SqlFileStamp? stamp, bool unsaved) =>
@@ -158,6 +185,9 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
         _target == EditTarget.Messages && Results.MessagesBox.Visibility == Visibility.Visible ? Results.MessagesBox : null;
 
     internal ResultsPane ResultsView => Results;
+
+    // A share sends the rows as the server holds them, so it waits for the result's edits to be saved or dropped.
+    internal bool HasPendingRows => _model.HasPendingRows;
 
     // The SQL whose results the grid shows.
     internal string? LastStatement => _model.LastStatement;
@@ -225,8 +255,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
 
     public Task CloseAsync() => _model.CloseAsync();
 
-    // Ctrl+S: to its file, Save As when it has none or the file is gone.
-    public Task<bool> SaveAsync() => _model.SaveAsync();
+    // Ctrl+S: the result's rows while the grid has focus and they edit, else the file, as Save As when there is none.
+    public Task<bool> SaveAsync() => GridIsTarget && _model.EditsResult ? _model.SaveRowsAsync() : _model.SaveAsync();
 
     public Task<bool> SaveAsAsync() => _model.SaveAsAsync();
 
@@ -279,7 +309,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
 
     void IQueryTabView.ShowRunning(bool running)
     {
-        RunButton.IsEnabled = !running;
+        RunButton.IsEnabled = !running && !_model.IsSavingRows;
         StopButton.IsEnabled = running;
     }
 
@@ -421,6 +451,55 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     Task IQueryFileView.ShowReloadFailedAsync(string path, Exception failure) =>
         ShowFileFailedAsync(Strings.Format("FileReloadFailedTitle", Path.GetFileName(path)), failure.Message);
 
+    bool IResultEditView.HasOpenEdit => Results.GridView.IsEditing;
+
+    void IResultEditView.ShowEdits() => UpdateEditing();
+
+    void IResultEditView.ShowSaving(bool saving)
+    {
+        RunButton.IsEnabled = !saving && !_model.IsRunning;
+        StatusText.Text = saving ? Strings.Get("StatusSaving") : _resultsStatus;
+    }
+
+    void IResultEditView.ShowEditRefusal(EditRefusal refusal) => ShowRefusal(refusal);
+
+    void IResultEditView.ShowSaveCancelled() => StatusText.Text = Strings.Get("SaveCancelled");
+
+    bool IResultEditView.CommitOpenEdit() => Results.GridView.CommitEdit();
+
+    void IResultEditView.FocusRow(int row)
+    {
+        var grid = Results.GridView;
+        var column = Math.Max(0, grid.FocusedColumn);
+        grid.FocusCell(row, column);
+        grid.ScrollIntoView(row, column);
+    }
+
+    Task<bool> IResultEditView.ConfirmDiscardForReplaceAsync(ResultReplacement reason) =>
+        RowEditDialogs.ConfirmReloadAsync(Owner, Strings.Get(reason switch
+        {
+            ResultReplacement.Sort => "ReloadDiscardSort",
+            ResultReplacement.Database => "ResultEditDiscardDatabase",
+            _ => "ResultEditDiscardRun",
+        }));
+
+    Task<bool> IResultEditView.ConfirmDiscardAsync() => RowEditDialogs.ConfirmDiscardAsync(Owner);
+
+    Task<SaveBeforeClose> IResultEditView.AskSaveBeforeCloseAsync(string tab, bool offerSave) =>
+        RowEditDialogs.AskSaveBeforeCloseAsync(Owner, tab, offerSave);
+
+    Task<bool> IResultEditView.ConfirmDeleteAsync(string table, int rows) =>
+        RowEditDialogs.ConfirmDeleteAsync(Owner, table, rows);
+
+    Task<bool> IResultEditView.ConfirmSaveAsync(string connection, IReadOnlyList<PlannedStatement> statements) =>
+        RowEditDialogs.ConfirmSaveAsync(Owner, connection, statements);
+
+    Task IResultEditView.ShowPreviewAsync(IReadOnlyList<PlannedStatement> statements, CoreError? failure) =>
+        RowEditDialogs.ShowPreviewAsync(Owner, statements, failure is null ? null : Strings.Error(failure));
+
+    Task IResultEditView.ShowSaveFailedAsync(CoreError failure, bool incomplete) =>
+        RowEditDialogs.ShowSaveFailedAsync(Owner, Strings.Error(failure), incomplete, "ResultEditSaveUnknown");
+
     private static string EncodingName(SqlFileEncoding encoding) => Strings.Get(encoding switch
     {
         SqlFileEncoding.Utf16LittleEndian => "SqlFileEncodingUtf16LittleEndian",
@@ -450,6 +529,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     {
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", _model.Title));
         ShowDatabase();
+        UpdateEditing();
         OfferFix();
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -568,19 +648,245 @@ public sealed partial class QueryTabView : UserControl, ITabContent, IQueryTabVi
     // Built when asked for, since a menu keeps the window it first opened in and a tab can move to another.
     private void OnGridContextRequested(UIElement sender, ContextRequestedEventArgs args)
     {
-        args.Handled = true;
         var grid = Results.GridView;
+        // The editor's TextBox shows its own menu; a right-click on another cell keeps the edit first.
+        if (grid.IsEditing && (grid.IsInEditor(args.OriginalSource) || !grid.CommitEdit()))
+        {
+            return;
+        }
+
+        args.Handled = true;
         // Rows still arriving would be exported or shared as if they were all of them.
         var finished = !IsRunning && Results.ShownSet is { IsFinished: true };
         var menu = new MenuFlyout();
+        if (_model.EditsResult)
+        {
+            AddEditItems(menu, grid.FocusedRow, grid.FocusedColumn);
+        }
+
         menu.Items.Add(GridMenus.Copy(grid));
         menu.Items.Add(GridMenus.ViewValue(Results));
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(GridMenus.Item("GridMenuExport", finished, () => ExportRequested?.Invoke(this, EventArgs.Empty)));
         menu.Items.Add(GridMenus.Item(
-            "ShareResultCommand", finished, () => ShareRequested?.Invoke(this, ShareKind.Result), Symbol.Share));
+            "ShareResultCommand",
+            finished && !HasPendingRows,
+            () => ShareRequested?.Invoke(this, ShareKind.Result),
+            Symbol.Share));
         GridMenus.Show(menu, grid, args);
     }
+
+    // As a table tab's menu: a row marked for delete offers only to keep it, as macOS does.
+    private void AddEditItems(MenuFlyout menu, int row, int column)
+    {
+        if (Results.GridView.RowCount > 0 && _model.IsDeleted(row))
+        {
+            menu.Items.Add(GridMenus.Item(
+                "GridMenuUndoDelete", _model.CanEditResult, () => ShowRefusal(_model.RestoreRows(SelectedRows()))));
+        }
+        else
+        {
+            var setValue = new MenuFlyoutSubItem
+            {
+                Text = Strings.Get("GridMenuSetValue"),
+                IsEnabled = _model.CanEditResult,
+            };
+            setValue.Items.Add(ValueItem("GridMenuEmpty", row, column, CellValueKind.Empty));
+            setValue.Items.Add(ValueItem("GridMenuNull", row, column, CellValueKind.Null));
+            setValue.Items.Add(ValueItem("GridMenuDefault", row, column, CellValueKind.Default));
+            menu.Items.Add(setValue);
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(GridMenus.Item("GridMenuAddRow", _model.CanEditResult, AddRow));
+            menu.Items.Add(GridMenus.Item("GridMenuDuplicate", CanChangeRows, DuplicateRows));
+            menu.Items.Add(GridMenus.Item("GridMenuDelete", CanChangeRows, DeleteRows));
+        }
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+    }
+
+    private MenuFlyoutItem ValueItem(string text, int row, int column, CellValueKind kind) =>
+        GridMenus.Item(
+            text, _model.CanSetValue(row, column, kind), () => ShowRefusal(_model.SetValue(row, column, kind)));
+
+    public bool CanDiscardRows => _model.CanDiscardRows;
+
+    public bool CanPreviewRows => _model.CanPreviewRows;
+
+    public bool CanAddRow => _model.CanEditResult;
+
+    // Duplicate and Delete act on the rows the selection touches.
+    public bool CanChangeRows => _model.CanEditResult && Results.GridView.RowCount > 0;
+
+    public Task DiscardRowsAsync() => _model.DiscardRowsAsync();
+
+    public Task PreviewRowsAsync() => _model.PreviewRowsAsync();
+
+    // The open edit is kept first, and the new row's editor opens on the first column the server does not fill.
+    public void AddRow()
+    {
+        var grid = Results.GridView;
+        if (!grid.CommitEdit())
+        {
+            return;
+        }
+
+        if (_model.AddRow(out var row) is { } refusal)
+        {
+            ShowRefusal(refusal);
+            return;
+        }
+
+        grid.FocusCell(row, _model.FirstColumnToFill);
+        grid.BeginEdit();
+    }
+
+    public void DuplicateRows()
+    {
+        var grid = Results.GridView;
+        if (!grid.CommitEdit())
+        {
+            return;
+        }
+
+        if (_model.DuplicateRows(SelectedRows(), out var last) is { } refusal)
+        {
+            ShowRefusal(refusal);
+            return;
+        }
+
+        if (last >= 0)
+        {
+            var column = Math.Max(0, grid.FocusedColumn);
+            grid.FocusCell(last, column);
+            grid.ScrollIntoView(last, column);
+        }
+    }
+
+    public void DeleteRows()
+    {
+        if (Results.GridView.CommitEdit())
+        {
+            ShowRefusal(_model.DeleteRows(SelectedRows()));
+        }
+    }
+
+    private List<int> SelectedRows()
+    {
+        var range = Results.GridView.SelectionRange;
+        return range.IsEmpty ? [] : [.. Enumerable.Range(range.FirstRow, range.RowCount)];
+    }
+
+    // An editor opening or closing counts as a change for Save and the menus.
+    private void EditStateMayHaveChanged()
+    {
+        if (_closed)
+        {
+            return;
+        }
+
+        UpdateEditing();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // The grid swaps its edits only when they moved, since EditsChanged reads every cell again.
+    private void UpdateEditing()
+    {
+        var grid = Results.GridView;
+        if (grid.Data is EditedGridData edited)
+        {
+            var edits = _model.ResultEdits?.Snapshot() ?? GridEdits.None;
+            if (!ReferenceEquals(edited.Edits, edits))
+            {
+                edited.Edits = edits;
+                grid.EditsChanged();
+            }
+        }
+
+        grid.IsEditable = _model.ResultAcceptsEdits;
+        var shown = _model.EditsResult ? Visibility.Visible : Visibility.Collapsed;
+        EditSeparator.Visibility = shown;
+        SaveChangesButton.Visibility = shown;
+        DiscardChangesButton.Visibility = shown;
+        PreviewSqlButton.Visibility = shown;
+        SaveChangesButton.IsEnabled = _model.CanSaveRows;
+        DiscardChangesButton.IsEnabled = _model.CanDiscardRows;
+        PreviewSqlButton.IsEnabled = _model.CanPreviewRows;
+    }
+
+    private void OnCellEditStarting(object? sender, GridEditStartingEventArgs e)
+    {
+        if (_model.StartEdit(e.Row, e.Column, out var text) is { } refusal)
+        {
+            e.Cancel = true;
+            ShowRefusal(refusal);
+            return;
+        }
+
+        e.Text = text;
+    }
+
+    // A refusal keeps the editor open with the reason on it; a focus loss closes the editor, so the status says it too.
+    private void OnCellEditCommitting(object? sender, GridEditCommittingEventArgs e)
+    {
+        if (_model.CommitEdit(e.Row, e.Column, e.Text) is { } refusal)
+        {
+            var text = RefusalText(refusal) ?? Strings.Get("EditCellReadOnly");
+            e.Error = text;
+            StatusText.Text = text;
+        }
+    }
+
+    // The status is a polite live region, so a refusal is read out where the user is.
+    private void ShowRefusal(EditRefusal? refusal)
+    {
+        if (refusal is not null && RefusalText(refusal) is { } text)
+        {
+            StatusText.Text = text;
+        }
+    }
+
+    private static string? RefusalText(EditRefusal refusal) => refusal switch
+    {
+        EditRefusal.TableLocked locked => LockText(locked.Lock),
+        EditRefusal.ResultBlocked blocked => BlockText(blocked.Block),
+        EditRefusal.CellLocked => Strings.Get("EditCellReadOnly"),
+        EditRefusal.SaveBlocked => Strings.Get("ResultEditSaveBlocked"),
+        EditRefusal.NotCopyable => Strings.Get("ResultEditNotCopyable"),
+        EditRefusal.Invalid invalid => Strings.Error(invalid.Failure),
+        _ => null,
+    };
+
+    private static string LockText(EditLock locked) => Strings.Get(locked switch
+    {
+        EditLock.ReadOnlyConnection => "EditLockReadOnly",
+        EditLock.NoPrimaryKey => "ResultEditNoPrimaryKey",
+        EditLock.KeyUnreadable => "ResultEditKeyUnreadable",
+        EditLock.NotOneSelect => "ResultEditNotOneSelect",
+        EditLock.MoreThanOneTable => "ResultEditMoreThanOneTable",
+        EditLock.Collapsed => "ResultEditCollapsed",
+        EditLock.Untraced => "ResultEditUntraced",
+        EditLock.KeyNotShown => "ResultEditKeyNotShown",
+        _ => "ResultEditColumnsChanged",
+    });
+
+    private static string BlockText(ResultEditBlock block) => Strings.Get(block switch
+    {
+        ResultEditBlock.SeveralResults => "ResultEditSeveralResults",
+        ResultEditBlock.OpenTransaction => "ResultEditOpenTransaction",
+        ResultEditBlock.UnknownTransaction => "ResultEditUnknownTransaction",
+        ResultEditBlock.OtherDatabase => "ResultEditOtherDatabase",
+        ResultEditBlock.ColumnsUnread => "ResultEditColumnsUnread",
+        _ => "ResultEditRunAgain",
+    });
+
+    private async void OnSaveChanges(object sender, RoutedEventArgs e) =>
+        await _model.SaveRowsAsync().ConfigureAwait(true);
+
+    private async void OnDiscardChanges(object sender, RoutedEventArgs e) =>
+        await _model.DiscardRowsAsync().ConfigureAwait(true);
+
+    private async void OnPreviewSql(object sender, RoutedEventArgs e) =>
+        await _model.PreviewRowsAsync().ConfigureAwait(true);
 
     private void OnEditorMenuOpening(object? sender, IList<MenuFlyoutItemBase> items)
     {

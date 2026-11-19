@@ -7974,6 +7974,7 @@ dependencies = [
  "tablepro-driver-postgres",
  "tablepro-driver-redis",
  "tablepro-driver-sqlite",
+ "tablepro-foreign-import",
  "tablepro-session",
  "tablepro-ssh",
  "tablepro-storage",
