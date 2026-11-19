@@ -3,7 +3,7 @@ import os
 import TableProPluginKit
 
 // A lone object, a failed group read or one at the row limit reads each object alone, so a failure still names its table.
-final class SQLExportGroupReads {
+nonisolated final class SQLExportGroupReads {
     private final class GroupRead<Value> {
         let kind: PluginExportBulkReads
         let groupSizes: [String: Int]
