@@ -206,27 +206,6 @@ internal struct BQQueryResponse: Codable, Sendable {
     let jobComplete: Bool?
     let jobReference: BQJobResponse.BQJobReference?
     let numDmlAffectedRows: String?
-    var totalBytesProcessed: String?
-    var totalBytesBilled: String?
-    var cacheHit: Bool?
-    var startTime: String?
-    var endTime: String?
-
-    // jobs.query reports what jobs.get reported for a finished job on the answer itself.
-    var statistics: BQJobResponse.BQJobStatistics {
-        BQJobResponse.BQJobStatistics(
-            totalBytesProcessed: totalBytesProcessed,
-            query: BQJobResponse.BQQueryStatistics(
-                totalBytesProcessed: totalBytesProcessed,
-                totalBytesBilled: totalBytesBilled,
-                cacheHit: cacheHit,
-                numDmlAffectedRows: numDmlAffectedRows,
-                undeclaredQueryParameters: nil
-            ),
-            startTime: startTime,
-            endTime: endTime
-        )
-    }
 
     struct BQRow: Codable, Sendable {
         let f: [BQCell]?
@@ -283,12 +262,10 @@ internal enum BQCellValue: Codable, Sendable {
     }
 }
 
-// A finished statement: its first page, and the job later pages come from when the server made one.
-internal struct BQStatementRun: Sendable {
-    let firstPage: BQQueryResponse
-    let jobId: String?
+internal struct BQJobInfo: Sendable {
+    let jobId: String
     let location: String?
-    let statistics: BQJobResponse.BQJobStatistics?
+    var serverElapsed: TimeInterval?
 }
 
 internal struct BQExecuteResult: Sendable {
@@ -381,10 +358,12 @@ internal final class BigQueryConnection: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "BigQueryConnection")
     private static let host = "bigquery.googleapis.com"
     private static let basePath = "/bigquery/v2/"
-    private static let pageRowLimit = 10_000
-    private static let pageSize = String(pageRowLimit)
+    private static let pageSize = "10000"
     private static let listPageSize = "1000"
     private static let maximumPages = 100
+    private static let rateLimitRetries = 3
+    private static let rateLimitedStatus = 429
+    private static let unauthorizedStatus = 401
     private static let namedParameterMode = "NAMED"
     private static let pathSegmentAllowed: CharacterSet = {
         var allowed = CharacterSet.urlPathAllowed
@@ -462,21 +441,26 @@ internal final class BigQueryConnection: @unchecked Sendable {
         defaultDataset: String? = nil,
         queryParameters: [BigQueryQueryParameter]? = nil
     ) async throws -> BQExecuteResult {
-        let run = try await runStatement(sql, defaultDataset: defaultDataset, queryParameters: queryParameters)
-        let firstPage = run.firstPage
+        let job = try await runJob(sql, defaultDataset: defaultDataset, queryParameters: queryParameters)
+        guard let jobId = job.jobReference?.jobId else {
+            throw BigQueryError.invalidResponse
+        }
+        let jobLocation = job.jobReference?.location
+
+        let firstPage = try await getQueryResults(jobId: jobId, location: jobLocation)
         var allRows = firstPage.rows ?? []
         var currentPage = firstPage
         var pagesFetched = 1
 
         while let nextToken = currentPage.pageToken, pagesFetched < Self.maximumPages {
             try Task.checkCancellation()
-            let nextPage = try await nextPage(of: run, pageToken: nextToken)
+            let nextPage = try await getQueryResults(jobId: jobId, location: jobLocation, pageToken: nextToken)
             allRows.append(contentsOf: nextPage.rows ?? [])
             currentPage = nextPage
             pagesFetched += 1
         }
 
-        let statistics = run.statistics
+        let statistics = job.statistics
         return BQExecuteResult(
             queryResponse: BQQueryResponse(
                 schema: firstPage.schema,
@@ -495,73 +479,20 @@ internal final class BigQueryConnection: @unchecked Sendable {
         )
     }
 
-    func runStatement(
+    func executeJobAndWait(
         _ sql: String,
         defaultDataset: String? = nil,
         queryParameters: [BigQueryQueryParameter]? = nil
-    ) async throws -> BQStatementRun {
-        try Task.checkCancellation()
-        let timeoutSeconds = lock.withLock {
-            connectDeadline.map { max(1, Int($0.remainingSeconds().rounded(.up))) } ?? queryTimeoutSeconds
-        }
-        let hasParameters = queryParameters?.isEmpty == false
-        let started = Date()
-        let answer = try await submit(BigQueryStatementRequest(
-            query: sql,
-            requestId: UUID().uuidString,
-            maxResults: Self.pageRowLimit,
-            location: location,
-            defaultDataset: defaultDataset.flatMap { dataset in
-                dataset.isEmpty ? nil : .init(projectId: projectId, datasetId: dataset)
-            },
-            maximumBytesBilled: maximumBytesBilled,
-            parameterMode: hasParameters ? Self.namedParameterMode : nil,
-            queryParameters: hasParameters ? queryParameters : nil,
-            jobTimeoutMs: BigQueryJobPolling.jobTimeoutMilliseconds(queryTimeoutSeconds: timeoutSeconds)
-        ))
-        let jobLocation = answer.jobReference?.location
-
-        switch BigQueryStatementProgress(
-            jobComplete: answer.jobComplete,
-            jobId: answer.jobReference?.jobId,
-            pageToken: answer.pageToken
-        ) {
-        case .unreadable:
-            throw BigQueryError.invalidResponse
-        case .finished(let jobId):
-            return BQStatementRun(firstPage: answer, jobId: jobId, location: jobLocation, statistics: answer.statistics)
-        case .running(let jobId):
-            do {
-                let finished = try await waitForCompletion(
-                    jobId: jobId,
-                    location: jobLocation,
-                    deadline: BigQueryJobPolling.deadline(queryTimeoutSeconds: timeoutSeconds, from: started),
-                    timeoutSeconds: timeoutSeconds
-                )
-                if let failure = BigQueryJobPolling.failure(of: finished) {
-                    throw failure
-                }
-                let firstPage = try await getQueryResults(jobId: jobId, location: jobLocation)
-                return BQStatementRun(
-                    firstPage: firstPage,
-                    jobId: jobId,
-                    location: jobLocation,
-                    statistics: finished.statistics
-                )
-            } catch let error as BigQueryError {
-                if case .cancelled = error {
-                    cancelInBackground(jobId: jobId, location: jobLocation)
-                }
-                throw error
-            }
-        }
-    }
-
-    func nextPage(of run: BQStatementRun, pageToken: String) async throws -> BQQueryResponse {
-        guard let jobId = run.jobId else {
+    ) async throws -> BQJobInfo {
+        let job = try await runJob(sql, defaultDataset: defaultDataset, queryParameters: queryParameters)
+        guard let jobId = job.jobReference?.jobId else {
             throw BigQueryError.invalidResponse
         }
-        return try await getQueryResults(jobId: jobId, location: run.location, pageToken: pageToken)
+        return BQJobInfo(
+            jobId: jobId,
+            location: job.jobReference?.location,
+            serverElapsed: job.statistics?.elapsed
+        )
     }
 
     func dryRunQuery(_ sql: String, defaultDataset: String? = nil) async throws -> BQExecuteResult {
@@ -659,59 +590,74 @@ internal final class BigQueryConnection: @unchecked Sendable {
         _ = try await send(request)
     }
 
-    // Runs apart from the caller's task: cancelling the request on the wire would lose the job reference its answer
-    // carries, and with it the only way to stop a statement the server has started.
-    private func submit(
-        _ statement: BigQueryStatementRequest<BigQueryQueryParameter>
-    ) async throws -> BQQueryResponse {
-        var request = URLRequest(url: try endpoint(["projects", projectId, "queries"]))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(statement)
-        let stop = BigQueryStopSignal()
-        let submission = Task { [self] () throws -> BQQueryResponse in
-            try await decode(send(request, stop: stop, bodyLimit: BigQueryStatementPolicy.answerByteLimit))
+    private func runJob(
+        _ sql: String,
+        defaultDataset: String?,
+        queryParameters: [BigQueryQueryParameter]?
+    ) async throws -> BQJobResponse {
+        let timeoutSeconds = lock.withLock {
+            connectDeadline.map { max(1, Int($0.remainingSeconds().rounded(.up))) } ?? queryTimeoutSeconds
         }
+        let hasParameters = queryParameters?.isEmpty == false
+        let request = BQJobRequest(
+            jobReference: jobReference(),
+            configuration: BQJobRequest.BQJobConfiguration(
+                query: queryConfig(
+                    sql,
+                    defaultDataset: defaultDataset,
+                    parameterMode: hasParameters ? Self.namedParameterMode : nil,
+                    queryParameters: hasParameters ? queryParameters : nil
+                ),
+                dryRun: nil,
+                jobTimeoutMs: BigQueryJobPolling.jobTimeoutMilliseconds(queryTimeoutSeconds: timeoutSeconds)
+            )
+        )
+        let started = Date()
+        let inserted = try await insertJob(request)
+        guard let jobId = inserted.jobReference?.jobId else {
+            throw BigQueryError.invalidResponse
+        }
+        let jobLocation = inserted.jobReference?.location
+
         do {
-            return try await BigQueryStoppableRequest.value(
-                of: submission,
-                stop: stop,
-                grace: BigQueryStatementPolicy.stopGrace,
-                abandonAfter: BigQueryStatementPolicy.stoppedRequestLimit
-            ) { [self] answer in
-                guard let jobId = BigQueryStatementProgress.jobToCancel(
-                    jobComplete: answer.jobComplete,
-                    jobId: answer.jobReference?.jobId
-                ) else { return }
-                cancelInBackground(jobId: jobId, location: answer.jobReference?.location)
+            let finished = try await waitForCompletion(
+                of: inserted,
+                jobId: jobId,
+                location: jobLocation,
+                deadline: BigQueryJobPolling.deadline(queryTimeoutSeconds: timeoutSeconds, from: started),
+                timeoutSeconds: timeoutSeconds
+            )
+            if let failure = BigQueryJobPolling.failure(of: finished) {
+                throw failure
             }
-        } catch is CancellationError {
-            throw BigQueryError.cancelled
-        } catch BigQueryError.api(let status, let message, let reason)
-            where BigQueryStatementPolicy.isStatementRefusal(status: status) {
-            throw BigQueryError.jobFailed(message: message, reason: reason)
+            return finished
+        } catch let error as BigQueryError {
+            if case .cancelled = error {
+                cancelInBackground(jobId: jobId, location: jobLocation)
+            }
+            throw error
         }
     }
 
     private func waitForCompletion(
+        of job: BQJobResponse,
         jobId: String,
         location: String?,
         deadline: Date?,
         timeoutSeconds: Int
     ) async throws -> BQJobResponse {
+        var current = job
         var attempt = 0
-        while true {
+        while current.status?.state != BigQueryJobPolling.doneState {
             if let deadline, Date() >= deadline {
                 cancelInBackground(jobId: jobId, location: location)
                 throw BigQueryError.jobTimedOut(seconds: timeoutSeconds)
             }
             try await sleep(nanoseconds: BigQueryJobPolling.backoffNanoseconds(attempt: attempt))
             attempt += 1
-            let current = try await getJob(jobId: jobId, location: location)
-            if current.status?.state == BigQueryJobPolling.doneState {
-                return current
-            }
+            current = try await getJob(jobId: jobId, location: location)
         }
+        return current
     }
 
     private func dryRun(
@@ -813,55 +759,45 @@ internal final class BigQueryConnection: @unchecked Sendable {
         return session
     }
 
-    private func send(
-        _ request: URLRequest,
-        stop: BigQueryStopSignal? = nil,
-        bodyLimit: Int? = nil
-    ) async throws -> Data {
-        let answer = try await BigQueryRequestLoop.run(
-            isStopped: { stop?.isStopped == true },
-            authorize: { try await accessToken() },
-            send: { token in try await perform(request, token: token, bodyLimit: bodyLimit) },
-            refreshToken: { await tokenProvider.invalidateCachedToken() },
-            backoff: { attempt in
-                Self.logger.info("BigQuery rate limited, retry \(attempt, privacy: .public)")
-                try await sleep(nanoseconds: BigQueryJobPolling.backoffNanoseconds(attempt: attempt))
+    private func send(_ request: URLRequest) async throws -> Data {
+        var rateLimitAttempt = 0
+        var refreshedToken = false
+        while true {
+            let (data, response) = try await perform(request)
+            let status = response.statusCode
+            if (200..<300).contains(status) {
+                return data
             }
-        )
-        guard let answer else {
-            throw BigQueryError.cancelled
+            if status == Self.unauthorizedStatus, !refreshedToken {
+                refreshedToken = true
+                await tokenProvider.invalidateCachedToken()
+                continue
+            }
+            if status == Self.rateLimitedStatus, rateLimitAttempt < Self.rateLimitRetries {
+                rateLimitAttempt += 1
+                Self.logger.info("BigQuery rate limited, retry \(rateLimitAttempt, privacy: .public)")
+                try await sleep(nanoseconds: BigQueryJobPolling.backoffNanoseconds(attempt: rateLimitAttempt))
+                continue
+            }
+            throw BQErrorResponse.apiError(status: status, data: data)
         }
-        guard (200..<300).contains(answer.status) else {
-            throw BQErrorResponse.apiError(status: answer.status, data: answer.data)
-        }
-        return answer.data
     }
 
-    private func perform(
-        _ request: URLRequest,
-        token: String,
-        bodyLimit: Int?
-    ) async throws -> BigQueryRequestLoop.Answer {
+    private func perform(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let session = try currentSession()
+        let token = try await accessToken()
         var authorized = request
         authorized.timeoutInterval = lock.withLock { connectDeadline }?.remainingSeconds()
             ?? requestTimeout.requestTimeoutInterval
         authorized.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         do {
-            let (data, response): (Data, URLResponse)
-            if let bodyLimit {
-                (data, response) = try await BoundedHTTPRead.data(for: authorized, session: session, limit: bodyLimit)
-            } else {
-                (data, response) = try await session.data(for: authorized)
-            }
+            let (data, response) = try await session.data(for: authorized)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw BigQueryError.invalidResponse
             }
-            return BigQueryRequestLoop.Answer(status: httpResponse.statusCode, data: data)
+            return (data, httpResponse)
         } catch let error as BigQueryError {
             throw error
-        } catch is BoundedHTTPRead.BodyTooLarge {
-            throw BigQueryError.invalidResponse
         } catch {
             throw BigQueryError.wrap(error)
         }
