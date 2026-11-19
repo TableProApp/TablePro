@@ -16,6 +16,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     internal weak var outlineView: NSOutlineView?
     internal let service = DatabaseTreeMetadataService.shared
     private static let cellIdentifier = NSUserInterfaceItemIdentifier("DatabaseTreeCell")
+    private static let nodeSweepInterval = 8
     private let favoriteTablesStorage: FavoriteTablesStorage
     internal let favoriteDatabasesStorage: FavoriteDatabasesStorage
     internal let tableFolderStorage: TableFolderStorage
@@ -40,7 +41,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     internal var showsPartitions = true
     private var rowSize: SidebarRowSize = .medium
 
-    internal var nodeCache: [String: DatabaseTreeNode] = [:]
+    internal var nodeCache: DatabaseTreeNodeCache = [:]
+    internal var rebuildPass = 0
     internal var childrenCache: [String: [DatabaseTreeNode]] = [:]
     internal var objectBucketsCache: [DatabaseTreeContainerKey: DatabaseTreeObjectBuckets] = [:]
     internal var listingMatchesCache: [DatabaseTreeContainerKey: DatabaseTreeFilter.SchemaListingMatches] = [:]
@@ -269,6 +271,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             service.onMainActorChange { wake(false) },
             schemaService.onMainActorChange { wake(false) },
             temporaryTables.onMainActorChange { wake(false) },
+            ExternalSchemaTracker.shared.onMainActorChange { wake(false) },
             sidebarState?.onMainActorChange { wake(false) },
             // Its one published value is the key tree this outline draws.
             sidebarState?.redisKeyTreeViewModel?.onMainActorChange { wake(true) },
@@ -289,8 +292,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     internal func reconcile() {
         let forced = isReconcileForced
         isReconcileForced = false
-        guard forced || currentRenderInputs() != renderedInputs else { return }
-        refresh()
+        let inputs = currentRenderInputs()
+        guard forced || inputs != renderedInputs else {
+            // The same rows in new buffers: the next comparison stops at the pointers.
+            renderedInputs = inputs
+            return
+        }
+        let keepsShape = renderedInputs.map { $0.sidebar?.layout == inputs.sidebar?.layout } ?? false
+        rebuild(inputs: inputs, changingRowsOnly: !forced && keepsShape)
     }
 
     internal func currentRenderInputs() -> DatabaseTreeRenderInputs {
@@ -301,19 +310,26 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             temporaryTables: temporaryTables,
             sidebarState: sidebarState,
             rootShape: rootShape,
-            searchText: searchText
+            searchText: searchText,
+            browsedDatabase: browsingDatabase
         )
     }
 
     internal func refresh() {
+        rebuild(inputs: nil, changingRowsOnly: false)
+    }
+
+    private func rebuild(inputs: DatabaseTreeRenderInputs?, changingRowsOnly: Bool) {
         guard let outlineView else { return }
         guard !isDragging, renameSession == nil else {
             isReloadDeferred = true
             return
         }
         isReloading = true
-        renderedInputs = currentRenderInputs()
+        rebuildPass &+= 1
+        renderedInputs = inputs ?? currentRenderInputs()
         dropUnusedMemos()
+        let drawnChildren = childrenCache
         childrenCache.removeAll()
         objectBucketsCache.removeAll()
         listingMatchesCache.removeAll()
@@ -324,13 +340,29 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         // One update for the reload and every disclosure: each expandItem on its own walks the rows and
         // builds the visible row views again, and a search opens two rows per matching schema.
         outlineView.beginUpdates()
-        outlineView.reloadData()
+        let appliedRowChanges = changingRowsOnly && applyRowChanges(from: drawnChildren, in: outlineView)
+        if !appliedRowChanges { outlineView.reloadData() }
         applyDesiredExpansion()
         outlineView.endUpdates()
+        if appliedRowChanges { refreshVisibleRows() }
         syncSelectionToModel()
         isReloading = false
+        dropUnlistedNodes(in: outlineView)
         beginObserving()
         endSettledInteractionTraces()
+    }
+
+    // A row under a closed parent is not listed until it opens, so a pass that misses a row says nothing alone.
+    private func dropUnlistedNodes(in outlineView: NSOutlineView) {
+        guard rebuildPass % Self.nodeSweepInterval == 0 else { return }
+        let oldestKept = rebuildPass - Self.nodeSweepInterval
+        // The disclosure of a Redis namespace lives only in AppKit, on the node object.
+        let keepsRedisNodes = sidebarState?.redisKeyTreeViewModel != nil
+        nodeCache.removeNodes { node in
+            guard node.lastBuiltPass < oldestKept else { return false }
+            if keepsRedisNodes, case .redisNode = node.kind { return false }
+            return outlineView.row(forItem: node) < 0
+        }
     }
 
     // The memos outlive a reload, but only for the parents and containers built since the last one.
@@ -352,10 +384,10 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     /// place. Reloading would throw away every hosted SwiftUI view to repaint one glyph.
     internal func refreshVisibleRows() {
         guard let outlineView else { return }
-        for row in 0..<outlineView.numberOfRows {
+        outlineView.enumerateAvailableRowViews { _, row in
             guard let node = outlineView.item(atRow: row) as? DatabaseTreeNode,
                   let cell = outlineView.view(atColumn: 0, row: row, makeIfNecessary: false) as? DatabaseTreeCellView
-            else { continue }
+            else { return }
             cell.configure(
                 node: node,
                 isFavorite: favoriteState(for: node),
@@ -479,11 +511,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         /// object; comparing references pins it to the database it was picked in and leaves the
         /// tree with nothing selected the moment the browse cursor moves.
         let selectedObjects = Set(selectedTables.map(\.table))
-        var nodes: [DatabaseTreeNode] = []
-        for node in nodeCache.values {
-            guard let ref = node.tableRef, selectedObjects.contains(ref.table) else { continue }
-            guard selectionDatabase == nil || ref.database == selectionDatabase else { continue }
-            nodes.append(node)
+        let nodes = nodeCache.nodes(drawing: selectedObjects).filter { node in
+            selectionDatabase == nil || node.tableRef?.database == selectionDatabase
         }
         lastSelectedNodeIds = nodes.map(\.id)
         lastSelection = Set(DatabaseTreeSelection.tableRefs(of: nodes))

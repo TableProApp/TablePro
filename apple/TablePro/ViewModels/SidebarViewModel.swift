@@ -433,45 +433,48 @@ final class SidebarViewModel: ObservableObject {
 
     // MARK: - Filtering
 
+    // Keyed by the rows themselves: a catalog commits its side lists before the generation moves.
+    private struct FilterKey<Element>: Equatable {
+        let rows: SameRows<Element>
+        let query: String
+        let database: String?
+    }
+
     private var cachedKindBuckets: [SidebarObjectKind: [TableInfo]] = [:]
-    private var cachedKindFingerprint: (count: Int, generation: Int)?
+    private var cachedKindRows: SameRows<TableInfo>?
 
     private var cachedFilteredByKind: [SidebarObjectKind: [TableInfo]] = [:]
-    private var cachedFilteredByKindFingerprint: (count: Int, generation: Int, query: String)?
+    private var cachedFilteredByKindKey: FilterKey<TableInfo>?
 
     private var cachedFilteredRoutines: [SidebarObjectKind: [RoutineInfo]] = [:]
-    private var cachedFilteredRoutinesFingerprint: (count: Int, generation: Int, query: String)?
+    private var cachedFilteredRoutinesKey: FilterKey<RoutineInfo>?
     private var cachedFilteredTriggers: [TriggerInfo] = []
-    private var cachedFilteredTriggersFingerprint: (count: Int, generation: Int, query: String)?
+    private var cachedFilteredTriggersKey: FilterKey<TriggerInfo>?
     private var cachedFilteredUserTypes: [UserDefinedTypeInfo] = []
-    private var cachedFilteredUserTypesFingerprint: (count: Int, generation: Int, query: String)?
-    private var cachedFilteredServerObjects: [String: (count: Int, generation: Int, query: String, objects: [ServerObjectInfo])] = [:]
+    private var cachedFilteredUserTypesKey: FilterKey<UserDefinedTypeInfo>?
+    private var cachedFilteredServerObjects: [String: (key: FilterKey<ServerObjectInfo>, objects: [ServerObjectInfo])] = [:]
 
-    private var schemaGeneration: Int {
-        SchemaService.shared.generationToken(for: connectionId)
+    private func filterKey<Element>(_ rows: [Element]) -> FilterKey<Element> {
+        FilterKey(rows: SameRows(rows: rows), query: filterQuery, database: browsedDatabase)
     }
 
     func tables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
         guard kind.category == .table else { return [] }
-        let fingerprint = (count: tables.count, generation: schemaGeneration)
-        if cachedKindFingerprint?.count != fingerprint.count
-            || cachedKindFingerprint?.generation != fingerprint.generation {
+        let rows = SameRows(rows: tables)
+        if cachedKindRows != rows {
             rebuildKindBuckets(from: tables)
-            cachedKindFingerprint = fingerprint
+            cachedKindRows = rows
         }
         return cachedKindBuckets[kind] ?? []
     }
 
     func filteredTables(of kind: SidebarObjectKind, from tables: [TableInfo]) -> [TableInfo] {
-        let query = filterQuery
-        let fingerprint = (count: tables.count, generation: schemaGeneration, query: query)
-        if cachedFilteredByKindFingerprint?.count != fingerprint.count
-            || cachedFilteredByKindFingerprint?.generation != fingerprint.generation
-            || cachedFilteredByKindFingerprint?.query != fingerprint.query {
+        let key = filterKey(tables)
+        if cachedFilteredByKindKey != key {
             for tableKind in SidebarObjectKind.builtIn where tableKind.category == .table {
-                cachedFilteredByKind[tableKind] = applyQuery(query, to: self.tables(of: tableKind, from: tables))
+                cachedFilteredByKind[tableKind] = applyQuery(key.query, to: self.tables(of: tableKind, from: tables))
             }
-            cachedFilteredByKindFingerprint = fingerprint
+            cachedFilteredByKindKey = key
         }
         return cachedFilteredByKind[kind] ?? []
     }
@@ -484,55 +487,42 @@ final class SidebarViewModel: ObservableObject {
     }
 
     func filteredRoutines(of kind: SidebarObjectKind, from routines: [RoutineInfo]) -> [RoutineInfo] {
-        let query = filterQuery
-        let fingerprint = (count: routines.count, generation: schemaGeneration, query: query)
-        if cachedFilteredRoutinesFingerprint?.count != fingerprint.count
-            || cachedFilteredRoutinesFingerprint?.generation != fingerprint.generation
-            || cachedFilteredRoutinesFingerprint?.query != fingerprint.query {
+        let key = filterKey(routines)
+        if cachedFilteredRoutinesKey != key {
             let procs = routines.filter { $0.kind == .procedure }
             let funcs = routines.filter { $0.kind == .function }
-            cachedFilteredRoutines[.procedure] = applyRoutineQuery(query, to: procs)
-            cachedFilteredRoutines[.function] = applyRoutineQuery(query, to: funcs)
-            cachedFilteredRoutinesFingerprint = fingerprint
+            cachedFilteredRoutines[.procedure] = applyRoutineQuery(key.query, to: procs)
+            cachedFilteredRoutines[.function] = applyRoutineQuery(key.query, to: funcs)
+            cachedFilteredRoutinesKey = key
         }
         return cachedFilteredRoutines[kind] ?? []
     }
 
     func filteredTriggers(from triggers: [TriggerInfo]) -> [TriggerInfo] {
-        let query = filterQuery
-        let fingerprint = (count: triggers.count, generation: schemaGeneration, query: query)
-        if cachedFilteredTriggersFingerprint?.count != fingerprint.count
-            || cachedFilteredTriggersFingerprint?.generation != fingerprint.generation
-            || cachedFilteredTriggersFingerprint?.query != fingerprint.query {
-            cachedFilteredTriggers = DatabaseTreeFilter.filteredTriggers(triggers, searchText: query, database: browsedDatabase)
-            cachedFilteredTriggersFingerprint = fingerprint
+        let key = filterKey(triggers)
+        if cachedFilteredTriggersKey != key {
+            cachedFilteredTriggers = DatabaseTreeFilter.filteredTriggers(triggers, searchText: key.query, database: key.database)
+            cachedFilteredTriggersKey = key
         }
         return cachedFilteredTriggers
     }
 
     func filteredUserTypes(from types: [UserDefinedTypeInfo]) -> [UserDefinedTypeInfo] {
-        let query = filterQuery
-        let fingerprint = (count: types.count, generation: schemaGeneration, query: query)
-        if cachedFilteredUserTypesFingerprint?.count != fingerprint.count
-            || cachedFilteredUserTypesFingerprint?.generation != fingerprint.generation
-            || cachedFilteredUserTypesFingerprint?.query != fingerprint.query {
-            cachedFilteredUserTypes = DatabaseTreeFilter.filteredUserTypes(
-                types, searchText: query, database: browsedDatabase
-            )
-            cachedFilteredUserTypesFingerprint = fingerprint
+        let key = filterKey(types)
+        if cachedFilteredUserTypesKey != key {
+            cachedFilteredUserTypes = DatabaseTreeFilter.filteredUserTypes(types, searchText: key.query, database: key.database)
+            cachedFilteredUserTypesKey = key
         }
         return cachedFilteredUserTypes
     }
 
     func filteredServerObjects(kindId: String, from objects: [ServerObjectInfo]) -> [ServerObjectInfo] {
-        let query = filterQuery
-        let generation = schemaGeneration
-        if let cached = cachedFilteredServerObjects[kindId],
-           cached.count == objects.count, cached.generation == generation, cached.query == query {
+        let key = filterKey(objects)
+        if let cached = cachedFilteredServerObjects[kindId], cached.key == key {
             return cached.objects
         }
-        let filtered = DatabaseTreeFilter.filteredServerObjects(objects, searchText: query, database: browsedDatabase)
-        cachedFilteredServerObjects[kindId] = (objects.count, generation, query, filtered)
+        let filtered = DatabaseTreeFilter.filteredServerObjects(objects, searchText: key.query, database: key.database)
+        cachedFilteredServerObjects[kindId] = (key, filtered)
         return filtered
     }
 
@@ -658,9 +648,9 @@ final class SidebarViewModel: ObservableObject {
 
     private func invalidateFilterCaches() {
         cachedFilteredByKind = [:]
-        cachedFilteredByKindFingerprint = nil
+        cachedFilteredByKindKey = nil
         cachedFilteredRoutines = [:]
-        cachedFilteredRoutinesFingerprint = nil
+        cachedFilteredRoutinesKey = nil
         cachedFilteredServerObjects = [:]
     }
 

@@ -295,6 +295,32 @@ struct SidebarViewModelMultiSectionTests {
         #expect(funcs.map(\.name) == ["calculate_age"])
     }
 
+    @Test("A side list replaced by as many rows is filtered again before the catalog generation moves")
+    func sameCountReplacementIsFilteredAgain() {
+        let vm = makeViewModel(defaults: suite.defaults)
+
+        #expect(vm.filteredRoutines(of: .function, from: [RoutineInfo(name: "old_total", kind: .function)]).map(\.name) == ["old_total"])
+        #expect(vm.filteredRoutines(of: .function, from: [RoutineInfo(name: "new_total", kind: .function)]).map(\.name) == ["new_total"])
+
+        let oldTrigger = TriggerInfo(name: "old_audit", timing: "BEFORE", event: "INSERT", statement: "")
+        let newTrigger = TriggerInfo(name: "new_audit", timing: "BEFORE", event: "INSERT", statement: "")
+        #expect(vm.filteredTriggers(from: [oldTrigger]).map(\.name) == ["old_audit"])
+        #expect(vm.filteredTriggers(from: [newTrigger]).map(\.name) == ["new_audit"])
+
+        #expect(vm.filteredUserTypes(from: [UserDefinedTypeInfo(name: "old_mood", kind: .enumeration)]).map(\.name) == ["old_mood"])
+        #expect(vm.filteredUserTypes(from: [UserDefinedTypeInfo(name: "new_mood", kind: .enumeration)]).map(\.name) == ["new_mood"])
+
+        let oldEvent = ServerObjectInfo(kindId: "event", name: "old_job")
+        let newEvent = ServerObjectInfo(kindId: "event", name: "new_job")
+        #expect(vm.filteredServerObjects(kindId: "event", from: [oldEvent]).map(\.name) == ["old_job"])
+        #expect(vm.filteredServerObjects(kindId: "event", from: [newEvent]).map(\.name) == ["new_job"])
+
+        let oldTable = TableInfo(name: "old_orders", type: .table, rowCount: nil)
+        let newTable = TableInfo(name: "new_orders", type: .table, rowCount: nil)
+        #expect(vm.filteredTables(of: .table, from: [oldTable]).map(\.name) == ["old_orders"])
+        #expect(vm.filteredTables(of: .table, from: [newTable]).map(\.name) == ["new_orders"])
+    }
+
     @Test("Sidebar filter uses substring matching, not fuzzy abbreviations")
     func sidebarFilterUsesSubstringNotAbbreviation() {
         let vm = makeViewModel(defaults: suite.defaults)
