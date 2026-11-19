@@ -208,6 +208,7 @@ final class SchemaRefreshService {
                 await provider.setNamespaces(schemas: schemas, databases: [browseDatabase])
             }
             providerRegistry.notePopulatedExternally(scope: browseScope)
+            await provider.seedColumnCatalog()
         } catch {
             Self.logger.warning(
                 "[schema] autocomplete sync failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"

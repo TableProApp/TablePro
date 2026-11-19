@@ -15,16 +15,31 @@ struct FirstLoadColumnRead {
     let startedAt: ContinuousClock.Instant
 }
 
+struct TableQueryColumns {
+    let columns: [String]
+    let columnTypes: [ColumnType]
+    let selectColumns: [String]?
+    let unloadedValues: UnloadedValuePlan?
+}
+
 extension MainContentCoordinator {
     func selectColumns(for tab: QueryTab) -> [String]? {
-        guard let schema = tableSchemaColumns(for: tab) else { return nil }
+        selectColumns(for: tab, schema: tableSchemaColumns(for: tab))
+    }
+
+    func selectColumns(for tab: QueryTab, schema: SchemaColumnStore.Entry?) -> [String]? {
+        guard let schema else { return nil }
         if let scoped = scopedColumns(for: tab, schema: schema) { return scoped }
         // A deferred column is spelled out in the select list, so the list cannot be `*`.
         return unloadedValuePlan(for: tab, selecting: schema.columns, schema: schema) == nil ? nil : schema.columns
     }
 
     func unloadedValuePlan(for tab: QueryTab) -> UnloadedValuePlan? {
-        guard let schema = tableSchemaColumns(for: tab) else { return nil }
+        unloadedValuePlan(for: tab, schema: tableSchemaColumns(for: tab))
+    }
+
+    func unloadedValuePlan(for tab: QueryTab, schema: SchemaColumnStore.Entry?) -> UnloadedValuePlan? {
+        guard let schema else { return nil }
         return unloadedValuePlan(
             for: tab,
             selecting: scopedColumns(for: tab, schema: schema) ?? schema.columns,
@@ -32,9 +47,33 @@ extension MainContentCoordinator {
         )
     }
 
-    // The byte-length columns the tab's page query ends with, which the fetch folds back into its cells.
-    func unloadedValueLengthColumns(for tab: QueryTab) -> [String] {
-        guard let plan = unloadedValuePlan(for: tab), let selected = selectColumns(for: tab) else { return [] }
+    func tableQueryColumns(for tab: QueryTab) -> TableQueryColumns {
+        let (columns, columnTypes) = queryColumns(for: tab)
+        return TableQueryColumns(
+            columns: columns,
+            columnTypes: columnTypes,
+            selectColumns: selectColumns(for: tab),
+            unloadedValues: unloadedValuePlan(for: tab)
+        )
+    }
+
+    // As a first page builds it from this list alone, before any rows arrive to type its filters.
+    func tableQueryColumns(for tab: QueryTab, builtOn schema: SchemaColumnStore.Entry) -> TableQueryColumns {
+        let columns = effectiveResultColumns(for: tab, schema: schema)
+        return TableQueryColumns(
+            columns: columns,
+            columnTypes: schema.columnTypes(aligningWith: columns),
+            selectColumns: selectColumns(for: tab, schema: schema),
+            unloadedValues: unloadedValuePlan(for: tab, schema: schema)
+        )
+    }
+
+    // The byte-length columns a query ends with, from the list its SQL was built on: a rerun sends that SQL unchanged.
+    func unloadedValueLengthColumns(for tab: QueryTab, sql: String) -> [String] {
+        let schema = catalogPageList(of: tab, sql: sql) ?? tableSchemaColumns(for: tab)
+        guard let plan = unloadedValuePlan(for: tab, schema: schema),
+              let selected = selectColumns(for: tab, schema: schema)
+        else { return [] }
         return plan.lengthColumns(for: selected)
     }
 
@@ -105,7 +144,7 @@ extension MainContentCoordinator {
         return true
     }
 
-    private var schemaColumnClassifier: ColumnTypeClassifier {
+    var schemaColumnClassifier: ColumnTypeClassifier {
         ColumnTypeClassifier(family: SQLTypeFamily.of(connection.type))
     }
 
@@ -192,6 +231,10 @@ extension MainContentCoordinator {
 
     func effectiveResultColumns(for tab: QueryTab) -> [String] {
         selectColumns(for: tab) ?? cachedSchemaColumns(for: tab)?.columns ?? []
+    }
+
+    func effectiveResultColumns(for tab: QueryTab, schema: SchemaColumnStore.Entry) -> [String] {
+        selectColumns(for: tab, schema: schema) ?? schema.columns
     }
 
     /// The columns a table tab's SQL is built against, each paired with its type. Loaded rows are

@@ -752,6 +752,7 @@ final class QueryTabManager: ObservableObject {
         tab.selectionSnapshot = .empty
         tab.autoRefreshInterval = .off
         tab.autoRefreshPause = nil
+        tab.outdatedPageNotice = nil
         tab.hasUserInteraction = false
         tab.filterState = TabFilterState()
         tab.valueFilter = GridValueFilterState()

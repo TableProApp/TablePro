@@ -123,6 +123,11 @@ final class CatalogChangeService {
         }
     }
 
+    // Until it finishes, what the catalog and the sidebar hold for the connection may still be the old definitions.
+    func isApplyingChange(for connectionId: UUID) -> Bool {
+        drains[connectionId] != nil
+    }
+
     func waitUntilIdle(connectionId: UUID) async {
         while let drain = drains[connectionId] {
             await drain.value

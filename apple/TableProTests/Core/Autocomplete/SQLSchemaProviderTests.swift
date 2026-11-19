@@ -190,7 +190,12 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         userQueryGate = nil
     }
 
+    private(set) var executedUserQueries: [String] = []
+    // The columns a row query answers with, so a loaded result can differ from the table it was read from.
+    var userQueryColumns: [String] = []
+
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
+        executedUserQueries.append(query)
         if let failure = failsStatementContaining, query.contains(failure.text) { throw failure.error }
         if pausesNextUserQuery {
             pausesNextUserQuery = false
@@ -199,7 +204,14 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
                 onUserQueryPaused?()
             }
         }
-        return QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
+        return QueryResult(
+            columns: userQueryColumns,
+            columnTypes: userQueryColumns.map { _ in .text(rawType: "TEXT") },
+            rows: [],
+            rowsAffected: 0,
+            executionTime: 0,
+            error: nil
+        )
     }
 
     /// Holds the next `fetchTables()` after it has read `tablesToReturn`, the way a real fetch has
@@ -302,10 +314,13 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
 
     var fetchColumnsGate: AsyncGate?
 
+    var fetchColumnsError: Error?
+
     func fetchColumns(table: String) async throws -> [ColumnInfo] {
         fetchColumnsCallCount += 1
         fetchColumnsCalls.append(table)
         await fetchColumnsGate?.wait()
+        if let fetchColumnsError { throw fetchColumnsError }
         return columnsToReturn[table.lowercased()] ?? []
     }
 
@@ -321,6 +336,8 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
 
     var oneRequestColumnRead = true
     var fetchesAllColumnsInOneRequest: Bool { oneRequestColumnRead }
+    var bulkColumnReadIsComplete = false
+    var providesBulkColumnFetch: Bool { bulkColumnReadIsComplete }
 
     func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }

@@ -29,6 +29,7 @@ extension MainContentCoordinator {
             }
             tabManager.markTabRenamed(tabManager.tabs[index].id)
             followRename(ofTableMetadataFor: tabManager.tabs[index])
+            followRename(ofCatalogPageFor: tabManager.tabs[index])
             // The browse query still names the old table, so the next page, sort or filter would
             // run against a name the server no longer has.
             rebuildTableQuery(at: index)
@@ -62,6 +63,7 @@ extension MainContentCoordinator {
                 manager.schemaName = toSchema
             }
             followRename(ofTableMetadataFor: tabManager.tabs[index])
+            followRename(ofCatalogPageFor: tabManager.tabs[index])
             // A query tab keeps the table its last run read, and rebuilding would replace the user's SQL with a browse query.
             if tabManager.tabs[index].tabType == .table {
                 rebuildTableQuery(at: index)

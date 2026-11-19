@@ -53,6 +53,8 @@ extension MainContentCoordinator {
         )
     }
 
+    // True when the tab now shows the error.
+    @discardableResult
     func finishFailedQuery(
         _ error: Error,
         tabId: UUID,
@@ -64,11 +66,11 @@ extension MainContentCoordinator {
         traceToken: TableLoadTraceToken?,
         serverOutput: PluginServerOutput = .none,
         historySource: QueryHistorySource? = nil
-    ) {
+    ) -> Bool {
         guard tabExecution.settle(claim) else {
             reportStopRollback(error, tabId: tabId)
             traceStaleResultDropped(traceToken)
-            return
+            return false
         }
         /// Ahead of every early return below. A cancellation leaves through the next line, and a
         /// disconnected auto-load through the one after, so clearing this alongside the error text
@@ -84,11 +86,11 @@ extension MainContentCoordinator {
                 EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
             ])
             reportStopRollback(error, tabId: tabId)
-            return
+            return false
         }
         if isAutoLoad, services.databaseManager.driver(for: connectionId)?.status != .connected {
             parkedTableLoad = ParkedTableLoad(tabId: tabId, trigger: trigger)
-            return
+            return false
         }
         handleQueryExecutionError(
             error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput, trigger: trigger,
@@ -97,6 +99,7 @@ extension MainContentCoordinator {
         reportQueryOperation(
             claim: claim, trigger: trigger, outcome: .failed(reason: error.localizedDescription)
         )
+        return true
     }
 
     // Only a result that still owns its tab replaces it, and only that tab's edits go.

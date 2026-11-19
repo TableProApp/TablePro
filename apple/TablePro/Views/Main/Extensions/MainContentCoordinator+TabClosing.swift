@@ -76,6 +76,9 @@ extension MainContentCoordinator {
         prune(&erDiagramModels, keeping: openTabIds)
         discardTableHealthModels(tableHealthModels.keys.filter { !openTabIds.contains($0) })
         prune(&navigationHistories, keeping: openTabIds)
+        for tabId in Array(catalogPageReloads.keys) where !openTabIds.contains(tabId) {
+            catalogPageReloads.removeValue(forKey: tabId)?.task.cancel()
+        }
         // The editor stores the outgoing tab's history on its next update, after the close forgot it.
         editorUndoHistories.forgetAll(except: openTabIds)
         releaseEdits(exceptTabs: openTabIds)
@@ -95,6 +98,7 @@ extension MainContentCoordinator {
     // A retarget keeps the id, so stale caches (staged ALTERs) would prompt to apply the previous table's changes.
     func releaseRetargetedTabState(for tabId: UUID) {
         tableMetadataCache.removeValue(forKey: tabId)
+        forgetCatalogPage(ofTab: tabId)
         tabSessionRegistry.forgetFreshness(for: tabId)
         structureSessions.removeValue(forKey: tabId)?.releaseViewWiring()
         createTableDrafts.removeValue(forKey: tabId)
@@ -117,6 +121,7 @@ extension MainContentCoordinator {
         erDiagramModels.removeValue(forKey: tab.id)
         discardTableHealthModels([tab.id])
         navigationHistories.removeValue(forKey: tab.id)
+        forgetCatalogPage(ofTab: tab.id)
         editorUndoHistories.forget(tab.id)
         releaseGridModel(forTab: tab.id)
         tableMetadataCache.removeValue(forKey: tab.id)

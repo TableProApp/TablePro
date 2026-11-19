@@ -80,6 +80,7 @@ extension QueryExecutionCoordinator {
         let needsDefinition = parent.tabSessionRegistry.needsDefinition(tabId)
         let needsMetadataFetch = tableName.map { isEditable && !isMetadataCached(tabId: tabId, tableName: $0) } ?? false
         let knownColumns = needsMetadataFetch ? parent.takeFirstLoadColumns(tabId: tabId, tableName: tableName, scope: scope) : nil
+        let catalogCheck = tab.tabType == .table ? parent.catalogPageCheck(for: tab, sql: sql, scope: scope) : nil
         // Captured now, while the result this decision was made against is still the active one.
         let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
             rows: parent.tabSessionRegistry.tableRows(for: tabId),
@@ -92,7 +93,7 @@ extension QueryExecutionCoordinator {
         }
         let isTableTab = tab.tabType == .table
         let readsView = tab.tableContext.knowsView(named: tableName)
-        let (grammar, lengthColumns) = (parent.lexicalGrammar, parent.unloadedValueLengthColumns(for: tab))
+        let (grammar, lengthColumns) = (parent.lexicalGrammar, parent.unloadedValueLengthColumns(for: tab, sql: sql))
         let safeModeIsReadOnly = parent.runsAtReadOnly
         let held = parent.manualCommitRun(skipped: isTableTab || isAutoLoad)
         let bound = request.bound
@@ -106,7 +107,12 @@ extension QueryExecutionCoordinator {
                 return
             }
 
-            let schemaTask = parent.startSchemaFetch(
+            let confirmation = parent.startCatalogConfirmation(for: catalogCheck)
+            // A run that ends before it needs the read withdraws from it, as a cancelled open does from its own.
+            defer { confirmation?.cancel() }
+            let schemaTask = confirmation.map {
+                parent.startSchemaFetch(tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope, columnsFrom: $0)
+            } ?? parent.startSchemaFetch(
                 tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope, knownColumns: knownColumns
             )
 
@@ -156,6 +162,8 @@ extension QueryExecutionCoordinator {
                 let prepared = await parent.preparedPhase1Rows(
                     fetchResult, tabId: tabId, tableName: tableName, isTableTab: isTableTab
                 )
+                // A page built on the catalog's columns waits for the read beside it, so its verdict lands with it.
+                let confirmedColumns = await parent.confirmedColumns(for: catalogCheck, from: confirmation)
 
                 parent.traceFetchCompleted(traceToken, began: fetchBeganAt, ended: fetchEndedAt, result: fetchResult, lease: leaseTiming)
                 // Settle first: it gates every write below, and sharing a guard with the cancel check would leave the tab claimed forever.
@@ -215,6 +223,7 @@ extension QueryExecutionCoordinator {
                     prepared: prepared,
                     trigger: trigger
                 )
+                parent.settleCatalogPage(catalogCheck, confirmed: confirmedColumns, installed: true)
                 // Only now: a run that fails leaves the old result on screen, and its definition read still has to land.
                 parent.cancelPhase2Work(forTab: tabId, unlessReading: tableName)
                 if let bound {
@@ -242,7 +251,10 @@ extension QueryExecutionCoordinator {
             } catch {
                 schemaTask?.cancel()
                 if !isAutoLoad { MainContentCoordinator.postStatementRan(statement.sql, on: conn) }
-                parent.finishFailedQuery(
+                let judgesFailure = catalogCheck?.awaitsConfirmation == true
+                    && !DatabaseCancellationDiagnosis.isCancellation(error) && !Task.isCancelled
+                let confirmedColumns = judgesFailure ? await parent.confirmedColumns(for: catalogCheck, from: confirmation) : nil
+                let isShown = parent.finishFailedQuery(
                     error,
                     tabId: tabId,
                     sql: sql,
@@ -253,6 +265,9 @@ extension QueryExecutionCoordinator {
                     traceToken: traceToken,
                     serverOutput: failureOutput.output
                 )
+                if isShown, judgesFailure {
+                    parent.settleCatalogPage(catalogCheck, confirmed: confirmedColumns, installed: false)
+                }
             }
         }
     }
