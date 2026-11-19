@@ -281,6 +281,25 @@ public sealed class VimEngineMarksAndRegistersTests
     }
 
     [Fact]
+    public void UndoingBackspacesTheHistoryJoinedPutsTheMarkBack()
+    {
+        var s = new VimSession("aaa\nbbb\n", caret: 6);
+        s.Press("ma");
+        s.SetCaret(4);
+        s.Press("i");
+        // The editor deletes what Backspace takes in Insert mode, and its history joins the two into one step.
+        s.Model.Backspace(word: false);
+        s.Model.Backspace(word: false);
+        s.Escape();
+        Assert.Equal("aabbb\n", s.Text);
+        s.Press("u");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal("aaa\nbbb\n", s.Text);
+        Assert.Equal(6, s.Caret);
+    }
+
+    [Fact]
     public void UndoingAJoinPutsTheMarkBackOnItsLine()
     {
         var s = new VimSession("hello world\n    second\n", caret: 16);

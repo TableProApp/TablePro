@@ -154,6 +154,10 @@ public sealed partial class VimEngine
                 }
                 return true;
             }
+            // Nothing comes before the start of the text, so the motion fails and an operator does nothing.
+            case "b" or "B" when buffer.SelectedRange.Location == 0:
+                ApplyMotion(null, VimMotionKind.Exclusive);
+                return true;
             case "b":
             {
                 var count = ConsumeCount();

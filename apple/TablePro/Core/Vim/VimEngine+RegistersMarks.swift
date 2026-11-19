@@ -172,8 +172,7 @@ extension VimEngine {
         let removedText = buffer.string(in: range)
         let before = positionSnapshot
         var restored: VimPositionSnapshot?
-        if isUndoOrRedo,
-           let index = editJournal.lastIndex(where: { $0.isReversed(by: range, replacement: replacement) }) {
+        if isUndoOrRedo, let index = reversedJournalIndex(range: range, replacement: replacement) {
             restored = editJournal[index].positions
             editJournal.removeSubrange(index...)
         }
@@ -193,10 +192,25 @@ extension VimEngine {
         editJournal.append(VimEditRecord(
             location: range.location,
             removedText: removedText,
-            insertedLength: (replacement as NSString).length,
+            insertedText: replacement,
             positions: before
         ))
         if editJournal.count > 100 { editJournal.removeFirst() }
+    }
+
+    // The newest record the edit reverses. An editor may undo a run of keys, such as backspaces, as one edit, so the
+    // newest records are also tried folded together, oldest first.
+    private func reversedJournalIndex(range: NSRange, replacement: String) -> Int? {
+        if let index = editJournal.lastIndex(where: { $0.isReversed(by: range, replacement: replacement) }) {
+            return index
+        }
+        guard var folded = editJournal.last else { return nil }
+        for index in stride(from: editJournal.count - 2, through: max(0, editJournal.count - 50), by: -1) {
+            guard let combined = editJournal[index].followed(by: folded) else { return nil }
+            if combined.isReversed(by: range, replacement: replacement) { return index }
+            folded = combined
+        }
+        return nil
     }
 
     // A mark set since the reversed edit keeps its place, as Vim restores only the marks its undo step saved.
@@ -227,11 +241,32 @@ struct VimPositionSnapshot {
 struct VimEditRecord {
     let location: Int
     let removedText: String
-    let insertedLength: Int
+    let insertedText: String
     let positions: VimPositionSnapshot
 
     func isReversed(by range: NSRange, replacement: String) -> Bool {
-        range.location == location && range.length == insertedLength && replacement == removedText
+        range.location == location && range.length == (insertedText as NSString).length && replacement == removedText
+    }
+
+    // This edit and the next as one, when the next touches the text this one left, with this one's positions.
+    func followed(by next: VimEditRecord) -> VimEditRecord? {
+        let removed = removedText as NSString
+        let inserted = insertedText as NSString
+        let nextRemoved = next.removedText as NSString
+        let nextInserted = next.insertedText as NSString
+        let end = location + inserted.length
+        let nextEnd = next.location + nextRemoved.length
+        guard next.location <= end, nextEnd >= location else { return nil }
+        let before = next.location < location ? nextRemoved.substring(to: location - next.location) : ""
+        let after = nextEnd > end ? nextRemoved.substring(from: end - next.location) : ""
+        let keptHead = next.location > location ? inserted.substring(to: next.location - location) : ""
+        let keptTail = nextEnd < end ? inserted.substring(from: nextEnd - location) : ""
+        return VimEditRecord(
+            location: min(location, next.location),
+            removedText: before + (removed as String) + after,
+            insertedText: keptHead + (nextInserted as String) + keptTail,
+            positions: positions
+        )
     }
 }
 

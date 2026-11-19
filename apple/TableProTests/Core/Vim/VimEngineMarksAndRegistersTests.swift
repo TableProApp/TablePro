@@ -361,6 +361,22 @@ final class VimEngineMarksAndRegistersTests {
         #expect(buffer.selectedRange() == NSRange(location: 4, length: 4))
     }
 
+    @Test("Undoing a run of backspaces as one edit puts the mark back")
+    func undoingCoalescedBackspacesRestoresTheMark() {
+        buffer = VimTextBufferMock(text: "aaa\nbbb\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        buffer.setSelectedRange(NSRange(location: 6, length: 0))
+        keys("ma")
+        buffer.replaceCharacters(in: NSRange(location: 3, length: 1), with: "")
+        buffer.replaceCharacters(in: NSRange(location: 2, length: 1), with: "")
+        buffer.replayUndo(in: NSRange(location: 2, length: 0), with: "a\n")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("`a")
+        #expect(buffer.text == "aaa\nbbb\n")
+        #expect(pos == 6)
+    }
+
     @Test("A mark keeps its column through a line that shrinks and grows back")
     func markColumnSurvivesAShorterLine() {
         buffer = VimTextBufferMock(text: "abcdef\ntail\n")

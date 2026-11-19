@@ -159,9 +159,7 @@ public sealed partial class VimEngine
             LastVisualEnd);
         VimPositionSnapshot? restored = null;
         // Only undo and redo reverse an edit; typing back what an earlier edit removed, past later edits, is a new edit.
-        var index = _buffer.Model.Document.Undo.IsReplaying
-            ? EditJournal.FindLastIndex(record => record.IsReversedBy(change))
-            : -1;
+        var index = _buffer.Model.Document.Undo.IsReplaying ? ReversedJournalIndex(change) : -1;
         if (index >= 0)
         {
             restored = EditJournal[index].Positions;
@@ -192,11 +190,36 @@ public sealed partial class VimEngine
         {
             RestorePositions(restored);
         }
-        EditJournal.Add(new VimEditRecord(change.Offset, change.RemovedText, change.InsertedLength, before));
+        EditJournal.Add(new VimEditRecord(change.Offset, change.RemovedText, change.InsertedText, before));
         if (EditJournal.Count > 100)
         {
             EditJournal.RemoveAt(0);
         }
+    }
+
+    // The newest record the edit reverses. The undo history joins a run of keys, such as backspaces, into one edit, so
+    // the newest records are also tried folded together, oldest first.
+    private int ReversedJournalIndex(TextChange change)
+    {
+        var index = EditJournal.FindLastIndex(record => record.IsReversedBy(change));
+        if (index >= 0 || EditJournal.Count == 0)
+        {
+            return index;
+        }
+        var folded = EditJournal[^1];
+        for (var i = EditJournal.Count - 2; i >= Math.Max(0, EditJournal.Count - 50); i--)
+        {
+            if (EditJournal[i].FollowedBy(folded) is not { } combined)
+            {
+                return -1;
+            }
+            if (combined.IsReversedBy(change))
+            {
+                return i;
+            }
+            folded = combined;
+        }
+        return -1;
     }
 
     // A mark set since the reversed edit keeps its place, as Vim restores only the marks its undo step saved.

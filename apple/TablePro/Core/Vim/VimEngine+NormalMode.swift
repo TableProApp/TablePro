@@ -122,6 +122,10 @@ extension VimEngine {
                 recordDot(.operatorWithMotion(op: op, motion: "w", shift: false, count: count))
             }
             return true
+        case "b" where buffer.selectedRange().location == 0, "B" where buffer.selectedRange().location == 0:
+            // Nothing before the start of the text, so the motion fails and an operator does nothing.
+            applyMotion(to: nil, kind: .exclusive, in: buffer)
+            return true
         case "b":
             let count = consumeCount()
             if let op = pendingOperator {

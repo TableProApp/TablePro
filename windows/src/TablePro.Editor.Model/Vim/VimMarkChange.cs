@@ -131,8 +131,28 @@ internal sealed record VimPositionSnapshot(
 
 // One edit and the positions from before it. Undo reverses edits newest first, so the reversing edit finds its record
 // at the end of the journal.
-internal sealed record VimEditRecord(int Location, string RemovedText, int InsertedLength, VimPositionSnapshot Positions)
+internal sealed record VimEditRecord(int Location, string RemovedText, string InsertedText, VimPositionSnapshot Positions)
 {
-    public bool IsReversedBy(TextChange change) => change.Offset == Location && change.RemovedLength == InsertedLength
+    public bool IsReversedBy(TextChange change) => change.Offset == Location && change.RemovedLength == InsertedText.Length
         && string.Equals(change.InsertedText, RemovedText, StringComparison.Ordinal);
+
+    // This edit and the next as one, when the next touches the text this one left, with this one's positions.
+    public VimEditRecord? FollowedBy(VimEditRecord next)
+    {
+        var end = Location + InsertedText.Length;
+        var nextEnd = next.Location + next.RemovedText.Length;
+        if (next.Location > end || nextEnd < Location)
+        {
+            return null;
+        }
+        var before = next.Location < Location ? next.RemovedText[..(Location - next.Location)] : string.Empty;
+        var after = nextEnd > end ? next.RemovedText[(end - next.Location)..] : string.Empty;
+        var keptHead = next.Location > Location ? InsertedText[..(next.Location - Location)] : string.Empty;
+        var keptTail = nextEnd < end ? InsertedText[(nextEnd - Location)..] : string.Empty;
+        return new VimEditRecord(
+            Math.Min(Location, next.Location),
+            before + RemovedText + after,
+            keptHead + next.InsertedText + keptTail,
+            Positions);
+    }
 }
