@@ -300,6 +300,20 @@ public sealed class VimEngineMarksAndRegistersTests
     }
 
     [Fact]
+    public void UndoingAChangeWithALongInsertPutsTheMarkBack()
+    {
+        var s = new VimSession(Initial, caret: 25);
+        s.Press("maggcG");
+        s.Type(new string('x', 150));
+        s.Escape();
+        s.Press("u");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal(Initial, s.Text);
+        Assert.Equal(25, s.Caret);
+    }
+
+    [Fact]
     public void ASecondUndoSkipsTheRecordTheFirstUndoMade()
     {
         var s = new VimSession("aaa\nbbb\n", caret: 6);

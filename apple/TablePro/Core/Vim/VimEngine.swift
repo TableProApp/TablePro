@@ -109,6 +109,7 @@ final class VimEngine {
     var markColumns: [Character: Int] = [:]
     // Recent edits with the positions from before each, so undoing one puts them back.
     var editJournal: [VimEditRecord] = []
+    var editJournalTextLength = 0
 
     var buffer: VimTextBuffer?
 

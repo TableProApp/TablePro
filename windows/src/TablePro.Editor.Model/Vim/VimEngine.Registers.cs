@@ -168,9 +168,14 @@ public sealed partial class VimEngine
         if (index >= 0)
         {
             restored = EditJournal[index].Positions;
+            for (var i = index; i < EditJournal.Count; i++)
+            {
+                EditJournalTextLength -= EditJournal[i].TextLength;
+            }
             EditJournal.RemoveRange(index, EditJournal.Count - index);
         }
         var edit = new VimMarkChange(change, _buffer);
+        var touchesPositions = before.Offsets.Any(offset => edit.Touches(offset));
         foreach (var (name, offset) in Marks.ToList())
         {
             var moved = edit.Map(offset, removable: true);
@@ -195,9 +200,20 @@ public sealed partial class VimEngine
         {
             RestorePositions(restored);
         }
-        EditJournal.Add(new VimEditRecord(change.Offset, change.RemovedText, change.InsertedText, before, undoes == true));
-        if (EditJournal.Count > 100)
+        // Only an edit on a line that holds a position can lose one, so typing elsewhere keeps the journal short and
+        // never pushes out the record an undo step still needs.
+        if (!touchesPositions && restored is null)
         {
+            return;
+        }
+        var record = new VimEditRecord(change.Offset, change.RemovedText, change.InsertedText, before, undoes == true);
+        EditJournal.Add(record);
+        EditJournalTextLength += record.TextLength;
+        // An undo step can hold a long run of typing, so the journal keeps thousands of edits, bounded by the text they
+        // hold rather than their number.
+        while (EditJournal.Count > 10_000 || EditJournalTextLength > 1_000_000)
+        {
+            EditJournalTextLength -= EditJournal[0].TextLength;
             EditJournal.RemoveAt(0);
         }
     }

@@ -394,6 +394,24 @@ final class VimEngineMarksAndRegistersTests {
         #expect(pos == 6)
     }
 
+    @Test("A long insert after a delete does not lose the record its undo needs")
+    func longInsertKeepsTheRecordForUndo() {
+        buffer.setSelectedRange(NSRange(location: 25, length: 0))
+        keys("magg")
+        keys("c")
+        key("G", shift: true)
+        for _ in 0..<150 { typeInTextView("x") }
+        key("\u{1B}")
+        for offset in stride(from: 149, through: 0, by: -1) {
+            buffer.replayUndo(in: NSRange(location: offset, length: 1), with: "")
+        }
+        buffer.replayUndo(in: NSRange(location: 0, length: 0), with: "hello world\nsecond line\nthird line")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("`a")
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n")
+        #expect(pos == 25)
+    }
+
     @Test("A mark keeps its column through a line that shrinks and grows back")
     func markColumnSurvivesAShorterLine() {
         buffer = VimTextBufferMock(text: "abcdef\ntail\n")

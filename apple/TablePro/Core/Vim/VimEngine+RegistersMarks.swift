@@ -40,6 +40,7 @@ extension VimEngine {
         marks = saved.marks
         markColumns = saved.markColumns
         editJournal = saved.editJournal
+        editJournalTextLength = saved.editJournal.reduce(0) { $0 + $1.textLength }
         lastVisualStart = saved.lastVisualStart
         lastVisualEnd = saved.lastVisualEnd
         lastVisualLinewise = saved.lastVisualLinewise
@@ -175,9 +176,11 @@ extension VimEngine {
         var restored: VimPositionSnapshot?
         if source != .edit, let index = reversedJournalIndex(range: range, replacement: replacement, source: source) {
             restored = editJournal[index].positions
+            editJournalTextLength -= editJournal[index...].reduce(0) { $0 + $1.textLength }
             editJournal.removeSubrange(index...)
         }
         let change = VimMarkChange(range: range, replacement: replacement, in: buffer)
+        let touchesPositions = before.offsets.contains { change.touches($0) }
         for (name, offset) in marks {
             let mapped = change.map(offset, removable: true, in: buffer)
             if mapped?.keepsColumn != true { markColumns[name] = nil }
@@ -190,6 +193,9 @@ extension VimEngine {
         lastVisualStart = lastVisualStart.flatMap { change.map($0, removable: false, in: buffer)?.offset }
         lastVisualEnd = lastVisualEnd.flatMap { change.map($0, removable: false, in: buffer)?.offset }
         if let restored { restorePositions(restored) }
+        // Only an edit on a line that holds a position can lose one, so typing elsewhere keeps the journal short and
+        // never pushes out the record an undo step still needs.
+        guard touchesPositions || restored != nil else { return }
         editJournal.append(VimEditRecord(
             location: range.location,
             removedText: removedText,
@@ -197,7 +203,13 @@ extension VimEngine {
             positions: before,
             isUndo: source == .undo
         ))
-        if editJournal.count > 100 { editJournal.removeFirst() }
+        // An undo step can hold a long run of typing, so the journal keeps thousands of edits, bounded by the text they
+        // hold rather than their number.
+        editJournalTextLength += editJournal.last?.textLength ?? 0
+        while editJournal.count > 10_000 || editJournalTextLength > 1_000_000, let oldest = editJournal.first {
+            editJournalTextLength -= oldest.textLength
+            editJournal.removeFirst()
+        }
     }
 
     // The newest record the edit reverses. An editor may undo a run of keys, such as backspaces, as one edit, so the
@@ -240,6 +252,10 @@ struct VimPositionSnapshot {
     var lastInsertOffset: Int?
     var lastVisualStart: Int?
     var lastVisualEnd: Int?
+
+    var offsets: [Int] {
+        Array(marks.values) + [lastJumpOrigin, lastInsertOffset, lastVisualStart, lastVisualEnd].compactMap { $0 }
+    }
 }
 
 // One edit, and the positions from before it. Undo reverses edits newest first, so the reversing edit finds its
@@ -258,6 +274,10 @@ struct VimEditRecord {
 
     func isReversed(by range: NSRange, replacement: String) -> Bool {
         range.location == location && range.length == (insertedText as NSString).length && replacement == removedText
+    }
+
+    var textLength: Int {
+        (removedText as NSString).length + (insertedText as NSString).length
     }
 
     // This edit and the next as one, when the next touches the text this one left, with this one's positions.
@@ -326,6 +346,11 @@ struct VimMarkChange {
 
     // Nil when the edit removes the line of a removable mark. `keepsColumn` is false where the mark moved onto
     // another line's text, as a join moves it.
+    // The edit reaches the offset's line, so mapping it can lose where it was.
+    func touches(_ offset: Int) -> Bool {
+        offset >= location && offset < endLineEnd
+    }
+
     // An insertion point may sit after a line's last character; a mark sits on a character.
     func map(
         _ offset: Int,

@@ -190,6 +190,9 @@ public sealed partial class VimEngine : IDisposable
     // Recent edits with the positions from before each, so undoing one puts them back.
     internal List<VimEditRecord> EditJournal { get; } = [];
 
+    // The removed and inserted text the journal holds, in UTF-16 units.
+    internal int EditJournalTextLength { get; private set; }
+
     public bool Process(char key, bool shift = false) => Process(key.ToString(), shift);
 
     // True when the engine took the key; false leaves it to the editor, as typing in Insert mode is.
@@ -323,6 +326,7 @@ public sealed partial class VimEngine : IDisposable
         Marks = new Dictionary<string, int>(StringComparer.Ordinal);
         MarkColumns = new Dictionary<string, int>(StringComparer.Ordinal);
         EditJournal.Clear();
+        EditJournalTextLength = 0;
         _replayRedoCount = null;
         LastVisualStart = null;
         LastVisualEnd = null;
