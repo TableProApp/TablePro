@@ -624,8 +624,16 @@ actor CassandraConnectionActor {
         return rows
     }
 
+    // The host moves the session before every scoped operation. Prepared browses name their keyspace and resume points
+    // are keyed on it, so this switch keeps both, where a `USE` typed in the editor clears them.
     func switchKeyspace(_ keyspace: String) throws {
-        _ = try executeQuery("USE \(SQLQuoting.identifier(keyspace))", consistency: nil)
+        guard let session else {
+            throw CassandraPluginError.notConnected
+        }
+        _ = try executePaged(
+            "USE \(SQLQuoting.identifier(keyspace))", pageSize: nil, consistency: nil, session: session,
+            cancellation: nil, startTime: Date()
+        )
         currentKeyspace = keyspace
     }
 
