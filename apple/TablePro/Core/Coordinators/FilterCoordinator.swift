@@ -248,12 +248,8 @@ final class FilterCoordinator: ObservableObject {
         }
     }
 
-    /// Rebuilds the tab's query for a page turn, sort, refresh or first load from the filters
-    /// running on it, never from an edit the reader has not applied.
-    ///
-    /// Filters that cannot be built for this engine stop counting as applied, and the table loads
-    /// without them, so the panel never reports a filter the rows were not fetched with.
-    func rebuildTableQuery(at tabIndex: Int) {
+    // A filter the engine cannot build stops counting as applied, so the panel never shows one the rows lack.
+    func rebuildTableQuery(at tabIndex: Int, builtOn schema: SchemaColumnStore.Entry? = nil) {
         guard tabIndex < parent.tabManager.tabs.count,
               let tableName = parent.tabManager.tabs[tabIndex].tableContext.tableName else { return }
         normalizeLogicModeIfNeeded(at: tabIndex)
@@ -263,7 +259,8 @@ final class FilterCoordinator: ObservableObject {
             for: tab,
             tableName: tableName,
             limit: tab.pagination.pageSize,
-            offset: tab.pagination.currentOffset
+            offset: tab.pagination.currentOffset,
+            columns: schema.map { parent.tableQueryColumns(for: tab, builtOn: $0) } ?? parent.tableQueryColumns(for: tab)
         )
 
         parent.tabManager.mutate(at: tabIndex) {
@@ -276,15 +273,29 @@ final class FilterCoordinator: ObservableObject {
         }
     }
 
-    func rebuildTableQuery(forTab tabId: UUID) {
+    func rebuildTableQuery(forTab tabId: UUID, builtOn schema: SchemaColumnStore.Entry? = nil) {
         guard let index = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-        rebuildTableQuery(at: index)
+        rebuildTableQuery(at: index, builtOn: schema)
     }
 
     // The table tab's view, its filters, search and sort, read from the first row: what Share Result reads.
     func viewQuery(for tab: QueryTab, limit: Int) -> String? {
         guard let tableName = tab.tableContext.tableName else { return nil }
-        return tableQuery(for: tab, tableName: tableName, limit: limit, offset: 0).query
+        return tableQuery(
+            for: tab, tableName: tableName, limit: limit, offset: 0, columns: parent.tableQueryColumns(for: tab)
+        ).query
+    }
+
+    // The page the tab asks for, built on this column list alone, not on the cached one or the loaded rows.
+    func pageQuery(for tab: QueryTab, builtOn schema: SchemaColumnStore.Entry) -> String? {
+        guard let tableName = tab.tableContext.tableName else { return nil }
+        return tableQuery(
+            for: tab,
+            tableName: tableName,
+            limit: tab.pagination.pageSize,
+            offset: tab.pagination.currentOffset,
+            columns: parent.tableQueryColumns(for: tab, builtOn: schema)
+        ).query
     }
 
     // The same view with no LIMIT or OFFSET, as a shared link shows it; nil when the host cannot write it as SQL.
@@ -322,11 +333,12 @@ final class FilterCoordinator: ObservableObject {
         for tab: QueryTab,
         tableName: String,
         limit: Int,
-        offset: Int
+        offset: Int,
+        columns built: TableQueryColumns
     ) -> (query: String, executed: [TableFilter], isRefused: Bool, logicMode: FilterLogicMode) {
         let rerun = tab.filterState.rerunFilters
         let logicMode = parent.supportsMatchAnyFilters ? rerun.logicMode : .and
-        let (columns, columnTypes) = parent.queryColumns(for: tab)
+        let (columns, columnTypes) = (built.columns, built.columnTypes)
 
         let filteredQuery: String?
         var executed = rerun.filters
@@ -338,8 +350,8 @@ final class FilterCoordinator: ObservableObject {
                 typeScope: search.typeScope,
                 sortState: querySortState(for: tab),
                 columns: columns,
-                selectColumns: parent.selectColumns(for: tab),
-                unloadedValues: parent.unloadedValuePlan(for: tab),
+                selectColumns: built.selectColumns,
+                unloadedValues: built.unloadedValues,
                 limit: limit,
                 offset: offset
             )
@@ -354,8 +366,8 @@ final class FilterCoordinator: ObservableObject {
                 sortState: querySortState(for: tab),
                 columns: columns,
                 columnTypes: columnTypes,
-                selectColumns: parent.selectColumns(for: tab),
-                unloadedValues: parent.unloadedValuePlan(for: tab),
+                selectColumns: built.selectColumns,
+                unloadedValues: built.unloadedValues,
                 limit: limit,
                 offset: offset
             )
@@ -369,8 +381,8 @@ final class FilterCoordinator: ObservableObject {
             schemaName: tab.tableContext.schemaName,
             sortState: querySortState(for: tab),
             columns: columns,
-            selectColumns: parent.selectColumns(for: tab),
-            unloadedValues: parent.unloadedValuePlan(for: tab),
+            selectColumns: built.selectColumns,
+            unloadedValues: built.unloadedValues,
             limit: limit,
             offset: offset
         )

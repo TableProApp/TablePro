@@ -382,6 +382,7 @@ extension MainContentCoordinator {
     func discardRowsForRetarget(ofTab tabId: UUID, resultsViewMode: ResultsViewMode? = nil) {
         guard tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
         cancelPhase2Work(forTab: tabId)
+        forgetCatalogPage(ofTab: tabId)
         setActiveTableRows(TableRows(), for: tabId)
         tabManager.mutate(tabId: tabId) { tab in
             if let resultsViewMode {

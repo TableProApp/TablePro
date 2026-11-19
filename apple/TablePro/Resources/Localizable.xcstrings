@@ -199080,6 +199080,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The structure of \"%@\" changed. Reload to show its current columns." : {
+
+    },
     "The structure of a table in an attached database cannot be changed here." : {
       "extractionState" : "manual",
       "generatesSymbol" : false

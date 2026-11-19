@@ -650,6 +650,15 @@ struct MainEditorContentView: View {
                 executionErrorBanner(tab: tab)
             }
 
+            if let notice = tab.shownOutdatedPageNotice {
+                OutdatedPageNoticeBar(
+                    tableName: notice.tableName,
+                    onReload: { coordinator.reloadOutdatedPage(tabId: tab.id) },
+                    onDismiss: { coordinator.dismissOutdatedPageNotice(tabId: tab.id) }
+                )
+                Divider()
+            }
+
             if presentation.showsFilterChrome {
                 rowFilterChrome(tab: tab, rows: rows)
             }

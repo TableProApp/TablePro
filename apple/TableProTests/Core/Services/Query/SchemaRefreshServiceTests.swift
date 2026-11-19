@@ -207,6 +207,30 @@ struct SchemaRefreshServiceTests {
         #expect(driver.fetchTablesCallCount == 1)
     }
 
+    @Test("the browse sync seeds the column catalog without an editor asking, once per table list")
+    func autocompleteSyncSeedsTheColumnCatalog() async throws {
+        let driver = MockDatabaseDriver()
+        driver.bulkColumnReadIsComplete = true
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        driver.allColumnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
+        let provider = FakeScopedMetadataProvider(driver: driver)
+        let registry = SchemaProviderRegistry(metadataDriverProvider: provider)
+        let connection = TestFixtures.makeConnection()
+        let service = makeService(schemaService: SchemaService(), provider: provider, providerRegistry: registry)
+
+        await service.refresh(connection: connection)
+
+        let scope = DatabaseScope(connectionId: connection.id, database: "testdb", schema: nil)
+        let schemaProvider = try #require(registry.provider(for: scope))
+        await schemaProvider.waitForEagerColumnLoad()
+        #expect(await schemaProvider.catalogColumns(forTable: "orders", schema: nil)?.map(\.name) == ["id"])
+        #expect(driver.fetchAllColumnsCallCount == 1)
+
+        await service.syncAutocompleteProvider(connectionId: connection.id)
+        await schemaProvider.waitForEagerColumnLoad()
+        #expect(driver.fetchAllColumnsCallCount == 2)
+    }
+
     @Test("no browse scope leaves the autocomplete provider untouched instead of clearing it")
     func autocompleteSyncWithoutABrowseScopeKeepsTheCachedTables() async {
         let driver = MockDatabaseDriver()

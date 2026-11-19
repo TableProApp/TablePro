@@ -37,7 +37,7 @@ extension PaginationCoordinator {
         if let denial = decision.denialError { throw denial }
 
         let isTableTab = tab.tabType == .table
-        let lengthColumns = isTableTab ? parent.unloadedValueLengthColumns(for: tab) : []
+        let lengthColumns = isTableTab ? parent.unloadedValueLengthColumns(for: tab, sql: query) : []
         let safeModeIsReadOnly = parent.runsAtReadOnly
         return try await parent.withExecutionDriver(scope: scope, isTableTab: isTableTab, lease: DriverLeaseOwner()) { driver in
             let values = parameters.map { $0.map { $0 as Any? } }

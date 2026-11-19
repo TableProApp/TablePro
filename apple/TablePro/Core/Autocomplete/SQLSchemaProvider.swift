@@ -37,6 +37,9 @@ actor SQLSchemaProvider {
     private var staleColumnKeys: Set<ColumnCacheKey> = []
     // One re-read per stale key and refresh, so a server that refuses it is not asked on every keystroke.
     private var staleRereadsStarted: Set<ColumnCacheKey> = []
+    // The schema and table each entry was read for. The key folds case, so only this says which table it describes.
+    private var columnReads: [ColumnCacheKey: ListedName] = [:]
+    private var listedNames: [ColumnCacheKey: Set<ListedName>]?
     private var loadTask: Task<Void, Never>?
     private var eagerLoadSchema: String?
 
@@ -109,6 +112,8 @@ actor SQLSchemaProvider {
     private weak var cachedDriver: (any DatabaseDriver)?
     // Read from the driver that filled the table list, so learning it opens no connection.
     private var fetchesAllColumnsInOneRequest = false
+    // Whether the bulk read reports everything a table's own read does, so a reader besides completion can trust it.
+    private var bulkColumnsAreComplete = false
     private let metadataSource: ColumnMetadataSource?
     private var connectionInfo: DatabaseConnection?
 
@@ -137,7 +142,9 @@ actor SQLSchemaProvider {
         let t0 = Date()
         self.cachedDriver = driver
         self.fetchesAllColumnsInOneRequest = driver.fetchesAllColumnsInOneRequest
+        self.bulkColumnsAreComplete = driver.providesBulkColumnFetch
         self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
+        self.listedNames = nil
         if let connection { self.connectionInfo = connection }
 
         let task = Task<Void, Never> {
@@ -180,12 +187,12 @@ actor SQLSchemaProvider {
             if let inFlight = columnTasks[key] { return await inFlight.value ?? cached }
             guard staleRereadsStarted.insert(key).inserted,
                   let task = startColumnRead(forKey: key, table: tableName, schema: schema) else { return cached }
-            return await commitColumnRead(task, forKey: key) ?? cached
+            return await commitColumnRead(task, forKey: key, readFor: listedName(tableName, schema: schema)) ?? cached
         }
 
         if let inFlight = columnTasks[key] { return await inFlight.value ?? [] }
         guard let task = startColumnRead(forKey: key, table: tableName, schema: schema) else { return [] }
-        return await commitColumnRead(task, forKey: key) ?? []
+        return await commitColumnRead(task, forKey: key, readFor: listedName(tableName, schema: schema)) ?? []
     }
 
     private func startColumnRead(
@@ -216,13 +223,18 @@ actor SQLSchemaProvider {
     }
 
     // A read a reset overtook answers its own caller and writes nothing. A failed read leaves the entry as it was.
-    private func commitColumnRead(_ task: Task<[ColumnInfo]?, Never>, forKey key: ColumnCacheKey) async -> [ColumnInfo]? {
+    private func commitColumnRead(
+        _ task: Task<[ColumnInfo]?, Never>,
+        forKey key: ColumnCacheKey,
+        readFor name: ListedName
+    ) async -> [ColumnInfo]? {
         let fetched = await task.value
         guard columnTasks[key] == task else { return fetched }
         columnTasks[key] = nil
         guard let columns = fetched else { return nil }
         staleColumnKeys.remove(key)
         staleRereadsStarted.remove(key)
+        columnReads[key] = name
         if columnCache.updateValue(columns, forKey: key) == nil {
             columnAccessOrder.append(key)
         }
@@ -234,6 +246,7 @@ actor SQLSchemaProvider {
         while columnAccessOrder.count > Self.maxCachedTables {
             let evicted = columnAccessOrder.removeFirst()
             columnCache.removeValue(forKey: evicted)
+            columnReads.removeValue(forKey: evicted)
             staleColumnKeys.remove(evicted)
             staleRereadsStarted.remove(evicted)
             foreignKeyCache.removeValue(forKey: evicted)
@@ -340,6 +353,7 @@ actor SQLSchemaProvider {
         } else {
             self.columnCache.removeAll()
             self.columnAccessOrder.removeAll()
+            self.columnReads.removeAll()
             self.staleColumnKeys.removeAll()
             self.staleRereadsStarted.removeAll()
         }
@@ -352,6 +366,7 @@ actor SQLSchemaProvider {
         self.onDemandSchemaTableTasks.removeAll()
         self.cachedDriver = driver
         self.fetchesAllColumnsInOneRequest = driver.fetchesAllColumnsInOneRequest
+        self.bulkColumnsAreComplete = driver.providesBulkColumnFetch
         if let connection { self.connectionInfo = connection }
         noteTableListWritten()
     }
@@ -366,7 +381,10 @@ actor SQLSchemaProvider {
 
     private func removeColumns(forKeys keys: Set<ColumnCacheKey>) {
         guard !keys.isEmpty else { return }
-        for key in keys { columnCache.removeValue(forKey: key) }
+        for key in keys {
+            columnCache.removeValue(forKey: key)
+            columnReads.removeValue(forKey: key)
+        }
         columnAccessOrder.removeAll { keys.contains($0) }
         staleColumnKeys.subtract(keys)
         staleRereadsStarted.subtract(keys)
@@ -378,6 +396,7 @@ actor SQLSchemaProvider {
         columnPreload = .idle
         columnCache.removeAll()
         columnAccessOrder.removeAll()
+        columnReads.removeAll()
         staleColumnKeys.removeAll()
         staleRereadsStarted.removeAll()
         columnTasks.removeAll()
@@ -486,6 +505,7 @@ actor SQLSchemaProvider {
         tableListGeneration &+= 1
         unqualifiedTableItems = nil
         cachedTableColumnItems = nil
+        listedNames = nil
         switch columnPreload {
         case .awaitingTables:
             startColumnPreloadIfStale(retryingFailure: true)
@@ -502,26 +522,85 @@ actor SQLSchemaProvider {
     /// run. Only a table listed in the preload schema takes an entry from the read.
     private func populateColumnCache(_ allColumns: [String: [ColumnInfo]]) {
         var pending: [String: [ColumnInfo]] = [:]
+        var readNames: [String: Set<String>] = [:]
         pending.reserveCapacity(allColumns.count)
         for (tableName, columns) in allColumns {
             pending[tableName.lowercased()] = columns
+            readNames[tableName.lowercased(), default: []].insert(tableName)
+        }
+        // Two names that fold to one key leave the entry's table unknown, so it keeps no record of one.
+        let readSchema = eagerLoadSchema
+        func spelling(of folded: String) -> ListedName? {
+            guard let names = readNames[folded], names.count == 1, let name = names.first else { return nil }
+            return ListedName(schema: readSchema, name: name)
         }
 
         for table in tables where isInEagerLoadSchema(table) {
-            guard let columns = pending.removeValue(forKey: table.name.lowercased()) else { continue }
-            insertIntoColumnCache(columns, forKey: cacheKey(table: table.name, schema: table.schema))
+            let folded = table.name.lowercased()
+            guard let columns = pending.removeValue(forKey: folded) else { continue }
+            insertIntoColumnCache(
+                columns, forKey: cacheKey(table: table.name, schema: table.schema), readFor: spelling(of: folded)
+            )
         }
         for tableName in pending.keys.sorted() {
             guard let columns = pending[tableName] else { continue }
-            insertIntoColumnCache(columns, forKey: cacheKey(table: tableName, schema: nil))
+            insertIntoColumnCache(columns, forKey: cacheKey(table: tableName, schema: nil), readFor: spelling(of: tableName))
         }
     }
 
-    private func insertIntoColumnCache(_ columns: [ColumnInfo], forKey key: ColumnCacheKey) {
+    private func insertIntoColumnCache(_ columns: [ColumnInfo], forKey key: ColumnCacheKey, readFor name: ListedName?) {
         guard columnCache[key] == nil else { return }
         guard columnAccessOrder.count < Self.maxCachedTables else { return }
         columnCache[key] = columns
+        columnReads[key] = name
         columnAccessOrder.append(key)
+    }
+
+    // MARK: - Column Catalog
+
+    private struct ListedName: Hashable {
+        let schema: String?
+        let name: String
+    }
+
+    // Only a table listed once under that exact spelling and read under it since the last refresh. Never reads.
+    func catalogColumns(forTable table: String, schema: String?) -> [ColumnInfo]? {
+        let key = cacheKey(table: table, schema: schema)
+        guard bulkColumnsAreComplete,
+              !staleColumnKeys.contains(key),
+              columnReads[key] == listedName(table, schema: schema),
+              listsOnce(table: table, schema: schema, key: key),
+              let columns = columnCache[key], !columns.isEmpty
+        else { return nil }
+        return columns
+    }
+
+    func discardColumns(forTable table: String, schema: String?) {
+        let key = cacheKey(table: table, schema: schema)
+        columnTasks[key] = nil
+        removeColumns(forKeys: [key])
+    }
+
+    // One bulk read per table list the browse sync writes, on its own lease, so a table opened after it finds its columns.
+    func seedColumnCatalog() {
+        guard bulkColumnsAreComplete else { return }
+        startColumnPreloadIfStale(retryingFailure: false)
+    }
+
+    private func listedName(_ table: String, schema: String?) -> ListedName {
+        ListedName(schema: schema ?? eagerLoadSchema, name: table)
+    }
+
+    private func listsOnce(table: String, schema: String?, key: ColumnCacheKey) -> Bool {
+        if listedNames == nil {
+            var index: [ColumnCacheKey: Set<ListedName>] = [:]
+            for listed in tables {
+                let name = ListedName(schema: listed.schema ?? eagerLoadSchema, name: listed.name)
+                index[cacheKey(table: listed.name, schema: listed.schema), default: []].insert(name)
+            }
+            listedNames = index
+        }
+        return listedNames?[key] == [listedName(table, schema: schema)]
     }
 
     func waitForEagerColumnLoad() async {

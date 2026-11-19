@@ -182,6 +182,26 @@ extension MainContentCoordinator {
         )
     }
 
+    // The definition read takes the columns a catalog page's own read brings, instead of reading them again.
+    func startSchemaFetch(
+        _ tableName: String?,
+        uncached: Bool,
+        isView: Bool,
+        scope: DatabaseScope,
+        columnsFrom confirmation: Task<FirstLoadColumnRead?, Never>
+    ) -> Task<FetchedTableSchema, Error>? {
+        guard uncached, let tableName, !tableName.isEmpty else {
+            return startSchemaFetch(tableName, uncached: uncached, isView: isView, scope: scope)
+        }
+        prefetchForeignKeys(scope: scope)
+        return Task {
+            let known = await confirmation.value?.columns
+            return try await QueryExecutor.fetchTableSchema(
+                scope: scope, tableName: tableName, isView: isView, knownColumns: known
+            )
+        }
+    }
+
     /// The table a tab's Table Info describes, or nil on a tab with no table of its own, such as a
     /// query. The load's task key, the load and the read all ask this one question, so they agree on
     /// which tabs have Table Info and on when a retarget makes the cached numbers another table's.

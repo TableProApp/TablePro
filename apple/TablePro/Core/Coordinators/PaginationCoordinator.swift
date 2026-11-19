@@ -326,7 +326,7 @@ final class PaginationCoordinator: ObservableObject {
         let owner = TabQueryTaskOwner.unclaimedWork(tabId: tabId, token: workToken)
         let lease = DriverLeaseOwner()
         let isTableTab = parent.tabManager.tabs[idx].tabType == .table
-        let lengthColumns = isTableTab ? parent.unloadedValueLengthColumns(for: parent.tabManager.tabs[idx]) : []
+        let lengthColumns = isTableTab ? parent.unloadedValueLengthColumns(for: parent.tabManager.tabs[idx], sql: baseQuery) : []
         let failureOutput = ServerOutputBox()
         let safeModeIsReadOnly = parent.runsAtReadOnly
 

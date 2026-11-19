@@ -169,6 +169,27 @@ struct CatalogChangeServiceTests {
         #expect(target.changes.isEmpty)
     }
 
+    @Test("a change counts as being applied from the moment it is recorded until its targets have refreshed")
+    func changeIsBeingAppliedUntilItsTargetsFinish() async {
+        let target = RecordingCatalogTarget()
+        target.pausesFirstRefresh = true
+        let service = makeService(target: target)
+        let connectionId = UUID()
+        let paused = AsyncStream.makeStream(of: Void.self)
+        target.onPaused = { paused.continuation.yield() }
+        #expect(!service.isApplyingChange(for: connectionId))
+
+        service.record(.changed(CatalogChange(connectionId: connectionId, kinds: .tables)))
+        #expect(service.isApplyingChange(for: connectionId))
+        for await _ in paused.stream { break }
+        #expect(service.isApplyingChange(for: connectionId))
+        #expect(!service.isApplyingChange(for: UUID()))
+
+        target.resume()
+        await service.waitUntilIdle(connectionId: connectionId)
+        #expect(!service.isApplyingChange(for: connectionId))
+    }
+
     @Test("changes arriving during a refresh merge into one more run")
     func burstCoalescesIntoOneTrailingRun() async {
         let target = RecordingCatalogTarget()

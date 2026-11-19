@@ -70,6 +70,8 @@ struct QueryTab: Identifiable, Equatable {
     // Never saved: a relaunch must not start polling a server with nobody watching.
     var autoRefreshInterval: TableAutoRefreshInterval = .off
     var autoRefreshPause: TableAutoRefreshPause?
+    // Never saved: it describes rows this session read.
+    var outdatedPageNotice: OutdatedPageNotice?
     var pagination: PaginationState
     var chartConfiguration: ResultChartConfiguration
     var mapConfiguration: ResultMapConfiguration
@@ -386,6 +388,7 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.sessionHighlightRules == rhs.sessionHighlightRules
             && lhs.autoRefreshInterval == rhs.autoRefreshInterval
             && lhs.autoRefreshPause == rhs.autoRefreshPause
+            && lhs.outdatedPageNotice == rhs.outdatedPageNotice
             && lhs.chartConfiguration == rhs.chartConfiguration
             && lhs.mapConfiguration == rhs.mapConfiguration
             && lhs.display == rhs.display

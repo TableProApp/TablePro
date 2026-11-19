@@ -332,6 +332,8 @@ final class MainContentCoordinator: ObservableObject {
     internal var tableLoadTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
     internal var phase2Works: [UUID: [Phase2Work]] = [:]
     internal var firstLoadColumnReads: [UUID: FirstLoadColumnRead] = [:]
+    internal var catalogPages: [UUID: CatalogPage] = [:]
+    internal var catalogPageReloads: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
 
     // Not on `QueryTab`: that is the persisted shape, and staying out of its `Equatable` keeps a push from re-publishing tabs.
     internal var navigationHistories: [UUID: TabNavigationHistory] = [:]
@@ -873,6 +875,7 @@ final class MainContentCoordinator: ObservableObject {
         tableLoadTasks.removeAll()
         cancelAllRowCountTasks()
         cancelAllPhase2Work()
+        forgetAllCatalogPages()
         periodicSaveTask?.cancel()
         periodicSaveTask = nil
         draftSaveTask?.cancel()
