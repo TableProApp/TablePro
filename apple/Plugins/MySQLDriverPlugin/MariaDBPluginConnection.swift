@@ -891,7 +891,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         case .none:
             return nil
         case .apply(let rows):
-            if mayFly, hasAcceptedSelectLimit { return rows }
+            // Only where a refused `SET` would leave the read running under the limit main would run it under.
+            if mayFly, hasAcceptedSelectLimit, appliedSelectLimit == nil || appliedSelectLimit == rows { return rows }
             captureBaselineSelectLimit(from: mysql)
             statement = sessionFlavor.selectLimitStatement(rows: rows)
         case .reset:
@@ -921,8 +922,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     }
 
     // Both go out before either reply is read, so no statement of the driver's own lands between the cap and the read.
-    // Answers what `mysql_real_query` would for the statement. A refused cap throws: the statement has run by then,
-    // and as a read it changed nothing.
+    // Answers what `mysql_real_query` would for the statement, whose reply is always read: it has run by then.
     private func sendWithSelectLimit(
         _ query: String,
         rows: UInt64,
@@ -941,8 +941,19 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         guard mysql_read_query_result(mysql) == 0 else {
             let failure = noting(getError(), generation: generation)
             logger.warning("SQL_SELECT_LIMIT not reconciled: \(failure.code) \(failure.message)")
-            discardReply(after: failure, on: mysql, generation: generation)
-            throw failure
+            guard !mysqlClientErrorCodes.contains(failure.code) else { throw failure }
+            if cancellationGate.isCancelled(generation) {
+                discardReply(on: mysql, generation: generation)
+                throw CancellationError()
+            }
+            // A read that succeeds leaves the refused cap's error in `mysql_errno`; with no result pending, this
+            // call clears it and reads nothing. Measured with Connector/C 3.4.4 on MySQL 8.4.11 and MariaDB 13.0.2.
+            guard mysql_more_results(mysql) == 0, mysql_next_result(mysql) == -1 else {
+                // The read's reply is still unread, and the session cannot be put back in step without it.
+                mariadb_cancel(mysql)
+                throw failure
+            }
+            return mysql_read_query_result(mysql) == 0 ? 0 : 1
         }
         if let discarded = mysql_store_result(mysql) {
             mysql_free_result(discarded)
@@ -953,11 +964,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     }
 
     // The session refuses its next statement with 2014 until a reply already asked for is read.
-    private func discardReply(after failure: MariaDBPluginError, on mysql: UnsafeMutablePointer<MYSQL>, generation: Int) {
-        guard !mysqlClientErrorCodes.contains(failure.code) else { return }
-        if cancellationGate.isCancelled(generation) {
-            killStatementOnServer(on: mysql, generation: generation)
-        }
+    private func discardReply(on mysql: UnsafeMutablePointer<MYSQL>, generation: Int) {
+        killStatementOnServer(on: mysql, generation: generation)
         guard mysql_read_query_result(mysql) == 0 else {
             _ = noting(readError(from: mysql), generation: generation)
             return
