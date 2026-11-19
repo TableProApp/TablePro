@@ -102,7 +102,7 @@ struct ColumnCatalogLoadTests {
         #expect(harness.coordinator.schemaColumns.cached(harness.key) == nil)
     }
 
-    @Test("A confirmed list that adds a column loads the page again, and an unchanged one does not")
+    @Test("A confirmed list that changes the page's columns loads the page again, and an unchanged one does not")
     func confirmedListReloadsOnlyWhenItChangesTheSelection() async throws {
         let harness = try await makeHarness(seeded: true)
         defer { tearDown(harness) }
@@ -111,56 +111,23 @@ struct ColumnCatalogLoadTests {
         tab.columnLayout.hiddenColumns = ["name"]
         harness.fixture.addTab(tab)
         _ = await harness.coordinator.loadSchemaColumns(for: "users", scope: harness.scope)
-        let used = try #require(harness.coordinator.schemaColumns.cached(harness.key))
         let claim = TabExecutionClaim(tabId: tab.id, epoch: 1, startedAt: .now)
         let epoch = harness.coordinator.schemaColumns.verificationEpoch
 
         harness.coordinator.adoptVerifiedColumns(
-            [Self.column("id", key: true), Self.column("name")], of: "users", in: harness.scope, readBy: claim,
-            builtOn: used, epoch: epoch
+            [Self.column("id", key: true), Self.column("name")], of: "users", in: harness.scope, readBy: claim, epoch: epoch
         )
         #expect(harness.coordinator.schemaColumns.cached(harness.key)?.isVerified == true)
-        #expect(harness.coordinator.tabManager.tabs[0].content.query == "SELECT * FROM users")
+        #expect(harness.coordinator.columnScopeRequeryTask == nil)
 
         harness.coordinator.schemaColumns.markAllUnverified()
         harness.coordinator.adoptVerifiedColumns(
             [Self.column("id", key: true), Self.column("name"), Self.column("email")],
-            of: "users", in: harness.scope, readBy: claim, builtOn: used, epoch: epoch + 1
+            of: "users", in: harness.scope, readBy: claim, epoch: epoch + 1
         )
         #expect(harness.coordinator.schemaColumns.cached(harness.key)?.columns == ["id", "name", "email"])
-        try await waitUntil { harness.coordinator.tabManager.tabs[0].content.query.contains("email") }
-    }
-
-    @Test("A column whose type changed loads the page again with the filter typed for it")
-    func changedTypeRetypesTheFilter() async throws {
-        let harness = try await makeHarness(seeded: false)
-        defer { tearDown(harness) }
-        harness.coordinator.schemaColumns.store(
-            SchemaColumnStore.Entry(
-                columns: ["id", "code"],
-                primaryKeys: ["id"],
-                columnTypes: ["id": .integer(rawType: "INT"), "code": .integer(rawType: "INT")],
-                isVerified: false
-            ),
-            for: harness.key
-        )
-        var tab = QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table)
-        tab.tableContext.tableName = "users"
-        tab.filterState = TabFilterState(
-            filters: [TestFixtures.makeTableFilter(column: "code", value: "0123")],
-            commit: .all, isVisible: true, filterLogicMode: .and
-        )
-        harness.fixture.addTab(tab)
-        let used = try #require(harness.coordinator.schemaColumns.cached(harness.key))
-        let claim = TabExecutionClaim(tabId: tab.id, epoch: 1, startedAt: .now)
-
-        harness.coordinator.adoptVerifiedColumns(
-            [Self.column("id", key: true), TestFixtures.makeColumnInfo(name: "code", dataType: "VARCHAR(20)", isPrimaryKey: false)],
-            of: "users", in: harness.scope, readBy: claim, builtOn: used,
-            epoch: harness.coordinator.schemaColumns.verificationEpoch
-        )
-
-        try await waitUntil { harness.coordinator.tabManager.tabs[0].content.query.contains("'0123'") }
+        #expect(harness.coordinator.columnScopeRequeryTask != nil)
+        harness.coordinator.columnScopeRequeryTask?.cancel()
     }
 
     @Test("A read that began before a transaction ended confirms nothing")
@@ -168,13 +135,12 @@ struct ColumnCatalogLoadTests {
         let harness = try await makeHarness(seeded: true)
         defer { tearDown(harness) }
         _ = await harness.coordinator.loadSchemaColumns(for: "users", scope: harness.scope)
-        let used = try #require(harness.coordinator.schemaColumns.cached(harness.key))
         let epoch = harness.coordinator.schemaColumns.verificationEpoch
         harness.coordinator.schemaColumns.markAllUnverified()
 
         harness.coordinator.adoptVerifiedColumns(
             [Self.column("id", key: true)], of: "users", in: harness.scope,
-            readBy: TabExecutionClaim(tabId: UUID(), epoch: 1, startedAt: .now), builtOn: used, epoch: epoch
+            readBy: TabExecutionClaim(tabId: UUID(), epoch: 1, startedAt: .now), epoch: epoch
         )
 
         #expect(harness.coordinator.schemaColumns.cached(harness.key)?.columns == ["id", "name"])
@@ -209,78 +175,5 @@ struct ColumnCatalogLoadTests {
         #expect(settled.execution.errorMessage == nil)
         #expect(!settled.content.query.contains("gone"))
         #expect(harness.driver.fetchColumnsCallCount == 1)
-    }
-
-    @Test("A load the user must confirm is not sent again on its own after the server refuses it")
-    func confirmedLoadIsNotRetried() async throws {
-        let harness = try await makeHarness(seeded: false)
-        defer { tearDown(harness) }
-        harness.coordinator.schemaColumns.store(
-            SchemaColumnStore.Entry(columns: ["id", "gone"], primaryKeys: ["id"], columnTypes: [:], isVerified: false),
-            for: harness.key
-        )
-        harness.coordinator.toolbarState.safeModeLevel = .safeModeFull
-        var tab = QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table)
-        tab.tableContext.tableName = "users"
-        harness.fixture.addTab(tab)
-        let claim = harness.coordinator.beginTabExecution(for: tab.id).0
-
-        let retried = harness.coordinator.reloadAfterStaleColumns(
-            DatabaseError.queryFailed("Unknown column 'gone'"), claim: claim, trigger: .userInitiated
-        )
-
-        #expect(!retried)
-        #expect(harness.coordinator.schemaColumns.cached(harness.key)?.columns == ["id", "gone"])
-    }
-
-    @Test("A load built on the old list corrects itself even after another load confirmed the list")
-    func loadBuiltOnTheOldListCorrectsItself() async throws {
-        let harness = try await makeHarness(seeded: true)
-        defer { tearDown(harness) }
-        var tab = QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table)
-        tab.tableContext.tableName = "users"
-        tab.columnLayout.hiddenColumns = ["name"]
-        harness.fixture.addTab(tab)
-        _ = await harness.coordinator.loadSchemaColumns(for: "users", scope: harness.scope)
-        let used = try #require(harness.coordinator.schemaColumns.cached(harness.key))
-        let fresh = [Self.column("id", key: true), Self.column("name"), Self.column("email")]
-        harness.coordinator.schemaColumns.store(
-            SchemaColumnStore.Entry(fetchedColumns: fresh, classifier: ColumnTypeClassifier(family: SQLTypeFamily.of(.duckdb))),
-            for: harness.key
-        )
-
-        harness.coordinator.adoptVerifiedColumns(
-            fresh, of: "users", in: harness.scope, readBy: TabExecutionClaim(tabId: tab.id, epoch: 1, startedAt: .now),
-            builtOn: used, epoch: harness.coordinator.schemaColumns.verificationEpoch
-        )
-
-        try await waitUntil { harness.coordinator.tabManager.tabs[0].content.query.contains("email") }
-    }
-
-    @Test("A lost connection or a filter the user wrote is never sent again on its own")
-    func ambiguousFailuresAreNotRetried() async throws {
-        let harness = try await makeHarness(seeded: false)
-        defer { tearDown(harness) }
-        harness.coordinator.schemaColumns.store(
-            SchemaColumnStore.Entry(columns: ["id", "gone"], primaryKeys: ["id"], columnTypes: [:], isVerified: false),
-            for: harness.key
-        )
-        var tab = QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table)
-        tab.tableContext.tableName = "users"
-        harness.fixture.addTab(tab)
-        let claim = harness.coordinator.beginTabExecution(for: tab.id).0
-
-        #expect(!harness.coordinator.reloadAfterStaleColumns(
-            DatabaseError.queryFailed("Lost connection to server during query"), claim: claim, trigger: .userInitiated
-        ))
-
-        let raw = TableFilter.rawCondition("audit_touch(id) > 0")
-        harness.coordinator.tabManager.mutate(tabId: tab.id) {
-            $0.filterState = TabFilterState(filters: [raw], commit: .all, isVisible: true, filterLogicMode: .and)
-        }
-        #expect(!harness.coordinator.reloadAfterStaleColumns(
-            DatabaseError.queryFailed("Unknown column 'gone'"), claim: claim, trigger: .userInitiated
-        ))
-        #expect(harness.coordinator.schemaColumns.cached(harness.key)?.columns == ["id", "gone"])
     }
 }

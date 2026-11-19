@@ -80,8 +80,7 @@ extension QueryExecutionCoordinator {
         let needsDefinition = parent.tabSessionRegistry.needsDefinition(tabId)
         let metadataIsCached = isEditable && tableName.map { isMetadataCached(tabId: tabId, tableName: $0) } == true
         // A column list taken on trust is confirmed by the definition read, even where the metadata is cached.
-        let columnsUsed = parent.holdsUnverifiedColumns(for: tab) ? parent.cachedSchemaColumns(for: tab) : nil
-        let columnsAreUnverified = columnsUsed != nil
+        let columnsAreUnverified = parent.holdsUnverifiedColumns(for: tab)
         let columnEpoch = parent.schemaColumns.verificationEpoch
         let needsMetadataFetch = isEditable && tableName != nil && (!metadataIsCached || columnsAreUnverified)
         let readsMetadataAfresh = needsMetadataFetch && !metadataIsCached
@@ -247,8 +246,7 @@ extension QueryExecutionCoordinator {
                 )
                 if columnsAreUnverified {
                     parent.verifySchemaColumns(
-                        after: schemaTask, ofTable: tableName, in: scope, readBy: run.claim,
-                        builtOn: columnsUsed, epoch: columnEpoch
+                        after: schemaTask, ofTable: tableName, in: scope, readBy: run.claim, epoch: columnEpoch
                     )
                 }
             } catch {
