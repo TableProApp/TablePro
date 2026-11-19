@@ -260,70 +260,6 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         }
     }
 
-    // Only statements that read and run the same whichever exchange carries them: no transaction boundary, nothing
-    // that can change how the file's next statement is split, and one statement as this session splits it.
-    func batches(_ statement: String) -> Bool {
-        guard driver.supportsStatementBatches else { return false }
-        let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
-        guard !grammar.contains(.batchSeparatorLines),
-              Self.batchedKeywords.contains(QueryClassifier.leadingKeyword(of: statement, grammar: grammar)),
-              !CatalogChangeClassifier.effect(of: statement, databaseType: databaseType, grammar: grammar).endsTransaction,
-              !Self.mayNameSettingCall(statement)
-        else { return false }
-        return SQLStatementScanner.executableStatements(in: statement, grammar: grammar).count == 1
-    }
-
-    // A read is left out because a call is what changes a setting; a Unicode-escaped name could spell that call.
-    private static let batchedKeywords: Set<String> = [
-        "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "COMMENT", "GRANT", "REVOKE", "TRUNCATE",
-    ]
-
-    private static func mayNameSettingCall(_ statement: String) -> Bool {
-        ["set_config", "U&"].contains { statement.range(of: $0, options: .caseInsensitive) != nil }
-    }
-
-    func execute(statements: [PluginImportStatement]) async throws {
-        let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
-        let lexicalState = driver.sessionLexicalState
-        let texts = statements.map(\.text)
-        let driver = self.driver
-        let send: () async throws -> [BatchedStatementOutcome]? = {
-            try await driver.executeStatements(texts.map { BatchedStatement(sql: $0) })
-        }
-        let answered = if let importControl {
-            try await importControl.statements(texts, operation: send)
-        } else {
-            try await send()
-        }
-        // Declined, as outside a transaction block: each goes alone, through its own admission, as before batches.
-        guard let outcomes = answered else {
-            for (index, statement) in statements.enumerated() {
-                do {
-                    try await execute(statement: statement.text, line: statement.line)
-                } catch {
-                    throw PluginImportBatchFailure(index: index, underlying: error)
-                }
-            }
-            return
-        }
-        for (index, (statement, outcome)) in zip(statements, outcomes).enumerated() {
-            noteNameHazards(in: statement.text, grammar: grammar)
-            if case .failed(let error) = outcome { throw PluginImportBatchFailure(index: index, underlying: error) }
-            await noteTransactionEnd(after: statement.text, grammar: grammar)
-        }
-        guard outcomes.count == statements.count else {
-            throw PluginImportBatchFailure(
-                index: outcomes.count,
-                underlying: DatabaseError.queryFailed(String(localized: "The driver did not report every statement it was sent."))
-            )
-        }
-        // The file's next statements were split before these ran, under the rules a statement here changed.
-        guard driver.sessionLexicalState == lexicalState else {
-            try await rollbackTransaction()
-            throw PluginImportBatchFailure(index: statements.count - 1, underlying: ImportReadingRulesChanged())
-        }
-    }
-
     // The driver's Stop ends a copy at once (a CopyFail, and a cancel request when the server takes no data).
     func copyFromStandardInput(statement: String, line: Int, rows: PluginCopyData) async throws {
         guard driver.supportsCopyFromStandardInput else { throw SQLFileParseError.copyFromStandardInput(line: line) }
@@ -556,15 +492,5 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             )
         }
         return try await operation()
-    }
-}
-
-// A rollback, whatever the error mode: statements read under rules that no longer held may have run as other text.
-internal struct ImportReadingRulesChanged: LocalizedError {
-    var errorDescription: String? {
-        String(localized: """
-            A statement changed how the database reads text after the statements behind it were read, so the import \
-            was rolled back. Run it again with Wrap in transaction turned off.
-            """)
     }
 }

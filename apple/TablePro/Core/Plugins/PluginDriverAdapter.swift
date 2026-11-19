@@ -487,54 +487,6 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         )
     }
 
-    var supportsStatementBatches: Bool {
-        pluginDriver.capabilities.contains(.statementBatches)
-    }
-
-    // Each statement is checked and described as its own call would, and one that would be refused ends the batch there.
-    func executeStatements(_ statements: [BatchedStatement]) async throws -> [BatchedStatementOutcome]? {
-        var items: [PluginBatchStatement] = []
-        var refusal: (any Error)?
-        for statement in statements {
-            do {
-                try StatementTextValidator.validate(statement.sql)
-                try refuseUnenforcedPolicy(statement.context ?? PluginStatementContext())
-            } catch {
-                refusal = error
-                break
-            }
-            items.append(pluginStatement(for: statement))
-        }
-        guard !items.isEmpty else { return refusal.map { [.failed($0)] } }
-        guard let answered = try await pluginDriver.executeStatements(items) else { return nil }
-        var outcomes: [BatchedStatementOutcome] = []
-        for answer in answered.prefix(items.count) {
-            outcomes.append(BatchedStatementOutcome(answer))
-            guard outcomes.last?.succeeded == true else { return outcomes }
-        }
-        guard outcomes.count == items.count else {
-            return outcomes + [.failed(DatabaseError.queryFailed(
-                String(localized: "The driver did not report every statement it was sent.")
-            ))]
-        }
-        return outcomes + (refusal.map { [.failed($0)] } ?? [])
-    }
-
-    private func pluginStatement(for statement: BatchedStatement) -> PluginBatchStatement {
-        guard let parameters = statement.parameters else {
-            let context = statement.context.map { statementContext(statement.sql, approvedAs: $0) }
-                ?? statementContext(statement.sql)
-            return PluginBatchStatement(query: statement.sql, parameters: nil, context: context)
-        }
-        return PluginBatchStatement(
-            query: statement.sql,
-            parameters: parameters.map(Self.cellValue(for:)),
-            context: statementContext(
-                statement.sql, approvedAs: statement.context ?? PluginStatementContext(), parameters: parameters
-            )
-        )
-    }
-
     func explainPlan(statement: String, variantId: String) async throws -> QueryResult {
         try StatementTextValidator.validate(statement)
         return mapQueryResult(try await pluginDriver.explainPlan(statement: statement, variantId: variantId))

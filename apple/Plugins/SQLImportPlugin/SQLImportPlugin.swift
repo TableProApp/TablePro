@@ -67,92 +67,8 @@ nonisolated final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, S
 
             let stream = try await source.elements()
 
-            // What one failed statement does to the run, the same whether it ran alone or in a batch.
-            func handleFailure(_ error: any Error, statement: String, lineNumber: Int) async throws {
-                if error is PluginImportCancellationError { throw PluginImportCancellationError() }
-                if error is CancellationError { throw CancellationError() }
-                switch errorMode {
-                case .stopAndRollback:
-                    throw PluginImportError.statementFailed(
-                        statement: statement,
-                        line: lineNumber,
-                        underlyingError: error
-                    )
-
-                case .stopAndCommit:
-                    let statementError = error
-                    if useTransaction {
-                        do {
-                            try await sink.commitTransaction()
-                            didCommit = true
-                        } catch {
-                            Self.logger.warning("Failed to commit partial import")
-                        }
-                    }
-                    if options.disableForeignKeyChecks {
-                        do {
-                            try await sink.enableForeignKeyChecks()
-                        } catch {
-                            Self.logger.warning("Failed to re-enable foreign key checks")
-                        }
-                    }
-                    throw PluginImportError.statementFailed(
-                        statement: statement,
-                        line: lineNumber,
-                        underlyingError: statementError
-                    )
-
-                case .skipAndContinue:
-                    skippedCount += 1
-                    if errors.count < maxErrors {
-                        let snippet = (statement as NSString).length > 200
-                            ? String(statement.prefix(200)) + "..."
-                            : statement
-                        errors.append(.init(
-                            statement: snippet,
-                            line: lineNumber,
-                            errorMessage: error.localizedDescription
-                        ))
-                    }
-                    progress.incrementStatement()
-                }
-            }
-
-            // Only inside the import's transaction, where a stop rolls back or commits what ran before the failure and
-            // the server runs nothing after it.
-            var pending = SQLImportBatch()
-
-            func flush() async throws {
-                guard !pending.isEmpty else { return }
-                try progress.checkCancellation()
-                let statements = pending.take()
-                do {
-                    try await sink.execute(statements: statements)
-                    executedCount += statements.count
-                    for _ in statements { progress.incrementStatement() }
-                    // A Stop during the batch could not reach the statements in it; the rollback still can.
-                    try progress.checkCancellation()
-                } catch let failure as PluginImportBatchFailure {
-                    let index = min(max(failure.index, 0), statements.count - 1)
-                    executedCount += index
-                    for _ in 0..<index { progress.incrementStatement() }
-                    try await handleFailure(
-                        failure.underlying, statement: statements[index].text, lineNumber: statements[index].line
-                    )
-                } catch {
-                    // Refused before any of them ran, as the first one alone would have been.
-                    try await handleFailure(error, statement: statements[0].text, lineNumber: statements[0].line)
-                }
-            }
-
             for try await element in stream {
                 try progress.checkCancellation()
-                if useTransaction, case .statement(let statement, let lineNumber) = element, sink.batches(statement) {
-                    pending.append(PluginImportStatement(text: statement, line: lineNumber))
-                    if pending.isFull { try await flush() }
-                    continue
-                }
-                try await flush()
                 let statement = element.statementText
                 let lineNumber = element.lineNumber
 
@@ -160,11 +76,58 @@ nonisolated final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, S
                     try await Self.run(element, on: sink, progress: progress)
                     executedCount += 1
                     progress.incrementStatement()
+                } catch is PluginImportCancellationError {
+                    throw PluginImportCancellationError()
+                } catch is CancellationError {
+                    throw CancellationError()
                 } catch {
-                    try await handleFailure(error, statement: statement, lineNumber: lineNumber)
+                    switch errorMode {
+                    case .stopAndRollback:
+                        throw PluginImportError.statementFailed(
+                            statement: statement,
+                            line: lineNumber,
+                            underlyingError: error
+                        )
+
+                    case .stopAndCommit:
+                        let statementError = error
+                        if useTransaction {
+                            do {
+                                try await sink.commitTransaction()
+                                didCommit = true
+                            } catch {
+                                Self.logger.warning("Failed to commit partial import")
+                            }
+                        }
+                        if options.disableForeignKeyChecks {
+                            do {
+                                try await sink.enableForeignKeyChecks()
+                            } catch {
+                                Self.logger.warning("Failed to re-enable foreign key checks")
+                            }
+                        }
+                        throw PluginImportError.statementFailed(
+                            statement: statement,
+                            line: lineNumber,
+                            underlyingError: statementError
+                        )
+
+                    case .skipAndContinue:
+                        skippedCount += 1
+                        if errors.count < maxErrors {
+                            let snippet = (statement as NSString).length > 200
+                                ? String(statement.prefix(200)) + "..."
+                                : statement
+                            errors.append(.init(
+                                statement: snippet,
+                                line: lineNumber,
+                                errorMessage: error.localizedDescription
+                            ))
+                        }
+                        progress.incrementStatement()
+                    }
                 }
             }
-            try await flush()
 
             if useTransaction {
                 try await sink.commitTransaction()
