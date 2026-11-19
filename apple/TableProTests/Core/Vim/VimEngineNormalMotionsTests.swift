@@ -599,6 +599,106 @@ final class VimEngineNormalMotionsTests {
         #expect(pos == 0)
         #expect(buffer.text == "")
     }
+
+    // MARK: - Enter, + and -
+
+    @Test("Enter and + go to the first non-blank of the next line")
+    func enterAndPlusGoDown() {
+        buffer = VimTextBufferMock(text: "one\n  two\n  three\n")
+        engine = VimEngine(buffer: buffer)
+        keys("\r")
+        #expect(pos == 6)
+        key("+", shift: true)
+        #expect(pos == 12)
+    }
+
+    @Test("- goes to the first non-blank of the line before")
+    func minusGoesUp() {
+        buffer = VimTextBufferMock(text: "  one\ntwo\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: 8, length: 0))
+        keys("-")
+        #expect(pos == 2)
+    }
+
+    @Test("A count moves that many lines and stops at the last")
+    func plusWithCountStopsAtTheLastLine() {
+        buffer = VimTextBufferMock(text: "a\nb\nc\n")
+        engine = VimEngine(buffer: buffer)
+        keys("5")
+        key("+", shift: true)
+        #expect(pos == 4)
+    }
+
+    @Test("d+ deletes the line and the next")
+    func dPlusIsLinewise() {
+        buffer = VimTextBufferMock(text: "a\nb\nc\n")
+        engine = VimEngine(buffer: buffer)
+        keys("d")
+        key("+", shift: true)
+        #expect(buffer.text == "c\n")
+    }
+
+    @Test("d- on the first line deletes nothing")
+    func dMinusOnTheFirstLineFails() {
+        buffer = VimTextBufferMock(text: "a\nb\n")
+        engine = VimEngine(buffer: buffer)
+        keys("d-x")
+        #expect(buffer.text == "\nb\n")
+    }
+
+    // MARK: - Counts on jumps
+
+    @Test("A count before % goes that far through the text")
+    func countPercentGoesToTheLine() {
+        buffer = VimTextBufferMock(text: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n")
+        engine = VimEngine(buffer: buffer)
+        keys("50%")
+        #expect(pos == 8)
+    }
+
+    @Test("2H goes to the second visible line")
+    func countBeforeH() {
+        buffer = VimTextBufferMock(text: "a\nb\nc\nd\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: 6, length: 0))
+        keys("2")
+        key("H", shift: true)
+        #expect(pos == 2)
+    }
+
+    @Test("2* goes to the second match of the word")
+    func countBeforeStar() {
+        buffer = VimTextBufferMock(text: "foo x foo y foo z\n")
+        engine = VimEngine(buffer: buffer)
+        keys("2*")
+        #expect(pos == 12)
+    }
+
+    @Test("]] with no section after goes to the start of the last line")
+    func sectionForwardWithNoSectionGoesToTheLastLine() {
+        buffer = VimTextBufferMock(text: "SELECT 1;\nSELECT 2;\n")
+        engine = VimEngine(buffer: buffer)
+        keys("]]")
+        #expect(pos == 10)
+    }
+
+    @Test("d]] with no section after deletes to the end")
+    func deleteToSectionWithNoSectionDeletesToTheEnd() {
+        buffer = VimTextBufferMock(text: "SELECT 1;\nSELECT 2;\n")
+        engine = VimEngine(buffer: buffer)
+        keys("d]]")
+        #expect(buffer.text == "")
+        #expect(engine.register.isLinewise)
+    }
+
+    @Test("} on the last paragraph stops on its last character")
+    func braceOnTheLastParagraphStopsOnTheLastCharacter() {
+        buffer = VimTextBufferMock(text: "aaa\nbbb\n")
+        engine = VimEngine(buffer: buffer)
+        keys("}")
+        #expect(pos == 6)
+    }
 }
 
 // swiftlint:enable file_length type_body_length

@@ -16,16 +16,68 @@ extension VimEngine {
         let startPos = buffer.selectedRange().location
         motion()
         let endPos = buffer.selectedRange().location
+        operate(op, from: startPos, to: endPos, kind: inclusive ? .inclusive : .exclusive, in: buffer)
+    }
 
-        let rangeStart = min(startPos, endPos)
-        var rangeEnd = max(startPos, endPos)
-        if inclusive && rangeEnd < buffer.length && buffer.character(at: rangeEnd) != 0x0A {
-            rangeEnd = characterEnd(at: rangeEnd, in: buffer)
-        }
-        let range = NSRange(location: rangeStart, length: rangeEnd - rangeStart)
-
-        executeOperatorOnRange(op, range: range, linewise: false, in: buffer)
+    func operate(_ op: VimOperator, from origin: Int, to target: Int, kind: VimMotionKind, in buffer: VimTextBuffer) {
         pendingOperator = nil
+        let start = min(origin, target)
+        let end = max(origin, target)
+        // `>` and `<` shift whole lines whatever the motion.
+        if kind == .linewise || op == .indent || op == .outdent {
+            executeOperatorOnRange(op, range: wholeLines(from: start, through: end, in: buffer), linewise: true, in: buffer)
+            return
+        }
+        var rangeEnd = end
+        if kind == .inclusive, end < buffer.length, buffer.character(at: end) != 0x0A {
+            rangeEnd = characterEnd(at: end, in: buffer)
+        }
+        let startsInIndent = isInIndent(start, in: buffer)
+        // `:help exclusive`: an exclusive motion that ends at the start of a later line stops at the end of the line
+        // before, and takes whole lines when it starts in the indent.
+        if kind == .exclusive, end > start, buffer.lineRange(forOffset: end).location == end {
+            if startsInIndent {
+                executeOperatorOnRange(op, range: wholeLines(from: start, through: end - 1, in: buffer), linewise: true, in: buffer)
+                return
+            }
+            rangeEnd = characterStart(at: end - 1, in: buffer)
+        }
+        // A delete over several lines from the indent to the end of a line takes the lines, as Vim's `d` does.
+        if op == .delete, startsInIndent, rangeEnd > start,
+           buffer.lineRange(forOffset: start).location != buffer.lineRange(forOffset: rangeEnd - 1).location,
+           isBlankToLineEnd(from: rangeEnd, in: buffer) {
+            executeOperatorOnRange(op, range: wholeLines(from: start, through: rangeEnd - 1, in: buffer), linewise: true, in: buffer)
+            return
+        }
+        executeOperatorOnRange(op, range: NSRange(location: start, length: rangeEnd - start), linewise: false, in: buffer)
+    }
+
+    func wholeLines(from start: Int, through end: Int, in buffer: VimTextBuffer) -> NSRange {
+        let first = buffer.lineRange(forOffset: start).location
+        let last = NSMaxRange(buffer.lineRange(forOffset: max(start, end)))
+        return NSRange(location: first, length: last - first)
+    }
+
+    // Only blanks come before `offset` on its line.
+    func isInIndent(_ offset: Int, in buffer: VimTextBuffer) -> Bool {
+        var scan = buffer.lineRange(forOffset: offset).location
+        while scan < offset {
+            let ch = buffer.character(at: scan)
+            guard ch == 0x20 || ch == 0x09 else { return false }
+            scan += 1
+        }
+        return true
+    }
+
+    func isBlankToLineEnd(from offset: Int, in buffer: VimTextBuffer) -> Bool {
+        let lineEnd = contentEnd(ofLineAt: offset, in: buffer)
+        var scan = offset
+        while scan < lineEnd {
+            let ch = buffer.character(at: scan)
+            guard ch == 0x20 || ch == 0x09 || ch == 0x0D else { return false }
+            scan += 1
+        }
+        return true
     }
 
     func executeOperatorOnRange(_ op: VimOperator, range proposed: NSRange, linewise: Bool, in buffer: VimTextBuffer) {
@@ -39,8 +91,8 @@ extension VimEngine {
             let text = buffer.string(in: range)
             writeToActiveRegister(text: text, linewise: linewise, asDelete: true)
             buffer.replaceCharacters(in: range, with: "")
-            adjustMarksForEdit(in: range, replacementLength: 0)
-            buffer.setSelectedRange(NSRange(location: clampToContentPosition(range.location, in: buffer), length: 0))
+            let landing = linewise ? firstNonBlankOffset(from: range.location, in: buffer) : range.location
+            buffer.setSelectedRange(NSRange(location: clampToContentPosition(landing, in: buffer), length: 0))
         case .yank:
             let text = buffer.string(in: range)
             writeToActiveRegister(text: text, linewise: linewise, asDelete: false)
@@ -48,8 +100,11 @@ extension VimEngine {
         case .change:
             let text = buffer.string(in: range)
             writeToActiveRegister(text: text, linewise: linewise, asDelete: true)
-            buffer.replaceCharacters(in: range, with: "")
-            adjustMarksForEdit(in: range, replacementLength: 0)
+            // A linewise change leaves one empty line to type on, as `cc` does.
+            let keepsLineBreak = linewise && NSMaxRange(range) <= buffer.length && range.length > 0
+                && buffer.character(at: NSMaxRange(range) - 1) == 0x0A
+            let deleted = keepsLineBreak ? NSRange(location: range.location, length: range.length - 1) : range
+            buffer.replaceCharacters(in: deleted, with: "")
             buffer.setSelectedRange(NSRange(location: range.location, length: 0))
             setMode(.insert)
         case .lowercase:
@@ -122,7 +177,6 @@ extension VimEngine {
         }
         let deleteRange = NSRange(location: startRange.location, length: endOffset - startRange.location)
         writeToActiveRegister(text: buffer.string(in: deleteRange), linewise: true, asDelete: true)
-        adjustMarksForEdit(in: deleteRange, replacementLength: 0)
         buffer.replaceCharacters(in: deleteRange, with: "")
         let newPos = min(startRange.location, max(0, buffer.length - 1))
         if buffer.length > 0 {
@@ -160,51 +214,45 @@ extension VimEngine {
             && buffer.character(at: endOffset - 1) == 0x0A ? endOffset - 1 : endOffset
         let deleteRange = NSRange(location: startRange.location, length: deleteEnd - startRange.location)
         writeToActiveRegister(text: buffer.string(in: deleteRange), linewise: true, asDelete: true)
-        adjustMarksForEdit(in: deleteRange, replacementLength: 0)
         buffer.replaceCharacters(in: deleteRange, with: "")
         buffer.setSelectedRange(NSRange(location: startRange.location, length: 0))
         setMode(.insert)
     }
 
-    func paste(after: Bool, in buffer: VimTextBuffer) {
+    // The register is read once, so a count pastes copies of the one register, and the copies go in as one run.
+    func paste(after: Bool, count: Int, in buffer: VimTextBuffer) {
         let source = activePasteRegister()
         guard !source.text.isEmpty else { return }
-
+        let copies = max(1, count)
         let pos = buffer.selectedRange().location
 
         if source.isLinewise {
-            if after {
-                let lineRange = buffer.lineRange(forOffset: pos)
-                let insertPos = lineRange.location + lineRange.length
-                var text = source.text
-                let nsText = text as NSString
-                if nsText.length == 0 || nsText.character(at: nsText.length - 1) != 0x0A {
-                    text += "\n"
-                }
-                buffer.replaceCharacters(in: NSRange(location: insertPos, length: 0), with: text)
-                buffer.setSelectedRange(NSRange(location: insertPos, length: 0))
-            } else {
-                let lineRange = buffer.lineRange(forOffset: pos)
-                var text = source.text
-                let nsText = text as NSString
-                if nsText.length == 0 || nsText.character(at: nsText.length - 1) != 0x0A {
-                    text += "\n"
-                }
-                buffer.replaceCharacters(in: NSRange(location: lineRange.location, length: 0), with: text)
-                buffer.setSelectedRange(NSRange(location: lineRange.location, length: 0))
+            var line = source.text
+            if (line as NSString).character(at: (line as NSString).length - 1) != 0x0A { line += "\n" }
+            var text = String(repeating: line, count: copies)
+            let lineRange = buffer.lineRange(forOffset: pos)
+            var insertPos = after ? NSMaxRange(lineRange) : lineRange.location
+            var firstLine = insertPos
+            // Below a last line with no line break, the break goes before the pasted lines.
+            if after, insertPos == buffer.length, insertPos > lineRange.location,
+               buffer.character(at: insertPos - 1) != 0x0A {
+                text = "\n" + text.dropLast()
+                firstLine = insertPos + 1
             }
-        } else {
-            if after {
-                let insertPos = characterEnd(at: pos, in: buffer)
-                buffer.replaceCharacters(in: NSRange(location: insertPos, length: 0), with: source.text)
-                let newPos = insertPos + (source.text as NSString).length - 1
-                buffer.setSelectedRange(NSRange(location: max(insertPos, newPos), length: 0))
-            } else {
-                buffer.replaceCharacters(in: NSRange(location: pos, length: 0), with: source.text)
-                let newPos = pos + (source.text as NSString).length - 1
-                buffer.setSelectedRange(NSRange(location: max(pos, newPos), length: 0))
-            }
+            buffer.replaceCharacters(in: NSRange(location: insertPos, length: 0), with: text)
+            insertPos = firstLine
+            buffer.setSelectedRange(NSRange(location: firstNonBlankOffset(from: insertPos, in: buffer), length: 0))
+            return
         }
+
+        let text = String(repeating: source.text, count: copies)
+        // On an empty line the caret is on the line break, and `p` puts the text before it.
+        let insertPos = after && pos < contentEnd(ofLineAt: pos, in: buffer) ? characterEnd(at: pos, in: buffer) : pos
+        buffer.replaceCharacters(in: NSRange(location: insertPos, length: 0), with: text)
+        let length = (text as NSString).length
+        // Text over several lines leaves the cursor at its start, a single line on its last character.
+        let landing = text.contains("\n") ? insertPos : characterStart(at: insertPos + length - 1, in: buffer)
+        buffer.setSelectedRange(NSRange(location: landing, length: 0))
     }
 
     func deleteCharUnderCursor(_ count: Int, in buffer: VimTextBuffer) {
@@ -218,7 +266,6 @@ extension VimEngine {
         guard end > pos else { return }
         let range = NSRange(location: pos, length: end - pos)
         writeToActiveRegister(text: buffer.string(in: range), linewise: false, asDelete: true)
-        adjustMarksForEdit(in: range, replacementLength: 0)
         noteEdit(at: pos, in: buffer)
         buffer.replaceCharacters(in: range, with: "")
         let newContentEnd = contentEnd - range.length

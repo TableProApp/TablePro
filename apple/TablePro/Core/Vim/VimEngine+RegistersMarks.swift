@@ -81,39 +81,27 @@ extension VimEngine {
         return register
     }
 
+    // `'` goes to the first non-blank of the mark's line and takes whole lines after an operator; `` ` `` goes to
+    // the mark itself. An unset mark ends the command.
     func jumpToMark(_ name: Character, exact: Bool, in buffer: VimTextBuffer) {
-        if name == "'" || name == "`" {
-            if let origin = lastJumpOrigin {
-                let originPos = buffer.selectedRange().location
-                let clamped = min(max(0, origin), buffer.length)
-                buffer.setSelectedRange(NSRange(location: clamped, length: 0))
-                lastJumpOrigin = originPos
-            }
+        let offset: Int?
+        switch name {
+        case "'", "`": offset = lastJumpOrigin
+        case "<": offset = lastVisualStart
+        case ">": offset = lastVisualEnd
+        default: offset = marks[name]
+        }
+        guard let offset else {
+            applyMotion(to: nil, kind: .exclusive, in: buffer)
             return
         }
-        if name == "<", let start = lastVisualStart {
-            let originPos = buffer.selectedRange().location
-            buffer.setSelectedRange(NSRange(location: min(max(0, start), buffer.length), length: 0))
-            lastJumpOrigin = originPos
-            return
-        }
-        if name == ">", let end = lastVisualEnd {
-            let originPos = buffer.selectedRange().location
-            buffer.setSelectedRange(NSRange(location: min(max(0, end), buffer.length), length: 0))
-            lastJumpOrigin = originPos
-            return
-        }
-        guard let offset = marks[name] else { return }
-        let originPos = buffer.selectedRange().location
         let clamped = min(max(0, offset), buffer.length)
         if exact {
-            buffer.setSelectedRange(NSRange(location: clamped, length: 0))
+            applyMotion(to: clamped, kind: .exclusive, jump: true, in: buffer)
         } else {
             let lineStart = buffer.lineRange(forOffset: clamped).location
-            let target = firstNonBlankOffset(from: lineStart, in: buffer)
-            buffer.setSelectedRange(NSRange(location: target, length: 0))
+            applyMotion(to: firstNonBlankOffset(from: lineStart, in: buffer), kind: .linewise, jump: true, in: buffer)
         }
-        lastJumpOrigin = originPos
     }
 
     func recordVisualSelection(linewise: Bool, in buffer: VimTextBuffer) {
@@ -144,15 +132,86 @@ extension VimEngine {
         }
     }
 
-    func adjustMarksForEdit(in editRange: NSRange, replacementLength: Int) {
-        let delta = replacementLength - editRange.length
-        guard delta != 0 else { return }
-        for (key, offset) in marks {
-            if offset >= editRange.location + editRange.length {
-                marks[key] = offset + delta
-            } else if offset >= editRange.location {
-                marks[key] = editRange.location
+    // Called before every edit, typed, pasted, undone or the engine's own. A mark keeps its line and column, as Vim's
+    // do (`:help mark-motions`): lines added or removed before it move it, a join carries it with its text, and
+    // removing its whole line removes a named mark and moves the others to where the lines were.
+    func textWillChange(in range: NSRange, with replacement: String) {
+        guard let buffer, !marks.isEmpty || lastJumpOrigin != nil || lastInsertOffset != nil
+            || lastVisualStart != nil || lastVisualEnd != nil else { return }
+        let change = VimMarkChange(range: range, replacement: replacement, in: buffer)
+        marks = marks.compactMapValues { change.map($0, removable: true, in: buffer) }
+        lastJumpOrigin = lastJumpOrigin.flatMap { change.map($0, removable: false, in: buffer) }
+        lastInsertOffset = lastInsertOffset.flatMap { change.map($0, removable: false, in: buffer) }
+        lastVisualStart = lastVisualStart.flatMap { change.map($0, removable: false, in: buffer) }
+        lastVisualEnd = lastVisualEnd.flatMap { change.map($0, removable: false, in: buffer) }
+    }
+}
+
+// One edit, read from the text before it, as Vim's line-based mark adjustment sees it.
+@MainActor
+struct VimMarkChange {
+    private let location: Int
+    private let end: Int
+    private let delta: Int
+    private let removesLineBreak: Bool
+    // Whole lines removed, inserted or replaced at a line start, as `dd`, `p` and `O` and their undo make.
+    private let isLinewise: Bool
+    private let firstLineStart: Int
+    private let endLineEnd: Int
+    // Where the line holding the edit's start ends once the edit is in.
+    private let firstLineContentEnd: Int
+
+    init(range: NSRange, replacement: String, in buffer: VimTextBuffer) {
+        let inserted = replacement as NSString
+        location = range.location
+        end = NSMaxRange(range)
+        delta = inserted.length - range.length
+        var removedBreak = false
+        var scan = range.location
+        while scan < end, !removedBreak {
+            let ch = buffer.character(at: scan)
+            removedBreak = ch == 0x0A || ch == 0x0D
+            scan += 1
+        }
+        removesLineBreak = removedBreak
+        let firstLine = buffer.lineRange(forOffset: range.location)
+        firstLineStart = firstLine.location
+        let removedEndsWithBreak = range.length == 0 || buffer.character(at: end - 1) == 0x0A
+        let insertedEndsWithBreak = inserted.length == 0 || inserted.character(at: inserted.length - 1) == 0x0A
+        isLinewise = range.location == firstLine.location && removedEndsWithBreak && insertedEndsWithBreak
+        let endLine = buffer.lineRange(forOffset: end)
+        endLineEnd = NSMaxRange(endLine)
+        let insertedBreak = inserted.rangeOfCharacter(from: .newlines)
+        if insertedBreak.location != NSNotFound {
+            firstLineContentEnd = range.location + insertedBreak.location
+        } else {
+            let endLineHasBreak = endLineEnd > endLine.location && buffer.character(at: endLineEnd - 1) == 0x0A
+            firstLineContentEnd = (endLineHasBreak ? endLineEnd - 1 : endLineEnd) + delta
+        }
+    }
+
+    func map(_ offset: Int, removable: Bool, in buffer: VimTextBuffer) -> Int? {
+        if offset < location { return offset }
+        if isLinewise {
+            if offset >= end { return offset + delta }
+            return removable ? nil : location
+        }
+        if offset >= end {
+            if offset >= endLineEnd || removesLineBreak { return offset + delta }
+            return keepingColumn(offset)
+        }
+        if removesLineBreak {
+            let line = buffer.lineRange(forOffset: offset)
+            if line.location > firstLineStart {
+                if NSMaxRange(line) <= end { return removable ? nil : location }
+                return end + delta
             }
         }
+        return keepingColumn(offset)
+    }
+
+    // The line keeps its start, so the offset keeps the column, up to the line's new last character.
+    private func keepingColumn(_ offset: Int) -> Int {
+        min(offset, max(firstLineStart, firstLineContentEnd - 1))
     }
 }

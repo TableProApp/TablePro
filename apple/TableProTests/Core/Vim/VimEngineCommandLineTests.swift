@@ -226,4 +226,52 @@ final class VimEngineCommandLineTests {
         #expect(engine.mode.displayLabel == ":wq",
             "displayLabel for commandLine should be the literal buffer text")
     }
+
+    // MARK: - The command line after an operator
+
+    @Test("Escape on the command line drops the operator typed before it")
+    func escapeFromCommandLineDropsTheOperator() {
+        keys("d/")
+        escape()
+        keys("w")
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n")
+        #expect(buffer.selectedRange().location == 6)
+    }
+
+    @Test("Backspacing out of the command line drops the operator")
+    func backspaceOutOfCommandLineDropsTheOperator() {
+        keys("d/x")
+        backspace()
+        backspace()
+        #expect(engine.mode == .normal)
+        keys("w")
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n")
+    }
+
+    @Test("d/ with a pattern deletes up to the match")
+    func operatorSearchDeletesUpToTheMatch() {
+        keys("d/sec")
+        enter()
+        #expect(buffer.text == "second line\nthird line\n")
+        #expect(engine.register.text == "hello world\n")
+        #expect(engine.mode == .normal)
+    }
+
+    @Test("d/ with no match deletes nothing and ends the command")
+    func operatorSearchWithoutMatchEndsTheCommand() {
+        keys("d/zzz")
+        enter()
+        keys("w")
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n")
+        #expect(buffer.selectedRange().location == 6)
+    }
+
+    @Test("An ex command after an operator runs and drops the operator")
+    func exCommandDropsTheOperator() {
+        keys("d:w")
+        enter()
+        #expect(dispatchedCommand == "w")
+        keys("w")
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n")
+    }
 }

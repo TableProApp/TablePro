@@ -18,6 +18,7 @@ final class VimEngineMarksAndRegistersTests {
     init() {
         buffer = VimTextBufferMock(text: "hello world\nsecond line\nthird line\n")
         engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
     }
 
     private func keys(_ chars: String) {
@@ -199,5 +200,84 @@ final class VimEngineMarksAndRegistersTests {
         keys("\"ap")
         #expect(buffer.text.contains("hello world\nsecond line\nhello world\nsecond line\n") == true,
             "Uppercase register should append to lowercase counterpart")
+    }
+
+    // MARK: - Marks follow edits made outside the engine
+
+    // Insert mode leaves typing to the text view, which puts the text at the caret.
+    private func typeInTextView(_ text: String) {
+        buffer.replaceCharacters(in: buffer.selectedRange(), with: text)
+    }
+
+    @Test("A line typed above a mark moves the mark down with its line")
+    func lineTypedAboveMovesTheMark() {
+        buffer.setSelectedRange(NSRange(location: 25, length: 0))
+        keys("magg")
+        key("O", shift: true)
+        typeInTextView("new")
+        key("\u{1B}")
+        keys("`a")
+        #expect(pos == 29)
+    }
+
+    @Test("Text typed before a mark on its line keeps the mark's column")
+    func textTypedOnTheMarkedLineKeepsTheColumn() {
+        buffer.setSelectedRange(NSRange(location: 6, length: 0))
+        keys("ma0i")
+        typeInTextView("XX")
+        key("\u{1B}")
+        keys("`a")
+        #expect(pos == 6)
+    }
+
+    @Test("A line pasted above a mark moves the mark down")
+    func linePastedAboveMovesTheMark() {
+        buffer.setSelectedRange(NSRange(location: 25, length: 0))
+        keys("maggyy")
+        key("P", shift: true)
+        keys("`a")
+        #expect(pos == 37)
+    }
+
+    @Test("A line brought back above a mark, as undo does, moves the mark down")
+    func lineRestoredAboveMovesTheMark() {
+        keys("dd")
+        buffer.setSelectedRange(NSRange(location: 13, length: 0))
+        keys("ma")
+        buffer.replaceCharacters(in: NSRange(location: 0, length: 0), with: "hello world\n")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("`a")
+        #expect(pos == 25)
+    }
+
+    @Test("Deleting the marked line removes the mark")
+    func deletingTheMarkedLineRemovesTheMark() {
+        buffer.setSelectedRange(NSRange(location: 13, length: 0))
+        keys("madd")
+        #expect(engine.marks["a"] == nil)
+    }
+
+    @Test("A join carries the mark with its text")
+    func joinCarriesTheMark() {
+        buffer = VimTextBufferMock(text: "hello world\n    second\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        buffer.setSelectedRange(NSRange(location: 16, length: 0))
+        keys("magg")
+        key("J", shift: true)
+        keys("`a")
+        #expect(buffer.text == "hello world second\n")
+        #expect(pos == 12)
+    }
+
+    @Test("The last jump position moves with a line typed above it")
+    func lastJumpOriginMovesWithEdits() {
+        buffer.setSelectedRange(NSRange(location: 25, length: 0))
+        key("G", shift: true)
+        keys("gg")
+        key("O", shift: true)
+        key("\u{1B}")
+        keys("``")
+        #expect(pos == 26)
     }
 }

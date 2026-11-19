@@ -249,8 +249,8 @@ final class VimEngineTextObjectsTests {
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 3, length: 0))
         keys("dip")
-        #expect(buffer.text == "\n\npara two\n",
-            "dip should delete the paragraph at cursor (without surrounding blank lines)")
+        #expect(buffer.text == "\npara two\n",
+            "dip should delete the paragraph's lines, as Vim's linewise ip does")
     }
 
     @Test
@@ -317,5 +317,58 @@ final class VimEngineTextObjectsTests {
         keys("di(")
         #expect(buffer.text == "f()\n",
             "di( with cursor on the closing paren should still work")
+    }
+
+    // MARK: - ip and ap take whole lines
+
+    private func make(_ text: String, at offset: Int) {
+        buffer = VimTextBufferMock(text: text)
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: offset, length: 0))
+    }
+
+    @Test("yip on the last paragraph keeps its last character")
+    func yankInnerParagraphAtTheEndOfTheText() {
+        make("a\n\nb\nc", at: 5)
+        keys("yip")
+        #expect(engine.register.text == "b\nc")
+        #expect(engine.register.isLinewise)
+        #expect(buffer.selectedRange().location == 3)
+    }
+
+    @Test("dip on the last paragraph deletes its lines")
+    func deleteInnerParagraphAtTheEndOfTheText() {
+        make("a\n\nb\nc", at: 5)
+        keys("dip")
+        #expect(buffer.text == "a\n\n")
+    }
+
+    @Test("cip leaves one empty line to type on")
+    func changeInnerParagraphLeavesALine() {
+        make("a\nb\n\nc\n", at: 0)
+        keys("cip")
+        #expect(buffer.text == "\n\nc\n")
+        #expect(engine.mode == .insert)
+    }
+
+    @Test("dip on blank lines deletes the blank lines")
+    func deleteInnerParagraphOnBlankLines() {
+        make("a\n\n\nb\n", at: 2)
+        keys("dip")
+        #expect(buffer.text == "a\nb\n")
+    }
+
+    @Test("dap on blank lines deletes them and the paragraph after")
+    func deleteAParagraphOnBlankLines() {
+        make("a\n\n\nb\nc\n\nd\n", at: 2)
+        keys("dap")
+        #expect(buffer.text == "a\n\nd\n")
+    }
+
+    @Test("dap on the last paragraph takes the blank lines before it")
+    func deleteAParagraphAtTheEndTakesLeadingBlankLines() {
+        make("a\n\nb\nc\n", at: 3)
+        keys("dap")
+        #expect(buffer.text == "a\n")
     }
 }
