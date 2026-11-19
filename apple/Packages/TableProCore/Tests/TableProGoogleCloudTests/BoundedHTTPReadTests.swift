@@ -19,7 +19,7 @@ struct BoundedHTTPReadTests {
             for: URLRequest(url: responder.url("/q")), session: URLSession(configuration: .ephemeral), limit: 11
         )
 
-        #expect(String(decoding: data, as: UTF8.self) == "{\"ok\":true}")
+        #expect(data == Data("{\"ok\":true}".utf8))
         #expect((response as? HTTPURLResponse)?.statusCode == 400)
     }
 
