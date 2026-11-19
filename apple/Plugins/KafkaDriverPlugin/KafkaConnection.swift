@@ -264,7 +264,8 @@ actor KafkaConnection {
             channel.close(promise: nil)
         }
 
-        let payload = Data(frame.readableBytesView)
+        // Copied once, into the reader's own bytes: a fetch budget counts a reply and one copy of it.
+        let payload = [UInt8](frame.readableBytesView)
         let (received, body) = try KafkaResponseHeader.strip(payload, api: request.api, version: request.version)
         guard received == sent else {
             throw KafkaError.malformedResponse("correlation id \(received) does not match the request's \(sent)")

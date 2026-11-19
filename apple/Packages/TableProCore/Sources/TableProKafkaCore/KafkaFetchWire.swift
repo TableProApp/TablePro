@@ -18,8 +18,8 @@ public struct KafkaFetchedPartition: Sendable {
     public let recordBatches: Data?
 }
 
-// Bytes the first replies of one browse may take, across every leader. A request reserves its reply's limit before it is
-// sent and keeps it until the browse ends, so the replies in flight and the pages waiting for their turn share one bound.
+// Bytes the first replies of one browse may take, across every leader. A request reserves before it is sent and keeps
+// the reservation until the browse ends, so the replies in flight and the pages waiting for their turn share one bound.
 public final class KafkaFetchByteBudget: @unchecked Sendable {
     public let limit: Int
     private let lock = NSLock()
@@ -60,6 +60,13 @@ public enum KafkaFetchWire {
         return bytes + bytes / 4
     }
 
+    // What one partition of a first-page request reserves: its reply bytes, and the copy they are read into. The frame is
+    // copied once into the reader, then each partition's records out of it while the reader is still held, so neither
+    // step holds more than twice the reply.
+    public static func reservedBytes(partitionBytes: Int32) -> Int {
+        2 * replyBytes(partitionBytes: partitionBytes)
+    }
+
     // Past the response limit a broker returns later partitions empty, and each is then read on its own.
     public static func responseBytes(partitions: Int, partitionBytes: Int32) -> Int32 {
         let (total, overflow) = Int32(clamping: max(partitions, 1)).multipliedReportingOverflow(by: partitionBytes)
@@ -74,7 +81,7 @@ public enum KafkaFetchWire {
         wanted: Int,
         partitionBytes: Int32
     ) -> [KafkaFetchTarget] {
-        let each = replyBytes(partitionBytes: partitionBytes)
+        let each = reservedBytes(partitionBytes: partitionBytes)
         guard wanted > 0, each > 0 else { return [] }
         let open = start
             .filter { partition, offset in tail[partition].map { offset < $0 } ?? true }

@@ -117,6 +117,11 @@ struct KafkaFetchWireRequestTests {
     func replyAllowance() {
         #expect(KafkaFetchWire.replyBytes(partitionBytes: oneMebibyte) == 1_310_720)
     }
+
+    @Test("A partition reserves its reply and the copy it is read into")
+    func reservationCountsTheCopy() {
+        #expect(KafkaFetchWire.reservedBytes(partitionBytes: oneMebibyte) == 2 * 1_310_720)
+    }
 }
 
 struct KafkaFetchWireFirstReadsTests {
@@ -142,8 +147,8 @@ struct KafkaFetchWireFirstReadsTests {
         let start = Dictionary(uniqueKeysWithValues: (0 ..< 5_000).map { (Int32($0), Int64(0)) })
         let reads = KafkaFetchWire.firstReads(start: start, tail: [:], wanted: 1, partitionBytes: oneMebibyte)
 
-        #expect(reads.map(\.partition) == Array(0 ..< 51))
-        #expect(reads.count * KafkaFetchWire.replyBytes(partitionBytes: oneMebibyte) <= KafkaFetchWire.firstPagesByteBudget)
+        #expect(reads.map(\.partition) == Array(0 ..< 25))
+        #expect(reads.count * KafkaFetchWire.reservedBytes(partitionBytes: oneMebibyte) <= KafkaFetchWire.firstPagesByteBudget)
     }
 
     @Test("One partition has nothing to share a request with")

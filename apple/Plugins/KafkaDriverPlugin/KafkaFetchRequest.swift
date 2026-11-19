@@ -161,7 +161,10 @@ enum KafkaFetchRequest {
             starts[partition].map { KafkaFetchTarget(partition: partition, startOffset: $0) }
         }
         let replyBytes = KafkaFetchWire.replyBytes(partitionBytes: defaultPartitionBudget)
-        let fitting = budget.reserve(partitions: wanted.count, bytesEach: replyBytes)
+        let fitting = budget.reserve(
+            partitions: wanted.count,
+            bytesEach: KafkaFetchWire.reservedBytes(partitionBytes: defaultPartitionBudget)
+        )
         guard fitting > 0 else { return [:] }
         let targets = Array(wanted.prefix(fitting))
         let replies = try await send(
