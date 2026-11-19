@@ -434,4 +434,68 @@ public sealed class VimEngineVisualModeTests
         s.Key("V", shift: true);
         Assert.Equal("VISUAL LINE", s.Engine.ModeLabel);
     }
+
+    [Fact]
+    public void ARegisterBeforeYInVisualModeTakesTheYank()
+    {
+        var s = new VimSession("abc def\n", caret: 0);
+        s.Press("viw\"ay");
+        Assert.Equal("abc", s.Engine.NamedRegisters["a"].Text);
+    }
+
+    [Fact]
+    public void ARegisterBeforeDInVisualModeTakesTheDelete()
+    {
+        var s = new VimSession("abc def\n", caret: 0);
+        s.Press("viw\"bd");
+        Assert.Equal(" def\n", s.Text);
+        Assert.Equal("abc", s.Engine.NamedRegisters["b"].Text);
+    }
+
+    [Fact]
+    public void InnerWordInVisualLineModeSelectsTheWordCharacterwise()
+    {
+        var s = new VimSession("hello world\nfoo\n", caret: 0);
+        s.Press("Viwd");
+        Assert.Equal(" world\nfoo\n", s.Text);
+    }
+
+    [Fact]
+    public void PasteOverASelectionPutsTheReplacedTextInTheUnnamedRegister()
+    {
+        var s = new VimSession("abc def\n", caret: 0);
+        s.Press("yiwwviwp");
+        Assert.Equal("abc abc\n", s.Text);
+        Assert.Equal("def", s.Engine.Register.Text);
+    }
+
+    [Fact]
+    public void CapitalPOverASelectionLeavesTheRegisters()
+    {
+        var s = new VimSession("abc def\n", caret: 0);
+        s.Press("yiwwviwP");
+        Assert.Equal("abc abc\n", s.Text);
+        Assert.Equal("abc", s.Engine.Register.Text);
+    }
+
+    [Fact]
+    public void PasteOverASelectionFromANamedRegister()
+    {
+        var s = new VimSession("abc def\n", caret: 0);
+        s.Press("\"ayiwwviw\"ap");
+        Assert.Equal("abc abc\n", s.Text);
+        Assert.Equal("abc", s.Engine.NamedRegisters["a"].Text);
+        Assert.Equal("def", s.Engine.Register.Text);
+    }
+
+    [Fact]
+    public void EscapeDropsARegisterTypedInVisualMode()
+    {
+        var s = new VimSession("abc def\n", caret: 0);
+        s.Press("v\"a");
+        s.Escape();
+        s.Press("yiw");
+        Assert.False(s.Engine.NamedRegisters.ContainsKey("a"));
+        Assert.Equal("abc", s.Engine.Register.Text);
+    }
 }

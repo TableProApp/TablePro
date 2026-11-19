@@ -182,8 +182,8 @@ struct VimTextBufferAdapterLineIndexTests {
             }
         }
 
-        #expect(shortLanding == short.lastOffset)
-        #expect(longLanding == long.lastOffset)
+        #expect(shortLanding == short.lastLineStart)
+        #expect(longLanding == long.lastLineStart)
         #expect(longPasses < shortPasses * 2)
     }
 
@@ -191,19 +191,20 @@ struct VimTextBufferAdapterLineIndexTests {
         let textView: TextView
         let adapter: VimTextBufferAdapter
         let engine: VimEngine
-        let lastOffset: Int
+        let lastLineStart: Int
     }
 
     // Not laid out: the motion reads only the line storage, and a text view outside a scroll view lays out every line.
     private func makeSectionScript(lines: Int) -> SectionScript {
-        let script = String(repeating: "SELECT id, name FROM users WHERE id = 1;\n", count: lines)
+        let line = "SELECT id, name FROM users WHERE id = 1;\n"
+        let script = String(repeating: line, count: lines)
         let textView = makeTextView(string: script, layingOut: false)
         let adapter = VimTextBufferAdapter(textView: textView)
         return SectionScript(
             textView: textView,
             adapter: adapter,
             engine: VimEngine(buffer: adapter),
-            lastOffset: (script as NSString).length - 1
+            lastLineStart: (script as NSString).length - (line as NSString).length
         )
     }
 

@@ -8,15 +8,84 @@ public sealed partial class VimEngine
     {
         var startPos = _buffer.SelectedRange.Location;
         motion();
-        var endPos = _buffer.SelectedRange.Location;
-        var rangeStart = Math.Min(startPos, endPos);
-        var rangeEnd = Math.Max(startPos, endPos);
-        if (inclusive && rangeEnd < _buffer.Length && _buffer.CharAt(rangeEnd) != '\n')
-        {
-            rangeEnd = CharacterEnd(rangeEnd);
-        }
-        ExecuteOperatorOnRange(op, new VimRange(rangeStart, rangeEnd - rangeStart), linewise: false);
+        var kind = inclusive ? VimMotionKind.Inclusive : VimMotionKind.Exclusive;
+        Operate(op, startPos, _buffer.SelectedRange.Location, kind);
+    }
+
+    internal void Operate(VimOperator op, int origin, int target, VimMotionKind kind)
+    {
         PendingOperator = null;
+        var start = Math.Min(origin, target);
+        var end = Math.Max(origin, target);
+        if (kind == VimMotionKind.Linewise)
+        {
+            ExecuteOperatorOnRange(op, WholeLines(start, end), linewise: true);
+            return;
+        }
+        var rangeEnd = end;
+        if (kind == VimMotionKind.Inclusive && end < _buffer.Length && _buffer.CharAt(end) != '\n')
+        {
+            rangeEnd = CharacterEnd(end);
+        }
+        var startsInIndent = IsInIndent(start);
+        // :help exclusive: an exclusive motion that ends at the start of a later line stops at the end of the line
+        // before, and takes whole lines when it starts in the indent.
+        if (kind == VimMotionKind.Exclusive && end > start && _buffer.LineRange(end).Location == end)
+        {
+            if (startsInIndent)
+            {
+                ExecuteOperatorOnRange(op, WholeLines(start, end - 1), linewise: true);
+                return;
+            }
+            rangeEnd = CharacterStart(end - 1);
+        }
+        if (op is VimOperator.Indent or VimOperator.Outdent)
+        {
+            ExecuteOperatorOnRange(op, WholeLines(start, Math.Max(start, rangeEnd - 1)), linewise: true);
+            return;
+        }
+        // A delete over several lines from the indent to the end of a line takes the lines, as Vim's d does.
+        if (op == VimOperator.Delete && startsInIndent && rangeEnd > start
+            && _buffer.LineRange(start).Location != _buffer.LineRange(rangeEnd - 1).Location && IsBlankToLineEnd(rangeEnd))
+        {
+            ExecuteOperatorOnRange(op, WholeLines(start, rangeEnd - 1), linewise: true);
+            return;
+        }
+        ExecuteOperatorOnRange(op, new VimRange(start, rangeEnd - start), linewise: false);
+    }
+
+    // A closed fold at either end is taken whole.
+    internal VimRange WholeLines(int start, int end)
+    {
+        var first = _buffer.FoldedLineRange(start).Location;
+        var last = _buffer.FoldedLineRange(Math.Max(start, end)).End;
+        return new VimRange(first, last - first);
+    }
+
+    // Only blanks come before the offset on its line.
+    private bool IsInIndent(int offset)
+    {
+        for (var scan = _buffer.LineRange(offset).Location; scan < offset; scan++)
+        {
+            if (_buffer.CharAt(scan) is not (' ' or '\t'))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private bool IsBlankToLineEnd(int offset)
+    {
+        var lineEnd = ContentEnd(_buffer.LineRange(offset));
+        for (var scan = offset; scan < lineEnd; scan++)
+        {
+            if (_buffer.CharAt(scan) is not (' ' or '\t' or '\r'))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     internal void ExecuteOperatorOnRange(VimOperator op, VimRange proposed, bool linewise)
@@ -32,20 +101,27 @@ public sealed partial class VimEngine
         switch (op)
         {
             case VimOperator.Delete:
+            {
                 WriteToActiveRegister(_buffer.Text(range), linewise, asDelete: true);
                 _buffer.Replace(range, string.Empty);
-                _buffer.SetCaret(ClampToContentPosition(range.Location));
+                var landing = linewise ? FirstNonBlankOffset(range.Location) : range.Location;
+                _buffer.SetCaret(ClampToContentPosition(landing));
                 break;
+            }
             case VimOperator.Yank:
                 WriteToActiveRegister(_buffer.Text(range), linewise, asDelete: false);
                 _buffer.SetCaret(range.Location);
                 break;
             case VimOperator.Change:
+            {
                 WriteToActiveRegister(_buffer.Text(range), linewise, asDelete: true);
-                _buffer.Replace(range, string.Empty);
+                // A linewise change leaves one empty line to type on, as cc does.
+                var keepsBreak = linewise && _buffer.CharAt(range.End - 1) == '\n';
+                _buffer.Replace(keepsBreak ? range with { Length = range.Length - 1 } : range, string.Empty);
                 _buffer.SetCaret(range.Location);
                 SetMode(VimMode.Insert);
                 break;
+            }
             case VimOperator.Lowercase:
                 _buffer.Replace(range, VimCase.Lower(_buffer.Text(range)));
                 _buffer.SetCaret(range.Location);
@@ -58,11 +134,12 @@ public sealed partial class VimEngine
                 _buffer.Replace(range, VimCase.Toggle(_buffer.Text(range)));
                 _buffer.SetCaret(range.Location);
                 break;
+            // > and < shift whole lines, a text object's included.
             case VimOperator.Indent:
-                ApplyIndent(range, outdent: false);
+                ApplyIndent(linewise ? range : WholeLines(range.Location, range.End - 1), outdent: false);
                 break;
             case VimOperator.Outdent:
-                ApplyIndent(range, outdent: true);
+                ApplyIndent(linewise ? range : WholeLines(range.Location, range.End - 1), outdent: true);
                 break;
         }
     }
@@ -138,41 +215,40 @@ public sealed partial class VimEngine
         SetMode(VimMode.Insert);
     }
 
-    internal void Paste(VimRegister source, bool after)
+    // The register is read once, so a count pastes copies of the one register, and the copies go in as one run.
+    internal void Paste(bool after, int count)
     {
+        var source = ActivePasteRegister();
         if (source.Text.Length == 0)
         {
             return;
         }
+        var copies = Math.Max(1, count);
         var pos = _buffer.SelectedRange.Location;
         if (source.IsLinewise)
         {
+            var line = source.Text.EndsWith('\n') ? source.Text : source.Text + "\n";
+            var text = string.Concat(Enumerable.Repeat(line, copies));
             // Below a closed fold, never between its lines.
-            var line = _buffer.FoldedLineRange(pos);
-            var text = source.Text.EndsWith('\n') ? source.Text : source.Text + "\n";
-            var insertAt = after ? line.End : line.Location;
-            if (after && insertAt == _buffer.Length && insertAt > 0 && _buffer.CharAt(insertAt - 1) != '\n')
+            var lines = _buffer.FoldedLineRange(pos);
+            var insertAt = after ? lines.End : lines.Location;
+            var firstLine = insertAt;
+            // Below a last line with no line break, the break goes before the pasted lines.
+            if (after && insertAt == _buffer.Length && insertAt > lines.Location && _buffer.CharAt(insertAt - 1) != '\n')
             {
-                // The last line has no break of its own to paste after.
-                _buffer.Replace(new VimRange(insertAt, 0), "\n" + text[..^1]);
-                _buffer.SetCaret(insertAt + 1);
-                return;
+                text = "\n" + text[..^1];
+                firstLine = insertAt + 1;
             }
             _buffer.Replace(new VimRange(insertAt, 0), text);
-            _buffer.SetCaret(insertAt);
+            _buffer.SetCaret(FirstNonBlankOffset(firstLine));
+            return;
         }
-        else if (after)
-        {
-            // On an empty line the text goes before its break, not onto the next line.
-            var insertAt = _buffer.CharAt(pos) == '\n' ? pos : CharacterEnd(pos);
-            _buffer.Replace(new VimRange(insertAt, 0), source.Text);
-            _buffer.SetCaret(Math.Max(insertAt, insertAt + source.Text.Length - 1));
-        }
-        else
-        {
-            _buffer.Replace(new VimRange(pos, 0), source.Text);
-            _buffer.SetCaret(Math.Max(pos, pos + source.Text.Length - 1));
-        }
+        var run = string.Concat(Enumerable.Repeat(source.Text, copies));
+        // On an empty line the cursor is on its break, and p puts the text before it.
+        var at = after && pos < ContentEnd(_buffer.LineRange(pos)) ? CharacterEnd(pos) : pos;
+        _buffer.Replace(new VimRange(at, 0), run);
+        // Text over several lines leaves the cursor at its start, a single line on its last character.
+        _buffer.SetCaret(run.Contains('\n', StringComparison.Ordinal) ? at : CharacterStart(at + run.Length - 1));
     }
 
     internal void DeleteCharUnderCursor(int count)

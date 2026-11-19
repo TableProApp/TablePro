@@ -38,6 +38,9 @@ enum VimDotKind {
     case replaceChar(char: Character, count: Int)
 }
 
+// `:help exclusive`, `:help inclusive`, `:help linewise`.
+enum VimMotionKind { case exclusive, inclusive, linewise }
+
 enum VimMacroPendingKind { case recordTarget, replayTarget }
 enum VimBracketPending { case openBracket, closeBracket }
 enum VimScreenPosition { case top, middle, bottom }
@@ -101,6 +104,12 @@ final class VimEngine {
     var visualAnchor: Int = 0
     var lastInsertOffset: Int?
     var replaceModeEdits: [VimReplaceModeEdit] = []
+    var searchCount: Int = 1
+    // The column each named mark was set at, kept past the end of a line that shrinks, as Vim keeps it.
+    var markColumns: [Character: Int] = [:]
+    // Recent edits with the positions from before each, so undoing one puts them back.
+    var editJournal: [VimEditRecord] = []
+    var editJournalTextLength = 0
 
     var buffer: VimTextBuffer?
 
@@ -123,6 +132,8 @@ final class VimEngine {
             consumed = processReplace(char)
         case .visual:
             consumed = processVisual(char, shift: shift)
+            // A register named in Visual mode belongs to the command that ends it, used or not.
+            if !mode.isVisual { selectedRegister = nil }
         case .commandLine(let commandBuffer):
             consumed = processCommandLine(char, buffer: commandBuffer)
         }
@@ -149,11 +160,37 @@ final class VimEngine {
     }
 
     func reset() {
+        cancelPendingCommand()
+        mode = .normal
+    }
+
+    // Escape, leaving the command line or a motion that cannot move ends the whole command, so no part of it
+    // reaches the next key.
+    func cancelPendingCommand() {
         pendingOperator = nil
         countPrefix = 0
         operatorCount = 0
         pendingG = false
-        mode = .normal
+        pendingFindChar = nil
+        pendingReplaceChar = false
+        pendingMarkSet = false
+        pendingMarkJumpExact = nil
+        pendingRegisterSelect = false
+        selectedRegister = nil
+        pendingReplaceCharForVisual = false
+        pendingZ = false
+        pendingTextObject = false
+        pendingMacroTarget = nil
+        pendingMacroCount = 1
+        pendingBracket = nil
+        searchCount = 1
+    }
+
+    // A key that still waits for the rest of its command, not counting a count or a register already typed.
+    var hasPendingCommand: Bool {
+        pendingOperator != nil || pendingG || pendingFindChar != nil || pendingReplaceChar || pendingMarkSet
+            || pendingMarkJumpExact != nil || pendingRegisterSelect || pendingZ || pendingTextObject
+            || pendingMacroTarget != nil || pendingBracket != nil
     }
 
     func setMode(_ newMode: VimMode) {

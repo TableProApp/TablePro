@@ -29,4 +29,15 @@ extension VimEngine {
         }
         return max(position, limit)
     }
+
+    // A character's class is its first scalar's, so a variation selector or mark never splits it.
+    func wordClass(at offset: Int, in buffer: VimTextBuffer) -> VimWordScanner.CharacterClass {
+        let base = characterStart(at: offset, in: buffer)
+        let trail = base + 1 < buffer.length ? buffer.character(at: base + 1) : nil
+        return VimWordScanner.characterClass(lead: buffer.character(at: base), trail: trail)
+    }
+
+    func isWordCharacter(at offset: Int, in buffer: VimTextBuffer) -> Bool {
+        wordClass(at: offset, in: buffer) == .word
+    }
 }

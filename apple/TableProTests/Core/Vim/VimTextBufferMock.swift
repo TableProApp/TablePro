@@ -104,140 +104,27 @@ final class VimTextBufferMock: VimTextBuffer {
     }
 
     func wordBoundary(forward: Bool, from offset: Int) -> Int {
-        let nsString = text as NSString
-        guard nsString.length > 0 else { return 0 }
-        if forward {
-            var pos = min(offset, nsString.length - 1)
-            let startClass = charClass(nsString.character(at: pos))
-            if startClass == .whitespace {
-                while pos < nsString.length && charClass(nsString.character(at: pos)) == .whitespace {
-                    pos += 1
-                }
-            } else {
-                while pos < nsString.length && charClass(nsString.character(at: pos)) == startClass {
-                    pos += 1
-                }
-                while pos < nsString.length && charClass(nsString.character(at: pos)) == .whitespace {
-                    pos += 1
-                }
-            }
-            return min(pos, nsString.length)
-        } else {
-            var pos = min(offset, nsString.length)
-            if pos > 0 { pos -= 1 }
-            while pos > 0 && charClass(nsString.character(at: pos)) == .whitespace {
-                pos -= 1
-            }
-            let cls = charClass(nsString.character(at: pos))
-            while pos > 0 && charClass(nsString.character(at: pos - 1)) == cls {
-                pos -= 1
-            }
-            return max(0, pos)
-        }
+        VimWordScanner.wordBoundary(forward: forward, from: offset, in: text as NSString)
     }
 
     func wordEnd(from offset: Int) -> Int {
-        let nsString = text as NSString
-        guard nsString.length > 0 else { return 0 }
-        var pos = min(offset + 1, nsString.length - 1)
-        while pos < nsString.length && charClass(nsString.character(at: pos)) == .whitespace {
-            pos += 1
-        }
-        guard pos < nsString.length else { return nsString.length - 1 }
-        let cls = charClass(nsString.character(at: pos))
-        while pos < nsString.length - 1 && charClass(nsString.character(at: pos + 1)) == cls {
-            pos += 1
-        }
-        return min(pos, nsString.length - 1)
+        VimWordScanner.wordEnd(from: offset, in: text as NSString)
     }
 
     func wordEndBackward(from offset: Int) -> Int {
-        let nsString = text as NSString
-        guard nsString.length > 0 else { return 0 }
-        var pos = min(max(0, offset), nsString.length - 1)
-        if pos > 0 { pos -= 1 }
-        if charClass(nsString.character(at: pos)) == .whitespace {
-            while pos > 0 && charClass(nsString.character(at: pos)) == .whitespace {
-                pos -= 1
-            }
-            return pos
-        }
-        let cls = charClass(nsString.character(at: pos))
-        while pos > 0 && charClass(nsString.character(at: pos - 1)) == cls {
-            pos -= 1
-        }
-        guard pos > 0 else { return 0 }
-        pos -= 1
-        while pos > 0 && charClass(nsString.character(at: pos)) == .whitespace {
-            pos -= 1
-        }
-        return pos
+        VimWordScanner.wordEndBackward(from: offset, in: text as NSString)
     }
 
     func bigWordBoundary(forward: Bool, from offset: Int) -> Int {
-        let nsString = text as NSString
-        guard nsString.length > 0 else { return 0 }
-        if forward {
-            var pos = min(offset, nsString.length - 1)
-            if isWhitespace(nsString.character(at: pos)) {
-                while pos < nsString.length && isWhitespace(nsString.character(at: pos)) {
-                    pos += 1
-                }
-            } else {
-                while pos < nsString.length && !isWhitespace(nsString.character(at: pos)) {
-                    pos += 1
-                }
-                while pos < nsString.length && isWhitespace(nsString.character(at: pos)) {
-                    pos += 1
-                }
-            }
-            return min(pos, nsString.length)
-        }
-        var pos = min(offset, nsString.length)
-        if pos > 0 { pos -= 1 }
-        while pos > 0 && isWhitespace(nsString.character(at: pos)) {
-            pos -= 1
-        }
-        while pos > 0 && !isWhitespace(nsString.character(at: pos - 1)) {
-            pos -= 1
-        }
-        return max(0, pos)
+        VimWordScanner.bigWordBoundary(forward: forward, from: offset, in: text as NSString)
     }
 
     func bigWordEnd(from offset: Int) -> Int {
-        let nsString = text as NSString
-        guard nsString.length > 0 else { return 0 }
-        var pos = min(offset + 1, nsString.length - 1)
-        while pos < nsString.length && isWhitespace(nsString.character(at: pos)) {
-            pos += 1
-        }
-        guard pos < nsString.length else { return nsString.length - 1 }
-        while pos < nsString.length - 1 && !isWhitespace(nsString.character(at: pos + 1)) {
-            pos += 1
-        }
-        return min(pos, nsString.length - 1)
+        VimWordScanner.bigWordEnd(from: offset, in: text as NSString)
     }
 
     func bigWordEndBackward(from offset: Int) -> Int {
-        let nsString = text as NSString
-        guard nsString.length > 0 else { return 0 }
-        var pos = min(max(0, offset), nsString.length - 1)
-        if pos > 0 { pos -= 1 }
-        if isWhitespace(nsString.character(at: pos)) {
-            while pos > 0 && isWhitespace(nsString.character(at: pos)) {
-                pos -= 1
-            }
-            return pos
-        }
-        while pos > 0 && !isWhitespace(nsString.character(at: pos - 1)) {
-            pos -= 1
-        }
-        guard pos > 0 else { return 0 }
-        pos -= 1
-        while pos > 0 && isWhitespace(nsString.character(at: pos)) {
-            pos -= 1
-        }
-        return pos
+        VimWordScanner.bigWordEndBackward(from: offset, in: text as NSString)
     }
 
     func matchingBracket(at offset: Int) -> Int? {
@@ -297,7 +184,20 @@ final class VimTextBufferMock: VimTextBuffer {
             : NSRange(location: characterRange(at: clampedLocation).location, length: 0)
     }
 
+    // The editor tells the engine about every edit before it lands, typed and undone ones included.
+    weak var editObserver: VimEngine?
+
+    // Puts text back as the editor's undo does, which the engine tells apart from typing.
+    func replayUndo(in range: NSRange, with string: String) {
+        editSource = .undo
+        defer { editSource = .edit }
+        replaceCharacters(in: range, with: string)
+    }
+
+    private var editSource: VimEditSource = .edit
+
     func replaceCharacters(in range: NSRange, with string: String) {
+        editObserver?.textWillChange(in: range, with: string, source: editSource)
         let mutable = NSMutableString(string: text)
         mutable.replaceCharacters(in: range, with: string)
         text = mutable as String
@@ -309,21 +209,4 @@ final class VimTextBufferMock: VimTextBuffer {
 
     func undo() { undoCallCount += 1 }
     func redo() { redoCallCount += 1 }
-
-    private enum CharClass {
-        case word, punctuation, whitespace
-    }
-
-    private func charClass(_ char: unichar) -> CharClass {
-        if isWhitespace(char) { return .whitespace }
-        guard let scalar = UnicodeScalar(char) else { return .punctuation }
-        if CharacterSet.alphanumerics.contains(scalar) || char == 0x5F {
-            return .word
-        }
-        return .punctuation
-    }
-
-    private func isWhitespace(_ char: unichar) -> Bool {
-        char == 0x20 || char == 0x09 || char == 0x0A || char == 0x0D
-    }
 }

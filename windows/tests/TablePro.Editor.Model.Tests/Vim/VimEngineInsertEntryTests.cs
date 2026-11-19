@@ -305,4 +305,17 @@ public sealed class VimEngineInsertEntryTests
         s.Escape();
         Assert.Equal(VimMode.Normal, captured);
     }
+
+    [Fact]
+    public void GiAfterAnEditOnTheLineResumesAtTheLineEnd()
+    {
+        var s = new VimSession("abc\ntail\n", caret: 0);
+        s.Press("A");
+        s.Type("X");
+        s.Escape();
+        s.Press("0rYgi");
+        s.Type("Z");
+        s.Escape();
+        Assert.Equal("YbcXZ\ntail\n", s.Text);
+    }
 }

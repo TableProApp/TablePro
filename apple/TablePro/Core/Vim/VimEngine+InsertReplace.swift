@@ -94,25 +94,33 @@ extension VimEngine {
 
     func processCommandLine(_ char: Character, buffer commandBuffer: String) -> Bool {
         switch char {
+        // Leaving the command line ends the command it is part of, an operator typed before it included.
         case "\u{1B}":
+            cancelPendingCommand()
             setMode(.normal)
             return true
         case "\r", "\n":
             let prefix = commandBuffer.first
             let body = String(commandBuffer.dropFirst())
             setMode(.normal)
-            if prefix == "/" {
-                runSearch(pattern: body, forward: true)
-            } else if prefix == "?" {
-                runSearch(pattern: body, forward: false)
+            if prefix == "/" || prefix == "?" {
+                // A search after an operator is its motion, as `d/foo` deletes up to foo.
+                if pendingOperator != nil, let buffer {
+                    let target = searchTarget(pattern: body, forward: prefix == "/", count: searchCount, in: buffer)
+                    applyMotion(to: target, kind: .exclusive, in: buffer)
+                } else {
+                    runSearch(pattern: body, forward: prefix == "/", count: searchCount)
+                }
             } else {
                 onCommand?(body)
             }
+            cancelPendingCommand()
             return true
         case "\u{7F}", "\u{08}":
             if (commandBuffer as NSString).length > 1 {
                 setMode(.commandLine(buffer: String(commandBuffer.dropLast())))
             } else {
+                cancelPendingCommand()
                 setMode(.normal)
             }
             return true

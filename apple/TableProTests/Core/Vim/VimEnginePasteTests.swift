@@ -199,4 +199,70 @@ final class VimEnginePasteTests {
             "Paste over a visual selection should replace the selection with the register")
         #expect(engine.mode == .normal)
     }
+
+    // MARK: - Counted paste, and paste on an empty line
+
+    private func make(_ text: String, at offset: Int) {
+        buffer = VimTextBufferMock(text: text)
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: offset, length: 0))
+    }
+
+    @Test("\"a2p pastes register a twice")
+    func countedPasteFromANamedRegisterPastesItEachTime() {
+        make("ab cd\n", at: 0)
+        keys("\"aylwyl")
+        keys("$\"a2p")
+        #expect(buffer.text == "ab cdaa\n")
+        #expect(pos == 6)
+    }
+
+    @Test("\"a2p pastes a linewise register a twice")
+    func countedLinewisePasteFromANamedRegister() {
+        make("ab\ncd\n", at: 0)
+        keys("\"ayyjyy\"a2p")
+        #expect(buffer.text == "ab\ncd\nab\nab\n")
+    }
+
+    @Test("2P keeps each copy whole")
+    func countedCapitalPKeepsCopiesWhole() {
+        make("ab cd\n", at: 0)
+        keys("yw$2")
+        key("P", shift: true)
+        #expect(buffer.text == "ab cab ab d\n")
+        #expect(pos == 9)
+    }
+
+    @Test("p on an empty line puts the text on that line")
+    func pasteOnAnEmptyLineStaysOnIt() {
+        make("one\n\ntwo\n", at: 0)
+        keys("ylj")
+        keys("p")
+        #expect(buffer.text == "one\no\ntwo\n")
+        #expect(pos == 4)
+    }
+
+    @Test("p below a last line with no line break adds the break first")
+    func linewisePasteBelowALastLineWithoutABreak() {
+        make("a\nb", at: 2)
+        keys("yyp")
+        #expect(buffer.text == "a\nb\nb")
+        #expect(pos == 4)
+    }
+
+    @Test("A linewise paste leaves the cursor on the first non-blank")
+    func linewisePasteLandsOnTheFirstNonBlank() {
+        make("  ab\ncd\n", at: 0)
+        keys("yyjp")
+        #expect(buffer.text == "  ab\ncd\n  ab\n")
+        #expect(pos == 10)
+    }
+
+    @Test("A paste over several lines leaves the cursor at its start")
+    func multilineCharacterPasteLandsAtItsStart() {
+        make("ab cd\nef\n", at: 1)
+        keys("vjy$p")
+        #expect(buffer.text == "ab cdb cd\nef\nef\n")
+        #expect(pos == 5)
+    }
 }

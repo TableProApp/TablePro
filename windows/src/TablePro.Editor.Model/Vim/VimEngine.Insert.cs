@@ -120,20 +120,24 @@ public sealed partial class VimEngine
             {
                 var prefix = commandLine.Length > 0 ? commandLine[0] : '\0';
                 var body = commandLine.Length > 0 ? commandLine[1..] : string.Empty;
-                CancelPending();
                 SetMode(VimMode.Normal);
-                if (prefix == '/')
+                if (prefix is '/' or '?')
                 {
-                    RunSearch(body, forward: true);
-                }
-                else if (prefix == '?')
-                {
-                    RunSearch(body, forward: false);
+                    // A search after an operator is its motion, as d/foo deletes up to foo.
+                    if (PendingOperator is not null)
+                    {
+                        ApplyMotion(SearchTarget(body, forward: prefix == '/', SearchCount), VimMotionKind.Exclusive);
+                    }
+                    else
+                    {
+                        RunSearch(body, forward: prefix == '/', SearchCount);
+                    }
                 }
                 else
                 {
                     _buffer.Host.Command(body);
                 }
+                CancelPending();
                 return true;
             }
             case "\u007F" or "\b":
