@@ -11,6 +11,28 @@ struct MySQLServerVersionTests {
         #expect(!MySQLServerVersion.keepsDatabaseBetweenStatements(banner: "8.0.0", flavor: .databend))
     }
 
+    @Test("Statements share a flight only on the MySQL and MariaDB releases measured")
+    func oneFlightFloors() {
+        #expect(MySQLServerVersion.readsInOneFlight(banner: "8.4.11", flavor: .mysql))
+        #expect(MySQLServerVersion.readsInOneFlight(banner: "8.0.0", flavor: .mysql))
+        #expect(!MySQLServerVersion.readsInOneFlight(banner: "5.7.44", flavor: .mysql))
+        #expect(MySQLServerVersion.readsInOneFlight(banner: "13.0.2-MariaDB", flavor: .mariadb))
+        #expect(MySQLServerVersion.readsInOneFlight(banner: "10.6.0-MariaDB", flavor: .mariadb))
+        #expect(!MySQLServerVersion.readsInOneFlight(banner: "10.5.29-MariaDB", flavor: .mariadb))
+        #expect(!MySQLServerVersion.readsInOneFlight(banner: nil, flavor: .mysql))
+    }
+
+    @Test("A fork or a proxy that names itself sends one statement at a time")
+    func oneFlightSkipsForksAndProxies() {
+        #expect(!MySQLServerVersion.readsInOneFlight(banner: "8.0.11-TiDB-v8.5.1", flavor: .tidb(version: nil)))
+        #expect(!MySQLServerVersion.readsInOneFlight(banner: "5.7.25", flavor: .oceanbase(version: nil)))
+        #expect(!MySQLServerVersion.readsInOneFlight(banner: "8.0.33", flavor: .starrocks))
+        #expect(!MySQLServerVersion.readsInOneFlight(banner: "8.0.0", flavor: .databend))
+        #expect(!MySQLServerVersion.readsInOneFlight(banner: "10.11.6-MariaDB-maxscale", flavor: .mariadb))
+        #expect(!MySQLServerVersion.readsInOneFlight(banner: "8.0.31 (ProxySQL)", flavor: .mysql))
+        #expect(!MySQLServerVersion.readsInOneFlight(banner: "8.0.30-Vitess", flavor: .mysql))
+    }
+
     @Test("A proxy that names itself keeps its USE before every statement")
     func namedProxiesKeepTheirUse() {
         #expect(!MySQLServerVersion.keepsDatabaseBetweenStatements(banner: "10.11.6-MariaDB-maxscale", flavor: .mariadb))

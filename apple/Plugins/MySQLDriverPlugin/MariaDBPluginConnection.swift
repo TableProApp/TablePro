@@ -155,6 +155,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     // from `queue`.
     private var selectLimitMayHaveMoved = false
 
+    // Set once this session accepted a cap, so a later cap can go out with its statement. Only touched from `queue`.
+    private var hasAcceptedSelectLimit = false
+
     // Whether this session already waits long enough for a streaming reader. Only touched from `queue`.
     private var hasStreamingWriteTimeout = false
 
@@ -414,6 +417,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             self.hasStreamingWriteTimeout = false
             self.databaseProof = MySQLSessionDatabaseProof()
             self.selectLimitMayHaveMoved = false
+            self.hasAcceptedSelectLimit = false
 
             let threadId = mysql_thread_id(handle)
             self.stateLock.lock()
@@ -856,11 +860,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         baselineSelectLimit = UInt64(String(cString: valuePtr))
     }
 
+    // Answers the cap to send with the statement instead, which only a read on a session that accepted one before gets.
+    @discardableResult
     private func reconcileSelectLimit(
         rowCap: Int?,
         statement query: String,
-        on mysql: UnsafeMutablePointer<MYSQL>
-    ) throws {
+        on mysql: UnsafeMutablePointer<MYSQL>,
+        mayFly: Bool = false
+    ) throws -> UInt64? {
         let desired = mysqlClampedRowCap(rowCap).map { mysqlSelectLimitRows(forRowCap: $0) }
         let action: MySQLSelectLimitAction
         if selectLimitMayHaveMoved, appliedSelectLimit != nil {
@@ -873,7 +880,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             /// single-row would otherwise keep a stale cap installed and end early under it, and the
             /// client would compare that short count against the current cap and call it complete.
             if appliedSelectLimit == nil, rowCap != nil, mysqlStatementReturnsAtMostOneRow(query) {
-                return
+                return nil
             }
             action = mysqlSelectLimitAction(applied: appliedSelectLimit, desired: desired)
         }
@@ -882,8 +889,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let statement: String
         switch action {
         case .none:
-            return
+            return nil
         case .apply(let rows):
+            if mayFly, hasAcceptedSelectLimit { return rows }
             captureBaselineSelectLimit(from: mysql)
             statement = sessionFlavor.selectLimitStatement(rows: rows)
         case .reset:
@@ -904,10 +912,61 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             /// is already installed would run the statement under a stricter limit than it asked for
             /// and report the short result as complete.
             guard appliedSelectLimit == nil else { throw error }
-            return
+            return nil
         }
         appliedSelectLimit = action == .reset ? nil : desired
+        hasAcceptedSelectLimit = hasAcceptedSelectLimit || action != .reset
         selectLimitMayHaveMoved = false
+        return nil
+    }
+
+    // Both go out before either reply is read, so no statement of the driver's own lands between the cap and the read.
+    // Answers what `mysql_real_query` would for the statement. A refused cap throws: the statement has run by then,
+    // and as a read it changed nothing.
+    private func sendWithSelectLimit(
+        _ query: String,
+        rows: UInt64,
+        on mysql: UnsafeMutablePointer<MYSQL>,
+        generation: Int
+    ) throws -> Int32 {
+        let limit = flavor.selectLimitStatement(rows: rows)
+        guard limit.withCString({ mysql_send_query(mysql, $0, UInt(limit.utf8.count)) }) == 0 else {
+            throw noting(getError(), generation: generation)
+        }
+        guard query.withCString({ mysql_send_query(mysql, $0, UInt(query.utf8.count)) }) == 0 else {
+            let failure = getError()
+            _ = mysql_read_query_result(mysql)
+            throw failure
+        }
+        guard mysql_read_query_result(mysql) == 0 else {
+            let failure = noting(getError(), generation: generation)
+            logger.warning("SQL_SELECT_LIMIT not reconciled: \(failure.code) \(failure.message)")
+            discardReply(after: failure, on: mysql, generation: generation)
+            throw failure
+        }
+        if let discarded = mysql_store_result(mysql) {
+            mysql_free_result(discarded)
+        }
+        appliedSelectLimit = rows
+        selectLimitMayHaveMoved = false
+        return mysql_read_query_result(mysql) == 0 ? 0 : 1
+    }
+
+    // The session refuses its next statement with 2014 until a reply already asked for is read.
+    private func discardReply(after failure: MariaDBPluginError, on mysql: UnsafeMutablePointer<MYSQL>, generation: Int) {
+        guard !mysqlClientErrorCodes.contains(failure.code) else { return }
+        if cancellationGate.isCancelled(generation) {
+            killStatementOnServer(on: mysql, generation: generation)
+        }
+        guard mysql_read_query_result(mysql) == 0 else {
+            _ = noting(readError(from: mysql), generation: generation)
+            return
+        }
+        if let result = mysql_use_result(mysql) {
+            while mysql_fetch_row(result) != nil {}
+            mysql_free_result(result)
+        }
+        discardTrailingResults(on: mysql, generation: generation)
     }
 
     private func isExpectedInterruption(errno: UInt32, message: String, wasTruncated: Bool) -> Bool {
@@ -1039,11 +1098,22 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         /// reconciliation is a round trip of its own, and leaving it outside this clock charges it
         /// to `total - firstRow`, which the breakdown presents as row transfer.
         let sentAt = Date()
-        try reconcileSelectLimit(rowCap: rowCap, statement: query, on: mysql)
+        let flightRows = try reconcileSelectLimit(
+            rowCap: rowCap,
+            statement: query,
+            on: mysql,
+            mayFly: mysqlStatementIsReadOnly(query)
+                && MySQLServerVersion.readsInOneFlight(banner: serverVersion(), flavor: flavor)
+        )
         if cancellationGate.isCancelled(generation) { throw CancellationError() }
 
-        let queryStatus = query.withCString { queryPtr in
-            mysql_real_query(mysql, queryPtr, UInt(query.utf8.count))
+        let queryStatus: Int32
+        if let flightRows {
+            queryStatus = try sendWithSelectLimit(query, rows: flightRows, on: mysql, generation: generation)
+        } else {
+            queryStatus = query.withCString { queryPtr in
+                mysql_real_query(mysql, queryPtr, UInt(query.utf8.count))
+            }
         }
 
         if queryStatus != 0 {
