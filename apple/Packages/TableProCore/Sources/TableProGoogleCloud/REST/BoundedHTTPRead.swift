@@ -10,12 +10,14 @@ public enum BoundedHTTPRead {
         }
     }
 
+    // `onBodySent` runs once, when the whole request body has left the client.
     public static func data(
         for request: URLRequest,
         session: URLSession,
-        limit: Int
+        limit: Int,
+        onBodySent: @escaping @Sendable () -> Void = {}
     ) async throws -> (Data, URLResponse) {
-        let transfer = BoundedTransfer(request: request, session: session, limit: limit)
+        let transfer = BoundedTransfer(request: request, session: session, limit: limit, onBodySent: onBodySent)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { caller in
                 transfer.start(caller: caller)
@@ -40,16 +42,19 @@ private final class BoundedTransfer: NSObject, URLSessionDataDelegate, @unchecke
     private let request: URLRequest
     private let session: URLSession
     private let limit: Int
+    private let onBodySent: @Sendable () -> Void
     private let lock = NSLock()
     private var stage = Stage.notStarted
     private var caller: Caller?
     private var task: URLSessionDataTask?
     private var body = Data()
+    private var reportedBodySent = false
 
-    init(request: URLRequest, session: URLSession, limit: Int) {
+    init(request: URLRequest, session: URLSession, limit: Int, onBodySent: @escaping @Sendable () -> Void) {
         self.request = request
         self.session = session
         self.limit = max(limit, 0)
+        self.onBodySent = onBodySent
     }
 
     func start(caller waiting: Caller) {
@@ -91,6 +96,25 @@ private final class BoundedTransfer: NSObject, URLSessionDataDelegate, @unchecke
         guard case let (waiting, dataTask)? = ended else { return }
         dataTask.cancel()
         waiting.resume(throwing: URLError(.cancelled))
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        let reports: Bool = lock.withLock {
+            guard stage == .running, !reportedBodySent,
+                  totalBytesExpectedToSend > 0, totalBytesSent >= totalBytesExpectedToSend
+            else { return false }
+            reportedBodySent = true
+            return true
+        }
+        if reports {
+            onBodySent()
+        }
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {

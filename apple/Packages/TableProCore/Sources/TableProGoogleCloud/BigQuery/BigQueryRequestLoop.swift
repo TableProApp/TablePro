@@ -17,7 +17,7 @@ public enum BigQueryRequestLoop {
 
     // Nil when Stop came before a send. Stop is read again after the token fetch, which can take a round trip.
     public static func run<Token>(
-        isStopped: () -> Bool,
+        signals: BigQueryRequestSignals,
         authorize: () async throws -> Token,
         send: (Token) async throws -> Answer,
         refreshToken: () async -> Void,
@@ -26,9 +26,9 @@ public enum BigQueryRequestLoop {
         var rateLimitAttempt = 0
         var refreshedToken = false
         while true {
-            guard !isStopped() else { return nil }
+            guard !signals.isStopped() else { return nil }
             let token = try await authorize()
-            guard !isStopped() else { return nil }
+            guard signals.beginAttempt() else { return nil }
             let answer = try await send(token)
             if answer.status == unauthorizedStatus, !refreshedToken {
                 refreshedToken = true

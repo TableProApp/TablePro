@@ -17,7 +17,8 @@ struct BigQueryStopLifecycleTests {
     static let stages: [Stage] = [
         .notStarted,
         .cancelledBeforeStart,
-        .running,
+        .running(bodySent: false),
+        .running(bodySent: true),
         .stopped(callerReleased: false),
         .stopped(callerReleased: true),
         .answered,
@@ -27,14 +28,26 @@ struct BigQueryStopLifecycleTests {
     ]
 
     private static let transitions: [Transition] = [
-        Transition(from: .notStarted, event: .start, next: .running, effects: [.launchRequest]),
+        Transition(from: .notStarted, event: .start, next: .running(bodySent: false), effects: [.launchRequest]),
         Transition(from: .notStarted, event: .stop, next: .cancelledBeforeStart, effects: []),
         Transition(from: .cancelledBeforeStart, event: .start, next: .cancelledBeforeStart, effects: [
             .releaseCaller(.cancelled)
         ]),
-        Transition(from: .running, event: .answer, next: .answered, effects: [.releaseCaller(.answer)]),
-        Transition(from: .running, event: .failure, next: .failed, effects: [.releaseCaller(.error)]),
-        Transition(from: .running, event: .stop, next: .stopped(callerReleased: false), effects: [.armTimer]),
+        Transition(from: .running(bodySent: false), event: .attemptStarted, next: .running(bodySent: false), effects: []),
+        Transition(from: .running(bodySent: true), event: .attemptStarted, next: .running(bodySent: false), effects: []),
+        Transition(from: .running(bodySent: false), event: .bodySent, next: .running(bodySent: true), effects: []),
+        Transition(from: .running(bodySent: true), event: .bodySent, next: .running(bodySent: true), effects: []),
+        Transition(from: .running(bodySent: false), event: .answer, next: .answered, effects: [.releaseCaller(.answer)]),
+        Transition(from: .running(bodySent: true), event: .answer, next: .answered, effects: [.releaseCaller(.answer)]),
+        Transition(from: .running(bodySent: false), event: .failure, next: .failed, effects: [.releaseCaller(.error)]),
+        Transition(from: .running(bodySent: true), event: .failure, next: .failed, effects: [.releaseCaller(.error)]),
+        Transition(
+            from: .running(bodySent: false),
+            event: .stop,
+            next: .stopped(callerReleased: false),
+            effects: [.armTimer, .cancelRequest]
+        ),
+        Transition(from: .running(bodySent: true), event: .stop, next: .stopped(callerReleased: false), effects: [.armTimer]),
         Transition(from: .stopped(callerReleased: false), event: .answer, next: .answeredAfterStop, effects: [
             .releaseCaller(.cancelled), .cancelTimer, .handOverAnswer
         ]),
@@ -101,9 +114,11 @@ struct BigQueryStopLifecycleTests {
     func callerReleasedOnce() {
         for order in [
             [Event.start, .answer, .stop, .graceElapsed, .limitElapsed],
-            [.start, .stop, .graceElapsed, .answer, .limitElapsed],
-            [.start, .stop, .answer, .graceElapsed, .limitElapsed],
-            [.start, .stop, .graceElapsed, .limitElapsed, .failure],
+            [.start, .bodySent, .stop, .graceElapsed, .answer, .limitElapsed],
+            [.start, .bodySent, .stop, .answer, .graceElapsed, .limitElapsed],
+            [.start, .bodySent, .stop, .graceElapsed, .limitElapsed, .failure],
+            [.start, .stop, .failure, .graceElapsed, .limitElapsed],
+            [.start, .stop, .graceElapsed, .bodySent, .answer],
             [.stop, .start, .answer, .graceElapsed]
         ] {
             var lifecycle = BigQueryStopLifecycle()

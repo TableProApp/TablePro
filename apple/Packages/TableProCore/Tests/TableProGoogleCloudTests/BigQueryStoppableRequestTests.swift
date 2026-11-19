@@ -3,6 +3,7 @@ import TableProGoogleCloud
 import TableProTestSupport
 import Testing
 
+@Suite(.timeLimit(.minutes(1)))
 struct BigQueryStoppableRequestTests {
     private struct Refused: Error {}
 
@@ -11,11 +12,11 @@ struct BigQueryStoppableRequestTests {
         private(set) var handedOver: [Int] = []
         private(set) var requestEnded = false
         private(set) var requestCancelled = false
-        private var stopCheck: (@Sendable () -> Bool)?
+        private var signals: BigQueryRequestSignals?
 
-        func launched(_ isStopped: @escaping @Sendable () -> Bool) {
+        func launched(_ signals: BigQueryRequestSignals) {
             launches += 1
-            stopCheck = isStopped
+            self.signals = signals
         }
 
         func ended(cancelled: Bool) {
@@ -28,7 +29,15 @@ struct BigQueryStoppableRequestTests {
         }
 
         func isStopped() -> Bool? {
-            stopCheck?()
+            signals?.isStopped()
+        }
+
+        func beginAttempt() -> Bool? {
+            signals?.beginAttempt()
+        }
+
+        func bodySent() {
+            signals?.bodySent()
         }
     }
 
@@ -37,16 +46,23 @@ struct BigQueryStoppableRequestTests {
         let clock = ManualClock()
         let record = Record()
 
-        // The request answers `outcome` once the gate opens; the gate does not watch cancellation, the answer does.
-        func caller(answering outcome: Result<Int, Refused>, after startGate: AsyncGate? = nil) -> Task<Int, any Error> {
+        // The request starts an attempt, reports its body sent when `sendsBody`, then answers `outcome` once the gate
+        // opens. The gate does not watch cancellation; the answer does.
+        func caller(
+            answering outcome: Result<Int, Refused>,
+            sendsBody: Bool = true,
+            after startGate: AsyncGate? = nil
+        ) -> Task<Int, any Error> {
             Task { [gate, clock, record] in
                 await startGate?.wait()
                 return try await BigQueryStoppableRequest.value(
                     grace: .seconds(1),
                     limit: .seconds(10),
                     clock: clock
-                ) { isStopped in
-                    await record.launched(isStopped)
+                ) { signals in
+                    await record.launched(signals)
+                    guard signals.beginAttempt() else { throw CancellationError() }
+                    if sendsBody { signals.bodySent() }
                     await gate.wait()
                     let cancelled = Task.isCancelled
                     await record.ended(cancelled: cancelled)
@@ -60,6 +76,30 @@ struct BigQueryStoppableRequestTests {
 
         func waitForSleepers(_ count: Int) async throws {
             try await waitUntil { clock.pendingSleeperCount == count }
+        }
+    }
+
+    // A request whose wait ends only when its task is cancelled, as a stalled transfer or token fetch does.
+    private func stalledCaller(
+        clock: ManualClock,
+        record: Record,
+        sendsBody: Bool
+    ) -> Task<Int, any Error> {
+        Task {
+            try await BigQueryStoppableRequest.value(grace: .seconds(1), limit: .seconds(10), clock: clock) { signals in
+                guard signals.beginAttempt() else { throw CancellationError() }
+                if sendsBody { signals.bodySent() }
+                await record.launched(signals)
+                do {
+                    try await Task.sleep(for: .seconds(3_600))
+                } catch {
+                    await record.ended(cancelled: true)
+                    throw error
+                }
+                return 7
+            } afterStop: { answer in
+                await record.handOver(answer)
+            }
         }
     }
 
@@ -101,8 +141,37 @@ struct BigQueryStoppableRequestTests {
         #expect(await fixture.record.handedOver.isEmpty)
     }
 
-    @Test("Stop marks the running request stopped and arms one timer")
-    func stopWhileRunning() async throws {
+    @Test("Stop before the body is sent cancels the request at once, as main did")
+    func stopBeforeTheBodyIsSent() async throws {
+        let clock = ManualClock()
+        let record = Record()
+        let running = stalledCaller(clock: clock, record: record, sendsBody: false)
+        try await waitUntil { await record.launches == 1 }
+
+        running.cancel()
+
+        await #expect(throws: CancellationError.self) { try await running.value }
+        try await waitUntil { await record.requestCancelled }
+        try await waitUntil { clock.pendingSleeperCount == 0 }
+        #expect(await record.handedOver.isEmpty)
+    }
+
+    @Test("A new attempt after a sent one is not sent until it says so, so Stop cancels it at once")
+    func newAttemptStartsUnsent() async throws {
+        let clock = ManualClock()
+        let record = Record()
+        let running = stalledCaller(clock: clock, record: record, sendsBody: true)
+        try await waitUntil { await record.launches == 1 }
+        #expect(await record.beginAttempt() == true)
+
+        running.cancel()
+
+        await #expect(throws: CancellationError.self) { try await running.value }
+        try await waitUntil { await record.requestCancelled }
+    }
+
+    @Test("Stop after the body is sent holds the request, arms one timer and refuses a new attempt")
+    func stopAfterTheBodyIsSent() async throws {
         let fixture = Fixture()
         let running = fixture.caller(answering: .success(7))
         await fixture.gate.arrived(1)
@@ -111,6 +180,8 @@ struct BigQueryStoppableRequestTests {
         try await fixture.waitForSleepers(1)
 
         #expect(await fixture.record.isStopped() == true)
+        #expect(await fixture.record.beginAttempt() == false)
+        #expect(await fixture.record.requestEnded == false)
         await fixture.gate.open()
         await #expect(throws: CancellationError.self) { try await running.value }
     }
@@ -200,26 +271,12 @@ struct BigQueryStoppableRequestTests {
         #expect(await fixture.record.handedOver.isEmpty)
     }
 
-    @Test("The limit cancels a stopped request still unanswered")
+    @Test("The limit cancels a sent request still unanswered")
     func limitCancelsTheRequest() async throws {
         let clock = ManualClock()
-        let wire = ManualClock()
         let record = Record()
-        let running = Task {
-            try await BigQueryStoppableRequest.value(grace: .seconds(1), limit: .seconds(10), clock: clock) { isStopped in
-                await record.launched(isStopped)
-                do {
-                    try await wire.sleep(for: .seconds(3_600))
-                } catch {
-                    await record.ended(cancelled: true)
-                    throw error
-                }
-                return 7
-            } afterStop: { answer in
-                await record.handOver(answer)
-            }
-        }
-        await wire.waitUntilSleeping()
+        let running = stalledCaller(clock: clock, record: record, sendsBody: true)
+        try await waitUntil { await record.launches == 1 }
         running.cancel()
         try await waitUntil { clock.pendingSleeperCount == 1 }
         clock.advance(by: .seconds(1))
@@ -232,5 +289,21 @@ struct BigQueryStoppableRequestTests {
         try await waitUntil { await record.requestCancelled }
         try await waitUntil { clock.pendingSleeperCount == 0 }
         #expect(await record.handedOver.isEmpty)
+    }
+
+    @Test("A timer that resumes late still cancels at the limit counted from Stop")
+    func lateTimerKeepsTheLimit() async throws {
+        let clock = ManualClock()
+        let record = Record()
+        let running = stalledCaller(clock: clock, record: record, sendsBody: true)
+        try await waitUntil { await record.launches == 1 }
+        running.cancel()
+        try await waitUntil { clock.pendingSleeperCount == 1 }
+
+        clock.advance(by: .seconds(10))
+
+        await #expect(throws: CancellationError.self) { try await running.value }
+        try await waitUntil { await record.requestCancelled }
+        try await waitUntil { clock.pendingSleeperCount == 0 }
     }
 }

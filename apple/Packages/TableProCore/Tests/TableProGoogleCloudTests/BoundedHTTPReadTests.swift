@@ -99,6 +99,19 @@ private final class ScriptedHTTP: @unchecked Sendable {
     }
 }
 
+private final class SendCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.withLock { count }
+    }
+
+    func add() {
+        lock.withLock { count += 1 }
+    }
+}
+
 private final class RedirectRefusingDelegate: NSObject, URLSessionTaskDelegate, Sendable {
     func urlSession(
         _ session: URLSession,
@@ -111,6 +124,7 @@ private final class RedirectRefusingDelegate: NSObject, URLSessionTaskDelegate, 
     }
 }
 
+@Suite(.timeLimit(.minutes(1)))
 struct BoundedHTTPReadTests {
     private static let kibibyte = 1_024
 
@@ -175,6 +189,29 @@ struct BoundedHTTPReadTests {
         let error = await #expect(throws: URLError.self) { _ = try await script.read(limit: Self.kibibyte) }
 
         #expect(error?.code == .networkConnectionLost)
+    }
+
+    @Test("A body the server takes whole is reported sent once")
+    func bodyReportedSentOnce() async throws {
+        let responder = try LoopbackHTTPResponder { _ in LoopbackResponse(status: 200, body: "{}") }
+        try await responder.start()
+        defer { responder.stop() }
+        let session = URLSession(configuration: .ephemeral, delegate: RedirectRefusingDelegate(), delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        var request = URLRequest(url: responder.url("/q"))
+        request.httpMethod = "POST"
+        request.httpBody = Data(#"{"query":"SELECT 1"}"#.utf8)
+        let sent = SendCount()
+
+        let (data, _) = try await BoundedHTTPRead.data(
+            for: request,
+            session: session,
+            limit: Self.kibibyte,
+            onBodySent: { sent.add() }
+        )
+
+        #expect(data == Data("{}".utf8))
+        #expect(sent.value == 1)
     }
 
     @Test("The session's own delegate still refuses a redirect")

@@ -669,8 +669,8 @@ internal final class BigQueryConnection: @unchecked Sendable {
             return try await BigQueryStoppableRequest.value(
                 grace: BigQueryStatementPolicy.stopGrace,
                 limit: BigQueryStatementPolicy.stoppedRequestLimit
-            ) { [self, request] isStopped in
-                try await decode(send(request, isStopped: isStopped, bodyLimit: BigQueryStatementPolicy.answerByteLimit))
+            ) { [self, request] signals in
+                try await decode(send(request, signals: signals, bodyLimit: BigQueryStatementPolicy.answerByteLimit))
             } afterStop: { [self] answer in
                 guard let jobId = BigQueryStatementProgress.jobToCancel(
                     jobComplete: answer.jobComplete,
@@ -808,13 +808,15 @@ internal final class BigQueryConnection: @unchecked Sendable {
 
     private func send(
         _ request: URLRequest,
-        isStopped: @Sendable () -> Bool = { false },
+        signals: BigQueryRequestSignals = .unstoppable,
         bodyLimit: Int? = nil
     ) async throws -> Data {
         let answer = try await BigQueryRequestLoop.run(
-            isStopped: isStopped,
+            signals: signals,
             authorize: { try await accessToken() },
-            send: { token in try await perform(request, token: token, bodyLimit: bodyLimit) },
+            send: { token in
+                try await perform(request, token: token, bodyLimit: bodyLimit, onBodySent: signals.bodySent)
+            },
             refreshToken: { await tokenProvider.invalidateCachedToken() },
             backoff: { attempt in
                 Self.logger.info("BigQuery rate limited, retry \(attempt, privacy: .public)")
@@ -833,7 +835,8 @@ internal final class BigQueryConnection: @unchecked Sendable {
     private func perform(
         _ request: URLRequest,
         token: String,
-        bodyLimit: Int?
+        bodyLimit: Int?,
+        onBodySent: @escaping @Sendable () -> Void
     ) async throws -> BigQueryRequestLoop.Answer {
         let session = try currentSession()
         var authorized = request
@@ -843,7 +846,12 @@ internal final class BigQueryConnection: @unchecked Sendable {
         do {
             let (data, response): (Data, URLResponse)
             if let bodyLimit {
-                (data, response) = try await BoundedHTTPRead.data(for: authorized, session: session, limit: bodyLimit)
+                (data, response) = try await BoundedHTTPRead.data(
+                    for: authorized,
+                    session: session,
+                    limit: bodyLimit,
+                    onBodySent: onBodySent
+                )
             } else {
                 (data, response) = try await session.data(for: authorized)
             }
@@ -862,7 +870,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
 
     private func accessToken() async throws -> String {
         do {
-            return try await tokenProvider.accessToken()
+            return try await GoogleAccessTokenWait.token(from: tokenProvider)
         } catch {
             throw BigQueryError.wrap(error)
         }

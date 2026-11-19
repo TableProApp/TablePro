@@ -4,7 +4,7 @@ struct BigQueryStopLifecycle: Equatable, Sendable {
     enum Stage: Equatable, Sendable {
         case notStarted
         case cancelledBeforeStart
-        case running
+        case running(bodySent: Bool)
         case stopped(callerReleased: Bool)
         case answered
         case failed
@@ -14,6 +14,8 @@ struct BigQueryStopLifecycle: Equatable, Sendable {
 
     enum Event: Equatable, Sendable, CaseIterable {
         case start
+        case attemptStarted
+        case bodySent
         case stop
         case answer
         case failure
@@ -56,23 +58,29 @@ struct BigQueryStopLifecycle: Equatable, Sendable {
         case .notStarted:
             switch event {
             case .start:
-                stage = .running
+                stage = .running(bodySent: false)
                 return [.launchRequest]
             case .stop:
                 stage = .cancelledBeforeStart
                 return []
-            case .answer, .failure, .graceElapsed, .limitElapsed:
+            case .attemptStarted, .bodySent, .answer, .failure, .graceElapsed, .limitElapsed:
                 return []
             }
         case .cancelledBeforeStart:
             switch event {
             case .start:
                 return [.releaseCaller(.cancelled)]
-            case .stop, .answer, .failure, .graceElapsed, .limitElapsed:
+            case .attemptStarted, .bodySent, .stop, .answer, .failure, .graceElapsed, .limitElapsed:
                 return []
             }
-        case .running:
+        case .running(let bodySent):
             switch event {
+            case .attemptStarted:
+                stage = .running(bodySent: false)
+                return []
+            case .bodySent:
+                stage = .running(bodySent: true)
+                return []
             case .answer:
                 stage = .answered
                 return [.releaseCaller(.answer)]
@@ -80,8 +88,9 @@ struct BigQueryStopLifecycle: Equatable, Sendable {
                 stage = .failed
                 return [.releaseCaller(.error)]
             case .stop:
+                // Until its body has left, the server cannot run the statement, so Stop ends the request as main did.
                 stage = .stopped(callerReleased: false)
-                return [.armTimer]
+                return bodySent ? [.armTimer] : [.armTimer, .cancelRequest]
             case .start, .graceElapsed, .limitElapsed:
                 return []
             }
@@ -100,7 +109,7 @@ struct BigQueryStopLifecycle: Equatable, Sendable {
             case .limitElapsed:
                 stage = .stopped(callerReleased: true)
                 return release + [.cancelRequest]
-            case .start, .stop:
+            case .start, .attemptStarted, .bodySent, .stop:
                 return []
             }
         case .answered, .failed, .answeredAfterStop, .failedAfterStop:
@@ -109,14 +118,34 @@ struct BigQueryStopLifecycle: Equatable, Sendable {
     }
 }
 
+public struct BigQueryRequestSignals: Sendable {
+    public let isStopped: @Sendable () -> Bool
+    // False once Stop has come; otherwise a new attempt starts with its body not yet sent.
+    public let beginAttempt: @Sendable () -> Bool
+    // The attempt's whole body has left the client, so the server may run the statement.
+    public let bodySent: @Sendable () -> Void
+
+    public init(
+        isStopped: @escaping @Sendable () -> Bool,
+        beginAttempt: @escaping @Sendable () -> Bool,
+        bodySent: @escaping @Sendable () -> Void
+    ) {
+        self.isStopped = isStopped
+        self.beginAttempt = beginAttempt
+        self.bodySent = bodySent
+    }
+
+    public static let unstoppable = BigQueryRequestSignals(isStopped: { false }, beginAttempt: { true }, bodySent: {})
+}
+
 public enum BigQueryStoppableRequest {
-    // Runs `request` apart from the caller, since cancelling it on the wire would lose the job reference its answer
-    // carries. The caller's cancellation is Stop; an answer that arrives after Stop goes to `afterStop`.
+    // Runs `request` apart from the caller, since cancelling a sent request on the wire would lose the job reference its
+    // answer carries. The caller's cancellation is Stop; an answer that arrives after Stop goes to `afterStop`.
     public static func value<Answer: Sendable>(
         grace: Duration,
         limit: Duration,
         clock: any Clock<Duration> = ContinuousClock(),
-        request: @escaping @Sendable (_ isStopped: @escaping @Sendable () -> Bool) async throws -> Answer,
+        request: @escaping @Sendable (BigQueryRequestSignals) async throws -> Answer,
         afterStop: @escaping @Sendable (Answer) async -> Void
     ) async throws -> Answer {
         let run = StoppableRun(grace: grace, limit: limit, clock: clock, request: request, afterStop: afterStop)
@@ -149,7 +178,7 @@ private final class StoppableRun<Answer: Sendable>: @unchecked Sendable {
     private let grace: Duration
     private let limit: Duration
     private let clock: any Clock<Duration>
-    private let request: @Sendable (_ isStopped: @escaping @Sendable () -> Bool) async throws -> Answer
+    private let request: @Sendable (BigQueryRequestSignals) async throws -> Answer
     private let afterStop: @Sendable (Answer) async -> Void
 
     private let lock = NSLock()
@@ -162,7 +191,7 @@ private final class StoppableRun<Answer: Sendable>: @unchecked Sendable {
         grace: Duration,
         limit: Duration,
         clock: any Clock<Duration>,
-        request: @escaping @Sendable (_ isStopped: @escaping @Sendable () -> Bool) async throws -> Answer,
+        request: @escaping @Sendable (BigQueryRequestSignals) async throws -> Answer,
         afterStop: @escaping @Sendable (Answer) async -> Void
     ) {
         self.grace = grace
@@ -183,14 +212,28 @@ private final class StoppableRun<Answer: Sendable>: @unchecked Sendable {
         lock.withLock { apply(.stop, ended: nil) }.perform()
     }
 
-    private var isStopped: Bool {
-        lock.withLock { lifecycle.isStopped }
+    private var signals: BigQueryRequestSignals {
+        BigQueryRequestSignals(
+            isStopped: { [self] in
+                lock.withLock { lifecycle.isStopped }
+            },
+            beginAttempt: { [self] in
+                let (followup, admitted) = lock.withLock {
+                    (apply(.attemptStarted, ended: nil), !lifecycle.isStopped)
+                }
+                followup.perform()
+                return admitted
+            },
+            bodySent: { [self] in
+                lock.withLock { apply(.bodySent, ended: nil) }.perform()
+            }
+        )
     }
 
     private func runRequest() async {
         let result: Result<Answer, any Error>
         do {
-            result = .success(try await request { [self] in isStopped })
+            result = .success(try await request(signals))
         } catch {
             result = .failure(error)
         }
@@ -208,19 +251,8 @@ private final class StoppableRun<Answer: Sendable>: @unchecked Sendable {
         }
     }
 
-    private func runTimer() async {
-        do {
-            try await clock.sleep(for: grace)
-        } catch {
-            return
-        }
-        lock.withLock { apply(.graceElapsed, ended: nil) }.perform()
-        do {
-            try await clock.sleep(for: max(limit - grace, .zero))
-        } catch {
-            return
-        }
-        lock.withLock { apply(.limitElapsed, ended: nil) }.perform()
+    private func elapsed(_ event: BigQueryStopLifecycle.Event) {
+        lock.withLock { apply(event, ended: nil) }.perform()
     }
 
     // Runs under `lock`; what touches the caller or another task waits for `Followup.perform`.
@@ -240,7 +272,9 @@ private final class StoppableRun<Answer: Sendable>: @unchecked Sendable {
                     followup.release = (waiting, .failure(CancellationError()))
                 }
             case .armTimer:
-                timer = Task { await self.runTimer() }
+                timer = clock.stopTimer(grace: grace, limit: limit) { [self] event in
+                    elapsed(event)
+                }
             case .cancelTimer:
                 if let timer {
                     followup.cancel.append(timer)
@@ -260,5 +294,30 @@ private final class StoppableRun<Answer: Sendable>: @unchecked Sendable {
             requestTask = nil
         }
         return followup
+    }
+}
+
+fileprivate extension Clock where Duration == Swift.Duration {
+    // Both deadlines count from Stop, so a timer that resumes late does not push the limit back.
+    func stopTimer(
+        grace: Duration,
+        limit: Duration,
+        elapsed: @escaping @Sendable (BigQueryStopLifecycle.Event) -> Void
+    ) -> Task<Void, Never> {
+        let stoppedAt = now
+        return Task {
+            do {
+                try await sleep(until: stoppedAt.advanced(by: grace), tolerance: nil)
+            } catch {
+                return
+            }
+            elapsed(.graceElapsed)
+            do {
+                try await sleep(until: stoppedAt.advanced(by: Swift.max(limit, grace)), tolerance: nil)
+            } catch {
+                return
+            }
+            elapsed(.limitElapsed)
+        }
     }
 }

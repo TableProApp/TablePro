@@ -3,7 +3,7 @@ import TableProGoogleCloud
 import Testing
 
 struct BigQueryRequestLoopTests {
-    private final class Script {
+    private final class Script: @unchecked Sendable {
         var statuses: [Int]
         var sent = 0
         var refreshed = 0
@@ -12,6 +12,7 @@ struct BigQueryRequestLoopTests {
         var stopWhileAuthorizing = false
         var stopDuringBackoff = false
         var stopDuringRefresh = false
+        var attempts = 0
 
         init(_ statuses: [Int]) {
             self.statuses = statuses
@@ -19,7 +20,15 @@ struct BigQueryRequestLoopTests {
 
         func run() async throws -> BigQueryRequestLoop.Answer? {
             try await BigQueryRequestLoop.run(
-                isStopped: { stopped },
+                signals: BigQueryRequestSignals(
+                    isStopped: { self.stopped },
+                    beginAttempt: {
+                        guard !self.stopped else { return false }
+                        self.attempts += 1
+                        return true
+                    },
+                    bodySent: {}
+                ),
                 authorize: {
                     if stopWhileAuthorizing { stopped = true }
                     return "token"
@@ -40,11 +49,12 @@ struct BigQueryRequestLoopTests {
         }
     }
 
-    @Test("A request that succeeds is sent once")
+    @Test("A request that succeeds is sent once, in one attempt")
     func successIsSentOnce() async throws {
         let script = Script([200])
         #expect(try await script.run()?.status == 200)
         #expect(script.sent == 1)
+        #expect(script.attempts == 1)
     }
 
     @Test("Stop before the first send sends nothing")
@@ -74,12 +84,13 @@ struct BigQueryRequestLoopTests {
         #expect(script.sent == 1)
     }
 
-    @Test("A rate limit is waited out with a longer wait each time")
+    @Test("A rate limit is waited out with a longer wait each time, each send its own attempt")
     func rateLimitRetries() async throws {
         let script = Script([429, 429, 200])
 
         #expect(try await script.run()?.status == 200)
         #expect(script.backoffs == [1, 2])
+        #expect(script.attempts == 3)
     }
 
     @Test("A rate limit that never lifts comes back to the caller")
