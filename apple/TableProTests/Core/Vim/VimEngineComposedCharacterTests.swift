@@ -601,6 +601,13 @@ extension GlobalStateSuites {
         }
 
         @Test
+        func starFindsTheWordAfterASymbolWithAVariationSelector() {
+            let session = Session("\(heart)foo \(heart)foo\n", caret: units(heart))
+            session.press("*")
+            #expect(session.caret == 2 * units(heart) + 4)
+        }
+
+        @Test
         func innerWordBesideASymbolWithAVariationSelectorLeavesTheSymbol() {
             let session = Session("\(heart)x\n", caret: units(heart))
             session.press("diw")

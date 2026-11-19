@@ -81,9 +81,9 @@ extension VimEngine {
             let candidate = nsBuffer.substring(with: NSRange(location: idx, length: needle.length))
             guard candidate == pattern else { return false }
             if !wholeWord { return true }
-            let beforeOk = idx == 0 || !self.isWordChar(nsBuffer.character(at: idx - 1))
+            let beforeOk = idx == 0 || VimWordScanner.characterClass(at: idx - 1, in: nsBuffer) != .word
             let afterIdx = idx + needle.length
-            let afterOk = afterIdx >= total || !self.isWordChar(nsBuffer.character(at: afterIdx))
+            let afterOk = afterIdx >= total || VimWordScanner.characterClass(at: afterIdx, in: nsBuffer) != .word
             return beforeOk && afterOk
         }
 
@@ -113,11 +113,5 @@ extension VimEngine {
             if matches(origin) { return origin }
         }
         return nil
-    }
-
-    func isWordChar(_ ch: unichar) -> Bool {
-        if ch == 0x5F { return true }
-        guard let scalar = UnicodeScalar(ch) else { return false }
-        return CharacterSet.alphanumerics.contains(scalar)
     }
 }
