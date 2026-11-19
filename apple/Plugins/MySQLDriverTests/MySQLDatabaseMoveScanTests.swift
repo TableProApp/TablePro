@@ -160,6 +160,33 @@ struct MySQLDatabaseMoveScanTests {
         #expect(footprint(after: "/*!40101 */ /*!40101 SET sql_mode = '' */").hasSessionSettings)
     }
 
+    @Test("A statement that reads what a USE resets is recognised", arguments: [
+        "SELECT ROW_COUNT()",
+        "select row_count() as c from dual limit 1",
+        "SELECT FOUND_ROWS()",
+        "SHOW WARNINGS",
+        "SHOW COUNT(*) WARNINGS",
+        "show errors",
+        "SELECT @@warning_count, @@error_count",
+        "GET DIAGNOSTICS @n = NUMBER",
+        "SHOW SESSION STATUS LIKE 'Com_change_db'",
+        "SHOW PROFILES",
+        "SELECT * FROM information_schema.PROFILING",
+    ])
+    func diagnosticsReadersAreRecognised(sql: String) {
+        #expect(mysqlStatementReadsSessionDiagnostics(sql))
+    }
+
+    @Test("Any other statement does not read what a USE resets", arguments: [
+        "SELECT * FROM t_pk",
+        "UPDATE t SET a = 1",
+        "SHOW TABLES",
+        "SELECT LAST_INSERT_ID()",
+    ])
+    func otherStatementsDoNotReadDiagnostics(sql: String) {
+        #expect(!mysqlStatementReadsSessionDiagnostics(sql))
+    }
+
     @Test("The proof holds only for the database the session entered")
     func proofNamesTheDatabase() {
         var proof = MySQLSessionDatabaseProof()

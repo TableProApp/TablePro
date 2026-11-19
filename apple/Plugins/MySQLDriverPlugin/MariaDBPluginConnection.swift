@@ -151,6 +151,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     // Only touched from `queue`.
     internal var databaseProof = MySQLSessionDatabaseProof()
 
+    // The `USE` left out before the next statement. A statement that reads the diagnostics area still gets it first,
+    // because a `USE` resets what that statement reads. Only touched from `queue`.
+    private var deferredUse: (database: String, statement: String)?
+
     // Set where a `USE` was left out. That `USE` used to reset the cap, so the next statement does it. Only touched
     // from `queue`.
     private var selectLimitMayHaveMoved = false
@@ -414,6 +418,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             self.hasStreamingWriteTimeout = false
             self.databaseProof = MySQLSessionDatabaseProof()
             self.selectLimitMayHaveMoved = false
+            self.deferredUse = nil
 
             let threadId = mysql_thread_id(handle)
             self.stateLock.lock()
@@ -935,11 +940,20 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
             if databaseProof.proves(database), !sessionEndedByKill, mayStay() {
                 selectLimitMayHaveMoved = selectLimitMayHaveMoved || appliedSelectLimit != nil
+                deferredUse = (database, statement)
                 return
             }
             _ = try executeQuerySync(statement)
             databaseProof.noteEntered(database)
         }
+    }
+
+    internal func sendDeferredUse(before sql: String) throws {
+        guard let use = deferredUse else { return }
+        deferredUse = nil
+        guard mysqlStatementReadsSessionDiagnostics(sql) else { return }
+        _ = try executeQuerySync(use.statement)
+        databaseProof.noteEntered(use.database)
     }
 
     func executeParameterizedQuery(
