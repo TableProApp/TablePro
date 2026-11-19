@@ -70,6 +70,105 @@ struct AppStateSyncWiringTests {
         #expect(state.savedQueries.contents.queries.map { $0.id } == [owned.id])
     }
 
+    // A connection in a shape this build cannot read, beside one it can, with the standing a build that read it left.
+    private func writeUnreadableLibrary(_ unreadableId: UUID, standing: SyncStanding) throws -> NSDictionary {
+        let kept = DatabaseConnection(name: "Kept", type: .postgresql)
+        let keptJSON = try String(decoding: JSONEncoder().encode(kept), as: UTF8.self)
+        let unreadableJSON = #"{"id":"\#(unreadableId.uuidString)","name":"From a newer build","shape":2}"#
+        try Data("[\(keptJSON),\(unreadableJSON)]".utf8).write(to: fixture.connectionsFile)
+        switch standing {
+        case .syncs:
+            fixture.metadata.recordConnectionStanding(syncing: [unreadableId], keptOff: [], unreadable: [])
+        case .keptOff:
+            fixture.metadata.recordConnectionStanding(syncing: [], keptOff: [unreadableId], unreadable: [])
+        case .unknown:
+            break
+        }
+        return try #require(try JSONSerialization.jsonObject(with: Data(unreadableJSON.utf8)) as? NSDictionary)
+    }
+
+    private func storedRow(_ id: UUID) throws -> NSDictionary? {
+        let rows = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.connectionsFile)) as? [NSDictionary])
+        return rows.first { $0["id"] as? String == id.uuidString }
+    }
+
+    @Test("A deletion from iCloud removes a connection this build cannot read when its standing says it syncs")
+    func deletionRemovesAnUnreadableSyncedConnection() async throws {
+        let id = UUID()
+        _ = try writeUnreadableLibrary(id, standing: .syncs)
+        let deletion = SyncRecordMapper.recordID(type: .connection, id: id.uuidString, in: zoneID)
+        let state = makeSyncedState(transport: RecordingSyncTransport(remoteDeletions: [deletion]))
+
+        await state.syncCoordinator.sync()
+
+        #expect(try storedRow(id) == nil)
+        #expect(state.unreadableCopies.connections.isEmpty)
+        #expect(state.connections.map { $0.name } == ["Kept"])
+    }
+
+    @Test("A connection kept off iCloud stays as it was when a deletion names its id, even while unreadable")
+    func deletionLeavesAnUnreadableKeptOffConnection() async throws {
+        let id = UUID()
+        let original = try writeUnreadableLibrary(id, standing: .keptOff)
+        let deletion = SyncRecordMapper.recordID(type: .connection, id: id.uuidString, in: zoneID)
+        let state = makeSyncedState(transport: RecordingSyncTransport(remoteDeletions: [deletion]))
+
+        await state.syncCoordinator.sync()
+
+        #expect(try storedRow(id) == original)
+        #expect(fixture.metadata.deletionsHeldForUnreadableCopies.isEmpty)
+    }
+
+    @Test("A change from iCloud never writes over a connection this build cannot read, and a build that reads it takes the change")
+    func heldChangeReachesTheBuildThatReadsIt() async throws {
+        let id = UUID()
+        let original = try writeUnreadableLibrary(id, standing: .syncs)
+        let renamed = DatabaseConnection(id: id, name: "Renamed elsewhere", type: .postgresql)
+        let transport = RecordingSyncTransport(
+            remoteRecords: [SyncRecordMapper.toRecord(renamed, zoneID: zoneID)],
+            newToken: try RecordingSyncTransport.makeChangeToken()
+        )
+        let state = makeSyncedState(transport: transport)
+
+        await state.syncCoordinator.sync()
+
+        #expect(try storedRow(id) == original)
+        #expect(state.connections.map { $0.name } == ["Kept"])
+        #expect(fixture.metadata.changesHeldForUnreadableCopies == [SyncRecordType.connection.recordName(for: id.uuidString)])
+
+        let readBack = DatabaseConnection(id: id, name: "Read by a newer build", type: .postgresql)
+        let kept = try #require(state.connections.first)
+        try JSONEncoder().encode([kept, readBack]).write(to: fixture.connectionsFile)
+        await transport.answerPulls(with: [])
+        await transport.serveOnFetch(SyncRecordMapper.toRecord(renamed, zoneID: zoneID))
+        let newerBuild = makeSyncedState(transport: transport)
+
+        await newerBuild.syncCoordinator.sync()
+
+        #expect(newerBuild.connections.first { $0.id == id }?.name == "Renamed elsewhere")
+        #expect(fixture.metadata.changesHeldForUnreadableCopies.isEmpty)
+        #expect(await transport.fetchedRecordIDs.map(\.recordName) == [SyncRecordType.connection.recordName(for: id.uuidString)])
+    }
+
+    @Test("A group this build cannot read keeps a change from iCloud held, and goes when iCloud deletes it")
+    func unreadableGroupFollowsTheSameRules() async throws {
+        let held = UUID()
+        let deleted = UUID()
+        let groupsFile = fixture.libraryDirectory.appendingPathComponent("groups.json")
+        try Data(#"[{"id":"\#(held.uuidString)","name":7},{"id":"\#(deleted.uuidString)","name":8}]"#.utf8).write(to: groupsFile)
+        let transport = RecordingSyncTransport(
+            remoteRecords: [SyncRecordMapper.toRecord(ConnectionGroup(id: held, name: "Renamed"), zoneID: zoneID)],
+            remoteDeletions: [SyncRecordMapper.recordID(type: .group, id: deleted.uuidString, in: zoneID)]
+        )
+        let state = makeSyncedState(transport: transport)
+
+        await state.syncCoordinator.sync()
+
+        let rows = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: groupsFile)) as? [NSDictionary])
+        #expect(rows.compactMap { $0["id"] as? String } == [held.uuidString])
+        #expect(rows.first?["name"] as? Int == 7)
+    }
+
     @Test("A saved query made on the Mac reaches the saved queries and the file through the app's sync wiring")
     func pulledSavedQueryReachesTheLibrary() async {
         let folder = SavedQueryFolder(name: "Reports")

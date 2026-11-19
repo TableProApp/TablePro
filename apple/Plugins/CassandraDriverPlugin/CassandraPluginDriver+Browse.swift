@@ -129,6 +129,7 @@ extension CassandraPluginDriver {
     ) async throws -> PluginQueryResult {
         let cancellation = activeBrowse.begin(consumerLeft: consumerLeft)
         defer { activeBrowse.end(cancellation) }
+        let browse = browse.qualified(in: currentSchema)
         let capture = try await lifetimeCapture(for: browse, cancellation: cancellation)
         // Taken before the request, so the time a kept TTL has run counts the whole request.
         let readAt = ContinuousClock.now

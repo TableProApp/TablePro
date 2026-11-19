@@ -87,6 +87,21 @@ struct EditorTabLabelResolverTests {
         #expect(labels[other.id]?.text == "Server Dashboard")
     }
 
+    @Test("A named query tab is drawn as named, whatever table its last run named")
+    func neverQualifiesANamedQueryTab() {
+        var app = QueryTab(title: "Report", tabType: .query)
+        app.automaticTitle = "Query 1"
+        app.tableContext = TabTableContext(tableName: "orders", databaseName: "app")
+        var staging = QueryTab(title: "Report", tabType: .query)
+        staging.automaticTitle = "Query 2"
+        staging.tableContext = TabTableContext(tableName: "orders", databaseName: "staging")
+        let labels = EditorTabLabelResolver.resolve(tabs: [app, staging], target: .database)
+
+        #expect(labels[app.id]?.text == "Report")
+        #expect(labels[app.id]?.description == "Report")
+        #expect(labels[staging.id]?.text == "Report")
+    }
+
     // One per database, all titled alike: the strip shows one entry's, but the tooltip and Control-Tab list them all.
     @Test("A Table Health tab keeps its title and names its database beside it")
     func tableHealthNamesItsDatabaseBesideTheTitle() {

@@ -93,6 +93,8 @@ extension SyncCoordinator {
             await collectRecords(of: .connection, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
                 let connections = storage.loadConnections()
                 return storage.lastLoadFailed ? nil : connections
+            } unreadable: {
+                storage.unreadableConnectionIds
             } disposition: { (connection: DatabaseConnection) in
                 guard connection.participatesInSync else { return .drop }
                 let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
@@ -154,6 +156,8 @@ extension SyncCoordinator {
             ) {
                 let profiles = storage.loadProfiles()
                 return storage.lastLoadFailed ? nil : profiles
+            } unreadable: {
+                storage.unreadableProfileIds
             } disposition: { (profile: CredentialProfile) in
                 .push(edit(CredentialProfileSyncField.self, .credentialProfile, id: profile.id.uuidString, in: zoneID) { base in
                     SyncRecordMapper.toCKRecord(profile, in: zoneID, base: base)
@@ -195,6 +199,7 @@ extension SyncCoordinator {
         into batch: inout SyncPushBatch,
         zoneID: CKRecordZone.ID,
         loaded: () async -> [Record]?,
+        unreadable: () -> Set<UUID> = { [] },
         disposition: (Record) -> SyncPushDisposition
     ) async where Record.ID == UUID {
         let dirtyIds = snapshot.dirtyIds(for: type)
@@ -203,7 +208,12 @@ extension SyncCoordinator {
             return
         }
         let collected = await loaded().map { records in
-            Self.collect(records, dirtyIds: dirtyIds, id: { $0.id.uuidString }, disposition: disposition)
+            var collected = Self.collect(records, dirtyIds: dirtyIds, id: { $0.id.uuidString }, disposition: disposition)
+            // A copy this Mac cannot read keeps its mark for a build that can push it.
+            for id in unreadable().map(\.uuidString) where dirtyIds.contains(id) && !collected.hasResolved(id) {
+                collected.add(id, .hold)
+            }
+            return collected
         }
         append(type, dirtyIds: dirtyIds, collected: collected, boundary: boundary, into: &batch, zoneID: zoneID)
     }

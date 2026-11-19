@@ -44,8 +44,8 @@ enum KafkaResponseHeader {
     /// (`if (type.equals("response") && apiKey == 18)`, KIP-511). Reading a tagged-field
     /// buffer here consumes the first byte of the error code and shifts everything after it,
     /// which surfaces as a plausible but wrong error code rather than as a parse failure.
-    static func strip(_ data: Data, api: KafkaApiKey, version: Int16) throws -> (correlationId: Int32, body: KafkaProtocolReader) {
-        var reader = KafkaProtocolReader(data)
+    static func strip(_ bytes: [UInt8], api: KafkaApiKey, version: Int16) throws -> (correlationId: Int32, body: KafkaProtocolReader) {
+        var reader = KafkaProtocolReader(bytes)
         let correlationId = try reader.int32()
         if api != .apiVersions, api.isFlexible(version: version) {
             try reader.taggedFields()

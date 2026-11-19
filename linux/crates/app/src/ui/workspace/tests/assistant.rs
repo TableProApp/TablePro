@@ -94,6 +94,9 @@ fn insert_goes_to_the_editor_in_front_or_a_new_one() {
             draft: None,
             file: None,
             database: None,
+            name: None,
+            ordinal: None,
+            untitled: false,
         })
     });
     input.deliver(WorkspaceInput::InsertFromAssistant("SELECT 2;".to_owned()));

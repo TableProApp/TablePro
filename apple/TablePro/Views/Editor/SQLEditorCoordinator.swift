@@ -250,6 +250,14 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         }
     }
 
+    // Marks move with typed, pasted and undone text, which never passes through the Vim engine.
+    func textView(_ textView: TextView, willReplaceContentsIn range: NSRange, with string: String) {
+        guard let vimEngine else { return }
+        let undoManager = textView.undoManager
+        let source: VimEditSource = undoManager?.isUndoing == true ? .undo : undoManager?.isRedoing == true ? .redo : .edit
+        vimEngine.textWillChange(in: range, with: string, source: source)
+    }
+
     func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
         vimEngine?.invalidateLineCache()
         foldPreview.dismiss()

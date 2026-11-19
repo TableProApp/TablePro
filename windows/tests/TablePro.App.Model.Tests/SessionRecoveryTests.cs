@@ -70,6 +70,21 @@ public sealed class SessionRecoveryTests : IDisposable
     }
 
     [Fact]
+    public void ATypedTabNameComesBackFromTheSessionFileBesideItsNumberAndNoneWritesNothing()
+    {
+        var path = Path.Combine(_directory, "session.json");
+        var store = new SessionStore(path);
+
+        store.Save(WithTab(new SessionTab { Kind = TabKind.Query, Title = "Query 2", CustomTitle = "Monthly report" }));
+        var tab = Assert.Single(store.Load().Connections).Tabs[0];
+        Assert.Equal(("Query 2", "Monthly report"), (tab.Title, tab.CustomTitle));
+
+        store.Save(WithTab(new SessionTab { Kind = TabKind.Query, Title = "Query 2" }));
+        Assert.DoesNotContain("\"customTitle\"", File.ReadAllText(path), StringComparison.Ordinal);
+        Assert.Null(Assert.Single(store.Load().Connections).Tabs[0].CustomTitle);
+    }
+
+    [Fact]
     public void RowsAreFoundByTheirKeyAfterThePageReordersThem()
     {
         var saved = SavedEdits.From(Edited(), Page("10", "20", "30"))!;

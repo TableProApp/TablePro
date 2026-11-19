@@ -38,6 +38,15 @@ struct QueryTabProtectionTests {
         #expect(!tab.showsUnsavedIndicator)
     }
 
+    @Test("A named blank query tab is not reusable and is kept for reopening, with no unsaved dot")
+    func namedBlankTabIsProtected() {
+        var tab = QueryTab(title: "Report", query: "")
+        tab.automaticTitle = "Query 1"
+        #expect(tab.holdsQueryWork)
+        #expect(tab.isReopenCandidate)
+        #expect(!tab.showsUnsavedIndicator)
+    }
+
     @Test("A file-backed tab matching disk is clean")
     func fileBackedTabMatchingDiskIsClean() {
         var tab = QueryTab(query: "SELECT 1")

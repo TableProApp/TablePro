@@ -55,6 +55,12 @@ internal enum EditorTabContextMenuBuilder {
                 commands.keepOpen(tabId)
             },
             Command(title: pinTitle(isPinned: isPinned)) { commands.setPinned(tabId, !isPinned) },
+        ]
+        // Hidden rather than dimmed on a tab that can never take a name, as the HIG asks of context menus.
+        if commands.canRename(tabId) {
+            entries.append(Command(title: String(localized: "Rename Tab")) { commands.beginRename(tabId) })
+        }
+        entries += [
             Command(title: String(localized: "Close Tab"), startsGroup: true) { commands.close(tabId) },
             Command(title: String(localized: "Close Other Tabs"), isEnabled: commands.canCloseOthers(tabId)) {
                 commands.closeOthers(tabId)

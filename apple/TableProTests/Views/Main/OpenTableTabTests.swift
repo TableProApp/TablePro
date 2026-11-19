@@ -234,6 +234,40 @@ struct OpenTableTabTests {
         #expect(coordinator.isActiveTabReusable == true)
     }
 
+    @Test("A named blank query tab is not reusable")
+    @MainActor
+    func namedBlankQueryTabIsNotReusable() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.tabManager.addTab(databaseName: "db")
+        let tabId = try #require(coordinator.tabManager.selectedTabId)
+        coordinator.tabManager.renameTab(id: tabId, to: "Report")
+        #expect(coordinator.isActiveTabReusable == false)
+    }
+
+    @Test("In-place navigation opens a tab of its own instead of retargeting a named tab")
+    @MainActor
+    func inPlaceNavigationKeepsANamedTab() throws {
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: TestFixtures.makeConnection(database: "0", type: .redis),
+            tabManager: tabManager,
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+        tabManager.addTab()
+        let named = try #require(tabManager.selectedTabId)
+        tabManager.renameTab(id: named, to: "Keys")
+
+        coordinator.openTableTab("db3")
+
+        #expect(tabManager.tabs.count == 2)
+        let kept = try #require(tabManager.tabs.first { $0.id == named })
+        #expect(kept.tabType == .query)
+        #expect(kept.title == "Keys")
+        #expect(tabManager.selectedTab?.tableContext.tableName == "db3")
+    }
+
     @Test("A pinned blank query tab is not reusable")
     @MainActor
     func pinnedBlankQueryTabIsNotReusable() throws {

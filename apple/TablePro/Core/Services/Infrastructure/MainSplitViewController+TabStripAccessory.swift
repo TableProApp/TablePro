@@ -70,6 +70,21 @@ internal extension MainSplitViewController {
         }
     }
 
+    // The strip holds the field, so the command edits the selected tab where it is drawn.
+    @objc func renameEditorTab(_ sender: Any?) {
+        guard let workspace = workspaces.selected,
+              let id = workspace.sessionState?.tabManager.selectedTab?.id
+        else { return }
+        workspace.panes.tabStrip.stripView.beginRename(id)
+    }
+
+    var canRenameSelectedEditorTab: Bool {
+        guard let manager = workspaces.selected?.sessionState?.tabManager,
+              let id = manager.selectedTab?.id
+        else { return false }
+        return manager.canRenameTab(id: id)
+    }
+
     private static func tabStripContains(screenPoint: NSPoint) -> Bool {
         let number = NSWindow.windowNumber(at: screenPoint, belowWindowWithWindowNumber: 0)
         guard let window = NSApp.window(withWindowNumber: number),
@@ -105,6 +120,19 @@ internal extension MainSplitViewController {
             canKeepOpen: { [weak manager] id in manager?.canPromotePreviewTab(id: id) ?? false },
             isPinned: { [weak manager] id in manager?.isPinned(id: id) ?? false },
             setPinned: { [weak manager] id, pinned in manager?.setPinned(pinned, id: id) },
+            canRename: { [weak manager] id in manager?.canRenameTab(id: id) ?? false },
+            renameSeed: { [weak manager] id in
+                manager?.tabs.first { $0.id == id }.map {
+                    EditorTabRenameSeed(text: $0.title, placeholder: $0.automaticName)
+                }
+            },
+            beginRename: { [weak workspace] id in
+                workspace?.panes.tabStrip.stripView.beginRename(id)
+            },
+            rename: { [weak manager] id, text in
+                manager?.renameTab(id: id, to: text)
+                return manager?.tabs.first { $0.id == id }?.title
+            },
             close: { [weak workspace] id in
                 workspace?.sessionState?.coordinator.commandActions?.closeTab(id: id)
             },

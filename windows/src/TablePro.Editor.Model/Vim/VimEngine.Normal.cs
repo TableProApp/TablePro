@@ -2,50 +2,70 @@ namespace TablePro.Editor.Model.Vim;
 
 public sealed partial class VimEngine
 {
+    private static readonly HashSet<string> s_keysAfterOperator = new(StringComparer.Ordinal)
+    {
+        "h", "j", "k", "l", "w", "b", "e", "W", "B", "E", "0", "$", "^", "_", "g", "G", "f", "F", "t", "T", ";", ",",
+        "%", "n", "N", "*", "#", "'", "`", "(", ")", "{", "}", "[", "]", "H", "M", "L", "/", "?", ":", "\r", "+", "-",
+        "i", "a",
+    };
+
     private bool ProcessNormal(string key, bool shift)
     {
-        var buffer = _buffer;
-
         if (key == Escape)
         {
             CancelPending();
             return true;
         }
+        if (PendingRegisterSelect)
+        {
+            PendingRegisterSelect = false;
+            // "" names the unnamed register.
+            SelectedRegister = key == "\"" ? null : key;
+            return true;
+        }
+        if (!TakesCharacterArgument && IsDigit(key, out var digit) && (CountPrefix > 0 || digit > 0))
+        {
+            if (CountPrefix <= 99_999)
+            {
+                CountPrefix = CountPrefix * 10 + digit;
+            }
+            return true;
+        }
+        var consumed = ProcessNormalCommand(key, shift);
+        // A command that ends drops the count and register typed for it, used or not.
+        if (!WaitsForKey)
+        {
+            CountPrefix = 0;
+            OperatorCount = 0;
+            SelectedRegister = null;
+        }
+        return consumed;
+    }
+
+    private bool ProcessNormalCommand(string key, bool shift)
+    {
+        var buffer = _buffer;
+
         if (PendingFindChar is { } request)
         {
             PendingFindChar = null;
-            return key == Escape || ExecuteFindChar(key, request);
+            return ExecuteFindChar(key, request);
         }
         if (PendingReplaceChar)
         {
             PendingReplaceChar = false;
-            return key == Escape || ExecuteReplaceChar(key);
+            return ExecuteReplaceChar(key);
         }
         if (PendingMarkSet)
         {
             PendingMarkSet = false;
-            if (key != Escape)
-            {
-                Marks[key] = buffer.SelectedRange.Location;
-            }
+            SetMark(key, buffer.SelectedRange.Location);
             return true;
         }
         if (PendingMarkJumpExact is { } exact)
         {
             PendingMarkJumpExact = null;
-            if (key != Escape)
-            {
-                JumpToMark(key, exact);
-            }
-            return true;
-        }
-        if (PendingRegisterSelect)
-        {
-            PendingRegisterSelect = false;
-            if (key != Escape)
-            {
-                SelectedRegister = key;
-            }
+            JumpToMark(key, exact);
             return true;
         }
         if (PendingZ)
@@ -57,41 +77,29 @@ public sealed partial class VimEngine
         if (PendingTextObject)
         {
             PendingTextObject = false;
-            if (key == Escape)
-            {
-                PendingOperator = null;
-                return true;
-            }
             return ExecuteTextObject(key, PendingTextObjectAround);
         }
         if (PendingMacroTarget is { } kind)
         {
             PendingMacroTarget = null;
-            if (key != Escape)
-            {
-                HandleMacroTarget(kind, key);
-            }
+            HandleMacroTarget(kind, key);
             return true;
         }
         if (PendingBracket is { } bracket)
         {
             PendingBracket = null;
+            var count = ConsumeCount();
             if (bracket == VimBracketPending.OpenBracket && key == "[")
             {
-                SectionBackward();
+                ApplyMotion(SectionTarget(forward: false, count), VimMotionKind.Exclusive, jump: true);
             }
             else if (bracket == VimBracketPending.CloseBracket && key == "]")
             {
-                SectionForward();
+                ApplyMotion(SectionTarget(forward: true, count), VimMotionKind.Exclusive, jump: true);
             }
-            return true;
-        }
-
-        if (IsDigit(key, out var digit) && (CountPrefix > 0 || digit > 0))
-        {
-            if (CountPrefix <= 99_999)
+            else
             {
-                CountPrefix = CountPrefix * 10 + digit;
+                CancelPending();
             }
             return true;
         }
@@ -104,6 +112,14 @@ public sealed partial class VimEngine
 
         if (HandleNormalControl(key))
         {
+            return true;
+        }
+
+        // A key that is not a motion, a text object or the operator doubled ends the command, as Vim's operators take
+        // nothing else.
+        if (PendingOperator is { } pending && !AcceptsAfterOperator(key, pending))
+        {
+            CancelPending();
             return true;
         }
 
@@ -130,18 +146,18 @@ public sealed partial class VimEngine
             case "w":
             {
                 var count = ConsumeCount();
-                if (PendingOperator is { } op)
+                var op = PendingOperator;
+                WordMotion(count, bigWord: false);
+                if (op is { } recorded)
                 {
-                    ExecuteOperatorWithMotion(op, () => WordForward(count));
-                    RecordDot(new VimDotKind.OperatorWithMotion(op, "w", false, count));
+                    RecordDot(new VimDotKind.OperatorWithMotion(recorded, "w", false, count));
                 }
-                else
-                {
-                    WordForward(count);
-                }
-                GoalColumn = null;
                 return true;
             }
+            // Nothing comes before the start of the text, so the motion fails and an operator does nothing.
+            case "b" or "B" when buffer.SelectedRange.Location == 0:
+                ApplyMotion(null, VimMotionKind.Exclusive);
+                return true;
             case "b":
             {
                 var count = ConsumeCount();
@@ -212,11 +228,8 @@ public sealed partial class VimEngine
             case "G":
                 return HandleG();
             case "W":
-            {
-                var count = ConsumeCount();
-                ExecuteMotion(() => BigWordForward(count));
+                WordMotion(ConsumeCount(), bigWord: true);
                 return true;
-            }
             case "B":
             {
                 var count = ConsumeCount();
@@ -383,16 +396,25 @@ public sealed partial class VimEngine
             case "T":
                 PendingFindChar = new VimFindCharRequest(Forward: false, Till: true);
                 return true;
+            // With no find to repeat, ; and , fail and end the command.
             case ";":
                 if (LastFindChar is { } last)
                 {
                     ExecuteFindChar(last.Char, new VimFindCharRequest(last.Forward, last.Till));
+                }
+                else
+                {
+                    ApplyMotion(null, VimMotionKind.Exclusive);
                 }
                 return true;
             case ",":
                 if (LastFindChar is { } previous)
                 {
                     ExecuteFindChar(previous.Char, new VimFindCharRequest(!previous.Forward, previous.Till));
+                }
+                else
+                {
+                    ApplyMotion(null, VimMotionKind.Exclusive);
                 }
                 return true;
 
@@ -435,56 +457,39 @@ public sealed partial class VimEngine
                 BeginOperator(VimOperator.Outdent);
                 return true;
 
-            case "?":
-                CountPrefix = 0;
-                OperatorCount = 0;
-                SetMode(VimMode.CommandLine, "?");
+            case "/" or "?" or ":":
+            {
+                var count = ConsumeCount();
+                // A count before a search finds that many matches, as 2d/x deletes up to the second x.
+                SearchCount = key == ":" ? 1 : count;
+                SetMode(VimMode.CommandLine, key);
                 return true;
+            }
 
             case "%":
-                if (MatchingBracketOnLine() is { } pair)
+                if (CountPrefix > 0 || OperatorCount > 0)
                 {
-                    ExecuteMotion(() => buffer.SetCaret(pair), inclusive: true);
+                    ApplyMotion(PercentLineTarget(ConsumeCount()), VimMotionKind.Linewise, jump: true);
                 }
                 else
                 {
-                    PendingOperator = null;
-                    CountPrefix = 0;
-                    OperatorCount = 0;
+                    ApplyMotion(MatchingBracketOnLine(), VimMotionKind.Inclusive, jump: true);
                 }
                 return true;
 
             // Enter and + go to the first character of the next line, - of the line before.
             case "\r" or "+":
-                MoveToFirstNonBlankOfLine(ConsumeCount());
+                ApplyMotion(LineStepTarget(ConsumeCount()), VimMotionKind.Linewise);
                 return true;
             case "-":
-                MoveToFirstNonBlankOfLine(-ConsumeCount());
+                ApplyMotion(LineStepTarget(-ConsumeCount()), VimMotionKind.Linewise);
                 return true;
 
-            case "n":
-            {
-                var count = ConsumeCount();
-                for (var i = 0; i < count; i++)
-                {
-                    SearchNext(reverseDirection: false);
-                }
+            case "n" or "N":
+                ApplyMotion(SearchNextTarget(ConsumeCount(), reverseDirection: key == "N"), VimMotionKind.Exclusive, jump: true);
                 return true;
-            }
-            case "N":
-            {
-                var count = ConsumeCount();
-                for (var i = 0; i < count; i++)
-                {
-                    SearchNext(reverseDirection: true);
-                }
-                return true;
-            }
-            case "*":
-                SearchWordUnderCursor(forward: true);
-                return true;
-            case "#":
-                SearchWordUnderCursor(forward: false);
+            case "*" or "#":
+                ApplyMotion(SearchWordUnderCursorTarget(forward: key == "*", ConsumeCount()), VimMotionKind.Exclusive, jump: true);
                 return true;
 
             case "m":
@@ -504,17 +509,11 @@ public sealed partial class VimEngine
                 ReplayLastDot(ConsumeCount());
                 return true;
 
-            case "(":
-                SentenceBackward(ConsumeCount());
+            case "(" or ")":
+                ApplyMotion(SentenceTarget(forward: key == ")", ConsumeCount()), VimMotionKind.Exclusive, jump: true);
                 return true;
-            case ")":
-                SentenceForward(ConsumeCount());
-                return true;
-            case "{":
-                ParagraphBackward(ConsumeCount());
-                return true;
-            case "}":
-                ParagraphForward(ConsumeCount());
+            case "{" or "}":
+                ApplyMotion(ParagraphTarget(forward: key == "}", ConsumeCount()), VimMotionKind.Exclusive, jump: true);
                 return true;
             case "[":
                 PendingBracket = VimBracketPending.OpenBracket;
@@ -538,44 +537,24 @@ public sealed partial class VimEngine
                 PendingMacroTarget = VimMacroPendingKind.ReplayTarget;
                 return true;
 
-            case "H":
-                JumpToVisibleLine(VimScroll.Top);
+            case "H" or "M" or "L":
+            {
+                var position = key switch
+                {
+                    "H" => VimScroll.Top,
+                    "M" => VimScroll.Middle,
+                    _ => VimScroll.Bottom,
+                };
+                ApplyMotion(VisibleLineTarget(position, ConsumeCount()), VimMotionKind.Linewise, jump: true);
                 return true;
-            case "M":
-                JumpToVisibleLine(VimScroll.Middle);
-                return true;
-            case "L":
-                JumpToVisibleLine(VimScroll.Bottom);
-                return true;
+            }
 
             case "z":
                 PendingZ = true;
                 return true;
 
             case "p" or "P":
-            {
-                var count = ConsumeCount();
-                // The register is read once, so "a2p pastes a twice; characters go in as one run, as 2P keeps them in order.
-                var source = ActivePasteRegister();
-                if (!source.IsLinewise && count > 1)
-                {
-                    source = source with { Text = string.Concat(Enumerable.Repeat(source.Text, count)) };
-                    count = 1;
-                }
-                for (var i = 0; i < count; i++)
-                {
-                    Paste(source, after: key == "p");
-                }
-                return true;
-            }
-
-            case "/":
-                CountPrefix = 0;
-                SetMode(VimMode.CommandLine, "/");
-                return true;
-            case ":":
-                CountPrefix = 0;
-                SetMode(VimMode.CommandLine, ":");
+                Paste(after: key == "p", ConsumeCount());
                 return true;
 
             case "u":
@@ -622,22 +601,33 @@ public sealed partial class VimEngine
             }
 
             default:
-                if (key == Escape)
-                {
-                    PendingOperator = null;
-                    CountPrefix = 0;
-                    PendingG = false;
-                    return true;
-                }
-                CountPrefix = 0;
-                PendingOperator = null;
+                CancelPending();
                 return true;
         }
     }
 
+    private static bool AcceptsAfterOperator(string key, VimOperator op) => s_keysAfterOperator.Contains(key) || key switch
+    {
+        "d" => op == VimOperator.Delete,
+        "y" => op == VimOperator.Yank,
+        "c" => op == VimOperator.Change,
+        ">" => op == VimOperator.Indent,
+        "<" => op == VimOperator.Outdent,
+        "~" => op == VimOperator.ToggleCase,
+        "u" => op == VimOperator.Lowercase,
+        "U" => op == VimOperator.Uppercase,
+        _ => false,
+    };
+
     private bool HandlePendingG(string key)
     {
         var buffer = _buffer;
+        // gi, gv and gJ are commands, not motions, so an operator before them ends.
+        if (PendingOperator is not null && key is "i" or "v" or "J")
+        {
+            CancelPending();
+            return true;
+        }
         switch (key)
         {
             case "g":
@@ -718,38 +708,34 @@ public sealed partial class VimEngine
                 return true;
             }
             case "u":
-                if (PendingOperator == VimOperator.Lowercase)
-                {
-                    ApplyCaseToLine(VimOperator.Lowercase, ConsumeCount());
-                    PendingOperator = null;
-                    return true;
-                }
-                BeginOperator(VimOperator.Lowercase);
-                return true;
+                return HandleCaseOperator(VimOperator.Lowercase);
             case "U":
-                if (PendingOperator == VimOperator.Uppercase)
-                {
-                    ApplyCaseToLine(VimOperator.Uppercase, ConsumeCount());
-                    PendingOperator = null;
-                    return true;
-                }
-                BeginOperator(VimOperator.Uppercase);
-                return true;
+                return HandleCaseOperator(VimOperator.Uppercase);
             case "~":
-                if (PendingOperator == VimOperator.ToggleCase)
-                {
-                    ApplyCaseToLine(VimOperator.ToggleCase, ConsumeCount());
-                    PendingOperator = null;
-                    return true;
-                }
-                BeginOperator(VimOperator.ToggleCase);
-                return true;
+                return HandleCaseOperator(VimOperator.ToggleCase);
             default:
-                CountPrefix = 0;
-                OperatorCount = 0;
-                PendingOperator = null;
+                CancelPending();
                 return true;
         }
+    }
+
+    // gu, gU and g~ doubled take lines; after another operator they end the command.
+    private bool HandleCaseOperator(VimOperator op)
+    {
+        if (PendingOperator == op)
+        {
+            ApplyCaseToLine(op, ConsumeCount());
+            PendingOperator = null;
+        }
+        else if (PendingOperator is not null)
+        {
+            CancelPending();
+        }
+        else
+        {
+            BeginOperator(op);
+        }
+        return true;
     }
 
     private bool HandleG()
@@ -777,13 +763,6 @@ public sealed partial class VimEngine
     // zo, zc and za fold at the caret, zR and zM every fold, zz, zt and zb scroll the caret's line.
     private void HandlePendingZ(string key)
     {
-        CountPrefix = 0;
-        OperatorCount = 0;
-        if (PendingOperator is not null)
-        {
-            PendingOperator = null;
-            return;
-        }
         var host = _buffer.Host;
         switch (key)
         {
@@ -832,6 +811,29 @@ public sealed partial class VimEngine
             motion();
         }
         GoalColumn = null;
+    }
+
+    // Moves to the target, or with an operator pending applies it from the cursor to the target. A motion that found
+    // nothing ends the command, as Vim's failed motions do.
+    internal void ApplyMotion(int? target, VimMotionKind kind, bool jump = false)
+    {
+        GoalColumn = null;
+        if (target is not { } destination)
+        {
+            CancelPending();
+            return;
+        }
+        var origin = _buffer.SelectedRange.Location;
+        if (PendingOperator is { } op)
+        {
+            Operate(op, origin, destination, kind);
+            return;
+        }
+        _buffer.SetCaret(kind == VimMotionKind.Linewise ? destination : ClampToContentPosition(destination));
+        if (jump)
+        {
+            LastJumpOrigin = origin;
+        }
     }
 
     // A closed fold at either end is taken whole, as Vim's linewise operators take it.

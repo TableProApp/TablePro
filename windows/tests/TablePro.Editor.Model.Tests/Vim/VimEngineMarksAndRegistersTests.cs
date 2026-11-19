@@ -1,3 +1,5 @@
+using TablePro.Editor.Model.Vim;
+
 namespace TablePro.Editor.Model.Tests.Vim;
 
 public sealed class VimEngineMarksAndRegistersTests
@@ -157,5 +159,298 @@ public sealed class VimEngineMarksAndRegistersTests
         s.Press("yy");
         s.Press("\"ap");
         Assert.Contains("hello world\nsecond line\nhello world\nsecond line\n", s.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ALineTypedAboveAMarkMovesItDownWithItsLine()
+    {
+        var s = new VimSession(Initial, caret: 25);
+        s.Press("maggO");
+        s.Type("new");
+        s.Escape();
+        s.Press("`a");
+        Assert.Equal(29, s.Caret);
+    }
+
+    [Fact]
+    public void TextTypedBeforeAMarkOnItsLineKeepsItsColumn()
+    {
+        var s = new VimSession(Initial, caret: 6);
+        s.Press("ma0i");
+        s.Type("XX");
+        s.Escape();
+        s.Press("`a");
+        Assert.Equal(6, s.Caret);
+    }
+
+    [Fact]
+    public void ALinePastedAboveAMarkMovesItDown()
+    {
+        var s = new VimSession(Initial, caret: 25);
+        s.Press("maggyyP`a");
+        Assert.Equal(37, s.Caret);
+    }
+
+    [Fact]
+    public void ALineBroughtBackByUndoAboveAMarkMovesItDown()
+    {
+        var s = new VimSession(Initial, caret: 0);
+        s.Press("ddjmau`a");
+        Assert.Equal(Initial, s.Text);
+        Assert.Equal(24, s.Caret);
+    }
+
+    [Fact]
+    public void DeletingTheMarkedLineRemovesTheMark()
+    {
+        var s = new VimSession(Initial, caret: 13);
+        s.Press("madd");
+        Assert.False(s.Engine.Marks.ContainsKey("a"));
+    }
+
+    [Fact]
+    public void UndoingTheDeleteBringsTheMarkBackOverOneSetSince()
+    {
+        var s = new VimSession(Initial, caret: 13);
+        s.Press("maddggmau");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal(13, s.Caret);
+    }
+
+    [Fact]
+    public void UndoingTheDeleteOfAMarkedLineBringsTheMarkBack()
+    {
+        var s = new VimSession(Initial, caret: 13);
+        s.Press("madd");
+        Assert.False(s.Engine.Marks.ContainsKey("a"));
+        s.Press("u");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal(Initial, s.Text);
+        Assert.Equal(13, s.Caret);
+    }
+
+    [Fact]
+    public void UndoingAPasteOverTheMarkedLinesBringsTheMarkBack()
+    {
+        var s = new VimSession("foo\nbar\ntail\n", caret: 5);
+        s.Press("ma");
+        s.Engine.Register = new VimRegister("new\n", IsLinewise: true);
+        s.SetCaret(0);
+        s.Press("Vjp");
+        Assert.Equal("new\ntail\n", s.Text);
+        Assert.False(s.Engine.Marks.ContainsKey("a"));
+        s.Press("u");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal("foo\nbar\ntail\n", s.Text);
+        Assert.Equal(5, s.Caret);
+    }
+
+    [Fact]
+    public void AMarkKeepsItsColumnThroughALineThatShrinksAndGrowsBack()
+    {
+        var s = new VimSession("abcdef\ntail\n", caret: 0);
+        s.Press("$ma0xxxi");
+        s.Type("abc");
+        s.Escape();
+        s.Press("`a");
+        Assert.Equal("abcdef\ntail\n", s.Text);
+        Assert.Equal(5, s.Caret);
+    }
+
+    [Fact]
+    public void AJoinCarriesTheMarkWithItsText()
+    {
+        var s = new VimSession("hello world\n    second\n", caret: 16);
+        s.Press("maggJ`a");
+        Assert.Equal("hello world second\n", s.Text);
+        Assert.Equal(12, s.Caret);
+    }
+
+    [Fact]
+    public void UndoingAnEditOnAJoinedLineAndTheJoinPutsTheMarkBack()
+    {
+        var s = new VimSession("aaa\nbbb\nccc\n", caret: 6);
+        s.Press("maggJ05xuu");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal("aaa\nbbb\nccc\n", s.Text);
+        Assert.Equal(6, s.Caret);
+    }
+
+    [Fact]
+    public void UndoingBackspacesTheHistoryJoinedPutsTheMarkBack()
+    {
+        var s = new VimSession("aaa\nbbb\n", caret: 6);
+        s.Press("ma");
+        s.SetCaret(4);
+        s.Press("i");
+        // The editor deletes what Backspace takes in Insert mode, and its history joins the two into one step.
+        s.Model.Backspace(word: false);
+        s.Model.Backspace(word: false);
+        s.Escape();
+        Assert.Equal("aabbb\n", s.Text);
+        s.Press("u");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal("aaa\nbbb\n", s.Text);
+        Assert.Equal(6, s.Caret);
+    }
+
+    [Fact]
+    public void UndoingJoinedBackspacesAfterAnotherUndoPutsTheMarkBack()
+    {
+        var s = new VimSession("aaa\nbbb\n", caret: 6);
+        s.Press("ma");
+        s.SetCaret(4);
+        s.Press("i");
+        s.Model.Backspace(word: false);
+        s.Model.Backspace(word: false);
+        s.Escape();
+        s.Press("0rXuu");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal("aaa\nbbb\n", s.Text);
+        Assert.Equal(6, s.Caret);
+    }
+
+    [Fact]
+    public void UndoingARunOfFiftyOneBackspacesPutsTheMarkBack()
+    {
+        var text = new string('a', 60) + "\nbbb\n";
+        var s = new VimSession(text, caret: 63);
+        s.Press("ma");
+        s.SetCaret(61);
+        s.Press("i");
+        for (var i = 0; i < 51; i++)
+        {
+            s.Model.Backspace(word: false);
+        }
+        s.Escape();
+        s.Press("u");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal(text, s.Text);
+        Assert.Equal(63, s.Caret);
+    }
+
+    [Fact]
+    public void UndoingALaterDeleteOfTheSameTextLeavesTheDeletedMarkUnset()
+    {
+        var s = new VimSession("aaa\nbbb\nccc\n", caret: 0);
+        s.Press("jmaddkpdd");
+        s.Press("u");
+        Assert.Equal("aaa\nbbb\nccc\n", s.Text);
+        Assert.False(s.Engine.Marks.ContainsKey("a"));
+    }
+
+    [Fact]
+    public void AnUndoMatchesOnlyTheNewestEdits()
+    {
+        var s = new VimSession("aaaa\n", caret: 3);
+        s.Press("ma02xi");
+        s.Type("aa");
+        s.Escape();
+        s.Press("0mai");
+        // Two Delete presses the history joins into one change, the same text the earlier 2x removed.
+        s.Model.Delete(word: false);
+        s.Model.Delete(word: false);
+        s.Escape();
+        s.Press("u");
+        Assert.Equal("aaaa\n", s.Text);
+        Assert.Equal(0, s.Engine.Marks["a"]);
+    }
+
+    [Fact]
+    public void AnEngineOnADocumentWithStepsUndoneTellsARedoFromAnUndo()
+    {
+        var s = new VimSession("aaa\nbbb\n");
+        s.Engine.Dispose();
+        s.Model.Document.Replace(4, 4, string.Empty);
+        s.Model.Undo();
+        var engine = new VimEngine(s.Model, s, new VimRegisters());
+        s.SetCaret(5);
+        engine.Process("m");
+        engine.Process("a");
+        s.Model.Redo();
+        Assert.Equal("aaa\n", s.Text);
+        Assert.False(engine.Marks.ContainsKey("a"));
+        s.Model.Undo();
+        Assert.Equal("aaa\nbbb\n", s.Text);
+        Assert.Equal(5, engine.Marks["a"]);
+    }
+
+    [Fact]
+    public void UndoingAChangeWithALongInsertPutsTheMarkBack()
+    {
+        var s = new VimSession(Initial, caret: 25);
+        s.Press("maggcG");
+        s.Type(new string('x', 150));
+        s.Escape();
+        s.Press("u");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal(Initial, s.Text);
+        Assert.Equal(25, s.Caret);
+    }
+
+    [Fact]
+    public void ASecondUndoSkipsTheRecordTheFirstUndoMade()
+    {
+        var s = new VimSession("aaa\nbbb\n", caret: 6);
+        s.Press("magggJ");
+        // A typed newline where the join took one out, so the first undo makes the edit the join made.
+        s.Model.NewLine();
+        Assert.Equal("aaa\nbbb\n", s.Text);
+        s.Press("uu");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal("aaa\nbbb\n", s.Text);
+        Assert.Equal(6, s.Caret);
+    }
+
+    [Fact]
+    public void UndoingAJoinPutsTheMarkBackOnItsLine()
+    {
+        var s = new VimSession("hello world\n    second\n", caret: 16);
+        s.Press("maggJu");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal("hello world\n    second\n", s.Text);
+        Assert.Equal(16, s.Caret);
+    }
+
+    [Fact]
+    public void AShiftedLineKeepsItsMark()
+    {
+        var s = new VimSession("one\ntwo\n", caret: 5);
+        s.Press("ma>>`a");
+        Assert.Equal(5, s.Caret);
+        s.Press("u`a");
+        Assert.Equal(5, s.Caret);
+    }
+
+    [Fact]
+    public void ThePreviousPositionMovesWithALineOpenedAboveIt()
+    {
+        var s = new VimSession(Initial, caret: 25);
+        s.Press("GO");
+        s.Escape();
+        s.Press("``");
+        Assert.Equal(26, s.Caret);
+    }
+
+    [Fact]
+    public void TheLastVisualSelectionMovesWithALineOpenedAboveIt()
+    {
+        var s = new VimSession("aa\nbb\ncc\n", caret: 3);
+        s.Press("vl");
+        s.Escape();
+        s.Press("ggO");
+        s.Escape();
+        s.Press("`<");
+        Assert.Equal(4, s.Caret);
     }
 }

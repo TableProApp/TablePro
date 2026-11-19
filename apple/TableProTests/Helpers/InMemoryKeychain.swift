@@ -30,4 +30,10 @@ final class InMemoryKeychain: KeychainStoring, @unchecked Sendable {
         defer { lock.unlock() }
         store[key] = nil
     }
+
+    func deviceOnlyKeys(endingWith suffix: String) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return store.keys.filter { $0.hasSuffix(suffix) }
+    }
 }

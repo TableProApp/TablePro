@@ -6,28 +6,41 @@ import NIOSSL
 import TableProKafkaCore
 import TableProPluginKit
 
-/// Splits the TCP stream into whole Kafka responses. Every response is a 4-byte big-endian
-/// length followed by that many bytes, so this is `LengthFieldBasedFrameDecoder`'s shape, but
-/// written out because the cap matters: a corrupt or non-Kafka peer can otherwise announce a
-/// 2 GB frame and this would sit there allocating for it.
-private final class KafkaFrameDecoder: ByteToMessageDecoder {
-    typealias InboundOut = ByteBuffer
+private enum KafkaInboundFrame {
+    case reply(ByteBuffer)
+    case refused(length: Int)
+}
 
-    private static let maximumFrameLength = 256 * 1_024 * 1_024
+// Whole Kafka responses, `LengthFieldBasedFrameDecoder`'s shape written out so a reply past its request's limit is
+// refused at its length rather than gathered first.
+private final class KafkaFrameDecoder: ByteToMessageDecoder {
+    typealias InboundOut = KafkaInboundFrame
+
+    private var splitter = KafkaFrameSplitter()
+    private let limits: KafkaResponseHandler
+
+    init(limits: KafkaResponseHandler) {
+        self.limits = limits
+    }
 
     func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
-        guard buffer.readableBytes >= 4 else { return .needMoreData }
-        let length = Int(buffer.getInteger(at: buffer.readerIndex, as: Int32.self) ?? 0)
-        guard length >= 0, length <= Self.maximumFrameLength else {
-            throw KafkaError.malformedResponse(
-                "the peer announced a \(length)-byte frame; this is probably not a Kafka broker"
-            )
+        let announced = buffer.readableBytes >= 4 ? buffer.getInteger(at: buffer.readerIndex, as: Int32.self) : nil
+        switch try splitter.next(readable: buffer.readableBytes, announcedLength: announced, limit: limits.replyLimit) {
+        case .needMoreData:
+            return .needMoreData
+        case .skip(let count):
+            buffer.moveReaderIndex(forwardBy: count)
+            return .continue
+        case .refuse(let length):
+            buffer.moveReaderIndex(forwardBy: 4)
+            context.fireChannelRead(wrapInboundOut(.refused(length: length)))
+            return .continue
+        case .reply(let length):
+            buffer.moveReaderIndex(forwardBy: 4)
+            guard let frame = buffer.readSlice(length: length) else { return .needMoreData }
+            context.fireChannelRead(wrapInboundOut(.reply(frame)))
+            return .continue
         }
-        guard buffer.readableBytes >= 4 + length else { return .needMoreData }
-        buffer.moveReaderIndex(forwardBy: 4)
-        guard let frame = buffer.readSlice(length: length) else { return .needMoreData }
-        context.fireChannelRead(wrapInboundOut(frame))
-        return .continue
     }
 }
 
@@ -37,11 +50,17 @@ private final class KafkaFrameDecoder: ByteToMessageDecoder {
 /// report an error in any order, and resuming a continuation twice traps the process, so every
 /// path funnels through `finish` and the continuation is cleared before it is resumed.
 private final class KafkaResponseHandler: ChannelInboundHandler, @unchecked Sendable {
-    typealias InboundIn = ByteBuffer
+    typealias InboundIn = KafkaInboundFrame
 
     private var pending: CheckedContinuation<ByteBuffer, Error>?
+    private var pendingLimit: Int?
     private var failure: Error?
     private let lock = NIOLock()
+
+    // The longest reply the request in flight takes; the next reply on the wire is always its own.
+    var replyLimit: Int {
+        lock.withLock { pendingLimit ?? KafkaFrameSplitter.maximumFrameLength }
+    }
 
     /// Registers the one in-flight request, and says whether the caller may now write.
     ///
@@ -51,7 +70,7 @@ private final class KafkaResponseHandler: ChannelInboundHandler, @unchecked Send
     /// the overlap: the caller used to be resumed with the error and then write its request
     /// anyway, so the broker answered a request nobody was waiting for and the orphan frame
     /// resumed the NEXT caller, failing it on a correlation id mismatch.
-    func expect(_ continuation: CheckedContinuation<ByteBuffer, Error>) -> Bool {
+    func expect(_ continuation: CheckedContinuation<ByteBuffer, Error>, replyLimit: Int?) -> Bool {
         let resolved: Error? = lock.withLock {
             if let failure { return failure }
             guard pending == nil else {
@@ -60,6 +79,7 @@ private final class KafkaResponseHandler: ChannelInboundHandler, @unchecked Send
                 )
             }
             pending = continuation
+            pendingLimit = replyLimit
             return nil
         }
         guard let resolved else { return true }
@@ -68,12 +88,21 @@ private final class KafkaResponseHandler: ChannelInboundHandler, @unchecked Send
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let frame = unwrapInboundIn(data)
         let continuation = lock.withLock { () -> CheckedContinuation<ByteBuffer, Error>? in
-            defer { pending = nil }
+            defer {
+                pending = nil
+                pendingLimit = nil
+            }
             return pending
         }
-        continuation?.resume(returning: frame)
+        switch unwrapInboundIn(data) {
+        case .reply(let frame):
+            continuation?.resume(returning: frame)
+        case .refused(let length):
+            continuation?.resume(throwing: KafkaError.malformedResponse(
+                "the broker answered with \(length) bytes, more than the request allows"
+            ))
+        }
     }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {
@@ -88,7 +117,10 @@ private final class KafkaResponseHandler: ChannelInboundHandler, @unchecked Send
     func finish(with error: Error) {
         let continuation = lock.withLock { () -> CheckedContinuation<ByteBuffer, Error>? in
             if failure == nil { failure = error }
-            defer { pending = nil }
+            defer {
+                pending = nil
+                pendingLimit = nil
+            }
             return pending
         }
         continuation?.resume(throwing: error)
@@ -152,7 +184,9 @@ actor KafkaConnection {
                         let tls = try NIOSSLClientHandler(context: sslContext, serverHostname: serverHostname)
                         try channel.pipeline.syncOperations.addHandler(tls)
                     }
-                    try channel.pipeline.syncOperations.addHandler(ByteToMessageHandler(KafkaFrameDecoder()))
+                    try channel.pipeline.syncOperations.addHandler(
+                        ByteToMessageHandler(KafkaFrameDecoder(limits: responseHandler))
+                    )
                     try channel.pipeline.syncOperations.addHandler(responseHandler)
                     return channel.eventLoop.makeSucceededVoidFuture()
                 } catch {
@@ -205,7 +239,8 @@ actor KafkaConnection {
     /// the health monitor's 30-second ping and a running statement work at all; without it
     /// whichever arrived second failed with "two requests overlapped", and a fan-out across
     /// leaders makes a shared connection far more common than it used to be.
-    func send(_ request: KafkaRequest) async throws -> KafkaProtocolReader {
+    // A reply longer than `replyLimit` is refused before any of it is kept, and the connection stays usable.
+    func send(_ request: KafkaRequest, replyLimit: Int? = nil) async throws -> KafkaProtocolReader {
         await claimWireSlot()
         defer { releaseWireSlot() }
 
@@ -220,7 +255,7 @@ actor KafkaConnection {
 
         let frame = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                guard handler.expect(continuation) else { return }
+                guard handler.expect(continuation, replyLimit: replyLimit) else { return }
                 channel.writeAndFlush(buffer).whenFailure { error in
                     handler.finish(with: KafkaError.connectionFailed(error.localizedDescription))
                 }
@@ -229,7 +264,8 @@ actor KafkaConnection {
             channel.close(promise: nil)
         }
 
-        let payload = Data(frame.readableBytesView)
+        // Copied once, into the reader's own bytes: a fetch budget counts a reply and one copy of it.
+        let payload = [UInt8](frame.readableBytesView)
         let (received, body) = try KafkaResponseHeader.strip(payload, api: request.api, version: request.version)
         guard received == sent else {
             throw KafkaError.malformedResponse("correlation id \(received) does not match the request's \(sent)")

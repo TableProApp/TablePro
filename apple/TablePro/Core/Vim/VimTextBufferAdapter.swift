@@ -92,52 +92,12 @@ final class VimTextBufferAdapter: VimTextBuffer {
 
     func wordBoundary(forward: Bool, from offset: Int) -> Int {
         guard let text else { return offset }
-        guard text.length > 0 else { return 0 }
-
-        if forward {
-            var pos = min(offset, text.length - 1)
-            let startClass = charClass(text.character(at: pos))
-            if startClass == .whitespace {
-                while pos < text.length && charClass(text.character(at: pos)) == .whitespace {
-                    pos += 1
-                }
-            } else {
-                while pos < text.length && charClass(text.character(at: pos)) == startClass {
-                    pos += 1
-                }
-                while pos < text.length && charClass(text.character(at: pos)) == .whitespace {
-                    pos += 1
-                }
-            }
-            return min(pos, text.length)
-        } else {
-            var pos = min(offset, text.length)
-            if pos > 0 { pos -= 1 }
-            while pos > 0 && charClass(text.character(at: pos)) == .whitespace {
-                pos -= 1
-            }
-            let cls = charClass(text.character(at: pos))
-            while pos > 0 && charClass(text.character(at: pos - 1)) == cls {
-                pos -= 1
-            }
-            return max(0, pos)
-        }
+        return VimWordScanner.wordBoundary(forward: forward, from: offset, in: text)
     }
 
     func wordEnd(from offset: Int) -> Int {
         guard let text else { return offset }
-        guard text.length > 0 else { return 0 }
-
-        var pos = min(offset + 1, text.length - 1)
-        while pos < text.length && charClass(text.character(at: pos)) == .whitespace {
-            pos += 1
-        }
-        guard pos < text.length else { return text.length - 1 }
-        let cls = charClass(text.character(at: pos))
-        while pos < text.length - 1 && charClass(text.character(at: pos + 1)) == cls {
-            pos += 1
-        }
-        return min(pos, text.length - 1)
+        return VimWordScanner.wordEnd(from: offset, in: text)
     }
 
     func selectedRange() -> NSRange {
@@ -194,92 +154,22 @@ final class VimTextBufferAdapter: VimTextBuffer {
 
     func wordEndBackward(from offset: Int) -> Int {
         guard let text else { return 0 }
-        guard text.length > 0 else { return 0 }
-        var pos = min(max(0, offset), text.length - 1)
-        if pos > 0 { pos -= 1 }
-        if charClass(text.character(at: pos)) == .whitespace {
-            while pos > 0 && charClass(text.character(at: pos)) == .whitespace {
-                pos -= 1
-            }
-            return pos
-        }
-        let cls = charClass(text.character(at: pos))
-        while pos > 0 && charClass(text.character(at: pos - 1)) == cls {
-            pos -= 1
-        }
-        guard pos > 0 else { return 0 }
-        pos -= 1
-        while pos > 0 && charClass(text.character(at: pos)) == .whitespace {
-            pos -= 1
-        }
-        return pos
+        return VimWordScanner.wordEndBackward(from: offset, in: text)
     }
 
     func bigWordBoundary(forward: Bool, from offset: Int) -> Int {
         guard let text else { return offset }
-        guard text.length > 0 else { return 0 }
-        if forward {
-            var pos = min(offset, text.length - 1)
-            let startWS = isWhitespace(text.character(at: pos))
-            if startWS {
-                while pos < text.length && isWhitespace(text.character(at: pos)) {
-                    pos += 1
-                }
-            } else {
-                while pos < text.length && !isWhitespace(text.character(at: pos)) {
-                    pos += 1
-                }
-                while pos < text.length && isWhitespace(text.character(at: pos)) {
-                    pos += 1
-                }
-            }
-            return min(pos, text.length)
-        }
-        var pos = min(offset, text.length)
-        if pos > 0 { pos -= 1 }
-        while pos > 0 && isWhitespace(text.character(at: pos)) {
-            pos -= 1
-        }
-        while pos > 0 && !isWhitespace(text.character(at: pos - 1)) {
-            pos -= 1
-        }
-        return max(0, pos)
+        return VimWordScanner.bigWordBoundary(forward: forward, from: offset, in: text)
     }
 
     func bigWordEnd(from offset: Int) -> Int {
         guard let text else { return offset }
-        guard text.length > 0 else { return 0 }
-        var pos = min(offset + 1, text.length - 1)
-        while pos < text.length && isWhitespace(text.character(at: pos)) {
-            pos += 1
-        }
-        guard pos < text.length else { return text.length - 1 }
-        while pos < text.length - 1 && !isWhitespace(text.character(at: pos + 1)) {
-            pos += 1
-        }
-        return min(pos, text.length - 1)
+        return VimWordScanner.bigWordEnd(from: offset, in: text)
     }
 
     func bigWordEndBackward(from offset: Int) -> Int {
         guard let text else { return 0 }
-        guard text.length > 0 else { return 0 }
-        var pos = min(max(0, offset), text.length - 1)
-        if pos > 0 { pos -= 1 }
-        if isWhitespace(text.character(at: pos)) {
-            while pos > 0 && isWhitespace(text.character(at: pos)) {
-                pos -= 1
-            }
-            return pos
-        }
-        while pos > 0 && !isWhitespace(text.character(at: pos - 1)) {
-            pos -= 1
-        }
-        guard pos > 0 else { return 0 }
-        pos -= 1
-        while pos > 0 && isWhitespace(text.character(at: pos)) {
-            pos -= 1
-        }
-        return pos
+        return VimWordScanner.bigWordEndBackward(from: offset, in: text)
     }
 
     func matchingBracket(at offset: Int) -> Int? {
@@ -379,23 +269,6 @@ final class VimTextBufferAdapter: VimTextBuffer {
     }
 
     // MARK: - Helpers
-
-    private enum CharClass {
-        case word, punctuation, whitespace
-    }
-
-    private func charClass(_ char: unichar) -> CharClass {
-        if isWhitespace(char) { return .whitespace }
-        guard let scalar = UnicodeScalar(char) else { return .punctuation }
-        if CharacterSet.alphanumerics.contains(scalar) || char == 0x5F {
-            return .word
-        }
-        return .punctuation
-    }
-
-    private func isWhitespace(_ char: unichar) -> Bool {
-        char == 0x20 || char == 0x09 || char == 0x0A || char == 0x0D
-    }
 
     private func isLineBreak(_ char: unichar) -> Bool {
         char == 0x0A || char == 0x0D

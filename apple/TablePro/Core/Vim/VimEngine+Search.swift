@@ -6,43 +6,62 @@
 import Foundation
 
 extension VimEngine {
-    func runSearch(pattern: String, forward: Bool) {
-        guard !pattern.isEmpty, let buffer else { return }
+    func runSearch(pattern: String, forward: Bool, count: Int = 1) {
+        guard let buffer else { return }
+        let origin = buffer.selectedRange().location
+        if let target = searchTarget(pattern: pattern, forward: forward, count: count, in: buffer) {
+            buffer.setSelectedRange(NSRange(location: target, length: 0))
+            lastJumpOrigin = origin
+        }
+    }
+
+    // Remembers the pattern for `n` and `N`, as a search does even when nothing matches.
+    func searchTarget(pattern: String, forward: Bool, count: Int = 1, in buffer: VimTextBuffer) -> Int? {
+        guard !pattern.isEmpty else { return nil }
         lastSearchPattern = pattern
         lastSearchForward = forward
-        let origin = buffer.selectedRange().location
-        if let target = findPattern(pattern, from: origin, forward: forward, wholeWord: false, in: buffer) {
-            buffer.setSelectedRange(NSRange(location: target, length: 0))
-            lastJumpOrigin = origin
+        var position = buffer.selectedRange().location
+        for _ in 0..<max(1, count) {
+            guard let next = findPattern(pattern, from: position, forward: forward, wholeWord: false, in: buffer) else {
+                return nil
+            }
+            position = next
         }
+        return position
     }
 
-    func searchNext(in buffer: VimTextBuffer, reverseDirection: Bool) {
-        guard let pattern = lastSearchPattern else { return }
+    func searchNextTarget(count: Int, reverseDirection: Bool, in buffer: VimTextBuffer) -> Int? {
+        guard let pattern = lastSearchPattern else { return nil }
         let forward = reverseDirection ? !lastSearchForward : lastSearchForward
-        let origin = buffer.selectedRange().location
-        if let target = findPattern(pattern, from: origin, forward: forward, wholeWord: false, in: buffer) {
-            buffer.setSelectedRange(NSRange(location: target, length: 0))
-            lastJumpOrigin = origin
+        var position = buffer.selectedRange().location
+        for _ in 0..<max(1, count) {
+            guard let next = findPattern(pattern, from: position, forward: forward, wholeWord: false, in: buffer) else {
+                return nil
+            }
+            position = next
         }
+        return position
     }
 
-    func searchWordUnderCursor(forward: Bool, in buffer: VimTextBuffer) {
+    func searchWordUnderCursorTarget(forward: Bool, count: Int, in buffer: VimTextBuffer) -> Int? {
         let pos = buffer.selectedRange().location
-        guard pos < buffer.length else { return }
+        guard pos < buffer.length else { return nil }
         var start = pos
-        while start > 0 && isWordChar(buffer.character(at: start - 1)) { start -= 1 }
+        while start > 0 && isWordCharacter(at: start - 1, in: buffer) { start -= 1 }
         var end = pos
-        while end < buffer.length && isWordChar(buffer.character(at: end)) { end += 1 }
-        guard end > start else { return }
+        while end < buffer.length && isWordCharacter(at: end, in: buffer) { end += 1 }
+        guard end > start else { return nil }
         let word = buffer.string(in: NSRange(location: start, length: end - start))
         lastSearchPattern = word
         lastSearchForward = forward
-        let origin = pos
-        if let target = findPattern(word, from: origin, forward: forward, wholeWord: true, in: buffer) {
-            buffer.setSelectedRange(NSRange(location: target, length: 0))
-            lastJumpOrigin = origin
+        var position = pos
+        for _ in 0..<max(1, count) {
+            guard let next = findPattern(word, from: position, forward: forward, wholeWord: true, in: buffer) else {
+                return nil
+            }
+            position = next
         }
+        return position
     }
 
     func findPattern(
@@ -62,9 +81,9 @@ extension VimEngine {
             let candidate = nsBuffer.substring(with: NSRange(location: idx, length: needle.length))
             guard candidate == pattern else { return false }
             if !wholeWord { return true }
-            let beforeOk = idx == 0 || !self.isWordChar(nsBuffer.character(at: idx - 1))
+            let beforeOk = idx == 0 || VimWordScanner.characterClass(at: idx - 1, in: nsBuffer) != .word
             let afterIdx = idx + needle.length
-            let afterOk = afterIdx >= total || !self.isWordChar(nsBuffer.character(at: afterIdx))
+            let afterOk = afterIdx >= total || VimWordScanner.characterClass(at: afterIdx, in: nsBuffer) != .word
             return beforeOk && afterOk
         }
 
@@ -94,11 +113,5 @@ extension VimEngine {
             if matches(origin) { return origin }
         }
         return nil
-    }
-
-    func isWordChar(_ ch: unichar) -> Bool {
-        if ch == 0x5F { return true }
-        guard let scalar = UnicodeScalar(ch) else { return false }
-        return CharacterSet.alphanumerics.contains(scalar)
     }
 }

@@ -87,4 +87,21 @@ public sealed class VimEngineIndentTests
         s.Press(">>");
         Assert.Equal(Indent.Length, s.Caret);
     }
+
+    [Fact]
+    public void GreaterBAtTheStartOfTheTextShiftsNothing()
+    {
+        var s = new VimSession("abc\n", caret: 0);
+        s.Press(">b");
+        Assert.Equal("abc\n", s.Text);
+        Assert.False(s.Engine.IsPending);
+    }
+
+    [Fact]
+    public void GreaterHAtTheLineStartStillShiftsTheLine()
+    {
+        var s = new VimSession("abc\n", caret: 0);
+        s.Press(">h");
+        Assert.Equal($"{Indent}abc\n", s.Text);
+    }
 }

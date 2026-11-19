@@ -59,6 +59,10 @@ public sealed record SessionTab
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool RecoverFile { get; set; }
 
+    // The name typed for a query tab with no file, shown over Title, which stays the name an emptied one returns to.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CustomTitle { get; set; }
+
     // The first line of each region folded in a query tab, which come back folded where the text still has them.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<int>? FoldedLines { get; set; }

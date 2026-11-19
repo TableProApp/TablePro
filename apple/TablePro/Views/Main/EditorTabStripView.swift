@@ -31,6 +31,9 @@ internal final class EditorTabStripView: NSView {
     private var laidOutWidth: CGFloat = 0
     private var windowSubscriptions: Set<AnyCancellable> = []
     private var chromeSubscriptions: Set<AnyCancellable> = []
+    private var renameSession: EditorTabRenameSession?
+    private var renameClickMonitor: Any?
+    private var pendingRenameId: UUID?
 
     override internal init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -117,6 +120,8 @@ internal final class EditorTabStripView: NSView {
 
         let liveIds = Set(newItems.map(\.id))
         for (id, view) in itemViews where !liveIds.contains(id) {
+            // A closed tab refuses the name, a tab a database switch filtered out keeps it.
+            if renameSession?.tabId == id { endRename(commit: true) }
             view.removeFromSuperview()
             itemViews[id] = nil
         }
@@ -254,6 +259,12 @@ internal final class EditorTabStripView: NSView {
         guard run.maximumOffset > 0 else { return }
         layoutTabs(animated: false)
         updateHover()
+        // A tab squeezed into the edge has no room left for its field.
+        if let id = renameSession?.tabId,
+           let width = itemViews[id]?.frame.width,
+           width < EditorTabStripLayout.minimumContentWidth {
+            endRename(commit: true)
+        }
     }
 
     internal func reveal(_ id: UUID, animated: Bool) {
@@ -278,16 +289,30 @@ internal final class EditorTabStripView: NSView {
 
     internal func activate(_ id: UUID, click: EditorTabClick?) {
         guard let commands else { return }
+        // Tabs refuse first responder, so a click on one never ends an edit by itself.
+        endRename(commit: true)
         let activation = EditorTabActivationResolver.resolve(
             click: click,
             tabId: id,
             lastActivatedTabId: lastActivatedId
         )
         lastActivatedId = id
+        pendingRenameId = nil
         commands.activate(id)
-        if activation == .selectAndKeep {
+        guard activation == .selectAndKeep else { return }
+        // Only a table tab is ever a preview, so the double-click that keeps one names a query tab instead.
+        if commands.canRename(id) {
+            pendingRenameId = id
+        } else {
             commands.keepOpen(id)
         }
+    }
+
+    // On the release, so a double-click that turns into a drag moves the tab instead.
+    internal func releaseClick(on id: UUID) {
+        guard pendingRenameId == id else { return }
+        pendingRenameId = nil
+        beginRename(id)
     }
 
     @objc
@@ -305,6 +330,101 @@ internal final class EditorTabStripView: NSView {
 
     internal func itemView(for id: UUID) -> EditorTabItemView? {
         itemViews[id]
+    }
+
+    // MARK: - Renaming
+
+    internal func beginRename(_ id: UUID) {
+        guard renameSession?.tabId != id else { return }
+        endRename(commit: true)
+        guard let commands, commands.canRename(id), let seed = commands.renameSeed(id),
+              let window, let view = itemViews[id] else { return }
+        reveal(id, animated: false)
+        guard view.frame.width >= EditorTabStripLayout.minimumContentWidth else { return }
+
+        let prior = window.firstResponder.map { Self.restorableResponder($0) }
+        let field = view.beginRename(text: seed.text, placeholder: seed.placeholder, delegate: self)
+        renameSession = EditorTabRenameSession(tabId: id, commit: commands.rename, priorResponder: prior)
+        guard window.makeFirstResponder(field) else {
+            renameSession = nil
+            view.endRename()
+            return
+        }
+        field.currentEditor()?.selectAll(nil)
+        // `makeFirstResponder` can post a stray end notification, so the session listens only once it returns.
+        renameSession?.isArmed = true
+        watchForClickAway()
+    }
+
+    internal func endRename(commit: Bool, restoringFocus: Bool = true) {
+        guard let session = renameSession else { return }
+        renameSession = nil
+        stopWatchingForClickAway()
+        guard let view = itemViews[session.tabId] else { return }
+        // Text an input method is still composing has posted no change yet, and resigning commits it into the field.
+        let isComposing = (view.renameField?.currentEditor() as? NSTextView)?.hasMarkedText() == true
+        if !commit { view.renameField?.abortEditing() }
+        if restoringFocus { restoreFocus(to: session.priorResponder) }
+        let text = view.endRename()
+        guard commit, session.hasUserEdit || isComposing,
+              let title = session.commit(session.tabId, text)
+        else { return }
+        view.showTitle(title)
+    }
+
+    private func restoreFocus(to prior: NSResponder?) {
+        guard let window else { return }
+        let isInWindow = prior === window || (prior as? NSView)?.window === window
+        if let prior, isInWindow, window.makeFirstResponder(prior) { return }
+        window.makeFirstResponder(nil)
+    }
+
+    // A field editor stands in for the control it edits, and only the control can take focus back.
+    private static func restorableResponder(_ responder: NSResponder) -> NSResponder {
+        guard let editor = responder as? NSTextView, editor.isFieldEditor,
+              let control = editor.delegate as? NSControl else { return responder }
+        return control
+    }
+
+    private func watchForClickAway() {
+        stopWatchingForClickAway()
+        renameClickMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] nsEvent in
+            nonisolated(unsafe) let event = nsEvent
+            MainActor.assumeIsolated { self?.renameSawClick(event) }
+            return nsEvent
+        }
+    }
+
+    private func stopWatchingForClickAway() {
+        guard let renameClickMonitor else { return }
+        NSEvent.removeMonitor(renameClickMonitor)
+        self.renameClickMonitor = nil
+    }
+
+    // Chrome that takes no focus would leave the field editing under a click anywhere but the field.
+    private func renameSawClick(_ event: NSEvent) {
+        guard let id = renameSession?.tabId, let field = itemViews[id]?.renameField else { return }
+        let point = field.convert(event.locationInWindow, from: nil)
+        if event.window === window, field.bounds.contains(point) { return }
+        endRename(commit: true)
+    }
+
+    private func isRenameField(_ object: Any?) -> Bool {
+        guard let id = renameSession?.tabId, let field = itemViews[id]?.renameField else { return false }
+        return (object as? NSTextField) === field
+    }
+
+    private func renameFieldEdited(_ notification: Notification) {
+        guard isRenameField(notification.object) else { return }
+        renameSession?.hasUserEdit = true
+    }
+
+    private func renameFieldEnded(_ notification: Notification) {
+        guard renameSession?.isArmed == true, isRenameField(notification.object) else { return }
+        // Focus already went where something else sent it, so it stays there.
+        endRename(commit: true, restoringFocus: false)
     }
 
     // MARK: - Hover and window state
@@ -351,6 +471,12 @@ internal final class EditorTabStripView: NSView {
         window?.isKeyWindow ?? false
     }
 
+    // A connection switch takes the strip out of the window with the field still editing.
+    override internal func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow !== window { endRename(commit: true) }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
     override internal func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         windowSubscriptions.removeAll()
@@ -368,6 +494,7 @@ internal final class EditorTabStripView: NSView {
 
     private func updateWindowState() {
         let isKey = isWindowKey
+        if !isKey { endRename(commit: true) }
         itemViews.values.forEach { $0.isWindowActive = isKey }
         newTabButton.contentTintColor = isKey ? .secondaryLabelColor : .tertiaryLabelColor
         if !isKey { setHovered(nil) }
@@ -384,6 +511,7 @@ internal final class EditorTabStripView: NSView {
     internal func beginDrag(of view: EditorTabItemView, with event: NSEvent) {
         guard let commands else { return }
         let id = view.item.id
+        pendingRenameId = nil
         setHovered(nil)
 
         let pasteboardItem = NSPasteboardItem()
@@ -553,6 +681,50 @@ internal final class EditorTabStripView: NSView {
     override internal func accessibilityTabs() -> [Any]? {
         items.compactMap { itemViews[$0.id] }
     }
+}
+
+extension EditorTabStripView: NSTextFieldDelegate {
+    // Fires on the first change the user makes, not on focus, which is what tells an edit from Return on an untouched name.
+    internal func controlTextDidBeginEditing(_ obj: Notification) {
+        renameFieldEdited(obj)
+    }
+
+    internal func controlTextDidChange(_ obj: Notification) {
+        renameFieldEdited(obj)
+    }
+
+    internal func controlTextDidEndEditing(_ obj: Notification) {
+        renameFieldEnded(obj)
+    }
+
+    // Left to AppKit, Return ends the edit and starts it again, and Escape ends nothing.
+    internal func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard isRenameField(control) else { return false }
+        switch commandSelector {
+        case #selector(NSResponder.insertNewline(_:)),
+             #selector(NSResponder.insertTab(_:)),
+             #selector(NSResponder.insertBacktab(_:)):
+            endRename(commit: true)
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            // `abortEditing` posts no end notification, so the cancel never comes back as a commit.
+            control.abortEditing()
+            endRename(commit: false)
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+// One edit per strip, for the tab it names.
+private struct EditorTabRenameSession {
+    let tabId: UUID
+    // Held from the start, so a strip whose commands are cleared mid-edit can still hand the name over.
+    let commit: (UUID, String) -> String?
+    weak var priorResponder: NSResponder?
+    var isArmed = false
+    var hasUserEdit = false
 }
 
 internal enum EditorTabDragEnding {

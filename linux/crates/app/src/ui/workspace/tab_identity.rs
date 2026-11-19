@@ -9,6 +9,10 @@ pub(crate) enum TabIdentity {
     Table(TableRef),
     Structure(StructureTarget),
     Editor(EditorLabel),
+    NamedEditor {
+        name: String,
+        automatic: EditorLabel,
+    },
     /// The ER diagram of a schema.
     Diagram(Option<String>),
     /// A key-value engine's key, by the name the sidebar lists it as.

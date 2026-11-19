@@ -12,12 +12,18 @@ extension VimEngine {
             pendingOperator = nil
             return true
         }
+        // A paragraph is whole lines, every other object characters, and Visual mode takes the object's kind.
+        let linewise = key == "p"
         if mode.isVisual {
-            buffer.setSelectedRange(range)
+            // The object's start becomes Visual's anchor and its end the cursor, so the next motion extends it.
+            guard range.length > 0 else { return true }
+            if linewise != mode.isVisualLinewise { setMode(.visual(linewise: linewise)) }
+            visualAnchor = range.location
+            updateVisualSelection(cursorPos: NSMaxRange(range) - 1, linewise: linewise, in: buffer)
             return true
         }
         if let op = pendingOperator {
-            executeOperatorOnRange(op, range: range, linewise: false, in: buffer)
+            executeOperatorOnRange(op, range: range, linewise: linewise, in: buffer)
             pendingOperator = nil
         }
         return true
@@ -41,20 +47,22 @@ extension VimEngine {
 
     func wordObject(at cursor: Int, bigWord: Bool, around: Bool, in buffer: VimTextBuffer) -> NSRange? {
         guard buffer.length > 0 else { return nil }
-        let pos = min(max(0, cursor), buffer.length - 1)
-        let classifier: (unichar) -> Int = { ch in
-            if ch == 0x20 || ch == 0x09 || ch == 0x0A || ch == 0x0D { return 0 }
-            if bigWord { return 1 }
-            if ch == 0x5F { return 1 }
-            if let scalar = UnicodeScalar(ch), CharacterSet.alphanumerics.contains(scalar) { return 1 }
-            return 2
+        let pos = characterStart(at: min(max(0, cursor), buffer.length - 1), in: buffer)
+        let classOf: (Int) -> VimWordScanner.CharacterClass = { offset in
+            let cls = self.wordClass(at: offset, in: buffer)
+            return bigWord && cls != .whitespace ? .word : cls
         }
-        let startClass = classifier(buffer.character(at: pos))
+        let startClass = classOf(pos)
         var start = pos
-        while start > 0 && classifier(buffer.character(at: start - 1)) == startClass { start -= 1 }
-        var end = pos
-        while end < buffer.length - 1 && classifier(buffer.character(at: end + 1)) == startClass { end += 1 }
-        var rangeEnd = end + 1
+        while start > 0 {
+            let previous = characterStart(at: start - 1, in: buffer)
+            guard classOf(previous) == startClass else { break }
+            start = previous
+        }
+        var rangeEnd = characterEnd(at: pos, in: buffer)
+        while rangeEnd < buffer.length && classOf(rangeEnd) == startClass {
+            rangeEnd = characterEnd(at: rangeEnd, in: buffer)
+        }
         if around {
             var trail = rangeEnd
             while trail < buffer.length {
@@ -219,32 +227,27 @@ extension VimEngine {
         return NSRange(location: oe + 1, length: closeStart - oe - 1)
     }
 
+    // Whole lines: the run of paragraph or blank lines at the cursor. `ap` adds the blank lines after a paragraph,
+    // or the paragraph after blank lines, and with nothing after it the blank lines before.
     func paragraphObject(at cursor: Int, around: Bool, in buffer: VimTextBuffer) -> NSRange? {
-        let (currentLine, _) = buffer.lineAndColumn(forOffset: cursor)
+        let lineCount = buffer.lineCount
+        let currentLine = buffer.lineAndColumn(forOffset: cursor).line
+        let blank = lineIsWhite(currentLine, in: buffer)
         var startLine = currentLine
-        while startLine > 0 && !lineIsBlank(startLine - 1, in: buffer) {
-            startLine -= 1
-        }
+        while startLine > 0 && lineIsWhite(startLine - 1, in: buffer) == blank { startLine -= 1 }
         var endLine = currentLine
-        while endLine < buffer.lineCount - 1 && !lineIsBlank(endLine + 1, in: buffer) {
-            endLine += 1
+        while endLine < lineCount - 1 && lineIsWhite(endLine + 1, in: buffer) == blank { endLine += 1 }
+        if around {
+            var next = endLine
+            while next < lineCount - 1 && lineIsWhite(next + 1, in: buffer) != blank { next += 1 }
+            if next > endLine {
+                endLine = next
+            } else if !blank {
+                while startLine > 0 && lineIsWhite(startLine - 1, in: buffer) { startLine -= 1 }
+            }
         }
         let start = buffer.offset(forLine: startLine, column: 0)
-        let lastContentLineRange = buffer.lineRange(forOffset: buffer.offset(forLine: endLine, column: 0))
-        var end = lastContentLineRange.location + lastContentLineRange.length
-        if !around && end > start {
-            end -= 1
-        }
-        if around {
-            var trailing = endLine
-            while trailing < buffer.lineCount - 1 && lineIsBlank(trailing + 1, in: buffer) {
-                trailing += 1
-            }
-            if trailing > endLine {
-                let trailingRange = buffer.lineRange(forOffset: buffer.offset(forLine: trailing, column: 0))
-                end = trailingRange.location + trailingRange.length
-            }
-        }
+        let end = NSMaxRange(buffer.lineRange(forOffset: buffer.offset(forLine: endLine, column: 0)))
         return NSRange(location: start, length: end - start)
     }
 }

@@ -17,6 +17,10 @@ public sealed partial class VimEngine : IDisposable
     private string _commandLine = string.Empty;
     private int _depth;
     private UndoMark? _insertMark;
+    // The redo count the last replayed change saw, or the engine found, which tells an undo from a redo; null once any
+    // other edit lands, as it empties the redo stack.
+    private int? _replayRedoCount;
+    private bool _replayUndoes;
     private (VimMode, string, string, string?) _shownStatus;
 
     public VimEngine(EditorModel model, IVimHost host, VimRegisters? registers = null)
@@ -28,6 +32,8 @@ public sealed partial class VimEngine : IDisposable
         model.Document.Reset += OnDocumentReset;
         model.Document.Changed += OnDocumentChanged;
         model.SelectionsChanged += OnSelectionsChanged;
+        // A document can come with steps already undone, so the first replay may be a redo.
+        _replayRedoCount = model.Document.Undo.RedoCount;
         _shownStatus = StatusKey();
     }
 
@@ -179,6 +185,17 @@ public sealed partial class VimEngine : IDisposable
 
     internal List<VimReplaceModeEdit> ReplaceModeEdits { get; } = [];
 
+    internal int SearchCount { get; set; } = 1;
+
+    // The column each named mark was set at, kept past the end of a line that shrinks, as Vim keeps it.
+    internal Dictionary<string, int> MarkColumns { get; private set; } = new(StringComparer.Ordinal);
+
+    // Recent edits with the positions from before each, so undoing one puts them back.
+    internal List<VimEditRecord> EditJournal { get; } = [];
+
+    // The removed and inserted text the journal holds, in UTF-16 units.
+    internal int EditJournalTextLength { get; private set; }
+
     public bool Process(char key, bool shift = false) => Process(key.ToString(), shift);
 
     // True when the engine took the key; false leaves it to the editor, as typing in Insert mode is.
@@ -274,7 +291,8 @@ public sealed partial class VimEngine : IDisposable
         return (int)Math.Min(motionCount * opCount, MaxCount);
     }
 
-    // Escape drops every prefix of a command still being typed, so nothing of it reaches the next key.
+    // Escape, leaving the command line or a motion that finds nothing ends the whole command, so no part of it
+    // reaches the next key.
     internal void CancelPending()
     {
         PendingOperator = null;
@@ -293,6 +311,7 @@ public sealed partial class VimEngine : IDisposable
         PendingMacroTarget = null;
         PendingMacroCount = 1;
         PendingBracket = null;
+        SearchCount = 1;
     }
 
     // A paste, a click or a menu command moves the selection Visual mode was built on, so the mode ends with it.
@@ -308,6 +327,10 @@ public sealed partial class VimEngine : IDisposable
     private void OnDocumentReset(object? sender, EventArgs e)
     {
         Marks = new Dictionary<string, int>(StringComparer.Ordinal);
+        MarkColumns = new Dictionary<string, int>(StringComparer.Ordinal);
+        EditJournal.Clear();
+        EditJournalTextLength = 0;
+        _replayRedoCount = null;
         LastVisualStart = null;
         LastVisualEnd = null;
         LastVisualLinewise = false;
@@ -319,10 +342,16 @@ public sealed partial class VimEngine : IDisposable
         _insertMark = null;
     }
 
-    private bool HasPendingCommand => CountPrefix > 0 || OperatorCount > 0 || PendingOperator is not null || PendingG
-        || PendingFindChar is not null || PendingReplaceChar || PendingMarkSet || PendingMarkJumpExact is not null
-        || PendingRegisterSelect || SelectedRegister is not null || PendingReplaceCharForVisual || PendingZ
-        || PendingTextObject || PendingMacroTarget is not null || PendingBracket is not null;
+    private bool HasPendingCommand => WaitsForKey || CountPrefix > 0 || OperatorCount > 0 || SelectedRegister is not null;
+
+    // A key still waits for the rest of its command, not counting a count or a register already typed.
+    private bool WaitsForKey => PendingOperator is not null || PendingG || PendingFindChar is not null || PendingReplaceChar
+        || PendingMarkSet || PendingMarkJumpExact is not null || PendingRegisterSelect || PendingReplaceCharForVisual
+        || PendingZ || PendingTextObject || PendingMacroTarget is not null || PendingBracket is not null;
+
+    private bool TakesCharacterArgument => PendingFindChar is not null || PendingReplaceChar || PendingMarkSet
+        || PendingMarkJumpExact is not null || PendingZ || PendingTextObject || PendingMacroTarget is not null
+        || PendingBracket is not null;
 
     private void TrackPendingKeys(string key)
     {

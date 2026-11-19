@@ -299,6 +299,33 @@ struct EditorTabOpenerTests {
         #expect(manager.tabs.isEmpty)
     }
 
+    @Test("A query payload keeps its title, and one reading as a number is held as a name so nothing renumbers it")
+    func payloadTitleIsKept() throws {
+        let connection = makeConnection()
+        let manager = QueryTabManager()
+        manager.addTab()
+
+        EditorTabOpener.apply(
+            EditorTabPayload(connectionId: connection.id, tabType: .query, initialQuery: "SELECT 1", tabTitle: "Query 7"),
+            to: manager,
+            connection: connection,
+            toolbarState: nil
+        )
+        EditorTabOpener.apply(
+            EditorTabPayload(connectionId: connection.id, tabType: .query, initialQuery: "SELECT 2", tabTitle: "Top users"),
+            to: manager,
+            connection: connection,
+            toolbarState: nil
+        )
+
+        #expect(manager.tabs.map(\.title) == ["Query 1", "Query 7", "Top users"])
+        let shared = try #require(manager.tabs.first { $0.title == "Query 7" })
+        #expect(shared.isNamedByUser)
+        #expect(!shared.renumbersOnCollision)
+        let other = try #require(manager.tabs.first { $0.title == "Top users" })
+        #expect(!other.isNamedByUser)
+    }
+
     @Test("A query payload carrying a query opens a tab holding it")
     func queryPayloadOpensTab() {
         let connection = makeConnection()

@@ -352,4 +352,16 @@ final class VimEngineInsertEntryTests {
         escape()
         #expect(capturedMode == .normal)
     }
+
+    // MARK: - a on an empty line
+
+    @Test("a on an empty line inserts on that line")
+    func appendOnAnEmptyLineStaysOnIt() {
+        buffer = VimTextBufferMock(text: "one\n\ntwo\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.setSelectedRange(NSRange(location: 4, length: 0))
+        keys("a")
+        #expect(engine.mode == .insert)
+        #expect(pos == 4)
+    }
 }

@@ -1,6 +1,6 @@
 # 0031: DuckDB's expression depth fits the stacks it runs on
 
-- **Status**: Accepted
+- **Status**: Accepted; the Swift apps' DuckDB threads amended by 0037
 - **Date**: 2026-11-15
 
 ## Context

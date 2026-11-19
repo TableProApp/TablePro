@@ -55,7 +55,7 @@ struct ShortcutUniquenessTests {
             .copyCellValue, .copyAsCsv, .copyAsCsvWithHeaders, .copyAsMarkdown, .copyAsInClause, .copyAsInsert, .copyAsUpdate,
             .clearSelection, .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7,
             .setCellsToValue, .restorePreviousValues,
-            .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs, .pinTab,
+            .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs, .pinTab, .renameTab,
             .showTablesList, .showFavoritesList,
             .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
             .showPreviousWindowTab, .showNextWindowTab,
@@ -76,7 +76,7 @@ struct ShortcutUniquenessTests {
     @Test("Each newly rebindable command is listed under a category with a name", arguments: [
         ShortcutAction.showTablesList, .showFavoritesList, .restorePreviousValues,
         .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
-        .copyPath, .copyRelativePath, .setCellsToValue, .pinTab,
+        .copyPath, .copyRelativePath, .setCellsToValue, .pinTab, .renameTab,
         .showServerDashboard, .showQueryInsights, .exportResults,
     ])
     func newlyRebindableCommandsAreListable(action: ShortcutAction) {

@@ -1,5 +1,6 @@
 using Microsoft.UI;
 using Microsoft.UI.Xaml.Controls;
+using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
@@ -25,4 +26,7 @@ internal interface IWorkspaceHost
 
     // The Settings page, in the window with the rail.
     void ShowSettings();
+
+    // Every window's workspace on this session, whose query tabs number as one strip, as macOS numbers a connection's.
+    IEnumerable<WorkspaceView> WorkspacesOf(DatabaseSession session);
 }

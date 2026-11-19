@@ -20,6 +20,11 @@ extension VimEngine {
             if char == "\u{1B}" { return true }
             return executeTextObject(char, around: pendingTextObjectAround, in: buffer)
         }
+        if pendingRegisterSelect {
+            pendingRegisterSelect = false
+            if char != "\u{1B}" { selectedRegister = char == "\"" ? nil : char }
+            return true
+        }
 
         let isLinewise: Bool
         if case .visual(let lw) = mode { isLinewise = lw } else { isLinewise = false }
@@ -43,6 +48,7 @@ extension VimEngine {
 
         switch char {
         case "\u{1B}":
+            selectedRegister = nil
             recordVisualSelection(linewise: isLinewise, in: buffer)
             setMode(.normal)
             let pos = buffer.selectedRange().location
@@ -132,8 +138,12 @@ extension VimEngine {
             setMode(.insert)
             return true
 
+        case "\"":
+            pendingRegisterSelect = true
+            return true
+
         case "p", "P":
-            pasteOverVisualSelection(in: buffer)
+            pasteOverVisualSelection(keepingRegister: char == "P", linewise: isLinewise, in: buffer)
             return true
 
         case "d", "x":
@@ -141,7 +151,6 @@ extension VimEngine {
             recordVisualSelection(linewise: isLinewise, in: buffer)
             if sel.length > 0 {
                 writeToActiveRegister(text: buffer.string(in: sel), linewise: isLinewise, asDelete: true)
-                adjustMarksForEdit(in: sel, replacementLength: 0)
                 buffer.replaceCharacters(in: sel, with: "")
             }
             setMode(.normal)
@@ -276,11 +285,16 @@ extension VimEngine {
         setMode(.normal)
     }
 
-    func pasteOverVisualSelection(in buffer: VimTextBuffer) {
+    // `p` puts the text it replaces in the unnamed register, `P` leaves the registers as they were.
+    func pasteOverVisualSelection(keepingRegister: Bool, linewise: Bool, in buffer: VimTextBuffer) {
         let sel = buffer.selectedRange()
-        let text = register.text
+        let text = activePasteRegister().text
         guard sel.length > 0 else { setMode(.normal); return }
+        let replaced = buffer.string(in: sel)
         buffer.replaceCharacters(in: sel, with: text)
+        if !keepingRegister {
+            writeToActiveRegister(text: replaced, linewise: linewise, asDelete: true)
+        }
         let newPos = sel.location + (text as NSString).length - 1
         buffer.setSelectedRange(NSRange(location: max(sel.location, newPos), length: 0))
         setMode(.normal)

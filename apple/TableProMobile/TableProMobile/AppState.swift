@@ -166,8 +166,12 @@ final class AppState {
             return (self.connections, self.groups, self.tags)
         }
 
-        syncCoordinator.unreadableConnectionIds = { [weak self] in
-            self?.storage.unreadableIds ?? []
+        syncCoordinator.unreadableCopies = { [weak self] in
+            self?.unreadableCopies ?? UnreadableCopies()
+        }
+
+        syncCoordinator.onUnreadableCopiesSettled = { [weak self] deleted, listed in
+            self?.removeWithNextSave(deleted, keeping: listed)
         }
 
         syncCoordinator.getSavedQueries = { [weak self] in
@@ -238,6 +242,11 @@ final class AppState {
         return true
     }
 
+    // A record this build cannot read keeps its id: adding another with it, as an import can, would write over it.
+    private func logUnreadableIdRefusal() {
+        Self.logger.error("Refused a library write that reuses the id of a record this build cannot read")
+    }
+
     private func refuseWriteIfNotReady() -> Bool {
         guard isLibraryWritable else {
             Self.logger.error("Refusing a library write while the stored library is not loaded")
@@ -265,15 +274,20 @@ final class AppState {
         return true
     }
 
-    // An owner whose record this build cannot read may be Local only, so its records stay on the device.
+    // An owner this build cannot read syncs only when its standing says so; one just deleted still did.
     private func syncsConnection(_ id: UUID) -> Bool {
-        connections.first { $0.id == id }?.participatesInSync ?? !storage.unreadableIds.contains(id)
+        if let connection = connections.first(where: { $0.id == id }) {
+            return connection.participatesInSync
+        }
+        guard storage.unreadableIds.contains(id) else { return true }
+        return syncCoordinator.metadata.standing(ofConnection: id) == .syncs
     }
 
     private func loadPersistedData() {
         do {
             let stored = try storage.load()
             connectionsState = .loaded(stored.connections)
+            recordConnectionStanding()
             movePastedSSHKeysToKeychain(from: stored)
             moveMongoURISecretsToKeychain(from: stored.connections)
         } catch {
@@ -335,9 +349,12 @@ final class AppState {
             by: connections,
             orUnreadable: storage.unreadableIds
         )
+        // Only a copy still kept unread: one a newer build reads now is a live record.
+        let pendingRemovals = pendingUnreadableRemovals.connections
+        let removedUnreadable = pendingRemovals.intersection(storage.unreadableIds)
         var saved = true
         do {
-            try storage.save(connections, keepingPastedSSHKeys: heldKeys)
+            try storage.save(connections, keepingPastedSSHKeys: heldKeys, removingUnreadable: removedUnreadable)
         } catch {
             saved = false
             Self.logger.error("Failed to save connections: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
@@ -346,6 +363,11 @@ final class AppState {
         markLibraryPart(.connections, saved: saved)
         connectionsState = .loaded(connections)
         pastedSSHKeysAwaitingKeychain = heldKeys
+        if saved {
+            recordConnectionStanding()
+            settleUnreadableRemovals(UnreadableCopies(connections: pendingRemovals))
+            purgeRemovedUnreadable(removedUnreadable)
+        }
         pruneLibraryPreferences()
         return saved
     }
@@ -354,7 +376,9 @@ final class AppState {
     private func persist(groups: [ConnectionGroup], onlyIfSaved: Bool = false) -> Bool {
         var saved = true
         do {
-            try groupStorage.save(groups)
+            let pending = pendingUnreadableRemovals.groups
+            try groupStorage.save(groups, removingUnreadable: pending.intersection(groupStorage.unreadableIds))
+            settleUnreadableRemovals(UnreadableCopies(groups: pending))
         } catch {
             saved = false
             Self.logger.error("Failed to save groups: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
@@ -370,7 +394,9 @@ final class AppState {
     private func persist(tags: [ConnectionTag], onlyIfSaved: Bool = false) -> Bool {
         var saved = true
         do {
-            try tagStorage.save(tags)
+            let pending = pendingUnreadableRemovals.tags
+            try tagStorage.save(tags, removingUnreadable: pending.intersection(tagStorage.unreadableIds))
+            settleUnreadableRemovals(UnreadableCopies(tags: pending))
         } catch {
             saved = false
             Self.logger.error("Failed to save tags: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
@@ -379,6 +405,50 @@ final class AppState {
         markLibraryPart(.tags, saved: saved)
         tagsState = .loaded(tags)
         return saved
+    }
+
+    var unreadableCopies: UnreadableCopies {
+        UnreadableCopies(connections: storage.unreadableIds, groups: groupStorage.unreadableIds, tags: tagStorage.unreadableIds)
+    }
+
+    // Unread copies another device deleted, removed by the next save of their file so their ids stay protected until
+    // then. Kept with the sync metadata, which an account switch clears.
+    private var pendingUnreadableRemovals: UnreadableCopies {
+        UnreadableCopies(recordNames: syncCoordinator.metadata.removalsPendingForUnreadableCopies)
+    }
+
+    private func settleUnreadableRemovals(_ removed: UnreadableCopies) {
+        guard !removed.isEmpty else { return }
+        syncCoordinator.metadata.removalsPendingForUnreadableCopies.subtract(removed.recordNames)
+    }
+
+    // Marked unsaved, so the merge that follows writes each file even when its list is unchanged. A record the server
+    // lists again was saved after the deletion still waiting from an earlier pull.
+    private func removeWithNextSave(_ deleted: UnreadableCopies, keeping listed: UnreadableCopies) {
+        let metadata = syncCoordinator.metadata
+        metadata.removalsPendingForUnreadableCopies = metadata.removalsPendingForUnreadableCopies
+            .subtracting(listed.recordNames)
+            .union(deleted.recordNames)
+        if !deleted.connections.isEmpty { unsavedLibraryParts.insert(.connections) }
+        if !deleted.groups.isEmpty { unsavedLibraryParts.insert(.groups) }
+        if !deleted.tags.isEmpty { unsavedLibraryParts.insert(.tags) }
+    }
+
+    // What belonged to a connection another device deleted goes with it, as for one this device could read.
+    private func purgeRemovedUnreadable(_ ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        localState.purge(ids)
+        sessionModels.purge(ids)
+        savedQueries.removeRecords(ofConnections: ids, tombstoning: false)
+    }
+
+    // Kept by id outside the record, so one this build can no longer read keeps the standing it had.
+    private func recordConnectionStanding() {
+        syncCoordinator.metadata.recordConnectionStanding(
+            syncing: Set(connections.filter(\.participatesInSync).map(\.id)),
+            keptOff: Set(connections.filter { !$0.participatesInSync }.map(\.id)),
+            unreadable: storage.unreadableIds
+        )
     }
 
     private func markLibraryPart(_ part: LibraryPart, saved: Bool) {
@@ -497,6 +567,10 @@ final class AppState {
     private func apply(_ change: ConnectionLibraryChange) -> Bool {
         guard !refuseWriteIfNotReady() else { return false }
         guard !change.changedConnectionIds.isEmpty else { return false }
+        guard storage.unreadableIds.isDisjoint(with: change.changedConnectionIds) else {
+            logUnreadableIdRefusal()
+            return false
+        }
         persist(connections: change.connections)
         publishLibrary()
         let syncedIds = Set(change.connections.filter(\.participatesInSync).map(\.id))
@@ -520,6 +594,10 @@ final class AppState {
     @discardableResult
     func addGroup(_ group: ConnectionGroup) -> LibraryWriteOutcome {
         guard !refuseWriteIfNotReady() else { return .refused }
+        guard !groupStorage.unreadableIds.contains(group.id) else {
+            logUnreadableIdRefusal()
+            return .refused
+        }
         guard let updated = ConnectionLibraryEditing.addingGroup(group, to: groups) else { return .invalidPlacement }
         persist(groups: updated)
         syncCoordinator.markDirtyGroup(group.id)
@@ -574,6 +652,10 @@ final class AppState {
     @discardableResult
     func addTag(_ tag: ConnectionTag) -> LibraryWriteOutcome {
         guard !refuseWriteIfNotReady() else { return .refused }
+        guard !tagStorage.unreadableIds.contains(tag.id) else {
+            logUnreadableIdRefusal()
+            return .refused
+        }
         var updated = tags
         updated.append(tag)
         persist(tags: updated)

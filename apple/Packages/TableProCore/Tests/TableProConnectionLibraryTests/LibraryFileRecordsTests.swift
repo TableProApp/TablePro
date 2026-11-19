@@ -32,22 +32,25 @@ struct LibraryFileRecordsTests {
         #expect(try LibraryFileRecords<Row>(decoding: written).elements == [Row(id: 1, name: "One")])
     }
 
-    @Test("A kept record gives way to a saved record with its id")
-    func savedRecordSupersedesKeptOne() throws {
+    @Test("A save never writes over a kept record: one carrying its id is refused, and removing it by id is how it goes")
+    func keptRecordKeepsItsId() throws {
         struct Named: Codable, Equatable {
             let id: UUID
             let name: String
         }
-        let superseded = UUID()
+        let held = UUID()
         let other = UUID()
-        let data = Data(#"[{"id":"\#(superseded.uuidString)","name":7},{"id":"\#(other.uuidString)","name":8}]"#.utf8)
+        let data = Data(#"[{"id":"\#(held.uuidString)","name":7},{"id":"\#(other.uuidString)","name":8}]"#.utf8)
         let records = try LibraryFileRecords<Named>(decoding: data)
-        #expect(records.unreadable.map(\.id) == [superseded, other])
+        #expect(records.unreadable.map(\.id) == [held, other])
 
-        let saved = try LibraryFileRecords.encoded([Named(id: superseded, name: "Pulled")], keeping: records.unreadable)
+        #expect(throws: LibraryFileError.idHeldByUnreadableRecord(held)) {
+            try LibraryFileRecords.encoded([Named(id: held, name: "Pulled")], keeping: records.unreadable)
+        }
 
-        #expect(saved.kept.map(\.id) == [other])
-        let rows = try #require(try JSONSerialization.jsonObject(with: saved.data) as? [NSDictionary])
+        let removed = try LibraryFileRecords.encoded([Named(id: held, name: "Pulled")], keeping: records.unreadable, removing: [held])
+        #expect(removed.kept.map(\.id) == [other])
+        let rows = try #require(try JSONSerialization.jsonObject(with: removed.data) as? [NSDictionary])
         #expect(rows.count == 2)
         #expect(rows.first?["name"] as? String == "Pulled")
         #expect(rows.last?["name"] as? Int == 8)

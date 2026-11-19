@@ -484,6 +484,118 @@ public sealed class QueryTabTests
         Assert.DoesNotContain(_view.Shown, shown => shown.StartsWith("error at", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void ATypedNameIsTheTitleAndTheSnapshotKeepsItApartFromTheAutomaticOne()
+    {
+        var changes = 0;
+        _tab.StateChanged += (_, _) => changes++;
+
+        Assert.True(_tab.CanRename);
+        Assert.True(_tab.Rename("  Monthly report\t"));
+
+        Assert.Equal("Monthly report", _tab.Title);
+        Assert.Equal("Query 1", _tab.AutomaticTitle);
+        Assert.Equal(1, changes);
+        var snapshot = _tab.Snapshot();
+        Assert.Equal(("Query 1", "Monthly report"), (snapshot.Title, snapshot.CustomTitle));
+    }
+
+    [Fact]
+    public void TheSameNameAgainChangesNothingAndAnEmptyOneGoesBackToTheAutomaticTitle()
+    {
+        _tab.Rename("Report");
+        var changes = 0;
+        _tab.StateChanged += (_, _) => changes++;
+
+        Assert.False(_tab.Rename("Report "));
+        Assert.Equal(0, changes);
+
+        Assert.True(_tab.Rename(" \u200B "));
+
+        Assert.Equal("Query 1", _tab.Title);
+        Assert.Null(_tab.CustomTitle);
+        Assert.Null(_tab.Snapshot().CustomTitle);
+        Assert.Equal(1, changes);
+        Assert.False(_tab.Rename(string.Empty));
+    }
+
+    // Typed by the user, so it stays as typed even when it reads like a number the app gives.
+    [Fact]
+    public void ANameThatReadsLikeAnAutomaticTitleIsStillTyped()
+    {
+        Assert.True(_tab.Rename("Query 7"));
+
+        Assert.Equal("Query 7", _tab.CustomTitle);
+        Assert.Equal("Query 1", _tab.Snapshot().Title);
+    }
+
+    [Fact]
+    public void ARestoredNameShowsAndABlankOneIsNone()
+    {
+        var named = new QueryTab(
+            "Query 3", _session, _view, _results, DataModel.Relational, () => new AppSettings(), customTitle: "Report");
+        var blank = new QueryTab(
+            "Query 4", _session, _view, _results, DataModel.Relational, () => new AppSettings(), customTitle: "\u200D ");
+
+        Assert.Equal(("Report", "Query 3"), (named.Title, named.AutomaticTitle));
+        Assert.Equal("Query 4", blank.Title);
+        Assert.Null(blank.CustomTitle);
+    }
+
+    [Fact]
+    public async Task AClosedTabCannotBeRenamed()
+    {
+        await _tab.CloseAsync();
+
+        Assert.False(_tab.CanRename);
+        Assert.False(_tab.Rename("Late"));
+        Assert.Equal("Query 1", _tab.Title);
+    }
+
+    [Theory]
+    [InlineData("a\r\n\tb", "a b")]
+    [InlineData("a\u2028b\u2029c", "a b c")]
+    [InlineData("\u200B\uFEFF ", null)]
+    [InlineData("\u200D", null)]
+    [InlineData("\U0001F468\u200D\U0001F469", "\U0001F468\u200D\U0001F469")]
+    [InlineData("  Sales by region  ", "Sales by region")]
+    [InlineData("", null)]
+    public void ATypedNameIsCleanedOnceAsItIsKept(string typed, string? kept) =>
+        Assert.Equal(kept, QueryTitles.Normalize(typed));
+
+    [Fact]
+    public void ALongNameIsCutAtAHundredGraphemesWithoutSplittingOne()
+    {
+        var family = "\U0001F468\u200D\U0001F469\u200D\U0001F467";
+
+        var cut = QueryTitles.Normalize(string.Concat(Enumerable.Repeat(family, 101)));
+        var spaced = QueryTitles.Normalize(new string('a', 99) + " " + new string('b', 10));
+
+        Assert.Equal(string.Concat(Enumerable.Repeat(family, 100)), cut);
+        Assert.Equal(new string('a', 99), spaced);
+    }
+
+    [Fact]
+    public void TheNextAutomaticTitleSkipsEveryTitleShownOrHidden()
+    {
+        var taken = new HashSet<string> { "Query 1", "Query 2", "Report", "Query 4" };
+
+        Assert.Equal("Query 3", QueryTitles.Next(taken, "Query {0}"));
+        Assert.Equal("Query 1", QueryTitles.Next(new HashSet<string>(), "Query {0}"));
+    }
+
+    [Theory]
+    [InlineData("Query 7", true)]
+    [InlineData("Query 07", false)]
+    [InlineData("Query +7", false)]
+    [InlineData("Query 0", false)]
+    [InlineData("Query 7 ", false)]
+    [InlineData("Query ", false)]
+    [InlineData("Query 99999999999", false)]
+    [InlineData("Report", false)]
+    public void OnlyATitleTheAppWouldNumberCountsAsNumbered(string title, bool numbered) =>
+        Assert.Equal(numbered, QueryTitles.IsNumbered(title, "Query {0}"));
+
     private static CoreError FailedAt(int position) => new(
         "driver.server",
         ["driver.server"],

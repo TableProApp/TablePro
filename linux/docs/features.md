@@ -144,7 +144,7 @@ The app runs on GNOME 50 ([ADR 0015](decisions/0015-gnome-50-platform-floor.md))
 |---|---|
 | Sessions in a window | A window holds several connection sessions, their tabs side by side in one tab view, and a connection already open brings its window forward ([ADR 0028](decisions/0028-sessions-share-a-window.md)) |
 | One instance | A second launch presents the running app; New Window (Ctrl+Shift+N) opens a picker |
-| Tabs | `AdwTabView` with the tab overview and split header bars, adapting down to 360×294 |
+| Tabs | `AdwTabView` with the tab overview and split header bars, adapting down to 360×294. Rename Tab in the tab menu, a double-click on the tab or F2 names a query tab with no file, in a popover on the tab; the name is kept across a restart and a reopen, an empty one goes back to the automatic title, and saving to a file makes the file's name the title |
 | Session restore | The windows of saved connections and database files open at quit open again at launch (Restore Session, on by default), also after New Window or a quit during the restore |
 | Closing safely | Unsaved edits, a save in flight or of unknown outcome, an open editor transaction, or a running export ask before a window closes or the app quits; logout waits while any of those holds, and suspend while a save runs or an export writes |
 | Notifications | Work that finishes in a tab you are not looking at sends a notification |

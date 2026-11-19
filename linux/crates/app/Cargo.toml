@@ -101,6 +101,8 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 # Cells a value takes in the grid's monospace font.
 unicode-width.workspace = true
+# A typed tab name is cut on a whole character as the user sees it.
+unicode-segmentation.workspace = true
 uuid = { workspace = true, features = ["v5"] }
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 # Counts grouped the way the user's locale groups digits.

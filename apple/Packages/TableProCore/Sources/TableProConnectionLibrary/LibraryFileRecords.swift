@@ -27,19 +27,26 @@ public struct LibraryFileRecords<Element: Decodable> {
     }
 }
 
+public enum LibraryFileError: Error, Equatable {
+    case idHeldByUnreadableRecord(UUID)
+}
+
 public extension LibraryFileRecords where Element: Encodable {
-    // A kept record gives way to a saved one with its id, such as the same connection pulled again by sync,
-    // so the file never holds two records for one id.
+    // A kept record is never written over, since this build would re-encode it without what it cannot read: a save
+    // carrying its id is refused. `removing` drops kept records by id, as a deletion another device made does.
     static func encoded(
         _ elements: [Element],
         keeping unreadable: [UnreadableLibraryRecord],
+        removing removedIds: Set<UUID> = [],
         using encoder: JSONEncoder = JSONEncoder()
     ) throws -> (data: Data, kept: [UnreadableLibraryRecord]) {
-        var kept = unreadable
-        if !kept.isEmpty {
+        let kept = unreadable.filter { record in record.id.map { !removedIds.contains($0) } ?? true }
+        let keptIds = Set(kept.compactMap(\.id))
+        if !keptIds.isEmpty {
             let saved = try JSONDecoder().decode([UnreadableLibraryRecord].self, from: encoder.encode(elements))
-            let savedIds = Set(saved.compactMap(\.id))
-            kept.removeAll { $0.id.map(savedIds.contains) ?? false }
+            if let taken = saved.lazy.compactMap(\.id).first(where: keptIds.contains) {
+                throw LibraryFileError.idHeldByUnreadableRecord(taken)
+            }
         }
         let data = try encoder.encode(elements.map(LibraryFileEntry.decoded) + kept.map(LibraryFileEntry.unreadable))
         return (data, kept)

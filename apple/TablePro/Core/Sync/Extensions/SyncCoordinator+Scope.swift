@@ -5,10 +5,12 @@ extension SyncCoordinator {
     func syncBoundary(settings: SyncSettings) -> SyncBoundary {
         let storage = services.connectionStorage
         let connections = storage.loadConnections()
+        // An owner this Mac cannot read sends its records only when its standing says it syncs.
+        let unreadableNotSynced = storage.unreadableConnectionIds.filter { changeTracker.standing(ofConnection: $0) != .syncs }
         return SyncBoundary(
             settings: settings,
             connections: storage.lastLoadFailed ? nil : connections,
-            ownersKeptOffSync: changeTracker.ownersKeptOffSync
+            ownersKeptOffSync: changeTracker.ownersKeptOffSync.union(unreadableNotSynced)
         )
     }
 

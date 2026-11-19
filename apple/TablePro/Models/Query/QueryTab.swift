@@ -45,6 +45,8 @@ enum ResultsViewMode: String, CaseIterable, Equatable {
 struct QueryTab: Identifiable, Equatable {
     let id: UUID
     var title: String
+    // Non-nil once the user named the tab: the title an empty name goes back to, kept apart so a typed `Query 3` is never renumbered.
+    var automaticTitle: String?
     var tabType: TabType
     var isPreview: Bool
     var isPinned: Bool
@@ -167,7 +169,12 @@ struct QueryTab: Identifiable, Equatable {
 
     init(from persisted: PersistedTab, defaultPageSize: Int) {
         self.id = persisted.id
-        self.title = persisted.title
+        self.title = persisted.tabType.fixedTitle ?? persisted.title
+        // A file names its tab, and a blank fallback would leave an emptied name with no title.
+        let namable = persisted.tabType == .query && persisted.sourceFileURL == nil
+        self.automaticTitle = persisted.automaticTitle.flatMap { automatic in
+            namable && !automatic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? automatic : nil
+        }
         self.tabType = persisted.tabType
         self.isPreview = false
         self.isPinned = persisted.isPinned
@@ -334,6 +341,7 @@ struct QueryTab: Identifiable, Equatable {
         return PersistedTab(
             id: id,
             title: title,
+            automaticTitle: automaticTitle,
             query: persistedQuery,
             tabType: tabType,
             tableName: tableContext.tableName,
@@ -368,6 +376,7 @@ struct QueryTab: Identifiable, Equatable {
     static func == (lhs: QueryTab, rhs: QueryTab) -> Bool {
         lhs.id == rhs.id
             && lhs.title == rhs.title
+            && lhs.automaticTitle == rhs.automaticTitle
             && lhs.execution == rhs.execution
             && lhs.schemaVersion == rhs.schemaVersion
             && lhs.paginationVersion == rhs.paginationVersion

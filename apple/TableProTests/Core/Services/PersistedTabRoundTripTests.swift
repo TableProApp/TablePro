@@ -587,4 +587,60 @@ struct PersistedTabRoundTripTests {
         let decoded = try JSONDecoder().decode(PersistedTab.self, from: Data(json.utf8))
         #expect(decoded.versionHistorySubject == nil)
     }
+
+    private func namedQueryTab() -> QueryTab {
+        var tab = QueryTab(title: "Monthly report", query: "", tabType: .query)
+        tab.automaticTitle = "Query 2"
+        return tab
+    }
+
+    @Test("A tab's name and the title it goes back to survive the saved tab set")
+    func nameRoundTrips() throws {
+        let data = try JSONEncoder().encode(namedQueryTab().toPersistedTab())
+        let restored = QueryTab(from: try JSONDecoder().decode(PersistedTab.self, from: data), defaultPageSize: 1_000)
+
+        #expect(restored.title == "Monthly report")
+        #expect(restored.automaticTitle == "Query 2")
+    }
+
+    @Test("A tab saved before names existed comes back automatic")
+    func legacyTabDecodesAutomatic() throws {
+        let current = try JSONEncoder().encode(namedQueryTab().toPersistedTab())
+        let parsed = try JSONSerialization.jsonObject(with: current)
+        var object = try #require(parsed as? [String: Any])
+        object.removeValue(forKey: "automaticTitle")
+        let legacy = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(PersistedTab.self, from: legacy)
+
+        #expect(decoded.automaticTitle == nil)
+        #expect(QueryTab(from: decoded, defaultPageSize: 1_000).isNamedByUser == false)
+    }
+
+    @Test("A named tab saves the name as its title, which is what an older build shows")
+    func olderBuildReadsTheNameAsTheTitle() throws {
+        let data = try JSONEncoder().encode(namedQueryTab().toPersistedTab())
+        let parsed = try JSONSerialization.jsonObject(with: data)
+        let object = try #require(parsed as? [String: Any])
+
+        #expect(object["title"] as? String == "Monthly report")
+        #expect(object["automaticTitle"] as? String == "Query 2")
+    }
+
+    @Test("A file tab or a blank fallback never comes back named")
+    func unnamableSavedTabComesBackAutomatic() {
+        let file = PersistedTab(
+            id: UUID(),
+            title: "report.sql",
+            automaticTitle: "Query 2",
+            query: "SELECT 1",
+            tabType: .query,
+            tableName: nil,
+            sourceFileURL: URL(fileURLWithPath: "/tmp/report.sql")
+        )
+        let blank = PersistedTab(id: UUID(), title: "Report", automaticTitle: "  ", query: "", tabType: .query, tableName: nil)
+
+        #expect(QueryTab(from: file, defaultPageSize: 1_000).automaticTitle == nil)
+        #expect(QueryTab(from: blank, defaultPageSize: 1_000).automaticTitle == nil)
+    }
 }

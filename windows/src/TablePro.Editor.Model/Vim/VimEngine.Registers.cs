@@ -62,38 +62,36 @@ public sealed partial class VimEngine
 
     private static bool IsUppercaseLetter(string name) => name.Length == 1 && char.IsUpper(name[0]);
 
+    // ' goes to the first character of the mark's line and takes whole lines after an operator; ` goes to the mark
+    // itself. An unset mark ends the command.
     internal void JumpToMark(string name, bool exact)
     {
-        var length = _buffer.Length;
-        var origin = _buffer.SelectedRange.Location;
-        if (name is "'" or "`")
+        int? mark = name switch
         {
-            if (LastJumpOrigin is { } previous)
-            {
-                _buffer.SetCaret(Math.Clamp(previous, 0, length));
-                LastJumpOrigin = origin;
-            }
+            "'" or "`" => LastJumpOrigin,
+            "<" => LastVisualStart,
+            ">" => LastVisualEnd,
+            _ => Marks.TryGetValue(name, out var offset) ? offset : null,
+        };
+        if (mark is not { } found)
+        {
+            ApplyMotion(null, VimMotionKind.Exclusive);
             return;
         }
-        if (name == "<" && LastVisualStart is { } start)
+        var clamped = Math.Clamp(found, 0, _buffer.Length);
+        if (name is not ("'" or "`" or "<" or ">") && MarkColumns.TryGetValue(name, out var column))
         {
-            _buffer.SetCaret(Math.Clamp(start, 0, length));
-            LastJumpOrigin = origin;
-            return;
+            var line = _buffer.LineRange(clamped);
+            clamped = Math.Min(line.Location + column, Math.Max(line.Location, ContentEnd(line) - 1));
         }
-        if (name == ">" && LastVisualEnd is { } end)
+        if (exact)
         {
-            _buffer.SetCaret(Math.Clamp(end, 0, length));
-            LastJumpOrigin = origin;
-            return;
+            ApplyMotion(clamped, VimMotionKind.Exclusive, jump: true);
         }
-        if (!Marks.TryGetValue(name, out var offset))
+        else
         {
-            return;
+            ApplyMotion(FirstNonBlankOffset(_buffer.LineRange(clamped).Location), VimMotionKind.Linewise, jump: true);
         }
-        var clamped = Math.Clamp(offset, 0, length);
-        _buffer.SetCaret(exact ? clamped : FirstNonBlankOffset(_buffer.LineRange(clamped).Location));
-        LastJumpOrigin = origin;
     }
 
     internal void RecordVisualSelection(bool linewise)
@@ -134,30 +132,154 @@ public sealed partial class VimEngine
         }
     }
 
-    // Every change to the text, typed, pasted, undone or the engine's own, moves the marks with it.
+    internal void SetMark(string name, int offset)
+    {
+        Marks[name] = offset;
+        MarkColumns[name] = offset - _buffer.LineRange(offset).Location;
+    }
+
+    // Every change to the text, typed, pasted, undone or the engine's own, moves the marks with it. Removing a named
+    // mark's line removes the mark, and the other positions go to where the lines were. Each edit is kept with the
+    // positions from before it, so the edit that reverses it, as undo does, puts them back, as Vim's undo restores its
+    // marks.
     private void OnDocumentChanged(object? sender, TextChange change)
     {
-        if (Marks.Count == 0 && LastJumpOrigin is null && LastInsertOffset is null)
+        bool? undoes = _buffer.Model.Document.Undo.IsReplaying ? ReplayUndoes() : null;
+        if (undoes is null)
+        {
+            _replayRedoCount = null;
+        }
+        var hasPositions = Marks.Count > 0 || LastJumpOrigin is not null || LastInsertOffset is not null
+            || LastVisualStart is not null || LastVisualEnd is not null;
+        if (!hasPositions && EditJournal.Count == 0)
         {
             return;
         }
-        foreach (var (key, offset) in Marks.ToList())
+        var before = new VimPositionSnapshot(
+            new Dictionary<string, int>(Marks, StringComparer.Ordinal),
+            new Dictionary<string, int>(MarkColumns, StringComparer.Ordinal),
+            LastJumpOrigin,
+            LastInsertOffset,
+            LastVisualStart,
+            LastVisualEnd);
+        VimPositionSnapshot? restored = null;
+        // Only undo and redo reverse an edit; typing back what an earlier edit removed, past later edits, is a new edit.
+        var index = undoes is { } undo ? ReversedJournalIndex(change, reversesUndo: !undo) : -1;
+        if (index >= 0)
         {
-            Marks[key] = MapMark(offset, change);
+            restored = EditJournal[index].Positions;
+            for (var i = index; i < EditJournal.Count; i++)
+            {
+                EditJournalTextLength -= EditJournal[i].TextLength;
+            }
+            EditJournal.RemoveRange(index, EditJournal.Count - index);
         }
-        LastJumpOrigin = LastJumpOrigin is { } origin ? MapMark(origin, change) : null;
-        LastInsertOffset = LastInsertOffset is { } insert ? MapMark(insert, change) : null;
+        var edit = new VimMarkChange(change, _buffer);
+        foreach (var (name, offset) in Marks.ToList())
+        {
+            var moved = edit.Map(offset, removable: true);
+            if (moved is not { KeepsColumn: true })
+            {
+                MarkColumns.Remove(name);
+            }
+            if (moved is { } mapped)
+            {
+                Marks[name] = mapped.Offset;
+            }
+            else
+            {
+                Marks.Remove(name);
+            }
+        }
+        LastJumpOrigin = LastJumpOrigin is { } origin ? edit.Map(origin, removable: false)?.Offset : null;
+        LastInsertOffset = LastInsertOffset is { } insert ? edit.Map(insert, removable: false, boundary: true)?.Offset : null;
+        LastVisualStart = LastVisualStart is { } start ? edit.Map(start, removable: false)?.Offset : null;
+        LastVisualEnd = LastVisualEnd is { } end ? edit.Map(end, removable: false)?.Offset : null;
+        if (restored is not null)
+        {
+            RestorePositions(restored);
+        }
+        // Every edit is kept, in order, so an undo always finds the records of the step it reverses at the end.
+        var record = new VimEditRecord(change.Offset, change.RemovedText, change.InsertedText, before, undoes == true);
+        EditJournal.Add(record);
+        EditJournalTextLength += record.TextLength;
+        // An undo step can hold a long run of typing, so the journal keeps thousands of edits, bounded by the text they
+        // hold rather than their number.
+        while (EditJournal.Count > 10_000 || EditJournalTextLength > 1_000_000)
+        {
+            EditJournalTextLength -= EditJournal[0].TextLength;
+            EditJournal.RemoveAt(0);
+        }
     }
 
-    private static int MapMark(int offset, TextChange change)
+    // Whether the undo history is undoing, not redoing. An edit empties the redo stack, so the first replay after one
+    // undoes; after that an undo takes a step onto the redo stack and a redo takes one off.
+    private bool ReplayUndoes()
     {
-        var removedEnd = change.Offset + change.RemovedLength;
-        if (offset >= removedEnd)
+        var redoCount = _buffer.Model.Document.Undo.RedoCount;
+        if (_replayRedoCount is not { } seen)
         {
-            return offset + change.InsertedLength - change.RemovedLength;
+            _replayUndoes = true;
         }
-        // Inside replaced text a mark keeps its place where the new text reaches it, as a case change does.
-        return offset >= change.Offset ? Math.Min(offset, change.Offset + change.InsertedLength) : offset;
+        else if (redoCount != seen)
+        {
+            _replayUndoes = redoCount > seen;
+        }
+        _replayRedoCount = redoCount;
+        return _replayUndoes;
+    }
+
+    // Undo reverses the newest step first, so only the newest records, folded together, can match: an undo reverses
+    // only edits, a redo only undos. The undo history joins a run of keys, such as backspaces, into one edit, which is
+    // why more than one record may be folded. Records of the other direction are passed over: each is an undo of an
+    // edit already gone from the journal, so the two cancel out.
+    private int ReversedJournalIndex(TextChange change, bool reversesUndo)
+    {
+        VimEditRecord? folded = null;
+        for (var i = EditJournal.Count - 1; i >= 0; i--)
+        {
+            var record = EditJournal[i];
+            if (record.IsUndo != reversesUndo)
+            {
+                continue;
+            }
+            var combined = record;
+            if (folded is not null)
+            {
+                if (record.FollowedBy(folded) is not { } joined)
+                {
+                    return -1;
+                }
+                combined = joined;
+            }
+            if (combined.IsReversedBy(change))
+            {
+                return i;
+            }
+            folded = combined;
+        }
+        return -1;
+    }
+
+    // A mark set since the reversed edit keeps its place, as Vim restores only the marks its undo step saved.
+    private void RestorePositions(VimPositionSnapshot saved)
+    {
+        foreach (var (name, offset) in saved.Marks)
+        {
+            Marks[name] = offset;
+            if (saved.MarkColumns.TryGetValue(name, out var column))
+            {
+                MarkColumns[name] = column;
+            }
+            else
+            {
+                MarkColumns.Remove(name);
+            }
+        }
+        LastJumpOrigin = saved.LastJumpOrigin ?? LastJumpOrigin;
+        LastInsertOffset = saved.LastInsertOffset ?? LastInsertOffset;
+        LastVisualStart = saved.LastVisualStart ?? LastVisualStart;
+        LastVisualEnd = saved.LastVisualEnd ?? LastVisualEnd;
     }
 
     internal void NoteEdit(int offset)

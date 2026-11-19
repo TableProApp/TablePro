@@ -5,18 +5,8 @@
 
 import AppKit
 
-/// AppKit appends the open-window list to whichever menu is assigned to `NSApp.windowsMenu`. The
-/// window-tabbing commands are built here because the app opts into window tabbing through
-/// `NSWindow.tabbingMode`, and `NSWindow` implements and validates all four, so they dim when the
-/// window is not part of a tab group.
-///
-/// The two that switch window tabs have to be built here too, under their own names. When a menu
-/// does not already hold `selectPreviousTab:` and `selectNextTab:`, AppKit inserts its own the first
-/// time the menu is shown, titled Show Previous Tab and Show Next Tab and bound to Control-Shift-Tab
-/// and Control-Tab. Measured: that put a second pair with the editor tabs' titles in this menu, and
-/// once inserted it took Control-Tab ahead of Switch to Recent Tab and switched the window tab
-/// instead. Owning both actions stops the insertion, and leaves View's Show Tab Bar and Show All
-/// Tabs in place. The names are Xcode's, which has both kinds of tab as well.
+// The window-tabbing commands live here because `NSWindow` validates them, so they dim outside a tab group.
+// Owning `selectPreviousTab:` and `selectNextTab:` stops AppKit inserting its own pair, which took Control-Tab from Switch to Recent Tab.
 @MainActor
 enum WindowMenuBuilder {
     static let tabNumberRange = 1...9
@@ -62,6 +52,12 @@ enum WindowMenuBuilder {
                 String(localized: "Pin Tab"),
                 action: #selector(MainSplitViewController.togglePinnedEditorTab(_:)),
                 shortcut: .pinTab,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Rename Tab"),
+                action: #selector(MainSplitViewController.renameEditorTab(_:)),
+                shortcut: .renameTab,
                 keyboard: keyboard
             ),
             MenuItemFactory.separator,

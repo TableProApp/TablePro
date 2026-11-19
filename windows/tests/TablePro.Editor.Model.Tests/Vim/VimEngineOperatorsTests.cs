@@ -309,12 +309,12 @@ public sealed class VimEngineOperatorsTests
     }
 
     [Fact]
-    public void CWChangesWord()
+    public void CWChangesToTheWordEnd()
     {
         var s = new VimSession(Initial, caret: 0);
         s.Press("cw");
         Assert.Equal(VimMode.Insert, s.Mode);
-        Assert.Equal("world\nsecond line\nthird line\n", s.Text);
+        Assert.Equal(" world\nsecond line\nthird line\n", s.Text);
     }
 
     [Fact]
@@ -399,5 +399,310 @@ public sealed class VimEngineOperatorsTests
         Assert.Equal("world\nsecond line\nthird line\n", s.Text);
         s.Key("P", shift: true);
         Assert.Equal(Initial, s.Text);
+    }
+
+    [Fact]
+    public void AKeyThatIsNotAMotionEndsTheOperator()
+    {
+        var s = new VimSession("one two\n", caret: 0);
+        s.Press("dxw");
+        Assert.Equal("one two\n", s.Text);
+        Assert.Equal(4, s.Caret);
+    }
+
+    [Theory]
+    [InlineData("dgi")]
+    [InlineData("dgv")]
+    [InlineData("dgJ")]
+    [InlineData("dgu")]
+    public void AGCommandThatIsNotAMotionEndsTheOperator(string keys)
+    {
+        var s = new VimSession("one\ntwo\n", caret: 0);
+        s.Press(keys);
+        Assert.Equal(VimMode.Normal, s.Mode);
+        Assert.False(s.Engine.IsPending);
+        s.Press("w");
+        Assert.Equal("one\ntwo\n", s.Text);
+        Assert.Equal(4, s.Caret);
+    }
+
+    [Fact]
+    public void DPercentDeletesThroughTheMatchingBracket()
+    {
+        var s = new VimSession("a (b c) d\n", caret: 2);
+        s.Press("d%");
+        Assert.Equal("a  d\n", s.Text);
+        Assert.Equal("(b c)", s.Engine.Register.Text);
+    }
+
+    [Fact]
+    public void CPercentChangesTheBracketedText()
+    {
+        var s = new VimSession("a (b c) d\n", caret: 2);
+        s.Press("c%");
+        Assert.Equal("a  d\n", s.Text);
+        Assert.Equal(VimMode.Insert, s.Mode);
+        Assert.Equal(2, s.Caret);
+    }
+
+    [Fact]
+    public void DPercentWithNoBracketEndsTheCommand()
+    {
+        var s = new VimSession("a b c d\n", caret: 0);
+        s.Press("d%w");
+        Assert.Equal("a b c d\n", s.Text);
+        Assert.Equal(2, s.Caret);
+    }
+
+    [Fact]
+    public void DCountPercentTakesTheLinesThatFarThrough()
+    {
+        var s = new VimSession("a\nb\nc\nd\n", caret: 0);
+        s.Press("d50%");
+        Assert.Equal("c\nd\n", s.Text);
+        Assert.True(s.Engine.Register.IsLinewise);
+    }
+
+    [Fact]
+    public void DnDeletesUpToTheNextMatch()
+    {
+        var s = new VimSession("foo bar foo baz\n", caret: 0);
+        s.Press("/foo\r0dn");
+        Assert.Equal("foo baz\n", s.Text);
+        Assert.Equal("foo bar ", s.Engine.Register.Text);
+    }
+
+    [Fact]
+    public void DStarDeletesUpToTheNextMatchOfTheWord()
+    {
+        var s = new VimSession("foo x foo y\n", caret: 0);
+        s.Press("d*");
+        Assert.Equal("foo y\n", s.Text);
+    }
+
+    [Fact]
+    public void DRightParenDeletesUpToTheNextSentence()
+    {
+        var s = new VimSession("One. Two. Three.\n", caret: 0);
+        s.Press("d)");
+        Assert.Equal("Two. Three.\n", s.Text);
+    }
+
+    [Fact]
+    public void DSectionDeletesUpToTheNextSection()
+    {
+        var s = new VimSession("x\n{\ny\n}\n", caret: 0);
+        s.Press("d]]");
+        Assert.Equal("{\ny\n}\n", s.Text);
+    }
+
+    [Fact]
+    public void DQuoteMarkTakesTheLinesThroughTheMark()
+    {
+        var s = new VimSession("aaa\nbbb\nccc\n", caret: 8);
+        s.Press("magg");
+        s.Press("d'a");
+        Assert.Equal(string.Empty, s.Text);
+        Assert.Equal("aaa\nbbb\nccc\n", s.Engine.Register.Text);
+    }
+
+    [Fact]
+    public void DBacktickMarkDeletesUpToTheMark()
+    {
+        var s = new VimSession("aaa\nbbb\nccc\n", caret: 5);
+        s.Press("magg");
+        s.Press("d`a");
+        Assert.Equal("bb\nccc\n", s.Text);
+    }
+
+    [Fact]
+    public void DQuoteOnAnUnsetMarkEndsTheCommand()
+    {
+        var s = new VimSession("aaa bbb\n", caret: 0);
+        s.Press("d'aw");
+        Assert.Equal("aaa bbb\n", s.Text);
+        Assert.Equal(4, s.Caret);
+    }
+
+    [Fact]
+    public void DLTakesTheLinesToTheLastOnScreen()
+    {
+        var s = new VimSession("aaa\nbbb\nccc\n", caret: 0);
+        s.Press("dL");
+        Assert.Equal(string.Empty, s.Text);
+    }
+
+    [Fact]
+    public void DjOnTheLastLineDeletesNothing()
+    {
+        var s = new VimSession("aaa\nbbb\n", caret: 4);
+        s.Press("djx");
+        Assert.Equal("aaa\nbb\n", s.Text);
+    }
+
+    [Fact]
+    public void DMinusOnTheFirstLineDeletesNothing()
+    {
+        var s = new VimSession("a\nb\n", caret: 0);
+        s.Press("d-x");
+        Assert.Equal("\nb\n", s.Text);
+    }
+
+    [Fact]
+    public void DPlusTakesTheLineAndTheNext()
+    {
+        var s = new VimSession("a\nb\nc\n", caret: 0);
+        s.Press("d+");
+        Assert.Equal("c\n", s.Text);
+    }
+
+    [Fact]
+    public void DbAtALineStartKeepsTheLineBreak()
+    {
+        var s = new VimSession("foo bar\nbaz\n", caret: 8);
+        s.Press("db");
+        Assert.Equal("foo \nbaz\n", s.Text);
+        Assert.Equal("bar", s.Engine.Register.Text);
+    }
+
+    [Fact]
+    public void DBraceFromTheIndentTakesTheParagraphsLines()
+    {
+        var s = new VimSession("aaa\nbbb\n\nccc\n", caret: 0);
+        s.Press("d}");
+        Assert.Equal("\nccc\n", s.Text);
+        Assert.Equal("aaa\nbbb\n", s.Engine.Register.Text);
+        Assert.True(s.Engine.Register.IsLinewise);
+    }
+
+    [Fact]
+    public void DBraceFromInsideALineStopsBeforeTheLineBreak()
+    {
+        var s = new VimSession("aaa\nbbb\n\nccc\n", caret: 1);
+        s.Press("d}");
+        Assert.Equal("a\n\nccc\n", s.Text);
+        Assert.Equal("aa\nbbb", s.Engine.Register.Text);
+        Assert.False(s.Engine.Register.IsLinewise);
+    }
+
+    [Fact]
+    public void DBraceOnTheLastParagraphTakesItsLines()
+    {
+        var s = new VimSession("aaa\nbbb\n", caret: 0);
+        s.Press("d}");
+        Assert.Equal(string.Empty, s.Text);
+        Assert.True(s.Engine.Register.IsLinewise);
+    }
+
+    [Fact]
+    public void DSearchFromTheIndentTakesWholeLines()
+    {
+        var s = new VimSession("hello world\nsecond line\n", caret: 0);
+        s.Press("d/sec\r");
+        Assert.Equal("second line\n", s.Text);
+        Assert.True(s.Engine.Register.IsLinewise);
+    }
+
+    [Fact]
+    public void DwOnTheLastWordStopsAtTheLineEnd()
+    {
+        var s = new VimSession("foo bar\nbaz\n", caret: 4);
+        s.Press("dw");
+        Assert.Equal("foo \nbaz\n", s.Text);
+    }
+
+    [Fact]
+    public void DBigWOnTheLastWordStopsAtTheLineEnd()
+    {
+        var s = new VimSession("foo b.r\n  baz\n", caret: 4);
+        s.Press("dW");
+        Assert.Equal("foo \n  baz\n", s.Text);
+    }
+
+    [Fact]
+    public void DwOnAnEmptyLineDeletesTheLine()
+    {
+        var s = new VimSession("aaa\n\nbbb\n", caret: 4);
+        s.Press("dw");
+        Assert.Equal("aaa\nbbb\n", s.Text);
+    }
+
+    [Fact]
+    public void DwOnAnEmptyLastLineDeletesNothing()
+    {
+        var s = new VimSession("aaa\n\n", caret: 4);
+        s.Press("dwk");
+        Assert.Equal("aaa\n\n", s.Text);
+        Assert.Equal(0, s.Caret);
+    }
+
+    [Fact]
+    public void CwWithACountChangesToTheLastWordsEnd()
+    {
+        var s = new VimSession("foo bar baz\n", caret: 0);
+        s.Press("2cw");
+        Assert.Equal(" baz\n", s.Text);
+        Assert.Equal(VimMode.Insert, s.Mode);
+    }
+
+    [Fact]
+    public void CwOnBlanksChangesThemUpToTheNextWord()
+    {
+        var s = new VimSession("foo   bar\n", caret: 4);
+        s.Press("cw");
+        Assert.Equal("foo bar\n", s.Text);
+    }
+
+    [Fact]
+    public void CBigWChangesToTheBigWordsEnd()
+    {
+        var s = new VimSession("a.b c\n", caret: 0);
+        s.Press("cW");
+        Assert.Equal(" c\n", s.Text);
+    }
+
+    [Fact]
+    public void CjLeavesOneEmptyLineToTypeOn()
+    {
+        var s = new VimSession("a\nb\nc\n", caret: 0);
+        s.Press("cj");
+        Assert.Equal("\nc\n", s.Text);
+        Assert.Equal(VimMode.Insert, s.Mode);
+        Assert.Equal(0, s.Caret);
+        Assert.Equal("a\nb\n", s.Engine.Register.Text);
+    }
+
+    [Fact]
+    public void CBraceFromTheIndentLeavesOneEmptyLine()
+    {
+        var s = new VimSession("aaa\nbbb\n\nccc\n", caret: 0);
+        s.Press("c}");
+        Assert.Equal("\n\nccc\n", s.Text);
+        Assert.Equal(VimMode.Insert, s.Mode);
+    }
+
+    [Fact]
+    public void CGLeavesOneEmptyLine()
+    {
+        var s = new VimSession("a\nb\nc\n", caret: 2);
+        s.Press("cG");
+        Assert.Equal("a\n\n", s.Text);
+        Assert.Equal(2, s.Caret);
+    }
+
+    [Fact]
+    public void IndentWithACharacterMotionShiftsTheWholeLine()
+    {
+        var s = new VimSession("hello world\n", caret: 6);
+        s.Press(">w");
+        Assert.Equal("    hello world\n", s.Text);
+    }
+
+    [Fact]
+    public void IndentWithAWordObjectShiftsTheWholeLine()
+    {
+        var s = new VimSession("hello world\n", caret: 6);
+        s.Press(">iw");
+        Assert.Equal("    hello world\n", s.Text);
     }
 }

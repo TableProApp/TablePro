@@ -34,47 +34,29 @@ extension VimEngine {
     }
 
     func moveDown(_ count: Int, in buffer: VimTextBuffer) {
-        let pos = buffer.selectedRange().location
-        let (line, col) = buffer.lineAndColumn(forOffset: pos)
-        if goalColumn == nil { goalColumn = col }
-        let targetLine = min(buffer.lineCount - 1, line + count)
-        let newPos = buffer.offset(forLine: targetLine, column: goalColumn ?? col)
-        if let op = pendingOperator {
-            let startLineRange = buffer.lineRange(forOffset: pos)
-            let endLineRange = buffer.lineRange(forOffset: newPos)
-            let rangeStart = min(startLineRange.location, endLineRange.location)
-            let rangeEnd = max(
-                startLineRange.location + startLineRange.length,
-                endLineRange.location + endLineRange.length
-            )
-            let opRange = NSRange(location: rangeStart, length: rangeEnd - rangeStart)
-            executeOperatorOnRange(op, range: opRange, linewise: true, in: buffer)
-            pendingOperator = nil
-        } else {
-            buffer.setSelectedRange(NSRange(location: newPos, length: 0))
-        }
+        moveVertically(by: count, in: buffer)
     }
 
     func moveUp(_ count: Int, in buffer: VimTextBuffer) {
+        moveVertically(by: -count, in: buffer)
+    }
+
+    // An operator takes the lines whole; on the first or last line it has nothing to take and the command ends.
+    private func moveVertically(by delta: Int, in buffer: VimTextBuffer) {
         let pos = buffer.selectedRange().location
         let (line, col) = buffer.lineAndColumn(forOffset: pos)
         if goalColumn == nil { goalColumn = col }
-        let targetLine = max(0, line - count)
+        let targetLine = min(max(0, line + delta), buffer.lineCount - 1)
         let newPos = buffer.offset(forLine: targetLine, column: goalColumn ?? col)
-        if let op = pendingOperator {
-            let startLineRange = buffer.lineRange(forOffset: newPos)
-            let endLineRange = buffer.lineRange(forOffset: pos)
-            let rangeStart = min(startLineRange.location, endLineRange.location)
-            let rangeEnd = max(
-                startLineRange.location + startLineRange.length,
-                endLineRange.location + endLineRange.length
-            )
-            let opRange = NSRange(location: rangeStart, length: rangeEnd - rangeStart)
-            executeOperatorOnRange(op, range: opRange, linewise: true, in: buffer)
-            pendingOperator = nil
-        } else {
+        guard let op = pendingOperator else {
             buffer.setSelectedRange(NSRange(location: newPos, length: 0))
+            return
         }
+        guard targetLine != line else {
+            cancelPendingCommand()
+            return
+        }
+        operate(op, from: pos, to: newPos, kind: .linewise, in: buffer)
     }
 
     func moveToLineStart(in buffer: VimTextBuffer) {
@@ -118,28 +100,51 @@ extension VimEngine {
         buffer.setSelectedRange(NSRange(location: offset, length: 0))
     }
 
-    func wordForward(_ count: Int, in buffer: VimTextBuffer) {
+    // `cw` on a word changes to its end, as `ce` does; elsewhere `w` and `W` go to the next word's start.
+    func wordMotion(_ count: Int, bigWord: Bool, in buffer: VimTextBuffer) {
+        let pos = buffer.selectedRange().location
+        if pendingOperator == .change, pos < buffer.length, !isBlank(buffer.character(at: pos)) {
+            let end: (Int) -> Int = { bigWord ? buffer.bigWordEnd(from: $0) : buffer.wordEnd(from: $0) }
+            var target = end(pos - 1)
+            for _ in 1..<max(1, count) { target = end(target) }
+            applyMotion(to: target, kind: .inclusive, in: buffer)
+            return
+        }
+        applyMotion(to: wordForwardTarget(count, bigWord: bigWord, in: buffer), kind: .exclusive, in: buffer)
+    }
+
+    // After an operator the last word stops at the end of its line, and from an empty line at the next line's
+    // start, which `:help exclusive` turns into the empty line.
+    func wordForwardTarget(_ count: Int, bigWord: Bool, in buffer: VimTextBuffer) -> Int? {
         var pos = buffer.selectedRange().location
         let isOperator = pendingOperator != nil
         for i in 0..<count {
-            let prev = pos
-            let next = buffer.wordBoundary(forward: true, from: pos)
+            let next = bigWord
+                ? buffer.bigWordBoundary(forward: true, from: pos)
+                : buffer.wordBoundary(forward: true, from: pos)
             if isOperator && i == count - 1 {
-                let prevLineRange = buffer.lineRange(forOffset: prev)
-                let nextLineRange = buffer.lineRange(forOffset: min(next, buffer.length))
-                if prevLineRange.location != nextLineRange.location {
-                    let lineEnd = prevLineRange.location + prevLineRange.length
-                    let contentEnd = lineEnd > prevLineRange.location
-                        && lineEnd <= buffer.length
-                        && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
-                    pos = contentEnd
-                    break
+                let line = buffer.lineRange(forOffset: pos)
+                if buffer.lineRange(forOffset: min(next, buffer.length)).location != line.location {
+                    let end = contentEnd(ofLineAt: pos, in: buffer)
+                    if end > line.location { return end }
+                    return NSMaxRange(line) < buffer.length ? NSMaxRange(line) : nil
                 }
             }
             pos = next
         }
-        if !isOperator { pos = clampToContentPosition(pos, in: buffer) }
-        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+        return pos
+    }
+
+    func contentEnd(ofLineAt offset: Int, in buffer: VimTextBuffer) -> Int {
+        let lineRange = buffer.lineRange(forOffset: offset)
+        let lineEnd = NSMaxRange(lineRange)
+        let endsInNewline = lineEnd > lineRange.location && lineEnd <= buffer.length
+            && buffer.character(at: lineEnd - 1) == 0x0A
+        return endsInNewline ? lineEnd - 1 : lineEnd
+    }
+
+    func isBlank(_ ch: unichar) -> Bool {
+        ch == 0x20 || ch == 0x09 || ch == 0x0A || ch == 0x0D
     }
 
     func clampToContentPosition(_ offset: Int, in buffer: VimTextBuffer) -> Int {
@@ -173,14 +178,6 @@ extension VimEngine {
         buffer.setSelectedRange(NSRange(location: pos, length: 0))
     }
 
-    func bigWordForward(_ count: Int, in buffer: VimTextBuffer) {
-        var pos = buffer.selectedRange().location
-        let isOperator = pendingOperator != nil
-        for _ in 0..<count { pos = buffer.bigWordBoundary(forward: true, from: pos) }
-        if !isOperator { pos = clampToContentPosition(pos, in: buffer) }
-        buffer.setSelectedRange(NSRange(location: pos, length: 0))
-    }
-
     func bigWordBackward(_ count: Int, in buffer: VimTextBuffer) {
         var pos = buffer.selectedRange().location
         for _ in 0..<count { pos = buffer.bigWordBoundary(forward: false, from: pos) }
@@ -205,35 +202,45 @@ extension VimEngine {
         buffer.setSelectedRange(NSRange(location: pos, length: 0))
     }
 
-    func jumpToMatchingBracket(in buffer: VimTextBuffer) {
+    // The first bracket at or after the cursor on its line, and the bracket that pairs with it.
+    func matchingBracketTarget(in buffer: VimTextBuffer) -> Int? {
         let pos = buffer.selectedRange().location
-        let lineRange = buffer.lineRange(forOffset: pos)
-        let lineEnd = lineRange.location + lineRange.length
-        let contentEnd = lineEnd > lineRange.location
-            && lineEnd <= buffer.length
-            && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
+        let lineEnd = contentEnd(ofLineAt: pos, in: buffer)
         var scan = pos
-        while scan < contentEnd {
-            if let target = buffer.matchingBracket(at: scan) {
-                buffer.setSelectedRange(NSRange(location: target, length: 0))
-                return
-            }
+        while scan < lineEnd {
+            if let target = buffer.matchingBracket(at: scan) { return target }
             scan += 1
         }
+        return nil
     }
 
-    func jumpToVisibleLine(_ position: VimScreenPosition, in buffer: VimTextBuffer) {
+    // `{count}%`: the line that far through the text, as Vim rounds it.
+    func percentLineTarget(_ count: Int, in buffer: VimTextBuffer) -> Int? {
+        guard count <= 100 else { return nil }
+        let line = min(max(0, (count * buffer.lineCount + 99) / 100 - 1), buffer.lineCount - 1)
+        return firstNonBlankOffset(from: buffer.offset(forLine: line, column: 0), in: buffer)
+    }
+
+    // Enter and `+` go down `delta` lines, `-` up, to the first non-blank; at the first or last line they fail.
+    func lineStepTarget(_ delta: Int, in buffer: VimTextBuffer) -> Int? {
+        let line = buffer.lineAndColumn(forOffset: buffer.selectedRange().location).line
+        let target = min(max(0, line + delta), buffer.lineCount - 1)
+        guard target != line else { return nil }
+        return firstNonBlankOffset(from: buffer.offset(forLine: target, column: 0), in: buffer)
+    }
+
+    // A count is lines from the top for H and from the bottom for L.
+    func visibleLineTarget(_ position: VimScreenPosition, count: Int, in buffer: VimTextBuffer) -> Int {
         let (firstLine, lastLine) = buffer.visibleLineRange()
+        let skip = max(0, count - 1)
         let targetLine: Int
         switch position {
-        case .top: targetLine = firstLine
-        case .bottom: targetLine = lastLine
+        case .top: targetLine = min(firstLine + skip, lastLine)
+        case .bottom: targetLine = max(lastLine - skip, firstLine)
         case .middle: targetLine = (firstLine + lastLine) / 2
         }
         let lineStart = buffer.offset(forLine: targetLine, column: 0)
-        let target = firstNonBlankOffset(from: lineStart, in: buffer)
-        buffer.setSelectedRange(NSRange(location: target, length: 0))
-        goalColumn = nil
+        return firstNonBlankOffset(from: lineStart, in: buffer)
     }
 
     func executeFindChar(_ char: Character, request: VimFindCharRequest, in buffer: VimTextBuffer) -> Bool {
@@ -289,30 +296,26 @@ extension VimEngine {
             }
         }
 
-        guard var finalPos = resolved else { return true }
+        guard var finalPos = resolved else {
+            cancelPendingCommand()
+            return true
+        }
         if request.till {
             finalPos = request.forward ? previous(finalPos) : characterEnd(at: finalPos, in: buffer)
         }
-        executeMotion(in: buffer, inclusive: true) {
+        // `f` and `t` take the character they reach; `F` and `T` stop short of the cursor's.
+        executeMotion(in: buffer, inclusive: request.forward) {
             buffer.setSelectedRange(NSRange(location: finalPos, length: 0))
         }
         return true
     }
 
-    func sentenceForward(_ count: Int, in buffer: VimTextBuffer) {
+    func sentenceTarget(forward: Bool, count: Int, in buffer: VimTextBuffer) -> Int {
         var pos = buffer.selectedRange().location
         for _ in 0..<count {
-            pos = nextSentenceStart(after: pos, in: buffer)
+            pos = forward ? nextSentenceStart(after: pos, in: buffer) : previousSentenceStart(before: pos, in: buffer)
         }
-        buffer.setSelectedRange(NSRange(location: pos, length: 0))
-    }
-
-    func sentenceBackward(_ count: Int, in buffer: VimTextBuffer) {
-        var pos = buffer.selectedRange().location
-        for _ in 0..<count {
-            pos = previousSentenceStart(before: pos, in: buffer)
-        }
-        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+        return pos
     }
 
     func nextSentenceStart(after origin: Int, in buffer: VimTextBuffer) -> Int {
@@ -332,7 +335,7 @@ extension VimEngine {
             }
             i += 1
         }
-        return buffer.length > 0 ? buffer.length - 1 : 0
+        return lastLineContentEnd(in: buffer)
     }
 
     func previousSentenceStart(before origin: Int, in buffer: VimTextBuffer) -> Int {
@@ -357,20 +360,12 @@ extension VimEngine {
         return 0
     }
 
-    func paragraphForward(_ count: Int, in buffer: VimTextBuffer) {
+    func paragraphTarget(forward: Bool, count: Int, in buffer: VimTextBuffer) -> Int {
         var pos = buffer.selectedRange().location
         for _ in 0..<count {
-            pos = nextParagraphBoundary(after: pos, in: buffer)
+            pos = forward ? nextParagraphBoundary(after: pos, in: buffer) : previousParagraphBoundary(before: pos, in: buffer)
         }
-        buffer.setSelectedRange(NSRange(location: pos, length: 0))
-    }
-
-    func paragraphBackward(_ count: Int, in buffer: VimTextBuffer) {
-        var pos = buffer.selectedRange().location
-        for _ in 0..<count {
-            pos = previousParagraphBoundary(before: pos, in: buffer)
-        }
-        buffer.setSelectedRange(NSRange(location: pos, length: 0))
+        return pos
     }
 
     func nextParagraphBoundary(after origin: Int, in buffer: VimTextBuffer) -> Int {
@@ -383,7 +378,12 @@ extension VimEngine {
             }
             line += 1
         }
-        return buffer.length > 0 ? buffer.length - 1 : 0
+        return lastLineContentEnd(in: buffer)
+    }
+
+    // Past the last character, so an operator takes it, and a plain motion steps back onto it.
+    func lastLineContentEnd(in buffer: VimTextBuffer) -> Int {
+        contentEnd(ofLineAt: buffer.offset(forLine: buffer.lineCount - 1, column: 0), in: buffer)
     }
 
     func previousParagraphBoundary(before origin: Int, in buffer: VimTextBuffer) -> Int {
@@ -398,34 +398,38 @@ extension VimEngine {
         return 0
     }
 
-    func sectionForward(in buffer: VimTextBuffer) {
-        let origin = buffer.selectedRange().location
-        let (originLine, _) = buffer.lineAndColumn(forOffset: origin)
-        var line = originLine + 1
-        while line < buffer.lineCount {
-            let off = buffer.offset(forLine: line, column: 0)
-            if off < buffer.length && buffer.character(at: off) == 0x7B {
-                buffer.setSelectedRange(NSRange(location: off, length: 0))
-                return
+    // `]]` and `[[`: the next or previous line that starts with `{`. With none, the first or last line, and after an
+    // operator the end of the last line.
+    func sectionTarget(forward: Bool, count: Int, in buffer: VimTextBuffer) -> Int {
+        var line = buffer.lineAndColumn(forOffset: buffer.selectedRange().location).line
+        for _ in 0..<count {
+            var next = line + (forward ? 1 : -1)
+            while next >= 0 && next < buffer.lineCount {
+                let off = buffer.offset(forLine: next, column: 0)
+                if off < buffer.length && buffer.character(at: off) == 0x7B { break }
+                next += forward ? 1 : -1
             }
-            line += 1
+            guard next >= 0 && next < buffer.lineCount else {
+                guard forward else { return 0 }
+                let lastLineStart = buffer.offset(forLine: buffer.lineCount - 1, column: 0)
+                return pendingOperator != nil ? lastLineContentEnd(in: buffer) : lastLineStart
+            }
+            line = next
         }
-        buffer.setSelectedRange(NSRange(location: max(0, buffer.length - 1), length: 0))
+        return buffer.offset(forLine: line, column: 0)
     }
 
-    func sectionBackward(in buffer: VimTextBuffer) {
-        let origin = buffer.selectedRange().location
-        let (originLine, _) = buffer.lineAndColumn(forOffset: origin)
-        var line = originLine - 1
-        while line >= 0 {
-            let off = buffer.offset(forLine: line, column: 0)
-            if off < buffer.length && buffer.character(at: off) == 0x7B {
-                buffer.setSelectedRange(NSRange(location: off, length: 0))
-                return
-            }
-            line -= 1
+    // A line of only blanks ends a paragraph for `ip` and `ap`, though not for `{` and `}`.
+    func lineIsWhite(_ line: Int, in buffer: VimTextBuffer) -> Bool {
+        let start = buffer.offset(forLine: line, column: 0)
+        let end = contentEnd(ofLineAt: start, in: buffer)
+        var scan = start
+        while scan < end {
+            let ch = buffer.character(at: scan)
+            guard ch == 0x20 || ch == 0x09 || ch == 0x0D else { return false }
+            scan += 1
         }
-        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        return true
     }
 
     func lineIsBlank(_ line: Int, in buffer: VimTextBuffer) -> Bool {

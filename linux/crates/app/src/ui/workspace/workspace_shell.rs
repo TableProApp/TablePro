@@ -263,6 +263,25 @@ impl WorkspaceShell {
         group.add_action(&menu_action("close-others", |view, page| view.close_other_pages(page)));
         group.add_action(&menu_action("close-after", |view, page| view.close_pages_after(page)));
         group.add_action(&menu_action("close", |view, page| view.close_page(page)));
+        let rename = gio::SimpleAction::new("rename", None);
+        let shell = self.downgrade();
+        rename.connect_activate(move |_, _| {
+            // libadwaita clears the menu's target from an idle once the menu hides.
+            let page = shell
+                .upgrade()
+                .and_then(|shell| shell.imp().menu_target.borrow().clone());
+            let Some(page) = page else {
+                return;
+            };
+            // After the menu has closed, so it does not take the focus back from the field.
+            let shell = shell.clone();
+            glib::idle_add_local_once(move || {
+                if let Some(shell) = shell.upgrade() {
+                    shell.start_rename(&page);
+                }
+            });
+        });
+        group.add_action(&rename);
         // The bar and the overview parent the menu's popover, and the view
         // is an ancestor of neither.
         self.insert_action_group("tab", Some(&group));
@@ -278,6 +297,7 @@ impl WorkspaceShell {
             }
         });
         imp.tab_view.set_menu_model(Some(&tab_menu()));
+        self.connect_rename();
     }
 
     /// Dim what would close nothing for `page`, whose menu opens.
@@ -287,6 +307,7 @@ impl WorkspaceShell {
         };
         let last = view.n_pages() - 1;
         for (name, enabled) in [
+            ("rename", self.can_rename(page)),
             ("close-others", last > 0),
             ("close-after", view.page_position(page) < last),
         ] {
@@ -603,6 +624,7 @@ impl WorkspaceShell {
     /// no tab the front stays where it was.
     pub(super) fn follow_selected_page(&self) {
         self.refresh_save_changes();
+        self.refresh_rename_action();
         let Some(page) = self.imp().tab_view.selected_page() else {
             return;
         };
@@ -1130,6 +1152,7 @@ impl WorkspaceShell {
     /// names itself again from here on.
     pub(crate) fn shutdown(&self) {
         let imp = self.imp();
+        self.end_rename(true);
         self.forget_table_view();
         if let Some(binding) = imp.save_changes_binding.take() {
             binding.unbind();
@@ -1220,12 +1243,20 @@ fn assistant_action(shell: &WorkspaceShell) -> gio::SimpleAction {
 }
 
 fn tab_menu() -> gio::Menu {
+    let rename = gio::Menu::new();
+    let item = gio::MenuItem::new(Some(&gettext("_Rename Tab…")), Some("tab.rename"));
+    // F2 is the shell's own key, which GtkPopoverMenu does not show by itself.
+    if let Some(key) = crate::application::triggers_for(&format!("win.{}", super::tab_rename::RENAME_TAB)).first() {
+        item.set_attribute_value("accel", Some(&key.to_variant()));
+    }
+    rename.append_item(&item);
     let others = gio::Menu::new();
     others.append(Some(&gettext("Close _Other Tabs")), Some("tab.close-others"));
     others.append(Some(&gettext("Close Tabs _After This One")), Some("tab.close-after"));
     let close = gio::Menu::new();
     close.append(Some(&gettext("_Close")), Some("tab.close"));
     let menu = gio::Menu::new();
+    menu.append_section(None, &rename);
     menu.append_section(None, &others);
     menu.append_section(None, &close);
     menu

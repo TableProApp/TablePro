@@ -602,4 +602,189 @@ struct DuckDBDeepExpressionTests {
 
         #expect(tables.rows == [["t"]])
     }
+
+    @Test("A file nested 900 deep attaches a hundred times, each read on a thread with DuckDB's stack")
+    func deepFileAttachesRepeatedly() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("duckdb-deep-reattach-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = try await deepFile(in: directory)
+
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        for _ in 0..<100 {
+            _ = try await driver.execute(query: "ATTACH '\(file.path)' AS deep (READ_ONLY)")
+            _ = try await driver.execute(query: "DETACH deep")
+        }
+        let threads = try await driver.execute(query: "SELECT current_setting('threads'), current_setting('external_threads')")
+        try await driver.disconnect()
+
+        let count = String(ProcessInfo.processInfo.processorCount)
+        #expect(threads.rows == [[count, count]])
+    }
+
+    @Test(
+        "A raised thread count is taken over, a deep file still attaches, and a count below it is refused",
+        .timeLimit(.minutes(1))
+    )
+    func raisedThreadCountIsTakenOver() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("duckdb-deep-threads-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = try await deepFile(in: directory)
+
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        let base = ProcessInfo.processInfo.processorCount
+        var counts: [[String?]] = []
+        for statement in [
+            "SET threads = \(base + 8)", "PRAGMA threads = \(base + 16)", "EXPLAIN ANALYZE SET threads = \(base + 24)",
+        ] {
+            _ = try await driver.execute(query: statement)
+            for _ in 0..<20 {
+                _ = try await driver.execute(query: "ATTACH '\(file.path)' AS deep (READ_ONLY)")
+                _ = try await driver.execute(query: "DETACH deep")
+            }
+            counts += try await driver.execute(
+                query: "SELECT current_setting('threads'), current_setting('external_threads')"
+            ).rows
+        }
+        let lowering = await #expect(throws: DuckDBDriverError.self) {
+            try await driver.execute(query: "SET threads = \(base)")
+        }
+        try await driver.disconnect()
+
+        let raised = [base + 8, base + 16, base + 24].map { [String($0), String($0)] as [String?] }
+        #expect(counts == raised)
+        #expect(lowering?.localizedDescription.contains("external threads") == true)
+    }
+
+    @Test(
+        "A text of several statements takes each raised count over before the next statement reads a deep file",
+        .timeLimit(.minutes(1))
+    )
+    func threadCountFollowsSetsInOneText() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("duckdb-deep-text-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = try await deepFile(in: directory)
+
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        let base = ProcessInfo.processInfo.processorCount
+        let selected = try await driver.execute(
+            query: "SET threads = \(base + 8); SET threads = \(base + 16); SELECT 42"
+        )
+        var threads = base + 16
+        for _ in 0..<20 {
+            threads += 1
+            _ = try await driver.execute(
+                query: "SET threads = \(threads); ATTACH '\(file.path)' AS deep (READ_ONLY); DETACH deep"
+            )
+        }
+        _ = try await driver.execute(query: "SET threads = \(base + 48); SET lock_configuration = true")
+        for _ in 0..<20 {
+            _ = try await driver.execute(query: "ATTACH '\(file.path)' AS deep (READ_ONLY); DETACH deep")
+        }
+        let counts = try await driver.execute(query: "SELECT current_setting('threads'), current_setting('external_threads')")
+        try await driver.disconnect()
+
+        #expect(selected.rows == [["42"]])
+        #expect(counts.rows == [[String(base + 48), String(base + 48)]])
+    }
+
+    @Test("A text DuckDB cannot parse runs none of its statements")
+    func unparsedTextRunsNothing() async throws {
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        await #expect(throws: DuckDBDriverError.self) {
+            try await driver.execute(query: "SET threads = 64; CREATE TABLE never (i INTEGER); SELEC 1")
+        }
+        let counts = try await driver.execute(query: "SELECT current_setting('threads'), current_setting('external_threads')")
+        let tables = try await driver.execute(query: "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'never'")
+        try await driver.disconnect()
+
+        let all = String(ProcessInfo.processInfo.processorCount)
+        #expect(counts.rows == [[all, all]])
+        #expect(tables.rows == [["0"]])
+    }
+
+    @Test(
+        "An import whose statements raise the count and lock the configuration leaves the threads to the app",
+        .timeLimit(.minutes(1))
+    )
+    func importThatLocksIsTakenOver() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("duckdb-deep-import-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = try await deepFile(in: directory)
+        let folder = directory.appendingPathComponent("export", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let raised = String(ProcessInfo.processInfo.processorCount + 40)
+        try "SET threads = \(raised);\nSET lock_configuration = true;\n".write(
+            to: folder.appendingPathComponent("schema.sql"), atomically: true, encoding: .utf8
+        )
+        try "".write(to: folder.appendingPathComponent("load.sql"), atomically: true, encoding: .utf8)
+
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        _ = try await driver.execute(query: "IMPORT DATABASE '\(folder.path)'")
+        for _ in 0..<20 {
+            _ = try await driver.execute(query: "ATTACH '\(file.path)' AS deep (READ_ONLY)")
+            _ = try await driver.execute(query: "DETACH deep")
+        }
+        let counts = try await driver.execute(query: "SELECT current_setting('threads'), current_setting('external_threads')")
+        try await driver.disconnect()
+
+        #expect(counts.rows == [[raised, raised]])
+    }
+
+    @Test("A SET that fails for another reason runs once")
+    func failedSetRunsOnce() async throws {
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        _ = try await driver.execute(query: "CREATE SEQUENCE seq")
+        await #expect(throws: DuckDBDriverError.self) {
+            try await driver.execute(
+                query: "SET VARIABLE x = CASE WHEN nextval('seq') = 1 THEN error('fails once') ELSE 42 END"
+            )
+        }
+        let current = try await driver.execute(query: "SELECT currval('seq')")
+        try await driver.disconnect()
+
+        #expect(current.rows == [["1"]])
+    }
+
+    @Test("A text of several statements returns the result DuckDB picks for it")
+    func severalStatementsKeepTheirResult() async throws {
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        let wrapped = try await driver.execute(query: "BEGIN; SELECT 123; COMMIT")
+        let first = try await driver.execute(query: "SELECT 123; SELECT 456")
+        try await driver.disconnect()
+
+        #expect(wrapped.rows == [["123"]])
+        #expect(first.rows == [["123"]])
+    }
+
+    @Test("A locked configuration keeps DuckDB's tasks on threads with its stack")
+    func lockedConfigurationKeepsTheThreads() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("duckdb-deep-locked-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = try await deepFile(in: directory)
+
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        _ = try await driver.execute(query: "SET lock_configuration = true")
+        for _ in 0..<20 {
+            _ = try await driver.execute(query: "ATTACH '\(file.path)' AS deep (READ_ONLY)")
+            _ = try await driver.execute(query: "DETACH deep")
+        }
+        let counts = try await driver.execute(query: "SELECT current_setting('threads'), current_setting('external_threads')")
+        try await driver.disconnect()
+
+        let all = String(ProcessInfo.processInfo.processorCount)
+        #expect(counts.rows == [[all, all]])
+    }
 }

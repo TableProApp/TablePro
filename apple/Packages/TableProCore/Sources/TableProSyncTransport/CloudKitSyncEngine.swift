@@ -242,10 +242,26 @@ public actor CloudKitSyncEngine {
     public func fetch(recordIDs: [CKRecord.ID]) async throws -> [CKRecord.ID: CKRecord] {
         guard !recordIDs.isEmpty else { return [:] }
         guard let database else { throw Self.unavailable }
-        let results = try await withRetry {
-            try await database.records(for: recordIDs)
+        var records: [CKRecord.ID: CKRecord] = [:]
+        for start in stride(from: 0, to: recordIDs.count, by: Self.refetchBatchSize) {
+            let batch = Array(recordIDs[start..<min(start + Self.refetchBatchSize, recordIDs.count)])
+            records.merge(try await fetch(batch, from: database)) { _, last in last }
         }
-        return results.compactMapValues { try? $0.get() }
+        return records
+    }
+
+    // CloudKit asks a request it finds too large to be split in half and sent again.
+    private func fetch(_ batch: [CKRecord.ID], from database: CKDatabase) async throws -> [CKRecord.ID: CKRecord] {
+        do {
+            let results = try await withRetry {
+                try await database.records(for: batch)
+            }
+            return results.compactMapValues { try? $0.get() }
+        } catch let error as CKError where error.code == .limitExceeded && batch.count > 1 {
+            let middle = batch.count / 2
+            let first = try await fetch(Array(batch[..<middle]), from: database)
+            return first.merging(try await fetch(Array(batch[middle...]), from: database)) { _, last in last }
+        }
     }
 
     public func pull(since token: CKServerChangeToken?) async throws -> PullResult {

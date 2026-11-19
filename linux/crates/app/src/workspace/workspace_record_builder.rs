@@ -68,6 +68,9 @@ mod tests {
                 draft: DraftId::new(),
                 file: None,
                 database: None,
+                name: None,
+                ordinal: None,
+                untitled: false,
             })),
             page(None),
         ];

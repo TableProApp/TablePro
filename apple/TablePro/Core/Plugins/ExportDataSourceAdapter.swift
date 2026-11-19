@@ -255,6 +255,15 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         pluginDriver?.tableDDLIncludesForeignKeys ?? false
     }
 
+    var bulkReads: PluginExportBulkReads {
+        pluginDriver?.exportBulkReads ?? []
+    }
+
+    func fetchAllIndexes(databaseName: String) async throws -> [String: [PluginIndexInfo]] {
+        guard let pluginDriver else { return [:] }
+        return try await pluginDriver.fetchAllIndexes(schema: exportSchema(for: databaseName))
+    }
+
     func fetchIndexDDL(table: String, databaseName: String) async throws -> [String] {
         guard let pluginDriver else { return [] }
         return try await pluginDriver.fetchIndexDDL(table: table, schema: exportSchema(for: databaseName))

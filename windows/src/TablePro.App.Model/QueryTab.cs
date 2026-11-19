@@ -101,6 +101,9 @@ public sealed record DatabaseChoices(
 // One editor connection for the tab, so a transaction holds from one run to the next.
 public sealed partial class QueryTab : IWorkspaceTab
 {
+    // What File, Open file takes as SQL, as the picker lists them.
+    private static readonly string[] SqlExtensions = [".sql", ".psql", ".pgsql"];
+
     private readonly ITabSession _session;
     private readonly IQueryTabView _view;
     private readonly IResultsView _results;
@@ -145,14 +148,15 @@ public sealed partial class QueryTab : IWorkspaceTab
         SqlFileRead? onDisk = null,
         bool baselineUnknown = false,
         bool restoring = false,
-        IResultEditView? resultEdits = null)
+        IResultEditView? resultEdits = null,
+        string? customTitle = null)
     {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(results);
         ArgumentNullException.ThrowIfNull(settings);
-        Title = title;
+        AutomaticTitle = title;
         _session = session;
         _view = view;
         _results = results;
@@ -165,7 +169,7 @@ public sealed partial class QueryTab : IWorkspaceTab
         if (files is not null && !string.IsNullOrEmpty(filePath))
         {
             FilePath = filePath;
-            Title = Path.GetFileName(filePath);
+            AutomaticTitle = Path.GetFileName(filePath);
             if (onDisk is not null)
             {
                 _format = onDisk.Format;
@@ -175,6 +179,10 @@ public sealed partial class QueryTab : IWorkspaceTab
 
             IsDirty = TextDiffers();
             _awaitingFile = restoring && onDisk is null;
+        }
+        else
+        {
+            CustomTitle = QueryTitles.Normalize(customTitle);
         }
 
         _results.ShownSetChanged += OnShownSetChanged;
@@ -188,8 +196,17 @@ public sealed partial class QueryTab : IWorkspaceTab
     // A run the user started ended, cancelled or not; a sort or a commit is not one.
     public event EventHandler<RunEnd>? RunEnded;
 
-    // The file's name once the tab has one.
-    public string Title { get; private set; }
+    // What the strip, the share sheet and Save As show: the typed name, else the automatic title.
+    public string Title => CustomTitle ?? AutomaticTitle;
+
+    // Query N, the title a caller gave, or the file's name: what an emptied typed name goes back to.
+    public string AutomaticTitle { get; private set; }
+
+    // Null until one is typed; a file's name takes over from it once the tab has a file.
+    public string? CustomTitle { get; private set; }
+
+    // A file tab is named for its file, so only a query with none takes a typed name.
+    public bool CanRename => FilePath is null && !_work.IsClosed;
 
     public TabKind Kind => TabKind.Query;
 
@@ -301,11 +318,28 @@ public sealed partial class QueryTab : IWorkspaceTab
         }
     }
 
+    // An empty name goes back to the automatic title; false when the shown title stays as it was.
+    public bool Rename(string? name)
+    {
+        var custom = QueryTitles.Normalize(name);
+        if (!CanRename || custom == CustomTitle)
+        {
+            return false;
+        }
+
+        CustomTitle = custom;
+        // The workspace drops its cached snapshot on this, so the session keeps the new name.
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
     // Don't Save leaves the file as it was; the text stays with the tab either way, as macOS keeps a closed tab's SQL.
     public SessionTab Snapshot() => new()
     {
         Kind = TabKind.Query,
-        Title = Title,
+        // Apart from the typed name, so one emptied after a relaunch or a reopen goes back to it.
+        Title = AutomaticTitle,
+        CustomTitle = CustomTitle,
         Sql = _view.WholeText,
         Database = Database,
         FilePath = FilePath,
@@ -1052,7 +1086,11 @@ public sealed partial class QueryTab : IWorkspaceTab
         }
 
         var invalid = Path.GetInvalidFileNameChars();
-        return string.Concat(Title.Select(character => invalid.Contains(character) ? '_' : character)) + ".sql";
+        var name = string.Concat(Title.Select(character => invalid.Contains(character) ? '_' : character));
+        // A name typed with its extension is not given a second one.
+        return SqlExtensions.Any(extension => name.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+            ? name
+            : name + ".sql";
     }
 
     private async Task<bool> WriteAsync(IQueryFileView files, string path, SqlFileFormat format)
@@ -1062,7 +1100,9 @@ public sealed partial class QueryTab : IWorkspaceTab
         {
             var stamp = await Task.Run(() => SqlFile.Write(path, text, format)).ConfigureAwait(true);
             FilePath = path;
-            Title = Path.GetFileName(path);
+            AutomaticTitle = Path.GetFileName(path);
+            // The file's name takes over from a typed one, as a file tab is always named for its file.
+            CustomTitle = null;
             Adopt(format, stamp, text);
             FileSaved?.Invoke(this, path);
             return true;

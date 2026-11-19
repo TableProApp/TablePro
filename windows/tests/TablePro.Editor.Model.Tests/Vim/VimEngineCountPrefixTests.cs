@@ -150,4 +150,41 @@ public sealed class VimEngineCountPrefixTests
         s.Press("i");
         Assert.False(s.Key("3"), "Digits in insert mode must pass through to the text view");
     }
+
+    [Fact]
+    public void ACountBeforeACommandThatTakesNoneIsDropped()
+    {
+        var s = new VimSession("abcdef\n", caret: 0);
+        s.Press("3max");
+        Assert.Equal("bcdef\n", s.Text);
+    }
+
+    [Fact]
+    public void ARegisterBeforeAMotionIsDroppedWithIt()
+    {
+        var s = new VimSession("one two three\n", caret: 0);
+        s.Press("\"awyw");
+        Assert.False(s.Engine.NamedRegisters.ContainsKey("a"));
+        Assert.Equal("two ", s.Engine.Register.Text);
+    }
+
+    [Fact]
+    public void TwoQuotesNameTheUnnamedRegister()
+    {
+        var s = new VimSession("one two three\n", caret: 0);
+        s.Press("\"a\"\"yw");
+        Assert.False(s.Engine.NamedRegisters.ContainsKey("a"));
+        Assert.Equal("one ", s.Engine.Register.Text);
+    }
+
+    [Fact]
+    public void EscapeDropsARegisterTypedBeforeIt()
+    {
+        var s = new VimSession("one two\n", caret: 0);
+        s.Press("\"a");
+        s.Escape();
+        s.Press("yw");
+        Assert.False(s.Engine.NamedRegisters.ContainsKey("a"));
+        Assert.Equal("one ", s.Engine.Register.Text);
+    }
 }

@@ -349,6 +349,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var tableDDLIncludesForeignKeys: Bool { get }
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]]
     var providesBulkIndexFetch: Bool { get }
+    // Which of `fetchAllColumns`, `fetchAllForeignKeys` and `fetchAllIndexes` answer every table the way its own read
+    // does, so an export may read a schema once instead.
+    var exportBulkReads: PluginExportBulkReads { get }
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata]
     var providesBulkTableMetadataFetch: Bool { get }
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata]
@@ -1160,6 +1163,8 @@ public extension PluginDatabaseDriver {
 
     /// Answers whether `fetchAllIndexes` is a single query rather than the N+1 default below.
     var providesBulkIndexFetch: Bool { false }
+
+    var exportBulkReads: PluginExportBulkReads { [] }
 
     /// Default: fetches indexes per-table sequentially (N+1 round-trips).
     /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.STATISTICS).
