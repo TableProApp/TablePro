@@ -316,6 +316,21 @@ final class VimEngineMarksAndRegistersTests {
         #expect(buffer.text == "YbcXZ\ntail\n")
     }
 
+    @Test("Undoing a join puts the mark back on its line")
+    func undoingAJoinRestoresTheMark() {
+        buffer = VimTextBufferMock(text: "hello world\n    second\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        buffer.setSelectedRange(NSRange(location: 16, length: 0))
+        keys("magg")
+        key("J", shift: true)
+        buffer.replaceCharacters(in: NSRange(location: 11, length: 1), with: "\n    ")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("`a")
+        #expect(buffer.text == "hello world\n    second\n")
+        #expect(pos == 16)
+    }
+
     @Test("A mark keeps its column through a line that shrinks and grows back")
     func markColumnSurvivesAShorterLine() {
         buffer = VimTextBufferMock(text: "abcdef\ntail\n")

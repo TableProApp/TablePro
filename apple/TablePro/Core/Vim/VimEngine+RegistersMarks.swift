@@ -14,11 +14,11 @@ struct VimDocumentMarks {
     var lastJumpOrigin: Int?
     var lastInsertOffset: Int?
     var markColumns: [Character: Int] = [:]
-    var erasedMarks: [VimErasedMarks] = []
+    var markUndoRecords: [VimMarkUndoRecord] = []
 
     var isEmpty: Bool {
         marks.isEmpty && lastVisualStart == nil && lastVisualEnd == nil && lastJumpOrigin == nil && lastInsertOffset == nil
-            && erasedMarks.isEmpty
+            && markUndoRecords.isEmpty
     }
 }
 
@@ -32,14 +32,14 @@ extension VimEngine {
             lastJumpOrigin: lastJumpOrigin,
             lastInsertOffset: lastInsertOffset,
             markColumns: markColumns,
-            erasedMarks: erasedMarks
+            markUndoRecords: markUndoRecords
         )
     }
 
     func restoreDocumentMarks(_ saved: VimDocumentMarks) {
         marks = saved.marks
         markColumns = saved.markColumns
-        erasedMarks = saved.erasedMarks
+        markUndoRecords = saved.markUndoRecords
         lastVisualStart = saved.lastVisualStart
         lastVisualEnd = saved.lastVisualEnd
         lastVisualLinewise = saved.lastVisualLinewise
@@ -151,36 +151,39 @@ extension VimEngine {
 
     // Called before every edit, typed, pasted, undone or the engine's own. A mark keeps its line and column, as Vim's
     // do (`:help mark-motions`): lines added or removed before it move it, a join carries it with its text, and
-    // removing its whole line removes a named mark, which the undo that puts the line back restores.
+    // removing its whole line removes a named mark. An edit that exactly reverses an earlier one, as undo does, puts
+    // back the marks that edit removed or carried onto another line.
     func textWillChange(in range: NSRange, with replacement: String) {
-        guard let buffer, !marks.isEmpty || !erasedMarks.isEmpty || lastJumpOrigin != nil || lastInsertOffset != nil
-            || lastVisualStart != nil || lastVisualEnd != nil else { return }
-        // Undo puts the removed text back at the same place, by an insertion or by replacing what took its place.
-        var restored: VimErasedMarks?
-        if let index = erasedMarks.lastIndex(where: { $0.location == range.location && $0.text == replacement }) {
-            restored = erasedMarks.remove(at: index)
+        guard let buffer, !marks.isEmpty || !markUndoRecords.isEmpty || lastJumpOrigin != nil
+            || lastInsertOffset != nil || lastVisualStart != nil || lastVisualEnd != nil else { return }
+        var restored: VimMarkUndoRecord?
+        if let index = markUndoRecords.lastIndex(where: { $0.isReversed(by: range, replacement: replacement) }) {
+            restored = markUndoRecords.remove(at: index)
         }
         let change = VimMarkChange(range: range, replacement: replacement, in: buffer)
-        var erased: [Character: VimSavedMark] = [:]
+        var displaced: [Character: VimSavedMark] = [:]
         for (name, offset) in marks {
-            if let mapped = change.map(offset, removable: true, in: buffer) {
-                marks[name] = mapped.offset
-                if !mapped.keepsColumn { markColumns[name] = nil }
-            } else {
+            let mapped = change.map(offset, removable: true, in: buffer)
+            if mapped?.keepsColumn != true {
                 let column = markColumns[name] ?? offset - buffer.lineRange(forOffset: offset).location
-                erased[name] = VimSavedMark(relative: offset - range.location, column: column)
-                marks[name] = nil
+                displaced[name] = VimSavedMark(relative: offset - range.location, column: column)
                 markColumns[name] = nil
             }
+            marks[name] = mapped?.offset
         }
-        erasedMarks = erasedMarks.compactMap { record in
+        markUndoRecords = markUndoRecords.map { record in
             var moved = record
             moved.location = change.map(record.location, removable: false, in: buffer)?.offset ?? record.location
             return moved
         }
-        if !erased.isEmpty {
-            erasedMarks.append(VimErasedMarks(location: range.location, text: buffer.string(in: range), marks: erased))
-            if erasedMarks.count > 20 { erasedMarks.removeFirst() }
+        if !displaced.isEmpty {
+            markUndoRecords.append(VimMarkUndoRecord(
+                location: range.location,
+                removedText: buffer.string(in: range),
+                insertedLength: (replacement as NSString).length,
+                marks: displaced
+            ))
+            if markUndoRecords.count > 20 { markUndoRecords.removeFirst() }
         }
         if let restored {
             for (name, saved) in restored.marks {
@@ -202,11 +205,16 @@ struct VimSavedMark {
     let column: Int
 }
 
-// The named marks one delete removed with its lines, and the text it removed.
-struct VimErasedMarks {
+// The marks one edit removed or carried onto another line, with where they were relative to the edit's start.
+struct VimMarkUndoRecord {
     var location: Int
-    let text: String
-    var marks: [Character: VimSavedMark]
+    let removedText: String
+    let insertedLength: Int
+    let marks: [Character: VimSavedMark]
+
+    func isReversed(by range: NSRange, replacement: String) -> Bool {
+        range.location == location && range.length == insertedLength && replacement == removedText
+    }
 }
 
 // One edit, read from the text before it, as Vim's line-based mark adjustment sees it.

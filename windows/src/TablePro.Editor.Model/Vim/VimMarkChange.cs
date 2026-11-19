@@ -130,12 +130,14 @@ internal readonly struct VimMarkChange
 
 internal readonly record struct VimSavedMark(int Relative, int Column);
 
-// The named marks one edit removed with their lines, and the text it removed, so putting the text back restores them.
-internal sealed class VimErasedMarks(int location, string text, Dictionary<string, VimSavedMark> marks)
+// The marks one edit removed or carried onto another line, with where they were relative to the edit's start.
+internal sealed class VimMarkUndoRecord(int location, string removedText, int insertedLength, Dictionary<string, VimSavedMark> marks)
 {
     public int Location { get; set; } = location;
 
-    public string Text { get; } = text;
-
     public Dictionary<string, VimSavedMark> Marks { get; } = marks;
+
+    // Only the exact inverse edit, as undo makes, puts the marks back.
+    public bool IsReversedBy(TextChange change) => change.Offset == Location && change.RemovedLength == insertedLength
+        && string.Equals(change.InsertedText, removedText, StringComparison.Ordinal);
 }

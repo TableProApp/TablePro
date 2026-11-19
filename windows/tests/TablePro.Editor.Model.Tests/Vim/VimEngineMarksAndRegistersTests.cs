@@ -270,6 +270,17 @@ public sealed class VimEngineMarksAndRegistersTests
     }
 
     [Fact]
+    public void UndoingAJoinPutsTheMarkBackOnItsLine()
+    {
+        var s = new VimSession("hello world\n    second\n", caret: 16);
+        s.Press("maggJu");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal("hello world\n    second\n", s.Text);
+        Assert.Equal(16, s.Caret);
+    }
+
+    [Fact]
     public void AShiftedLineKeepsItsMark()
     {
         var s = new VimSession("one\ntwo\n", caret: 5);

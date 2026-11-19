@@ -107,8 +107,8 @@ final class VimEngine {
     var searchCount: Int = 1
     // The column each named mark was set at, kept past the end of a line that shrinks, as Vim keeps it.
     var markColumns: [Character: Int] = [:]
-    // Named marks a deleted line took, so undoing the delete brings them back.
-    var erasedMarks: [VimErasedMarks] = []
+    // Marks an edit removed or moved onto another line, so the edit's undo puts them back.
+    var markUndoRecords: [VimMarkUndoRecord] = []
 
     var buffer: VimTextBuffer?
 

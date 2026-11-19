@@ -139,54 +139,52 @@ public sealed partial class VimEngine
     }
 
     // Every change to the text, typed, pasted, undone or the engine's own, moves the marks with it. Removing a named
-    // mark's line removes the mark, and putting the same text back where it was, as undo does, restores it; the other
-    // positions go to where the lines were.
+    // mark's line removes the mark, and the other positions go to where the lines were. An edit that exactly reverses an
+    // earlier one, as undo does, puts back the marks that edit removed or carried onto another line.
     private void OnDocumentChanged(object? sender, TextChange change)
     {
-        if (Marks.Count == 0 && ErasedMarks.Count == 0 && LastJumpOrigin is null && LastInsertOffset is null
+        if (Marks.Count == 0 && MarkUndoRecords.Count == 0 && LastJumpOrigin is null && LastInsertOffset is null
             && LastVisualStart is null && LastVisualEnd is null)
         {
             return;
         }
         var edit = new VimMarkChange(change, _buffer);
-        VimErasedMarks? restored = null;
-        // An undo puts the removed text back by insertion or by replacing what took its place.
-        var index = ErasedMarks.FindLastIndex(record =>
-            record.Location == change.Offset && string.Equals(record.Text, change.InsertedText, StringComparison.Ordinal));
+        VimMarkUndoRecord? restored = null;
+        var index = MarkUndoRecords.FindLastIndex(record => record.IsReversedBy(change));
         if (index >= 0)
         {
-            restored = ErasedMarks[index];
-            ErasedMarks.RemoveAt(index);
+            restored = MarkUndoRecords[index];
+            MarkUndoRecords.RemoveAt(index);
         }
-        var erased = new Dictionary<string, VimSavedMark>(StringComparer.Ordinal);
+        var displaced = new Dictionary<string, VimSavedMark>(StringComparer.Ordinal);
         foreach (var (name, offset) in Marks.ToList())
         {
-            if (edit.Map(offset, removable: true) is { } moved)
+            var moved = edit.Map(offset, removable: true);
+            if (moved is not { KeepsColumn: true })
             {
-                Marks[name] = moved.Offset;
-                if (!moved.KeepsColumn)
-                {
-                    MarkColumns.Remove(name);
-                }
+                var column = MarkColumns.TryGetValue(name, out var kept) ? kept : edit.OldColumn(offset);
+                displaced[name] = new VimSavedMark(offset - change.Offset, column);
+                MarkColumns.Remove(name);
+            }
+            if (moved is { } mapped)
+            {
+                Marks[name] = mapped.Offset;
             }
             else
             {
-                var column = MarkColumns.TryGetValue(name, out var kept) ? kept : edit.OldColumn(offset);
-                erased[name] = new VimSavedMark(offset - change.Offset, column);
                 Marks.Remove(name);
-                MarkColumns.Remove(name);
             }
         }
-        foreach (var record in ErasedMarks)
+        foreach (var record in MarkUndoRecords)
         {
             record.Location = edit.Map(record.Location, removable: false)?.Offset ?? record.Location;
         }
-        if (erased.Count > 0)
+        if (displaced.Count > 0)
         {
-            ErasedMarks.Add(new VimErasedMarks(change.Offset, change.RemovedText, erased));
-            if (ErasedMarks.Count > 20)
+            MarkUndoRecords.Add(new VimMarkUndoRecord(change.Offset, change.RemovedText, change.InsertedLength, displaced));
+            if (MarkUndoRecords.Count > 20)
             {
-                ErasedMarks.RemoveAt(0);
+                MarkUndoRecords.RemoveAt(0);
             }
         }
         if (restored is not null)
