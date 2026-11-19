@@ -15,9 +15,9 @@ struct CatalogPage {
     }
 
     let id = UUID()
-    let key: String
-    let tableName: String
-    let scope: DatabaseScope
+    var key: String
+    var tableName: String
+    var scope: DatabaseScope
     let list: SchemaColumnStore.Entry
     let query: String
     var standing = Standing.awaiting
@@ -233,6 +233,21 @@ extension MainContentCoordinator {
               let tab = tabManager.tabs.first(where: { $0.id == tabId })
         else { return false }
         return tab.tableContext.tableName == page.tableName && scope(for: tab) == page.scope
+    }
+
+    // A rename keeps the rows on screen, so their page and its notice follow the table to its new name.
+    func followRename(ofCatalogPageFor tab: QueryTab) {
+        guard var page = tabSessionRegistry.catalogPage(for: tab.id),
+              let tableName = tab.tableContext.tableName,
+              let scope = scope(for: tab)
+        else { return }
+        page.key = schemaColumnsKey(tableName, scope: scope)
+        page.tableName = tableName
+        page.scope = scope
+        tabSessionRegistry.setCatalogPage(page, for: tab.id)
+        if let notice = tab.outdatedPageNotice {
+            setOutdatedPageNotice(OutdatedPageNotice(tableName: tableName, resultSetId: notice.resultSetId), onTab: tab.id)
+        }
     }
 
     func dismissOutdatedPageNotice(tabId: UUID) {

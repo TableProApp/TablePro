@@ -705,6 +705,31 @@ extension GlobalStateSuites {
             #expect(harness.notice != nil)
         }
 
+        @Test("A renamed table keeps its notice under the new name, and Reload loads it there")
+        func renamedTableKeepsItsNoticeAndReload() async throws {
+            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+            let current = [Self.column("id", key: true), Self.column("name"), Self.column("email")]
+            let harness = try await makeHarness(
+                cataloged: [Self.column("id", key: true), Self.column("name")],
+                current: current
+            )
+            defer { tearDown(harness, restoring: behavior) }
+            harness.driver.columnsToReturn["people"] = current
+            let tabId = harness.addUsersTab(hiding: ["name"])
+            try await harness.open(tabId)
+            #expect(harness.notice != nil)
+
+            harness.coordinator.retitleTabs(ids: [tabId], to: "people")
+            #expect(harness.tab.shownOutdatedPageNotice?.tableName == "people")
+
+            harness.coordinator.reloadOutdatedPage(tabId: tabId)
+            try await harness.runUntilSettled(tabId, queries: 2)
+            #expect(harness.driver.executedUserQueries[1].contains("\"people\""))
+            #expect(harness.driver.executedUserQueries[1].contains("email"))
+            #expect(harness.notice == nil)
+            #expect(harness.standing == nil)
+        }
+
         @Test("A dismissed notice stays down for later pages of the same query")
         func dismissedNoticeStaysDown() async throws {
             let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
