@@ -265,27 +265,26 @@ fn rename_on_double_click(shell: &WorkspaceShell) -> gtk::GestureClick {
     click.set_button(gdk::BUTTON_PRIMARY);
     // Before the tab box, which selects on the first press and never reports the second.
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let first: Rc<RefCell<Option<glib::WeakRef<adw::TabPage>>>> = Rc::default();
-    let pressed = first.clone();
-    click.connect_pressed(move |gesture, presses, x, y| {
-        if presses == 1 {
-            let page = gesture.widget().and_then(|bar| page_at(&bar, x, y));
-            pressed.replace(page.map(|page| page.downgrade()));
-        }
-    });
+    let first: RefCell<Option<glib::WeakRef<adw::TabPage>>> = RefCell::default();
     let shell = shell.downgrade();
-    click.connect_released(move |gesture, presses, x, y| {
-        if presses != 2 {
+    // The second press, not its release: the header's GtkWindowHandle claims a double-click to maximize, which
+    // cancels this gesture before the release.
+    click.connect_pressed(move |gesture, presses, x, y| {
+        let page = gesture.widget().and_then(|bar| page_at(&bar, x, y));
+        if presses == 1 {
+            first.replace(page.map(|page| page.downgrade()));
             return;
         }
         let first = first.take().and_then(|page| page.upgrade());
-        let Some(page) = gesture.widget().and_then(|bar| page_at(&bar, x, y)) else {
+        // A fast double-click on Close must not rename the tab that slid under the pointer.
+        let Some(page) = page.filter(|page| presses == 2 && first.as_ref() == Some(page)) else {
             return;
         };
-        // A fast double-click on Close must not rename the tab that slid under the pointer.
-        if first.as_ref() != Some(&page) || !shell.upgrade().is_some_and(|shell| shell.can_rename(&page)) {
+        if !shell.upgrade().is_some_and(|shell| shell.can_rename(&page)) {
             return;
         }
+        // Claimed, so the window does not maximize as well.
+        gesture.set_state(gtk::EventSequenceState::Claimed);
         let shell = shell.clone();
         glib::idle_add_local_once(move || {
             if let Some(shell) = shell.upgrade() {
