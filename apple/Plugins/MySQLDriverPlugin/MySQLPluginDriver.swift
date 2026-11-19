@@ -104,6 +104,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// connection between `requireConnection` returning and the query reaching the server.
     private var activeOperations = 0
 
+    // Set once a flight breaks on this connection's path, so the reads go one by one until the next connect.
+    private var flightsRefused = false
+
     internal static let logger = Logger(subsystem: "com.TablePro", category: "MySQLPluginDriver")
 
     var currentSchema: String? {
@@ -303,6 +306,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             _catalogColumnPresence = [:]
             isReleased = false
             isDisconnected = true
+            flightsRefused = false
             footprint.reset()
             sessionLoss.reset()
             let task = reacquireTask
@@ -545,6 +549,34 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
               )
         else { return }
         _ = try? await conn.executeQuery("DO 0", rowCap: nil)
+    }
+
+    private var flightMayRun: Bool {
+        sessionLock.withLock { MySQLColumnFlight.mayRun(on: footprint, isRefused: flightsRefused) }
+    }
+
+    // Nil when the flight could not run, and the caller then reads the same statements one by one.
+    func readInOneFlight(_ statements: [String]) async throws -> [Result<PluginQueryResult, MariaDBPluginError>]? {
+        guard flightMayRun else { return nil }
+        let conn = try await requireConnection()
+        defer { endOperation(on: conn) }
+        statements.forEach(noteActivity)
+        let startTime = Date()
+        let answers: [Result<MariaDBPluginQueryResult, MariaDBPluginError>]
+        do {
+            let admits: @Sendable () -> Bool = { [weak self] in self?.flightMayRun ?? false }
+            guard let read = try await conn.readInOneFlight(statements, admits: admits) else { return nil }
+            answers = read
+        } catch let error as MariaDBPluginError {
+            let response = MySQLColumnFlight.FailureResponse(to: error)
+            if response.stopsFlights {
+                sessionLock.withLock { flightsRefused = true }
+            }
+            if response.reportsFailure { throw error }
+            Self.logger.warning("A one-flight read fell back to single reads: code=\(error.code, privacy: .public)")
+            return nil
+        }
+        return answers.map { answer in answer.map { Self.pluginResult($0, startedAt: startTime) } }
     }
 
     // MARK: - Idle connection release

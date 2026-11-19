@@ -250,6 +250,13 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
     }
 
+    // The flight whose replies are still being read, which a Stop keeps killing until they are in.
+    private var _flightGeneration: Int?
+
+    private func isReadingFlight(_ generation: Int) -> Bool {
+        stateLock.withLock { _flightGeneration == generation }
+    }
+
     private var _sessionMayEnd: @Sendable () -> Bool = { false }
 
     /// Whether the client deadline may end the session to stop a statement, answered by the driver
@@ -668,14 +675,30 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         guard mayEndSession || !target.endsSession else { return }
         guard let threadId = connectedThreadId, let statement = target.statement(threadId: threadId) else { return }
         cancelQueue.async { [self] in
-            guard deliverKill(statement) else { return }
-            if target.endsSession {
+            let delivered = deliverKill(statement)
+            if delivered, target.endsSession {
                 recordSessionEndedByKill(approved: true)
-            } else {
+            } else if delivered {
                 recordKillDelivered(generation: generation)
             }
+            guard !target.endsSession else { return }
+            keepStoppingFlight(generation: generation, statement: statement)
         }
     }
+
+    // A kill stops only the statement running when it lands, and the server drops one that lands between two queued
+    // statements, so a Stop during a flight kills again until every reply is in.
+    private func keepStoppingFlight(generation: Int, statement: String) {
+        cancelQueue.asyncAfter(deadline: .now() + .milliseconds(Self.flightKillIntervalMilliseconds)) { [weak self] in
+            guard let self, self.isReadingFlight(generation) else { return }
+            if self.deliverKill(statement) {
+                self.recordKillDelivered(generation: generation)
+            }
+            self.keepStoppingFlight(generation: generation, statement: statement)
+        }
+    }
+
+    private static let flightKillIntervalMilliseconds = 250
 
     /// Stops a statement this connection is still reading so the rest can be drained. Never with a
     /// kill that ends the session: only Stop sends one, and only when the driver allows it.
@@ -1009,6 +1032,23 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
     }
 
+    // Takes statements spelled with backslash escapes. Nil when `admits` declines once the statements queued ahead
+    // have run. Throws for the flight as a whole only when it could not finish; a refused read is its own answer.
+    func readInOneFlight(
+        _ statements: [String],
+        admits: @escaping @Sendable () -> Bool
+    ) async throws -> [Result<MariaDBPluginQueryResult, MariaDBPluginError>]? {
+        try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let first = statements.first else { throw MariaDBPluginError.notConnected }
+            guard !isInTransaction, admits() else { return nil }
+            return try runStatement(first) {
+                try self.runCancellableStatement { mysql, generation in
+                    try self.runFlight(statements, on: mysql, generation: generation)
+                }
+            }
+        }
+    }
+
     func executeParameterizedQuery(
         _ query: String,
         parameters: [PluginCellValue],
@@ -1264,6 +1304,104 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt),
             columnOrigins: origins
         )
+    }
+
+    // MARK: - One Flight
+
+    // Connector/C 3.4.4 sends while the session is ready and reads each reply under its own packet numbers, so the
+    // replies come back in send order. The whole flight holds `queue`, so no other statement, a queued COMMIT
+    // included, runs until every reply is read.
+    private func runFlight(
+        _ ownStatements: [String],
+        on mysql: UnsafeMutablePointer<MYSQL>,
+        generation: Int
+    ) throws -> [Result<MariaDBPluginQueryResult, MariaDBPluginError>] {
+        try reconcileSelectLimit(rowCap: nil, statement: ownStatements[0], on: mysql)
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+
+        // Spelled here, after every statement queued ahead has replied, so a `sql_mode` change cannot reopen a literal.
+        let spelling = MySQLLiteralSpelling(noBackslashEscapes: noBackslashEscapes)
+        let statements = ownStatements.map(spelling.respelled)
+        for statement in statements.dropFirst() {
+            databaseProof.observe(statement)
+        }
+
+        stateLock.withLock { _flightGeneration = generation }
+        defer {
+            stateLock.withLock { _flightGeneration = nil }
+            // A kill still on its way would land on the statement queued behind the flight.
+            cancelQueue.sync {}
+        }
+
+        for statement in statements {
+            guard statement.withCString({ mysql_send_query(mysql, $0, UInt(statement.utf8.count)) }) == 0 else {
+                throw retiring(getError(), on: mysql)
+            }
+        }
+        var answers: [Result<MariaDBPluginQueryResult, MariaDBPluginError>] = []
+        answers.reserveCapacity(statements.count)
+        for statement in statements {
+            answers.append(try readFlightAnswer(of: statement, on: mysql, generation: generation))
+        }
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+        return answers
+    }
+
+    // A client error can stop inside a reply, so the next read would take the rest of it for another answer.
+    private func retiring(_ failure: MariaDBPluginError, on mysql: UnsafeMutablePointer<MYSQL>) -> MariaDBPluginError {
+        mariadb_cancel(mysql)
+        return failure
+    }
+
+    // Each outcome comes from this reply's own return codes: `mysql_errno` keeps an earlier reply's error until the
+    // next statement is sent.
+    private func readFlightAnswer(
+        of statement: String,
+        on mysql: UnsafeMutablePointer<MYSQL>,
+        generation: Int
+    ) throws -> Result<MariaDBPluginQueryResult, MariaDBPluginError> {
+        guard mysql_read_query_result(mysql) == 0 else {
+            return try flightFailure(on: mysql, generation: generation)
+        }
+        // Read first: a connection lost during the rows resets the count to 0.
+        let expectsRows = mysql_field_count(mysql) != 0
+        guard let result = mysql_store_result(mysql) else {
+            guard !expectsRows else { return try flightFailure(on: mysql, generation: generation) }
+            return .success(MariaDBPluginQueryResult(
+                columns: [], columnTypes: [], columnTypeNames: [],
+                rows: [], affectedRows: mysql_affected_rows(mysql), insertId: 0, isTruncated: false,
+                columnMeta: []
+            ))
+        }
+        defer { mysql_free_result(result) }
+
+        let sessionFlavor = flavor
+        let columns = MariaDBCharacterSet.describeColumns(
+            of: mysql_fetch_fields(result),
+            count: Int(mysql_num_fields(result)),
+            encoding: connectionEncoding,
+            flavor: sessionFlavor,
+            binaryStringsAreText: binaryStringsAreText(in: statement, flavor: sessionFlavor)
+        )
+        var rows: [[PluginCellValue]] = []
+        rows.reserveCapacity(Int(clamping: mysql_num_rows(result)))
+        while let row = mysql_fetch_row(result) {
+            rows.append(textProtocolRow(row, lengths: mysql_fetch_lengths(result), columns: columns))
+        }
+        return .success(MariaDBPluginQueryResult(
+            columns: columns.names, columnTypes: columns.typeCodes, columnTypeNames: columns.typeNames,
+            rows: rows, affectedRows: UInt64(rows.count), insertId: 0, isTruncated: false,
+            columnMeta: columns.metadata
+        ))
+    }
+
+    private func flightFailure(
+        on mysql: UnsafeMutablePointer<MYSQL>,
+        generation: Int
+    ) throws -> Result<MariaDBPluginQueryResult, MariaDBPluginError> {
+        let failure = noting(readError(from: mysql), generation: generation)
+        guard !mysqlClientErrorCodes.contains(failure.code) else { throw retiring(failure, on: mysql) }
+        return .failure(failure)
     }
 
     // MARK: - Prepared Statements

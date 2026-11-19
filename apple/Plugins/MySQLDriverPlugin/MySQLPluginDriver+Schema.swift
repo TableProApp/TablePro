@@ -57,14 +57,19 @@ internal extension MySQLPluginDriver {
         guard !flavor.isStarRocks else {
             return try await starrocksColumns(database: effectiveSchema(schema), table: table)[table] ?? []
         }
-        let result = try await execute(query: "SHOW FULL COLUMNS FROM \(qualifiedName(table, schema: schema))")
-        let catalogDetails = try await fetchCatalogColumnDetails(table: table, schema: schema)
+        let reads: MySQLColumnReads
+        if let flight = try await columnReadsInOneFlight(table: table, schema: schema) {
+            reads = flight
+        } else {
+            reads = try await columnReadsOneByOne(table: table, schema: schema)
+        }
+        let catalogDetails = reads.catalogDetails
         let createTableDefaults = try await createTableDefaults(
-            table: table, schema: schema, showRows: result.rows, catalogDetails: catalogDetails
+            table: table, schema: schema, showRows: reads.showRows, catalogDetails: catalogDetails
         )
         let identity = serverIdentity
 
-        let columns = result.rows.compactMap { row -> PluginColumnInfo? in
+        let columns = reads.showRows.compactMap { row -> PluginColumnInfo? in
             guard let name = row[safe: 0]?.asText,
                   let dataType = row[safe: 1]?.asText
             else { return nil }
@@ -115,9 +120,58 @@ internal extension MySQLPluginDriver {
                 generationKind: mysqlGenerationKind(extra: extra)
             )
         }
-        let checks = try await mariadbColumnChecks(table: table, schema: schema, columns: columns.map(\.name))
+        let checks = try await mariadbColumnChecks(
+            table: table, schema: schema, columns: columns.map(\.name), knownClauses: reads.checkClauses
+        )
         guard !checks.isEmpty else { return columns }
         return columns.map { $0.withColumnCheck(checks[$0.name]) }
+    }
+
+    private func columnReadsOneByOne(table: String, schema: String?) async throws -> MySQLColumnReads {
+        let result = try await execute(query: "SHOW FULL COLUMNS FROM \(qualifiedName(table, schema: schema))")
+        let details = try await fetchCatalogColumnDetails(table: table, schema: schema)
+        return MySQLColumnReads(showRows: result.rows, catalogDetails: details, checkClauses: nil)
+    }
+
+    // Nil sends the caller to the one-by-one reads, which also cover every session this flight does not.
+    private func columnReadsInOneFlight(table: String, schema: String?) async throws -> MySQLColumnReads? {
+        let identity = serverIdentity
+        let database = effectiveSchema(schema)
+        guard MySQLServerVersion.readsInOneFlight(banner: identity.banner, flavor: identity.flavor),
+              temporaryTableCandidates.isEmpty,
+              catalogVisibility.visibility(of: database) != .blind,
+              let catalogRead = columnCatalogRead(table: table, schema: schema)
+        else { return nil }
+
+        let readsChecks = identity.flavor.isMariaDB
+            && MySQLCheckConstraints.source(banner: identity.banner, flavor: identity.flavor) == .informationSchema
+        let level = MySQLCatalogColumn.checkConstraintLevel
+        let plan = MySQLColumnFlight(
+            readsChecks: readsChecks,
+            levelIsPresent: readsChecks ? cachedCatalogColumnPresence(level.rawValue) : nil
+        )
+        let statements = plan.reads.map { read -> String in
+            switch read {
+            case .columns: "SHOW FULL COLUMNS FROM \(qualifiedName(table, schema: schema))"
+            case .catalogDetails: catalogRead.query
+            case .levelPresence: level.presenceQuery
+            case .checkClauses: MySQLColumnChecks.clausesQuery(schema: database, table: table)
+            }
+        }
+        guard let answers = try await readInOneFlight(statements) else { return nil }
+
+        let outcome = try plan.outcome(of: answers, settlesBlindness: MySQLCatalogVisibilityRule.settlesBlindness(code:))
+        for refusal in outcome.refusals {
+            Self.logger.warning("column read refused code=\(refusal.code, privacy: .public) message=\(refusal.message)")
+        }
+        if let present = outcome.levelIsPresent {
+            cacheCatalogColumnPresence(level.rawValue, present)
+        }
+        return MySQLColumnReads(
+            showRows: outcome.showRows,
+            catalogDetails: catalogRead.details(fromRows: outcome.catalogRows),
+            checkClauses: outcome.checkClauses
+        )
     }
 
     /// What `INFORMATION_SCHEMA.COLUMNS` says about a table's columns that `SHOW FULL COLUMNS` cannot:
@@ -148,14 +202,27 @@ internal extension MySQLPluginDriver {
     ) async throws -> [String: MySQLCatalogColumnDetail] {
         guard serverHasInformationSchema,
               catalogVisibility.visibility(of: effectiveSchema(schema)) != .blind,
-              await !resolvesToTemporaryTable(table, schema: schema)
+              await !resolvesToTemporaryTable(table, schema: schema),
+              let catalogRead = columnCatalogRead(table: table, schema: schema)
         else { return [:] }
+        do {
+            return catalogRead.details(fromRows: try await execute(ownStatement: catalogRead.query).rows)
+        } catch let error as MariaDBPluginError
+            where MySQLCatalogVisibilityRule.settlesBlindness(code: error.code) {
+            Self.logger.warning(
+                "column catalog read refused code=\(error.code, privacy: .public) message=\(error.message)"
+            )
+            return [:]
+        }
+    }
+
+    private func columnCatalogRead(table: String, schema: String?) -> MySQLColumnCatalogRead? {
         let identity = serverIdentity
         let readsGeneration = MySQLServerVersion.hasGenerationExpression(
             banner: identity.banner, flavor: identity.flavor
         )
         let readsDefault = MySQLServerVersion.quotesColumnDefault(banner: identity.banner, flavor: identity.flavor)
-        guard readsGeneration || readsDefault else { return [:] }
+        guard readsGeneration || readsDefault else { return nil }
         let generationProjection = readsGeneration ? "GENERATION_EXPRESSION" : "NULL"
         let defaultProjection = readsDefault ? "COLUMN_DEFAULT" : "NULL"
         let generatedOnly = readsDefault ? "" : " AND GENERATION_EXPRESSION <> \'\'"
@@ -165,24 +232,7 @@ internal extension MySQLPluginDriver {
             WHERE TABLE_SCHEMA = \'\(effectiveSchemaLiteral(schema))\'
                 AND TABLE_NAME = \'\(mysqlEscapeStringLiteral(table))\'\(generatedOnly)
             """
-        do {
-            let result = try await execute(ownStatement: query)
-            var details: [String: MySQLCatalogColumnDetail] = [:]
-            for row in result.rows {
-                guard let name = row[safe: 0]?.asText else { continue }
-                details[name] = MySQLCatalogColumnDetail(
-                    generationExpression: row[safe: 1]?.asText?.nilIfEmpty,
-                    catalogDefault: readsDefault ? .quoted(row[safe: 2]?.asText) : nil
-                )
-            }
-            return details
-        } catch let error as MariaDBPluginError
-            where MySQLCatalogVisibilityRule.settlesBlindness(code: error.code) {
-            Self.logger.warning(
-                "column catalog read refused code=\(error.code, privacy: .public) message=\(error.message)"
-            )
-            return [:]
-        }
+        return MySQLColumnCatalogRead(query: query, readsDefault: readsDefault)
     }
 
     /// The defaults `SHOW CREATE TABLE` states, for the columns whose catalog answer cannot recreate
@@ -290,4 +340,118 @@ internal extension MySQLPluginDriver {
 internal struct MySQLCatalogColumnDetail: Equatable, Sendable {
     let generationExpression: String?
     let catalogDefault: MySQLCatalogDefault?
+}
+
+internal struct MySQLColumnCatalogRead: Equatable, Sendable {
+    let query: String
+    let readsDefault: Bool
+
+    func details(fromRows rows: [[PluginCellValue]]) -> [String: MySQLCatalogColumnDetail] {
+        var details: [String: MySQLCatalogColumnDetail] = [:]
+        for row in rows {
+            guard let name = row[safe: 0]?.asText else { continue }
+            details[name] = MySQLCatalogColumnDetail(
+                generationExpression: row[safe: 1]?.asText?.nilIfEmpty,
+                catalogDefault: readsDefault ? .quoted(row[safe: 2]?.asText) : nil
+            )
+        }
+        return details
+    }
+}
+
+// `checkClauses` is nil when the clauses have not been read yet.
+internal struct MySQLColumnReads {
+    let showRows: [[PluginCellValue]]
+    let catalogDetails: [String: MySQLCatalogColumnDetail]
+    let checkClauses: [String]?
+}
+
+// `SHOW CREATE TABLE` stays out of the flight: whether it runs depends on these answers.
+internal struct MySQLColumnFlight: Equatable, Sendable {
+    enum Read: Equatable, Sendable {
+        case columns
+        case catalogDetails
+        case levelPresence
+        case checkClauses
+    }
+
+    struct Refusal: Equatable, Sendable {
+        let code: UInt32
+        let message: String
+    }
+
+    struct FailureResponse: Equatable, Sendable {
+        let stopsFlights: Bool
+        let reportsFailure: Bool
+
+        // The server may still be running what outlasted the socket timeout, so that read never goes out again.
+        init(to error: MariaDBPluginError) {
+            stopsFlights = mysqlClientErrorCodes.contains(error.code)
+            reportsFailure = error.outlastedSocketTimeout
+        }
+    }
+
+    struct Outcome {
+        let showRows: [[PluginCellValue]]
+        let catalogRows: [[PluginCellValue]]
+        let levelIsPresent: Bool?
+        let checkClauses: [String]
+        let refusals: [Refusal]
+    }
+
+    let reads: [Read]
+
+    // A lost connection clears the transaction flag, so a fallback could reconnect over a session that held state.
+    static func mayRun(on footprint: MySQLSessionFootprint, isRefused: Bool) -> Bool {
+        footprint.isClean && !isRefused
+    }
+
+    init(readsChecks: Bool, levelIsPresent: Bool?) {
+        var reads: [Read] = [.columns, .catalogDetails]
+        if readsChecks, levelIsPresent != false {
+            if levelIsPresent == nil { reads.append(.levelPresence) }
+            reads.append(.checkClauses)
+        }
+        self.reads = reads
+    }
+
+    // Decides as the one-by-one reads do: a refused catalog read degrades, anything else fails the whole read.
+    func outcome(
+        of answers: [Result<PluginQueryResult, MariaDBPluginError>],
+        settlesBlindness: (UInt32) -> Bool
+    ) throws -> Outcome {
+        var showRows: [[PluginCellValue]] = []
+        var catalogRows: [[PluginCellValue]] = []
+        var levelIsPresent: Bool?
+        var levelWasRefused = false
+        var clauses: [String] = []
+        var refusals: [Refusal] = []
+
+        for (read, answer) in zip(reads, answers) {
+            switch answer {
+            case .success(let result):
+                switch read {
+                case .columns: showRows = result.rows
+                case .catalogDetails: catalogRows = result.rows
+                case .levelPresence:
+                    levelIsPresent = (result.rows.first?[safe: 0]?.asText.flatMap { Int($0) } ?? 0) > 0
+                case .checkClauses: clauses = result.rows.compactMap { $0[safe: 0]?.asText }
+                }
+            case .failure(let failure):
+                // Sent before the answer on `LEVEL` was known, so a server without the column refuses it.
+                if read == .checkClauses, levelIsPresent == false || levelWasRefused { continue }
+                guard read != .columns, settlesBlindness(failure.code) else { throw failure }
+                refusals.append(Refusal(code: failure.code, message: failure.message))
+                if read == .levelPresence { levelWasRefused = true }
+            }
+        }
+        let hasNoLevel = levelIsPresent == false || levelWasRefused
+        return Outcome(
+            showRows: showRows,
+            catalogRows: catalogRows,
+            levelIsPresent: levelIsPresent,
+            checkClauses: hasNoLevel ? [] : clauses,
+            refusals: refusals
+        )
+    }
 }
