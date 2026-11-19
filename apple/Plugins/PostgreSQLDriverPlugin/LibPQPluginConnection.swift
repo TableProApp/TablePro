@@ -2475,3 +2475,159 @@ extension LibPQPluginConnection {
         return Array(results.dropFirst())
     }
 }
+
+// MARK: - Statement Pipelines
+
+extension LibPQPluginConnection {
+    private static let pipelineWaitMicroseconds: Int64 = 100_000
+
+    // Inside a transaction block only: there an error aborts every statement after it until the Sync, as a caller
+    // stopping at the failure would. Outside one the pipeline is one implicit transaction, and a failure would roll
+    // back statements that, sent alone, commit. Nil also when libpq will not enter pipeline mode.
+    func executePipeline(_ statements: [LibPQPipelineStatement]) async throws -> [PluginBatchStatementOutcome]? {
+        try await pluginDispatchAsync(on: queue) { [self] () throws -> [PluginBatchStatementOutcome]? in
+            guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
+            guard activeConnectDeadline == nil, !statements.isEmpty, transactionStateOnQueue() == .inTransaction else {
+                return nil
+            }
+            return try pipelineSync(statements, conn: conn)
+        }
+    }
+
+    fileprivate func pipelineSync(
+        _ statements: [LibPQPipelineStatement],
+        conn: OpaquePointer
+    ) throws -> [PluginBatchStatementOutcome]? {
+        let generation = cancellationGate.beginQuery()
+        defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: conn) }
+
+        finishAbandonedResults(conn, cancellingOutput: cancelsAbandonedOutput(conn))
+        if let ended = sessionEndedBeforeSending(conn) { return [.failed(ended)] }
+        guard PQenterPipelineMode(conn) == 1 else { return nil }
+        // Non-blocking sends, with replies read between them: a server whose output nobody reads stops reading.
+        guard PQsetnonblocking(conn, 1) == 0 else {
+            _ = PQexitPipelineMode(conn)
+            return nil
+        }
+
+        var tally = LibPQPipelineTally(total: statements.count, startedAt: Date())
+        var cutShort: (any Error)?
+        var sending = true
+        for statement in statements where sending {
+            // Stop holds back what is not sent yet; the statement it lands on fails with the cancel.
+            if cancellationGate.isCancelled(generation) {
+                cutShort = CancellationError()
+                break
+            }
+            let sent: Int32
+            do {
+                sent = try LibPQParameterBuffers.with(statement.parameters) { values, lengths, formats in
+                    statement.query.withCString { queryPtr in
+                        PQsendQueryParams(conn, queryPtr, Int32(statement.parameters.count), nil, values, lengths, formats, 0)
+                    }
+                }
+            } catch {
+                // The pipeline is already open, so it still gets its Sync.
+                cutShort = error
+                break
+            }
+            guard sent != 0 else {
+                cutShort = getError(from: conn)
+                break
+            }
+            tally.sent += 1
+            readsRowByRow(conn)
+            sending = flushPipeline(conn, tally: &tally, generation: generation)
+        }
+        // Without its Sync the server holds every reply, so a read would wait for ever.
+        let synced = sending && PQsendPipelineSync(conn) == 1 && flushPipeline(conn, tally: &tally, generation: generation)
+        if synced, PQsetnonblocking(conn, 0) == 0 {
+            while PQstatus(conn) == CONNECTION_OK, !tally.isComplete {
+                guard let result = PQgetResult(conn) else {
+                    guard tally.endStatement() else { break }
+                    readsRowByRow(conn)
+                    continue
+                }
+                take(result, into: &tally, conn: conn, generation: generation)
+            }
+        }
+        recordTransactionState(of: conn)
+
+        if PQstatus(conn) != CONNECTION_OK || !tally.isComplete {
+            let reason = (cutShort as? LibPQPluginError) ?? getError(from: conn)
+            if PQstatus(conn) == CONNECTION_OK {
+                // Its replies can no longer be told apart, so the session is not used again.
+                Self.logger.fault("A statement pipeline ended before its Sync; dropping the connection")
+                let loss = LibPQConnectionLoss(sent: true, recordedState: lastTransactionState)
+                stateLock.withLock {
+                    _lastTransactionState = .unknown
+                    _hasLostConnection = true
+                }
+                disconnect()
+                cutShort = LibPQConnectionLostError(loss: loss, underlying: reason)
+            } else {
+                cutShort = lostConnection(reason, on: conn, sent: true)
+            }
+        } else if PQexitPipelineMode(conn) != 1 {
+            Self.logger.fault("libpq stayed in pipeline mode; dropping the connection")
+            stateLock.withLock { _hasLostConnection = true }
+            disconnect()
+        } else {
+            for tag in Set(tally.commandTags) { noteCommandTag(tag, conn: conn) }
+        }
+        return tally.outcomes(cutShort: cutShort)
+    }
+
+    // False once the connection fails. Each wait also reads, so the server's replies never back up behind ours.
+    private func flushPipeline(_ conn: OpaquePointer, tally: inout LibPQPipelineTally, generation: Int) -> Bool {
+        while true {
+            let flushed = PQflush(conn)
+            if flushed == 0 { return true }
+            guard flushed == 1, !isShuttingDown else { return false }
+            let socket = PQsocket(conn)
+            guard socket >= 0 else { return false }
+            let deadline = pg_usec_time_t(Int64(PQgetCurrentTimeUSec()) + Self.pipelineWaitMicroseconds)
+            guard PQsocketPoll(socket, 1, 1, deadline) >= 0 || errno == EINTR else { return false }
+            guard PQconsumeInput(conn) == 1 else { return false }
+            while tally.awaitsStatement, PQisBusy(conn) == 0 {
+                guard let result = PQgetResult(conn) else {
+                    guard tally.endStatement() else { return false }
+                    readsRowByRow(conn)
+                    continue
+                }
+                take(result, into: &tally, conn: conn, generation: generation)
+            }
+        }
+    }
+
+    // For the statement whose replies come next, before any of them is read; libpq refuses once one has been, and an
+    // aborted statement has none to read.
+    private func readsRowByRow(_ conn: OpaquePointer) {
+        _ = PQsetSingleRowMode(conn)
+    }
+
+    private func take(_ result: OpaquePointer, into tally: inout LibPQPipelineTally, conn: OpaquePointer, generation: Int) {
+        defer { PQclear(result) }
+        let status = PQresultStatus(result)
+        switch status {
+        case PGRES_SINGLE_TUPLE:
+            tally.takeRow()
+        case PGRES_PIPELINE_SYNC:
+            tally.takeSync()
+        case PGRES_PIPELINE_ABORTED:
+            tally.take(.aborted)
+        case PGRES_COMMAND_OK:
+            tally.take(.completed(rowsAffected: getAffectedRows(from: result), commandTag: getCommandTag(from: result)))
+        case PGRES_TUPLES_OK:
+            tally.take(.completed(rowsAffected: Int(PQntuples(result)), commandTag: getCommandTag(from: result)))
+        default:
+            let error = getResultError(from: result)
+            if cancellationGate.isCancelled(generation) {
+                tally.take(.failed(CancellationError()))
+            } else {
+                tally.take(.failed(lostConnection(error, on: conn, sent: true)))
+            }
+        }
+    }
+}
