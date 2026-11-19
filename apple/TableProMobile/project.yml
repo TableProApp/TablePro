@@ -72,6 +72,7 @@ targets:
       - ../Plugins/PostgreSQLDriverPlugin/LibPQReadOnlyTransaction.swift
       # What a MySQL session holds that the read-only transaction would end, its table locks among them.
       - ../Plugins/MySQLDriverPlugin/MySQLSessionFootprint.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLDatabaseMoveScan.swift
       - ../Plugins/MySQLDriverPlugin/MySQLTemporaryTableNames.swift
       - ../Plugins/MySQLDriverPlugin/MySQLLexicalFeatures.swift
       # The socket key a Mac connection stores, so iOS refuses exactly what the Mac driver dials
