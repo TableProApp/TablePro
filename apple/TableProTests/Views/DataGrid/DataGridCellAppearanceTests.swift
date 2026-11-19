@@ -744,22 +744,17 @@ struct DataGridCellAppearanceTests {
     }
 
     @Test("The prewarmed text carries the same color as text formatted at draw time")
-    func prewarmedTextKeepsTheFormattedFlag() throws {
+    func prewarmedTextKeepsTheFormattedFlag() async throws {
         let grid = try TypedGrid(
             values: [.bytes(Self.uuidBytes), .bytes(Self.uuidBytes.prefix(8))],
             type: .blob(rawType: "VARBINARY(16)"),
             colorsValuesByType: true,
             format: .uuid
         )
-        for displayRow in 0..<grid.model.rowCount {
-            let row = try #require(grid.model.row(at: displayRow))
-            grid.presenter.cacheText(
-                of: row,
-                rows: grid.model.rows,
-                formats: grid.model.store.displayFormats,
-                databaseType: nil
-            )
-        }
+        let walk = try #require(grid.presenter.prewarmBatch(in: 0..<grid.model.rowCount, from: 0))
+        let batch = try #require(walk.batch)
+        let formatted = await batch.formatted()
+        #expect(grid.presenter.installPrewarmed(formatted, of: batch))
 
         #expect(try withExtendedLifetime(grid.owner) { try grid.colors() } == ["#996611", "#555555"])
     }

@@ -351,6 +351,22 @@ internal sealed class FakeSession : ITabSession
         return TableEditorFailure is { } failure ? throw new TableProException(failure) : TableEditor;
     }
 
+    // Every result editor open gives this one, so a test sets it up before the run.
+    public FakeTableEditor ResultEditor { get; } = new();
+
+    public CoreError? ResultEditorFailure { get; set; }
+
+    // The statement each result editor was opened on.
+    public List<string> ResultEditorOpens { get; } = [];
+
+    public Task<ITableEditor> OpenResultEditorAsync(string sql, ResultSet? rows, CancellationToken cancellationToken)
+    {
+        ResultEditorOpens.Add(sql);
+        return ResultEditorFailure is { } failure
+            ? Task.FromException<ITableEditor>(new TableProException(failure))
+            : Task.FromResult<ITableEditor>(ResultEditor);
+    }
+
     public Task<ITableKeys> ReadTableKeysAsync(TableName table, CancellationToken cancellationToken)
     {
         if (KeysFailure is { } failure)
@@ -829,6 +845,8 @@ internal sealed class FakeTableEditor : ITableEditor
 {
     public EditLock? Lock { get; set; }
 
+    public TableName? Table { get; set; } = new(null, "Artist");
+
     public EditLock? PageLock { get; set; }
 
     // Artist's key is filled by the server, so a new row leaves it as Default, and its name takes any text.
@@ -884,6 +902,10 @@ internal sealed class FakeTableEditor : ITableEditor
     public EditLock? LockFor(ResultSet? rows) => PageLock;
 
     public EditStart GetEditStart(ResultSet? rows, long row, int column) => Start(row, column);
+
+    public Func<long, bool> Copies { get; set; } = _ => true;
+
+    public bool CopiesExactly(ResultSet? rows, long row) => Copies(row);
 
     public IReadOnlyList<StoredValue> GetStoredValues(ResultSet? rows, int column, long firstRow, int rowCount) =>
         [.. Enumerable.Range(0, rowCount).Select(row => Values(firstRow + row, column))];
@@ -945,6 +967,110 @@ internal sealed class FakeRowSave(
     }
 
     public void Dispose() => Disposals++;
+}
+
+// A query tab's result view, which answers each question as the test set it and keeps what it was asked.
+internal sealed class FakeResultEditView : IResultEditView
+{
+    public List<string> Shown { get; } = [];
+
+    public List<ResultReplacement> ReplacesAsked { get; } = [];
+
+    public List<int> DeletesAsked { get; } = [];
+
+    public List<IReadOnlyList<PlannedStatement>> SavesAsked { get; } = [];
+
+    public List<(IReadOnlyList<PlannedStatement> Statements, CoreError? Failure)> Previews { get; } = [];
+
+    public List<(CoreError Failure, bool Incomplete)> Failures { get; } = [];
+
+    public List<EditRefusal> Refusals { get; } = [];
+
+    public List<int> Focused { get; } = [];
+
+    public bool HasOpenEdit { get; set; }
+
+    public bool CommitsOpenEdit { get; set; } = true;
+
+    // What keeping the open editor's text does, as the grid raises CellEditCommitting.
+    public Action? OnCommit { get; set; }
+
+    public bool DiscardsForReplace { get; set; } = true;
+
+    public bool Discards { get; set; } = true;
+
+    public SaveBeforeClose CloseAnswer { get; set; } = SaveBeforeClose.Save;
+
+    public bool? OffersSave { get; private set; }
+
+    public int ClosesAsked { get; private set; }
+
+    public bool ConfirmsDelete { get; set; } = true;
+
+    public bool ConfirmsSave { get; set; } = true;
+
+    public int EditsShown { get; private set; }
+
+    public void ShowEdits() => EditsShown++;
+
+    public void ShowSaving(bool saving) => Shown.Add(saving ? "saving" : "saved");
+
+    public void ShowEditRefusal(EditRefusal refusal) => Refusals.Add(refusal);
+
+    public void ShowSaveCancelled() => Shown.Add("save cancelled");
+
+    public bool CommitOpenEdit()
+    {
+        if (!CommitsOpenEdit || !HasOpenEdit)
+        {
+            return CommitsOpenEdit;
+        }
+
+        HasOpenEdit = false;
+        OnCommit?.Invoke();
+        return true;
+    }
+
+    public void FocusRow(int row) => Focused.Add(row);
+
+    public Task<bool> ConfirmDiscardForReplaceAsync(ResultReplacement reason)
+    {
+        ReplacesAsked.Add(reason);
+        return Task.FromResult(DiscardsForReplace);
+    }
+
+    public Task<bool> ConfirmDiscardAsync() => Task.FromResult(Discards);
+
+    public Task<SaveBeforeClose> AskSaveBeforeCloseAsync(string tab, bool offerSave)
+    {
+        ClosesAsked++;
+        OffersSave = offerSave;
+        return Task.FromResult(CloseAnswer);
+    }
+
+    public Task<bool> ConfirmDeleteAsync(string table, int rows)
+    {
+        DeletesAsked.Add(rows);
+        return Task.FromResult(ConfirmsDelete);
+    }
+
+    public Task<bool> ConfirmSaveAsync(string connection, IReadOnlyList<PlannedStatement> statements)
+    {
+        SavesAsked.Add(statements);
+        return Task.FromResult(ConfirmsSave);
+    }
+
+    public Task ShowPreviewAsync(IReadOnlyList<PlannedStatement> statements, CoreError? failure)
+    {
+        Previews.Add((statements, failure));
+        return Task.CompletedTask;
+    }
+
+    public Task ShowSaveFailedAsync(CoreError failure, bool incomplete)
+    {
+        Failures.Add((failure, incomplete));
+        return Task.CompletedTask;
+    }
 }
 
 internal static class Errors

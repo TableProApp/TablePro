@@ -20,6 +20,8 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
 
     private let storageDirectory: URL
     private var cache: [UUID: [String: [HighlightRule]]] = [:]
+    // Every row a grid draws asks for its table's rules, and building the storage key costs more than the lookup.
+    private var lastRead: (scope: TableScope, revision: Int, rules: [HighlightRule])?
 
     init(storageDirectory: URL? = nil) {
         self.storageDirectory = storageDirectory ?? Self.resolvedStorageDirectory()
@@ -31,7 +33,10 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
     }
 
     func rules(for scope: TableScope) -> [HighlightRule] {
-        loadEntries(for: scope.connectionId)[scope.storageComponent] ?? []
+        if let lastRead, lastRead.revision == revision, lastRead.scope == scope { return lastRead.rules }
+        let rules = loadEntries(for: scope.connectionId)[scope.storageComponent] ?? []
+        lastRead = (scope, revision, rules)
+        return rules
     }
 
     func setRules(_ rules: [HighlightRule], for scope: TableScope) {

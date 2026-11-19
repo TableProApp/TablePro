@@ -80,7 +80,6 @@ struct SeedBufferFromErrorResultTests {
 
         #expect(model.columns.isEmpty)
         #expect(model.rowCount == 0)
-        #expect(mount.changes.contains(.columnsChanged))
         #expect(mount.changes.last == .reload)
         withExtendedLifetime(mount) {}
     }

@@ -51,7 +51,14 @@
                     </AppBarButton.Flyout>
                 </AppBarButton>
                 <AppBarButton x:Uid="OpenFileButton" x:Name="OpenFileButton" AutomationProperties.AutomationId="OpenFileButton" Icon="OpenFile" Click="OnOpenFile" />
-                <AppBarButton x:Uid="ImportButton" x:Name="ImportButton" AutomationProperties.AutomationId="ImportButton" Icon="Import" Click="OnImport" />
+                <AppBarButton x:Uid="ImportButton" x:Name="ImportButton" AutomationProperties.AutomationId="ImportButton" Icon="Import">
+                    <AppBarButton.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem x:Uid="ImportAppFromFile" AutomationProperties.AutomationId="ImportFromFileMenuItem" Click="OnImport" />
+                            <MenuFlyoutItem x:Uid="ImportAppFromApp" AutomationProperties.AutomationId="ImportFromAppMenuItem" Click="OnImportFromApp" />
+                        </MenuFlyout>
+                    </AppBarButton.Flyout>
+                </AppBarButton>
                 <AppBarButton x:Uid="ExportConnectionsButton" x:Name="ExportConnectionsButton" AutomationProperties.AutomationId="ExportConnectionsButton" Click="OnExportConnections">
                     <AppBarButton.Icon><FontIcon Glyph="&#xEDE1;" /></AppBarButton.Icon>
                 </AppBarButton>
@@ -106,8 +113,14 @@
                 <toolkit:SettingsCard x:Uid="OpenFileCard" x:Name="OpenFileCard" AutomationProperties.AutomationId="OpenFileCard" IsClickEnabled="True" Click="OnOpenFile">
                     <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="OpenFile" /></toolkit:SettingsCard.HeaderIcon>
                 </toolkit:SettingsCard>
-                <toolkit:SettingsCard x:Uid="ImportCard" x:Name="ImportCard" AutomationProperties.AutomationId="ImportCard" IsClickEnabled="True" Click="OnImport">
+                <toolkit:SettingsCard x:Uid="ImportCard" x:Name="ImportCard" AutomationProperties.AutomationId="ImportCard" IsClickEnabled="True" Click="OnImportCard">
                     <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Import" /></toolkit:SettingsCard.HeaderIcon>
+                    <FlyoutBase.AttachedFlyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                            <MenuFlyoutItem x:Uid="ImportAppFromFile" AutomationProperties.AutomationId="ImportFromFileMenuItem" Click="OnImport" />
+                            <MenuFlyoutItem x:Uid="ImportAppFromApp" AutomationProperties.AutomationId="ImportFromAppMenuItem" Click="OnImportFromApp" />
+                        </MenuFlyout>
+                    </FlyoutBase.AttachedFlyout>
                 </toolkit:SettingsCard>
                 <toolkit:SettingsCard x:Uid="SampleCard" x:Name="SampleCard" AutomationProperties.AutomationId="SampleCard" IsClickEnabled="True" Click="OnSample">
                     <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Library" /></toolkit:SettingsCard.HeaderIcon>

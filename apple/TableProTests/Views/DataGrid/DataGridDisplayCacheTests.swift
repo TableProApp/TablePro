@@ -133,6 +133,62 @@ struct DataGridDisplayCacheTests {
         #expect(text == Self.uuidText)
     }
 
+    private static func twoRows() -> TableRows {
+        TableRows(
+            rows: [Row(id: .existing(0), values: [.text("A")]), Row(id: .existing(1), values: [.text("C")])],
+            columns: ["name"],
+            columnTypes: [.text(rawType: nil)]
+        )
+    }
+
+    @Test("Text formatted before an edit landed is thrown away")
+    func prewarmDropsTextAnEditOutdated() async throws {
+        let grid = DisplayGrid(Self.twoRows())
+        let walk = try #require(grid.presenter.prewarmBatch(in: 0..<2, from: 0))
+        let batch = try #require(walk.batch)
+        let formatted = await batch.formatted()
+
+        grid.owner.tableRows.rows[0].values[0] = .text("B")
+        grid.model.apply(.cellChanged(row: 0, column: 0))
+
+        #expect(!grid.presenter.installPrewarmed(formatted, of: batch))
+        #expect(grid.model.display.cache.box(forID: .existing(1)) == nil)
+        #expect(grid.text(row: 0) == "B")
+    }
+
+    @Test("A row drawn while its batch formatted keeps the text it drew")
+    func prewarmLeavesARowDrawnMeanwhile() async throws {
+        let grid = DisplayGrid(Self.twoRows())
+        let walk = try #require(grid.presenter.prewarmBatch(in: 0..<2, from: 0))
+        let batch = try #require(walk.batch)
+        let formatted = await batch.formatted()
+
+        #expect(grid.text(row: 0) == "A")
+        let drawn = grid.model.display.cache.box(forID: .existing(0))
+
+        #expect(grid.presenter.installPrewarmed(formatted, of: batch))
+        #expect(grid.model.display.cache.box(forID: .existing(0)) === drawn)
+        #expect(grid.model.display.cache.box(forID: .existing(1))?.values[0] == "C")
+    }
+
+    @Test("A batch copies only rows with no text yet, and stops at its limit")
+    func prewarmBatchSkipsCachedRows() throws {
+        let rowCount = DataGridPrewarmBatch.rowLimit * 2
+        let grid = DisplayGrid(TableRows.from(
+            queryRows: (0..<rowCount).map { [PluginCellValue.text("row \($0)")] },
+            columns: ["name"],
+            columnTypes: [.text(rawType: "TEXT")]
+        ))
+        #expect(grid.text(row: 0) == "row 0")
+
+        let walk = try #require(grid.presenter.prewarmBatch(in: 0..<rowCount, from: 0))
+        let batch = try #require(walk.batch)
+
+        #expect(batch.rows.count == DataGridPrewarmBatch.rowLimit)
+        #expect(batch.rows.first?.id == .existing(1))
+        #expect(walk.next == DataGridPrewarmBatch.rowLimit + 1)
+    }
+
     @Test("The background prewarm formats the rows around the viewport and no further")
     func prewarmCachesAroundTheViewport() async throws {
         let rowCount = DataGridPrewarmWindow.margin * 3

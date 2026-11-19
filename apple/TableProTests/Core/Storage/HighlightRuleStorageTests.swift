@@ -25,6 +25,36 @@ struct HighlightRuleStorageTests {
         directory.appendingPathComponent("\(connectionId.uuidString).json")
     }
 
+    @Test("A rule read before every kind of write is never served after it")
+    func readsFollowEveryWrite() {
+        let store = HighlightRuleStorage(storageDirectory: directory)
+        let rules = [HighlightRule(columnName: "status", value: "paid", color: .green)]
+        let other = [HighlightRule(columnName: "status", value: "late", color: .red)]
+
+        #expect(store.rules(for: scope(table: "orders")).isEmpty)
+        store.setRules(rules, for: scope(table: "orders"))
+        #expect(store.rules(for: scope(table: "orders")) == rules)
+
+        store.setRules(other, for: scope(table: "orders"))
+        #expect(store.rules(for: scope(table: "orders")) == other)
+
+        store.renameTable(from: scope(table: "orders"), to: scope(table: "sales"))
+        #expect(store.rules(for: scope(table: "orders")).isEmpty)
+        #expect(store.rules(for: scope(table: "sales")) == other)
+
+        store.renameContainer(connectionId: connectionId, fromDatabase: "shop", fromSchema: "public", toDatabase: "shop", toSchema: "archive")
+        #expect(store.rules(for: scope(table: "sales")).isEmpty)
+        #expect(store.rules(for: scope(table: "sales", schema: "archive")) == other)
+
+        store.dropContainer(connectionId: connectionId, database: "shop", schema: "archive")
+        #expect(store.rules(for: scope(table: "sales", schema: "archive")).isEmpty)
+
+        store.setRules(rules, for: scope(table: "orders"))
+        #expect(store.rules(for: scope(table: "orders")) == rules)
+        store.purgeConnections([connectionId], leavesTombstones: false)
+        #expect(store.rules(for: scope(table: "orders")).isEmpty)
+    }
+
     @Test("Dropping a table forgets its rules and leaves its siblings alone")
     func dropTableForgetsOnlyThatTable() {
         let store = HighlightRuleStorage(storageDirectory: directory)

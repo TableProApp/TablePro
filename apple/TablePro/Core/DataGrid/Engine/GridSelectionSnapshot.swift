@@ -7,7 +7,7 @@ struct GridSelectionSnapshot: Equatable {
         let columnID: DataGridColumnID
     }
 
-    var rowIDs: [RowID]
+    var rowRuns: RowIDRuns
     var rectangles: [Rectangle]
     var activeCell: Cell?
     var anchor: Cell?
@@ -15,17 +15,30 @@ struct GridSelectionSnapshot: Equatable {
     var mode: GridSelection.Mode = .cells
 
     struct Rectangle: Hashable {
-        let rowIDs: [RowID]
+        let rowRuns: RowIDRuns
         let columnIDs: [DataGridColumnID]
+
+        init(rowIDs: [RowID], columnIDs: [DataGridColumnID]) {
+            self.init(rowRuns: RowIDRuns(rowIDs), columnIDs: columnIDs)
+        }
+
+        init(rowRuns: RowIDRuns, columnIDs: [DataGridColumnID]) {
+            self.rowRuns = rowRuns
+            self.columnIDs = columnIDs
+        }
+
+        var rowIDs: [RowID] { Array(rowRuns) }
     }
 
     static let empty = GridSelectionSnapshot(rowIDs: [], rectangles: [], activeCell: nil, anchor: nil)
 
-    var isEmpty: Bool { rowIDs.isEmpty && activeCell == nil }
+    var rowIDs: [RowID] { Array(rowRuns) }
+
+    var isEmpty: Bool { rowRuns.isEmpty && activeCell == nil }
 
     // Rows named without rectangles are whole rows.
     init(rowIDs: [RowID], rectangles: [Rectangle], activeCell: Cell?, anchor: Cell?) {
-        self.rowIDs = rowIDs
+        self.rowRuns = RowIDRuns(rowIDs)
         self.rectangles = rectangles
         self.activeCell = activeCell
         self.anchor = anchor
@@ -44,10 +57,14 @@ struct GridSelectionSnapshot: Equatable {
                   let column = columns.column(at: coord.displayColumn) else { return nil }
             return Cell(rowID: rowID, columnID: column.id)
         }
-        self.rowIDs = order.rowIDs(atDisplayIndexes: selection.affectedRows, in: rows)
+        let runs = order.rowIDRuns(atDisplayIndexes: selection.affectedRows, in: rows)
+        self.rowRuns = runs
+        let isOneRectangle = selection.rectangles.count == 1
         self.rectangles = selection.rectangles.map { rect in
             Rectangle(
-                rowIDs: rect.rows.compactMap { order.rowID(at: $0, in: rows) },
+                rowRuns: isOneRectangle
+                    ? runs
+                    : order.rowIDRuns(atDisplayIndexes: IndexSet(integersIn: rect.rows.lowerBound...rect.rows.upperBound), in: rows),
                 columnIDs: rect.columns.compactMap { columns.column(at: $0)?.id }
             )
         }
@@ -58,8 +75,8 @@ struct GridSelectionSnapshot: Equatable {
     }
 
     var namedRowIDs: Set<RowID> {
-        var named = Set(rowIDs)
-        for rectangle in rectangles { named.formUnion(rectangle.rowIDs) }
+        var named = Set(rowRuns)
+        for rectangle in rectangles { named.formUnion(rectangle.rowRuns) }
         if let activeCell { named.insert(activeCell.rowID) }
         if let anchor { named.insert(anchor.rowID) }
         return named
@@ -72,9 +89,9 @@ struct GridSelectionSnapshot: Equatable {
             return Cell(rowID: rowID, columnID: cell.columnID)
         }
         var mapped = GridSelectionSnapshot(
-            rowIDs: rowIDs.compactMap(transform),
+            rowIDs: rowRuns.compactMap(transform),
             rectangles: rectangles.compactMap { rectangle in
-                let rows = rectangle.rowIDs.compactMap(transform)
+                let rows = rectangle.rowRuns.compactMap(transform)
                 return rows.isEmpty ? nil : Rectangle(rowIDs: rows, columnIDs: rectangle.columnIDs)
             },
             activeCell: cell(activeCell),
@@ -98,14 +115,14 @@ struct GridSelectionSnapshot: Equatable {
         if mode != .cells {
             if !columns.isEmpty {
                 let all = 0...(columns.count - 1)
-                for range in order.displayIndexes(of: rowIDs, in: rows).rangeView {
+                for range in order.displayIndexes(of: rowRuns, in: rows).rangeView {
                     resolvedRects.append(GridRect(rows: range.lowerBound...(range.upperBound - 1), columns: all))
                 }
             }
         } else {
             // Rows and columns that are no longer next to each other split the block, so no cell joins it.
             for rectangle in rectangles {
-                let displayRows = order.displayIndexes(of: rectangle.rowIDs, in: rows)
+                let displayRows = order.displayIndexes(of: rectangle.rowRuns, in: rows)
                 let displayColumns = IndexSet(rectangle.columnIDs.compactMap { columns.displayPosition(of: $0) })
                 for rowRun in displayRows.rangeView {
                     for columnRun in displayColumns.rangeView {

@@ -101,15 +101,19 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         {
             _workbench.HistoryCleared -= OnHistoryRecorded;
             _workbench.HistoryCleared += OnHistoryRecorded;
+            _workbench.SavedQueriesChanged -= OnSavedQueriesChanged;
+            _workbench.SavedQueriesChanged += OnSavedQueriesChanged;
             _workbench.SettingsChanged -= OnSettingsChanged;
             _workbench.SettingsChanged += OnSettingsChanged;
-            // A clear while another page showed reached no handler here, so the pane reads the history again.
+            // A clear or an import while another page showed reached no handler here, so the panes read again.
             OnHistoryRecorded(this, EventArgs.Empty);
+            OnSavedQueriesChanged(this, EventArgs.Empty);
             AssistantChanged();
         };
         Unloaded += (_, _) =>
         {
             _workbench.HistoryCleared -= OnHistoryRecorded;
+            _workbench.SavedQueriesChanged -= OnSavedQueriesChanged;
             _workbench.SettingsChanged -= OnSettingsChanged;
         };
         Tabs.LayoutUpdated += OnTabsLayoutUpdated;
@@ -858,6 +862,14 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
     }
 
+    private async void OnSavedQueriesChanged(object? sender, EventArgs e)
+    {
+        if (SavedQueriesVisible && _savedPane is { } pane)
+        {
+            await pane.RefreshAsync().ConfigureAwait(true);
+        }
+    }
+
     private void OnOpenInEditor(object? sender, ObjectSource source) =>
         AddQuery(source.Sql, NextQueryTitle(), null, source.Database);
 
@@ -1091,7 +1103,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             (QueryTabView query, ShareKind.Query) => query.QueryToShare is var sql && !string.IsNullOrWhiteSpace(sql)
                 ? ShareSubject.Query(sql, query.Title, dialect)
                 : null,
-            (QueryTabView { IsRunning: false } query, ShareKind.Result)
+            (QueryTabView { IsRunning: false, HasPendingRows: false } query, ShareKind.Result)
                 when query.ResultsView.ShownSet is { IsFinished: true } rows =>
                 ShareSubject.Result(query.LastStatement ?? string.Empty, query.Title, dialect, rows, query.ResultsView.Columns),
             (TableTabView { IsRunning: false, HasUnsavedChanges: false } table, ShareKind.Result)

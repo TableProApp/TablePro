@@ -228,23 +228,40 @@ final class DataGridCellPresenter {
         return (text, formatted.isFormatted)
     }
 
-    // Formats a whole row ahead of the viewport, for the background prewarm.
-    func cacheText(of row: Row, rows: TableRows, formats: [ValueDisplayFormat?], databaseType: DatabaseType?) {
-        guard let cache = model?.display.cache, cache.box(forID: row.id) == nil else { return }
-        let columnCount = rows.columns.count
-        let box = RowDisplayBox(ContiguousArray<String?>(repeating: nil, count: columnCount))
-        for dataIndex in 0..<min(row.values.count, columnCount) {
-            let type = dataIndex < rows.columnTypes.count ? rows.columnTypes[dataIndex] : nil
-            let format = dataIndex < formats.count ? formats[dataIndex] : nil
-            let formatted = CellDisplayFormatter.display(
-                row.values[dataIndex],
-                columnType: type,
-                displayFormat: format,
-                databaseType: databaseType
-            )
-            box.setText(formatted.text ?? row.values[dataIndex].asText ?? "", at: dataIndex, isFormatted: formatted.isFormatted)
+    // Copies the next rows of the window that have no text yet, and where the walk stopped.
+    func prewarmBatch(in window: Range<Int>, from start: Int) -> (batch: DataGridPrewarmBatch?, next: Int)? {
+        guard let model, start < window.upperBound else { return nil }
+        let rows = model.rows
+        let order = model.order
+        let cache = model.display.cache
+        var copied: [Row] = []
+        var index = start
+        while index < window.upperBound, copied.count < DataGridPrewarmBatch.rowLimit {
+            if let row = order.row(at: index, in: rows), cache.box(forID: row.id) == nil {
+                copied.append(row)
+            }
+            index += 1
         }
-        cache.setBox(box, forID: row.id)
+        guard !copied.isEmpty else { return (nil, index) }
+        let batch = DataGridPrewarmBatch(
+            rows: copied,
+            columnCount: rows.columns.count,
+            columnTypes: rows.columnTypes,
+            formats: model.store.displayFormats,
+            databaseType: model.configuration.traits.databaseType,
+            dateFormat: DateFormattingService.shared.currentFormat,
+            invalidations: cache.invalidations
+        )
+        return (batch, index)
+    }
+
+    // False when cached text was dropped while the batch formatted, so what came back may describe old values.
+    func installPrewarmed(_ formatted: sending [(id: RowID, box: RowDisplayBox)], of batch: DataGridPrewarmBatch) -> Bool {
+        guard let cache = model?.display.cache, cache.invalidations == batch.invalidations else { return false }
+        for (id, box) in formatted where cache.box(forID: id) == nil {
+            cache.setBox(box, forID: id)
+        }
+        return true
     }
 
     // MARK: - Appearance

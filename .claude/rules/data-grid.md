@@ -63,7 +63,8 @@ Three layers, knowledge pointing one way: an owner's adapter, then `DataGridMode
 
 ## Accessibility
 
-- **AppKit builds the AXCell tree from cell views only**, so while `DataGridAccessibility.isActive` the main table mounts a `DataGridAccessibilityCellView` (identifier `data-grid-cell`) for each on-screen cell. It draws nothing and takes no clicks. Keep that path working whenever row drawing changes.
+- **AppKit builds the AXCell tree from cell views only**, so while `DataGridAccessibility.isActive` the main table mounts a `DataGridAccessibilityCellView` (identifier `data-grid-cell`) for the cells a reader can reach. It draws nothing and takes no clicks. Keep that path working whenever row drawing changes.
 - **A label reads "Row N, column M: value"**: N is the row number on screen, page offset included, and M the display position. UI tests find cells by it (`.claude/rules/ui-tests.md`, The grid).
 - **The frozen pane is hidden from accessibility.** A frozen column's stand-in in the main table reports the frame the frozen pane shows it at.
 - **Only the viewport mounts.** Mounting for every row starved the main thread behind a 1,000-row page (#2392). A client's read prepares the rows it walks, off-screen ones without a stand-in, and AppKit never asks for a prepared row again. So each on-screen row still without one remounts after a scroll, a layout of the grid and a read of the table: a fitted grid grows to its rows, and a page moves a grid, with no scroll.
+- **Columns mount by what a reader can reach**: those on screen and one more each side, the row numbers, the frozen columns and the active cell's column. A sideways scroll reloads only the columns that came or went, because a reload replaces the cell a reader is on.

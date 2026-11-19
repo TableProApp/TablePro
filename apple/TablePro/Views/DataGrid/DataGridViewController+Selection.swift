@@ -46,7 +46,7 @@ extension DataGridViewController {
     func mirrorSelection() {
         let rowCount = model.rowCount
         guard panes.allSatisfy({ $0.tableView.numberOfRows == rowCount }) else { return }
-        let rows = model.selection.affectedRows.filteredIndexSet { $0 >= 0 && $0 < rowCount }
+        let rows = model.selection.affectedRows.intersection(IndexSet(integersIn: 0..<rowCount))
         let wasMirroring = isMirroringSelection
         isMirroringSelection = true
         for pane in panes where pane.tableView.selectedRowIndexes != rows {

@@ -53,8 +53,10 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
         coordinator?.gridChangeState(forTab: tabId) ?? Self.detachedChangeState
     }
 
+    // Read per drawn row, so by index: `tab` copies the whole tab.
     var gridRowNumberOffset: Int {
-        tab?.pagination.currentOffset ?? 0
+        guard let coordinator, let index = coordinator.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return 0 }
+        return coordinator.tabManager.tabs[index].pagination.currentOffset
     }
 
     var gridHasUnloadedRows: Bool {
@@ -63,8 +65,8 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
     }
 
     var gridHighlightRules: [HighlightRule] {
-        guard let coordinator, let tab else { return [] }
-        return coordinator.highlightRules(for: tab)
+        guard let coordinator, let index = coordinator.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return [] }
+        return coordinator.highlightRules(forTabAt: index)
     }
 
     // MARK: - Edits

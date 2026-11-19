@@ -99,7 +99,7 @@ public sealed record DatabaseChoices(
     string? Current);
 
 // One editor connection for the tab, so a transaction holds from one run to the next.
-public sealed class QueryTab : IWorkspaceTab
+public sealed partial class QueryTab : IWorkspaceTab
 {
     private readonly ITabSession _session;
     private readonly IQueryTabView _view;
@@ -108,6 +108,7 @@ public sealed class QueryTab : IWorkspaceTab
     private readonly Func<AppSettings> _settings;
     private readonly IHistoryRecorder? _history;
     private readonly IQueryFileView? _files;
+    private readonly IResultEditView? _resultView;
     private readonly TabWork _work = new();
     private ITabEditor? _editor;
     private Task? _closing;
@@ -143,7 +144,8 @@ public sealed class QueryTab : IWorkspaceTab
         string? filePath = null,
         SqlFileRead? onDisk = null,
         bool baselineUnknown = false,
-        bool restoring = false)
+        bool restoring = false,
+        IResultEditView? resultEdits = null)
     {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(session);
@@ -158,6 +160,7 @@ public sealed class QueryTab : IWorkspaceTab
         _settings = settings;
         _history = history;
         _files = files;
+        _resultView = resultEdits;
         Database = Kept(database);
         if (files is not null && !string.IsNullOrEmpty(filePath))
         {
@@ -173,6 +176,8 @@ public sealed class QueryTab : IWorkspaceTab
             IsDirty = TextDiffers();
             _awaitingFile = restoring && onDisk is null;
         }
+
+        _results.ShownSetChanged += OnShownSetChanged;
     }
 
     public event EventHandler? StateChanged;
@@ -195,7 +200,8 @@ public sealed class QueryTab : IWorkspaceTab
 
     // As the Linux app waits: a move would part a run or a transaction from the database it began in.
     public bool CanPickDatabase =>
-        !IsRunning && !_confirming && !_switching && !_work.IsClosed && !WorkspaceNotices.Holds(Transaction);
+        !IsRunning && !IsSavingRows && !_confirming && !_switching && !_work.IsClosed
+        && !WorkspaceNotices.Holds(Transaction);
 
     public bool IsRunning { get; private set; }
 
@@ -206,8 +212,7 @@ public sealed class QueryTab : IWorkspaceTab
     // The text differs from the file as last read or saved; set as the view reports edits.
     public bool IsDirty { get; private set; }
 
-    // Read afresh, since the view reports edits a moment later than they land; a file still being written counts too.
-    public bool HasUnsavedChanges => (FilePath is not null && TextDiffers()) || _saving is { IsCompleted: false };
+    public bool HasUnsavedChanges => FileUnsaved || HasPendingRows;
 
     // The typed SQL whose results the tab shows, which a result share sends; null after Commit or Roll back.
     public string? LastStatement => _statement;
@@ -249,23 +254,48 @@ public sealed class QueryTab : IWorkspaceTab
         return found.Length > 0 ? found : null;
     }
 
-    // A scratch tab's text is kept in the session, so only a file tab's unsaved text is asked about.
+    // Read afresh, since the view reports edits a moment later than they land; a file still being written counts too.
+    private bool FileUnsaved => (FilePath is not null && TextDiffers()) || _saving is { IsCompleted: false };
+
+    // A scratch tab's text is kept in the session, so only a file's text is asked about, with the result's rows.
     public async Task<bool> ConfirmCloseAsync(bool offerSave)
     {
-        if (_files is null || !HasUnsavedChanges)
+        // A row save in flight is waited for, never asked about halfway; what it left pending is asked about after.
+        await _rowSave.ConfigureAwait(true);
+        // An open edit the grid cannot keep holds the close back while it shows why.
+        if (_editing is not null && _resultView is { } view && !view.CommitOpenEdit())
+        {
+            return false;
+        }
+
+        var rows = HasPendingRows;
+        var file = _files is not null && FileUnsaved;
+        if (!rows && !file)
         {
             return true;
         }
 
-        // A read-only connection takes away Save for its table edits; a file is written here, not to the database.
-        var answer = await _files.AskSaveBeforeCloseAsync(Title, offerSave: true).ConfigureAwait(true);
-        return answer switch
+        // A read-only connection takes away Save for the rows; a file is written here, not to the database.
+        var saves = offerSave || !rows;
+        var answer = rows
+            ? await _resultView!.AskSaveBeforeCloseAsync(Title, saves).ConfigureAwait(true)
+            : await _files!.AskSaveBeforeCloseAsync(Title, offerSave: true).ConfigureAwait(true);
+        switch (answer)
         {
-            // Text typed while the file was written is still unsaved, so the tab stays.
-            SaveBeforeClose.Save => await SaveAsync().ConfigureAwait(true) && !HasUnsavedChanges,
-            SaveBeforeClose.DontSave => true,
-            _ => false,
-        };
+            // The rows are read again after their save: the file's save, or another tab's answer, can keep this one open.
+            case SaveBeforeClose.Save when saves:
+                if (rows && !await TrackRowSave(SaveRowsOnceAsync(reread: true)).ConfigureAwait(true))
+                {
+                    return false;
+                }
+
+                // Text typed while the file was written is still unsaved, so the tab stays.
+                return !file || (await SaveAsync().ConfigureAwait(true) && !FileUnsaved);
+            case SaveBeforeClose.DontSave:
+                return true;
+            default:
+                return false;
+        }
     }
 
     // Don't Save leaves the file as it was; the text stays with the tab either way, as macOS keeps a closed tab's SQL.
@@ -294,7 +324,7 @@ public sealed class QueryTab : IWorkspaceTab
 
     public async Task RunAsync()
     {
-        if (IsRunning || _confirming || _switching || _work.IsClosed)
+        if (IsRunning || IsSavingRows || _confirming || _switching || _work.IsClosed)
         {
             return;
         }
@@ -313,7 +343,7 @@ public sealed class QueryTab : IWorkspaceTab
     // The statement is selected first so the tab shows which of its statements ran, as the Linux app does.
     public async Task RunStatementAsync()
     {
-        if (IsRunning || _confirming || _switching || _work.IsClosed)
+        if (IsRunning || IsSavingRows || _confirming || _switching || _work.IsClosed)
         {
             return;
         }
@@ -367,7 +397,9 @@ public sealed class QueryTab : IWorkspaceTab
     // Only one query that reads runs again: running a script or a write again would repeat it.
     public async Task SortAsync(GridSort sort)
     {
-        if (IsRunning || _sorting || _switching)
+        if (IsRunning || IsSavingRows || _sorting || _switching
+            || !await MayReplaceResultAsync(ResultReplacement.Sort).ConfigureAwait(true)
+            || IsRunning || _sorting || _switching)
         {
             _results.Sort = _sort;
             return;
@@ -431,7 +463,8 @@ public sealed class QueryTab : IWorkspaceTab
     public async Task PickDatabaseAsync(string database)
     {
         ArgumentException.ThrowIfNullOrEmpty(database);
-        if (!CanPickDatabase || database == ShownDatabase)
+        if (!CanPickDatabase || database == ShownDatabase
+            || !await MayReplaceResultAsync(ResultReplacement.Database).ConfigureAwait(true) || !CanPickDatabase)
         {
             return;
         }
@@ -612,6 +645,7 @@ public sealed class QueryTab : IWorkspaceTab
         _run?.Dispose();
         _run = null;
         _results.Clear();
+        ReleaseResult();
         if (_editor is not null)
         {
             await _editor.DisposeAsync().ConfigureAwait(true);
@@ -630,7 +664,8 @@ public sealed class QueryTab : IWorkspaceTab
             return;
         }
 
-        if (!await SafeModeAllowsAsync(sql).ConfigureAwait(true) || IsRunning || _work.IsClosed)
+        if (!await SafeModeAllowsAsync(sql).ConfigureAwait(true) || IsRunning || _work.IsClosed
+            || !await MayReplaceResultAsync(ResultReplacement.Run).ConfigureAwait(true) || IsRunning || _work.IsClosed)
         {
             return;
         }
@@ -673,6 +708,8 @@ public sealed class QueryTab : IWorkspaceTab
     private async Task RunOnEditorAsync(string sql, bool record, int? origin, CancellationToken cancellationToken)
     {
         HistoryRun? ran = null;
+        // The run replaces the rows the result's edits name, which were asked about first.
+        ReleaseResult();
         SetRunning(true);
         try
         {
@@ -685,8 +722,13 @@ public sealed class QueryTab : IWorkspaceTab
             // An editor that opens as the tab closes stays in _editor, which the close disposes.
             if (_editor is null)
             {
+                var opening = Database;
                 // Run elsewhere, the text would make its objects in the wrong database, so the core refuses the open.
                 _editor = await _session.OpenEditorAsync(Database, cancellationToken).ConfigureAwait(true);
+                if (opening is null)
+                {
+                    _home ??= _editor.Database;
+                }
             }
 
             if (_work.IsClosed)
@@ -725,6 +767,7 @@ public sealed class QueryTab : IWorkspaceTab
                 }
 
                 await AfterRunAsync().ConfigureAwait(true);
+                await BindResultAsync(sql, cancellationToken).ConfigureAwait(true);
             }
         }
         catch (TableProException exception)
@@ -833,7 +876,8 @@ public sealed class QueryTab : IWorkspaceTab
     // Run as typed SQL is, so the results and the bar follow it, as the Linux app ends one.
     private async Task EndTransactionAsync(bool commit)
     {
-        if (IsRunning || _editor is null)
+        if (IsRunning || IsSavingRows || _editor is null
+            || !await MayReplaceResultAsync(ResultReplacement.Run).ConfigureAwait(true) || IsRunning)
         {
             return;
         }
@@ -863,6 +907,11 @@ public sealed class QueryTab : IWorkspaceTab
             if (switched)
             {
                 _statement = null;
+                // The rows shown came from the database before, which a save would read again in this one.
+                if (_editing is not null)
+                {
+                    ReleaseResult(ResultEditBlock.RunAgain);
+                }
             }
 
             StateChanged?.Invoke(this, EventArgs.Empty);
@@ -1069,6 +1118,8 @@ public sealed class QueryTab : IWorkspaceTab
         finally
         {
             _sorting = false;
+            // A sorted copy bound while the sort ran was shown as not taking edits.
+            ResultEditsChanged();
         }
     }
 
