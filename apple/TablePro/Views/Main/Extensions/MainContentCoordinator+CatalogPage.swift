@@ -144,12 +144,16 @@ extension MainContentCoordinator {
         let tabId = check.tab.id
         // A failed later run leaves the page on screen, and the notice with it.
         guard installed || page.standing == .awaiting else { return }
-        // Unconfirmed, a known verdict stands: the notice follows the new page until a read answers it.
+        // Unconfirmed, a known verdict stands for a page that can still carry what the catalog list decided.
         guard let confirmed else {
             if !installed {
                 discardCatalogColumns(of: page)
             } else if page.standing == .outdated {
-                setOutdatedPageNotice(OutdatedPageNotice(tableName: page.tableName, resultSetId: activeResultSetId(of: tabId)), onTab: tabId)
+                let carries = check.isBuiltOnCatalog || Self.isAppChosen(check.tab.sortState)
+                setOutdatedPageNotice(
+                    carries ? OutdatedPageNotice(tableName: page.tableName, resultSetId: activeResultSetId(of: tabId)) : nil,
+                    onTab: tabId
+                )
             }
             return
         }
@@ -193,6 +197,7 @@ extension MainContentCoordinator {
         let task = Task { [weak self] in
             guard let self else { return }
             defer { if catalogPageReloads[tabId]?.token == token { catalogPageReloads[tabId] = nil } }
+            guard stillShows(page, onTab: tabId) else { return }
             if manager.hasChanges {
                 guard await confirmDiscardChanges(action: .refresh, window: contentWindow),
                       stillShows(page, onTab: tabId)
@@ -202,9 +207,9 @@ extension MainContentCoordinator {
             }
             if schemaColumns.cached(page.key) == nil {
                 await loadSchemaColumns(for: page.tableName, scope: page.scope)
-                guard stillShows(page, onTab: tabId) else { return }
             }
-            guard let confirmed = schemaColumns.cached(page.key),
+            guard stillShows(page, onTab: tabId),
+                  let confirmed = schemaColumns.cached(page.key),
                   let tab = tabManager.tabs.first(where: { $0.id == tabId })
             else { return }
             let hint = PluginManager.shared.defaultSortHint(for: connection.type, table: page.tableName)

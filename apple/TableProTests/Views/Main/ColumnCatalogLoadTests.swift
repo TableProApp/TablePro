@@ -295,6 +295,30 @@ extension GlobalStateSuites {
             #expect(harness.standing == .outdated)
         }
 
+        @Test("An unconfirmed page under a sort the user picked drops the notice, since nothing on it came from the catalog list")
+        func unconfirmedUserSortedPageDropsTheNotice() async throws {
+            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+            let harness = try await makeHarness(
+                cataloged: [Self.column("id", key: true), Self.column("code"), Self.column("name")],
+                current: [Self.column("id"), Self.column("code", key: true), Self.column("name")]
+            )
+            defer { tearDown(harness, restoring: behavior) }
+            let tabId = harness.addUsersTab()
+            try await harness.open(tabId)
+            #expect(harness.notice != nil)
+            harness.coordinator.schemaColumns.removeAll()
+            harness.driver.fetchColumnsError = DatabaseError.queryFailed("connection lost")
+
+            harness.coordinator.tabManager.mutate(tabId: tabId) {
+                $0.sortState = SortState(columns: [SortColumn(columnIndex: 2, direction: .ascending, columnName: "name")], source: .user)
+            }
+            harness.coordinator.reloadTableTab(tabId)
+            try await harness.runUntilSettled(tabId, queries: 2)
+
+            #expect(harness.notice == nil)
+            #expect(harness.standing == .outdated)
+        }
+
         @Test("A page that lands while its columns cannot be read stays as built, unconfirmed, until a later run confirms it")
         func unreadableColumnsLeaveThePageUnconfirmed() async throws {
             let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
@@ -588,6 +612,30 @@ extension GlobalStateSuites {
                     && destination.tabManager.tabs[0].outdatedPageNotice == nil
             }
             #expect(harness.driver.executedUserQueries[1].contains("email"))
+        }
+
+        @Test("A Reload asked for just before the tab moves to another table never runs or re-sorts it")
+        func retargetBeforeReloadStartsEndsIt() async throws {
+            let behavior = AppSettingsManager.shared.dataGrid.defaultSortBehavior
+            let harness = try await makeHarness(
+                cataloged: [Self.column("id", key: true), Self.column("code")],
+                current: [Self.column("id"), Self.column("code", key: true)]
+            )
+            defer { tearDown(harness, restoring: behavior) }
+            let tabId = harness.addUsersTab()
+            try await harness.open(tabId)
+            #expect(harness.notice != nil)
+            #expect(harness.entry != nil)
+
+            harness.coordinator.reloadOutdatedPage(tabId: tabId)
+            let reload = try #require(harness.coordinator.catalogPageReloads[tabId]?.task)
+            try harness.coordinator.tabManager.replaceTabContent(tableName: "orders", databaseType: .duckdb, databaseName: "db")
+            harness.coordinator.discardRowsForRetarget(ofTab: tabId)
+            await reload.value
+
+            #expect(harness.driver.executedUserQueries.count == 1)
+            #expect(harness.tab.sortState == SortState())
+            #expect(harness.tab.tableContext.tableName == "orders")
         }
 
         @Test("A dismissed notice stays down for later pages of the same query")

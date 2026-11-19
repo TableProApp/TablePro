@@ -209,9 +209,7 @@ extension MainContentCoordinator {
 
     // The sort an open would choose from this list. One the user chose stays, and so does one the setting no longer asks for.
     func confirmedSortState(for tab: QueryTab, builtOn schema: SchemaColumnStore.Entry, hint: DefaultSortHint) -> SortState {
-        let isAppChosen = tab.sortState.source == .defaultSort
-            || (tab.sortState.source == .unset && !tab.sortState.isSorting)
-        guard isAppChosen else { return tab.sortState }
+        guard Self.isAppChosen(tab.sortState) else { return tab.sortState }
         var unsorted = tab
         unsorted.sortState = SortState()
         guard wantsDefaultSort(for: unsorted, hint: hint) else { return tab.sortState }
@@ -221,5 +219,9 @@ extension MainContentCoordinator {
             allColumns: effectiveResultColumns(for: unsorted, schema: schema)
         )
         return resolved.isSorting ? resolved : SortState()
+    }
+
+    static func isAppChosen(_ sort: SortState) -> Bool {
+        sort.source == .defaultSort || (sort.source == .unset && !sort.isSorting)
     }
 }
