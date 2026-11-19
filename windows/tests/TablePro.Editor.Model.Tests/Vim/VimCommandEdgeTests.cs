@@ -222,4 +222,46 @@ public sealed class VimCommandEdgeTests
         s.Press("dw");
         Assert.Equal("foo bar", s.Text);
     }
+
+    [Fact]
+    public void LeavingTheCommandLineDropsTheOperatorBeforeIt()
+    {
+        var s = new VimSession("hello world", caret: 0);
+        s.Press("d/");
+        s.Escape();
+        s.Press("w");
+        Assert.Equal("hello world", s.Text);
+        Assert.Equal(6, s.Caret);
+        s.Press("0d/");
+        s.Backspace();
+        s.Press("w");
+        Assert.Equal("hello world", s.Text);
+    }
+
+    [Fact]
+    public void AnUndoThatRestoresASelectionLeavesACaretAtItsStart()
+    {
+        var s = new VimSession("hello world", caret: 0);
+        s.Press("ved");
+        Assert.Equal(" world", s.Text);
+        s.Press("u");
+        Assert.Equal("hello world", s.Text);
+        Assert.Equal((0, 0), s.Selection);
+        Assert.Equal(0, s.Engine.CursorPosition);
+        s.Press("x");
+        Assert.Equal("ello world", s.Text);
+    }
+
+    [Fact]
+    public void AnInsertUndoesWholeAfterTheHistoryReachesItsLimit()
+    {
+        var s = new VimSession("xyz", caret: 0);
+        s.Model.Document.Undo.Limit = 2;
+        s.Press("xxi");
+        s.Type("ab cd");
+        s.Escape();
+        Assert.Equal("ab cdz", s.Text);
+        s.Press("u");
+        Assert.Equal("z", s.Text);
+    }
 }

@@ -166,10 +166,12 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
         Model.SetCaret(location + change.InsertedLength);
     }
 
+    // A step can restore a selection, which Normal mode reads as a caret at its start.
     public void Undo()
     {
         Document.Undo.Checkpoint([.. Model.Selections]);
         Model.Undo();
+        SetCaret(SelectedRange.Location);
         Document.Undo.Restart([.. Model.Selections]);
     }
 
@@ -177,6 +179,7 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
     {
         Document.Undo.Checkpoint([.. Model.Selections]);
         Model.Redo();
+        SetCaret(SelectedRange.Location);
         Document.Undo.Restart([.. Model.Selections]);
     }
 

@@ -79,7 +79,8 @@ public sealed partial class VimEngine : IDisposable
     };
 
     // Where the block caret goes: the Visual cursor, which may be the selection's start, or the caret.
-    public int CursorPosition => _mode.IsVisual() ? Math.Clamp(CursorOffset, 0, _buffer.Length) : _buffer.Model.Primary.Active;
+    // Outside Visual mode commands act at the selection's start, so the block is drawn there too.
+    public int CursorPosition => _mode.IsVisual() ? Math.Clamp(CursorOffset, 0, _buffer.Length) : _buffer.SelectedRange.Location;
 
     // The character under the block caret, as offsets; empty at the end of a line or of the text.
     public (int Start, int End) CursorCharacter

@@ -111,13 +111,16 @@ public sealed partial class VimEngine
     {
         switch (key)
         {
+            // Leaving the command line ends the command it was part of, so an operator before it is not left waiting.
             case Escape:
+                CancelPending();
                 SetMode(VimMode.Normal);
                 return true;
             case "\r" or "\n":
             {
                 var prefix = commandLine.Length > 0 ? commandLine[0] : '\0';
                 var body = commandLine.Length > 0 ? commandLine[1..] : string.Empty;
+                CancelPending();
                 SetMode(VimMode.Normal);
                 if (prefix == '/')
                 {
@@ -146,6 +149,7 @@ public sealed partial class VimEngine
                 }
                 else
                 {
+                    CancelPending();
                     SetMode(VimMode.Normal);
                 }
                 return true;

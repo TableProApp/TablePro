@@ -9,7 +9,8 @@ public enum EditKind
     Other,
 }
 
-internal readonly record struct UndoMark(int Count, UndoGroup? Top);
+// The newest step when the mark was taken, by its serial number, which history trimmed at its limit leaves in place.
+internal readonly record struct UndoMark(long Serial, UndoGroup? Top);
 
 public sealed class UndoGroup
 {
@@ -26,6 +27,8 @@ public sealed class UndoGroup
     internal IReadOnlyList<Selection>? Before { get; set; }
 
     internal IReadOnlyList<Selection>? After { get; set; }
+
+    internal long Serial { get; set; }
 }
 
 // Runs of typing or deleting join one step, as the macOS editor groups them, until a caret moves.
@@ -34,6 +37,8 @@ public sealed class UndoHistory
     private readonly List<UndoGroup> _undo = [];
     private readonly List<UndoGroup> _redo = [];
     private UndoGroup? _current;
+    private long _serial;
+    private long _trimmedSerial;
     private int _depth;
     private bool _canJoin;
 
@@ -105,11 +110,7 @@ public sealed class UndoHistory
         }
         else
         {
-            _undo.Add(operation);
-            if (_undo.Count > Limit)
-            {
-                _undo.RemoveAt(0);
-            }
+            Push(operation);
         }
         _canJoin = operation.Kind != EditKind.Other;
     }
@@ -162,7 +163,18 @@ public sealed class UndoHistory
         return new ReplayScope(this);
     }
 
-    internal UndoMark Mark() => new(_undo.Count, _undo.Count > 0 ? _undo[^1] : null);
+    internal UndoMark Mark() => _undo.Count > 0 ? new(_undo[^1].Serial, _undo[^1]) : new(0, null);
+
+    private void Push(UndoGroup group)
+    {
+        group.Serial = ++_serial;
+        _undo.Add(group);
+        if (_undo.Count > Limit)
+        {
+            _trimmedSerial = _undo[0].Serial;
+            _undo.RemoveAt(0);
+        }
+    }
 
     // Closes the step being built as one of its own, so an undo inside a step that is still open, as a replayed
     // macro's u, undoes what the step did so far and not the step before it.
@@ -175,11 +187,7 @@ public sealed class UndoHistory
         var operation = _current;
         operation.After = selections;
         _redo.Clear();
-        _undo.Add(operation);
-        if (_undo.Count > Limit)
-        {
-            _undo.RemoveAt(0);
-        }
+        Push(operation);
         _canJoin = false;
         _current = new UndoGroup(operation.Kind, selections);
     }
@@ -197,27 +205,35 @@ public sealed class UndoHistory
     // Escape left them. An undo past the mark in between leaves the steps as they are.
     internal void Coalesce(UndoMark mark, IReadOnlyList<Selection> after)
     {
-        if (_current is not null || _undo.Count <= mark.Count)
+        var start = _undo.Count;
+        while (start > 0 && _undo[start - 1].Serial > mark.Serial)
+        {
+            start--;
+        }
+        if (_current is not null || start == _undo.Count)
         {
             return;
         }
-        if (mark.Count > 0 && !ReferenceEquals(_undo[mark.Count - 1], mark.Top))
+        // The step before the insert is still the one marked, or the limit trimmed it away.
+        var intact = start > 0
+            ? ReferenceEquals(_undo[start - 1], mark.Top)
+            : mark.Top is null || _trimmedSerial >= mark.Serial;
+        if (!intact)
         {
             return;
         }
-        if (_undo.Count - mark.Count == 1)
+        if (_undo.Count - start == 1)
         {
             _undo[^1].After = after;
             return;
         }
-        var first = _undo[mark.Count];
-        var merged = new UndoGroup(EditKind.Other, first.Before);
-        for (var i = mark.Count; i < _undo.Count; i++)
+        var merged = new UndoGroup(EditKind.Other, _undo[start].Before) { Serial = _undo[^1].Serial };
+        for (var i = start; i < _undo.Count; i++)
         {
             merged.Changes.AddRange(_undo[i].Changes);
         }
         merged.After = after;
-        _undo.RemoveRange(mark.Count, _undo.Count - mark.Count);
+        _undo.RemoveRange(start, _undo.Count - start);
         _undo.Add(merged);
         _canJoin = false;
     }
