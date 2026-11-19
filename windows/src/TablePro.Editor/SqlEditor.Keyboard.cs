@@ -32,7 +32,7 @@ public sealed partial class SqlEditor
         var shift = Down(VirtualKey.Shift);
         var alt = Down(VirtualKey.Menu);
         // Vim sees a key before the editor's own commands, and the app's accelerators come after both.
-        e.Handled = RouteVimKey(e.Key, control, shift, alt) || HandleKey(e.Key, control, shift, alt);
+        e.Handled = _vim is null ? HandleKey(e.Key, control, shift, alt) : HandleVimKey(e.Key, control, shift, alt);
         if (!e.Handled)
         {
             base.OnKeyDown(e);

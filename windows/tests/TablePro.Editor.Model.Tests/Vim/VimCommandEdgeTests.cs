@@ -122,8 +122,9 @@ public sealed class VimCommandEdgeTests
         var s = new VimSession(string.Empty, registers: registers);
         s.Press("qqi");
         s.Type("ab");
-        s.Engine.NoteEditorKey(VimEditorKey.Left);
+        s.Engine.BreakInsertUndo();
         s.Model.Move(CaretMove.Left, extend: false);
+        s.Engine.RecordEditorKey(new VimEditorKey(VimSession.LeftKey));
         s.Type("X");
         s.Escape();
         s.Press("q");
@@ -152,8 +153,9 @@ public sealed class VimCommandEdgeTests
         var registers = new VimRegisters();
         var s = new VimSession("abcd", registers: registers);
         s.Press("qqRX");
-        s.Engine.NoteEditorKey(VimEditorKey.Left);
+        s.Engine.BreakInsertUndo();
         s.Model.Move(CaretMove.Left, extend: false);
+        s.Engine.RecordEditorKey(new VimEditorKey(VimSession.LeftKey));
         s.Press("Y");
         s.Escape();
         s.Press("q");
@@ -174,5 +176,50 @@ public sealed class VimCommandEdgeTests
         s.Press("vl");
         Assert.Equal("abcd", s.Text);
         Assert.Equal((0, 2), s.Selection);
+    }
+
+    [Fact]
+    public void AMacroHandsBackTheEditorKeysItRecordedWithTheirModifiers()
+    {
+        var registers = new VimRegisters();
+        var s = new VimSession(string.Empty, registers: registers);
+        var wordLeft = new VimEditorKey(VimSession.LeftKey, Control: true);
+        s.Press("qqi");
+        s.Type("one two");
+        s.Engine.RecordEditorKey(wordLeft);
+        s.Escape();
+        s.Press("q");
+
+        var replay = new VimSession(string.Empty, registers: registers);
+        replay.Press("@q");
+        Assert.Equal([wordLeft], replay.EditorKeys);
+        Assert.Equal("one two", replay.Text);
+    }
+
+    [Fact]
+    public void VisualModeEndsWhenTheSelectionMovesFromOutside()
+    {
+        var s = new VimSession("abcdef", caret: 0);
+        s.Press("vl");
+        Assert.Equal(VimMode.Visual, s.Mode);
+        s.Model.Type("X");
+        Assert.Equal(VimMode.Normal, s.Mode);
+        Assert.Equal("Xcdef", s.Text);
+        s.Press("l");
+        Assert.Equal((2, 0), s.Selection);
+    }
+
+    // A line wrapped over rows 0 to 10 with rows 10 to 19 on screen: the middle row is 14, line 4.
+    [Fact]
+    public void MiddleReadsTheRowsOnScreenWhenTheFirstOneContinuesALine()
+    {
+        var text = new string('a', 86) + "\n" + string.Concat(Enumerable.Range(1, 12).Select(line => $"l{line}\n"));
+        var s = new VimSession(text, caret: 0);
+        s.Model.Rows.SetWrap(8, 4);
+        Assert.Equal(0, s.Model.Rows.LineAtRow(10));
+        Assert.Equal(1, s.Model.Rows.LineAtRow(11));
+        s.Visible = (10, 19);
+        s.Press("M");
+        Assert.Equal(4, s.Model.Document.GetLineFromOffset(s.Caret));
     }
 }

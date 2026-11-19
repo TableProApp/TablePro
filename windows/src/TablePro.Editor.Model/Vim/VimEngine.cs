@@ -11,7 +11,7 @@ public sealed partial class VimEngine : IDisposable
 
     private const int MaxCount = 999_999;
 
-    // Starts a recorded editor key; no typed text element is this character followed by a name.
+    // Starts a recorded editor key; no typed text element is this character followed by more.
     private const string EditorKeyToken = "\uE000";
 
     private readonly VimTextBuffer _buffer;
@@ -30,6 +30,7 @@ public sealed partial class VimEngine : IDisposable
         Registers = registers ?? new VimRegisters();
         model.Document.Reset += OnDocumentReset;
         model.Document.Changed += OnDocumentChanged;
+        model.SelectionsChanged += OnSelectionsChanged;
         _shownStatus = StatusKey();
     }
 
@@ -38,18 +39,15 @@ public sealed partial class VimEngine : IDisposable
     {
         _buffer.Model.Document.Reset -= OnDocumentReset;
         _buffer.Model.Document.Changed -= OnDocumentChanged;
+        _buffer.Model.SelectionsChanged -= OnSelectionsChanged;
     }
 
-    // An Insert-mode key the editor handles: a move splits the insert's undo step, and a macro being recorded keeps it.
-    public void NoteEditorKey(VimEditorKey key)
+    // An Insert-mode key the editor handled, which a macro being recorded keeps.
+    public void RecordEditorKey(VimEditorKey key)
     {
-        if (key != VimEditorKey.Delete)
-        {
-            BreakInsertUndo();
-        }
         if (MacroRecording is { } target && Registers.Macros.TryGetValue(target, out var keys))
         {
-            keys.Add(new VimKeystroke(EditorKeyToken + key, Shift: false));
+            keys.Add(new VimKeystroke(EditorKeyText(key), Shift: key.Shift));
         }
     }
 
@@ -306,6 +304,15 @@ public sealed partial class VimEngine : IDisposable
         PendingMacroTarget = null;
         PendingMacroCount = 1;
         PendingBracket = null;
+    }
+
+    // A paste, a click or a menu command moves the selection Visual mode was built on, so the mode ends with it.
+    private void OnSelectionsChanged(object? sender, EventArgs e)
+    {
+        if (_depth == 0 && _mode.IsVisual())
+        {
+            Reset();
+        }
     }
 
     // Offsets into the old text mean nothing in the new one; registers, macros and the last search carry over.

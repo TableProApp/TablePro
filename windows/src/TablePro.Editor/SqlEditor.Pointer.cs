@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using TablePro.Editor.Model;
-using TablePro.Editor.Model.Vim;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.Storage;
@@ -61,12 +60,7 @@ public sealed partial class SqlEditor
         }
         Focus(FocusState.Pointer);
         RestartBlink();
-        // A click ends Visual mode, as it does in Vim, since it moves the selection the mode was built on, and splits
-        // an insert's undo step.
-        if (_vim is { } vim && vim.Mode.IsVisual())
-        {
-            vim.Reset();
-        }
+        // A click splits an insert's undo step, as Vim splits it where the caret moves.
         _vim?.BreakInsertUndo();
         var position = point.Position;
         if (FoldClickedAt(position))

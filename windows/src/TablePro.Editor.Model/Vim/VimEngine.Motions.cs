@@ -252,16 +252,19 @@ public sealed partial class VimEngine
         GoalColumn = null;
     }
 
-    // H, M and L read the rows on screen, so a fold or a wrapped line between them counts as it shows.
+    // H, M and L read the rows on screen, so a fold or a wrapped line between them counts as it shows; the rows stop
+    // at Vim's last line, never the empty one after a final break.
     internal void JumpToVisibleLine(VimScroll position)
     {
         var rows = _buffer.Model.Rows;
         var (firstLine, lastLine) = _buffer.VisibleLineRange();
+        var (firstRow, lastRow) = _buffer.VisibleRows();
+        lastRow = Math.Min(lastRow, rows.FirstRowOf(lastLine) + Math.Max(1, rows.RowsOf(lastLine)) - 1);
         var targetLine = position switch
         {
             VimScroll.Top => firstLine,
             VimScroll.Bottom => lastLine,
-            _ => rows.LineAtRow((rows.FirstRowOf(firstLine) + rows.FirstRowOf(lastLine)) / 2),
+            _ => rows.LineAtRow((firstRow + lastRow) / 2),
         };
         _buffer.SetCaret(FirstNonBlankOffset(_buffer.Offset(Math.Min(targetLine, _buffer.LineCount - 1), 0)));
         GoalColumn = null;

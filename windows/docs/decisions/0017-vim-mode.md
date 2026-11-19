@@ -13,7 +13,7 @@ The macOS editor has a Vim mode behind its Key bindings setting (`apple/TablePro
 
 - `TablePro.Editor.Model/Vim` is a port of the macOS engine to C#, so its tests run on any machine (`tests/TablePro.Editor.Model.Tests/Vim`, one suite per macOS suite plus the Windows additions). A key is one text element; control keys come as their control characters.
 - It works on the editor model through `VimTextBuffer`: a character is a grapheme cluster (`StringInfo`), as macOS's composed character sequence is; `f` and `t` compare characters canonically, and `~`, `gU` and `gu` use Unicode's full case mapping, so `ß` becomes `SS`, as Swift's does.
-- Each key the engine takes is one undo step, and an insert is one step from the key that started it to Escape (`UndoHistory.Coalesce`), as Vim undoes it; an arrow or a click inside the insert starts a new step. A macro replayed by `@` is one step, `u` inside it undoes the macro's own changes (`UndoHistory.Checkpoint`), and it types and moves as Insert mode did while it was recorded.
+- Each key the engine takes is one undo step, and an insert is one step from the key that started it to Escape (`UndoHistory.Coalesce`), as Vim undoes it; an arrow or a click inside the insert starts a new step. A macro replayed by `@` is one step, `u` inside it undoes the macro's own changes (`UndoHistory.Checkpoint`), and it types what Insert mode typed and hands the keys Insert mode left to the editor back to it, modifiers included.
 - Marks move with every change to the text, typed, pasted or undone, not only the engine's deletes. Escape drops every prefix of a command, an operator included; `%` takes a pending operator; a count before `p` pastes the chosen register each time; a Visual text object moves Visual's anchor and cursor; Enter, `+` and `-` go to a line's first character. The same fixes went into the macOS engine with its suites.
 - Registers and macros are the app's, shared by every editor (`VimRegisters.Shared`), as Vim keeps them across buffers. Each yank and delete also reaches the clipboard, as on macOS, but kept out of clipboard history and other devices (`ClipboardContentOptions`), since Vim writes on every `x`.
 
@@ -32,7 +32,7 @@ The macOS editor has a Vim mode behind its Key bindings setting (`apple/TablePro
 
 ### Screen
 
-- Outside Insert and Replace the caret is a block over the character, the caret color at 40 percent, as macOS draws it; in Visual mode it sits on Vim's cursor, which can be the selection's start. A click ends Visual mode.
+- Outside Insert and Replace the caret is a block over the character, the caret color at 40 percent, as macOS draws it; in Visual mode it sits on Vim's cursor, which can be the selection's start. A click, a paste or a menu command that moves the selection ends Visual mode.
 - The query tab's bar shows a badge with the mode, or the command line while one is typed, colored by mode as macOS's is, then the keys of a command still being typed and `recording @q`. The badge's name says "Vim mode" and the mode for Narrator.
 - `:w` runs the query, `:q` closes the tab through its usual prompts, and `:tabnext`, `:tabprevious`, `:tabNext`, `gt` and `gT` select tabs, as macOS has them (`VimCommandLine`).
 - Settings has Vim mode in its Editor section, off by default.

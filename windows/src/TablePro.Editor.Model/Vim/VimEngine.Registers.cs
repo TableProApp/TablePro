@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace TablePro.Editor.Model.Vim;
 
 public sealed partial class VimEngine
@@ -286,26 +288,31 @@ public sealed partial class VimEngine
     private static bool IsEditorKeyToken(string key) =>
         key.Length > EditorKeyToken.Length && key.StartsWith(EditorKeyToken, StringComparison.Ordinal);
 
+    // The token is the key's code and its Ctrl, Shift and Alt as 0 or 1: "\uE000" "37,100".
+    private static string EditorKeyText(VimEditorKey key) => EditorKeyToken + Format(key.Code) + ","
+        + (key.Control ? "1" : "0") + (key.Shift ? "1" : "0") + (key.Alt ? "1" : "0");
+
+    private static VimEditorKey? ParseEditorKey(string key)
+    {
+        var body = key.AsSpan(EditorKeyToken.Length);
+        var comma = body.IndexOf(',');
+        if (comma < 0 || body.Length != comma + 4
+            || !int.TryParse(body[..comma], NumberStyles.None, CultureInfo.InvariantCulture, out var code))
+        {
+            return null;
+        }
+        return new VimEditorKey(code, body[comma + 1] == '1', body[comma + 2] == '1', body[comma + 3] == '1');
+    }
+
     private void TypeLeftToEditor(string key)
     {
         var model = _buffer.Model;
-        if (IsEditorKeyToken(key) && Enum.TryParse<VimEditorKey>(key.AsSpan(EditorKeyToken.Length), out var editorKey))
+        if (IsEditorKeyToken(key))
         {
-            if (editorKey == VimEditorKey.Delete)
+            if (ParseEditorKey(key) is { } editorKey)
             {
-                model.Delete(word: false);
-                return;
+                _buffer.Host.ReplayEditorKey(editorKey);
             }
-            BreakInsertUndo();
-            model.Move(editorKey switch
-            {
-                VimEditorKey.Left => CaretMove.Left,
-                VimEditorKey.Right => CaretMove.Right,
-                VimEditorKey.Up => CaretMove.Up,
-                VimEditorKey.Down => CaretMove.Down,
-                VimEditorKey.Home => CaretMove.LineStart,
-                _ => CaretMove.LineEnd,
-            }, extend: false);
             return;
         }
         switch (key)

@@ -29,7 +29,7 @@ public sealed class VimTests
     }
 
     private static bool Key(SqlEditor editor, VirtualKey key, bool control = false) =>
-        editor.RouteVimKey(key, control, shift: false, alt: false) || editor.HandleKey(key, control, shift: false, alt: false);
+        editor.HandleVimKey(key, control, shift: false, alt: false);
 
     [Fact]
     public Task NormalModeKeysEditAndInsertModeTypes() => WinUiApp.RunAsync(async () =>
@@ -89,11 +89,12 @@ public sealed class VimTests
         try
         {
             Assert.True(await EditorHost.ShowAsync(editor), "the editor drew no frame");
-            Assert.True(editor.RouteVimKey(VirtualKey.A, control: true, shift: false, alt: false));
+            // Ctrl+A is Vim's increment here, not Select All.
+            Assert.True(Key(editor, VirtualKey.A, control: true));
             Assert.Equal("select 42;", editor.Document.GetText());
-            Assert.False(editor.RouteVimKey(VirtualKey.C, control: true, shift: false, alt: false));
-            Assert.False(editor.RouteVimKey(VirtualKey.Enter, control: true, shift: false, alt: false));
-            Assert.True(editor.RouteVimKey(VirtualKey.Left, control: false, shift: false, alt: false));
+            Assert.True(editor.Model.Primary.IsEmpty);
+            Assert.False(Key(editor, VirtualKey.Enter, control: true));
+            Assert.True(Key(editor, VirtualKey.Left));
             Assert.Equal(7, editor.Model.Primary.Active);
         }
         finally
