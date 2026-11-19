@@ -33,9 +33,8 @@ struct SidebarSchemaFilterBanner: View {
     let database: String?
     let databaseType: DatabaseType
     @ObservedObject var sidebarState: SharedSidebarState
+    @ObservedObject var catalog: ConnectionSidebarCatalog
 
-    @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
-    @ObservedObject private var schemaService = SchemaService.shared
     @ObservedObject private var settingsManager = AppSettingsManager.shared
 
     private var summary: DatabaseTreeVisibility.Summary? {

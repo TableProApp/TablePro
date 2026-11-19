@@ -121,6 +121,8 @@ final class DatabaseTreeNode: NSObject, SidebarOutlineNode {
 
     let id: String
     var kind: Kind
+    // The outline rebuild that last listed this row, which decides when an unlisted row is dropped.
+    var lastBuiltPass = 0
 
     init(id: String, kind: Kind) {
         self.id = id

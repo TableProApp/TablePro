@@ -64,8 +64,8 @@ struct DatabaseTreeServerObjectRef: Identifiable, Equatable {
 }
 
 struct DatabaseTreeView: View {
-    @ObservedObject private var databaseManager = DatabaseManager.shared
-    @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
+    private var databaseManager: DatabaseManager { .shared }
+    private var treeService: DatabaseTreeMetadataService { .shared }
 
     let connectionId: UUID
     let databaseType: DatabaseType
@@ -80,6 +80,7 @@ struct DatabaseTreeView: View {
     /// a stable `let`, so the view observes it directly.
     @ObservedObject var toolbarState: ConnectionToolbarState
     @ObservedObject var sidebarState: SharedSidebarState
+    @ObservedObject var catalog: ConnectionSidebarCatalog
 
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var showsDatabaseProgress = false
@@ -181,7 +182,8 @@ struct DatabaseTreeView: View {
             connectionId: connectionId,
             database: coordinator?.browseDatabaseName ?? activeDatabase,
             databaseType: databaseType,
-            sidebarState: sidebarState
+            sidebarState: sidebarState,
+            catalog: catalog
         )
     }
 

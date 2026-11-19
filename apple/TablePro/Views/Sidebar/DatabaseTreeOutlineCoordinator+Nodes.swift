@@ -14,10 +14,27 @@ struct DatabaseTreeTableRows {
         case fixed(String?)
     }
 
+    // How many rows at each end of a new list are the rows already built. A load usually changes a few of thousands,
+    // and building a row's id is most of what a load costs here.
+    struct KeptEnds: Equatable {
+        let head: Int
+        let tail: Int
+    }
+
     let tables: SameRows<TableInfo>
     let database: String?
     let schema: Schema
     let nodes: [DatabaseTreeNode]
+
+    func keptEnds(in new: [TableInfo]) -> KeptEnds {
+        let old = tables.rows
+        let limit = min(old.count, new.count)
+        var head = 0
+        while head < limit, old[head] == new[head] { head += 1 }
+        var tail = 0
+        while tail < limit - head, old[old.count - 1 - tail] == new[new.count - 1 - tail] { tail += 1 }
+        return KeptEnds(head: head, tail: tail)
+    }
 }
 
 /// Turning the connection's metadata into the rows the outline draws. The three sidebar shapes
@@ -25,10 +42,16 @@ struct DatabaseTreeTableRows {
 extension DatabaseTreeOutlineCoordinator {
     internal func node(id: String, kind: DatabaseTreeNode.Kind) -> DatabaseTreeNode {
         if let existing = nodeCache[id] {
+            let wasExpandable = existing.isExpandable
+            let partitionTable = existing.partitionRef?.tableRef
             existing.kind = kind
-            return existing
+            existing.lastBuiltPass = rebuildPass
+            if partitionTable != existing.partitionRef?.tableRef { nodeCache.invalidateTableIndex() }
+            // A row keeps its disclosure triangle as long as the object keeps its identity, so a flip takes a new row.
+            guard existing.isExpandable != wasExpandable else { return existing }
         }
         let created = DatabaseTreeNode(id: id, kind: kind)
+        created.lastBuiltPass = rebuildPass
         nodeCache[id] = created
         return created
     }
@@ -868,15 +891,28 @@ extension DatabaseTreeOutlineCoordinator {
             case .fixed(let fixed): DatabaseTreeTableRef(database: database, schema: fixed, table: table)
             }
         }
+        func reused(_ node: DatabaseTreeNode, for table: TableInfo) -> DatabaseTreeNode {
+            node.kind = .table(ref(table))
+            node.lastBuiltPass = rebuildPass
+            return node
+        }
         let rows = SameRows(rows: tables)
-        if let built = tableRowMemo[parentId], built.tables == rows, built.database == database, built.schema == schema {
+        let built = tableRowMemo[parentId].flatMap { $0.database == database && $0.schema == schema ? $0 : nil }
+        if let built, built.tables == rows {
             for (node, table) in zip(built.nodes, tables) {
-                node.kind = .table(ref(table))
+                _ = reused(node, for: table)
             }
             return built.nodes
         }
-        let nodes = tables.map { table in
-            let tableRef = ref(table)
+        let kept = built?.keptEnds(in: tables) ?? DatabaseTreeTableRows.KeptEnds(head: 0, tail: 0)
+        let nodes = tables.indices.map { index -> DatabaseTreeNode in
+            if let built, index < kept.head {
+                return reused(built.nodes[index], for: tables[index])
+            }
+            if let built, index >= tables.count - kept.tail {
+                return reused(built.nodes[index - tables.count + built.nodes.count], for: tables[index])
+            }
+            let tableRef = ref(tables[index])
             return node(id: DatabaseTreeNode.tableId(tableRef), kind: .table(tableRef))
         }
         tableRowMemo[parentId] = DatabaseTreeTableRows(tables: rows, database: database, schema: schema, nodes: nodes)
