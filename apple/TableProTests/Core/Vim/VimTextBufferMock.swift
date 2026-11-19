@@ -297,15 +297,11 @@ final class VimTextBufferMock: VimTextBuffer {
             : NSRange(location: characterRange(at: clampedLocation).location, length: 0)
     }
 
-    // The text view tells its delegate of each replacement, which hands it to the engine.
-    var onReplace: ((NSRange, Int) -> Void)?
-
     func replaceCharacters(in range: NSRange, with string: String) {
         let mutable = NSMutableString(string: text)
         mutable.replaceCharacters(in: range, with: string)
         text = mutable as String
         _selectedRange = NSRange(location: range.location + (string as NSString).length, length: 0)
-        onReplace?(range, (string as NSString).length)
     }
 
     private(set) var undoCallCount = 0

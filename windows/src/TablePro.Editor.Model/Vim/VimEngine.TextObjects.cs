@@ -60,14 +60,23 @@ public sealed partial class VimEngine
             }
             return 2;
         }
-        var startClass = Classify(_buffer.CharAt(pos));
+        // A mark or joiner takes the class of the character it joins.
+        int ClassAt(int offset)
+        {
+            while (offset > 0 && VimTextBuffer.IsJoining(_buffer.CharAt(offset)))
+            {
+                offset--;
+            }
+            return Classify(_buffer.CharAt(offset));
+        }
+        var startClass = ClassAt(pos);
         var start = pos;
-        while (start > 0 && Classify(_buffer.CharAt(start - 1)) == startClass)
+        while (start > 0 && ClassAt(start - 1) == startClass)
         {
             start--;
         }
         var end = pos;
-        while (end < length - 1 && Classify(_buffer.CharAt(end + 1)) == startClass)
+        while (end < length - 1 && ClassAt(end + 1) == startClass)
         {
             end++;
         }
@@ -282,7 +291,7 @@ public sealed partial class VimEngine
         }
         var start = _buffer.Offset(startLine, 0);
         var end = _buffer.LineRange(_buffer.Offset(endLine, 0)).End;
-        if (!around && end > start)
+        if (!around && end > start && _buffer.CharAt(end - 1) == '\n')
         {
             end--;
         }

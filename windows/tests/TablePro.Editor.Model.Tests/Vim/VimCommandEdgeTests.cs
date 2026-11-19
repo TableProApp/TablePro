@@ -165,4 +165,61 @@ public sealed class VimCommandEdgeTests
         s.Press("M");
         Assert.Equal(4, s.Model.Document.GetLineFromOffset(s.Caret));
     }
+
+    [Fact]
+    public void AFindThatFailsDropsItsOperator()
+    {
+        var s = new VimSession("one two", caret: 0);
+        s.Press("dfz");
+        Assert.False(s.Engine.IsPending);
+        s.Press("w");
+        Assert.Equal("one two", s.Text);
+        Assert.Equal(4, s.Caret);
+    }
+
+    [Fact]
+    public void ACountedPasteBeforeKeepsEachCopyWhole()
+    {
+        var s = new VimSession("abxyz", caret: 0);
+        s.Press("2x");
+        Assert.Equal("ab", s.Engine.Register.Text);
+        s.Press("2P");
+        Assert.Equal("ababxyz", s.Text);
+        Assert.Equal(3, s.Caret);
+    }
+
+    [Fact]
+    public void AppendAndPasteOnAnEmptyLineStayOnIt()
+    {
+        var s = new VimSession("x\n\nyz\n", caret: 2);
+        s.Press("a");
+        s.Type("A");
+        s.Escape();
+        Assert.Equal("x\nA\nyz\n", s.Text);
+        s = new VimSession("x\n\nyz\n", caret: 0);
+        s.Press("yl");
+        s.Press("jp");
+        Assert.Equal("x\nx\nyz\n", s.Text);
+    }
+
+    [Fact]
+    public void AnInnerParagraphAtTheEndOfTheTextKeepsItsLastCharacter()
+    {
+        var s = new VimSession("SELECT 1;", caret: 0);
+        s.Press("yip");
+        Assert.Equal("SELECT 1;", s.Engine.Register.Text);
+        s.Press("dip");
+        Assert.Equal(string.Empty, s.Text);
+    }
+
+    [Fact]
+    public void WordMotionsStepOverASymbolWithAVariationSelector()
+    {
+        var s = new VimSession("\u2764\uFE0F foo bar", caret: 0);
+        s.Press("w");
+        Assert.Equal(3, s.Caret);
+        s.SetCaret(0);
+        s.Press("dw");
+        Assert.Equal("foo bar", s.Text);
+    }
 }

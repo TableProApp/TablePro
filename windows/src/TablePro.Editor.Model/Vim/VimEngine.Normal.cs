@@ -250,7 +250,8 @@ public sealed partial class VimEngine
                 }
                 CountPrefix = 0;
                 var pos = buffer.SelectedRange.Location;
-                if (pos < buffer.Length)
+                // On an empty line the cursor sits on the break, and the text goes before it.
+                if (pos < buffer.Length && buffer.CharAt(pos) != '\n')
                 {
                     buffer.SetCaret(CharacterEnd(pos));
                 }
@@ -554,8 +555,13 @@ public sealed partial class VimEngine
             case "p" or "P":
             {
                 var count = ConsumeCount();
-                // The register is read once, so "a2p pastes a twice.
+                // The register is read once, so "a2p pastes a twice; characters go in as one run, as 2P keeps them in order.
                 var source = ActivePasteRegister();
+                if (!source.IsLinewise && count > 1)
+                {
+                    source = source with { Text = string.Concat(Enumerable.Repeat(source.Text, count)) };
+                    count = 1;
+                }
                 for (var i = 0; i < count; i++)
                 {
                     Paste(source, after: key == "p");

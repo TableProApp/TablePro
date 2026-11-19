@@ -287,21 +287,21 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
         if (forward)
         {
             var pos = Math.Min(offset, length - 1);
-            var startClass = Classify(Document.CharAt(pos));
+            var startClass = ClassAt(pos);
             if (startClass == WordClass.Whitespace)
             {
-                while (pos < length && Classify(Document.CharAt(pos)) == WordClass.Whitespace)
+                while (pos < length && ClassAt(pos) == WordClass.Whitespace)
                 {
                     pos++;
                 }
             }
             else
             {
-                while (pos < length && Classify(Document.CharAt(pos)) == startClass)
+                while (pos < length && ClassAt(pos) == startClass)
                 {
                     pos++;
                 }
-                while (pos < length && Classify(Document.CharAt(pos)) == WordClass.Whitespace)
+                while (pos < length && ClassAt(pos) == WordClass.Whitespace)
                 {
                     pos++;
                 }
@@ -313,12 +313,12 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
         {
             back--;
         }
-        while (back > 0 && Classify(Document.CharAt(back)) == WordClass.Whitespace)
+        while (back > 0 && ClassAt(back) == WordClass.Whitespace)
         {
             back--;
         }
-        var kind = Classify(Document.CharAt(back));
-        while (back > 0 && Classify(Document.CharAt(back - 1)) == kind)
+        var kind = ClassAt(back);
+        while (back > 0 && ClassAt(back - 1) == kind)
         {
             back--;
         }
@@ -333,7 +333,7 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
             return 0;
         }
         var pos = Math.Min(offset + 1, length - 1);
-        while (pos < length && Classify(Document.CharAt(pos)) == WordClass.Whitespace)
+        while (pos < length && ClassAt(pos) == WordClass.Whitespace)
         {
             pos++;
         }
@@ -341,8 +341,8 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
         {
             return length - 1;
         }
-        var kind = Classify(Document.CharAt(pos));
-        while (pos < length - 1 && Classify(Document.CharAt(pos + 1)) == kind)
+        var kind = ClassAt(pos);
+        while (pos < length - 1 && ClassAt(pos + 1) == kind)
         {
             pos++;
         }
@@ -362,16 +362,16 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
         {
             pos--;
         }
-        if (Classify(Document.CharAt(pos)) == WordClass.Whitespace)
+        if (ClassAt(pos) == WordClass.Whitespace)
         {
-            while (pos > 0 && Classify(Document.CharAt(pos)) == WordClass.Whitespace)
+            while (pos > 0 && ClassAt(pos) == WordClass.Whitespace)
             {
                 pos--;
             }
             return pos;
         }
-        var kind = Classify(Document.CharAt(pos));
-        while (pos > 0 && Classify(Document.CharAt(pos - 1)) == kind)
+        var kind = ClassAt(pos);
+        while (pos > 0 && ClassAt(pos - 1) == kind)
         {
             pos--;
         }
@@ -380,7 +380,7 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
             return 0;
         }
         pos--;
-        while (pos > 0 && Classify(Document.CharAt(pos)) == WordClass.Whitespace)
+        while (pos > 0 && ClassAt(pos) == WordClass.Whitespace)
         {
             pos--;
         }
@@ -549,6 +549,20 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
     };
 
     internal static bool IsWordChar(char c) => c == '_' || IsAlphanumeric(c);
+
+    // A combining mark, a variation selector or a joiner takes its base's class, so a word scan never stops inside a
+    // character it would then step back to the start of.
+    private WordClass ClassAt(int offset)
+    {
+        while (offset > 0 && IsJoining(Document.CharAt(offset)))
+        {
+            offset--;
+        }
+        return Classify(Document.CharAt(offset));
+    }
+
+    internal static bool IsJoining(char c) => c == '\u200D' || CharUnicodeInfo.GetUnicodeCategory(c)
+        is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark;
 
     private static WordClass Classify(char c)
     {

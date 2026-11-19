@@ -160,25 +160,6 @@ final class VimEngine {
         mode = newMode
     }
 
-    func cancelPending() {
-        pendingOperator = nil
-        countPrefix = 0
-        operatorCount = 0
-        pendingG = false
-        pendingFindChar = nil
-        pendingReplaceChar = false
-        pendingMarkSet = false
-        pendingMarkJumpExact = nil
-        pendingRegisterSelect = false
-        selectedRegister = nil
-        pendingReplaceCharForVisual = false
-        pendingZ = false
-        pendingTextObject = false
-        pendingMacroTarget = nil
-        pendingMacroCount = 1
-        pendingBracket = nil
-    }
-
     func consumeCount() -> Int {
         let motionCount = countPrefix > 0 ? countPrefix : 1
         let opCount = operatorCount > 0 ? operatorCount : 1

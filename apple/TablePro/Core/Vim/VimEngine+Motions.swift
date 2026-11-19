@@ -205,8 +205,7 @@ extension VimEngine {
         buffer.setSelectedRange(NSRange(location: pos, length: 0))
     }
 
-    // The pair of the first bracket at or after the cursor on its line.
-    func matchingBracketOnLine(in buffer: VimTextBuffer) -> Int? {
+    func jumpToMatchingBracket(in buffer: VimTextBuffer) {
         let pos = buffer.selectedRange().location
         let lineRange = buffer.lineRange(forOffset: pos)
         let lineEnd = lineRange.location + lineRange.length
@@ -215,24 +214,12 @@ extension VimEngine {
             && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
         var scan = pos
         while scan < contentEnd {
-            if let target = buffer.matchingBracket(at: scan) { return target }
+            if let target = buffer.matchingBracket(at: scan) {
+                buffer.setSelectedRange(NSRange(location: target, length: 0))
+                return
+            }
             scan += 1
         }
-        return nil
-    }
-
-    // An operator takes the lines whole, as j and k give them.
-    func moveToFirstNonBlankOfLine(_ lines: Int, in buffer: VimTextBuffer) {
-        if pendingOperator != nil {
-            if lines < 0 { moveUp(-lines, in: buffer) } else { moveDown(lines, in: buffer) }
-            goalColumn = nil
-            return
-        }
-        let (line, _) = buffer.lineAndColumn(forOffset: buffer.selectedRange().location)
-        let targetLine = min(max(0, line + lines), buffer.lineCount - 1)
-        let target = firstNonBlankOffset(from: buffer.offset(forLine: targetLine, column: 0), in: buffer)
-        buffer.setSelectedRange(NSRange(location: target, length: 0))
-        goalColumn = nil
     }
 
     func jumpToVisibleLine(_ position: VimScreenPosition, in buffer: VimTextBuffer) {

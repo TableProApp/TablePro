@@ -39,6 +39,7 @@ extension VimEngine {
             let text = buffer.string(in: range)
             writeToActiveRegister(text: text, linewise: linewise, asDelete: true)
             buffer.replaceCharacters(in: range, with: "")
+            adjustMarksForEdit(in: range, replacementLength: 0)
             buffer.setSelectedRange(NSRange(location: clampToContentPosition(range.location, in: buffer), length: 0))
         case .yank:
             let text = buffer.string(in: range)
@@ -48,6 +49,7 @@ extension VimEngine {
             let text = buffer.string(in: range)
             writeToActiveRegister(text: text, linewise: linewise, asDelete: true)
             buffer.replaceCharacters(in: range, with: "")
+            adjustMarksForEdit(in: range, replacementLength: 0)
             buffer.setSelectedRange(NSRange(location: range.location, length: 0))
             setMode(.insert)
         case .lowercase:
@@ -120,6 +122,7 @@ extension VimEngine {
         }
         let deleteRange = NSRange(location: startRange.location, length: endOffset - startRange.location)
         writeToActiveRegister(text: buffer.string(in: deleteRange), linewise: true, asDelete: true)
+        adjustMarksForEdit(in: deleteRange, replacementLength: 0)
         buffer.replaceCharacters(in: deleteRange, with: "")
         let newPos = min(startRange.location, max(0, buffer.length - 1))
         if buffer.length > 0 {
@@ -157,12 +160,14 @@ extension VimEngine {
             && buffer.character(at: endOffset - 1) == 0x0A ? endOffset - 1 : endOffset
         let deleteRange = NSRange(location: startRange.location, length: deleteEnd - startRange.location)
         writeToActiveRegister(text: buffer.string(in: deleteRange), linewise: true, asDelete: true)
+        adjustMarksForEdit(in: deleteRange, replacementLength: 0)
         buffer.replaceCharacters(in: deleteRange, with: "")
         buffer.setSelectedRange(NSRange(location: startRange.location, length: 0))
         setMode(.insert)
     }
 
-    func paste(_ source: VimRegister, after: Bool, in buffer: VimTextBuffer) {
+    func paste(after: Bool, in buffer: VimTextBuffer) {
+        let source = activePasteRegister()
         guard !source.text.isEmpty else { return }
 
         let pos = buffer.selectedRange().location
@@ -213,6 +218,7 @@ extension VimEngine {
         guard end > pos else { return }
         let range = NSRange(location: pos, length: end - pos)
         writeToActiveRegister(text: buffer.string(in: range), linewise: false, asDelete: true)
+        adjustMarksForEdit(in: range, replacementLength: 0)
         noteEdit(at: pos, in: buffer)
         buffer.replaceCharacters(in: range, with: "")
         let newContentEnd = contentEnd - range.length

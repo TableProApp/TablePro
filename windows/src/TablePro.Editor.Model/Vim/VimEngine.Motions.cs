@@ -342,8 +342,11 @@ public sealed partial class VimEngine
             }
         }
 
+        // Not found: the command ends here, so an operator waiting on it does not reach the next motion.
         if (resolved is not { } finalPos)
         {
+            PendingOperator = null;
+            OperatorCount = 0;
             return true;
         }
         if (request.Till)

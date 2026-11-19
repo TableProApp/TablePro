@@ -163,7 +163,8 @@ public sealed partial class VimEngine
         }
         else if (after)
         {
-            var insertAt = CharacterEnd(pos);
+            // On an empty line the text goes before its break, not onto the next line.
+            var insertAt = _buffer.CharAt(pos) == '\n' ? pos : CharacterEnd(pos);
             _buffer.Replace(new VimRange(insertAt, 0), source.Text);
             _buffer.SetCaret(Math.Max(insertAt, insertAt + source.Text.Length - 1));
         }

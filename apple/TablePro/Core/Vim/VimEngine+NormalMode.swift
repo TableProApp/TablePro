@@ -9,11 +9,6 @@ extension VimEngine {
     func processNormal(_ char: Character, shift: Bool) -> Bool { // swiftlint:disable:this function_body_length cyclomatic_complexity
         guard let buffer else { return false }
 
-        // Escape drops every prefix of a command still being typed, so nothing of it reaches the next key.
-        if char == "\u{1B}" {
-            cancelPending()
-            return true
-        }
         if let req = pendingFindChar {
             pendingFindChar = nil
             if char == "\u{1B}" { return true }
@@ -375,23 +370,7 @@ extension VimEngine {
             return true
 
         case "%":
-            if let target = matchingBracketOnLine(in: buffer) {
-                executeMotion(in: buffer, inclusive: true) {
-                    buffer.setSelectedRange(NSRange(location: target, length: 0))
-                }
-            } else {
-                pendingOperator = nil
-                countPrefix = 0
-                operatorCount = 0
-            }
-            return true
-
-        // Enter and + go to the first character of the next line, - of the line before.
-        case "\r", "+":
-            moveToFirstNonBlankOfLine(consumeCount(), in: buffer)
-            return true
-        case "-":
-            moveToFirstNonBlankOfLine(-consumeCount(), in: buffer)
+            jumpToMatchingBracket(in: buffer)
             return true
 
         case "n":
@@ -472,11 +451,13 @@ extension VimEngine {
             pendingZ = true
             return true
 
-        case "p", "P":
+        case "p":
             let count = consumeCount()
-            // The register is read once, so "a2p pastes a twice.
-            let source = activePasteRegister()
-            for _ in 0..<count { paste(source, after: char == "p", in: buffer) }
+            for _ in 0..<count { paste(after: true, in: buffer) }
+            return true
+        case "P":
+            let count = consumeCount()
+            for _ in 0..<count { paste(after: false, in: buffer) }
             return true
 
         case "/":

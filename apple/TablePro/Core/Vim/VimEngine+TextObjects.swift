@@ -13,9 +13,6 @@ extension VimEngine {
             return true
         }
         if mode.isVisual {
-            // The selection's ends become Visual's anchor and cursor, so the next motion grows it from there.
-            visualAnchor = range.location
-            cursorOffset = range.length > 0 ? characterStart(at: NSMaxRange(range) - 1, in: buffer) : range.location
             buffer.setSelectedRange(range)
             return true
         }
