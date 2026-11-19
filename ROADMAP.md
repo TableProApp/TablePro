@@ -30,15 +30,15 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 | Section | Boxes | Done |
 |---|---|---|
 | Phase 0: Release blockers | 16 | 4 |
-| Phase 1: Core enablers | 23 | 5 |
-| Phase 2: Windows daily use | 62 | 28 |
+| Phase 1: Core enablers | 23 | 7 |
+| Phase 2: Windows daily use | 62 | 38 |
 | Phase 3: Standard features both apps lack | 118 | 0 |
 | Phase 4: Advanced tier | 57 | 0 |
 | Phase 5: Engines | 27 | 0 |
 | Phase 6: Quality bars | 8 | 0 |
 | Phase 7: Sync and teams | 15 | 0 |
 | Phase 8: Beyond the market | 40 | 0 |
-| Total | 366 | 37 |
+| Total | 366 | 49 |
 
 ## Where each app stands
 
@@ -109,12 +109,12 @@ Each item ends in an FFI surface Windows needs. Linux paths are under `linux/cra
 - [ ] **C-13** Open Quickly matching and index into core: `ui/quick_open/{matching,search_index}.rs`
 - [ ] **C-14** ER diagram model, layout and scene into core: `ui/diagram/{layout,model,scene}.rs`; drawing and export stay per app
 - [ ] **C-15** Snippets in a neutral format: `builtin_snippets` is written in GtkSourceView syntax today; core keeps a neutral form and each app converts
-- [ ] **C-16** Foreign import through the FFI: a Windows `ForeignHost` and `ForeignAppDirs`, passwords into Credential Manager, DPAPI-held passwords read (core ADR 0008)
+- [x] **C-16** Foreign import through the FFI: a Windows `ForeignHost` and `ForeignAppDirs`, passwords into Credential Manager, DPAPI-held passwords read (core ADR 0008): #4320
 - [x] **C-17** AI through the FFI: providers, prompts, schema context, streamed replies: #4319
 - [ ] **C-18** MCP server through the FFI, with a Windows host
 - [x] **C-19** Account through the FFI: the Windows `AppClient`, registered with tablepro-cloud, and the entitlement gate that every paid feature on Windows needs (core ADR 0016 and 0026, D-02): #4253
 - [ ] **C-20** CLI on Windows: a `Host`, MCP dispatch, peer verification on the pipe, PowerShell completion (core ADR 0018)
-- [ ] **C-21** Query-result editing through the FFI (core ADR 0015, after ADR 0019)
+- [x] **C-21** Query-result editing through the FFI (core ADR 0015, after ADR 0019): #4320
 - [x] **C-22** Connection library through the FFI: export to JSON, duplicate with secrets: #4288
 - [ ] **C-23** uniffi 0.32 once uniffi-bindgen-cs supports it (issue #183, core ADR 0002)
 
@@ -130,7 +130,7 @@ The first public Windows release waits for every CORE item here and the Windows 
 - [x] **W-04** Jump hosts in the SSH section; the core and the FFI record carry them · STD: #4318
 - [ ] **W-05** Connect timeout field · STD
 - [x] **W-06** Group colour (the record has `Color`) · STD: #4318
-- [ ] **W-07** Import from TablePlus, DBeaver, DataGrip, Beekeeper, Navicat and DBX · STD · needs C-16
+- [x] **W-07** Import from TablePlus, DBeaver, DataGrip, Beekeeper, Navicat and DBX · STD · needs C-16: #4320
 - [x] **W-08** Production cue: the connection colour on the tab strip, title bar and toolbar, and an environment label · CORE: #4285
 
 ### Sidebar
@@ -161,8 +161,8 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 - [ ] **W-27** Undo and redo of pending edits · CORE · needs C-10
 - [ ] **W-28** Paste rows from the clipboard · STD · needs C-03, C-10
-- [ ] **W-29** Edit query results that read one keyed table · STD · needs C-21 (#4275)
-- [ ] **W-30** Type editors: date and time picker, enum menu, JSON check, boolean toggle · STD
+- [x] **W-29** Edit query results that read one keyed table · STD · needs C-21 (#4275): #4320
+- [x] **W-30** Type editors: date and time picker, enum menu, JSON check, boolean toggle · STD: #4325
 
 ### SQL editor
 
@@ -174,9 +174,9 @@ The first public Windows release waits for every CORE item here and the Windows 
 - [x] **W-36** Saved queries in folders · CORE · needs C-06: #4288
 - [ ] **W-37** Snippets with tab stops · STD · needs C-15
 - [ ] **W-38** Run a whole script with an error policy, one entry per result · CORE · needs C-09
-- [ ] **W-39** Word wrap, bracket matching, the current-statement band, Go to Error · STD
-- [ ] **W-40** Vim mode · STD
-- [ ] **W-41** Code folding · STD
+- [x] **W-39** Word wrap, bracket matching, the current-statement band, Go to Error · STD: #4324
+- [x] **W-40** Vim mode · STD: #4338
+- [x] **W-41** Code folding · STD: #4324
 
 ### Structure
 
@@ -193,16 +193,16 @@ The first public Windows release waits for every CORE item here and the Windows 
 ### NoSQL
 
 - [x] **W-48** Redis key tab: the value by type, length, TTL, Load More (opening a key does nothing today) · CORE: #4285
-- [ ] **W-49** MongoDB: documents as JSON with a tree view · STD
+- [x] **W-49** MongoDB: documents as JSON with a tree view · STD: #4325
 - [x] **W-50** Cassandra paging past the first page (the FFI refuses offsets; page by paging state) · CORE: #4285
 
 ### Workspace
 
 - [ ] **W-51** Open Quickly: objects, saved and past queries, commands · STD · needs C-13
 - [ ] **W-52** Settings: editor font family, grid font, NULL display, history, AI and MCP pages · CORE · partly #4285, #4319: the MCP page waits on C-18
-- [ ] **W-53** A toast when a long query finishes in a background tab · STD
+- [x] **W-53** A toast when a long query finishes in a background tab · STD: #4325
 - [ ] **W-54** Every string localizable, the editor's menu and find bar included; Vietnamese first · STD
-- [ ] **W-55** Editor colour schemes · STD
+- [x] **W-55** Editor colour schemes · STD: #4324
 - [x] **W-56** Grid accessibility: row header peers, and a workaround for the empty `ColumnHeaders` in Windows App SDK 2.6.4 · CORE: #4282
 
 ### AI, MCP, account, integration
@@ -210,8 +210,8 @@ The first public Windows release waits for every CORE item here and the Windows 
 - [x] **W-57** AI assistant: providers, chat with schema context, Explain, Review, Optimize, Fix, AI policy per connection · STD · needs C-17: #4319
 - [ ] **W-58** MCP server with an External Clients level per connection · ADV · needs C-18
 - [ ] **W-59** Account page, license ask, and the paid-feature gate on the macOS license (D-02) · STD · needs C-19 · partly #4253: the license ask and the gate on paid features are left
-- [ ] **W-60** `tablepro://` and database URL links · STD · partly #4253: connection links and database URLs are left
-- [ ] **W-61** File associations for .sql, SQLite and DuckDB files · STD
+- [ ] **W-60** `tablepro://` and database URL links · STD · partly #4253, #4325: `tablepro://import` waits on how the macOS import fields map, and matching a database URL to a saved connection waits on that logic moving into the core
+- [x] **W-61** File associations for .sql, SQLite and DuckDB files · STD: #4325
 - [ ] **W-62** Launch arguments and the `tablepro` CLI (the execution alias reads only a share link today) · STD · needs C-20
 
 ## Phase 3: Standard features both apps lack
