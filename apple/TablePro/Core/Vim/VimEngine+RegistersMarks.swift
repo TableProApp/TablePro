@@ -213,7 +213,8 @@ extension VimEngine {
     }
 
     // The newest record the edit reverses. An editor may undo a run of keys, such as backspaces, as one edit, so the
-    // newest records are also tried folded together, oldest first.
+    // newest records are also tried folded together, oldest first. Records of the other direction are passed over:
+    // each is an undo of an edit already gone from the journal, so the two cancel out.
     private func reversedJournalIndex(range: NSRange, replacement: String, source: VimEditSource) -> Int? {
         let reversesUndo = source == .redo
         if let index = editJournal.lastIndex(where: {
@@ -221,10 +222,13 @@ extension VimEngine {
         }) {
             return index
         }
-        guard var folded = editJournal.last, folded.isUndo == reversesUndo else { return nil }
-        for index in stride(from: editJournal.count - 2, through: max(0, editJournal.count - 50), by: -1) {
-            guard editJournal[index].isUndo == reversesUndo,
-                  let combined = editJournal[index].followed(by: folded) else { return nil }
+        var folded: VimEditRecord?
+        for index in editJournal.indices.reversed() where editJournal[index].isUndo == reversesUndo {
+            guard let next = folded else {
+                folded = editJournal[index]
+                continue
+            }
+            guard let combined = editJournal[index].followed(by: next) else { return nil }
             if combined.isReversed(by: range, replacement: replacement) { return index }
             folded = combined
         }

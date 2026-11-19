@@ -237,17 +237,29 @@ public sealed partial class VimEngine
 
     // The newest record the edit reverses: an undo reverses only edits, a redo only undos. The undo history joins a run
     // of keys, such as backspaces, into one edit, so the newest records are also tried folded together, oldest first.
+    // Records of the other direction are passed over: each is an undo of an edit already gone from the journal, so the
+    // two cancel out.
     private int ReversedJournalIndex(TextChange change, bool reversesUndo)
     {
         var index = EditJournal.FindLastIndex(record => record.IsUndo == reversesUndo && record.IsReversedBy(change));
-        if (index >= 0 || EditJournal.Count == 0 || EditJournal[^1].IsUndo != reversesUndo)
+        if (index >= 0)
         {
             return index;
         }
-        var folded = EditJournal[^1];
-        for (var i = EditJournal.Count - 2; i >= Math.Max(0, EditJournal.Count - 50); i--)
+        VimEditRecord? folded = null;
+        for (var i = EditJournal.Count - 1; i >= 0; i--)
         {
-            if (EditJournal[i].IsUndo != reversesUndo || EditJournal[i].FollowedBy(folded) is not { } combined)
+            var record = EditJournal[i];
+            if (record.IsUndo != reversesUndo)
+            {
+                continue;
+            }
+            if (folded is null)
+            {
+                folded = record;
+                continue;
+            }
+            if (record.FollowedBy(folded) is not { } combined)
             {
                 return -1;
             }

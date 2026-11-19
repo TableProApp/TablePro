@@ -300,6 +300,43 @@ public sealed class VimEngineMarksAndRegistersTests
     }
 
     [Fact]
+    public void UndoingJoinedBackspacesAfterAnotherUndoPutsTheMarkBack()
+    {
+        var s = new VimSession("aaa\nbbb\n", caret: 6);
+        s.Press("ma");
+        s.SetCaret(4);
+        s.Press("i");
+        s.Model.Backspace(word: false);
+        s.Model.Backspace(word: false);
+        s.Escape();
+        s.Press("0rXuu");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal("aaa\nbbb\n", s.Text);
+        Assert.Equal(6, s.Caret);
+    }
+
+    [Fact]
+    public void UndoingARunOfFiftyOneBackspacesPutsTheMarkBack()
+    {
+        var text = new string('a', 60) + "\nbbb\n";
+        var s = new VimSession(text, caret: 63);
+        s.Press("ma");
+        s.SetCaret(61);
+        s.Press("i");
+        for (var i = 0; i < 51; i++)
+        {
+            s.Model.Backspace(word: false);
+        }
+        s.Escape();
+        s.Press("u");
+        s.SetCaret(0);
+        s.Press("`a");
+        Assert.Equal(text, s.Text);
+        Assert.Equal(63, s.Caret);
+    }
+
+    [Fact]
     public void UndoingAChangeWithALongInsertPutsTheMarkBack()
     {
         var s = new VimSession(Initial, caret: 25);

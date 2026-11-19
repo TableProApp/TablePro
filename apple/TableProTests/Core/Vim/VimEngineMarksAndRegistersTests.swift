@@ -412,6 +412,42 @@ final class VimEngineMarksAndRegistersTests {
         #expect(pos == 25)
     }
 
+    @Test("Undoing a run of backspaces after undoing a later edit puts the mark back")
+    func undoingCoalescedBackspacesAfterAnotherUndo() {
+        buffer = VimTextBufferMock(text: "aaa\nbbb\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        buffer.setSelectedRange(NSRange(location: 6, length: 0))
+        keys("ma")
+        buffer.replaceCharacters(in: NSRange(location: 3, length: 1), with: "")
+        buffer.replaceCharacters(in: NSRange(location: 2, length: 1), with: "")
+        buffer.replaceCharacters(in: NSRange(location: 0, length: 1), with: "X")
+        buffer.replayUndo(in: NSRange(location: 0, length: 1), with: "a")
+        buffer.replayUndo(in: NSRange(location: 2, length: 0), with: "a\n")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("`a")
+        #expect(buffer.text == "aaa\nbbb\n")
+        #expect(pos == 6)
+    }
+
+    @Test("Undoing more than fifty backspaces as one edit puts the mark back")
+    func undoingALongBackspaceRunRestoresTheMark() {
+        let head = String(repeating: "a", count: 60)
+        buffer = VimTextBufferMock(text: head + "\nbbb\n")
+        engine = VimEngine(buffer: buffer)
+        buffer.editObserver = engine
+        buffer.setSelectedRange(NSRange(location: 63, length: 0))
+        keys("ma")
+        for offset in stride(from: 60, through: 10, by: -1) {
+            buffer.replaceCharacters(in: NSRange(location: offset, length: 1), with: "")
+        }
+        buffer.replayUndo(in: NSRange(location: 10, length: 0), with: String(repeating: "a", count: 50) + "\n")
+        buffer.setSelectedRange(NSRange(location: 0, length: 0))
+        keys("`a")
+        #expect(buffer.text == head + "\nbbb\n")
+        #expect(pos == 63)
+    }
+
     @Test("A mark keeps its column through a line that shrinks and grows back")
     func markColumnSurvivesAShorterLine() {
         buffer = VimTextBufferMock(text: "abcdef\ntail\n")
