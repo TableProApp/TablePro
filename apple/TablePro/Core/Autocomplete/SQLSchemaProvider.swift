@@ -33,7 +33,7 @@ actor SQLSchemaProvider {
     }
     private var columnAccessOrder: [ColumnCacheKey] = []
     private var columnTasks: [ColumnCacheKey: Task<[ColumnInfo]?, Never>] = [:]
-    // Kept through a refresh of the same scope and answered until a newer read replaces them.
+    // Kept through a refresh of the same scope: the cache-only readers answer from them until a newer read replaces them.
     private var staleColumnKeys: Set<ColumnCacheKey> = []
     // One re-read per stale key and refresh, so a server that refuses it is not asked on every keystroke.
     private var staleRereadsStarted: Set<ColumnCacheKey> = []
@@ -175,10 +175,12 @@ actor SQLSchemaProvider {
         if let cached = columnCache[key] {
             columnAccessOrder.removeAll { $0 == key }
             columnAccessOrder.append(key)
-            if staleColumnKeys.contains(key), columnTasks[key] == nil, staleRereadsStarted.insert(key).inserted {
-                refreshStaleColumns(forKey: key, table: tableName, schema: schema)
-            }
-            return cached
+            guard staleColumnKeys.contains(key) else { return cached }
+            // A completion session keeps the list it opened with, so a named table waits for its fresh columns.
+            if let inFlight = columnTasks[key] { return await inFlight.value ?? cached }
+            guard staleRereadsStarted.insert(key).inserted,
+                  let task = startColumnRead(forKey: key, table: tableName, schema: schema) else { return cached }
+            return await commitColumnRead(task, forKey: key) ?? cached
         }
 
         if let inFlight = columnTasks[key] { return await inFlight.value ?? [] }
@@ -226,11 +228,6 @@ actor SQLSchemaProvider {
         }
         evictIfNeeded()
         return columns
-    }
-
-    private func refreshStaleColumns(forKey key: ColumnCacheKey, table: String, schema: String?) {
-        guard let task = startColumnRead(forKey: key, table: table, schema: schema) else { return }
-        Task { _ = await self.commitColumnRead(task, forKey: key) }
     }
 
     private func evictIfNeeded() {

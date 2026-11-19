@@ -20,7 +20,7 @@ struct SQLSchemaProviderRefreshTests {
         return provider
     }
 
-    @Test("A refresh keeps the old columns on offer until the new read lands")
+    @Test("A refresh keeps the old columns for completion before a table, and a named table waits for its fresh read")
     func refreshKeepsColumnsUntilTheReadLands() async throws {
         let driver = MockDatabaseDriver()
         driver.columnsToReturn = ["users": [Self.column("id")]]
@@ -32,13 +32,14 @@ struct SQLSchemaProviderRefreshTests {
         driver.fetchColumnsGate = gate
         await provider.resetForDatabase("db", tables: [Self.users], driver: driver)
 
-        #expect(await Self.names(provider) == ["id"])
+        #expect(await provider.allColumnsFromCachedTables().map(\.label) == ["id"])
+        let named = Task { await Self.names(provider) }
         await gate.arrived(1)
-        #expect(await Self.names(provider) == ["id"])
+        #expect(await provider.allColumnsFromCachedTables().map(\.label) == ["id"])
 
         await gate.open()
-        try await waitUntil { await Self.names(provider) == ["id", "email"] }
-        #expect(await Self.names(provider) == ["id", "email"])
+        #expect(await named.value == ["id", "email"])
+        #expect(await provider.allColumnsFromCachedTables().map(\.label) == ["id", "email"])
         #expect(driver.fetchColumnsCallCount == 2)
     }
 
