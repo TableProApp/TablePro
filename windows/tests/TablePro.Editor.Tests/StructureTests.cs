@@ -111,7 +111,7 @@ public sealed class StructureTests
     });
 
     // Words as keywords, single-character punctuation and ';' ending a statement: enough structure for the control.
-    private sealed class TestLexer : ISyntaxLexer, ISqlStructure
+    internal sealed class TestLexer : ISyntaxLexer, ISqlStructure
     {
         private const byte Keyword = 1;
         private const byte Comment = 5;

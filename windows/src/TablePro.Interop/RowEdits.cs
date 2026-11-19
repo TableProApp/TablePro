@@ -1,12 +1,22 @@
 namespace TablePro.Interop;
 
-// Why no row of a table, or of a page, can be changed.
+// Why no row of a table, a page or a query result can be changed.
 public enum EditLock
 {
     ReadOnlyConnection,
     NoPrimaryKey,
     KeyUnreadable,
     ColumnsChanged,
+    // A query result's statement is not one SELECT.
+    NotOneSelect,
+    // A join, a subquery or a CTE.
+    MoreThanOneTable,
+    // DISTINCT, GROUP BY or a function in the select list.
+    Collapsed,
+    // No column traced to the statement's table: a view, a temporary table, or an engine that says nothing.
+    Untraced,
+    // The result leaves out part of the table's primary key.
+    KeyNotShown,
 }
 
 // An empty text means what the core's parse says for the column: the empty string, the server's default, or NULL.

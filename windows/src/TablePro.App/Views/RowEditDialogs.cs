@@ -112,13 +112,15 @@ internal static class RowEditDialogs
         });
     }
 
-    public static async Task ShowSaveFailedAsync(FrameworkElement owner, string message, bool incomplete)
+    // Unknown names how the rows are read again: a table tab's Refresh, a query result's Discard.
+    public static async Task ShowSaveFailedAsync(
+        FrameworkElement owner, string message, bool incomplete, string unknown = "SaveUnknownMessage")
     {
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
         content.Children.Add(new TextBlock
         {
-            Text = Strings.Get(incomplete ? "SaveUnknownMessage" : "SaveFailedPending"),
+            Text = Strings.Get(incomplete ? unknown : "SaveFailedPending"),
             TextWrapping = TextWrapping.Wrap,
         });
         await ShowAsync(owner, new ContentDialog

@@ -62,6 +62,86 @@ struct AppStateLibraryTests {
         #expect(try Data(contentsOf: fixture.connectionsFile) == unreadable)
     }
 
+    @Test("One connection that does not decode leaves the rest usable, and a save writes it back as it was")
+    func unreadableConnectionKeepsTheLibrary() throws {
+        let kept = DatabaseConnection(name: "Kept", type: .postgresql)
+        let keptJSON = try String(decoding: JSONEncoder().encode(kept), as: UTF8.self)
+        try Data(#"[\#(keptJSON),{"id":"not-a-uuid","name":"Unreadable"}]"#.utf8).write(to: fixture.connectionsFile)
+        let state = makeState(syncEnabled: false)
+
+        #expect(state.loadStatus == .ready)
+        #expect(state.connections.map { $0.id } == [kept.id])
+        #expect(state.addConnection(DatabaseConnection(name: "New", type: .mysql)))
+
+        let rows = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.connectionsFile)) as? [NSDictionary]
+        )
+        #expect(rows.compactMap { $0["name"] as? String } == ["Kept", "New", "Unreadable"])
+        #expect(rows.last?["id"] as? String == "not-a-uuid")
+    }
+
+    @Test("A connections file that no longer parses comes back as last saved")
+    func damagedConnectionsFileIsRestored() throws {
+        let first = DatabaseConnection(name: "First", type: .postgresql)
+        let second = DatabaseConnection(name: "Second", type: .mysql)
+        let writer = makeState(syncEnabled: false)
+        #expect(writer.addConnection(first))
+        #expect(writer.addConnection(second))
+        let backupURL = fixture.connectionsFile.appendingPathExtension("backup")
+        #expect(try Data(contentsOf: backupURL) == Data(contentsOf: fixture.connectionsFile))
+
+        let damaged = Data(#"[{"id":"#.utf8)
+        try damaged.write(to: fixture.connectionsFile)
+        let state = makeState(syncEnabled: false)
+
+        #expect(state.loadStatus == .ready)
+        #expect(state.connections.map { $0.id } == [first.id, second.id])
+        #expect(try Data(contentsOf: fixture.connectionsFile.appendingPathExtension("unreadable")) == damaged)
+        #expect(try Data(contentsOf: fixture.connectionsFile) == Data(contentsOf: backupURL))
+    }
+
+    @Test("A group or tag that does not decode leaves the library usable and stays in its file")
+    func unreadableGroupAndTagKeepTheLibrary() throws {
+        let group = ConnectionGroup(name: "Team")
+        let tag = ConnectionTag(name: "prod")
+        let groupJSON = try String(decoding: JSONEncoder().encode(group), as: UTF8.self)
+        let tagJSON = try String(decoding: JSONEncoder().encode(tag), as: UTF8.self)
+        let groupsFile = fixture.libraryDirectory.appendingPathComponent("groups.json")
+        let tagsFile = fixture.libraryDirectory.appendingPathComponent("tags.json")
+        try Data(#"[\#(groupJSON),{"id":"bad-group"}]"#.utf8).write(to: groupsFile)
+        try Data(#"[\#(tagJSON),{"id":"bad-tag"}]"#.utf8).write(to: tagsFile)
+        let state = makeState(syncEnabled: false)
+
+        #expect(state.loadStatus == .ready)
+        #expect(state.groups.map { $0.id } == [group.id])
+        #expect(state.tags.map { $0.id } == [tag.id])
+        #expect(state.addGroup(ConnectionGroup(name: "Ops")).isSaved)
+        #expect(state.addTag(ConnectionTag(name: "staging")).isSaved)
+
+        for (file, unreadableId) in [(groupsFile, "bad-group"), (tagsFile, "bad-tag")] {
+            let rows = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [NSDictionary])
+            #expect(rows.count == 3)
+            #expect(rows.last?["id"] as? String == unreadableId)
+        }
+    }
+
+    @Test("A tag file whose only record cannot be read keeps it instead of taking the presets")
+    func unreadablePresetTagIsKept() throws {
+        let preset = try #require(ConnectionTag.presets.first)
+        let tagsFile = fixture.libraryDirectory.appendingPathComponent("tags.json")
+        try Data(#"[{"id":"\#(preset.id.uuidString)","name":5}]"#.utf8).write(to: tagsFile)
+        let state = makeState(syncEnabled: false)
+
+        #expect(state.loadStatus == .ready)
+        #expect(state.tags.isEmpty)
+        #expect(state.addTag(ConnectionTag(name: "qa-west")).isSaved)
+
+        let rows = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: tagsFile)) as? [NSDictionary])
+        #expect(rows.count == 2)
+        #expect(rows.last?["id"] as? String == preset.id.uuidString)
+        #expect(rows.last?["name"] as? Int == 5)
+    }
+
     @Test("Opening the sample twice keeps one sample connection, and it is never marked for sync")
     func sampleIsLocal() throws {
         let state = makeState(syncEnabled: true)
@@ -706,6 +786,69 @@ struct AppStateLibraryTests {
         #expect(!rewritten.contains("privateKeyData"))
         #expect(!rewritten.contains(keyMarker))
         #expect(metadata.dirtyIds(for: .connection).isEmpty)
+    }
+
+    @Test("A key in a connection this build cannot read moves into the secure store and out of the file")
+    func unreadableConnectionKeyMoves() throws {
+        let id = UUID()
+        let unreadable: [String: Any] = [
+            "id": id.uuidString,
+            "name": "Unreadable",
+            "sshConfiguration": ["privateKeyData": legacyKey(for: id)]
+        ]
+        try JSONSerialization.data(withJSONObject: [unreadable]).write(to: fixture.connectionsFile)
+        let store = MockSecureStore()
+
+        let state = makeState(syncEnabled: false, secureStore: store)
+
+        #expect(state.loadStatus == .ready)
+        #expect(try store.retrieve(forKey: "com.TablePro.sshkeydata.\(id.uuidString)")?.contains(keyMarker) == true)
+        let rows = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.connectionsFile)) as? [NSDictionary]
+        )
+        #expect(rows.compactMap { $0["id"] as? String } == [id.uuidString])
+        #expect(!(try String(contentsOf: fixture.connectionsFile, encoding: .utf8)).contains(keyMarker))
+        let backupURL = fixture.connectionsFile.appendingPathExtension("backup")
+        #expect(!(try String(contentsOf: backupURL, encoding: .utf8)).contains(keyMarker))
+    }
+
+    @Test("A key moved into the secure store leaves no copy in the backup or in a damaged file kept beside it")
+    func movedKeyLeavesNoBackupCopy() throws {
+        let legacy = try writeLegacyLibrary(id: UUID())
+        let backupURL = fixture.connectionsFile.appendingPathExtension("backup")
+        let damagedURL = fixture.connectionsFile.appendingPathExtension("unreadable")
+        try legacy.prefix(legacy.count - 1).write(to: damagedURL)
+
+        _ = makeState(syncEnabled: false, secureStore: MockSecureStore())
+
+        #expect(!FileManager.default.fileExists(atPath: damagedURL.path))
+
+        #expect(!(try String(contentsOf: backupURL, encoding: .utf8)).contains(keyMarker))
+        #expect(try Data(contentsOf: backupURL) == Data(contentsOf: fixture.connectionsFile))
+    }
+
+    @Test("A key stays in the file, through later edits too, while the backup that holds it cannot be dropped")
+    func keyWaitsForTheBackupToGo() throws {
+        let legacy = try writeLegacyLibrary(id: UUID())
+        let backupURL = fixture.connectionsFile.appendingPathExtension("backup")
+        try FileManager.default.createDirectory(at: backupURL, withIntermediateDirectories: true)
+        let pinned = backupURL.appendingPathComponent("pinned")
+        try Data(keyMarker.utf8).write(to: pinned)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: pinned.path)
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: pinned.path) }
+        let store = MockSecureStore()
+
+        let first = makeState(syncEnabled: false, secureStore: store)
+        #expect(first.loadStatus == .ready)
+        #expect(try Data(contentsOf: fixture.connectionsFile) == legacy)
+        _ = first.addConnection(DatabaseConnection(name: "New", type: .mysql))
+        #expect(try Data(contentsOf: fixture.connectionsFile) == legacy)
+
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: pinned.path)
+        _ = makeState(syncEnabled: false, secureStore: store)
+
+        #expect(!(try String(contentsOf: fixture.connectionsFile, encoding: .utf8)).contains(keyMarker))
+        #expect(!(try String(contentsOf: backupURL, encoding: .utf8)).contains(keyMarker))
     }
 
     @Test("A migrated file is left alone on the next launch")

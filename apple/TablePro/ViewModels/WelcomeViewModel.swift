@@ -555,13 +555,16 @@ final class WelcomeViewModel: ObservableObject {
         rebuildOutline()
     }
 
+    // A library that did not load, or a record this build cannot read, keeps its place.
     private func pruneDeviceState() {
-        let favoriteIds = Set(connections.filter(\.isFavorite).map(\.id))
+        guard !storage.lastLoadFailed else { return }
+        let unreadableIds = storage.unreadableConnectionIds
+        let favoriteIds = Set(connections.filter(\.isFavorite).map(\.id)).union(unreadableIds)
         listPreferences.setFavoritesOrder(
             LibraryOrdering.favoritesOrder(listPreferences.favoritesOrder, keeping: favoriteIds)
         )
         guard !connections.isEmpty else { return }
-        recentConnections.retain(only: Set(connections.map(\.id)))
+        recentConnections.retain(only: Set(connections.map(\.id)).union(unreadableIds))
     }
 
     // MARK: - Connecting
