@@ -771,6 +771,12 @@
   <data name="NoMatches" xml:space="preserve">
     <value>No object matches</value>
   </data>
+  <data name="VimModeName" xml:space="preserve">
+    <value>Vim mode: {0}</value>
+  </data>
+  <data name="VimRecording" xml:space="preserve">
+    <value>recording @{0}</value>
+  </data>
   <data name="EditorName" xml:space="preserve">
     <value>SQL editor, {0}</value>
   </data>
@@ -3902,6 +3908,15 @@ New fingerprint: {2}</value>
   </data>
   <data name="FoldingSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Code folding</value>
+  </data>
+  <data name="VimCard.Header" xml:space="preserve">
+    <value>Vim mode</value>
+  </data>
+  <data name="VimCard.Description" xml:space="preserve">
+    <value>Normal, Insert and Visual modes with Vim's motions, operators, registers and macros. :w runs the query and :q closes the tab.</value>
+  </data>
+  <data name="VimSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Vim mode</value>
   </data>
   <data name="LightSchemeCard.Header" xml:space="preserve">
     <value>Light color scheme</value>

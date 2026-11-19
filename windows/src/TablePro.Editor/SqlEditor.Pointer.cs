@@ -60,6 +60,8 @@ public sealed partial class SqlEditor
         }
         Focus(FocusState.Pointer);
         RestartBlink();
+        // A click splits an insert's undo step, as Vim splits it where the caret moves.
+        _vim?.BreakInsertUndo();
         var position = point.Position;
         if (FoldClickedAt(position))
         {

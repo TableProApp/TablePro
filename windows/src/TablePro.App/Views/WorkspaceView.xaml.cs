@@ -12,6 +12,7 @@ using TablePro.App.Services;
 using TablePro.DataGrid.Model;
 using TablePro.Editor;
 using TablePro.Editor.Model;
+using TablePro.Editor.Model.Vim;
 using TablePro.Interop;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
@@ -1140,6 +1141,23 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         await LoadTreeAsync(refresh: true).ConfigureAwait(true);
     }
 
+    // Vim's :q closes the tab it was typed in; the tab commands select as VimCommandLine.TargetTab reads them.
+    private void OnTabCommandRequested(object? sender, VimExCommand command)
+    {
+        if (command is VimExCommand.CloseTab)
+        {
+            var typedIn = Tabs.TabItems.OfType<TabViewItem>().FirstOrDefault(item => ReferenceEquals(item.Content, sender));
+            if (typedIn is not null)
+            {
+                _ = CloseTabAsync(typedIn);
+            }
+        }
+        else if (VimCommandLine.TargetTab(command, Tabs.SelectedIndex, Tabs.TabItems.Count) is { } target)
+        {
+            Tabs.SelectedIndex = target;
+        }
+    }
+
     private bool SelectTab(int position)
     {
         var count = Tabs.TabItems.Count;
@@ -1238,6 +1256,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             query.OpenFilesRequested += OnOpenFilesRequested;
             query.FileSaved += OnFileSaved;
             query.RunEnded += OnRunEnded;
+            query.TabCount = () => Tabs.TabItems.Count;
+            query.TabCommandRequested += OnTabCommandRequested;
             AttachAssistant(query);
         }
         else if (item.Content is DefinitionTabView definition)
@@ -1302,6 +1322,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             query.OpenFilesRequested -= OnOpenFilesRequested;
             query.FileSaved -= OnFileSaved;
             query.RunEnded -= OnRunEnded;
+            query.TabCount = static () => 0;
+            query.TabCommandRequested -= OnTabCommandRequested;
             DetachAssistant(query);
         }
         else if (item.Content is DefinitionTabView definition)

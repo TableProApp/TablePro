@@ -322,11 +322,12 @@ final class RowEditingCoordinator: ObservableObject {
             for (rowID, value) in valuesByRow {
                 guard let storageRow = tableRows.index(of: rowID) else { continue }
                 let row = tableRows.rows[storageRow]
-                guard row.unloadedByteCount(columnIndex) == nil else { continue }
+                guard tableRows.unloadedByteCount(rowID, column: columnIndex) == nil else { continue }
                 let values = Array(row.values)
                 let removesField = removedRowIDs.contains(rowID) && changeManager.supportsFieldRemoval
                 let absence = FieldAbsence(
-                    wasAbsent: row.isAbsent(columnIndex), isAbsent: removesField, originalRow: row.absentColumns
+                    wasAbsent: tableRows.isAbsent(rowID, column: columnIndex), isAbsent: removesField,
+                    originalRow: tableRows.absentColumns(of: rowID)
                 )
                 let isExpression = expressionRowIDs.contains(rowID) && !removesField
                 let wasExpression = changeManager.isExpression(rowID: rowID, columnIndex: columnIndex)

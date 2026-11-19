@@ -165,6 +165,39 @@ final class WelcomeViewModelTests {
         #expect(groupIds(in: viewModel.outline).count == 1)
     }
 
+    @Test func testAConnectionThisBuildCannotReadKeepsItsRecentAndFavoriteSlot() throws {
+        var kept = DatabaseConnection(name: "Kept", type: .mysql)
+        kept.isFavorite = true
+        let unreadableId = UUID()
+        let keptJSON = try String(decoding: JSONEncoder().encode(StoredConnection(from: kept)), as: UTF8.self)
+        try Data(#"[\#(keptJSON),{"id":"\#(unreadableId.uuidString)","name":"From a newer build"}]"#.utf8)
+            .write(to: connectionFileURL)
+        connectionStorage.invalidateCache()
+        recents.record(kept.id)
+        recents.record(unreadableId)
+        preferences.setFavoritesOrder([unreadableId, kept.id])
+
+        viewModel.loadConnections()
+
+        #expect(connectionStorage.unreadableConnectionIds == [unreadableId])
+        #expect(Set(recents.lastConnected.keys) == [kept.id, unreadableId])
+        #expect(preferences.favoritesOrder == [unreadableId, kept.id])
+    }
+
+    @Test func testALibraryThatFailedToLoadKeepsRecentsAndFavoritesOrder() throws {
+        let id = UUID()
+        try Data("not json".utf8).write(to: connectionFileURL)
+        connectionStorage.invalidateCache()
+        recents.record(id)
+        preferences.setFavoritesOrder([id])
+
+        viewModel.loadConnections()
+
+        #expect(connectionStorage.lastLoadFailed)
+        #expect(preferences.favoritesOrder == [id])
+        #expect(recents.lastConnected[id] != nil)
+    }
+
     @Test func testANewGroupTakesTheConnectionsItWasRequestedFor() throws {
         let prod = DatabaseConnection(name: "Prod", type: .mysql)
         save([prod])

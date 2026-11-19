@@ -123,7 +123,7 @@ extension MainContentView {
         for row in displayRows {
             let values = columns.indices.map { i -> String in
                 guard i < row.values.count else { return "NULL" }
-                if let byteCount = row.unloadedByteCount(i) {
+                if let byteCount = tableRows.unloadedByteCount(row.id, column: i) {
                     return DataGridCellContent.unloadedSpokenText(byteCount: byteCount)
                 }
                 let raw: String

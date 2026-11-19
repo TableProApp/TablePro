@@ -107,7 +107,7 @@
 - Text input, hit testing and accessibility are ours to keep right; RichEditBox's own behaviors no longer come for free.
 - A transitory TSF context gives up reconversion and IME features that read the text around the caret.
 - The composition is drawn at the primary caret only, and committed text goes to every caret.
-- Seams for the later slices: the lexer is an `ISyntaxLexer`; the model's commands and `SqlEditor.HandleKey` are public; `FramePresented` reports every frame. Completion, hover, diagnostics, formatting and Vim are not built.
+- Seams for the later slices: the lexer is an `ISyntaxLexer`; the model's commands and `SqlEditor.HandleKey` are public; `FramePresented` reports every frame. Completion, hover, diagnostics and formatting are not built; Vim mode is [0017](0017-vim-mode.md).
 - A new width lays out every line again for word wrap, which on a 5 MB script costs a pass over its text per column the width gains or loses.
 - The fold chevrons have no UIA element of their own; the keys and the menu reach every fold.
 

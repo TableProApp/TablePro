@@ -78,6 +78,9 @@ public sealed record AppSettings
 
     public bool CodeFolding { get; set; } = true;
 
+    // Vim's modes and keys in the SQL editor, off as on macOS.
+    public bool VimMode { get; set; }
+
     // A color scheme's id; null keeps the editor's default colors.
     public string? EditorLightScheme { get; set; }
 

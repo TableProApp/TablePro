@@ -85,7 +85,13 @@ struct UnloadedValueReader {
     }
 }
 
-typealias UnloadedValueFill = @MainActor @Sendable ([Row]) async throws -> [RowID: [Int: PluginCellValue]]
+typealias UnloadedValueFill = @MainActor @Sendable ([UnloadedRow]) async throws -> [RowID: [Int: PluginCellValue]]
+
+// A row with the columns it left on the server, column to byte length.
+struct UnloadedRow: Sendable {
+    let row: Row
+    let columns: [Int: Int]
+}
 
 struct UnloadedValueRead {
     var values: [RowID: [Int: PluginCellValue]] = [:]

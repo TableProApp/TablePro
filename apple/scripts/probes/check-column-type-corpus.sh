@@ -73,7 +73,7 @@ case "$ENGINE" in
         ;;
     mysql | mariadb)
         FOLDER=MySQLDriverPlugin CLASS=MySQLPlugin C_MODULE=CMariaDB
-        PRODUCTS="TableProGeometry TableProLogRedaction TableProMySQLCore"
+        PRODUCTS="TableProCoreTypes TableProGeometry TableProKerberos TableProLogRedaction TableProMySQLCore TableProSQLQuoting TableProSQLVocabulary"
         LINK="$ROOT/Libs/libmariadb.a -lssl.3 -lcrypto.3 -liconv -lz"
         USER_DEFAULT=root DATABASE_DEFAULT=tp_corpus PORT_IN=3306
         if [ "$ENGINE" = mysql ]; then
@@ -187,7 +187,7 @@ link_sources csv "$PLUGINS/CSVExportPlugin"
 link_sources json "$PLUGINS/JSONExportPlugin"
 link_sources sql "$PLUGINS/SQLExportPlugin"
 [ "$FOLDER" = SQLiteDriverPlugin ] && link_sources spill "$PLUGINS/SharedSpill"
-for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox; do
+for shared in PluginConnectTimeout PluginExportOutputBuffer PluginHexText PluginQueryTimeout PluginURLSessionTaskBox; do
     ln -s "$PLUGINS/Shared/$shared.swift" "$SOURCES/shared_$shared.swift"
 done
 

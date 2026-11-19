@@ -49,7 +49,12 @@ public final class TreeSitterClient: HighlightProviding {
     /// The end point of the previous edit.
     private var oldEndPoint: Point?
 
+    // Every edit `state` has not taken yet, in the order the main thread received them.
     package var pendingEdits: Atomic<[InputEdit]> = Atomic([])
+
+    // Main thread only. A parse commits while no edit or set up has arrived since it was queued.
+    var editRevision = 0
+    private var setUpGeneration = 0
 
     /// Optional flag to force every operation to be done on the caller's thread.
     package var forceSyncOperation: Bool = false
@@ -119,26 +124,32 @@ public final class TreeSitterClient: HighlightProviding {
         self.readBlock = readBlock
         self.readCallback = readCallback
 
-        let operation = { [weak self] in
-            let state = TreeSitterState(
-                codeLanguage: codeLanguage,
-                readCallback: readCallback,
-                readBlock: readBlock
-            )
-            self?.state = state
-        }
+        setUpGeneration &+= 1
+        editRevision &+= 1
+        let generation = setUpGeneration
 
         executor.cancelAll(below: .all)
         pendingEdits.mutate { edits in
             edits = []
         }
         if forceSyncOperation {
-            executor.execSync(operation)
+            executor.execSync {
+                state = TreeSitterState(codeLanguage: codeLanguage, readCallback: readCallback, readBlock: readBlock)
+            }
         } else {
+            let snapshot = textView.createTextSnapshot()
             executor.execAsync(
                 priority: .reset,
-                operation: {
-                    operation()
+                operation: { [weak self] in
+                    let state = TreeSitterState(
+                        codeLanguage: codeLanguage,
+                        readCallback: snapshot.readCallback,
+                        readBlock: snapshot.readBlock
+                    )
+                    DispatchQueue.waitMainIfNot {
+                        guard let self, self.setUpGeneration == generation else { return }
+                        self.state = state
+                    }
                     return true
                 },
                 onCancel: {}
@@ -182,9 +193,10 @@ public final class TreeSitterClient: HighlightProviding {
             return
         }
 
-        let operation: () -> IndexSet? = { [weak self] in
-            guard let self else { return IndexSet() }
-            return self.applyEdit(edit: edit)
+        editRevision &+= 1
+        let revision = editRevision
+        pendingEdits.mutate { edits in
+            edits.append(edit)
         }
 
         let execAsync = Self.shouldExecuteAsync(
@@ -194,7 +206,14 @@ public final class TreeSitterClient: HighlightProviding {
         )
 
         if !execAsync || forceSyncOperation {
-            let result = executor.execSync(operation)
+            let result = executor.execSync {
+                applyEdits(
+                    pendingEdits.value(),
+                    revision: revision,
+                    readBlock: readBlock,
+                    readCallback: readCallback
+                )
+            }
             if case .success(let invalidatedRanges) = result, let invalidatedRanges {
                 DispatchQueue.dispatchMainIfNot { completion(.success(invalidatedRanges)) }
                 return
@@ -202,24 +221,28 @@ public final class TreeSitterClient: HighlightProviding {
         }
 
         if !forceSyncOperation {
-            // A keystroke supersedes the parse the one before it started, so that parse is cancelled rather than
-            // left to finish. Its edit goes back on `pendingEdits` and the next parse applies the burst at once.
+            // A keystroke supersedes the parse the one before it started. Its edit stays on `pendingEdits`, so this
+            // parse applies the burst at once.
             executor.cancelAll(below: .reset)
+            let edits = pendingEdits.value()
+            let snapshot = textView.createTextSnapshot()
             executor.execAsync(
                 priority: .edit,
-                operation: {
-                    // Keep `operation()` outside the hop. It drives the parse loop that takes the
-                    // main thread in `parserTimeout` slices and releases it between them, so running
-                    // it inside would hold main for the whole parse. Only `completion` hops, because
-                    // it is `@MainActor` and drives the highlight state machine.
-                    guard let invalidatedRanges = operation() else { return false }
+                operation: { [weak self] in
+                    guard let self else {
+                        DispatchQueue.dispatchMainIfNot { completion(.success(IndexSet())) }
+                        return true
+                    }
+                    guard let invalidatedRanges = self.applyEdits(
+                        edits,
+                        revision: revision,
+                        readBlock: snapshot.readBlock,
+                        readCallback: snapshot.readCallback
+                    ) else { return false }
                     DispatchQueue.dispatchMainIfNot { completion(.success(invalidatedRanges)) }
                     return true
                 },
-                onCancel: { [weak self] in
-                    self?.pendingEdits.mutate { edits in
-                        edits.append(edit)
-                    }
+                onCancel: {
                     DispatchQueue.dispatchMainIfNot {
                         completion(.failure(HighlightProvidingError.operationCancelled))
                     }

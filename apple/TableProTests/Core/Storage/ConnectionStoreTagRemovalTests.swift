@@ -190,23 +190,24 @@ struct ConnectionStoreTagRemovalTests {
         #expect(rows.last?["name"] as? String == "From a newer build")
     }
 
-    @Test("A save keeps the file it replaces, with its tag, as the backup")
-    func saveKeepsThePreviousFileAsBackup() throws {
+    @Test("A save leaves a copy of what it wrote, with its tag, as the backup")
+    func saveMirrorsTheFileAsTheBackup() throws {
         let fileURL = try makeFileURL()
         let store = makeStore(at: fileURL)
         #expect(store.load()?.isEmpty == true)
         #expect(store.save([StampedRow(id: 1, name: "One")]))
-        #expect(!FileManager.default.fileExists(atPath: store.backupURL.path))
-        let first = try Data(contentsOf: fileURL)
-        let firstTag = try Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: fileURL))
+        #expect(try Data(contentsOf: store.backupURL) == Data(contentsOf: fileURL))
 
         #expect(store.save([StampedRow(id: 2, name: "Two")]))
 
-        #expect(try Data(contentsOf: store.backupURL) == first)
-        #expect(try Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: store.backupURL)) == firstTag)
+        #expect(try Data(contentsOf: store.backupURL) == Data(contentsOf: fileURL))
+        #expect(
+            try Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: store.backupURL))
+                == Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: fileURL))
+        )
     }
 
-    @Test("A file that no longer parses is restored from the backup, which keeps its own trust")
+    @Test("A file that no longer parses is restored as last saved, and the backup keeps its own trust")
     func damagedFileIsRestoredFromBackup() throws {
         let fileURL = try makeFileURL()
         saveTwice(makeStore(at: fileURL))
@@ -215,26 +216,65 @@ struct ConnectionStoreTagRemovalTests {
 
         let store = makeStore(at: fileURL)
 
-        #expect(store.load() == [StampedRow(id: 1, name: "One")])
+        #expect(store.load() == [StampedRow(id: 1, name: "One"), StampedRow(id: 2, name: "Two")])
         #expect(store.isTrusted)
         let backup = try Data(contentsOf: store.backupURL)
         #expect(try Data(contentsOf: store.unreadableURL) == damaged)
         #expect(try Data(contentsOf: fileURL) == backup)
     }
 
-    @Test("A file that no longer parses never replaces the backup")
+    @Test("A save that takes secrets out of the file leaves no older copy in the backup")
+    func secretRemovingSaveLeavesNoOlderBackup() throws {
+        let fileURL = try makeFileURL()
+        let store = makeStore(at: fileURL)
+        #expect(store.load()?.isEmpty == true)
+        #expect(store.save([StampedRow(id: 1, name: "secret")]))
+        #expect(store.save([StampedRow(id: 1, name: "secret"), StampedRow(id: 2, name: "Two")]))
+
+        try Data("secret".utf8).write(to: store.unreadableURL)
+        #expect(store.save([StampedRow(id: 1, name: "moved"), StampedRow(id: 2, name: "Two")], removingSecrets: true))
+        #expect(!FileManager.default.fileExists(atPath: store.unreadableURL.path))
+
+        let backup = try Data(contentsOf: store.backupURL)
+        let current = try Data(contentsOf: fileURL)
+        #expect(backup == current)
+        #expect(!String(decoding: backup, as: UTF8.self).contains("secret"))
+        #expect(
+            try Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: store.backupURL))
+                == Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: fileURL))
+        )
+    }
+
+    @Test("A file that no longer parses never becomes the backup")
     func damagedFileNeverBecomesTheBackup() throws {
         let fileURL = try makeFileURL()
         let store = makeStore(at: fileURL)
         saveTwice(store)
-        let backup = try Data(contentsOf: store.backupURL)
-        let backupTag = try Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: store.backupURL))
         try Data("not json".utf8).write(to: fileURL)
 
         #expect(store.save([StampedRow(id: 3, name: "Three")]))
 
-        #expect(try Data(contentsOf: store.backupURL) == backup)
-        #expect(try Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: store.backupURL)) == backupTag)
+        #expect(try Data(contentsOf: store.backupURL) == Data(contentsOf: fileURL))
+        #expect(try JSONDecoder().decode([StampedRow].self, from: Data(contentsOf: store.backupURL)) == [StampedRow(id: 3, name: "Three")])
+    }
+
+    @Test("A save that takes secrets out writes nothing while the old backup cannot be dropped")
+    func secretRemovingSaveNeedsTheBackupGone() throws {
+        let fileURL = try makeFileURL()
+        let store = makeStore(at: fileURL)
+        #expect(store.load()?.isEmpty == true)
+        #expect(store.save([StampedRow(id: 1, name: "secret")]))
+        let before = try Data(contentsOf: fileURL)
+        try FileManager.default.removeItem(at: store.backupURL)
+        try FileManager.default.createDirectory(at: store.backupURL, withIntermediateDirectories: true)
+        let pinned = store.backupURL.appendingPathComponent("pinned")
+        try Data("secret".utf8).write(to: pinned)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: pinned.path)
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: pinned.path) }
+
+        #expect(!store.save([StampedRow(id: 1, name: "moved")], removingSecrets: true))
+
+        #expect(try Data(contentsOf: fileURL) == before)
     }
 
     @Test("A backup with no tag is restored untrusted, even on a store never tagged")
@@ -246,7 +286,7 @@ struct ConnectionStoreTagRemovalTests {
         try Data().write(to: stampedURL)
 
         let reloaded = makeStore(at: stampedURL)
-        #expect(reloaded.load() == [StampedRow(id: 1, name: "One")])
+        #expect(reloaded.load() == [StampedRow(id: 1, name: "One"), StampedRow(id: 2, name: "Two")])
         #expect(!reloaded.isTrusted)
 
         let neverTaggedURL = try makeFileURL()

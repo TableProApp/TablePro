@@ -89,6 +89,10 @@
                 <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE943;" /></toolkit:SettingsCard.HeaderIcon>
                 <ToggleSwitch x:Name="FoldingSwitch" x:Uid="FoldingSwitch" AutomationProperties.AutomationId="FoldingSwitch" Toggled="OnFoldingToggled" />
             </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="VimCard" x:Name="VimCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="VimSwitch" x:Uid="VimSwitch" AutomationProperties.AutomationId="VimSwitch" Toggled="OnVimToggled" />
+            </toolkit:SettingsCard>
             <toolkit:SettingsCard x:Uid="LightSchemeCard" x:Name="LightSchemeCard">
                 <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE706;" /></toolkit:SettingsCard.HeaderIcon>
                 <ComboBox x:Name="LightSchemeBox" x:Uid="LightSchemeBox" AutomationProperties.AutomationId="LightSchemeBox" MinWidth="200" SelectionChanged="OnLightSchemeChanged" />

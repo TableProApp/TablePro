@@ -38,6 +38,7 @@ struct DataGridEditCell {
     let coord: GridCoord
     let row: Row
     let column: DataGridColumn
+    let isUnloaded: Bool
 
     var target: DataGridEditTarget {
         DataGridEditTarget(rowID: row.id, columnID: column.id)
@@ -45,10 +46,6 @@ struct DataGridEditCell {
 
     var value: PluginCellValue {
         row[column.dataIndex]
-    }
-
-    var isUnloaded: Bool {
-        row.unloadedByteCount(column.dataIndex) != nil
     }
 }
 

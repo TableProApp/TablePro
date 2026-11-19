@@ -64,14 +64,16 @@ struct ResultComparisonGridModelTests {
 
     @Test("A field one document lacks stays absent on its line")
     func absentFieldsSurvive() {
-        var lacking = Self.right.rows
-        lacking[1].absentColumns = [0]
-        let right = ResultComparisonSide(title: "Result", detail: "Query", columns: Self.right.columns, rows: lacking)
+        let lacking = Self.right.rows
+        let right = ResultComparisonSide(
+            title: "Result", detail: "Query", columns: Self.right.columns, rows: lacking,
+            absentColumns: [lacking[1].id: [0]]
+        )
         let lines = [ResultComparisonGridLine(entry: ResultComparisonEntry(kind: .onlyRight, leftRow: nil, rightRow: 1), isLeft: false)]
 
         let rows = ResultComparisonGridModel.tableRows(for: lines, left: Self.left, right: right, pairing: Self.pairing)
 
-        #expect(rows.rows[0].absentColumns == [1 + ResultComparisonGridModel.leadingColumnCount])
+        #expect(rows.absentColumns(of: rows.rows[0].id) == [1 + ResultComparisonGridModel.leadingColumnCount])
     }
 
     @Test("A DATE beside a TIMESTAMP draws as text, so the right line keeps its time")
