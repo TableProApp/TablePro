@@ -25,6 +25,7 @@ internal extension MariaDBPluginConnection {
         /// A stop's `KILL <id>` can land between the driver handing out this connection and here.
         /// The cancel queue is drained by now, so the flag is current and the statement is not sent.
         if sessionEndedByKill { throw MariaDBPluginError.notSentAfterSessionEnded }
+        databaseProof.observe(sql)
         return try deadlineRunner(threadId: currentThreadId, target: killTarget).run(sql, body: body)
     }
 

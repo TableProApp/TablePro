@@ -57,6 +57,17 @@ struct MySQLSelectLimitTests {
         #expect(mysqlSelectLimitAction(applied: 1_001, desired: nil) == .reset)
     }
 
+    @Test("After a left-out USE a capped statement sets its cap again, even an unchanged one")
+    func cappedStatementAfterSkippedUseSetsItsCap() {
+        #expect(mysqlSelectLimitActionAfterSkippedUse(desired: 1_001, returnsAtMostOneRow: false) == .apply(1_001))
+    }
+
+    @Test("After a left-out USE any other statement gets the reset that USE used to send")
+    func otherStatementsAfterSkippedUseReset() {
+        #expect(mysqlSelectLimitActionAfterSkippedUse(desired: nil, returnsAtMostOneRow: false) == .reset)
+        #expect(mysqlSelectLimitActionAfterSkippedUse(desired: 1_001, returnsAtMostOneRow: true) == .reset)
+    }
+
     @Test("A result inside the cap is not truncated")
     func resultInsideTheCapIsNotTruncated() {
         let outcome = mysqlBoundedFetchOutcome(fetchedRows: 42, rowCap: 1_000, serverSentMore: false)

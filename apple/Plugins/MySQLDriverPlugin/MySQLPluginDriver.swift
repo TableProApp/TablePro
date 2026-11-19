@@ -104,6 +104,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// connection between `requireConnection` returning and the query reaching the server.
     private var activeOperations = 0
 
+    // Set once a flight breaks on this connection's path, so the reads go one by one until the next connect.
+    private var flightsRefused = false
+
     internal static let logger = Logger(subsystem: "com.TablePro", category: "MySQLPluginDriver")
 
     var currentSchema: String? {
@@ -303,6 +306,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             _catalogColumnPresence = [:]
             isReleased = false
             isDisconnected = true
+            flightsRefused = false
             footprint.reset()
             sessionLoss.reset()
             let task = reacquireTask
@@ -545,6 +549,34 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
               )
         else { return }
         _ = try? await conn.executeQuery("DO 0", rowCap: nil)
+    }
+
+    private var flightMayRun: Bool {
+        sessionLock.withLock { MySQLColumnFlight.mayRun(on: footprint, isRefused: flightsRefused) }
+    }
+
+    // Nil when the flight could not run, and the caller then reads the same statements one by one.
+    func readInOneFlight(_ statements: [String]) async throws -> [Result<PluginQueryResult, MariaDBPluginError>]? {
+        guard flightMayRun else { return nil }
+        let conn = try await requireConnection()
+        defer { endOperation(on: conn) }
+        statements.forEach(noteActivity)
+        let startTime = Date()
+        let answers: [Result<MariaDBPluginQueryResult, MariaDBPluginError>]
+        do {
+            let admits: @Sendable () -> Bool = { [weak self] in self?.flightMayRun ?? false }
+            guard let read = try await conn.readInOneFlight(statements, admits: admits) else { return nil }
+            answers = read
+        } catch let error as MariaDBPluginError {
+            let response = MySQLColumnFlight.FailureResponse(to: error)
+            if response.stopsFlights {
+                sessionLock.withLock { flightsRefused = true }
+            }
+            if response.reportsFailure { throw error }
+            Self.logger.warning("A one-flight read fell back to single reads: code=\(error.code, privacy: .public)")
+            return nil
+        }
+        return answers.map { answer in answer.map { Self.pluginResult($0, startedAt: startTime) } }
     }
 
     // MARK: - Idle connection release
@@ -1072,18 +1104,36 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The clock still moves, because a database switch is the user using the connection: leaving
     /// it alone let the idle timer fire seconds after a switch and charge the next click a full
     /// reconnect.
+    ///
+    /// The `USE` stays unsent only while this session is proven on the database: the connection saw its own `USE`
+    /// succeed and every statement since stay put, and the footprint is clean. Every other case sends it. A `USE` left
+    /// out no longer resets `ROW_COUNT()` or the warning list, so they answer for the user's own last statement.
     func switchDatabase(to database: String) async throws {
         guard !flavor.isStarRocks else {
             return try await enterStarRocks(starrocksScope.entering(catalog: database))
         }
-        _ = try await executeWithReconnect(
-            query: "USE \(quoteIdentifier(database))",
-            isRetry: false,
-            countsAsActivity: false
-        )
+        let conn = try await requireConnection()
+        defer { endOperation(on: conn) }
+        do {
+            try await conn.enterDatabase(
+                database,
+                statement: "USE \(quoteIdentifier(database))",
+                mayStay: { [weak self] in self?.sessionMayStay(on: database) ?? false }
+            )
+        } catch {
+            await refreshTransactionFlag(after: error, on: conn)
+            throw error
+        }
         sessionLock.withLock {
             _activeDatabase = database
             lastActivity = ContinuousClock.now
+        }
+    }
+
+    private func sessionMayStay(on database: String) -> Bool {
+        sessionLock.withLock {
+            _activeDatabase.utf8.elementsEqual(database.utf8) && footprint.isClean
+                && MySQLServerVersion.keepsDatabaseBetweenStatements(banner: _serverVersion, flavor: _flavor)
         }
     }
 
