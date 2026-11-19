@@ -20,6 +20,9 @@ extension PostgreSQLPluginDriver {
 
     var providesBulkIndexFetch: Bool { true }
 
+    // Each is the per-table read with its table predicate dropped, decoded by the same row reader.
+    var exportBulkReads: PluginExportBulkReads { [.columns, .foreignKeys, .indexes] }
+
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
         let resolvedSchema = schema ?? core.currentSchema
         let query = PostgreSQLIndexQueries.indexList(
