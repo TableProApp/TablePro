@@ -260,6 +260,49 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         }
     }
 
+    // Only statements that read and run the same whichever exchange carries them: no transaction boundary, nothing
+    // that can change how the file's next statement is split, and one statement as this session splits it.
+    func batches(_ statement: String) -> Bool {
+        guard driver.supportsStatementBatches else { return false }
+        let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
+        guard !grammar.contains(.batchSeparatorLines),
+              Self.batchedKeywords.contains(QueryClassifier.leadingKeyword(of: statement, grammar: grammar)),
+              !CatalogChangeClassifier.effect(of: statement, databaseType: databaseType, grammar: grammar).endsTransaction,
+              statement.range(of: "set_config", options: .caseInsensitive) == nil
+        else { return false }
+        return SQLStatementScanner.executableStatements(in: statement, grammar: grammar).count == 1
+    }
+
+    private static let batchedKeywords: Set<String> = [
+        "INSERT", "UPDATE", "DELETE", "WITH", "SELECT", "CREATE", "ALTER", "DROP", "COMMENT", "GRANT", "REVOKE",
+        "TRUNCATE",
+    ]
+
+    func execute(statements: [PluginImportStatement]) async throws {
+        let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
+        let texts = statements.map(\.text)
+        let driver = self.driver
+        let operation: () async -> [BatchedStatementOutcome] = {
+            await driver.runStatements(texts.map { BatchedStatement(sql: $0) })
+        }
+        let outcomes = if let importControl {
+            try await importControl.statements(texts, operation: operation)
+        } else {
+            await operation()
+        }
+        for (index, (statement, outcome)) in zip(statements, outcomes).enumerated() {
+            noteNameHazards(in: statement.text, grammar: grammar)
+            if case .failed(let error) = outcome { throw PluginImportBatchFailure(index: index, underlying: error) }
+            await noteTransactionEnd(after: statement.text, grammar: grammar)
+        }
+        guard outcomes.count == statements.count else {
+            throw PluginImportBatchFailure(
+                index: outcomes.count,
+                underlying: DatabaseError.queryFailed(String(localized: "The driver did not report every statement it was sent."))
+            )
+        }
+    }
+
     // The driver's Stop ends a copy at once (a CopyFail, and a cancel request when the server takes no data).
     func copyFromStandardInput(statement: String, line: Int, rows: PluginCopyData) async throws {
         guard driver.supportsCopyFromStandardInput else { throw SQLFileParseError.copyFromStandardInput(line: line) }

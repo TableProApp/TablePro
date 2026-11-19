@@ -139,6 +139,39 @@ internal final class ImportSinkRun: @unchecked Sendable {
         }
     }
 
+    // One admission for statements sent together; each that ran is recorded as `data` records one.
+    internal func statements(
+        _ texts: [String],
+        operation: () async -> [BatchedStatementOutcome]
+    ) async throws -> [BatchedStatementOutcome] {
+        try await admitted(.data) {
+            if self.commitMode == .manual { try self.refuseWriteOutsideTransaction() }
+            if let index = self.fileIndex {
+                self.run.record { $0.effects[index]?.admittedWrite = true }
+            }
+            let before = self.run.snapshot.currentState
+            let hadAuthority = self.lock.withLock { self.ownsTransaction }
+            let outcomes = await operation()
+            for (text, outcome) in zip(texts, outcomes) {
+                self.noteStatement(text)
+                switch outcome {
+                case .succeeded:
+                    if let index = self.fileIndex { self.run.record { $0.effects[index]?.statements += 1 } }
+                case .failed(let error):
+                    self.run.record {
+                        $0.recordError(error)
+                        if let index = self.fileIndex { $0.effects[index]?.failedWrite = true }
+                    }
+                }
+            }
+            await self.observe()
+            for (text, outcome) in zip(texts, outcomes) where outcome.succeeded {
+                self.noteCompletedStatement(text, before: before, wasOwned: hadAuthority)
+            }
+            return outcomes
+        }
+    }
+
     // Decided at the first write, before a GO line resets the holder: outside a transaction each statement commits.
     private func refuseWriteOutsideTransaction() throws {
         let holder = run.snapshot.holder
