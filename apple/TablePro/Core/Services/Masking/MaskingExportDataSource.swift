@@ -196,6 +196,12 @@ final class MaskingExportDataSource: PluginExportDataSource, @unchecked Sendable
         try await base.fetchIndexes(table: table, databaseName: databaseName)
     }
 
+    var bulkReads: PluginExportBulkReads { base.bulkReads }
+
+    func fetchAllIndexes(databaseName: String) async throws -> [String: [PluginIndexInfo]] {
+        try await base.fetchAllIndexes(databaseName: databaseName)
+    }
+
     func fetchObjectComment(_ object: PluginExportTable) async throws -> String? {
         try await base.fetchObjectComment(object)
     }
