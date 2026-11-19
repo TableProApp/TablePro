@@ -4,11 +4,12 @@ import TableProPluginKit
 
 // A lone object, a failed group read or one at the row limit reads each object alone, so a failure still names its table.
 nonisolated final class SQLExportGroupReads {
+    // Swift equates NFC and NFD spellings the server keeps apart, so names are compared and keyed by their bytes.
     private final class GroupRead<Value> {
         let kind: PluginExportBulkReads
-        let groupSizes: [String: Int]
+        let groupSizes: [[UInt8]: Int]
         let fetch: (String) async throws -> [String: [Value]]
-        var answers: [String: [String: [Value]]?] = [:]
+        var answers: [[UInt8]: [String: [Value]]?] = [:]
 
         init(
             kind: PluginExportBulkReads,
@@ -16,7 +17,7 @@ nonisolated final class SQLExportGroupReads {
             fetch: @escaping (String) async throws -> [String: [Value]]
         ) {
             self.kind = kind
-            self.groupSizes = Dictionary(grouping: objects, by: \.databaseName).mapValues(\.count)
+            self.groupSizes = Dictionary(grouping: objects) { Array($0.databaseName.utf8) }.mapValues(\.count)
             self.fetch = fetch
         }
     }
@@ -89,7 +90,6 @@ nonisolated final class SQLExportGroupReads {
             return try await alone()
         }
         guard let index = group.index(forKey: object.name) else { return [] }
-        // Swift equates NFC and NFD spellings the server keeps apart, so a key spelled otherwise is another relation's.
         guard group[index].key.utf8.elementsEqual(object.name.utf8) else { return try await alone() }
         return group[index].value
     }
@@ -98,18 +98,19 @@ nonisolated final class SQLExportGroupReads {
         _ read: GroupRead<Value>,
         databaseName: String
     ) async throws -> [String: [Value]]? {
-        if let known = read.answers[databaseName] { return known }
-        guard dataSource.bulkReads.contains(read.kind), read.groupSizes[databaseName, default: 0] > 1 else {
-            read.answers.updateValue(nil, forKey: databaseName)
+        let key = Array(databaseName.utf8)
+        if let known = read.answers[key] { return known }
+        guard dataSource.bulkReads.contains(read.kind), read.groupSizes[key, default: 0] > 1 else {
+            read.answers.updateValue(nil, forKey: key)
             return nil
         }
         do {
             let fetched = try await read.fetch(databaseName)
             let complete = fetched.values.reduce(0) { $0 + $1.count } < rowLimit ? fetched : nil
-            read.answers.updateValue(complete, forKey: databaseName)
+            read.answers.updateValue(complete, forKey: key)
             return complete
         } catch {
-            read.answers.updateValue(nil, forKey: databaseName)
+            read.answers.updateValue(nil, forKey: key)
             if error is CancellationError || error is PluginExportCancellationError { throw error }
             try progress.checkCancellation()
             Self.logger.warning("Group read failed, reading each object alone: \(error.localizedDescription)")

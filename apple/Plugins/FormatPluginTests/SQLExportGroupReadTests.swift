@@ -153,6 +153,33 @@ private final class UnicodeNameSource: PluginExportDataSource, @unchecked Sendab
     }
 }
 
+// One comment per view, naming the exact spelling of the schema it was read from.
+private final class SchemaSpellingSource: PluginExportDataSource, @unchecked Sendable {
+    let databaseTypeId = "PostgreSQL"
+    let bulkReads: PluginExportBulkReads = [.commentDDL]
+    private(set) var groupReads: [[UInt8]] = []
+
+    func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+
+    func fetchTableDDL(table: String, databaseName: String) async throws -> String { "" }
+
+    func execute(query: String) async throws -> PluginQueryResult {
+        PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+    }
+
+    func quoteIdentifier(_ identifier: String) -> String { "\"\(identifier)\"" }
+    func escapeStringLiteral(_ value: String) -> String { value }
+    func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? { nil }
+
+    func fetchAllCommentDDL(databaseName: String) async throws -> [String: [String]] {
+        groupReads.append(Array(databaseName.utf8))
+        let spelling = databaseName.unicodeScalars.count == 4 ? "composed" : "decomposed"
+        return ["v": ["COMMENT ON VIEW v IN \(spelling)"]]
+    }
+}
+
 struct SQLExportGroupReadTests {
     private static let everyRead: PluginExportBulkReads = [.indexDDL, .commentDDL, .dependentSequences, .dependentTypes]
 
@@ -263,6 +290,26 @@ struct SQLExportGroupReadTests {
         #expect(try await reads.commentDDL(for: view) == ["COMMENT ON VIEW decomposed"])
         #expect(source.tableReads.count == 1)
         #expect(source.tableReads.first?.unicodeScalars.elementsEqual(UnicodeNameSource.decomposed.unicodeScalars) == true)
+    }
+
+    @Test("Schemas whose names differ only in Unicode form each take their own group read")
+    func unicodeFormsOfASchemaReadApart() async throws {
+        let source = SchemaSpellingSource()
+        let composed = [Self.object("v", .view, in: UnicodeNameSource.composed), Self.object("w", .view, in: UnicodeNameSource.composed)]
+        let decomposed = [
+            Self.object("v", .view, in: UnicodeNameSource.decomposed), Self.object("x", .view, in: UnicodeNameSource.decomposed)
+        ]
+        let reads = SQLExportGroupReads(
+            dataSource: source,
+            progress: PluginExportProgress(progress: Progress(totalUnitCount: 1)),
+            tables: [],
+            commentedObjects: composed + decomposed,
+            indexedObjects: []
+        )
+
+        #expect(try await reads.commentDDL(for: composed[0]) == ["COMMENT ON VIEW v IN composed"])
+        #expect(try await reads.commentDDL(for: decomposed[0]) == ["COMMENT ON VIEW v IN decomposed"])
+        #expect(source.groupReads == [Array(UnicodeNameSource.composed.utf8), Array(UnicodeNameSource.decomposed.utf8)])
     }
 
     @Test("A cancelled group read is rethrown rather than answered table by table")
