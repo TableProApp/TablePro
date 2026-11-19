@@ -145,6 +145,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// statements after it may still have run and returned results.
     func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult?
 
+    // In order, in one exchange, stopping at the first failure: nothing after it reaches the server. One outcome per
+    // statement that ran, a failure last. Nil when this batch cannot be held to that, and the host sends each alone.
+    func executeStatements(_ statements: [PluginBatchStatement]) async throws -> [PluginBatchStatementOutcome]?
+
     /// Runs `statement`, a `COPY ... FROM STDIN`, and sends it `rows` a piece at a time through the engine's copy
     /// protocol, holding the session until the copy ends. A driver declares `PluginCapabilities.copyFromStandardInput`
     /// for it; the default throws `PluginDriverUnsupportedOperation.copyFromStandardInput`.
@@ -349,6 +353,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     var tableDDLIncludesForeignKeys: Bool { get }
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]]
     var providesBulkIndexFetch: Bool { get }
+    // Which of `fetchAllColumns`, `fetchAllForeignKeys` and `fetchAllIndexes` answer every table the way its own read
+    // does, so an export may read a schema once instead.
+    var exportBulkReads: PluginExportBulkReads { get }
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata]
     var providesBulkTableMetadataFetch: Bool { get }
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata]
@@ -1161,6 +1168,8 @@ public extension PluginDatabaseDriver {
     /// Answers whether `fetchAllIndexes` is a single query rather than the N+1 default below.
     var providesBulkIndexFetch: Bool { false }
 
+    var exportBulkReads: PluginExportBulkReads { [] }
+
     /// Default: fetches indexes per-table sequentially (N+1 round-trips).
     /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.STATISTICS).
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
@@ -1615,6 +1624,10 @@ public extension PluginDatabaseDriver {
     }
 
     func executeBatch(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginBatchResult? {
+        nil
+    }
+
+    func executeStatements(_ statements: [PluginBatchStatement]) async throws -> [PluginBatchStatementOutcome]? {
         nil
     }
 
