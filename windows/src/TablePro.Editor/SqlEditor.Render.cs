@@ -106,6 +106,8 @@ public sealed partial class SqlEditor
         var spanIndex = 0;
         var primary = _model.Primary.Active;
         var primaryRow = rows.RowOf(primary);
+        // Vim's cursor, which in Visual mode can sit at the selection's start; -1 draws the carets as bars.
+        var (blockCaret, blockEnd) = DrawsBlockCaret && _composition.Length == 0 ? _vim!.CursorCharacter : (-1, -1);
         _caretSpots.Clear();
         for (var row = firstRow; row <= lastRow; row++)
         {
@@ -220,7 +222,19 @@ public sealed partial class SqlEditor
                 DrawCompositionMarks(context, layout, compositionColumn, originX, y, lineHeight);
             }
 
-            if (caretRows.Contains(row))
+            if (blockCaret >= 0)
+            {
+                if (rows.RowOf(blockCaret) == row && blockCaret >= rowStart && blockCaret <= rowEnd)
+                {
+                    var column = blockCaret - rowStart;
+                    var x1 = layout.XAt(column);
+                    var next = Math.Min(rowEnd, blockEnd) - rowStart;
+                    var x2 = next > column ? layout.XAt(next) : x1;
+                    _caretSpots.Add(new CaretSpot(new System.Numerics.Vector2(originX + x1, y),
+                        x2 > x1 ? x2 - x1 : _layouts.CharWidth));
+                }
+            }
+            else if (caretRows.Contains(row))
             {
                 foreach (var selection in selections)
                 {
@@ -233,7 +247,7 @@ public sealed partial class SqlEditor
                     {
                         column += _compositionCaret;
                     }
-                    _caretSpots.Add(new System.Numerics.Vector2(originX + layout.XAt(column), y));
+                    _caretSpots.Add(new CaretSpot(new System.Numerics.Vector2(originX + layout.XAt(column), y), 0));
                 }
             }
         }
