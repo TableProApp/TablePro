@@ -56,7 +56,11 @@ internal sealed class AppSession : IDisposable
     public static AppSession Launch(string theme) => Relaunch(NewDataFolder(theme), theme);
 
     public static AppSession Relaunch(string dataFolder, string theme, bool maximize = true) =>
-        new(dataFolder, theme, () => LaunchBuild(dataFolder), maximize);
+        new(dataFolder, theme, () => LaunchBuild(dataFolder, []), maximize);
+
+    // Started as Explorer or a browser starts it, with files or links on its command line.
+    public static AppSession LaunchWith(string dataFolder, string theme, params string[] arguments) =>
+        new(dataFolder, theme, () => LaunchBuild(dataFolder, arguments));
 
     // The installed MSIX, started as the Start menu starts it, so it keeps its files in the package's LocalState.
     public static AppSession LaunchPackage(string familyName, string theme)
@@ -78,7 +82,10 @@ internal sealed class AppSession : IDisposable
     private static void WriteSettings(string folder, string theme) =>
         File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}" }""");
 
-    private static Application LaunchBuild(string dataFolder)
+    private static Application LaunchBuild(string dataFolder, IReadOnlyList<string> arguments) =>
+        Application.Launch(StartInfo(dataFolder, arguments));
+
+    private static ProcessStartInfo StartInfo(string dataFolder, IReadOnlyList<string> arguments)
     {
         var path = Environment.GetEnvironmentVariable("TABLEPRO_APP");
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
@@ -87,8 +94,34 @@ internal sealed class AppSession : IDisposable
         }
 
         var start = new ProcessStartInfo(path) { UseShellExecute = false };
+        foreach (var argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+
         start.Environment["TABLEPRO_DATA_DIR"] = dataFolder;
-        return Application.Launch(start);
+        return start;
+    }
+
+    // A second launch on this data folder hands its files and links to this app and exits without a window.
+    public void HandOver(params string[] arguments) => HandOverFrom(null, arguments);
+
+    // As a terminal in that folder starts it, so a relative path names a file there.
+    public void HandOverFrom(string? workingDirectory, params string[] arguments)
+    {
+        var start = StartInfo(DataFolder, arguments);
+        if (workingDirectory is not null)
+        {
+            start.WorkingDirectory = workingDirectory;
+        }
+
+        using var process = Process.Start(start)
+            ?? throw new InvalidOperationException("The second launch did not start.");
+        if (!process.WaitForExit(Wait))
+        {
+            process.Kill();
+            throw Failure("The second launch did not hand over.", screen: true);
+        }
     }
 
     public static string LibraryFile(string folder) =>

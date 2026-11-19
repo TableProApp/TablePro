@@ -104,7 +104,9 @@ extension DataGridViewController {
         guard offersValueFilter else { return }
         let rows = model.rows
         let dataIndex = column.dataIndex
-        let unloaded = rows.rows.filter { $0.unloadedByteCount(dataIndex) != nil }.map(\.id)
+        let unloaded = rows.hasUnloadedValues
+            ? rows.rows.filter { rows.unloadedByteCount($0.id, column: dataIndex) != nil }.map(\.id)
+            : []
         let columnID = column.id
         guard menuState.loader.ensureLoaded(unloaded, columns: IndexSet(integer: dataIndex), in: model, retry: { [weak self] in
             guard let self, let current = self.model.columns.column(id: columnID) else { return }

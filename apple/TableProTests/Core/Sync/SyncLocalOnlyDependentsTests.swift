@@ -215,7 +215,9 @@ struct SyncLocalOnlyDependentsTests {
         let global = SQLFavorite(name: "Everywhere", query: "SELECT 1")
         #expect(await environment.favorites.addFavorite(global))
         metadata.addTombstones(["owned"], type: .favoriteDatabase, owner: connection.id)
-        try Data("not json".utf8).write(to: environment.directory.appendingPathComponent("connections.json"))
+        let fileURL = environment.directory.appendingPathComponent("connections.json")
+        try FileManager.default.removeItem(at: fileURL.appendingPathExtension("backup"))
+        try Data("not json".utf8).write(to: fileURL)
         environment.connections.invalidateCache()
         let transport = ScriptedSyncTransport(zoneID: Self.zoneID)
 

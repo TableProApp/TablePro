@@ -380,7 +380,10 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         )
     }
 
+    var fetchDatabasesGate: AsyncGate?
+
     func fetchDatabases() async throws -> [String] {
+        await fetchDatabasesGate?.wait()
         if let fetchDatabasesError {
             throw fetchDatabasesError
         }

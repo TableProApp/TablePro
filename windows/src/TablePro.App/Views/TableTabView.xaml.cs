@@ -83,6 +83,11 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             _messagesIsTarget = true;
             _detailsTarget = null;
         };
+        Results.JsonTextBox.GotFocus += (_, _) =>
+        {
+            _messagesIsTarget = true;
+            _detailsTarget = null;
+        };
         grid.CellEditStarting += OnCellEditStarting;
         grid.CellEditCommitting += OnCellEditCommitting;
         grid.DeleteRequested += (_, _) => DeleteRows();
@@ -125,7 +130,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     // Copy and Select All reach the grid shown, the structure's while Structure shows.
     public DataGridView? Grid => _showsStructure && _structure is { } structure ? structure.Grid : Results.GridView;
 
-    public bool GridIsTarget => true;
+    public bool GridIsTarget => _showsStructure || Results.ShowsGrid;
 
     public TextBox? MessagesTarget
     {
@@ -141,9 +146,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
                 return detailsField;
             }
 
-            return _messagesIsTarget && Results.MessagesBox.Visibility == Visibility.Visible
-                ? Results.MessagesBox
-                : null;
+            return _messagesIsTarget ? Results.ShownText : null;
         }
     }
 
@@ -248,7 +251,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         }
 
         grid.FocusCell(row, ShownColumn(_model.FirstColumnToFill));
-        grid.BeginEdit();
+        grid.BeginTextEdit();
     }
 
     public void DuplicateRows()
@@ -618,14 +621,39 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     private void OnCellEditStarting(object? sender, GridEditStartingEventArgs e)
     {
-        if (_model.StartEdit(e.Row, Results.DataColumn(e.Column), out var text) is { } refusal)
+        var source = Results.DataColumn(e.Column);
+        if (_model.StartEdit(e.Row, source, out var text) is { } refusal)
         {
             e.Cancel = true;
             ShowRefusal(refusal);
             return;
         }
 
-        e.Text = text;
+        var column = e.InPlace ? null : _model.Edits?.Columns.ElementAtOrDefault(source);
+        var editor = column is null ? CellEditor.Text : CellEditors.For(column);
+        if (column is null || editor == CellEditor.Text)
+        {
+            e.Text = text;
+            return;
+        }
+
+        e.Cancel = true;
+        OpenCellEditor(editor, e.Row, source, column, text);
+    }
+
+    private void OpenCellEditor(CellEditor editor, int row, int column, EditColumn info, string text)
+    {
+        var grid = Results.GridView;
+        var shown = Results.ShownSet;
+        var cell = (grid.FocusedRow, grid.FocusedColumn);
+
+        // A flyout's pick can land after a reload replaced the page it was opened on.
+        bool IsCurrent() =>
+            !_model.IsClosed && ReferenceEquals(shown, Results.ShownSet) && cell == (grid.FocusedRow, grid.FocusedColumn);
+
+        CellEditorFlyouts.Open(
+            editor,
+            new CellEditRequest(grid, info, text, IsCurrent, value => ShowRefusal(_model.CommitEdit(row, column, value))));
     }
 
     // A refusal keeps the editor open with the reason on it; on a focus loss the editor closes, so the status says it too.

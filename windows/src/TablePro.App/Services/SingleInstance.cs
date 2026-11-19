@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.Win32.SafeHandles;
@@ -27,6 +28,11 @@ internal static partial class SingleInstance
     {
         ArgumentNullException.ThrowIfNull(owner);
         var activation = AppInstance.GetCurrent().GetActivatedEventArgs();
+        if (activation.Kind == ExtendedActivationKind.Launch && StartedWithWholePaths())
+        {
+            return HandOverResult.Taken;
+        }
+
         // Only the process the user just started may take the foreground, so it passes that on to the owner.
         _ = AllowSetForegroundWindow(owner.ProcessId);
         using var exited = OpenProcess(Synchronize, false, owner.ProcessId);
@@ -45,6 +51,39 @@ internal static partial class SingleInstance
         // The redirect needs this STA thread to keep pumping COM calls, which CoWaitForMultipleObjects does.
         var waited = CoWaitForMultipleObjects(0, AnswerMilliseconds, (uint)handles.Length, handles, out _);
         return LaunchClaim.ReadWait(waited != 0, redirect);
+    }
+
+    // The owner would read a relative path against its own folder, so a launch naming one starts again with whole ones.
+    private static bool StartedWithWholePaths()
+    {
+        if (Environment.ProcessPath is not { } program
+            || ActivationRequest.WholePaths(Environment.GetCommandLineArgs()[1..], Environment.CurrentDirectory) is not { } whole)
+        {
+            return false;
+        }
+
+        var start = new ProcessStartInfo(program) { UseShellExecute = false };
+        foreach (var argument in whole)
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        try
+        {
+            using var again = Process.Start(start);
+            if (again is null)
+            {
+                return false;
+            }
+
+            _ = AllowSetForegroundWindow((uint)again.Id);
+            return true;
+        }
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            CrashLog.Write(exception);
+            return false;
+        }
     }
 
     public static void BringToFront(Window window)

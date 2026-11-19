@@ -193,6 +193,9 @@ public sealed partial class QueryTab : IWorkspaceTab
     // The file the tab wrote, for File > Open Recent.
     public event EventHandler<string>? FileSaved;
 
+    // A run the user started ended, cancelled or not; a sort or a commit is not one.
+    public event EventHandler<RunEnd>? RunEnded;
+
     // What the strip, the share sheet and Save As show: the typed name, else the automatic title.
     public string Title => CustomTitle ?? AutomaticTitle;
 
@@ -744,6 +747,8 @@ public sealed partial class QueryTab : IWorkspaceTab
         HistoryRun? ran = null;
         // The run replaces the rows the result's edits name, which were asked about first.
         ReleaseResult();
+        RunEnd? ended = null;
+        var began = Stopwatch.GetTimestamp();
         SetRunning(true);
         try
         {
@@ -795,6 +800,7 @@ public sealed partial class QueryTab : IWorkspaceTab
                 if (record)
                 {
                     ran = Ran(sql, startedAt, Stopwatch.GetElapsedTime(started));
+                    ended = Ended(Stopwatch.GetElapsedTime(began));
                     LastFailure = _results.Outcome is QueryOutcome.Failed failed
                         ? new RunFailure(sql, _view.WordError(failed.Error))
                         : null;
@@ -809,11 +815,19 @@ public sealed partial class QueryTab : IWorkspaceTab
             if (!_work.IsClosed)
             {
                 _results.ShowError(exception.Error);
+                ended = record
+                    ? new RunEnd(Stopwatch.GetElapsedTime(began), false, _view.WordError(exception.Error), null, null)
+                    : null;
             }
         }
         finally
         {
             SetRunning(false);
+        }
+
+        if (ended is not null && !_work.IsClosed)
+        {
+            RunEnded?.Invoke(this, ended);
         }
 
         // After the tab is idle, and inside its work, so a close waits for the write before the session goes.
@@ -856,6 +870,21 @@ public sealed partial class QueryTab : IWorkspaceTab
         var duration = outcome is QueryOutcome.Completed completed ? completed.Elapsed : waited;
         return new HistoryRun(sql, startedAt, duration, _results.RowsAffected, kept);
     }
+
+    // A run with no end, as one whose connection dropped, has no outcome to tell.
+    private RunEnd? Ended(TimeSpan waited) => _results.Outcome is not { } outcome
+        ? null
+        : new RunEnd(
+            waited,
+            outcome is QueryOutcome.Cancelled,
+            outcome switch
+            {
+                QueryOutcome.Failed failed => _view.WordError(failed.Error),
+                QueryOutcome.TimedOut => _view.TimedOutMessage,
+                _ => null,
+            },
+            _results.ResultSetCount > 0 ? _results.RowCount : null,
+            _results.RowsAffected);
 
     private static QueryOptions RunOptions(AppSettings settings) => new(
         settings.RowLimit,

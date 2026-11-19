@@ -19,15 +19,13 @@ public enum SharedLinkStep
 // tablepro://share?token=<token> opens the link's SQL in a new query tab, never runs it and carries no connection.
 public static class SharedLinkOpen
 {
-    public const string Scheme = "tablepro";
-
-    // A launch through the execution alias passes the link as an argument rather than a protocol activation.
-    public static string? LinkIn(IEnumerable<string> arguments)
+    // Any tablepro://share link, a malformed token included, so the share flow says it cannot open one.
+    public static bool IsShareLink(string link)
     {
-        ArgumentNullException.ThrowIfNull(arguments);
-        return arguments
-            .Select(argument => argument.Trim().Trim('"'))
-            .FirstOrDefault(argument => argument.StartsWith(Scheme + ":", StringComparison.OrdinalIgnoreCase));
+        ArgumentNullException.ThrowIfNull(link);
+        return Uri.TryCreate(link.Trim(), UriKind.Absolute, out var uri)
+            && uri.Scheme.Equals("tablepro", StringComparison.OrdinalIgnoreCase)
+            && uri.Host.Equals("share", StringComparison.OrdinalIgnoreCase);
     }
 
     public static SharedLinkStep After(PublicShare shared)
@@ -53,32 +51,5 @@ public static class SharedLinkOpen
     {
         ArgumentNullException.ThrowIfNull(shared);
         return string.IsNullOrWhiteSpace(shared.Title) ? fallback : shared.Title.Trim();
-    }
-}
-
-// Links come from other launches at any time: one opens at a time, in order, and a link already waiting is kept once.
-public sealed class PendingSharedLinks
-{
-    private readonly Queue<string> _waiting = new();
-    private string? _opening;
-
-    // True when nothing is opening, so the caller starts taking links; otherwise the one opening takes it in turn.
-    public bool Offer(string link)
-    {
-        ArgumentNullException.ThrowIfNull(link);
-        if (link == _opening || _waiting.Contains(link))
-        {
-            return false;
-        }
-
-        _waiting.Enqueue(link);
-        return _opening is null;
-    }
-
-    // The next link to open, null once none waits.
-    public string? TakeNext()
-    {
-        _opening = _waiting.TryDequeue(out var next) ? next : null;
-        return _opening;
     }
 }

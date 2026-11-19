@@ -94,6 +94,7 @@ public sealed partial class SettingsView : UserControl
         WordWrapSwitch.IsOn = settings.WordWrap;
         StatementSwitch.IsOn = settings.HighlightCurrentStatement;
         FoldingSwitch.IsOn = settings.CodeFolding;
+        VimSwitch.IsOn = settings.VimMode;
         FillSchemes(LightSchemeBox, dark: false, settings.EditorLightScheme);
         FillSchemes(DarkSchemeBox, dark: true, settings.EditorDarkScheme);
         FillFamilies(GridFontBox, SqlEditor.InstalledFontFamilies(monospacedOnly: false), settings.GridFontFamily, "GridFontDefault");
@@ -101,8 +102,43 @@ public sealed partial class SettingsView : UserControl
         NullDisplayBox.Text = settings.NullDisplay;
         FillChoices(HistoryRetentionBox, AppSettings.HistoryRetentionChoices, settings.HistoryRetentionDays, RetentionLabel);
         FillChoices(HistoryMaxBox, AppSettings.HistoryMaxEntriesChoices, settings.HistoryMaxEntries, MaxEntriesLabel);
+        NotifySwitch.IsOn = settings.NotifyLongWork;
+        FillChoices(NotifyAfterBox, AppSettings.NotifyAfterChoices, settings.NotifyAfterSeconds, NotifyAfterLabel);
+        NotifyAfterCard.IsEnabled = settings.NotifyLongWork;
+        ShowNotificationState();
         LoadAssistant();
         _loading = false;
+    }
+
+    // Windows turns the app's notifications on and off outside it, so this is read again as the window comes back.
+    internal void ShowNotificationState()
+    {
+        var off = _workbench.Settings.NotifyLongWork && !FinishNotifications.AreAllowed;
+        NotificationsOffBar.IsOpen = off;
+        NotificationsOffBar.Visibility = off ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static string NotifyAfterLabel(int seconds) => seconds < 60
+        ? Strings.Format("NotifyAfterSeconds", seconds)
+        : seconds == 60 ? Strings.Get("NotifyAfterMinute") : Strings.Format("NotifyAfterMinutes", seconds / 60);
+
+    private void OnNotifyToggled(object sender, RoutedEventArgs e)
+    {
+        if (!_loading)
+        {
+            var notify = NotifySwitch.IsOn;
+            _workbench.UpdateSettings(settings => settings with { NotifyLongWork = notify });
+            NotifyAfterCard.IsEnabled = notify;
+            ShowNotificationState();
+        }
+    }
+
+    private void OnNotifyAfterChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && NotifyAfterBox.SelectedItem is ComboBoxItem { Tag: int seconds })
+        {
+            _workbench.UpdateSettings(settings => settings with { NotifyAfterSeconds = seconds });
+        }
     }
 
     // The app's own choice first, then each installed family; a saved family no longer installed still shows.
@@ -239,6 +275,15 @@ public sealed partial class SettingsView : UserControl
         {
             var folding = FoldingSwitch.IsOn;
             _workbench.UpdateSettings(settings => settings with { CodeFolding = folding });
+        }
+    }
+
+    private void OnVimToggled(object sender, RoutedEventArgs e)
+    {
+        if (!_loading)
+        {
+            var vim = VimSwitch.IsOn;
+            _workbench.UpdateSettings(settings => settings with { VimMode = vim });
         }
     }
 

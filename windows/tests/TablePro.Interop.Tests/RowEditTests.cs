@@ -148,4 +148,44 @@ public sealed class RowEditTests
             run.Dispose();
         }
     }
+
+    [Fact]
+    public async Task AColumnSaysWhatItHoldsAndAnEnumNamesItsLabels()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var directory = Directory.CreateTempSubdirectory("tablepro-interop-").FullName;
+        try
+        {
+            using var core = TableProCore.Create(new HostConfiguration("test"), new MemorySecretStore());
+            await using var session = await core.OpenFileAsync(
+                new FileOpenOptions(Path.Combine(directory, "moods.duckdb"), "duckdb", Create: true), cancellationToken);
+            await using (var editor = await session.OpenEditorAsync(cancellationToken))
+            {
+                foreach (var sql in new[]
+                {
+                    "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')",
+                    "CREATE TABLE days (id INTEGER PRIMARY KEY, feeling mood, done BOOLEAN, happened DATE, logged TIMESTAMP)",
+                })
+                {
+                    using var run = editor.Run(sql, cancellationToken: cancellationToken);
+                    Assert.IsType<QueryOutcome.Completed>(await run.Completion);
+                }
+            }
+
+            using var tableEditor = await session.OpenTableEditorAsync(new TableName(null, "days"), refresh: false, cancellationToken);
+            var columns = tableEditor.Columns;
+
+            Assert.Equal(
+                [ValueKind.Integer, ValueKind.Text, ValueKind.Bool, ValueKind.Date, ValueKind.Timestamp],
+                columns.Select(column => column.Kind));
+            Assert.Equal(["sad", "ok", "happy"], columns[1].Labels);
+            Assert.False(columns[1].Multiple);
+            Assert.All(columns.Where(column => column.Name != "feeling"), column => Assert.Empty(column.Labels));
+            Assert.All(columns, column => Assert.False(column.NeedsOffset));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }

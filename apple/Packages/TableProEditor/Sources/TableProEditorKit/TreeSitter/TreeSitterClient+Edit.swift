@@ -10,19 +10,14 @@ import SwiftTreeSitter
 import TableProGrammars
 
 extension TreeSitterClient {
-    /// Applies the given edit to the current state and calls the editState's completion handler.
-    ///
-    /// Concurrency note: This method checks for task cancellation between layer edits, after editing all layers, and
-    /// before setting the client's state.
-    ///
-    /// - Parameter edit: The edit to apply to the internal tree sitter state.
-    /// - Returns: The set of ranges invalidated by the edit operation, or `nil` when the edit was abandoned before
-    ///            its state was committed. A cancelled parse leaves the client exactly as it found it, so the caller
-    ///            must re-queue the edit rather than report it applied.
-    func applyEdit(edit: InputEdit) -> IndexSet? {
+    // Nil when the edits were abandoned: they stay on `pendingEdits` for the parse that superseded this one.
+    func applyEdits(
+        _ edits: [InputEdit],
+        revision: Int,
+        readBlock: Parser.ReadBlock?,
+        readCallback: SwiftTreeSitter.Predicate.TextProvider?
+    ) -> IndexSet? {
         guard let state = state?.copy(), let readBlock, let readCallback else { return IndexSet() }
-        let pendingEdits = pendingEdits.value() // Grab pending edits.
-        let edits = pendingEdits + [edit]
 
         var invalidatedRanges = IndexSet()
         var touchedLayers = Set<LanguageLayer>()
@@ -62,12 +57,14 @@ extension TreeSitterClient {
 
         if Task.isCancelled { return nil }
 
-        self.state = state // Apply the copied state
-        self.pendingEdits.mutate { edits in // Clear the queue
-            edits = []
+        return DispatchQueue.waitMainIfNot {
+            guard editRevision == revision else { return nil }
+            self.state = state
+            pendingEdits.mutate { edits in
+                edits = []
+            }
+            return invalidatedRanges
         }
-
-        return invalidatedRanges
     }
 
     private func applyEditTo(layer: LanguageLayer, edits: [InputEdit]) {

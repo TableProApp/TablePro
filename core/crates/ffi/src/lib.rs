@@ -2,6 +2,7 @@
 
 mod account;
 mod ai;
+mod app_link;
 mod cancel_token;
 mod catalog;
 mod catalog_change;
@@ -55,6 +56,7 @@ pub use ai::{
     AiProviderInfo, AiProviderTag, AiReply, AiReplyEvent, AiReplyListener, AiRoleTag, AiSettingsArg, AiStopTag,
     ai_action_message, ai_address_is_valid, ai_host_of, ai_providers,
 };
+pub use app_link::{AppLinkInfo, parse_app_link};
 pub use cancel_token::CancelToken;
 pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, SchemaEntry, TableName};
 pub use catalog_change::{

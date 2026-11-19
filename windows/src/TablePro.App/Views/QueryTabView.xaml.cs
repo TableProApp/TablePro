@@ -11,6 +11,7 @@ using TablePro.App.Services;
 using TablePro.DataGrid;
 using TablePro.DataGrid.Model;
 using TablePro.Editor;
+using TablePro.Editor.Model.Vim;
 using TablePro.Interop;
 
 namespace TablePro.App.Views;
@@ -86,6 +87,7 @@ public sealed partial class QueryTabView
         ShowDatabase();
         _model.StateChanged += (_, _) => OnModelStateChanged();
         _model.FileSaved += (_, path) => FileSaved?.Invoke(this, path);
+        _model.RunEnded += (_, end) => RunEnded?.Invoke(this, end);
         Results.StatusChanged += (_, status) =>
         {
             _resultsStatus = status;
@@ -102,6 +104,7 @@ public sealed partial class QueryTabView
         // The cell editor takes focus as it opens and gives it back as it closes, so Save and the closes follow it.
         grid.LostFocus += (_, _) => EditStateMayHaveChanged();
         Results.MessagesBox.GotFocus += (_, _) => _target = EditTarget.Messages;
+        Results.JsonTextBox.GotFocus += (_, _) => _target = EditTarget.Messages;
         grid.ContextRequested += OnGridContextRequested;
         grid.CellEditStarting += OnCellEditStarting;
         grid.CellEditCommitting += OnCellEditCommitting;
@@ -109,6 +112,9 @@ public sealed partial class QueryTabView
         SqlText.ContextMenuOpening += OnEditorMenuOpening;
         SqlText.TextChanged += OnTextChanged;
         SqlText.FilesDropped += (_, paths) => OpenFilesRequested?.Invoke(this, paths);
+        SqlText.VimStatusChanged += (_, _) => ShowVimStatus();
+        SqlText.VimCommand += OnVimCommand;
+        ShowVimStatus();
         if (rolledBack)
         {
             RolledBackBar.Title = Strings.Get("RolledBackTitle");
@@ -129,6 +135,14 @@ public sealed partial class QueryTabView
         await _model.LoadRestoredFileAsync(stamp, unsaved).ConfigureAwait(true);
 
     public event EventHandler? StateChanged;
+
+    // A run the user started ended; the workspace holding the tab decides whether it notifies.
+    internal event EventHandler<RunEnd>? RunEnded;
+
+    // The tab's notification, which a later run's replaces.
+    internal string NoticeKey { get; } = Guid.NewGuid().ToString("N");
+
+    internal string? ShownDatabase => _model.ShownDatabase;
 
     // .sql files dropped on the editor; the workspace opens each in a tab of its own.
     public event EventHandler<IReadOnlyList<string>>? OpenFilesRequested;
@@ -152,6 +166,12 @@ public sealed partial class QueryTabView
 
     // Set by the workspace: whether its assistant may be asked now, which the AI commands follow.
     internal Func<bool> AssistantReady { get; set; } = static () => false;
+
+    // :q, :tabnext, :tabprevious, gt and gT from Vim; the workspace closes or selects the tab.
+    internal event EventHandler<VimExCommand>? TabCommandRequested;
+
+    // Set by the workspace: the tabs in its strip, which Vim's tab counts are measured against.
+    internal Func<int> TabCount { get; set; } = static () => 0;
 
     // The database the tab runs in; null for the connection's.
     internal string? Database => _model.Database;
@@ -186,10 +206,9 @@ public sealed partial class QueryTabView
 
     public DataGridView? Grid => Results.GridView;
 
-    public bool GridIsTarget => _target == EditTarget.Grid;
+    public bool GridIsTarget => _target == EditTarget.Grid && Results.ShowsGrid;
 
-    public TextBox? MessagesTarget =>
-        _target == EditTarget.Messages && Results.MessagesBox.Visibility == Visibility.Visible ? Results.MessagesBox : null;
+    public TextBox? MessagesTarget => _target == EditTarget.Messages ? Results.ShownText : null;
 
     internal ResultsPane ResultsView => Results;
 
@@ -746,7 +765,8 @@ public sealed partial class QueryTabView
         }
 
         grid.FocusCell(row, _model.FirstColumnToFill);
-        grid.BeginEdit();
+        // A new row is typed into, so a boolean first column opens its text box rather than toggling.
+        grid.BeginTextEdit();
     }
 
     public void DuplicateRows()
@@ -808,6 +828,8 @@ public sealed partial class QueryTabView
             {
                 edited.Edits = edits;
                 grid.EditsChanged();
+                // The selection's figures and the JSON read the pending edits too.
+                Results.RefreshSummary();
             }
         }
 
@@ -831,7 +853,24 @@ public sealed partial class QueryTabView
             return;
         }
 
-        e.Text = text;
+        // A result's columns pick their editor as a table tab's do (docs/decisions/0018, Type editors).
+        var column = e.InPlace ? null : _model.ResultEdits?.Columns.ElementAtOrDefault(e.Column);
+        var editor = column is null ? CellEditor.Text : CellEditors.For(column);
+        if (column is null || editor == CellEditor.Text)
+        {
+            e.Text = text;
+            return;
+        }
+
+        e.Cancel = true;
+        var grid = Results.GridView;
+        var shown = Results.ShownSet;
+        var cell = (grid.FocusedRow, grid.FocusedColumn);
+        var (row, at) = (e.Row, e.Column);
+        bool IsCurrent() => ReferenceEquals(shown, Results.ShownSet) && cell == (grid.FocusedRow, grid.FocusedColumn);
+        CellEditorFlyouts.Open(
+            editor,
+            new CellEditRequest(grid, column, text, IsCurrent, value => ShowRefusal(_model.CommitEdit(row, at, value))));
     }
 
     // A refusal keeps the editor open with the reason on it; a focus loss closes the editor, so the status says it too.
@@ -925,6 +964,48 @@ public sealed partial class QueryTabView
     }
 
     private void OnRun(object sender, RoutedEventArgs e) => Run();
+
+    // :w runs the query, as the macOS editor's does.
+    private void OnVimCommand(object? sender, string command)
+    {
+        switch (VimCommandLine.Parse(command, TabCount()))
+        {
+            case VimExCommand.RunQuery:
+                Run();
+                break;
+            case { } tabCommand:
+                TabCommandRequested?.Invoke(this, tabCommand);
+                break;
+        }
+    }
+
+    private void ShowVimStatus()
+    {
+        if (SqlText.Vim is not { } vim)
+        {
+            VimBadge.Visibility = Visibility.Collapsed;
+            VimKeysText.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var label = vim.ModeLabel;
+        VimModeText.Text = label;
+        AutomationProperties.SetName(VimModeText, Strings.Format("VimModeName", label));
+        VimBadge.Visibility = Visibility.Visible;
+        var state = vim.Mode switch
+        {
+            VimMode.Insert => "VimInsert",
+            VimMode.Replace => "VimReplace",
+            VimMode.Visual or VimMode.VisualLine => "VimVisual",
+            VimMode.CommandLine => "VimCommand",
+            _ => "VimNormal",
+        };
+        VisualStateManager.GoToState(this, state, false);
+        var keys = vim.RecordingRegister is { } register
+            ? (vim.PendingKeys + " " + Strings.Format("VimRecording", register)).Trim()
+            : vim.PendingKeys;
+        VimKeysText.Text = keys;
+        VimKeysText.Visibility = keys.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     private void OnRolledBackBarClosed(InfoBar sender, InfoBarClosedEventArgs args) =>
         RolledBackBar.Visibility = Visibility.Collapsed;

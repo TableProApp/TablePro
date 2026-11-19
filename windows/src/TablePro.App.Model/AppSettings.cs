@@ -48,12 +48,22 @@ public sealed record AppSettings
     // As macOS offers them; 0 keeps as many as the store holds.
     public static IReadOnlyList<int> HistoryMaxEntriesChoices { get; } = [100, 500, 1_000, 5_000, 10_000, 0];
 
+    public const int DefaultNotifyAfterSeconds = 20;
+
+    // As macOS offers them, in seconds: 5, 10, 20 or 30 seconds, or 1, 2, 5 or 10 minutes.
+    public static IReadOnlyList<int> NotifyAfterChoices { get; } = [5, 10, 20, 30, 60, 120, 300, 600];
+
     // The Linux app's default, so a key is all a new user needs.
     public const string DefaultAnthropicModel = "claude-opus-5-5";
 
     public const string DefaultCompatibleAddress = "http://localhost:11434/v1";
 
     public AppTheme Theme { get; set; } = AppTheme.System;
+
+    // A query that ran at least NotifyAfterSeconds and finished where the user is not looking posts a notification.
+    public bool NotifyLongWork { get; set; } = true;
+
+    public int NotifyAfterSeconds { get; set; } = DefaultNotifyAfterSeconds;
 
     public bool ReopenSession { get; set; } = true;
 
@@ -67,6 +77,9 @@ public sealed record AppSettings
     public bool HighlightCurrentStatement { get; set; } = true;
 
     public bool CodeFolding { get; set; } = true;
+
+    // Vim's modes and keys in the SQL editor, off as on macOS.
+    public bool VimMode { get; set; }
 
     // A color scheme's id; null keeps the editor's default colors.
     public string? EditorLightScheme { get; set; }
@@ -155,6 +168,7 @@ public sealed record AppSettings
         QueryTimeoutSeconds = Math.Clamp(QueryTimeoutSeconds, 0, 86_400),
         CountRowsIfEstimateLessThan = Math.Max(0, CountRowsIfEstimateLessThan),
         ResultSetsKeptPerRun = Math.Max(0, ResultSetsKeptPerRun),
+        NotifyAfterSeconds = NotifyAfterChoices.Contains(NotifyAfterSeconds) ? NotifyAfterSeconds : DefaultNotifyAfterSeconds,
         AiProvider = AiProvider is { } provider && Enum.IsDefined(provider) ? provider : null,
         AnthropicModel = (AnthropicModel ?? string.Empty).Trim(),
         OpenAIModel = (OpenAIModel ?? string.Empty).Trim(),

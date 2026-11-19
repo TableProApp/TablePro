@@ -1374,6 +1374,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -4167,6 +4169,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     RustBuffer uniffi_tablepro_ffi_fn_func_parse_app_link(RustBuffer @link,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      RustBuffer uniffi_tablepro_ffi_fn_func_parse_connection_url(RustBuffer @url,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -4839,6 +4852,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_func_ai_providers(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_func_parse_app_link(
     );
 
     #if NET8_0_OR_GREATER
@@ -7200,6 +7224,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_ai_providers();
             if (checksum != 7775) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_ai_providers` checksum `7775`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_parse_app_link();
+            if (checksum != 17722) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_parse_app_link` checksum `17722`, library returned `{checksum}`");
             }
         }
         {
@@ -16207,7 +16237,11 @@ internal record EditColumnInfo (
     bool Nullable, 
     bool PrimaryKey, 
     bool TakesEmpty, 
-    bool TakesDefault
+    bool TakesDefault, 
+    ValueKind Kind, 
+    string[] Labels, 
+    bool Multiple, 
+    bool NeedsOffset
 ) {
 }
 
@@ -16223,7 +16257,11 @@ class FfiConverterTypeEditColumnInfo: FfiConverterRustBuffer<EditColumnInfo> {
             Nullable: FfiConverterBoolean.INSTANCE.Read(stream),
             PrimaryKey: FfiConverterBoolean.INSTANCE.Read(stream),
             TakesEmpty: FfiConverterBoolean.INSTANCE.Read(stream),
-            TakesDefault: FfiConverterBoolean.INSTANCE.Read(stream)
+            TakesDefault: FfiConverterBoolean.INSTANCE.Read(stream),
+            Kind: FfiConverterTypeValueKind.INSTANCE.Read(stream),
+            Labels: FfiConverterSequenceString.INSTANCE.Read(stream),
+            Multiple: FfiConverterBoolean.INSTANCE.Read(stream),
+            NeedsOffset: FfiConverterBoolean.INSTANCE.Read(stream)
         );
     }
 
@@ -16236,7 +16274,11 @@ class FfiConverterTypeEditColumnInfo: FfiConverterRustBuffer<EditColumnInfo> {
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.Nullable)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.PrimaryKey)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.TakesEmpty)
-            + FfiConverterBoolean.INSTANCE.AllocationSize(value.TakesDefault);
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.TakesDefault)
+            + FfiConverterTypeValueKind.INSTANCE.AllocationSize(value.Kind)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Labels)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Multiple)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.NeedsOffset);
     }
 
     public override void Write(EditColumnInfo value, BigEndianStream stream) {
@@ -16248,6 +16290,10 @@ class FfiConverterTypeEditColumnInfo: FfiConverterRustBuffer<EditColumnInfo> {
             FfiConverterBoolean.INSTANCE.Write(value.PrimaryKey, stream);
             FfiConverterBoolean.INSTANCE.Write(value.TakesEmpty, stream);
             FfiConverterBoolean.INSTANCE.Write(value.TakesDefault, stream);
+            FfiConverterTypeValueKind.INSTANCE.Write(value.Kind, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.Labels, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Multiple, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.NeedsOffset, stream);
     }
 }
 
@@ -19570,6 +19616,120 @@ class FfiConverterTypeAiStopTag: FfiConverterRustBuffer<AiStopTag> {
             case AiStopTag.LengthLimit: stream.WriteInt(2); break;
             case AiStopTag.Refused: stream.WriteInt(3); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAiStopTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal record AppLinkInfo {
+    
+    public record OpenConnection (
+        string ConnectionId
+    ) : AppLinkInfo {}
+    
+    public record OpenTable (
+        string ConnectionId,
+        string? Database,
+        string? Schema,
+        string Table
+    ) : AppLinkInfo {}
+    
+    public record OpenQuery (
+        string ConnectionId,
+        string Sql
+    ) : AppLinkInfo {}
+    
+    public record OpenSettings (
+        string? Pane
+    ) : AppLinkInfo {}
+    
+
+    
+}
+
+class FfiConverterTypeAppLinkInfo : FfiConverterRustBuffer<AppLinkInfo>{
+    public static FfiConverterRustBuffer<AppLinkInfo> INSTANCE = new FfiConverterTypeAppLinkInfo();
+
+    public override AppLinkInfo Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new AppLinkInfo.OpenConnection(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 2:
+                return new AppLinkInfo.OpenTable(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterOptionalString.INSTANCE.Read(stream),
+                    FfiConverterOptionalString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 3:
+                return new AppLinkInfo.OpenQuery(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 4:
+                return new AppLinkInfo.OpenSettings(
+                    FfiConverterOptionalString.INSTANCE.Read(stream)
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAppLinkInfo.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(AppLinkInfo value) {
+        switch (value) {
+            case AppLinkInfo.OpenConnection variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.ConnectionId);
+            case AppLinkInfo.OpenTable variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.ConnectionId)
+                    + FfiConverterOptionalString.INSTANCE.AllocationSize(variant_value.Database)
+                    + FfiConverterOptionalString.INSTANCE.AllocationSize(variant_value.Schema)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Table);
+            case AppLinkInfo.OpenQuery variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.ConnectionId)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Sql);
+            case AppLinkInfo.OpenSettings variant_value:
+                return 4
+                    + FfiConverterOptionalString.INSTANCE.AllocationSize(variant_value.Pane);
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAppLinkInfo.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(AppLinkInfo value, BigEndianStream stream) {
+        switch (value) {
+            case AppLinkInfo.OpenConnection variant_value:
+                stream.WriteInt(1);
+                FfiConverterString.INSTANCE.Write(variant_value.ConnectionId, stream);
+                break;
+            case AppLinkInfo.OpenTable variant_value:
+                stream.WriteInt(2);
+                FfiConverterString.INSTANCE.Write(variant_value.ConnectionId, stream);
+                FfiConverterOptionalString.INSTANCE.Write(variant_value.Database, stream);
+                FfiConverterOptionalString.INSTANCE.Write(variant_value.Schema, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Table, stream);
+                break;
+            case AppLinkInfo.OpenQuery variant_value:
+                stream.WriteInt(3);
+                FfiConverterString.INSTANCE.Write(variant_value.ConnectionId, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Sql, stream);
+                break;
+            case AppLinkInfo.OpenSettings variant_value:
+                stream.WriteInt(4);
+                FfiConverterOptionalString.INSTANCE.Write(variant_value.Pane, stream);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAppLinkInfo.Write()", value));
         }
     }
 }
@@ -29963,6 +30123,15 @@ internal static class CoreMethods {
         return FfiConverterSequenceTypeAiProviderInfo.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_func_ai_providers( ref _status)
+));
+    }
+
+
+    /// <exception cref="CoreException"></exception>
+    public static AppLinkInfo ParseAppLink(string @link) {
+        return FfiConverterTypeAppLinkInfo.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_parse_app_link(FfiConverterString.INSTANCE.Lower(@link), ref _status)
 ));
     }
 

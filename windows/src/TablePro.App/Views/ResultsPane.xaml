@@ -91,21 +91,41 @@
             TextWrapping="Wrap"
             Visibility="Collapsed" />
 
-        <!-- As a spreadsheet's status bar: the selected cells' figures, all of them in its flyout. -->
+        <!-- Data or JSON at the leading edge; the selected cells' figures at the trailing edge, as a spreadsheet's status bar. -->
         <Grid
-            x:Name="SummaryBar"
+            x:Name="BottomBar"
             Grid.Row="3"
-            Padding="8,2"
+            Padding="4,0,8,0"
             BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
             BorderThickness="0,1,0,0"
             Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <SelectorBar
+                x:Uid="ResultModes"
+                AutomationProperties.AutomationId="ResultModes"
+                SelectionChanged="OnResultModeChanged">
+                <SelectorBarItem
+                    x:Uid="ResultsDataView"
+                    AutomationProperties.AutomationId="ResultsDataView"
+                    IsSelected="True" />
+                <SelectorBarItem
+                    x:Name="JsonModeItem"
+                    x:Uid="ResultsJsonView"
+                    AutomationProperties.AutomationId="ResultsJsonView" />
+            </SelectorBar>
             <DropDownButton
                 x:Name="SummaryButton"
+                Grid.Column="1"
                 HorizontalAlignment="Right"
+                VerticalAlignment="Center"
                 AutomationProperties.AutomationId="SelectionSummary"
                 Background="Transparent"
                 BorderThickness="0"
-                FontSize="12">
+                FontSize="12"
+                Visibility="Collapsed">
                 <DropDownButton.Flyout>
                     <Flyout x:Name="SummaryFlyout" Placement="TopEdgeAlignedRight" Opening="OnSummaryOpening">
                         <Grid x:Name="SummaryFigures" ColumnSpacing="16" RowSpacing="4" AutomationProperties.AutomationId="SummaryFigures" />

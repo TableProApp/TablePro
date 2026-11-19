@@ -130,7 +130,7 @@ struct FieldAbsenceTableRowsTests {
 
         #expect(tableRows.isAbsent(row: 0, column: 1))
         #expect(!tableRows.isAbsent(row: 1, column: 1))
-        #expect(tableRows.rows[1].absentColumns == [2])
+        #expect(tableRows.absentColumns(of: tableRows.rows[1].id) == [2])
     }
 
     @Test("A value written into a missing field brings the field back, and removal takes it out")
@@ -238,7 +238,7 @@ struct FieldAbsenceUndoTests {
         undoManager.redo()
         _ = operations.applyUndoResult(try #require(captured), tableRows: &tableRows)
         #expect(manager.pending.insertedAbsentColumns(forRow: added.rowID) == missing)
-        #expect(tableRows.row(withID: added.rowID)?.absentColumns == missing)
+        #expect(tableRows.absentColumns(of: added.rowID) == missing)
         #expect(manager.pending.insertedRowData[added.rowID] == added.values)
     }
 

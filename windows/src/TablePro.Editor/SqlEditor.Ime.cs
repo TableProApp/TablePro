@@ -73,7 +73,11 @@ public sealed partial class SqlEditor
         public void Commit(string text)
         {
             editor._composition = string.Empty;
-            editor.TypeText(text);
+            // Outside Insert mode an input method's text is Vim's keys, not text for the document.
+            if (!editor.RouteVimText(text, shift: false))
+            {
+                editor.TypeText(text);
+            }
             editor.CompositionCommitted?.Invoke(editor, text);
         }
 

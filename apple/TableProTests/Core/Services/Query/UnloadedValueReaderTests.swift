@@ -255,7 +255,7 @@ struct UnloadedValueExportTests {
             driver: nil,
             fillUnloaded: { rows in
                 batches.counts.append(rows.count)
-                return Dictionary(uniqueKeysWithValues: rows.map { ($0.id, [1: PluginCellValue.bytes(Data([1]))]) })
+                return Dictionary(uniqueKeysWithValues: rows.map { ($0.row.id, [1: PluginCellValue.bytes(Data([1]))]) })
             }
         )
 

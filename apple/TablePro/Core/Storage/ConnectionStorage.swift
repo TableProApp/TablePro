@@ -32,9 +32,14 @@ final class ConnectionStorage {
     private(set) var fileReadCount = 0
     private(set) var fileWriteCount = 0
 
-    /// Whether the file on disk is the one TablePro last wrote. False once it has been edited by
-    /// something else, which is the signal to refuse to run a connection's password source.
+    // False once something else edited the file, so a connection's password source does not run.
     var storeIsTrusted: Bool { file.isTrusted }
+
+    // Records this build cannot read; what belongs to them is kept. Loads first, as `isLibraryUnreadable` does.
+    var unreadableConnectionIds: Set<UUID> {
+        _ = loadConnections()
+        return file.unreadableIds
+    }
 
     private let file: IntegrityStampedFileStore<StoredConnection>
     private var fileURL: URL { file.fileURL }
@@ -116,32 +121,31 @@ final class ConnectionStorage {
         loadConnections().first { $0.id == id }
     }
 
-    /// Loads first, so the answer does not depend on whether anything has read the file yet.
+    // Loads first, so the answer does not depend on whether anything has read the file yet.
     var isLibraryUnreadable: Bool {
         _ = loadConnections()
         return lastLoadFailed
     }
 
-    /// Callers that mutate dependent state (sync tracker, keychain entries) must abort on `false`:
-    /// continuing can delete a password while the record stays on disk. Refuses while the file on
-    /// disk could not be read, because every write replaces the whole list.
-    /// `byUser` false keeps a store that failed its integrity check untrusted, since a write the
-    /// app makes on its own (a sync pull, a route a connect recorded) is not the user re-saving it.
+    // False refuses dependent writes (sync marks, keychain items), or a password goes while its record stays.
+    // `byUser` false is a write the app makes itself, which never clears a failed integrity check.
     @discardableResult
-    func saveConnections(_ connections: [DatabaseConnection], byUser: Bool = true) -> Bool {
+    func saveConnections(_ connections: [DatabaseConnection], byUser: Bool = true, removingSecrets: Bool = false) -> Bool {
         let previous = loadConnections()
         guard !lastLoadFailed else {
             Self.logger.error("Refused to save over connections.json: it could not be read")
             return false
         }
-        guard persist(connections, byUser: byUser) else { return false }
+        guard persist(connections, byUser: byUser, removingSecrets: removingSecrets) else { return false }
         moveSecretsWhoseScopeChanged(from: previous, to: connections)
         return true
     }
 
     @discardableResult
-    private func persist(_ connections: [DatabaseConnection], byUser: Bool = true) -> Bool {
-        guard file.save(connections.map { StoredConnection(from: $0) }, byUser: byUser) else { return false }
+    private func persist(_ connections: [DatabaseConnection], byUser: Bool = true, removingSecrets: Bool = false) -> Bool {
+        guard file.save(connections.map { StoredConnection(from: $0) }, byUser: byUser, removingSecrets: removingSecrets) else {
+            return false
+        }
         fileWriteCount += 1
         cachedConnections = nil
         return true
@@ -1118,7 +1122,7 @@ final class ConnectionStorage {
             }
         }
 
-        if changed, !saveConnections(connections, byUser: false) {
+        if changed, !saveConnections(connections, byUser: false, removingSecrets: true) {
             complete = false
         }
         if complete {

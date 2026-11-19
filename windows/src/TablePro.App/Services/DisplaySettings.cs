@@ -22,6 +22,7 @@ internal static class DisplaySettings
             || before.EditorFontFamily != settings.EditorFontFamily
             || before.WordWrap != settings.WordWrap
             || before.CodeFolding != settings.CodeFolding
+            || before.VimMode != settings.VimMode
             || before.HighlightCurrentStatement != settings.HighlightCurrentStatement
             || before.EditorLightScheme != settings.EditorLightScheme
             || before.EditorDarkScheme != settings.EditorDarkScheme
@@ -53,6 +54,7 @@ internal static class DisplaySettings
             editor.EditorFontSize = (float)s_current.EditorFontSize;
             editor.WordWrap = s_current.WordWrap;
             editor.IsFoldingEnabled = s_current.CodeFolding;
+            editor.IsVimEnabled = s_current.VimMode;
             editor.HighlightsCurrentStatement = s_current.HighlightCurrentStatement;
             editor.LightColorScheme = s_current.EditorLightScheme;
             editor.DarkColorScheme = s_current.EditorDarkScheme;

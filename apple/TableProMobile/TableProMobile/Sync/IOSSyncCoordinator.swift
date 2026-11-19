@@ -91,6 +91,8 @@ final class IOSSyncCoordinator {
     @ObservationIgnored var onGroupsChanged: (([ConnectionGroup]) -> Bool)?
     @ObservationIgnored var onTagsChanged: (([ConnectionTag]) -> Bool)?
     @ObservationIgnored var getCurrentState: (() -> LibraryState?)?
+    // Owners whose record this build cannot read: whether they sync is unknown, so their records are held as Local only.
+    @ObservationIgnored var unreadableConnectionIds: () -> Set<UUID> = { [] }
     @ObservationIgnored var getSavedQueries: (() -> SavedQueryContents?)?
     @ObservationIgnored var onSavedQueriesChanged: ((SavedQueryContents) -> Bool)?
 
@@ -661,7 +663,7 @@ final class IOSSyncCoordinator {
         markDirty(state.groups.map(\.id.uuidString), type: .group)
         markDirty(state.tags.map(\.id.uuidString), type: .tag)
         guard let savedQueries = getSavedQueries?() else { return }
-        let syncs = Self.ownerSyncs(in: state.connections)
+        let syncs = uploads(in: state.connections)
         markDirty(savedQueries.queries.filter { syncs($0.connectionId) }.map(\.id.uuidString), type: .favorite)
         markDirty(savedQueries.folders.filter { syncs($0.connectionId) }.map(\.id.uuidString), type: .favoriteFolder)
     }
@@ -675,8 +677,8 @@ final class IOSSyncCoordinator {
         { owner in owner.map { !keptOff.contains($0) } ?? true }
     }
 
-    private static func ownerSyncs(in connections: [DatabaseConnection]) -> (UUID?) -> Bool {
-        ownerSyncs(keptOff: ownersKeptOff(in: connections))
+    private func uploads(in connections: [DatabaseConnection]) -> (UUID?) -> Bool {
+        Self.ownerSyncs(keptOff: Self.ownersKeptOff(in: connections).union(unreadableConnectionIds()))
     }
 
     /// An edit made while a run is in flight queues one more run instead of cancelling it, because
@@ -744,7 +746,7 @@ final class IOSSyncCoordinator {
             Self.logger.error("Saved queries arrived while the stored ones are not loaded, so the change token is held")
             return false
         }
-        let keptOff = Self.ownersKeptOff(in: getCurrentState?()?.connections ?? [])
+        let keptOff = Self.ownersKeptOff(in: getCurrentState?()?.connections ?? []).union(unreadableConnectionIds())
         let outcome = SavedQueryRemoteMerge.merge(
             local: local,
             remote: remote,
@@ -944,7 +946,7 @@ final class IOSSyncCoordinator {
         connections: [DatabaseConnection],
         in zoneID: CKRecordZone.ID
     ) -> [SyncRecordEdit] {
-        let syncs = Self.ownerSyncs(in: connections)
+        let syncs = uploads(in: connections)
         let dirtyFolderIds = metadata.dirtyIds(for: .favoriteFolder)
         let dirtyQueryIds = metadata.dirtyIds(for: .favorite)
         let folders = contents.folders

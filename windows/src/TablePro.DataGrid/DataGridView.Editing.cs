@@ -85,7 +85,13 @@ public sealed partial class DataGridView
 
     private bool EditorFocused => _editor is not null && _editor.FocusState != FocusState.Unfocused;
 
-    public void BeginEdit()
+    // Enter, F2 and a double-click, which the host may answer with an editor of its own.
+    public void BeginEdit() => BeginEdit(inPlace: false);
+
+    // The TextBox whatever the column holds, as Tab moving on opens it.
+    public void BeginTextEdit() => BeginEdit(inPlace: true);
+
+    private void BeginEdit(bool inPlace)
     {
         if (!IsEditable || (IsEditing && !Commit(EditorFocused)))
         {
@@ -96,7 +102,7 @@ public sealed partial class DataGridView
         {
             return;
         }
-        var args = new GridEditStartingEventArgs(row, column, _cache.ReadWhole(row, column) ?? string.Empty);
+        var args = new GridEditStartingEventArgs(row, column, _cache.ReadWhole(row, column) ?? string.Empty, inPlace);
         CellEditStarting?.Invoke(this, args);
         // A TextBox cannot hold NUL, so such a value would come back changed.
         if (args.Cancel || args.Text.Contains('\0', StringComparison.Ordinal) || IsEditing || !Contains(row, column))
@@ -196,7 +202,7 @@ public sealed partial class DataGridView
                 if (Commit(refocus: true) && Contains(edit.Row, next))
                 {
                     SelectCell(edit.Row, next, extend: false);
-                    BeginEditAfterKey();
+                    BeginEditAfterKey(inPlace: true);
                 }
                 return true;
             default:
@@ -205,7 +211,7 @@ public sealed partial class DataGridView
     }
 
     // The key's character goes to whatever has focus once KeyDown returns, so the editor opens after it.
-    private void BeginEditAfterKey()
+    private void BeginEditAfterKey(bool inPlace)
     {
         var data = _data;
         var cell = (FocusedRow, FocusedColumn);
@@ -213,7 +219,7 @@ public sealed partial class DataGridView
         {
             if (!IsEditing && ReferenceEquals(data, _data) && cell == (FocusedRow, FocusedColumn))
             {
-                BeginEdit();
+                BeginEdit(inPlace);
             }
         });
     }
@@ -513,11 +519,14 @@ public sealed partial class DataGridView
     }
 }
 
-public sealed class GridEditStartingEventArgs(int row, int column, string text) : EventArgs
+public sealed class GridEditStartingEventArgs(int row, int column, string text, bool inPlace) : EventArgs
 {
     public int Row { get; } = row;
 
     public int Column { get; } = column;
+
+    // True for Tab and BeginTextEdit, which want the TextBox; false for Enter, F2 and a double-click.
+    public bool InPlace { get; } = inPlace;
 
     // The editor's text: the cell's whole value until the host sets it.
     public string Text { get; set; } = text;
