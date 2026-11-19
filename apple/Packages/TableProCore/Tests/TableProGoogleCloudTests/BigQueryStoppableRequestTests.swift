@@ -21,7 +21,9 @@ struct BigQueryStoppableRequestTests {
         received: Received
     ) -> Task<Int, any Error> {
         Task {
-            try await BigQueryStoppableRequest.value(of: request, stop: stop, grace: .seconds(1), clock: clock) {
+            try await BigQueryStoppableRequest.value(
+                of: request, stop: stop, grace: .seconds(1), abandonAfter: .seconds(10), clock: clock
+            ) {
                 await received.append($0)
             }
         }
@@ -84,5 +86,29 @@ struct BigQueryStoppableRequestTests {
 
         await gate.open()
         try await waitUntil { await received.answers == [7] }
+    }
+
+    @Test("A stopped request still unanswered past its limit is cancelled")
+    func stoppedRequestIsCancelledAtItsLimit() async throws {
+        let wire = ManualClock()
+        let request = Task<Int, any Error> {
+            try await wire.sleep(for: .seconds(3_600))
+            return 7
+        }
+        let clock = ManualClock()
+        let running = caller(request, stop: BigQueryStopSignal(), clock: clock, received: Received())
+        await wire.waitUntilSleeping()
+
+        running.cancel()
+        await waitForSleepers(2, on: clock)
+        clock.advance(by: .seconds(1))
+        await #expect(throws: CancellationError.self) { try await running.value }
+
+        clock.advance(by: .seconds(9))
+        await #expect(throws: CancellationError.self) { try await request.value }
+    }
+
+    private func waitForSleepers(_ count: Int, on clock: ManualClock) async {
+        try? await waitUntil { clock.pendingSleeperCount >= count }
     }
 }

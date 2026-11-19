@@ -10,6 +10,10 @@ public enum BigQueryStatementPolicy {
     // How long Stop waits for the answer of a statement already sent before it lets the caller go.
     public static let stopGrace: Duration = .seconds(1)
 
+    // How long a stopped statement's request may still run for its job reference. The answer comes within the server
+    // wait; past this the request is cancelled and the reference given up.
+    public static let stoppedRequestLimit: Duration = .seconds(10)
+
     // jobs.query reports a statement the server refuses as an HTTP error, where jobs.insert reported it on the job.
     public static func isStatementRefusal(status: Int) -> Bool {
         status == 400 || status == 403 || status == 404

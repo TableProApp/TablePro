@@ -676,7 +676,8 @@ internal final class BigQueryConnection: @unchecked Sendable {
             return try await BigQueryStoppableRequest.value(
                 of: submission,
                 stop: stop,
-                grace: BigQueryStatementPolicy.stopGrace
+                grace: BigQueryStatementPolicy.stopGrace,
+                abandonAfter: BigQueryStatementPolicy.stoppedRequestLimit
             ) { [self] answer in
                 guard let jobId = BigQueryStatementProgress.jobToCancel(
                     jobComplete: answer.jobComplete,

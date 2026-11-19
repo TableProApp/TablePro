@@ -65,11 +65,13 @@ public enum BigQueryStoppableRequest {
     // Waits for a request that runs apart from the caller, since cancelling it on the wire would lose the job reference
     // its answer carries. Stop raises `stop` and lets the caller go once the answer is in or `grace` has passed,
     // whichever is first. An answer the caller did not take goes to `afterStop`, so a statement still running can be
-    // cancelled however late its reference arrives.
+    // cancelled once its reference arrives. A request still unanswered `abandonAfter` past Stop is cancelled, so no
+    // stopped request outlives that.
     public static func value<Answer: Sendable>(
         of request: Task<Answer, any Error>,
         stop: BigQueryStopSignal,
         grace: Duration,
+        abandonAfter: Duration,
         clock: any Clock<Duration> = ContinuousClock(),
         afterStop: @escaping @Sendable (Answer) async -> Void
     ) async throws -> Answer {
@@ -92,6 +94,10 @@ public enum BigQueryStoppableRequest {
             Task {
                 try? await clock.sleep(for: grace)
                 _ = handoff.settle(.failure(CancellationError()))
+            }
+            Task {
+                try? await clock.sleep(for: abandonAfter)
+                request.cancel()
             }
         }
     }
