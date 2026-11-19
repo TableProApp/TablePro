@@ -51,16 +51,18 @@ struct ImportDataSinkAdapterBatchTests {
 
     @Test("Writes and definitions may wait for a batch", arguments: [
         "INSERT INTO t VALUES (1)", "update t set a = 1", "DELETE FROM t", "CREATE TABLE t (a int)",
-        "ALTER TABLE t ADD b int", "COMMENT ON TABLE t IS 'x'", "SELECT pg_catalog.setval('s', 1, true)",
+        "ALTER TABLE t ADD b int", "COMMENT ON TABLE t IS 'x'",
     ])
     func batchesWrites(statement: String) {
         #expect(sink(on: PipeliningDriver()).batches(statement))
     }
 
-    @Test("A transaction boundary, a session setting or a text of two statements runs alone", arguments: [
+    @Test("A transaction boundary, a setting, a call that may set one, or a text of two statements runs alone", arguments: [
         "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT a", "SET standard_conforming_strings = off",
         "SELECT pg_catalog.set_config('search_path', '', false)", "INSERT INTO t VALUES (1); INSERT INTO t VALUES (2)",
-        "COPY t FROM STDIN",
+        "COPY t FROM STDIN", "SELECT pg_catalog.setval('s', 1, true)",
+        #"INSERT INTO t SELECT pg_catalog.U&"set\005fconfig"('standard_conforming_strings', 'off', false)"#,
+        "INSERT INTO t VALUES (set_config('standard_conforming_strings', 'off', false))",
     ])
     func keepsSessionStatementsAlone(statement: String) {
         #expect(!sink(on: PipeliningDriver()).batches(statement))

@@ -268,15 +268,19 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         guard !grammar.contains(.batchSeparatorLines),
               Self.batchedKeywords.contains(QueryClassifier.leadingKeyword(of: statement, grammar: grammar)),
               !CatalogChangeClassifier.effect(of: statement, databaseType: databaseType, grammar: grammar).endsTransaction,
-              statement.range(of: "set_config", options: .caseInsensitive) == nil
+              !Self.mayNameSettingCall(statement)
         else { return false }
         return SQLStatementScanner.executableStatements(in: statement, grammar: grammar).count == 1
     }
 
+    // A read is left out because a call is what changes a setting; a Unicode-escaped name could spell that call.
     private static let batchedKeywords: Set<String> = [
-        "INSERT", "UPDATE", "DELETE", "WITH", "SELECT", "CREATE", "ALTER", "DROP", "COMMENT", "GRANT", "REVOKE",
-        "TRUNCATE",
+        "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "COMMENT", "GRANT", "REVOKE", "TRUNCATE",
     ]
+
+    private static func mayNameSettingCall(_ statement: String) -> Bool {
+        ["set_config", "U&"].contains { statement.range(of: $0, options: .caseInsensitive) != nil }
+    }
 
     func execute(statements: [PluginImportStatement]) async throws {
         let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
