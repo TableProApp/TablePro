@@ -41,16 +41,45 @@ extension PostgreSQLPluginDriver {
         try await exportCatalog.fetchAllDependentTypes(schema: schema)
     }
 
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await exportCatalog.fetchAllColumnsForExport(schema: schema)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await exportCatalog.fetchAllForeignKeysForExport(schema: schema)
+    }
+
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
+        try await schemaIndexes(schema: schema, keepsSpellingsApart: false)
+    }
+
+    func fetchAllIndexesForExport(schema: String?) async throws -> [String: [PluginIndexInfo]] {
+        try await schemaIndexes(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func schemaIndexes(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginIndexInfo]] {
         let resolvedSchema = schema ?? core.currentSchema
         let query = PostgreSQLIndexQueries.indexList(
             schema: resolvedSchema, table: nil, capabilities: catalogCapabilities
         )
         let result = try await catalogRead(query, namesRelativeTo: resolvedSchema)
-        let ddl = try await fetchIndexSpellings(schema: resolvedSchema, table: nil)
+        let spellings = try await catalogRead(PostgreSQLIndexQueries.indexDDLQuery(schema: resolvedSchema, table: nil))
+        return try Self.indexesByTable(
+            rows: result.rows, spellingRows: spellings.rows, keepsSpellingsApart: keepsSpellingsApart
+        )
+    }
 
+    static func indexesByTable(
+        rows: [[PluginCellValue]],
+        spellingRows: [[PluginCellValue]],
+        keepsSpellingsApart: Bool
+    ) throws -> [String: [PluginIndexInfo]] {
+        if keepsSpellingsApart {
+            try PostgreSQLCatalogExport.requireDistinctSpellings((rows + spellingRows).compactMap { $0.first?.asText })
+        }
+        let ddl = PostgreSQLIndexQueries.indexDDL(rows: spellingRows)
         var indexes: [String: [PluginIndexInfo]] = [:]
-        for row in result.rows {
+        for row in rows {
             guard let decoded = PostgreSQLIndexRow.index(from: row, ddl: ddl) else { continue }
             indexes[decoded.table, default: []].append(decoded.index)
         }

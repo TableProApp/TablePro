@@ -352,6 +352,12 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // Which `fetchAll...` reads answer every table the way its own read does, so an export may read a schema once
     // instead. A table a declared read leaves out has none of that kind.
     var exportBulkReads: PluginExportBulkReads { get }
+    // What an export reads in place of `fetchAllColumns`, `fetchAllForeignKeys` and `fetchAllIndexes`. A String key
+    // equates names a server can keep apart (NFC and NFD spellings), so an answer holding two such names throws
+    // rather than merge them, and the export reads each table alone.
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]]
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]]
+    func fetchAllIndexesForExport(schema: String?) async throws -> [String: [PluginIndexInfo]]
     // `fetchIndexDDL`, `fetchCommentDDL`, `fetchDependentSequences` and `fetchDependentTypes` for every table of the
     // schema, keyed by table name.
     func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]]
@@ -1171,6 +1177,18 @@ public extension PluginDatabaseDriver {
     var providesBulkIndexFetch: Bool { false }
 
     var exportBulkReads: PluginExportBulkReads { [] }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await fetchAllColumns(schema: schema)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await fetchAllForeignKeys(schema: schema)
+    }
+
+    func fetchAllIndexesForExport(schema: String?) async throws -> [String: [PluginIndexInfo]] {
+        try await fetchAllIndexes(schema: schema)
+    }
 
     func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]] { [:] }
     func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]] { [:] }

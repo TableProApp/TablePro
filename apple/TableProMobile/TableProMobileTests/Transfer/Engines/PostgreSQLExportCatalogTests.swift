@@ -88,6 +88,33 @@ struct PostgreSQLExportCatalogTests {
         #expect(reads.statements.contains(fallback))
     }
 
+    @Test("A schema read naming two tables alike in different Unicode forms throws, so the dump reads each table alone")
+    func unicodeFormsOfOneNameThrow() async throws {
+        let composed = PluginCellValue.text("caf\u{E9}")
+        let decomposed = PluginCellValue.text("cafe\u{301}")
+        let columns = PostgreSQLSchemaQueries.columnsQuery(
+            schema: "sales", table: nil, capabilities: Self.capabilities, includeMaterializedViews: true
+        )
+        let foreignKeys = PostgreSQLForeignKeyQueries.foreignKeyList(
+            schema: "sales", table: nil, capabilities: Self.capabilities
+        )
+        let reads = RecordedCatalogReads([
+            columns: [[composed, "a", "integer", "YES", nil], [decomposed, "b", "text", "YES", nil]],
+            foreignKeys: [
+                [composed, "a_fk", "a", "parent", "id", "sales", "NO ACTION", "NO ACTION"],
+                [decomposed, "b_fk", "b", "parent", "id", "sales", "NO ACTION", "NO ACTION"],
+            ],
+        ])
+        let catalog = Self.catalog(reads)
+
+        await #expect(throws: PostgreSQLCatalogReadError.self) {
+            try await catalog.fetchAllColumns(databaseName: "sales")
+        }
+        await #expect(throws: PostgreSQLCatalogReadError.self) {
+            try await catalog.fetchAllForeignKeys(databaseName: "sales")
+        }
+    }
+
     @Test("A routine's definition is read for the routine of its own kind and signature")
     func routineDDLMatchesKind() async throws {
         let catalog = Self.catalog(RecordedCatalogReads(Self.salesReplies))

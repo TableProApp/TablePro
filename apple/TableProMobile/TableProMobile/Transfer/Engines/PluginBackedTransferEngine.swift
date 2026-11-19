@@ -177,7 +177,7 @@ nonisolated struct PluginTransferCatalog: MobileExportCatalog {
     }
 
     func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] {
-        try await plugin.fetchAllColumns(schema: exportSchema(for: databaseName))
+        try await plugin.fetchAllColumnsForExport(schema: exportSchema(for: databaseName))
     }
 
     func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] {
@@ -185,7 +185,7 @@ nonisolated struct PluginTransferCatalog: MobileExportCatalog {
     }
 
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] {
-        try await plugin.fetchAllForeignKeys(schema: exportSchema(for: databaseName))
+        try await plugin.fetchAllForeignKeysForExport(schema: exportSchema(for: databaseName))
     }
 
     var tableDDLIncludesForeignKeys: Bool { plugin.tableDDLIncludesForeignKeys }

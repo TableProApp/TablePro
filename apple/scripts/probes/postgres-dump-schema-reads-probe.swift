@@ -58,7 +58,7 @@ final class ProbeExportSource: PluginExportDataSource, @unchecked Sendable {
     }
 
     func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] {
-        try await driver.fetchAllColumns(schema: databaseName)
+        try await driver.fetchAllColumnsForExport(schema: databaseName)
     }
 
     func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] {
@@ -66,7 +66,7 @@ final class ProbeExportSource: PluginExportDataSource, @unchecked Sendable {
     }
 
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] {
-        try await driver.fetchAllForeignKeys(schema: databaseName)
+        try await driver.fetchAllForeignKeysForExport(schema: databaseName)
     }
 
     func fetchIndexDDL(table: String, databaseName: String) async throws -> [String] {

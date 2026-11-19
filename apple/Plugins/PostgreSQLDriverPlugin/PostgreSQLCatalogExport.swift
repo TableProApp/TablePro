@@ -260,15 +260,25 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
         guard answer.count < ceiling else {
             throw PostgreSQLCatalogReadError(message: "A schema-wide catalog read reached \(answer.count) rows")
         }
+        try requireDistinctSpellings(answer.lazy.compactMap { $0.last?.asText })
         var grouped: [String: [[PluginCellValue]]] = [:]
         for row in answer {
             guard let relation = row.last?.asText else { continue }
-            if let known = grouped.index(forKey: relation), !grouped[known].key.utf8.elementsEqual(relation.utf8) {
-                throw PostgreSQLCatalogReadError(message: "Two relations share the name \(relation) in different Unicode forms")
-            }
             grouped[relation, default: []].append(row)
         }
         return grouped
+    }
+
+    // An export's schema-wide answer is keyed by String, which would merge two relations whose names differ only in
+    // Unicode form, so such an answer throws and the export reads each table alone.
+    static func requireDistinctSpellings(_ relations: some Sequence<String>) throws {
+        var seen = Set<String>()
+        for relation in relations {
+            let (inserted, known) = seen.insert(relation)
+            if !inserted, !known.utf8.elementsEqual(relation.utf8) {
+                throw PostgreSQLCatalogReadError(message: "Two relations share the name \(relation) in different Unicode forms")
+            }
+        }
     }
 
     func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]] {
@@ -394,7 +404,16 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        Self.columnsByTable(try await columnCatalog(schema: schema ?? currentSchema, table: nil))
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let answers = try await columnCatalog(schema: schema ?? currentSchema, table: nil)
+        try Self.requireDistinctSpellings(answers.columns.compactMap { $0.first?.asText } + answers.spelledRelations)
+        return Self.columnsByTable(answers)
+    }
+
+    private static func columnsByTable(_ answers: ColumnCatalog) -> [String: [PluginColumnInfo]] {
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in answers.columns {
             guard row.count >= 5, let tableName = row[0].asText else { continue }
@@ -414,6 +433,8 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
         let columns: [[PluginCellValue]]
         let spellings: [String: [String: PostgreSQLColumnSpelling]]
         let columnDDL: [String: [String: PostgreSQLCatalogColumnDDL]]
+        // The relations the spelling and DDL reads name, which a privilege can leave out of the column read.
+        let spelledRelations: [String]
     }
 
     private func columnCatalog(schema: String, table: String?) async throws -> ColumnCatalog {
@@ -441,7 +462,8 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
             ),
             columns: answers[2],
             spellings: PostgreSQLSchemaQueries.columnSpellings(rows: answers[3]),
-            columnDDL: PostgreSQLSchemaQueries.columnDDL(rows: answers[4])
+            columnDDL: PostgreSQLSchemaQueries.columnDDL(rows: answers[4]),
+            spelledRelations: (answers[3] + answers[4]).compactMap { $0.first?.asText }
         )
     }
 
@@ -596,13 +618,26 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
     }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        Self.foreignKeysByTable(try await schemaForeignKeys(schema: schema))
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        let decoded = try await schemaForeignKeys(schema: schema)
+        try Self.requireDistinctSpellings(decoded.map(\.table))
+        return Self.foreignKeysByTable(decoded)
+    }
+
+    private func schemaForeignKeys(schema: String?) async throws -> [PostgreSQLForeignKeyRow] {
         let query = PostgreSQLForeignKeyQueries.foreignKeyList(
             schema: schema ?? currentSchema, table: nil, capabilities: catalogCapabilities
         )
+        return try await rows(query).compactMap(PostgreSQLForeignKeyRow.init)
+    }
+
+    private static func foreignKeysByTable(_ decoded: [PostgreSQLForeignKeyRow]) -> [String: [PluginForeignKeyInfo]] {
         var grouped: [String: [PluginForeignKeyInfo]] = [:]
-        for row in try await rows(query) {
-            guard let decoded = PostgreSQLForeignKeyRow(row) else { continue }
-            grouped[decoded.table, default: []].append(decoded.foreignKey)
+        for row in decoded {
+            grouped[row.table, default: []].append(row.foreignKey)
         }
         return grouped
     }

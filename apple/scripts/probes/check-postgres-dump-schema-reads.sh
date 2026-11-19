@@ -51,7 +51,7 @@ done
 for source in "$ROOT"/Plugins/SQLExportPlugin/*.swift; do
     ln -s "$source" "$WORK/Sources/ProbeSQLExport/$(basename "$source")"
 done
-for shared in PluginExportOutputBuffer PluginHexText; do
+for shared in PluginExportOutputBuffer PluginExportSpelling PluginHexText; do
     ln -s "$ROOT/Plugins/Shared/$shared.swift" "$WORK/Sources/ProbeSQLExport/$shared.swift"
 done
 ln -s "$PROBES/postgres-dump-schema-reads-probe.swift" "$WORK/Sources/Probe/Probe.swift"

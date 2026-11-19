@@ -4,9 +4,10 @@ import TableProPluginKit
 
 // A lone object, a failed group read or one at the row limit reads each object alone, so a failure still names its table.
 nonisolated final class SQLExportGroupReads {
-    // Swift equates NFC and NFD spellings the server keeps apart, so names are compared and keyed by their bytes.
     private final class GroupRead<Value> {
         let kind: PluginExportBulkReads
+        // Columns and foreign keys are read by group from every source and for any group size, as the dump always has.
+        let readsEveryGroup: Bool
         let groupSizes: [[UInt8]: Int]
         let fetch: (String) async throws -> [String: [Value]]
         var answers: [[UInt8]: [String: [Value]]?] = [:]
@@ -14,10 +15,13 @@ nonisolated final class SQLExportGroupReads {
         init(
             kind: PluginExportBulkReads,
             objects: [PluginExportTable],
+            readsEveryGroup: Bool = false,
             fetch: @escaping (String) async throws -> [String: [Value]]
         ) {
             self.kind = kind
-            self.groupSizes = Dictionary(grouping: objects) { Array($0.databaseName.utf8) }.mapValues(\.count)
+            self.readsEveryGroup = readsEveryGroup
+            self.groupSizes = Dictionary(grouping: objects) { PluginExportSpelling.key($0.databaseName) }
+                .mapValues(\.count)
             self.fetch = fetch
         }
     }
@@ -27,6 +31,8 @@ nonisolated final class SQLExportGroupReads {
     private let dataSource: any PluginExportDataSource
     private let progress: PluginExportProgress
     private let rowLimit: Int
+    private let columnReads: GroupRead<PluginColumnInfo>
+    private let foreignKeyReads: GroupRead<PluginForeignKeyInfo>
     private let indexDDLReads: GroupRead<String>
     private let commentDDLReads: GroupRead<String>
     private let sequenceReads: GroupRead<PluginSequenceInfo>
@@ -43,6 +49,12 @@ nonisolated final class SQLExportGroupReads {
         self.dataSource = dataSource
         self.progress = progress
         self.rowLimit = rowLimit
+        columnReads = GroupRead(kind: .columns, objects: [], readsEveryGroup: true) {
+            try await dataSource.fetchAllColumns(databaseName: $0)
+        }
+        foreignKeyReads = GroupRead(kind: .foreignKeys, objects: [], readsEveryGroup: true) {
+            try await dataSource.fetchAllForeignKeys(databaseName: $0)
+        }
         indexDDLReads = GroupRead(kind: .indexDDL, objects: indexedObjects) {
             try await dataSource.fetchAllIndexDDL(databaseName: $0)
         }
@@ -54,6 +66,18 @@ nonisolated final class SQLExportGroupReads {
         }
         typeReads = GroupRead(kind: .dependentTypes, objects: tables) {
             try await dataSource.fetchAllDependentTypes(databaseName: $0)
+        }
+    }
+
+    func columns(for table: PluginExportTable) async throws -> [PluginColumnInfo] {
+        try await answer(columnReads, for: table) {
+            try await dataSource.fetchColumns(table: table.name, databaseName: table.databaseName)
+        }
+    }
+
+    func foreignKeys(for table: PluginExportTable) async throws -> [PluginForeignKeyInfo] {
+        try await answer(foreignKeyReads, for: table) {
+            try await dataSource.fetchForeignKeys(table: table.name, databaseName: table.databaseName)
         }
     }
 
@@ -89,18 +113,22 @@ nonisolated final class SQLExportGroupReads {
         guard let group = try await groupAnswer(read, databaseName: object.databaseName) else {
             return try await alone()
         }
-        guard let index = group.index(forKey: object.name) else { return [] }
-        guard group[index].key.utf8.elementsEqual(object.name.utf8) else { return try await alone() }
-        return group[index].value
+        switch PluginExportSpelling.entry(object.name, in: group) {
+        case .answered(let values): return values
+        case .absent: return []
+        case .otherSpelling: return try await alone()
+        }
     }
 
     private func groupAnswer<Value>(
         _ read: GroupRead<Value>,
         databaseName: String
     ) async throws -> [String: [Value]]? {
-        let key = Array(databaseName.utf8)
+        let key = PluginExportSpelling.key(databaseName)
         if let known = read.answers[key] { return known }
-        guard dataSource.bulkReads.contains(read.kind), read.groupSizes[key, default: 0] > 1 else {
+        let reads = read.readsEveryGroup
+            || (dataSource.bulkReads.contains(read.kind) && read.groupSizes[key, default: 0] > 1)
+        guard reads else {
             read.answers.updateValue(nil, forKey: key)
             return nil
         }

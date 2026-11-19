@@ -238,7 +238,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
 
     func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] {
         guard let pluginDriver else { return [:] }
-        return try await pluginDriver.fetchAllColumns(schema: exportSchema(for: databaseName))
+        return try await pluginDriver.fetchAllColumnsForExport(schema: exportSchema(for: databaseName))
     }
 
     func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] {
@@ -248,7 +248,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
 
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] {
         guard let pluginDriver else { return [:] }
-        return try await pluginDriver.fetchAllForeignKeys(schema: exportSchema(for: databaseName))
+        return try await pluginDriver.fetchAllForeignKeysForExport(schema: exportSchema(for: databaseName))
     }
 
     var tableDDLIncludesForeignKeys: Bool {
@@ -261,7 +261,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
 
     func fetchAllIndexes(databaseName: String) async throws -> [String: [PluginIndexInfo]] {
         guard let pluginDriver else { return [:] }
-        return try await pluginDriver.fetchAllIndexes(schema: exportSchema(for: databaseName))
+        return try await pluginDriver.fetchAllIndexesForExport(schema: exportSchema(for: databaseName))
     }
 
     func fetchAllIndexDDL(databaseName: String) async throws -> [String: [String]] {
