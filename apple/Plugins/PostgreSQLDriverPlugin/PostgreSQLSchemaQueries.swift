@@ -183,20 +183,24 @@ nonisolated enum PostgreSQLSchemaQueries {
     /// front of a `CREATE VIEW` they recreated objects the view only reads.
     private static let relkindsCreatedByTableDDL = "('r', 'p', 'f')"
 
+    // Each type once however many columns use it: aggregated per column, two columns of one enum wrote every label twice.
     static func dependentEnumTypes(schema: String, table: String) -> String {
         """
-        SELECT DISTINCT t.typname,
+        SELECT t.typname,
                pg_catalog.array_agg(e.enumlabel ORDER BY e.enumsortorder)::text
-        FROM pg_catalog.pg_attribute a
-        JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
-        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+        FROM (
+            SELECT DISTINCT a.atttypid
+            FROM pg_catalog.pg_attribute a
+            JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
+              AND n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+              AND c.relkind IN \(relkindsCreatedByTableDDL)
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+        ) used
+        JOIN pg_catalog.pg_type t ON t.oid = used.atttypid
         JOIN pg_catalog.pg_enum e ON e.enumtypid = t.oid
-        WHERE c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
-          AND n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
-          AND c.relkind IN \(relkindsCreatedByTableDDL)
-          AND a.attnum > 0
-          AND NOT a.attisdropped
         GROUP BY t.typname
         ORDER BY t.typname
         """
