@@ -183,71 +183,72 @@ enum DataWriteExecutor {
         var committedCount = 0
         var lastSegmentClosed = false
 
+        func accept(_ step: DataWriteStep, rowsAffected: Int, executionTime: TimeInterval) throws {
+            let countsMatchedRows = engineCountsMatchedRows || step.countsMatchedRows
+            try verify(
+                step,
+                rowsAffected: rowsAffected,
+                owner: owner,
+                countsAreMeaningful: countsMatchedRows,
+                // Through a view the count is whatever its trigger or rule reports.
+                holdsKeyedUpdates: countsMatchedRows && plan.viewTarget == nil && !ranDelete
+            )
+            ranDelete = ranDelete || step.rowKind == .delete || step.kind == .tableOperation
+            results.append(
+                DataWriteStepResult(
+                    executionTime: executionTime,
+                    rowsAffected: rowsAffected,
+                    wasVerified: step.expectedRowCount != nil || step.lookup != nil
+                )
+            )
+        }
+
         do {
             if owner.sendsBegin {
                 try await driver.beginTransaction(mode: mode)
                 if owner == .held { ManualCommit.turnHold?.mark(true) }
             }
 
-            for (index, step) in steps.enumerated() {
-                let start = Date()
-                var statement = step.statement
-                if let lookup = step.lookup {
-                    let found = try await rowsFound(by: lookup, for: step, on: driver)
-                    if lookup.pinsRows {
-                        statement = ParameterizedStatement(
-                            sql: statement.sql,
-                            parameters: statement.parameters + found.flatMap { $0.map(\.asAny) }
-                        )
+            if sendsAsOneBatch(steps, owner: owner, endsSegment: endsSegment, on: driver) {
+                let outcomes = await driver.runStatements(steps.map { batched($0.statement, context: context) })
+                for (step, outcome) in zip(steps, outcomes) {
+                    switch outcome {
+                    case .succeeded(let rowsAffected, let executionTime):
+                        try accept(step, rowsAffected: rowsAffected, executionTime: executionTime)
+                    case .failed(let error):
+                        throw error
                     }
                 }
-                let result: QueryResult
-                switch (statement.parameters.isEmpty, context) {
-                case (true, nil):
-                    result = try await driver.execute(query: statement.sql)
-                case (true, let context?):
-                    result = try await driver.execute(query: statement.sql, context: context)
-                case (false, nil):
-                    result = try await driver.executeParameterized(
-                        query: statement.sql,
-                        parameters: statement.parameters
-                    )
-                case (false, let context?):
-                    result = try await driver.executeParameterized(
-                        query: statement.sql,
-                        parameters: statement.parameters,
-                        context: context
-                    )
+                guard outcomes.count == steps.count else {
+                    throw DatabaseError.queryFailed(String(localized: "The driver did not report every statement it was sent."))
                 }
+            } else {
+                for (index, step) in steps.enumerated() {
+                    let start = Date()
+                    var statement = step.statement
+                    if let lookup = step.lookup {
+                        let found = try await rowsFound(by: lookup, for: step, on: driver)
+                        if lookup.pinsRows {
+                            statement = ParameterizedStatement(
+                                sql: statement.sql,
+                                parameters: statement.parameters + found.flatMap { $0.map(\.asAny) }
+                            )
+                        }
+                    }
+                    let result = try await driver.runAlone(batched(statement, context: context))
+                    try accept(step, rowsAffected: result.rowsAffected, executionTime: Date().timeIntervalSince(start))
+                    // Counted as written: a check that fails cannot tell an unapplied write from a copy inserted since.
+                    if let check = step.lookup?.check {
+                        try await confirmLanded(check, for: step, on: driver)
+                    }
 
-                let countsMatchedRows = engineCountsMatchedRows || step.countsMatchedRows
-                try verify(
-                    step,
-                    rowsAffected: result.rowsAffected,
-                    owner: owner,
-                    countsAreMeaningful: countsMatchedRows,
-                    // Through a view the count is whatever its trigger or rule reports.
-                    holdsKeyedUpdates: countsMatchedRows && plan.viewTarget == nil && !ranDelete
-                )
-                ranDelete = ranDelete || step.rowKind == .delete || step.kind == .tableOperation
-                results.append(
-                    DataWriteStepResult(
-                        executionTime: Date().timeIntervalSince(start),
-                        rowsAffected: result.rowsAffected,
-                        wasVerified: step.expectedRowCount != nil || step.lookup != nil
-                    )
-                )
-                // Counted as written: a check that fails cannot tell an unapplied write from a copy inserted since.
-                if let check = step.lookup?.check {
-                    try await confirmLanded(check, for: step, on: driver)
-                }
-
-                if closesSegments, endsSegment[index] {
-                    try await TaskCancellationShield.run { try await driver.commitTransaction() }
-                    committedCount = results.count
-                    lastSegmentClosed = index == steps.count - 1
-                    if !lastSegmentClosed {
-                        try await driver.beginTransaction(mode: mode)
+                    if closesSegments, endsSegment[index] {
+                        try await TaskCancellationShield.run { try await driver.commitTransaction() }
+                        committedCount = results.count
+                        lastSegmentClosed = index == steps.count - 1
+                        if !lastSegmentClosed {
+                            try await driver.beginTransaction(mode: mode)
+                        }
                     }
                 }
             }
@@ -293,6 +294,26 @@ enum DataWriteExecutor {
 
         await drainEpilogue()
         return DataWriteRun(results: results, sideStatements: sideStatements)
+    }
+
+    // One exchange only where a failure rolls the whole save back: a lookup reads between steps, a segment commits,
+    // and the user's own transaction would keep every statement sent after a refused one.
+    private static func sendsAsOneBatch(
+        _ steps: [DataWriteStep],
+        owner: WriteTransactionOwner,
+        endsSegment: [Bool],
+        on driver: DatabaseDriver
+    ) -> Bool {
+        steps.count > 1 && driver.supportsStatementBatches && owner.canRollBack && !endsSegment.contains(true)
+            && steps.allSatisfy { $0.lookup == nil }
+    }
+
+    private static func batched(_ statement: ParameterizedStatement, context: PluginStatementContext?) -> BatchedStatement {
+        BatchedStatement(
+            sql: statement.sql,
+            parameters: statement.parameters.isEmpty ? nil : statement.parameters,
+            context: context
+        )
     }
 
     // Teradata takes only COMMIT or ROLLBACK after a definition statement; its truncate is a DELETE, which joins as DML.
