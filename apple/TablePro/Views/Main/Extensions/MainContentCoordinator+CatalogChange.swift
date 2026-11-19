@@ -28,11 +28,7 @@ extension MainContentCoordinator {
 
     func applyCatalogChange(_ change: CatalogChange) {
         guard change.connectionId == connectionId else { return }
-        if change.isTransactionEndOnly {
-            schemaColumns.markAllUnverified()
-        } else {
-            schemaColumns.removeAll()
-        }
+        schemaColumns.removeAll()
         pruneStaleSidebarState()
     }
 

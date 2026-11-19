@@ -109,10 +109,6 @@ actor SQLSchemaProvider {
     private weak var cachedDriver: (any DatabaseDriver)?
     // Read from the driver that filled the table list, so learning it opens no connection.
     private var fetchesAllColumnsInOneRequest = false
-    // Whether a bulk read reports everything a table's own read does, so a reader besides completion can rely on it.
-    private var bulkColumnsAreComplete = false
-    private var hasSeededColumnCatalog = false
-    private var spellingIndex: [ColumnCacheKey: Set<String>]?
     private let metadataSource: ColumnMetadataSource?
     private var connectionInfo: DatabaseConnection?
 
@@ -141,7 +137,6 @@ actor SQLSchemaProvider {
         let t0 = Date()
         self.cachedDriver = driver
         self.fetchesAllColumnsInOneRequest = driver.fetchesAllColumnsInOneRequest
-        self.bulkColumnsAreComplete = driver.providesBulkColumnFetch
         self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
         if let connection { self.connectionInfo = connection }
 
@@ -360,7 +355,6 @@ actor SQLSchemaProvider {
         self.onDemandSchemaTableTasks.removeAll()
         self.cachedDriver = driver
         self.fetchesAllColumnsInOneRequest = driver.fetchesAllColumnsInOneRequest
-        self.bulkColumnsAreComplete = driver.providesBulkColumnFetch
         if let connection { self.connectionInfo = connection }
         noteTableListWritten()
     }
@@ -404,9 +398,9 @@ actor SQLSchemaProvider {
         startColumnPreloadIfStale(retryingFailure: true)
     }
 
-    /// Reads again for a table list written after a preload had served the previous one, once an editor has asked.
+    /// Reads again for a table list written after a preload had served the previous one.
     func renewColumnPreload() {
-        guard hasEditorDemand, case .settled(let generation, .loaded) = columnPreload,
+        guard case .settled(let generation, .loaded) = columnPreload,
               generation != tableListGeneration else { return }
         startColumnPreloadIfStale(retryingFailure: false)
     }
@@ -495,7 +489,6 @@ actor SQLSchemaProvider {
         tableListGeneration &+= 1
         unqualifiedTableItems = nil
         cachedTableColumnItems = nil
-        spellingIndex = nil
         switch columnPreload {
         case .awaitingTables:
             startColumnPreloadIfStale(retryingFailure: true)
@@ -532,54 +525,6 @@ actor SQLSchemaProvider {
         guard columnAccessOrder.count < Self.maxCachedTables else { return }
         columnCache[key] = columns
         columnAccessOrder.append(key)
-    }
-
-    // MARK: - Column Catalog
-
-    // Only a table this scope lists under exactly that spelling, read since the last refresh. Never starts a read.
-    func catalogColumns(forTable table: String, schema: String?) -> [ColumnInfo]? {
-        let key = cacheKey(table: table, schema: schema)
-        guard bulkColumnsAreComplete, !staleColumnKeys.contains(key), listedSpellings(of: key) == [table] else {
-            return nil
-        }
-        return columnCache[key]
-    }
-
-    // Taken before a caller's own read: a table list written after it means the read may describe the old catalog.
-    var columnCatalogGeneration: Int { tableListGeneration }
-
-    func adoptColumns(_ columns: [ColumnInfo], forTable table: String, schema: String?, readAt generation: Int) {
-        let key = cacheKey(table: table, schema: schema)
-        guard generation == tableListGeneration, !columns.isEmpty, listedSpellings(of: key) == [table] else { return }
-        staleColumnKeys.remove(key)
-        if columnCache.updateValue(columns, forKey: key) == nil {
-            columnAccessOrder.append(key)
-        }
-        evictIfNeeded()
-    }
-
-    func discardColumns(forTable table: String, schema: String?) {
-        let key = cacheKey(table: table, schema: schema)
-        columnTasks[key] = nil
-        removeColumns(forKeys: [key])
-    }
-
-    // Once per scope, so the first table a connection opens finds its columns. Later list writes renew it only for an editor.
-    func seedColumnCatalog() {
-        guard bulkColumnsAreComplete, !hasSeededColumnCatalog else { return }
-        hasSeededColumnCatalog = true
-        startColumnPreloadIfStale(retryingFailure: false)
-    }
-
-    private func listedSpellings(of key: ColumnCacheKey) -> Set<String> {
-        if spellingIndex == nil {
-            var index: [ColumnCacheKey: Set<String>] = [:]
-            for table in tables {
-                index[cacheKey(table: table.name, schema: table.schema), default: []].insert(table.name)
-            }
-            spellingIndex = index
-        }
-        return spellingIndex?[key] ?? []
     }
 
     func waitForEagerColumnLoad() async {

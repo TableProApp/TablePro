@@ -116,14 +116,8 @@ extension MainContentCoordinator {
         let key = schemaColumnsKey(tableName, scope: scope)
         let classifier = schemaColumnClassifier
         let startedAt = ContinuousClock.now
-        // A temporary table is the session's alone, so its columns never go to or come from the shared catalog.
-        let catalog = scope.isSessionBound ? nil : services.schemaProviderRegistry.provider(for: scope)
         var read: FirstLoadColumnRead?
         await schemaColumns.load(key) { [services] in
-            if let catalog, let columns = await catalog.catalogColumns(forTable: tableName, schema: scope.schema) {
-                return SchemaColumnStore.Entry(fetchedColumns: columns, classifier: classifier, isVerified: false)
-            }
-            let generation = await catalog?.columnCatalogGeneration
             do {
                 let columns = try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
                     try await driver.fetchColumns(table: tableName, schema: scope.schema)
@@ -133,9 +127,6 @@ extension MainContentCoordinator {
                     return nil
                 }
                 read = FirstLoadColumnRead(key: key, columns: columns, startedAt: startedAt)
-                if let catalog, let generation {
-                    await catalog.adoptColumns(columns, forTable: tableName, schema: scope.schema, readAt: generation)
-                }
                 return SchemaColumnStore.Entry(fetchedColumns: columns, classifier: classifier)
             } catch {
                 guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return nil }
@@ -175,85 +166,6 @@ extension MainContentCoordinator {
             )
         }
         return parseSchemaMetadata(schema)
-    }
-
-    func holdsUnverifiedColumns(for tab: QueryTab) -> Bool {
-        tab.tabType == .table && cachedSchemaColumns(for: tab)?.isVerified == false
-    }
-
-    // The definition read beside the rows confirms a list the load took on trust.
-    func verifySchemaColumns(
-        after schemaTask: Task<FetchedTableSchema, Error>?,
-        ofTable tableName: String?,
-        in scope: DatabaseScope,
-        readBy claim: TabExecutionClaim,
-        epoch: Int
-    ) {
-        guard let schemaTask, let tableName else { return }
-        Task { [weak self] in
-            guard let schema = try? await schemaTask.value, let self else { return }
-            self.adoptVerifiedColumns(schema.columns, of: tableName, in: scope, readBy: claim, epoch: epoch)
-        }
-    }
-
-    // Loads again only when the confirmed list changes what the page selects, and never over staged edits.
-    func adoptVerifiedColumns(
-        _ columns: [ColumnInfo],
-        of tableName: String,
-        in scope: DatabaseScope,
-        readBy claim: TabExecutionClaim,
-        epoch: Int
-    ) {
-        let key = schemaColumnsKey(tableName, scope: scope)
-        guard !columns.isEmpty, !isTearingDown,
-              epoch == schemaColumns.verificationEpoch,
-              schemaColumns.cached(key)?.isVerified == false,
-              tabSessionRegistry.definitionIsCurrent(asOf: claim.startedAt, for: claim.tabId)
-        else { return }
-        let selectedBefore = columnSelection(ofTab: claim.tabId, table: tableName, in: scope)
-        schemaColumns.store(SchemaColumnStore.Entry(fetchedColumns: columns, classifier: schemaColumnClassifier), for: key)
-        guard let selectedBefore,
-              selectedBefore != columnSelection(ofTab: claim.tabId, table: tableName, in: scope),
-              existingChangeManager(forTab: claim.tabId)?.hasChanges != true
-        else { return }
-        requeryWithColumnScope(forTab: claim.tabId)
-    }
-
-    // The server refused a page built on a list taken on trust: read the columns afresh and load once more.
-    func reloadAfterStaleColumns(_ error: Error, claim: TabExecutionClaim, trigger: TableLoadTrigger) -> Bool {
-        guard !DatabaseCancellationDiagnosis.isCancellation(error), !Task.isCancelled, !isTearingDown,
-              tabManager.selectedTabId == claim.tabId,
-              let tab = tabManager.tabs.first(where: { $0.id == claim.tabId }),
-              let tableName = tab.tableContext.tableName,
-              let scope = scope(for: tab)
-        else { return false }
-        guard tabExecution.settle(claim) else { return false }
-        tabManager.mutate(tabId: claim.tabId) { tab in
-            tab.pagination.isLoadingMore = false
-            tab.pagination.isLoading = false
-            if tab.sortState.source == .defaultSort { tab.sortState = SortState() }
-        }
-        retireQueryTask(.claim(claim))
-        schemaColumns.remove(schemaColumnsKey(tableName, scope: scope))
-        let catalog = scope.isSessionBound ? nil : services.schemaProviderRegistry.provider(for: scope)
-        Task { [weak self] in
-            await catalog?.discardColumns(forTable: tableName, schema: scope.schema)
-            await self?.openTableTabQuery(tabId: claim.tabId, trigger: trigger)
-        }
-        return true
-    }
-
-    private struct ColumnSelection: Equatable {
-        let columns: [String]?
-        let lengthColumns: [String]
-    }
-
-    private func columnSelection(ofTab tabId: UUID, table: String, in scope: DatabaseScope) -> ColumnSelection? {
-        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }),
-              tab.tableContext.tableName == table,
-              self.scope(for: tab) == scope
-        else { return nil }
-        return ColumnSelection(columns: selectColumns(for: tab), lengthColumns: unloadedValueLengthColumns(for: tab))
     }
 
     func columnsForVisibilityPicker(for tab: QueryTab, resultColumns: [String]) -> [String] {

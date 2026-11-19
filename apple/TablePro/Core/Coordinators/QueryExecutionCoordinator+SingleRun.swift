@@ -78,15 +78,10 @@ extension QueryExecutionCoordinator {
         let (tableName, isEditable) = parent.resolveTableEditability(tab: tab, sql: sql)
 
         let needsDefinition = parent.tabSessionRegistry.needsDefinition(tabId)
-        let metadataIsCached = isEditable && tableName.map { isMetadataCached(tabId: tabId, tableName: $0) } == true
-        // A column list taken on trust is confirmed by the definition read, even where the metadata is cached.
-        let columnsAreUnverified = parent.holdsUnverifiedColumns(for: tab)
-        let columnEpoch = parent.schemaColumns.verificationEpoch
-        let needsMetadataFetch = isEditable && tableName != nil && (!metadataIsCached || columnsAreUnverified)
-        let readsMetadataAfresh = needsMetadataFetch && !metadataIsCached
+        let needsMetadataFetch = tableName.map { isEditable && !isMetadataCached(tabId: tabId, tableName: $0) } ?? false
         let knownColumns = needsMetadataFetch ? parent.takeFirstLoadColumns(tabId: tabId, tableName: tableName, scope: scope) : nil
         // Captured now, while the result this decision was made against is still the active one.
-        let cachedMetadata: ParsedSchemaMetadata? = readsMetadataAfresh ? nil : ParsedSchemaMetadata.cached(
+        let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
             rows: parent.tabSessionRegistry.tableRows(for: tabId),
             context: tab.tableContext
         )
@@ -153,7 +148,7 @@ extension QueryExecutionCoordinator {
                     return
                 }
 
-                let inlineMeta = readsMetadataAfresh
+                let inlineMeta = needsMetadataFetch
                     ? QueryExecutor.inlineMetadata(from: fetchResult.resultColumnMeta, columns: fetchResult.columns)
                     : nil
                 // Rows and definition commit together after a definition change, so new columns never sit under old keys or defaults.
@@ -244,18 +239,9 @@ extension QueryExecutionCoordinator {
                     claim: run.claim,
                     traceToken: traceToken
                 )
-                if columnsAreUnverified {
-                    parent.verifySchemaColumns(
-                        after: schemaTask, ofTable: tableName, in: scope, readBy: run.claim, epoch: columnEpoch
-                    )
-                }
             } catch {
                 schemaTask?.cancel()
                 if !isAutoLoad { MainContentCoordinator.postStatementRan(statement.sql, on: conn) }
-                if isAutoLoad, columnsAreUnverified,
-                   parent.reloadAfterStaleColumns(error, claim: run.claim, trigger: trigger) {
-                    return
-                }
                 parent.finishFailedQuery(
                     error,
                     tabId: tabId,
