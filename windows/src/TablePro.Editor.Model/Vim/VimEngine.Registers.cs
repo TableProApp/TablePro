@@ -265,7 +265,12 @@ public sealed partial class VimEngine
         {
             foreach (var (key, shift) in keys)
             {
-                if (!Process(key, shift) && _mode.IsInsert())
+                // An editor key goes to the editor first, or Replace mode would write its token as text.
+                if (IsEditorKeyToken(key))
+                {
+                    TypeLeftToEditor(key);
+                }
+                else if (!Process(key, shift) && _mode.IsInsert())
                 {
                     TypeLeftToEditor(key);
                 }
@@ -278,11 +283,13 @@ public sealed partial class VimEngine
         }
     }
 
+    private static bool IsEditorKeyToken(string key) =>
+        key.Length > EditorKeyToken.Length && key.StartsWith(EditorKeyToken, StringComparison.Ordinal);
+
     private void TypeLeftToEditor(string key)
     {
         var model = _buffer.Model;
-        if (key.Length > EditorKeyToken.Length && key.StartsWith(EditorKeyToken, StringComparison.Ordinal)
-            && Enum.TryParse<VimEditorKey>(key.AsSpan(EditorKeyToken.Length), out var editorKey))
+        if (IsEditorKeyToken(key) && Enum.TryParse<VimEditorKey>(key.AsSpan(EditorKeyToken.Length), out var editorKey))
         {
             if (editorKey == VimEditorKey.Delete)
             {

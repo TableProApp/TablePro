@@ -145,4 +145,34 @@ public sealed class VimCommandEdgeTests
         s.Press("d");
         Assert.Equal("x;\n", s.Text);
     }
+
+    [Fact]
+    public void AReplaceModeMacroReplaysItsMovesAsMoves()
+    {
+        var registers = new VimRegisters();
+        var s = new VimSession("abcd", registers: registers);
+        s.Press("qqRX");
+        s.Engine.NoteEditorKey(VimEditorKey.Left);
+        s.Model.Move(CaretMove.Left, extend: false);
+        s.Press("Y");
+        s.Escape();
+        s.Press("q");
+        Assert.Equal("Ybcd", s.Text);
+
+        var replay = new VimSession("abcd", registers: registers);
+        replay.Press("@q");
+        Assert.Equal("Ybcd", replay.Text);
+    }
+
+    [Fact]
+    public void ResetDropsACommandWaitingInVisualMode()
+    {
+        var s = new VimSession("abcd", caret: 0);
+        s.Press("vr");
+        s.Engine.Reset();
+        Assert.False(s.Engine.IsPending);
+        s.Press("vl");
+        Assert.Equal("abcd", s.Text);
+        Assert.Equal((0, 2), s.Selection);
+    }
 }

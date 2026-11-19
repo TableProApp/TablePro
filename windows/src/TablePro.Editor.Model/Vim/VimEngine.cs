@@ -261,10 +261,7 @@ public sealed partial class VimEngine : IDisposable
     // Leaves whatever was pending and goes back to Normal mode.
     public void Reset()
     {
-        PendingOperator = null;
-        CountPrefix = 0;
-        OperatorCount = 0;
-        PendingG = false;
+        CancelPending();
         SetMode(VimMode.Normal);
         _pendingKeys.Clear();
         RaiseStatusIfChanged();
