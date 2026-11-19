@@ -134,24 +134,30 @@ public sealed partial class VimEngine
         }
     }
 
-    internal void AdjustMarksForEdit(VimRange edit, int replacementLength)
+    // Every change to the text, typed, pasted, undone or the engine's own, moves the marks with it.
+    private void OnDocumentChanged(object? sender, TextChange change)
     {
-        var delta = replacementLength - edit.Length;
-        if (delta == 0)
+        if (Marks.Count == 0 && LastJumpOrigin is null && LastInsertOffset is null)
         {
             return;
         }
         foreach (var (key, offset) in Marks.ToList())
         {
-            if (offset >= edit.End)
-            {
-                Marks[key] = offset + delta;
-            }
-            else if (offset >= edit.Location)
-            {
-                Marks[key] = edit.Location;
-            }
+            Marks[key] = MapMark(offset, change);
         }
+        LastJumpOrigin = LastJumpOrigin is { } origin ? MapMark(origin, change) : null;
+        LastInsertOffset = LastInsertOffset is { } insert ? MapMark(insert, change) : null;
+    }
+
+    private static int MapMark(int offset, TextChange change)
+    {
+        var removedEnd = change.Offset + change.RemovedLength;
+        if (offset >= removedEnd)
+        {
+            return offset + change.InsertedLength - change.RemovedLength;
+        }
+        // Inside replaced text a mark keeps its place where the new text reaches it, as a case change does.
+        return offset >= change.Offset ? Math.Min(offset, change.Offset + change.InsertedLength) : offset;
     }
 
     internal void NoteEdit(int offset)
@@ -275,6 +281,26 @@ public sealed partial class VimEngine
     private void TypeLeftToEditor(string key)
     {
         var model = _buffer.Model;
+        if (key.Length > EditorKeyToken.Length && key.StartsWith(EditorKeyToken, StringComparison.Ordinal)
+            && Enum.TryParse<VimEditorKey>(key.AsSpan(EditorKeyToken.Length), out var editorKey))
+        {
+            if (editorKey == VimEditorKey.Delete)
+            {
+                model.Delete(word: false);
+                return;
+            }
+            BreakInsertUndo();
+            model.Move(editorKey switch
+            {
+                VimEditorKey.Left => CaretMove.Left,
+                VimEditorKey.Right => CaretMove.Right,
+                VimEditorKey.Up => CaretMove.Up,
+                VimEditorKey.Down => CaretMove.Down,
+                VimEditorKey.Home => CaretMove.LineStart,
+                _ => CaretMove.LineEnd,
+            }, extend: false);
+            return;
+        }
         switch (key)
         {
             case "\r" or "\n":

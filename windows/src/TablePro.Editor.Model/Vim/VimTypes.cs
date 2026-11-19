@@ -36,6 +36,18 @@ public interface IVimHost
     void Command(string command);
 }
 
+// Keys Insert mode leaves to the editor, which a macro still replays.
+public enum VimEditorKey
+{
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+    Delete,
+}
+
 public enum VimScroll
 {
     Top,

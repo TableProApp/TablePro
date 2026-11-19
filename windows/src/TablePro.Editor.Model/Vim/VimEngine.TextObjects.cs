@@ -12,6 +12,9 @@ public sealed partial class VimEngine
         }
         if (_mode.IsVisual())
         {
+            // The selection's ends become Visual's anchor and cursor, so the next motion grows it from there.
+            VisualAnchor = range.Location;
+            CursorOffset = range.Length > 0 ? CharacterStart(range.End - 1) : range.Location;
             _buffer.SetSelectedRange(range);
             return true;
         }

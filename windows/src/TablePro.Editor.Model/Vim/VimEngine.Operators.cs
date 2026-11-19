@@ -34,7 +34,6 @@ public sealed partial class VimEngine
             case VimOperator.Delete:
                 WriteToActiveRegister(_buffer.Text(range), linewise, asDelete: true);
                 _buffer.Replace(range, string.Empty);
-                AdjustMarksForEdit(range, 0);
                 _buffer.SetCaret(ClampToContentPosition(range.Location));
                 break;
             case VimOperator.Yank:
@@ -44,7 +43,6 @@ public sealed partial class VimEngine
             case VimOperator.Change:
                 WriteToActiveRegister(_buffer.Text(range), linewise, asDelete: true);
                 _buffer.Replace(range, string.Empty);
-                AdjustMarksForEdit(range, 0);
                 _buffer.SetCaret(range.Location);
                 SetMode(VimMode.Insert);
                 break;
@@ -117,7 +115,6 @@ public sealed partial class VimEngine
     {
         var deleteRange = CountedLines(count);
         WriteToActiveRegister(_buffer.Text(deleteRange), linewise: true, asDelete: true);
-        AdjustMarksForEdit(deleteRange, 0);
         _buffer.Replace(deleteRange, string.Empty);
         _buffer.SetCaret(_buffer.Length > 0 ? Math.Min(deleteRange.Location, Math.Max(0, _buffer.Length - 1)) : 0);
     }
@@ -136,15 +133,13 @@ public sealed partial class VimEngine
             : endOffset;
         var deleteRange = new VimRange(lines.Location, deleteEnd - lines.Location);
         WriteToActiveRegister(_buffer.Text(deleteRange), linewise: true, asDelete: true);
-        AdjustMarksForEdit(deleteRange, 0);
         _buffer.Replace(deleteRange, string.Empty);
         _buffer.SetCaret(lines.Location);
         SetMode(VimMode.Insert);
     }
 
-    internal void Paste(bool after)
+    internal void Paste(VimRegister source, bool after)
     {
-        var source = ActivePasteRegister();
         if (source.Text.Length == 0)
         {
             return;
@@ -191,7 +186,6 @@ public sealed partial class VimEngine
         }
         var range = new VimRange(pos, end - pos);
         WriteToActiveRegister(_buffer.Text(range), linewise: false, asDelete: true);
-        AdjustMarksForEdit(range, 0);
         NoteEdit(pos);
         _buffer.Replace(range, string.Empty);
         var newContentEnd = contentEnd - range.Length;

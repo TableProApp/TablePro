@@ -65,9 +65,16 @@ public sealed partial class SqlEditor
         }
         var down = ToVimKey(key, control, shift, alt);
         var route = VimKeyRouter.Route(down, vim.Mode, vim.IsPending);
-        if (route.Kind == VimRouteKind.Editor && vim.Mode.IsInsert() && MovesTheCaret(down.Key))
+        if (route.Kind == VimRouteKind.Editor && vim.Mode.IsInsert())
         {
-            vim.BreakInsertUndo();
+            if (!control && !shift && !alt && EditorKey(down.Key) is { } editorKey)
+            {
+                vim.NoteEditorKey(editorKey);
+            }
+            else if (MovesTheCaret(down.Key))
+            {
+                vim.BreakInsertUndo();
+            }
         }
         return route.Kind switch
         {
@@ -100,6 +107,18 @@ public sealed partial class SqlEditor
         }
         return true;
     }
+
+    private static VimEditorKey? EditorKey(VimKey key) => key switch
+    {
+        VimKey.Left => VimEditorKey.Left,
+        VimKey.Right => VimEditorKey.Right,
+        VimKey.Up => VimEditorKey.Up,
+        VimKey.Down => VimEditorKey.Down,
+        VimKey.Home => VimEditorKey.Home,
+        VimKey.End => VimEditorKey.End,
+        VimKey.Delete => VimEditorKey.Delete,
+        _ => null,
+    };
 
     private static bool MovesTheCaret(VimKey key) => key is VimKey.Left or VimKey.Right or VimKey.Up or VimKey.Down
         or VimKey.Home or VimKey.End or VimKey.PageUp or VimKey.PageDown;

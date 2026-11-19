@@ -223,7 +223,8 @@ public sealed partial class VimEngine
         _buffer.SetCaret(pos);
     }
 
-    internal void JumpToMatchingBracket()
+    // The pair of the first bracket at or after the cursor on its line.
+    internal int? MatchingBracketOnLine()
     {
         var pos = _buffer.SelectedRange.Location;
         var contentEnd = ContentEnd(_buffer.LineRange(pos));
@@ -231,10 +232,24 @@ public sealed partial class VimEngine
         {
             if (_buffer.MatchingBracket(scan) is { } target)
             {
-                _buffer.SetCaret(target);
-                return;
+                return target;
             }
         }
+        return null;
+    }
+
+    // An operator takes the lines whole, as j and k give them.
+    internal void MoveToFirstNonBlankOfLine(int lines)
+    {
+        if (PendingOperator is not null)
+        {
+            MoveVertically(lines);
+            GoalColumn = null;
+            return;
+        }
+        var (line, _) = _buffer.LineAndColumn(_buffer.SelectedRange.Location);
+        _buffer.SetCaret(FirstNonBlankOffset(_buffer.Offset(_buffer.StepLines(line, lines), 0)));
+        GoalColumn = null;
     }
 
     // H, M and L read the rows on screen, so a fold or a wrapped line between them counts as it shows.

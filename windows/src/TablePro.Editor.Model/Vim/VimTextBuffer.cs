@@ -140,6 +140,11 @@ internal sealed class VimTextBuffer(EditorModel model, IVimHost host)
         var size = Math.Clamp(range.Length, 0, length - location);
         var start = CharacterRange(location).Location;
         var end = size == 0 ? start : CharacterRange(location + size - 1).End;
+        // A selection's end past a fold at the end of the text lies on a hidden line, which a caret there would open.
+        if (end > start && Model.Rows.Folds.Count > 0 && Model.Rows.Folds.IsHidden(Document.GetLineFromOffset(end)))
+        {
+            activeAtStart = true;
+        }
         if (activeAtStart)
         {
             Model.SetSelection(end, start);

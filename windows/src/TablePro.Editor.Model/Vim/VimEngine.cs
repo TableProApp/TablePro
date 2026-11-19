@@ -9,6 +9,11 @@ public sealed partial class VimEngine : IDisposable
 {
     internal const string Escape = "\u001B";
 
+    private const int MaxCount = 999_999;
+
+    // Starts a recorded editor key; no typed text element is this character followed by a name.
+    private const string EditorKeyToken = "\uE000";
+
     private readonly VimTextBuffer _buffer;
     private readonly StringBuilder _pendingKeys = new();
     private VimMode _mode;
@@ -24,11 +29,29 @@ public sealed partial class VimEngine : IDisposable
         _buffer = new VimTextBuffer(model, host);
         Registers = registers ?? new VimRegisters();
         model.Document.Reset += OnDocumentReset;
+        model.Document.Changed += OnDocumentChanged;
         _shownStatus = StatusKey();
     }
 
     // Lets go of the document, which outlives an engine turned off.
-    public void Dispose() => _buffer.Model.Document.Reset -= OnDocumentReset;
+    public void Dispose()
+    {
+        _buffer.Model.Document.Reset -= OnDocumentReset;
+        _buffer.Model.Document.Changed -= OnDocumentChanged;
+    }
+
+    // An Insert-mode key the editor handles: a move splits the insert's undo step, and a macro being recorded keeps it.
+    public void NoteEditorKey(VimEditorKey key)
+    {
+        if (key != VimEditorKey.Delete)
+        {
+            BreakInsertUndo();
+        }
+        if (MacroRecording is { } target && Registers.Macros.TryGetValue(target, out var keys))
+        {
+            keys.Add(new VimKeystroke(EditorKeyToken + key, Shift: false));
+        }
+    }
 
     // A caret moved by an arrow or a click starts a new undo step within the insert, as Vim splits it there.
     public void BreakInsertUndo()
@@ -257,13 +280,35 @@ public sealed partial class VimEngine : IDisposable
         }
     }
 
+    // A count typed before the operator and one after it multiply, up to the most one count can hold.
     internal int ConsumeCount()
     {
-        var motionCount = CountPrefix > 0 ? CountPrefix : 1;
-        var opCount = OperatorCount > 0 ? OperatorCount : 1;
+        long motionCount = CountPrefix > 0 ? CountPrefix : 1;
+        long opCount = OperatorCount > 0 ? OperatorCount : 1;
         CountPrefix = 0;
         OperatorCount = 0;
-        return motionCount * opCount;
+        return (int)Math.Min(motionCount * opCount, MaxCount);
+    }
+
+    // Escape drops every prefix of a command still being typed, so nothing of it reaches the next key.
+    internal void CancelPending()
+    {
+        PendingOperator = null;
+        CountPrefix = 0;
+        OperatorCount = 0;
+        PendingG = false;
+        PendingFindChar = null;
+        PendingReplaceChar = false;
+        PendingMarkSet = false;
+        PendingMarkJumpExact = null;
+        PendingRegisterSelect = false;
+        SelectedRegister = null;
+        PendingReplaceCharForVisual = false;
+        PendingZ = false;
+        PendingTextObject = false;
+        PendingMacroTarget = null;
+        PendingMacroCount = 1;
+        PendingBracket = null;
     }
 
     // Offsets into the old text mean nothing in the new one; registers, macros and the last search carry over.

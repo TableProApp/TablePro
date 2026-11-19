@@ -6,6 +6,11 @@ public sealed partial class VimEngine
     {
         var buffer = _buffer;
 
+        if (key == Escape)
+        {
+            CancelPending();
+            return true;
+        }
         if (PendingFindChar is { } request)
         {
             PendingFindChar = null;
@@ -436,7 +441,24 @@ public sealed partial class VimEngine
                 return true;
 
             case "%":
-                JumpToMatchingBracket();
+                if (MatchingBracketOnLine() is { } pair)
+                {
+                    ExecuteMotion(() => buffer.SetCaret(pair), inclusive: true);
+                }
+                else
+                {
+                    PendingOperator = null;
+                    CountPrefix = 0;
+                    OperatorCount = 0;
+                }
+                return true;
+
+            // Enter and + go to the first character of the next line, - of the line before.
+            case "\r" or "+":
+                MoveToFirstNonBlankOfLine(ConsumeCount());
+                return true;
+            case "-":
+                MoveToFirstNonBlankOfLine(-ConsumeCount());
                 return true;
 
             case "n":
@@ -529,21 +551,14 @@ public sealed partial class VimEngine
                 PendingZ = true;
                 return true;
 
-            case "p":
+            case "p" or "P":
             {
                 var count = ConsumeCount();
+                // The register is read once, so "a2p pastes a twice.
+                var source = ActivePasteRegister();
                 for (var i = 0; i < count; i++)
                 {
-                    Paste(after: true);
-                }
-                return true;
-            }
-            case "P":
-            {
-                var count = ConsumeCount();
-                for (var i = 0; i < count; i++)
-                {
-                    Paste(after: false);
+                    Paste(source, after: key == "p");
                 }
                 return true;
             }

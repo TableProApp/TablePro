@@ -50,7 +50,7 @@ public sealed partial class VimEngine
                 buffer.SetCaret(buffer.SelectedRange.Location);
                 return true;
             }
-            case "h" or "j" or "k" or "l" or "w" or "b" or "e" or "0" or "$" or "G" or "^" or "_":
+            case "h" or "j" or "k" or "l" or "w" or "b" or "e" or "0" or "$" or "G" or "^" or "_" or "\r" or "+" or "-":
             {
                 var cursorPos = VisualCursorEnd();
                 int newPos;
@@ -66,6 +66,12 @@ public sealed partial class VimEngine
                     {
                         var (line, column) = buffer.LineAndColumn(cursorPos);
                         newPos = buffer.Offset(buffer.StepLines(line, key == "j" ? 1 : -1), column);
+                        break;
+                    }
+                    case "\r" or "+" or "-":
+                    {
+                        var line = buffer.LineAndColumn(cursorPos).Line;
+                        newPos = FirstNonBlankOffset(buffer.Offset(buffer.StepLines(line, key == "-" ? -1 : 1), 0));
                         break;
                     }
                     case "w":
@@ -140,7 +146,6 @@ public sealed partial class VimEngine
                 if (selection.Length > 0)
                 {
                     WriteToActiveRegister(buffer.Text(selection), linewise, asDelete: true);
-                    AdjustMarksForEdit(selection, 0);
                     buffer.Replace(selection, string.Empty);
                 }
                 SetMode(VimMode.Normal);
