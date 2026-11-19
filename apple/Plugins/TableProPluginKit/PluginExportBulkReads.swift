@@ -12,4 +12,8 @@ public struct PluginExportBulkReads: OptionSet, Sendable {
     public static let columns = PluginExportBulkReads(rawValue: 1 << 0)
     public static let foreignKeys = PluginExportBulkReads(rawValue: 1 << 1)
     public static let indexes = PluginExportBulkReads(rawValue: 1 << 2)
+    public static let indexDDL = PluginExportBulkReads(rawValue: 1 << 3)
+    public static let commentDDL = PluginExportBulkReads(rawValue: 1 << 4)
+    public static let dependentSequences = PluginExportBulkReads(rawValue: 1 << 5)
+    public static let dependentTypes = PluginExportBulkReads(rawValue: 1 << 6)
 }

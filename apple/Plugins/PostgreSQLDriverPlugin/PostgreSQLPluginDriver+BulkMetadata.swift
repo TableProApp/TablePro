@@ -21,7 +21,25 @@ extension PostgreSQLPluginDriver {
     var providesBulkIndexFetch: Bool { true }
 
     // Each is the per-table read with its table predicate dropped, decoded by the same row reader.
-    var exportBulkReads: PluginExportBulkReads { [.columns, .foreignKeys, .indexes] }
+    var exportBulkReads: PluginExportBulkReads {
+        [.columns, .foreignKeys, .indexes, .indexDDL, .commentDDL, .dependentSequences, .dependentTypes]
+    }
+
+    func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]] {
+        try await exportCatalog.fetchAllIndexDDL(schema: schema)
+    }
+
+    func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]] {
+        try await exportCatalog.fetchAllCommentDDL(schema: schema)
+    }
+
+    func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]] {
+        try await exportCatalog.fetchAllDependentSequences(schema: schema)
+    }
+
+    func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]] {
+        try await exportCatalog.fetchAllDependentTypes(schema: schema)
+    }
 
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
         let resolvedSchema = schema ?? core.currentSchema

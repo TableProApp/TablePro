@@ -264,6 +264,26 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         return try await pluginDriver.fetchAllIndexes(schema: exportSchema(for: databaseName))
     }
 
+    func fetchAllIndexDDL(databaseName: String) async throws -> [String: [String]] {
+        guard let pluginDriver else { return [:] }
+        return try await pluginDriver.fetchAllIndexDDL(schema: exportSchema(for: databaseName))
+    }
+
+    func fetchAllCommentDDL(databaseName: String) async throws -> [String: [String]] {
+        guard let pluginDriver else { return [:] }
+        return try await pluginDriver.fetchAllCommentDDL(schema: exportSchema(for: databaseName))
+    }
+
+    func fetchAllDependentSequences(databaseName: String) async throws -> [String: [PluginSequenceInfo]] {
+        guard let pluginDriver else { return [:] }
+        return try await pluginDriver.fetchAllDependentSequences(schema: exportSchema(for: databaseName))
+    }
+
+    func fetchAllDependentTypes(databaseName: String) async throws -> [String: [PluginEnumTypeInfo]] {
+        guard let pluginDriver else { return [:] }
+        return try await pluginDriver.fetchAllDependentTypes(schema: exportSchema(for: databaseName))
+    }
+
     func fetchIndexDDL(table: String, databaseName: String) async throws -> [String] {
         guard let pluginDriver else { return [] }
         return try await pluginDriver.fetchIndexDDL(table: table, schema: exportSchema(for: databaseName))

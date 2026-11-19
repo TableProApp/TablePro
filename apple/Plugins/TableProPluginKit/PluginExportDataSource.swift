@@ -21,6 +21,10 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
     // The group reads that answer each table as its own read does; any other is read table by table.
     var bulkReads: PluginExportBulkReads { get }
     func fetchAllIndexes(databaseName: String) async throws -> [String: [PluginIndexInfo]]
+    func fetchAllIndexDDL(databaseName: String) async throws -> [String: [String]]
+    func fetchAllCommentDDL(databaseName: String) async throws -> [String: [String]]
+    func fetchAllDependentSequences(databaseName: String) async throws -> [String: [PluginSequenceInfo]]
+    func fetchAllDependentTypes(databaseName: String) async throws -> [String: [PluginEnumTypeInfo]]
 
     /// Mirrors `PluginDatabaseDriver.fetchIndexDDL` for the export side: the `CREATE INDEX`
     /// statements this table needs that `fetchTableDDL` does not already declare.
@@ -108,6 +112,10 @@ public extension PluginExportDataSource {
 
     var bulkReads: PluginExportBulkReads { [] }
     func fetchAllIndexes(databaseName: String) async throws -> [String: [PluginIndexInfo]] { [:] }
+    func fetchAllIndexDDL(databaseName: String) async throws -> [String: [String]] { [:] }
+    func fetchAllCommentDDL(databaseName: String) async throws -> [String: [String]] { [:] }
+    func fetchAllDependentSequences(databaseName: String) async throws -> [String: [PluginSequenceInfo]] { [:] }
+    func fetchAllDependentTypes(databaseName: String) async throws -> [String: [PluginEnumTypeInfo]] { [:] }
 
     func fetchIndexDDL(table: String, databaseName: String) async throws -> [String] { [] }
 

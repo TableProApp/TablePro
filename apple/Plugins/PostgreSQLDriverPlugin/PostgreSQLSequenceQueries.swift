@@ -158,11 +158,38 @@ nonisolated enum PostgreSQLSequenceQueries {
         source: Source,
         named sequence: String? = nil
     ) -> String {
+        sequenceStatement(schema: schema, dependency: table.map(Dependency.table) ?? .none, source: source, named: sequence)
+    }
+
+    // The per-table dependent listing for every table of the schema at once: one row per table and sequence, with the
+    // table's name projected last, read through the same `pg_depend` rows the per-table predicate tests.
+    static func schemaDependentSequenceList(schema: String, source: Source) -> String {
+        sequenceStatement(schema: schema, dependency: .everyTable, source: source, named: nil)
+    }
+
+    private enum Dependency {
+        case none
+        case table(String)
+        case everyTable
+    }
+
+    private static func sequenceStatement(
+        schema: String,
+        dependency: Dependency,
+        source: Source,
+        named sequence: String?
+    ) -> String {
         let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
-        let dependency = table.map { dependencyPredicate(schemaLiteral: schemaLiteral, table: $0) } ?? ""
+        let (predicate, join, everyTable): (String, String, Bool) = switch dependency {
+        case .none: ("", "", false)
+        case .table(let table): (dependencyPredicate(schemaLiteral: schemaLiteral, table: table), "", false)
+        case .everyTable: ("", dependentTablesJoin(schemaLiteral: schemaLiteral), true)
+        }
         switch source {
         case .sequencesView:
             let nameFilter = sequence.map { "\n                  AND s.sequencename = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
+            let relation = everyTable ? ",\n       dependent.table_name" : ""
+            let order = everyTable ? "dependent.table_name, s.sequencename" : "s.sequencename"
             return """
                 SELECT s.sequencename,
                        s.start_value,
@@ -174,15 +201,18 @@ nonisolated enum PostgreSQLSequenceQueries {
                        false AS needs_last_value_read,
                        s.data_type::text,
                        s.cache_size,
-                       \(ownerColumns(sequence: "c.oid"))
+                       \(ownerColumns(sequence: "c.oid"))\(relation)
                 FROM pg_catalog.pg_sequences s
                 JOIN pg_catalog.pg_namespace n ON n.nspname = s.schemaname
-                JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid AND c.relname = s.sequencename
-                WHERE s.schemaname = \(schemaLiteral)\(nameFilter)\(dependency)
-                ORDER BY s.sequencename
+                JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid AND c.relname = s.sequencename\(join)
+                WHERE s.schemaname = \(schemaLiteral)\(nameFilter)\(predicate)
+                ORDER BY \(order)
                 """
         case .sequenceParameters:
             let nameFilter = sequence.map { "\n                        AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
+            let relation = everyTable ? ",\n       s.table_name" : ""
+            let innerRelation = everyTable ? ",\n           dependent.table_name" : ""
+            let order = everyTable ? "s.table_name, s.relname" : "s.relname"
             return """
                 SELECT s.relname,
                        \(parameter("start_value")),
@@ -194,19 +224,19 @@ nonisolated enum PostgreSQLSequenceQueries {
                        s.readable,
                        NULL::text AS data_type,
                        NULL::bigint AS cache_size,
-                       \(ownerColumns(sequence: "s.oid"))
+                       \(ownerColumns(sequence: "s.oid"))\(relation)
                 FROM (
                     SELECT c.oid,
                            c.relname,
                            pg_catalog.has_sequence_privilege(c.oid, 'SELECT,USAGE,UPDATE') AS can_read_parameters,
-                           pg_catalog.has_sequence_privilege(c.oid, 'SELECT') AS readable
+                           pg_catalog.has_sequence_privilege(c.oid, 'SELECT') AS readable\(innerRelation)
                     FROM pg_catalog.pg_class c
-                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\(join)
                     WHERE c.relkind = 'S'
-                        AND n.nspname = \(schemaLiteral)\(nameFilter)\(dependency)
+                        AND n.nspname = \(schemaLiteral)\(nameFilter)\(predicate)
                     OFFSET 0
                 ) s
-                ORDER BY s.relname
+                ORDER BY \(order)
                 """
         }
     }
@@ -292,6 +322,23 @@ nonisolated enum PostgreSQLSequenceQueries {
                         JOIN pg_catalog.pg_namespace tn ON tn.oid = t.relnamespace
                         WHERE t.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
                             AND tn.nspname = \(schemaLiteral))
+        """
+    }
+
+    // `dependencyPredicate` without its relname test, as rows: DISTINCT keeps one per table and sequence, as EXISTS does.
+    private static func dependentTablesJoin(schemaLiteral: String) -> String {
+        """
+
+        JOIN (
+            SELECT DISTINCT t.relname AS table_name, d.refobjid
+            FROM pg_catalog.pg_attrdef ad
+            JOIN pg_catalog.pg_depend d
+                ON \(columnDefaultDependency(alias: "d"))
+                AND d.objid = ad.oid
+            JOIN pg_catalog.pg_class t ON t.oid = ad.adrelid
+            JOIN pg_catalog.pg_namespace tn ON tn.oid = t.relnamespace
+            WHERE tn.nspname = \(schemaLiteral)
+        ) dependent ON dependent.refobjid = c.oid
         """
     }
 }

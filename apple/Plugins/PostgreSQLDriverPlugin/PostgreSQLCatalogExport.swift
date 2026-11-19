@@ -224,10 +224,97 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
 
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])] {
         let query = PostgreSQLSchemaQueries.dependentEnumTypes(schema: schema ?? currentSchema, table: table)
-        return try await rows(query).compactMap { row -> (name: String, labels: [String])? in
-            guard let typeName = row[0].asText, let labelsStr = row[1].asText else { return nil }
-            return (name: typeName, labels: PostgreSQLTextArray.values(labelsStr))
+        return try await rows(query).compactMap { row in
+            Self.enumType(row).map { (name: $0.name, labels: $0.labels) }
         }
+    }
+
+    func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]] {
+        let query = PostgreSQLSchemaQueries.schemaDependentEnumTypes(schema: schema ?? currentSchema)
+        return try await rowsByRelation(query).mapValues { $0.compactMap(Self.enumType) }
+    }
+
+    private static func enumType(_ row: [PluginCellValue]) -> PluginEnumTypeInfo? {
+        guard let typeName = row[safe: 0]?.asText, let labels = row[safe: 1]?.asText else { return nil }
+        return PluginEnumTypeInfo(name: typeName, labels: PostgreSQLTextArray.values(labels))
+    }
+
+    // MARK: - Schema-wide export reads
+
+    private func rowsByRelation(_ statement: String) async throws -> [String: [[PluginCellValue]]] {
+        try Self.rowsByRelation(try await rows(statement))
+    }
+
+    // Keyed by the relation each row names last. A read at the row ceiling may have stopped inside a relation, so it
+    // throws and the export reads each table alone.
+    static func rowsByRelation(
+        _ answer: [[PluginCellValue]],
+        ceiling: Int = PluginRowLimits.emergencyMax
+    ) throws -> [String: [[PluginCellValue]]] {
+        guard answer.count < ceiling else {
+            throw PostgreSQLCatalogReadError(message: "A schema-wide catalog read reached \(answer.count) rows")
+        }
+        var grouped: [String: [[PluginCellValue]]] = [:]
+        for row in answer {
+            guard let relation = row.last?.asText else { continue }
+            grouped[relation, default: []].append(row)
+        }
+        return grouped
+    }
+
+    func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]] {
+        let resolvedSchema = schema ?? currentSchema
+        let grouped = try await rowsByRelation(PostgreSQLIndexQueries.schemaStandaloneIndexQuery(schema: resolvedSchema))
+        var invalid = 0
+        let statements = grouped.mapValues { rows in
+            let indexes = PostgreSQLIndexQueries.standaloneIndexes(rows: rows)
+            invalid += indexes.invalidNames.count
+            return indexes.definitions.map(PostgreSQLTableDDL.indexCoveringPartitions)
+        }
+        if invalid > 0 {
+            Self.logger.info("Left out \(invalid) invalid index(es) across the schema")
+        }
+        return statements
+    }
+
+    func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]] {
+        let resolvedSchema = schema ?? currentSchema
+        let grouped = try await rowsByRelation(PostgreSQLCommentStatements.schemaCatalogQuery(schema: resolvedSchema))
+        var statements: [String: [String]] = [:]
+        for (relation, rows) in grouped {
+            statements[relation] = PostgreSQLCommentStatements.statements(
+                name: relation,
+                schema: resolvedSchema,
+                rows: rows.map { $0.map(\.asText) }
+            )
+        }
+        return statements
+    }
+
+    func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]] {
+        let resolvedSchema = schema ?? currentSchema
+        let source = PostgreSQLSequenceQueries.source(hasSequencesCatalog: includesSequencesCatalog)
+        let grouped = try await rowsByRelation(
+            PostgreSQLSequenceQueries.schemaDependentSequenceList(schema: resolvedSchema, source: source)
+        )
+        var lastValues: [String: String?] = [:]
+        var sequences: [String: [PluginSequenceInfo]] = [:]
+        for (table, rows) in grouped {
+            var resolved: [PluginSequenceInfo] = []
+            for definition in PostgreSQLSequenceQueries.definitions(from: rows) {
+                guard definition.needsLastValueRead else {
+                    resolved.append(PluginSequenceInfo(name: definition.name, ddl: definition.ddl))
+                    continue
+                }
+                if lastValues[definition.name] == nil {
+                    lastValues[definition.name] = .some(await lastValue(schema: resolvedSchema, sequence: definition.name))
+                }
+                let read = definition.withLastValue(lastValues[definition.name] ?? nil)
+                resolved.append(PluginSequenceInfo(name: read.name, ddl: read.ddl))
+            }
+            sequences[table] = resolved
+        }
+        return sequences
     }
 
     // MARK: - Sequences
