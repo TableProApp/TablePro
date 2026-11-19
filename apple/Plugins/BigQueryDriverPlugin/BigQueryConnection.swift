@@ -669,7 +669,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
             return try await BigQueryStoppableRequest.value(
                 grace: BigQueryStatementPolicy.stopGrace,
                 limit: BigQueryStatementPolicy.stoppedRequestLimit
-            ) { [self] isStopped in
+            ) { [self, request] isStopped in
                 try await decode(send(request, isStopped: isStopped, bodyLimit: BigQueryStatementPolicy.answerByteLimit))
             } afterStop: { [self] answer in
                 guard let jobId = BigQueryStatementProgress.jobToCancel(
