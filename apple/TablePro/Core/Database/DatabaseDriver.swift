@@ -144,6 +144,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// text statement by statement instead. A server error inside the batch is part of the answer, not a throw.
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult?
 
+    var supportsStatementBatches: Bool { get }
+
+    // Nil when the driver sends these one by one; `runStatements` is what callers use.
+    func executeStatements(_ statements: [BatchedStatement]) async throws -> [BatchedStatementOutcome]?
+
     /// Whether ``copyFromStandardInput(statement:rows:context:)`` sends a `COPY ... FROM STDIN` its rows.
     var supportsCopyFromStandardInput: Bool { get }
 
@@ -647,6 +652,10 @@ extension DatabaseDriver {
     var supportsResultSetBatches: Bool { false }
 
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult? { nil }
+
+    var supportsStatementBatches: Bool { false }
+
+    func executeStatements(_ statements: [BatchedStatement]) async throws -> [BatchedStatementOutcome]? { nil }
 
     var supportsCopyFromStandardInput: Bool { false }
 

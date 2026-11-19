@@ -447,6 +447,10 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
+    func executePipeline(_ statements: [LibPQPipelineStatement]) async throws -> [PluginBatchStatementOutcome]? {
+        try await connection().executePipeline(statements)
+    }
+
     func executeReadOnly(
         query: String,
         parameters: [PluginCellValue]?,
@@ -794,6 +798,52 @@ extension LibPQBackedDriver {
             return try await executeParameterized(query: query, parameters: parameters)
         }
         return try await readOnlyRead(query: query, parameters: parameters, rowCap: nil, context: context, scope: readOnly)
+    }
+
+    // Each stretch a pipeline admits goes as one, every other statement alone, and the first failure ends the run.
+    func executeStatements(_ statements: [PluginBatchStatement]) async throws -> [PluginBatchStatementOutcome]? {
+        guard capabilities.contains(.statementBatches),
+              statements.allSatisfy({ readOnlyScope($0.context) == nil && !$0.context.readsCatalog && $0.context.origin == .app }),
+              await sessionTransactionState() == .inTransaction
+        else { return nil }
+        var outcomes: [PluginBatchStatementOutcome] = []
+        var index = 0
+        while index < statements.count {
+            var end = index
+            while end < statements.count, LibPQPipelineAdmission.admits(statements[end].query) { end += 1 }
+            if end - index > 1 {
+                let stretch = statements[index..<end].map {
+                    LibPQPipelineStatement(query: $0.query, parameters: $0.parameters ?? [])
+                }
+                let answered: [PluginBatchStatementOutcome]?
+                do {
+                    answered = try await core.executePipeline(stretch)
+                } catch {
+                    return outcomes + [.failed(error)]
+                }
+                if let answered {
+                    outcomes += answered
+                    let failed = answered.contains { if case .failed = $0 { true } else { false } }
+                    guard answered.count == stretch.count, !failed else { return outcomes }
+                    index = end
+                    continue
+                }
+            }
+            let startedAt = Date()
+            do {
+                let statement = statements[index]
+                let result = if let parameters = statement.parameters {
+                    try await executeParameterized(query: statement.query, parameters: parameters, context: statement.context)
+                } else {
+                    try await execute(query: statement.query, context: statement.context)
+                }
+                outcomes.append(.succeeded(rowsAffected: result.rowsAffected, executionTime: Date().timeIntervalSince(startedAt)))
+            } catch {
+                return outcomes + [.failed(error)]
+            }
+            index += 1
+        }
+        return outcomes
     }
 
     private func readOnlyScope(_ context: PluginStatementContext) -> LibPQReadOnlyTransaction.Scope? {

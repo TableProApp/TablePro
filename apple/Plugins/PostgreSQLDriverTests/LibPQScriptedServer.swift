@@ -39,6 +39,8 @@ final class LibPQScriptedServer: @unchecked Sendable {
         // Sent after the rows in place of the completion, as a statement that fails part way through its result.
         var failureAfterRows: Failure?
         var copyIn: CopyIn?
+        // The command tag in place of `SELECT <row count>`, such as `INSERT 0 1`.
+        var completion: String?
     }
 
     struct CopyIn: Sendable {
@@ -80,6 +82,7 @@ final class LibPQScriptedServer: @unchecked Sendable {
     private let failingStatement: String?
     private let lock = NSLock()
     private var received: [String] = []
+    private var parsed: [String] = []
     private var bindings: [[String?]] = []
     private var cancels = 0
     private var isClosed = false
@@ -88,6 +91,12 @@ final class LibPQScriptedServer: @unchecked Sendable {
 
     var queries: [String] {
         lock.withLock { received }
+    }
+
+    // The statements the extended protocol's Parse brought in, in order, leaving out the ones a failure passed over
+    // until the next Sync, as PostgreSQL does.
+    var parsedStatements: [String] {
+        lock.withLock { parsed }
     }
 
     // Each Bind's parameters as text, nil for a null.
@@ -191,6 +200,7 @@ final class LibPQScriptedServer: @unchecked Sendable {
             case UInt8(ascii: "P"):
                 let query = Self.cString(body, from: Self.cString(body, from: 0).next).text
                 let earlier = record(query)
+                if !failed { lock.withLock { parsed.append(query) } }
                 onQuery(query)
                 statement = Statement(query: query, earlier: earlier, answer: answer(query) ?? Answer())
                 if !failed { reply = Self.message("1", []) }
@@ -245,7 +255,8 @@ final class LibPQScriptedServer: @unchecked Sendable {
                 sqlState: "57014", message: "canceling statement due to user request"
             )))
         }
-        return send(client, Self.message("C", Array("SELECT \(answer.rows.count)".utf8) + [0]))
+        let completion = answer.completion ?? "SELECT \(answer.rows.count)"
+        return send(client, Self.message("C", Array(completion.utf8) + [0]))
     }
 
     // CopyInResponse with every column in the copy's format, then CopyData until CopyDone or CopyFail.
