@@ -42,12 +42,26 @@ struct SQLiteExportTwinNameTests {
     @Test("The export's column and key reads throw on two tables named alike in different Unicode forms")
     func exportReadsThrowOnTwins() async throws {
         try await withDriver(Self.twins) { driver in
-            await #expect(throws: PluginNameSpellingError.self) {
+            await #expect(throws: PluginCatalogNameCollision.self) {
                 try await driver.fetchAllColumnsForExport(schema: nil)
             }
-            await #expect(throws: PluginNameSpellingError.self) {
+            await #expect(throws: PluginCatalogNameCollision.self) {
                 try await driver.fetchAllForeignKeysForExport(schema: nil)
             }
+        }
+    }
+
+    @Test("The schema-wide reads every other reader uses throw on twins too, so the host reads each table alone")
+    func sharedReadsThrowOnTwins() async throws {
+        let indexes = [
+            "CREATE INDEX composed_b ON \"\(composed)\" (b)",
+            "CREATE INDEX decomposed_b ON \"\(decomposed)\" (b)"
+        ]
+        try await withDriver(Self.twins + indexes) { driver in
+            await #expect(throws: PluginCatalogNameCollision.self) { try await driver.fetchAllColumns(schema: nil) }
+            await #expect(throws: PluginCatalogNameCollision.self) { try await driver.fetchAllForeignKeys(schema: nil) }
+            await #expect(throws: PluginCatalogNameCollision.self) { try await driver.fetchAllIndexes(schema: nil) }
+            await #expect(throws: PluginCatalogNameCollision.self) { try await driver.fetchAllTableMetadata(schema: nil) }
         }
     }
 

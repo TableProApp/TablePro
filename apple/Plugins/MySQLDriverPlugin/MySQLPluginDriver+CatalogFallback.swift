@@ -100,8 +100,8 @@ internal extension MySQLPluginDriver {
         }
     }
 
-    func showIndexesByTable(database: String) async throws -> [String: [PluginIndexInfo]] {
-        try await degradedRead(database: database) { table in
+    func showIndexesByTable(database: String, keepsSpellingsApart: Bool = false) async throws -> [String: [PluginIndexInfo]] {
+        try await degradedRead(database: database, keepsSpellingsApart: keepsSpellingsApart) { table in
             try await self.fetchIndexes(table: table.name, schema: database)
         }
     }

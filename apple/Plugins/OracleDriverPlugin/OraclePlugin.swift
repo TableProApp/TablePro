@@ -657,7 +657,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        try await exportCatalog.fetchAllColumns(schema: schema)
+        try await exportCatalog.fetchAllColumns(schema: schema, keepsSpellingsApart: true)
     }
 
     func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -667,7 +667,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var providesBulkForeignKeyFetch: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        try await exportCatalog.fetchAllForeignKeys(schema: schema)
+        try await exportCatalog.fetchAllForeignKeys(schema: schema, keepsSpellingsApart: true)
     }
 
     func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {

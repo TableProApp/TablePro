@@ -107,10 +107,10 @@ struct PostgreSQLExportCatalogTests {
         ])
         let catalog = Self.catalog(reads)
 
-        await #expect(throws: PostgreSQLCatalogReadError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllColumns(databaseName: "sales")
         }
-        await #expect(throws: PostgreSQLCatalogReadError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllForeignKeys(databaseName: "sales")
         }
     }

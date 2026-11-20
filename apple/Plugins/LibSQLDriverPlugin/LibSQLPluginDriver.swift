@@ -415,7 +415,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        try await allColumns(schema: schema, keepsSpellingsApart: false)
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
     }
 
     func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -468,7 +468,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        try await allForeignKeys(schema: schema, keepsSpellingsApart: false)
+        try await allForeignKeys(schema: schema, keepsSpellingsApart: true)
     }
 
     func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {

@@ -87,6 +87,7 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let resolvedSchema = schema ?? core.currentSchema
         let query = CockroachRelationSQL.columnsQuery(schema: resolvedSchema, table: nil)
         let result = try await catalogRead(query)
+        try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             guard let tableName = row.first?.asText,

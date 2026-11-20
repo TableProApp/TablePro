@@ -338,7 +338,7 @@ nonisolated final class CloudflareD1PluginDriver: PluginDatabaseDriver, @uncheck
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        try await allColumns(keepsSpellingsApart: false)
+        try await allColumns(keepsSpellingsApart: true)
     }
 
     func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -390,7 +390,7 @@ nonisolated final class CloudflareD1PluginDriver: PluginDatabaseDriver, @uncheck
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        try await allForeignKeys(keepsSpellingsApart: false)
+        try await allForeignKeys(keepsSpellingsApart: true)
     }
 
     func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {

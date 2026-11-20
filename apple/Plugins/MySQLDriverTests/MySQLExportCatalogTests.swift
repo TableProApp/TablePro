@@ -389,7 +389,7 @@ extension MySQLExportCatalogTests {
             [.text(Self.decomposed), "id", "int", nil, "NO", "PRI", nil, "", "", nil],
         ]])
 
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await makeCatalog(server).informationSchemaColumns(schema: nil, table: nil, keepsSpellingsApart: true)
         }
         #expect(await server.sent == [
@@ -407,7 +407,7 @@ extension MySQLExportCatalogTests {
             [],
         ])
 
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await makeCatalog(server).catalogForeignKeys(database: "shop", table: nil, keepsSpellingsApart: true)
         }
     }

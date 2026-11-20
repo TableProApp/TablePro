@@ -42,7 +42,7 @@ extension MySQLPluginDriver {
     }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        try await allForeignKeys(schema: schema, keepsSpellingsApart: false)
+        try await allForeignKeys(schema: schema, keepsSpellingsApart: true)
     }
 
     func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {

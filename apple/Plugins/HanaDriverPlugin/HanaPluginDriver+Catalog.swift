@@ -39,14 +39,12 @@ extension HanaPluginDriver {
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let owner = try effectiveSchema(schema)
         let result = try await execute(query: HanaCatalogQueries.columns(schema: owner, table: nil))
+        try PluginNameSpellings.requireDistinctSpellings(HanaCatalogMapping.columns(from: result.rows).map(\.table))
         return HanaCatalogMapping.columnsByTable(from: result.rows)
     }
 
     func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let owner = try effectiveSchema(schema)
-        let result = try await execute(query: HanaCatalogQueries.columns(schema: owner, table: nil))
-        try PluginNameSpellings.requireDistinctSpellings(HanaCatalogMapping.columns(from: result.rows).map(\.table))
-        return HanaCatalogMapping.columnsByTable(from: result.rows)
+        try await fetchAllColumns(schema: schema)
     }
 
     func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {

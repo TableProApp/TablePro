@@ -20,6 +20,7 @@ extension SQLitePluginDriver {
 
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
         let result = try await execute(query: SQLiteIndexCatalog.schemaIndexesQuery(schema: schema))
+        try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
         return SQLiteIndexCatalog.indexesByTable(fromRows: result.rows)
     }
 
@@ -36,6 +37,7 @@ extension SQLitePluginDriver {
             ORDER BY name
             """
         let result = try await execute(query: query)
+        try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
         var metadata: [String: PluginTableMetadata] = [:]
         for row in result.rows {
             guard let name = row[safe: 0]?.asText else { continue }

@@ -196,7 +196,7 @@ struct PostgreSQLExportSchemaReadTests {
         let decomposed = "cafe\u{301}"
         #expect(composed == decomposed)
         let rows = Self.tagged([["a"]], composed) + Self.tagged([["b"]], decomposed)
-        #expect(throws: PostgreSQLCatalogReadError.self) {
+        #expect(throws: PluginCatalogNameCollision.self) {
             try PostgreSQLCatalogExport.rowsByRelation(rows)
         }
     }
@@ -213,7 +213,7 @@ struct PostgreSQLExportSchemaReadTests {
         )
     }
 
-    @Test("The export's column read throws on two relations named alike in different Unicode forms")
+    @Test("The schema-wide column read throws on two relations named alike in different Unicode forms")
     func exportColumnReadThrowsOnUnicodeForms() async throws {
         let statements = Self.columnStatements()
         let recorder = CatalogReadRecorder { statement in
@@ -222,10 +222,12 @@ struct PostgreSQLExportSchemaReadTests {
         }
         let catalog = Self.catalog(recorder)
 
-        await #expect(throws: PostgreSQLCatalogReadError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllColumnsForExport(schema: nil)
         }
-        _ = try await catalog.fetchAllColumns(schema: nil)
+        await #expect(throws: PluginCatalogNameCollision.self) {
+            try await catalog.fetchAllColumns(schema: nil)
+        }
     }
 
     // The column read goes through information_schema, which leaves out a relation the role has no privilege on.
@@ -240,8 +242,8 @@ struct PostgreSQLExportSchemaReadTests {
             }
         }
 
-        await #expect(throws: PostgreSQLCatalogReadError.self) {
-            try await Self.catalog(recorder).fetchAllColumnsForExport(schema: nil)
+        await #expect(throws: PluginCatalogNameCollision.self) {
+            try await Self.catalog(recorder).fetchAllColumns(schema: nil)
         }
     }
 
@@ -262,7 +264,7 @@ struct PostgreSQLExportSchemaReadTests {
         #expect(exported["orders"]?.map { $0.name } == ["id"])
     }
 
-    @Test("The export's foreign key read throws on two tables named alike in different Unicode forms")
+    @Test("The schema-wide foreign key read throws on two tables named alike in different Unicode forms")
     func exportForeignKeyReadThrowsOnUnicodeForms() async throws {
         let statement = PostgreSQLForeignKeyQueries.foreignKeyList(schema: "app", table: nil, capabilities: Self.modern)
         let recorder = CatalogReadRecorder { asked in
@@ -274,10 +276,12 @@ struct PostgreSQLExportSchemaReadTests {
         }
         let catalog = Self.catalog(recorder)
 
-        await #expect(throws: PostgreSQLCatalogReadError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllForeignKeysForExport(schema: nil)
         }
-        _ = try await catalog.fetchAllForeignKeys(schema: nil)
+        await #expect(throws: PluginCatalogNameCollision.self) {
+            try await catalog.fetchAllForeignKeys(schema: nil)
+        }
     }
 
     @Test("The export's index read throws on two tables named alike in different Unicode forms, in either read")
@@ -288,10 +292,10 @@ struct PostgreSQLExportSchemaReadTests {
         let twins = [index(Self.composed, "a_idx"), index(Self.decomposed, "b_idx")]
         let spellingTwin = [[Self.decomposed, "b_idx", "USING btree (id)", nil].cells]
 
-        #expect(throws: PostgreSQLCatalogReadError.self) {
+        #expect(throws: PluginCatalogNameCollision.self) {
             try PostgreSQLPluginDriver.indexesByTable(rows: twins, spellingRows: [], keepsSpellingsApart: true)
         }
-        #expect(throws: PostgreSQLCatalogReadError.self) {
+        #expect(throws: PluginCatalogNameCollision.self) {
             try PostgreSQLPluginDriver.indexesByTable(
                 rows: [index(Self.composed, "a_idx")], spellingRows: spellingTwin, keepsSpellingsApart: true
             )

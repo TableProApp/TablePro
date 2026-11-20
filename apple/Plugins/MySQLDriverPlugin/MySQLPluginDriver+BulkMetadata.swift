@@ -34,7 +34,7 @@ extension MySQLPluginDriver {
             database: database,
             catalogExists: serverHasInformationSchema,
             catalog: { try await self.catalogIndexes(database: database) },
-            show: { try await self.showIndexesByTable(database: database) }
+            show: { try await self.showIndexesByTable(database: database, keepsSpellingsApart: true) }
         )
     }
 
@@ -55,6 +55,7 @@ extension MySQLPluginDriver {
             """
 
         let result = try await execute(ownStatement: query)
+        try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
         let rows = result.rows.compactMap { row -> MySQLIndexRow? in
             guard let table = row[safe: 0]?.asText,
                   let index = row[safe: 1]?.asText
@@ -82,6 +83,7 @@ extension MySQLPluginDriver {
         guard !flavor.isDatabend else { return try await databendAllTableMetadata(database: effectiveSchema(schema)) }
         guard !flavor.isStarRocks else { return try await starrocksTableStatus(database: effectiveSchema(schema)) }
         let result = try await execute(query: Self.tableStatusStatement(database: effectiveSchema(schema)))
+        try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
         let appendsInnoDBStatus = serverAppendsInnoDBStatus
         var metadata: [String: PluginTableMetadata] = [:]
         for row in result.rows {

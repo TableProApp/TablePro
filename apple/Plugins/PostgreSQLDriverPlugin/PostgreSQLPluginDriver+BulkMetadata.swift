@@ -50,7 +50,7 @@ extension PostgreSQLPluginDriver {
     }
 
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
-        try await schemaIndexes(schema: schema, keepsSpellingsApart: false)
+        try await schemaIndexes(schema: schema, keepsSpellingsApart: true)
     }
 
     func fetchAllIndexesForExport(schema: String?) async throws -> [String: [PluginIndexInfo]] {
@@ -75,9 +75,7 @@ extension PostgreSQLPluginDriver {
         keepsSpellingsApart: Bool
     ) throws -> [String: [PluginIndexInfo]] {
         if keepsSpellingsApart {
-            try PluginNameSpellings.requireDistinctSpellings(
-                (rows + spellingRows).compactMap { $0.first?.asText }, failure: PostgreSQLCatalogReadError.twinRelations
-            )
+            try PluginNameSpellings.requireDistinctSpellings((rows + spellingRows).compactMap { $0.first?.asText })
         }
         let ddl = PostgreSQLIndexQueries.indexDDL(rows: spellingRows)
         var indexes: [String: [PluginIndexInfo]] = [:]
@@ -93,6 +91,7 @@ extension PostgreSQLPluginDriver {
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
         let query = PostgreSQLSchemaQueries.allTableMetadata(schema: schema ?? core.currentSchema)
         let result = try await catalogRead(query)
+        try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
 
         var metadata: [String: PluginTableMetadata] = [:]
         for row in result.rows {
