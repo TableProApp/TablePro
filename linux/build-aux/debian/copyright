@@ -3025,7 +3025,7 @@ License: Apache-2.0 or Expat
  DEALINGS IN THE SOFTWARE.
 
 Files: vendor/bindgen-0.71.1/*
- vendor/bindgen-0.72.1/*
+ vendor/bindgen-0.73.2/*
 Copyright: 2013, Jyun-Yan You
 License: BSD-3-Clause
  BSD 3-Clause License
@@ -13107,7 +13107,7 @@ License: Apache-2.0 or Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/libsqlite3-sys-0.37.0/*
+Files: vendor/libsqlite3-sys-0.40.0/*
 Copyright: 2014 The rusqlite developers
 License: Expat
  Copyright (c) 2014 The rusqlite developers
@@ -19627,7 +19627,8 @@ License: Apache-2.0
  See the License for the specific language governing permissions and
  limitations under the License.
 
-Files: vendor/sqlx-0.9.0/*
+Files: vendor/sqlx-0.9.1/*
+ vendor/sqlx-postgres-0.9.1/*
 Copyright: SQLx Contributors
 License: Apache-2.0 or Expat
  On Debian systems, the complete text of the Apache License, Version 2.0
@@ -19686,11 +19687,11 @@ License: Apache-2.0 or Expat
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
-Files: vendor/sqlx-core-0.9.0/*
- vendor/sqlx-macros-0.9.0/*
- vendor/sqlx-macros-core-0.9.0/*
- vendor/sqlx-mysql-0.9.0/*
- vendor/sqlx-sqlite-0.9.0/*
+Files: vendor/sqlx-core-0.9.1/*
+ vendor/sqlx-macros-0.9.1/*
+ vendor/sqlx-macros-core-0.9.1/*
+ vendor/sqlx-mysql-0.9.1/*
+ vendor/sqlx-sqlite-0.9.1/*
 Copyright: SQLx Contributors
 License: Apache-2.0 or Expat
  Copyright (C) SQLx Contributors
@@ -19719,13 +19720,6 @@ License: Apache-2.0 or Expat
  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
-
-Files: vendor/sqlx-postgres-0.9.0/*
-Copyright: Ryan Leckey <leckey.ryan@gmail.com>
- Austin Bonander <austin.bonander@gmail.com>
- Chloe Ross <orangesnowfox@gmail.com>
- Daniel Akhterov <akhterovd@gmail.com>
-License: Apache-2.0 or Expat
 
 Files: vendor/sse-stream-0.2.6/*
 Copyright: 2024 4t145
@@ -26318,44 +26312,9 @@ Copyright: 1993 Sun Microsystems, Inc.
  2005-2020 Rich Felker, et al.
 License: Expat and SunPro
 
-Files: vendor/libsqlite3-sys-0.37.0/sqlite3/*
+Files: vendor/libsqlite3-sys-0.40.0/sqlite3/*
 Copyright: D. Richard Hipp and the other SQLite authors
 License: public-domain
- The author disclaims copyright to this source code. In place of a legal notice, here is a blessing:
- .
- May you do good and not evil.
- May you find forgiveness for yourself and forgive others.
- May you share freely, never taking more than you give.
-
-Files: vendor/libsqlite3-sys-0.37.0/sqlcipher/*
-Copyright: D. Richard Hipp and the other SQLite authors
- 2008-2020 Zetetic LLC
-License: BSD-3-Clause and public-domain
- Copyright (c) 2008-2020 Zetetic LLC
- All rights reserved.
- .
- Redistribution and use in source and binary forms, with or without
- modification, are permitted provided that the following conditions are met:
-     * Redistributions of source code must retain the above copyright
-       notice, this list of conditions and the following disclaimer.
-     * Redistributions in binary form must reproduce the above copyright
-       notice, this list of conditions and the following disclaimer in the
-       documentation and/or other materials provided with the distribution.
-     * Neither the name of the ZETETIC LLC nor the
-       names of its contributors may be used to endorse or promote products
-       derived from this software without specific prior written permission.
- .
- THIS SOFTWARE IS PROVIDED BY ZETETIC LLC ''AS IS'' AND ANY
- EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- DISCLAIMED. IN NO EVENT SHALL ZETETIC LLC BE LIABLE FOR ANY
- DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- .
  The author disclaims copyright to this source code. In place of a legal notice, here is a blessing:
  .
  May you do good and not evil.

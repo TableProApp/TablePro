@@ -259,12 +259,12 @@
       "name": "MIT License",
       "text": "Copyright (C) SQLx Contributors\nPortions of this work Copyright (C) LaunchBadge, LLC\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n",
       "used_by": [
-        { "crate": { "name": "sqlx-core", "version": "0.9.0" } },
-        { "crate": { "name": "sqlx-macros-core", "version": "0.9.0" } },
-        { "crate": { "name": "sqlx-macros", "version": "0.9.0" } },
-        { "crate": { "name": "sqlx-mysql", "version": "0.9.0" } },
-        { "crate": { "name": "sqlx-sqlite", "version": "0.9.0" } },
-        { "crate": { "name": "sqlx", "version": "0.9.0" } }
+        { "crate": { "name": "sqlx-core", "version": "0.9.1" } },
+        { "crate": { "name": "sqlx-macros-core", "version": "0.9.1" } },
+        { "crate": { "name": "sqlx-macros", "version": "0.9.1" } },
+        { "crate": { "name": "sqlx-mysql", "version": "0.9.1" } },
+        { "crate": { "name": "sqlx-sqlite", "version": "0.9.1" } },
+        { "crate": { "name": "sqlx", "version": "0.9.1" } }
       ]
     },
     {
@@ -398,7 +398,7 @@
       "name": "MIT License",
       "text": "Copyright (c) 2014 The rusqlite developers\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
       "used_by": [
-        { "crate": { "name": "libsqlite3-sys", "version": "0.37.0" } }
+        { "crate": { "name": "libsqlite3-sys", "version": "0.40.0" } }
       ]
     },
     {
@@ -2903,7 +2903,7 @@
     { "name": "libm", "version": "0.2.16", "license": "MIT" },
     { "name": "libseccomp", "version": "0.4.0", "license": "MIT OR Apache-2.0" },
     { "name": "libseccomp-sys", "version": "0.3.0", "license": "MIT OR Apache-2.0" },
-    { "name": "libsqlite3-sys", "version": "0.37.0", "license": "MIT" },
+    { "name": "libsqlite3-sys", "version": "0.40.0", "license": "MIT" },
     { "name": "linux-raw-sys", "version": "0.12.1", "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT" },
     { "name": "litemap", "version": "0.8.3", "license": "Unicode-3.0" },
     { "name": "litrs", "version": "1.0.1", "license": "MIT OR Apache-2.0" },
@@ -3063,12 +3063,12 @@
     { "name": "spki", "version": "0.8.0", "license": "Apache-2.0 OR MIT" },
     { "name": "sqlformat", "version": "0.5.0", "license": "MIT OR Apache-2.0" },
     { "name": "sqlparser", "version": "0.63.0", "license": "Apache-2.0" },
-    { "name": "sqlx", "version": "0.9.0", "license": "MIT OR Apache-2.0" },
-    { "name": "sqlx-core", "version": "0.9.0", "license": "MIT OR Apache-2.0" },
-    { "name": "sqlx-macros", "version": "0.9.0", "license": "MIT OR Apache-2.0" },
-    { "name": "sqlx-macros-core", "version": "0.9.0", "license": "MIT OR Apache-2.0" },
-    { "name": "sqlx-mysql", "version": "0.9.0", "license": "MIT OR Apache-2.0" },
-    { "name": "sqlx-sqlite", "version": "0.9.0", "license": "MIT OR Apache-2.0" },
+    { "name": "sqlx", "version": "0.9.1", "license": "MIT OR Apache-2.0" },
+    { "name": "sqlx-core", "version": "0.9.1", "license": "MIT OR Apache-2.0" },
+    { "name": "sqlx-macros", "version": "0.9.1", "license": "MIT OR Apache-2.0" },
+    { "name": "sqlx-macros-core", "version": "0.9.1", "license": "MIT OR Apache-2.0" },
+    { "name": "sqlx-mysql", "version": "0.9.1", "license": "MIT OR Apache-2.0" },
+    { "name": "sqlx-sqlite", "version": "0.9.1", "license": "MIT OR Apache-2.0" },
     { "name": "sse-stream", "version": "0.2.6", "license": "MIT OR Apache-2.0" },
     { "name": "stable_deref_trait", "version": "1.2.1", "license": "MIT OR Apache-2.0" },
     { "name": "static_assertions", "version": "1.1.0", "license": "MIT OR Apache-2.0" },

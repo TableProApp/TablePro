@@ -11,7 +11,7 @@ use tablepro_core::meta::{ObjectScope, TableRef};
 use tablepro_core::statement::{GuardedStatement, StatementBuilder};
 use tablepro_core::{
     ByteLimit, CallOptions, ConnectEnvironment, ConnectOptions, ConnectTarget, Connection, DatabaseDriver, DriverError,
-    FileEndpoint, ForeignKeyCheck, ForeignKeyMode, WorkspaceSettings, WriteBatch, WriteKind,
+    FileEndpoint, ForeignKeyCheck, ForeignKeyMode, ServerCode, WorkspaceSettings, WriteBatch, WriteKind,
 };
 use tablepro_driver_sqlite::SqliteDriver;
 use tablepro_test_support::conformance::test_liveness;
@@ -331,7 +331,21 @@ async fn parsed_texts_stay_bounded(directory: &Path) -> Outcome {
 }
 
 async fn a_tail_is_not_read(directory: &Path) -> Outcome {
-    let connection = open(&file_with(directory, "tailed.sqlite3", tailed_schema()).await?).await?;
+    let path = file_with(directory, "tailed.sqlite3", tailed_schema()).await?;
+    // SQLite 3.54.0 refuses a schema whose stored text runs past its statement's end.
+    // SAFETY: reads a constant of the linked library.
+    if unsafe { libsqlite3_sys::sqlite3_libversion_number() } >= 3_054_000 {
+        let (opened, heap, _) = measured(open(&path)).await;
+        assert!(
+            matches!(&opened, Err(DriverError::Server(diagnostics))
+                if matches!(diagnostics.code, Some(ServerCode::Sqlite { primary: 11, .. }))),
+            "opening a tailed file: {:?}",
+            opened.err()
+        );
+        assert!(heap < BOUND / 8, "opening a tailed file: {heap}");
+        return Ok(());
+    }
+    let connection = open(&path).await?;
     let (read, heap, native) =
         measured(connection.fetch_table_definition(&TableRef::unqualified("neighbour"), call())).await;
     assert!(
