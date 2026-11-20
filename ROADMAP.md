@@ -29,16 +29,16 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 
 | Section | Boxes | Done |
 |---|---|---|
-| Phase 0: Release blockers | 16 | 5 |
+| Phase 0: Release blockers | 16 | 6 |
 | Phase 1: Core enablers | 23 | 9 |
-| Phase 2: Windows daily use | 62 | 42 |
+| Phase 2: Windows daily use | 62 | 44 |
 | Phase 3: Standard features both apps lack | 118 | 0 |
 | Phase 4: Advanced tier | 57 | 0 |
 | Phase 5: Engines | 27 | 0 |
 | Phase 6: Quality bars | 8 | 0 |
 | Phase 7: Sync and teams | 15 | 0 |
 | Phase 8: Beyond the market | 40 | 0 |
-| Total | 366 | 56 |
+| Total | 366 | 59 |
 
 ## Where each app stands
 
@@ -70,7 +70,7 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 
 ### Windows first public release
 
-- [ ] **R-01** RUSTSEC-2026-0459 (bundled SQLite before 3.54.0): `deny.toml` blocks a Windows release until sqlx allows libsqlite3-sys 0.39 and the pin is raised (#4166)
+- [x] **R-01** RUSTSEC-2026-0459 (bundled SQLite before 3.54.0): `deny.toml` blocks a Windows release until sqlx allows libsqlite3-sys 0.39 and the pin is raised (#4166): #4371
 - [ ] **R-02** Maintainer setup, `windows/RELEASING.md` steps 1-6: tag rulesets, Artifact Signing with a Public Trust profile, the OIDC app registration, the `windows-release` secrets, `WINDOWS_SIGNING_*` and `WINDOWS_PUBLISHER` (permanent after the first release), the `windows-winget` environment
 - [x] **R-03** Dry run of `release-windows.yml` from main: the x64 and Arm64 packages, the bundle, install-and-start tests and winget validation, unsigned (ADR 0005): [run 43164825446](https://github.com/TableProApp/TablePro/actions/runs/43164825446)
 - [ ] **R-04** Real hardware: Windows 10 build 17763, Native AOT, Mica on a GPU, TabView in the title bar on Windows 10, loading from a signed MSIX (ADR 0001, 0004)
@@ -137,7 +137,7 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 - [ ] **W-09** Object context menu: Open, Open in New Tab, Copy Name, Show CREATE, Truncate, Drop, through Safe Mode · CORE · needs C-05 · partly #4213, #4304: Truncate and Drop run once confirmed instead of waiting for Save, and views, materialized views and sequences cannot be dropped yet; both wait on C-05
 - [x] **W-10** Create and drop databases and schemas · CORE · needs C-05: #4304
-- [ ] **W-11** Database switcher per connection and per query tab · CORE · partly #4285: Redis numbered databases get no switcher, because the core reports a Redis server as one database
+- [x] **W-11** Database switcher per connection and per query tab · CORE · #4285, #4369
 - [x] **W-12** Open a routine, trigger or sequence: its definition read-only, with Copy and Open in Editor · STD: #4213
 - [ ] **W-13** Columns, indexes and keys under a table node · STD · needs C-05
 - [x] **W-14** Table info: rows, size, comment · STD: #4318
@@ -209,7 +209,7 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 - [x] **W-57** AI assistant: providers, chat with schema context, Explain, Review, Optimize, Fix, AI policy per connection · STD · needs C-17: #4319
 - [x] **W-58** MCP server with an External Clients level per connection · ADV · #4326
-- [ ] **W-59** Account page, license ask, and the paid-feature gate on the macOS license (D-02) · STD · needs C-19 · partly #4253: the license ask and the gate on paid features are left
+- [x] **W-59** Account page, license ask, and the paid-feature gate on the macOS license (D-02) · STD · needs C-19 · #4253, #4370
 - [ ] **W-60** `tablepro://` and database URL links · STD · partly #4253, #4325, #4360: `tablepro://import` needs the core connection record to carry every macOS field, which changes `linux/` and waits on Linux 0.1.0; `integrations/pair` waits on A-09; matching a database URL to a saved connection waits on that logic moving into the core
 - [x] **W-61** File associations for .sql, SQLite and DuckDB files · STD: #4325
 - [x] **W-62** Launch arguments and the `tablepro` CLI (the execution alias reads only a share link today) · STD · #4325, #4326
