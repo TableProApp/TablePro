@@ -43,6 +43,18 @@ struct TwinCatalogKeyTests {
         #expect(registry.provider(for: Self.scope(schema: TwinNames.decomposed)) === decomposed)
     }
 
+    @Test("The sidebar's catalog keeps the tables of two twin schemas apart")
+    func schemaServiceKeysKeepTwinSchemasApart() {
+        let composed = SchemaService.SchemaKey(connectionId: Self.connectionId, database: "shop", schema: TwinNames.composed)
+        let decomposed = SchemaService.SchemaKey(connectionId: Self.connectionId, database: "shop", schema: TwinNames.decomposed)
+
+        #expect(Set([composed, decomposed]).count == 2)
+        #expect(SchemaService.CatalogKey(connectionId: Self.connectionId, database: "shop", schema: TwinNames.composed)
+            != SchemaService.CatalogKey(connectionId: Self.connectionId, database: "shop", schema: TwinNames.decomposed))
+        #expect(SchemaService.LoadKey(connectionId: Self.connectionId, scope: Self.scope(schema: TwinNames.composed))
+            != SchemaService.LoadKey(connectionId: Self.connectionId, scope: Self.scope(schema: TwinNames.decomposed)))
+    }
+
     @Test("A key into a twin schema points outside this one")
     func foreignKeyTargetComparesSchemasByBytes() {
         #expect(!ForeignKeyTargetScope.pointsWithin(

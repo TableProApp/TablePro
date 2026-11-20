@@ -329,23 +329,24 @@ actor SQLSchemaProvider {
         ColumnCacheKey(schema: spelling.schema.map { CatalogName($0) }, name: CatalogName(spelling.name))
     }
 
-    private func isDefaultSchema(_ schema: CatalogName?) -> Bool {
-        guard let schema else { return true }
-        return schema == schemaSpelling(getDefaultSchema()).map { CatalogName($0) }
+    private func isDefaultSchema(_ key: ColumnCacheKey) -> Bool {
+        guard let schema = key.schema else { return true }
+        guard let defaultSchema = getDefaultSchema() else { return false }
+        return schema == CatalogName(key.isTyped ? Self.folded(defaultSchema) : schemaSpelling(defaultSchema) ?? defaultSchema)
     }
 
     /// A table outside the default schema keeps its schema, so two cached tables of one name never
     /// offer the same `orders.id` for columns of two different tables.
     private func fallbackTableLabel(for key: ColumnCacheKey, listed: ListedName?) -> String {
         let name = listed?.name ?? key.name.text
-        guard let schema = key.schema, !isDefaultSchema(schema) else { return name }
+        guard let schema = key.schema, !isDefaultSchema(key) else { return name }
         return "\(schema.text).\(name)"
     }
 
     // Only a table the list names is known to be spelled as the catalog spells it.
     private func fallbackTableParts(for key: ColumnCacheKey, listed: ListedName?) -> [SQLCompletionIdentifier.Part] {
         let table: SQLCompletionIdentifier.Part = listed.map { .catalog($0.name) } ?? .statement(key.name.text, quoted: false)
-        guard let schema = key.schema, !isDefaultSchema(schema) else { return [table] }
+        guard let schema = key.schema, !isDefaultSchema(key) else { return [table] }
         return [.statement(schema.text, quoted: false), table]
     }
 

@@ -38,10 +38,22 @@ final class SchemaService: ObservableObject {
     /// it held instead of fetching it from nothing. An engine grouped by schema lists one schema's
     /// objects, so it keeps one per schema; a hierarchical engine names the schema of every per-schema
     /// list itself, so it keeps one per database like the rest.
+    // The keys compare names by bytes: two databases or schemas Swift's String equates are two catalogs.
     struct CatalogKey: Hashable, Sendable {
         let connectionId: UUID
         let database: String
         let schema: String?
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+                && CatalogName.same(lhs.schema, rhs.schema)
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            CatalogName.hash(database, into: &hasher)
+            CatalogName.hash(schema, into: &hasher)
+        }
     }
 
     private struct ShownCatalog: Equatable {
@@ -85,6 +97,17 @@ final class SchemaService: ObservableObject {
         let connectionId: UUID
         let database: String
         let schema: String
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+                && CatalogName.same(lhs.schema, rhs.schema)
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            CatalogName.hash(database, into: &hasher)
+            CatalogName.hash(schema, into: &hasher)
+        }
     }
 
     /// A read after a catalog change starts a fetch of its own rather than joining one that began
@@ -101,6 +124,17 @@ final class SchemaService: ObservableObject {
     struct LoadKey: Hashable, Sendable {
         let connectionId: UUID
         let scope: DatabaseScope?
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.connectionId == rhs.connectionId && lhs.scope?.catalogKey == rhs.scope?.catalogKey
+                && lhs.scope?.isSessionBound == rhs.scope?.isSessionBound
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            hasher.combine(scope?.catalogKey)
+            hasher.combine(scope?.isSessionBound)
+        }
     }
 
     /// Which side kinds an engine browses at all. A kind it never fetches stays idle, and idle is
