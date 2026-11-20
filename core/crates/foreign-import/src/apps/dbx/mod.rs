@@ -2,22 +2,26 @@
 // are those of `crates/dbx-core/src/persistence/storage.rs` and `crates/dbx-types/src/models/connection.rs`.
 
 mod config;
+mod key;
 mod locations;
+mod secrets;
 mod store;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 
 use tokio_util::sync::CancellationToken;
 
-use self::config::{Config, Layer, SshLayer};
+use self::config::{Config, Hop, Layer, SshLayer};
+use self::key::Store;
+use self::secrets::{SecretRows, Secrets};
 use crate::app::{AppReader, check_cancel};
 use crate::apps::jdbc;
 use crate::apps::sqlite::Database;
 use crate::collect::assemble;
 use crate::engine::{self, LocalFilePathField};
 use crate::{
-    CollectedImport, ForeignApp, ForeignAppDirs, ForeignColor, ForeignConnection, ForeignConnectionRecord,
+    CollectedImport, ForeignApp, ForeignAppDirs, ForeignColor, ForeignConnection, ForeignConnectionRecord, ForeignHost,
     ForeignImportError, ForeignJumpHost, ForeignSsh, ForeignSshAuth, ForeignSsl, ForeignSslMode, ImportRequest,
     Inventory, PasswordOutcome,
 };
@@ -46,12 +50,17 @@ const SWATCHES: [(&str, ForeignColor); 6] = [
 
 pub(crate) struct Dbx {
     data_dir: PathBuf,
+    config_dir: PathBuf,
+    // The platform's store for DBX's key, when the host hands it over.
+    store: Option<Store>,
 }
 
 impl Dbx {
-    pub(crate) fn locate(dirs: &ForeignAppDirs) -> Self {
+    pub(crate) fn locate(dirs: &ForeignAppDirs, host: &dyn ForeignHost) -> Self {
         Self {
             data_dir: locations::data_dir(dirs),
+            config_dir: dirs.config.clone(),
+            store: Store::of(dirs.platform, host),
         }
     }
 
@@ -95,27 +104,48 @@ impl AppReader for Dbx {
         cancel: &CancellationToken,
     ) -> Result<CollectedImport, ForeignImportError> {
         let db = self.open()?;
+        let snapshot = db.snapshot();
+        if snapshot.is_none() {
+            tracing::warn!("dbx.db is read without a read transaction");
+        }
         let configs = configs(&db)?;
         let lookups = Lookups {
             profiles: store::tunnel_profiles(&db),
             groups: store::group_paths(&db),
             secret_names: store::secret_names(&db),
         };
-        let mut records = Vec::with_capacity(configs.len());
-        for (config, engine) in configs {
-            check_cancel(cancel)?;
-            records.push(record(&config, engine, &lookups));
-        }
+        // DBX encrypts every secret under a key it keeps in the platform's store. A host that hands over no store gets
+        // no password, not even through DBX's key file, so an app that says it cannot read them reads none.
+        let mut secrets = match (request.include_passwords, &self.store) {
+            (true, Some(store)) => Some(Secrets::new(
+                SecretRows::read(&db),
+                self.config_dir.clone(),
+                store.clone(),
+            )),
+            _ => None,
+        };
         let saved_queries = if request.include_saved_queries {
             store::saved_sql(&db, request.saved_query_byte_limit, cancel)?
         } else {
             Vec::new()
         };
-        // DBX encrypts every secret under a key it keeps in the system keyring.
-        let passwords = if request.include_passwords {
-            PasswordOutcome::LeftInKeychain
-        } else {
-            PasswordOutcome::NotRequested
+        // The key is looked up after the read ends, since the store may wait on the user.
+        drop(snapshot);
+        let mut records = Vec::with_capacity(configs.len());
+        for (config, engine) in configs {
+            check_cancel(cancel)?;
+            let (hops, lost) = config.route(&lookups.profiles);
+            let mut record = record(&config, engine, &lookups, &hops, lost);
+            if let Some(secrets) = secrets.as_mut() {
+                record.credentials = Some(secrets.credentials(&config.id, hops.last()));
+            }
+            records.push(record);
+        }
+        let passwords = match (request.include_passwords, &secrets) {
+            (false, _) => PasswordOutcome::NotRequested,
+            (true, None) => PasswordOutcome::LeftInKeychain,
+            (true, Some(secrets)) if secrets.missed() => PasswordOutcome::Stopped,
+            (true, Some(_)) => PasswordOutcome::Read,
         };
         assemble(APP, records, saved_queries, passwords)
     }
@@ -171,7 +201,13 @@ fn engine_of(config: &Config) -> Option<String> {
     Some(name.to_owned())
 }
 
-fn record(config: &Config, engine: String, lookups: &Lookups) -> ForeignConnectionRecord {
+fn record(
+    config: &Config,
+    engine: String,
+    lookups: &Lookups,
+    hops: &[Hop],
+    lost: BTreeSet<&'static str>,
+) -> ForeignConnectionRecord {
     let mut fields = BTreeMap::new();
     let file_field = engine::local_file_path_field(&engine);
     // A file engine keeps its file's path where the host goes.
@@ -197,7 +233,6 @@ fn record(config: &Config, engine: String, lookups: &Lookups) -> ForeignConnecti
         ),
     };
 
-    let (hops, lost) = config.route(&lookups.profiles);
     let kept_apart = |name: &str| {
         lookups
             .secret_names
@@ -233,7 +268,7 @@ fn record(config: &Config, engine: String, lookups: &Lookups) -> ForeignConnecti
         database,
         username: config.username.clone(),
         engine,
-        ssh: ssh_of(&hops),
+        ssh: ssh_of(hops),
         ssl,
         color: color_of(config.color.as_deref()),
         additional_fields: fields,
@@ -246,12 +281,12 @@ fn record(config: &Config, engine: String, lookups: &Lookups) -> ForeignConnecti
     }
 }
 
-fn ssh_of(hops: &[SshLayer]) -> Option<ForeignSsh> {
-    let (target, jumps) = hops.split_last()?;
+fn ssh_of(hops: &[Hop]) -> Option<ForeignSsh> {
+    let (Hop { ssh: target, .. }, jumps) = hops.split_last()?;
     let (auth, private_key_path) = sign_in(target);
     let jump_hosts = jumps
         .iter()
-        .map(|hop| {
+        .map(|Hop { ssh: hop, .. }| {
             let (auth, private_key_path) = sign_in(hop);
             ForeignJumpHost {
                 host: hop.host.clone(),

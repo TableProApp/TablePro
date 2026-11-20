@@ -62,9 +62,35 @@ impl Database {
         let code = unsafe { ffi::sqlite3_prepare_v2(self.raw.as_ptr(), sql.as_ptr(), -1, &mut raw, ptr::null_mut()) };
         let statement = Statement {
             raw: NonNull::new(raw)?,
+            done: false,
             _database: PhantomData,
         };
         (code == ffi::SQLITE_OK).then_some(statement)
+    }
+
+    // One read transaction until it drops, so every query sees the file as it was at the first, and nothing the other
+    // app commits meanwhile pairs one row's old values with another's new ones.
+    pub(crate) fn snapshot(&self) -> Option<Snapshot<'_>> {
+        self.execute("BEGIN").then_some(Snapshot { database: self })
+    }
+
+    fn execute(&self, sql: &str) -> bool {
+        let Some(mut statement) = self.prepare(sql) else {
+            return false;
+        };
+        statement.next_row().is_none() && statement.finished()
+    }
+}
+
+pub(crate) struct Snapshot<'db> {
+    database: &'db Database,
+}
+
+impl Drop for Snapshot<'_> {
+    fn drop(&mut self) {
+        if !self.database.execute("COMMIT") {
+            self.database.execute("ROLLBACK");
+        }
     }
 }
 
@@ -77,6 +103,8 @@ impl Drop for Database {
 
 pub(crate) struct Statement<'db> {
     raw: NonNull<ffi::sqlite3_stmt>,
+    // The last step ran the statement to its end, rather than stopping on an error such as a lock.
+    done: bool,
     _database: PhantomData<&'db Database>,
 }
 
@@ -107,10 +135,15 @@ impl Statement<'_> {
     pub(crate) fn next_row(&mut self) -> Option<Row<'_>> {
         // SAFETY: the statement is live until drop, and a row borrows it mutably, so no column is read mid-step.
         let code = unsafe { ffi::sqlite3_step(self.raw.as_ptr()) };
+        self.done = code == ffi::SQLITE_DONE;
         (code == ffi::SQLITE_ROW).then_some(Row {
             statement: self.raw,
             _statement: PhantomData,
         })
+    }
+
+    pub(crate) fn finished(&self) -> bool {
+        self.done
     }
 }
 
@@ -163,4 +196,83 @@ fn c_path(path: &Path) -> Option<CString> {
 #[cfg(not(unix))]
 fn c_path(path: &Path) -> Option<CString> {
     CString::new(path.to_str()?).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The other app's own connection, which writes while the import reads.
+    struct Writer(NonNull<ffi::sqlite3>);
+
+    impl Writer {
+        fn open(path: &Path) -> Self {
+            let path = c_path(path).expect("a path");
+            let mut raw = ptr::null_mut();
+            let flags = ffi::SQLITE_OPEN_READWRITE | ffi::SQLITE_OPEN_CREATE;
+            // SAFETY: as in `open_read_only`.
+            let code = unsafe { ffi::sqlite3_open_v2(path.as_ptr(), &mut raw, flags, ptr::null()) };
+            assert_eq!(code, ffi::SQLITE_OK);
+            Self(NonNull::new(raw).expect("a connection"))
+        }
+
+        fn run(&self, sql: &str) {
+            let sql = CString::new(sql).expect("SQL");
+            // SAFETY: the connection is open and `sql` is NUL-terminated; no callback is passed.
+            let code =
+                unsafe { ffi::sqlite3_exec(self.0.as_ptr(), sql.as_ptr(), None, ptr::null_mut(), ptr::null_mut()) };
+            assert_eq!(code, ffi::SQLITE_OK);
+        }
+    }
+
+    impl Drop for Writer {
+        fn drop(&mut self) {
+            // SAFETY: closed once, with no statement left open.
+            unsafe { ffi::sqlite3_close(self.0.as_ptr()) };
+        }
+    }
+
+    fn count(database: &Database) -> i64 {
+        let mut statement = database.prepare("SELECT count(*) FROM t").expect("a query");
+        statement.next_row().map(|row| row.int64(0)).expect("a count")
+    }
+
+    #[test]
+    fn a_snapshot_reads_the_file_as_it_was_at_its_first_query() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let path = dir.path().join("app.db");
+        let writer = Writer::open(&path);
+        writer.run("PRAGMA journal_mode=WAL; CREATE TABLE t (x); INSERT INTO t VALUES (1);");
+        let database = Database::open_read_only(&path).expect("the file");
+
+        let snapshot = database.snapshot().expect("a read transaction");
+        let before = count(&database);
+        writer.run("INSERT INTO t VALUES (2);");
+        let during = count(&database);
+        drop(snapshot);
+        let after = count(&database);
+
+        assert_eq!((before, during, after), (1, 1, 2));
+    }
+
+    #[test]
+    fn a_query_a_lock_stops_is_not_finished() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let path = dir.path().join("app.db");
+        let writer = Writer::open(&path);
+        writer.run("CREATE TABLE t (x); INSERT INTO t VALUES (1);");
+        let database = Database::open_read_only(&path).expect("the file");
+        {
+            let mut read = database.prepare("SELECT x FROM t").expect("a query");
+            while read.next_row().is_some() {}
+            assert!(read.finished());
+        }
+
+        writer.run("BEGIN EXCLUSIVE;");
+        let mut locked = database.prepare("SELECT x FROM t").expect("a query");
+
+        assert!(locked.next_row().is_none());
+        assert!(!locked.finished());
+        writer.run("ROLLBACK;");
+    }
 }

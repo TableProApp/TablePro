@@ -4,6 +4,9 @@ use serde::Deserialize;
 
 use super::{HTTP_TUNNEL, PROXY, PROXY_COMMAND, SSH_TUNNEL};
 
+// The id DBX gives the layer it makes from a connection saved with one SSH host.
+pub(super) const LEGACY_LAYER: &str = "legacy";
+
 // The fields of DBX's `ConnectionConfig` an import reads. A field this does not name is ignored, and
 // one left out takes DBX's own default.
 #[derive(Debug, Default, Deserialize)]
@@ -50,6 +53,7 @@ pub(super) enum Layer {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub(super) struct SshLayer {
+    pub(super) id: String,
     pub(super) enabled: bool,
     pub(super) host: String,
     pub(super) port: u16,
@@ -64,6 +68,7 @@ pub(super) struct SshLayer {
 impl Default for SshLayer {
     fn default() -> Self {
         Self {
+            id: String::new(),
             enabled: true,
             host: String::new(),
             port: 22,
@@ -117,14 +122,33 @@ impl Layer {
     }
 }
 
+// Where DBX keeps a hop's password and key passphrase.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum HopSecrets {
+    // The connection's own layer, by its place among all the connection's layers, the disabled ones included, and its
+    // id.
+    Layer { index: usize, id: String },
+    // The shared tunnel profile the layer names.
+    Profile(String),
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct Hop {
+    pub(super) ssh: SshLayer,
+    pub(super) secrets: HopSecrets,
+}
+
 impl Config {
     // The SSH hops DBX connects through, first to last, and the review key of each part of the route
     // TablePro has no field for. A layer that names a shared tunnel profile takes that profile's
     // settings, as DBX does at connect time.
-    pub(super) fn route(&self, profiles: &HashMap<String, Layer>) -> (Vec<SshLayer>, BTreeSet<&'static str>) {
+    pub(super) fn route(&self, profiles: &HashMap<String, Layer>) -> (Vec<Hop>, BTreeSet<&'static str>) {
         let mut hops = Vec::new();
         let mut lost = BTreeSet::new();
-        for layer in self.layers().into_iter().filter(Layer::enabled) {
+        for (index, layer) in self.layers().into_iter().enumerate() {
+            if !layer.enabled() {
+                continue;
+            }
             let resolved = match layer.profile_id() {
                 "" => Some(layer.clone()),
                 id => profiles.get(id).cloned(),
@@ -134,7 +158,14 @@ impl Config {
                     if !ssh.proxy_command.trim().is_empty() {
                         lost.insert(PROXY_COMMAND);
                     }
-                    hops.push(ssh);
+                    let secrets = match layer.profile_id() {
+                        "" => HopSecrets::Layer {
+                            index,
+                            id: ssh.id.clone(),
+                        },
+                        profile => HopSecrets::Profile(profile.to_owned()),
+                    };
+                    hops.push(Hop { ssh, secrets });
                 }
                 Some(other) => {
                     lost.insert(other.lost_as());
@@ -158,6 +189,7 @@ impl Config {
                 layers.extend(hops.iter().cloned().map(Layer::Ssh));
             } else if let Some(host) = named(self.ssh_host.as_deref()) {
                 layers.push(Layer::Ssh(SshLayer {
+                    id: LEGACY_LAYER.to_owned(),
                     host: host.to_owned(),
                     port: self.ssh_port.filter(|port| *port > 0).unwrap_or(22),
                     user: self.ssh_user.clone().unwrap_or_default(),
@@ -185,22 +217,34 @@ mod tests {
         serde_json::from_str(json).expect("a config")
     }
 
-    fn hosts(hops: &[SshLayer]) -> Vec<&str> {
-        hops.iter().map(|hop| hop.host.as_str()).collect()
+    fn hosts(hops: &[Hop]) -> Vec<&str> {
+        hops.iter().map(|hop| hop.ssh.host.as_str()).collect()
+    }
+
+    fn own(index: usize, id: &str) -> HopSecrets {
+        HopSecrets::Layer {
+            index,
+            id: id.to_owned(),
+        }
     }
 
     #[test]
     fn hops_keep_their_order_and_a_disabled_one_is_left_out() {
         let config = config(
-            r#"{"transport_layers":[{"type":"ssh","host":"edge"},{"type":"ssh","host":"off","enabled":false},
-                {"type":"ssh","host":"inner","port":2222}]}"#,
+            r#"{"transport_layers":[{"type":"ssh","id":"l1","host":"edge"},
+                {"type":"ssh","host":"off","enabled":false},{"type":"ssh","host":"inner","port":2222}]}"#,
         );
 
         let (hops, lost) = config.route(&HashMap::new());
 
         assert_eq!(hosts(&hops), ["edge", "inner"]);
-        assert_eq!(hops[1].port, 2222);
+        assert_eq!(hops[1].ssh.port, 2222);
         assert!(lost.is_empty());
+        assert_eq!(
+            (&hops[0].secrets, &hops[1].secrets),
+            (&own(0, "l1"), &own(2, "")),
+            "a hop's secrets are kept by its place among every layer"
+        );
     }
 
     #[test]
@@ -216,7 +260,8 @@ mod tests {
         let (hops, lost) = config.route(&profiles);
 
         assert_eq!(hosts(&hops), ["shared"]);
-        assert_eq!(hops[0].user, "ops");
+        assert_eq!(hops[0].ssh.user, "ops");
+        assert_eq!(hops[0].secrets, HopSecrets::Profile("p1".to_owned()));
         assert_eq!(lost, BTreeSet::from([SSH_TUNNEL]));
     }
 
@@ -241,12 +286,16 @@ mod tests {
         );
         let (hops, lost) = single.route(&HashMap::new());
         assert_eq!(hosts(&hops), ["bastion"]);
-        assert_eq!((hops[0].port, hops[0].user.as_str()), (22, "ops"));
+        assert_eq!((hops[0].ssh.port, hops[0].ssh.user.as_str()), (22, "ops"));
+        assert_eq!(hops[0].secrets, own(0, LEGACY_LAYER));
         assert_eq!(lost, BTreeSet::from([PROXY]));
 
-        let chained =
-            config(r#"{"ssh_enabled":true,"ssh_host":"ignored","ssh_tunnels":[{"host":"edge"},{"host":"inner"}]}"#);
-        assert_eq!(hosts(&chained.route(&HashMap::new()).0), ["edge", "inner"]);
+        let chained = config(
+            r#"{"ssh_enabled":true,"ssh_host":"ignored","ssh_tunnels":[{"id":"h1","host":"edge"},{"host":"inner"}]}"#,
+        );
+        let (hops, _) = chained.route(&HashMap::new());
+        assert_eq!(hosts(&hops), ["edge", "inner"]);
+        assert_eq!((&hops[0].secrets, &hops[1].secrets), (&own(0, "h1"), &own(1, "")));
 
         let off = config(r#"{"ssh_enabled":false,"ssh_host":"bastion"}"#);
         assert!(off.route(&HashMap::new()).0.is_empty());

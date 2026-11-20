@@ -8000,6 +8000,7 @@ name = "tablepro-foreign-import"
 version = "0.0.0"
 dependencies = [
  "aes 0.8.4",
+ "aws-lc-rs",
  "base64 0.22.1",
  "blowfish 0.9.1",
  "cbc 0.1.2",

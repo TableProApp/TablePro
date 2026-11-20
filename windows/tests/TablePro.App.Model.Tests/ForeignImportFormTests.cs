@@ -9,7 +9,7 @@ public sealed class ForeignImportFormTests
     [Theory]
     [InlineData(ForeignApp.DBeaver, true, ForeignPasswordNote.DecryptedWhileReading, true)]
     [InlineData(ForeignApp.DataGrip, true, ForeignPasswordNote.PasswordFile, true)]
-    [InlineData(ForeignApp.Dbx, false, ForeignPasswordNote.SystemStore, true)]
+    [InlineData(ForeignApp.Dbx, true, ForeignPasswordNote.KeyInCredentialManager, true)]
     [InlineData(ForeignApp.TablePlus, false, ForeignPasswordNote.SystemStore, false)]
     [InlineData(ForeignApp.Navicat, true, ForeignPasswordNote.DecryptedWhileReading, false)]
     public async Task TheOptionsFollowWhereTheChosenAppKeepsItsPasswordsAndQueries(
@@ -95,6 +95,19 @@ public sealed class ForeignImportFormTests
         Assert.False(form.Queries.Checked);
         Assert.Equal(new ForeignImportRequest(false, false), form.Request());
         form.SetPasswords(true);
+        Assert.Equal(new ForeignImportRequest(true, false), form.Request());
+    }
+
+    [Fact]
+    public async Task DbxPasswordsAreReadOnlyWhenAskedForWhileAnUnreadableStoreIsStillAskedAbout()
+    {
+        var form = await Loaded(new FakeImporter(Sources(tablePlusFound: true)));
+
+        form.Choose(ForeignApp.Dbx);
+        form.SetPasswords(false);
+        Assert.Equal(new ForeignImportRequest(false, true), form.Request());
+
+        form.Choose(ForeignApp.TablePlus);
         Assert.Equal(new ForeignImportRequest(true, false), form.Request());
     }
 
