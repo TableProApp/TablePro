@@ -235,7 +235,6 @@
             Grid.Row="3"
             Margin="0,48,0,0"
             HorizontalAlignment="Center"
-            AutomationProperties.AutomationId="EmptyProject"
             Spacing="8"
             Visibility="Collapsed">
             <TextBlock

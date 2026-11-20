@@ -70,7 +70,8 @@ public sealed partial class ShellTests
         Assert.True(
             Retry.WhileFalse(() => IsActive(app, name), AppSession.Wait, throwOnTimeout: false).Success,
             $"The new project {name} did not become the active one.");
-        app.Find("EmptyProject");
+        // The panel itself has no automation peer.
+        app.Find("EmptyProjectTitle");
     }
 
     private static void SwitchProject(AppSession app, string name)
