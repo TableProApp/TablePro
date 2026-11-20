@@ -32,6 +32,7 @@ fn paint() -> Rc<ColumnPaint> {
         attributes: Rc::new(TextAttributes::new()),
         preferences: Default::default(),
         numbers: Cell::new(false),
+        wrap: Rc::default(),
     })
 }
 
@@ -650,6 +651,7 @@ fn a_cell_can_read_highlights_when_bound_before_it_is_parented() {
         attributes: Rc::new(TextAttributes::new()),
         preferences: Default::default(),
         numbers: Cell::new(false),
+        wrap: Rc::default(),
     }));
     assert!(cell.parent().is_none());
     cell.bind(&grid.grid.store().row(0).expect("first row"));

@@ -124,6 +124,8 @@ struct DataGridSettings: Codable, Equatable {
     var defaultSortDirection: SortDirection
     var rowCopyFormat: RowCopyFormat
     var showInvisibleCharacters: Bool
+    // What a new tab's grid starts with; an open tab keeps its own choice.
+    var wrapText: Bool
     // 0 keeps every result a run returns.
     var resultSetsKeptPerRun: Int
 
@@ -143,6 +145,7 @@ struct DataGridSettings: Codable, Equatable {
         defaultSortDirection: .ascending,
         rowCopyFormat: .rows,
         showInvisibleCharacters: true,
+        wrapText: false,
         resultSetsKeptPerRun: 0
     )
 
@@ -162,6 +165,7 @@ struct DataGridSettings: Codable, Equatable {
         defaultSortDirection: SortDirection = .ascending,
         rowCopyFormat: RowCopyFormat = .rows,
         showInvisibleCharacters: Bool = true,
+        wrapText: Bool = false,
         resultSetsKeptPerRun: Int = 0
     ) {
         self.rowHeight = rowHeight
@@ -179,6 +183,7 @@ struct DataGridSettings: Codable, Equatable {
         self.defaultSortDirection = defaultSortDirection
         self.rowCopyFormat = rowCopyFormat
         self.showInvisibleCharacters = showInvisibleCharacters
+        self.wrapText = wrapText
         self.resultSetsKeptPerRun = resultSetsKeptPerRun
     }
 
@@ -207,6 +212,7 @@ struct DataGridSettings: Codable, Equatable {
         showInvisibleCharacters = container.decodeSetting(
             .showInvisibleCharacters, default: fallback.showInvisibleCharacters
         )
+        wrapText = container.decodeSetting(.wrapText, default: fallback.wrapText)
         resultSetsKeptPerRun = container.decodeSetting(.resultSetsKeptPerRun, default: fallback.resultSetsKeptPerRun)
     }
 

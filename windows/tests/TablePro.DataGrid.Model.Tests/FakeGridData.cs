@@ -37,12 +37,14 @@ internal sealed class FakeGridData(int rows, int columns) : IGridData
     {
         private readonly char[] _scratch = new char[64];
 
+        public bool KeepsLineBreaks { get; set; }
+
         public void Read(int firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters, CellBlock block)
         {
             data.Reads++;
             var rows = Math.Max(0, Math.Min(rowCount, data.RowCount - firstRow));
             var columns = Math.Max(0, Math.Min(columnCount, data.ColumnCount - firstColumn));
-            block.Reset(firstRow, rows, firstColumn, columns, maxCharacters);
+            block.Reset(firstRow, rows, firstColumn, columns, maxCharacters, KeepsLineBreaks);
             for (var column = firstColumn; column < firstColumn + columns; column++)
             {
                 for (var row = firstRow; row < firstRow + rows; row++)
@@ -55,9 +57,10 @@ internal sealed class FakeGridData(int rows, int columns) : IGridData
                             block.AddNull();
                             continue;
                         }
-                        var shown = value.Replace('\n', ' ');
+                        var shown = KeepsLineBreaks ? value : value.Replace('\n', ' ');
                         var cut = shown.Length > maxCharacters;
-                        block.Add(cut ? shown.AsSpan(0, maxCharacters) : shown, cut, lossy: shown.Contains(' ', StringComparison.Ordinal));
+                        var lossy = shown.AsSpan().IndexOfAny(' ', '\n') >= 0;
+                        block.Add(cut ? shown.AsSpan(0, maxCharacters) : shown, cut, lossy);
                         continue;
                     }
                     if ((row + column) % 7 == 3)

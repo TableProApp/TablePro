@@ -80,12 +80,15 @@ fn more_menu(page_sizes: &[u64]) -> gio::Menu {
     rows.append(Some(&gettext("_Insert Row")), Some("grid.insert-row"));
     rows.append(Some(&gettext("_Delete Selected Rows")), Some("grid.delete-rows"));
     rows.append(Some(&gettext("_Row Details")), Some("grid.show-details"));
+    let view = gio::Menu::new();
+    view.append(Some(&gettext("_Wrap Text")), Some("grid.wrap-text"));
     let pages = gio::Menu::new();
     pages.append(Some(&gettext("First _Page")), Some("browse.first-page"));
     pages.append(Some(&gettext("_Last Page")), Some("browse.last-page"));
     let menu = gio::Menu::new();
     menu.append_section(None, &actions);
     menu.append_section(None, &rows);
+    menu.append_section(None, &view);
     menu.append_section(None, &pages);
     menu.append_section(Some(&gettext("Rows per Page")), &page_size_menu(page_sizes));
     menu
@@ -199,6 +202,7 @@ pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
         find: false,
         filter_by_value: true,
         share: true,
+        wrap_text: true,
         tasks: init.tasks,
         label: init.label,
     });
@@ -370,6 +374,24 @@ mod tests {
                 .as_deref()
                 == Some("grid.highlight-rules")
         }));
+    }
+
+    #[test]
+    fn the_more_menu_offers_wrap_text() {
+        let menu = more_menu(&[]);
+        let offered = (0..menu.n_items())
+            .filter_map(|section| menu.item_link(section, "section"))
+            .any(|section| {
+                (0..section.n_items()).any(|item| {
+                    section
+                        .item_attribute_value(item, "action", None)
+                        .and_then(|value| value.get::<String>())
+                        .as_deref()
+                        == Some("grid.wrap-text")
+                })
+            });
+
+        assert!(offered);
     }
 
     #[gtk4::test]

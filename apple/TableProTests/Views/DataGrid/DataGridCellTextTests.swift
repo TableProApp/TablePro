@@ -34,6 +34,18 @@ struct DataGridCellTextTests {
         #expect(text.sanitizedForCellDisplay == flattened(text, keepingLoneCarriageReturns: false))
     }
 
+    @Test(
+        "A wrapping cell keeps each break as one LF and drops one that ends the value",
+        arguments: [
+            ("plain", "plain"), ("a\nb", "a\nb"), ("a\r\nb", "a\nb"), ("a\rb", "a\nb"), ("a\u{0B}b\u{0C}c", "a\nb\nc"),
+            ("a\u{85}b", "a\nb"), ("a\u{2028}b\u{2029}c", "a\nb\nc"), ("a\n", "a"), ("a\r\n", "a"), ("a\n\n", "a\n"),
+            ("\n", ""), ("a\r\n\r\nb", "a\n\nb"), ("Việt\u{2028}Nam\r", "Việt\nNam"), ("", ""),
+        ]
+    )
+    func wrappingKeepsLineBreaks(text: String, expected: String) {
+        #expect(text.keepingLineBreaksForCell == expected)
+    }
+
     @Test("A value with no break comes back as it was")
     func unbrokenTextIsUnchanged() {
         let text = String(repeating: "Tiếng Việt ", count: 1_000)

@@ -50,6 +50,13 @@ public sealed partial class KeyTabView : UserControl, ITabContent, IKeyTabView
 
     public DataGridView? Grid => KeyGrid;
 
+    // A key's fields are not rows of a table or a result, which are what wrap.
+    public bool? WrapsText => null;
+
+    public void SetWrapsText(bool wraps)
+    {
+    }
+
     public bool GridIsTarget => _gridIsTarget && KeyGrid.Visibility == Visibility.Visible;
 
     public TextBox? MessagesTarget => null;

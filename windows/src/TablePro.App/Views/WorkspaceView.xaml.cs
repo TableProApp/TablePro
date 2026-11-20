@@ -451,7 +451,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 restored?.FileUnsaved ?? false,
                 onDisk,
                 restored?.FoldedLines,
-                restored?.CustomTitle),
+                restored?.CustomTitle,
+                restored?.WrapText),
             Symbol.Document,
             index);
     }

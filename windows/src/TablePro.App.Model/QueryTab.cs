@@ -149,7 +149,8 @@ public sealed partial class QueryTab : IWorkspaceTab
         bool baselineUnknown = false,
         bool restoring = false,
         IResultEditView? resultEdits = null,
-        string? customTitle = null)
+        string? customTitle = null,
+        bool? wrapText = null)
     {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(session);
@@ -165,6 +166,8 @@ public sealed partial class QueryTab : IWorkspaceTab
         _history = history;
         _files = files;
         _resultView = resultEdits;
+        // Read once: a later change of the setting is for new tabs, not this one.
+        WrapsText = wrapText ?? settings().GridWrapText;
         Database = Kept(database);
         if (files is not null && !string.IsNullOrEmpty(filePath))
         {
@@ -195,6 +198,20 @@ public sealed partial class QueryTab : IWorkspaceTab
 
     // A run the user started ended, cancelled or not; a sort or a commit is not one.
     public event EventHandler<RunEnd>? RunEnded;
+
+    // Whether the tab's grid wraps long values, which the View menu and the header menu turn on and off.
+    public bool WrapsText { get; private set; }
+
+    public void SetWrapsText(bool wraps)
+    {
+        if (WrapsText == wraps)
+        {
+            return;
+        }
+        WrapsText = wraps;
+        // The workspace drops its cached snapshot on this, so the session keeps the choice.
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     // What the strip, the share sheet and Save As show: the typed name, else the automatic title.
     public string Title => CustomTitle ?? AutomaticTitle;
@@ -346,6 +363,7 @@ public sealed partial class QueryTab : IWorkspaceTab
         FileStamp = FilePath is null ? null : _stamp,
         FileUnsaved = FilePath is not null && TextDiffers(),
         FoldedLines = _view.FoldedLines is { Count: > 0 } folded ? [.. folded] : null,
+        WrapText = WrapsText,
     };
 
     // The server rolls the transaction back once the app ends, so a relaunch can say so.

@@ -114,6 +114,7 @@ public sealed partial class SettingsView : UserControl
         FillFamilies(GridFontBox, SqlEditor.InstalledFontFamilies(monospacedOnly: false), settings.GridFontFamily, "GridFontDefault");
         GridFontSizeBox.Value = settings.GridFontSize;
         NullDisplayBox.Text = settings.NullDisplay;
+        GridWrapSwitch.IsOn = settings.GridWrapText;
         FillChoices(HistoryRetentionBox, AppSettings.HistoryRetentionChoices, settings.HistoryRetentionDays, RetentionLabel);
         FillChoices(HistoryMaxBox, AppSettings.HistoryMaxEntriesChoices, settings.HistoryMaxEntries, MaxEntriesLabel);
         NotifySwitch.IsOn = settings.NotifyLongWork;
@@ -342,6 +343,15 @@ public sealed partial class SettingsView : UserControl
         {
             var text = NullDisplayBox.Text;
             _workbench.UpdateSettings(settings => settings with { NullDisplay = text });
+        }
+    }
+
+    private void OnGridWrapToggled(object sender, RoutedEventArgs e)
+    {
+        if (!_loading)
+        {
+            var wrap = GridWrapSwitch.IsOn;
+            _workbench.UpdateSettings(settings => settings with { GridWrapText = wrap });
         }
     }
 

@@ -36,6 +36,8 @@ mod imp {
         #[template_child]
         pub invisibles_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
+        pub wrap_text_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
         pub date_format_row: TemplateChild<adw::ComboRow>,
         #[template_child]
         pub default_sort_row: TemplateChild<adw::ComboRow>,
@@ -137,6 +139,9 @@ impl DataBrowserGroup {
         );
         gio_settings
             .bind(keys::SHOW_INVISIBLE_CHARACTERS, &imp.invisibles_row.get(), "active")
+            .build();
+        gio_settings
+            .bind(keys::GRID_WRAP_TEXT, &imp.wrap_text_row.get(), "active")
             .build();
         bind_choice(
             &imp.date_format_row.get(),
@@ -256,6 +261,22 @@ mod tests {
             .expect("store the flag");
         assert!(first.imp().invisibles_row.is_active());
         assert!(second.imp().invisibles_row.is_active());
+    }
+
+    #[gtk4::test]
+    fn wrap_text_switches_follow_each_other_and_external_settings() {
+        let settings = MemorySettings::new();
+        let first = bound_group(&settings);
+        let second = bound_group(&settings);
+        assert!(!first.imp().wrap_text_row.is_active(), "wrap is on by default");
+        assert_eq!(first.imp().wrap_text_row.title(), "Wrap Text");
+
+        first.imp().wrap_text_row.set_active(true);
+        assert!(settings.get().grid_wrap_text());
+        assert!(second.imp().wrap_text_row.is_active());
+        settings.get().set_grid_wrap_text(false).expect("store the flag");
+        assert!(!first.imp().wrap_text_row.is_active());
+        assert!(!second.imp().wrap_text_row.is_active());
     }
 
     #[gtk4::test]

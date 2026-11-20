@@ -182,6 +182,11 @@ extension DataGridViewController {
         guard row >= 0, row < table.numberOfRows else { return }
         revealingInGrid {
             table.scrollRowToVisible(row)
+            if wrapsText {
+                // The row was placed by an estimate until it was measured, which the scroll just did.
+                measureViewportRows()
+                table.scrollRowToVisible(row)
+            }
             if let displayColumn {
                 revealColumn(displayColumn)
             }
@@ -411,7 +416,8 @@ extension DataGridViewController {
         guard let rowModel = model.row(at: row), let column = model.columns.column(at: cell.displayColumn) else { return false }
         let columnRect = table.rect(ofColumn: tableColumn)
         let rowRect = table.rect(ofRow: row)
-        let cellRect = NSRect(x: columnRect.minX, y: rowRect.minY, width: columnRect.width, height: rowRect.height)
+        let wholeCell = NSRect(x: columnRect.minX, y: rowRect.minY, width: columnRect.width, height: rowRect.height)
+        let cellRect = wrapMetrics?.firstLine(of: wholeCell) ?? wholeCell
         if model.configuration.checkboxColumns.contains(column.dataIndex) {
             guard DataGridCheckboxMark.frame(in: cellRect).contains(point) else { return false }
             return toggleCheckbox(rowID: rowModel.id, column: column, displayRow: row)

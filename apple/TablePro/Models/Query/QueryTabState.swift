@@ -74,6 +74,8 @@ struct PersistedTab: Codable {
     var collapsedFoldRanges: [Int]?
     var columnWidths: [String: CGFloat]?
     var columnContentWidths: [String: CGFloat]?
+    // Nil in files written before this existed: the tab then takes the Data Grid setting.
+    var wrapsText: Bool?
     var windowGroupIndex: Int?
     var isPinned: Bool = false
     var isTemporary: Bool = false
@@ -107,6 +109,7 @@ struct PersistedTab: Codable {
         collapsedFoldRanges: [Int]? = nil,
         columnWidths: [String: CGFloat]? = nil,
         columnContentWidths: [String: CGFloat]? = nil,
+        wrapsText: Bool? = nil,
         windowGroupIndex: Int? = nil,
         isPinned: Bool = false,
         isTemporary: Bool = false
@@ -136,6 +139,7 @@ struct PersistedTab: Codable {
         self.collapsedFoldRanges = collapsedFoldRanges
         self.columnWidths = columnWidths
         self.columnContentWidths = columnContentWidths
+        self.wrapsText = wrapsText
         self.windowGroupIndex = windowGroupIndex
         self.isPinned = isPinned
         self.isTemporary = isTemporary
@@ -146,7 +150,7 @@ struct PersistedTab: Codable {
         case sourceFileURL, sourceFileEncoding, erDiagramSchemaKey, objectRef, versionHistorySubject, queryParameters
         case sortColumns, sortSource, restoredPage, restoredPageSize, cursorOffset, cursorLength
         case collapsedFoldRanges
-        case columnWidths, columnContentWidths, windowGroupIndex
+        case columnWidths, columnContentWidths, wrapsText, windowGroupIndex
         case isPinned
         case isTemporary
         case overflowFileName
@@ -179,6 +183,7 @@ struct PersistedTab: Codable {
         collapsedFoldRanges = try container.decodeIfPresent([Int].self, forKey: .collapsedFoldRanges)
         columnWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnWidths)
         columnContentWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnContentWidths)
+        wrapsText = try container.decodeIfPresent(Bool.self, forKey: .wrapsText)
         windowGroupIndex = try container.decodeIfPresent(Int.self, forKey: .windowGroupIndex)
         isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
         isTemporary = try container.decodeIfPresent(Bool.self, forKey: .isTemporary) ?? false

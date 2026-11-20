@@ -13,6 +13,8 @@ final class DataGridContainerView: NSView {
     weak var controller: DataGridViewController?
 
     private(set) var gridHasFocus = false
+    // Set while the grid wraps: AppKit estimates the rows it has not asked about, so the two documents differ in height.
+    var anchorsRowsWhenSyncing = false
     private var isSyncingScroll = false
     private var firstResponderObservation: NSKeyValueObservation?
     private var windowObservers: [NSObjectProtocol] = []
@@ -127,16 +129,46 @@ final class DataGridContainerView: NSView {
         ]
     }
 
+    func resyncVertical() {
+        syncVertical(from: main.scrollView, to: frozen.scrollView)
+    }
+
     // clipView.scroll(to:) is right here: only y moves, so the header clip, which follows x, never drifts.
     private func syncVertical(from source: NSScrollView, to target: NSScrollView) {
         guard !isSyncingScroll, !target.isHidden || target === main.scrollView else { return }
-        let y = source.contentView.bounds.origin.y
         let clip = target.contentView
-        guard clip.bounds.origin.y != y else { return }
+        let y: CGFloat
+        if anchorsRowsWhenSyncing {
+            y = rowAnchoredY(from: source, to: target)
+            guard abs(clip.bounds.origin.y - y) > 0.01 else { return }
+        } else {
+            y = source.contentView.bounds.origin.y
+            guard clip.bounds.origin.y != y else { return }
+        }
         isSyncingScroll = true
         clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
         target.reflectScrolledClipView(clip)
         isSyncingScroll = false
+    }
+
+    // The same row at the same offset under each header, whatever height each table gives the rows above it.
+    private func rowAnchoredY(from source: NSScrollView, to target: NSScrollView) -> CGFloat {
+        let sourceClip = source.contentView
+        let y = sourceClip.bounds.origin.y
+        guard let sourceTable = source.documentView as? NSTableView,
+              let targetTable = target.documentView as? NSTableView else { return y }
+        let rowCount = min(sourceTable.numberOfRows, targetTable.numberOfRows)
+        let top = y + sourceClip.contentInsets.top
+        guard rowCount > 0, top >= 0 else { return y }
+        let targetInset = target.contentView.contentInsets.top
+        let shown = sourceTable.rows(in: NSRect(x: sourceClip.bounds.minX, y: top, width: max(sourceClip.bounds.width, 1), height: 1))
+        guard shown.length > 0, shown.location >= 0, shown.location < rowCount else {
+            // Past the last row, as an elastic scroll goes: the distance below it is the same in both.
+            let last = rowCount - 1
+            return targetTable.rect(ofRow: last).maxY + top - sourceTable.rect(ofRow: last).maxY - targetInset
+        }
+        let row = shown.location
+        return targetTable.rect(ofRow: row).minY + top - sourceTable.rect(ofRow: row).minY - targetInset
     }
 
     private func observePageScroll() {

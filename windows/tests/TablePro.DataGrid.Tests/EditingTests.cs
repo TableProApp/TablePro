@@ -44,6 +44,62 @@ public sealed class EditingTests
     });
 
     [Fact]
+    public Task TheEditorCoversAWrappedRowAndWrapsItsTextAndWithWrapOffIsOneRowAgain() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WrapChecks.ShowAsync(new WrapData());
+        grid.IsEditable = true;
+        grid.SelectCell(0, 1, extend: false);
+
+        grid.BeginEdit();
+        await SettleAsync(grid);
+
+        var editor = Assert.IsType<TextBox>(grid.Editor);
+        Assert.Equal(WrapData.Sentence, editor.Text);
+        Assert.Equal(TextWrapping.Wrap, editor.TextWrapping);
+        Assert.True(grid.RowHeightOf(0) > grid.RowHeight);
+        Assert.True(editor.ActualHeight >= grid.RowHeightOf(0) - 1, $"the editor is {editor.ActualHeight} high");
+        var at = editor.TransformToVisual(grid.ScrollingPane).TransformPoint(default);
+        Assert.Equal(grid.RowTop(0), at.Y, 1.0);
+        grid.CancelEdit();
+
+        grid.SelectCell(2, 1, extend: false);
+        grid.BeginEdit();
+        await SettleAsync(grid);
+        at = grid.Editor!.TransformToVisual(grid.ScrollingPane).TransformPoint(default);
+        Assert.Equal(grid.RowTop(2), at.Y, 1.0);
+        Assert.True(grid.RowTop(2) > 2 * grid.RowHeight);
+        grid.CancelEdit();
+
+        grid.WrapsText = false;
+        await SettleAsync(grid);
+        grid.BeginEdit();
+        await SettleAsync(grid);
+        Assert.Equal(TextWrapping.NoWrap, grid.Editor!.TextWrapping);
+        at = grid.Editor!.TransformToVisual(grid.ScrollingPane).TransformPoint(default);
+        Assert.Equal(2 * grid.RowHeight, at.Y, 1.0);
+        Assert.Equal(grid.RowHeight, grid.Editor!.ActualHeight, 1.0);
+        grid.CancelEdit();
+    });
+
+    [Fact]
+    public Task TurningWrapOnKeepsWhatTheOpenEditorHolds() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await ShowEditableAsync(new WrapData());
+        var committed = new List<string>();
+        grid.CellEditCommitting += (_, e) => committed.Add(e.Text);
+        grid.SelectCell(2, 1, extend: false);
+        grid.BeginEdit();
+        await SettleAsync(grid);
+        grid.Editor!.Text = "typed";
+
+        grid.WrapsText = true;
+        await SettleAsync(grid);
+
+        Assert.False(grid.IsEditing);
+        Assert.Equal("typed", Assert.Single(committed));
+    });
+
+    [Fact]
     public Task AnEditorInAFrozenColumnSitsInTheFrozenPane() => WinUiHost.RunAsync(async () =>
     {
         var grid = await ShowEditableAsync(new SyntheticData(), frozen: 1);

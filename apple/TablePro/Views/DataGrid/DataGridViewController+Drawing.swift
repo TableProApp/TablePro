@@ -37,7 +37,8 @@ extension DataGridViewController {
             selected: selected,
             isWholeRow: !columns.isEmpty && selected.contains(integersIn: 0..<columns.count),
             isEmphasized: isEmphasized,
-            pass: pass
+            pass: pass,
+            wrap: wrapMetrics
         )
         let dragged = Self.draggedColumnIndex(of: table)
         for index in table.columnIndexes(in: view.convert(dirtyRect, to: table)) where index != dragged {
@@ -62,6 +63,7 @@ extension DataGridViewController {
         let isWholeRow: Bool
         let isEmphasized: Bool
         let pass: DataGridCellPresenter.Pass
+        let wrap: DataGridWrapMetrics?
     }
 
     private func drawCell(
@@ -79,7 +81,7 @@ extension DataGridViewController {
             let number = (model.dataSource?.gridRowNumberOffset ?? 0) + line.row + 1
             presenter.renderer.drawRowNumber(
                 number,
-                in: cellRect,
+                in: line.wrap?.firstLine(of: cellRect) ?? cellRect,
                 font: line.pass.palette.rowNumberFont,
                 color: line.pass.palette.rowNumberColor(
                     for: line.visualState,
@@ -98,7 +100,7 @@ extension DataGridViewController {
                       pass: line.pass,
                       onEmphasizedSelection: line.isEmphasized && line.selected.contains(position)
                   ) else { return }
-            presenter.renderer.draw(appearance, in: cellRect, controlView: view)
+            presenter.renderer.draw(appearance, in: cellRect, controlView: view, wrap: line.wrap)
         case nil:
             return
         }

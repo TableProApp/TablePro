@@ -141,8 +141,14 @@ public sealed partial class DataGridView
             }
         }
         _cache?.Dispose();
-        _cache = new CellCache(_data.OpenReader());
+        _cache = new CellCache(_data.OpenReader()) { KeepsLineBreaks = _wrapsText };
         var count = _data.RowCount;
+        // An edit may change any row's lines, so every wrapped row measures again around the first row in view.
+        (int Row, double Part)? anchor = _heights is null ? null : FirstRowAnchor();
+        if (_heights is not null)
+        {
+            _heights = NewHeights(count);
+        }
         if (count != RowCount)
         {
             var focus = (_selection.FocusRow, _selection.FocusColumn);
@@ -178,8 +184,13 @@ public sealed partial class DataGridView
             Cancel(EditorFocused);
         }
         _layoutVersion++;
+        var moved = anchor is { } held && PlaceFirstRow(held);
         InvalidateRows();
         Follow(_viewX, _viewY);
+        if (moved)
+        {
+            SyncScroller();
+        }
         RaiseStatusChanges();
     }
 
@@ -391,9 +402,18 @@ public sealed partial class DataGridView
             return;
         }
         Canvas.SetLeft(_editor, _columns.PaneX(edit.Column));
-        Canvas.SetTop(_editor, (edit.Row * _rowHeight) - _originY);
+        Canvas.SetTop(_editor, RowTop(edit.Row) - _originY);
         _editor.Width = _columns.Width(edit.Column);
-        if (_editor.AcceptsReturn)
+        _editor.TextWrapping = _heights is null ? TextWrapping.NoWrap : TextWrapping.Wrap;
+        if (_heights is not null)
+        {
+            // Over a wrapped cell the box wraps too and covers the row, however many lines the row shows.
+            var height = RowHeightOf(edit.Row);
+            _editor.Height = double.NaN;
+            _editor.MinHeight = height;
+            _editor.MaxHeight = Math.Max(height, _rowHeight * EditorMaxRows);
+        }
+        else if (_editor.AcceptsReturn)
         {
             _editor.Height = double.NaN;
             _editor.MinHeight = _rowHeight;

@@ -66,6 +66,20 @@ struct SettingsFieldDecodingTests {
         #expect(decoded.rowCopyFormat == .csvWithHeaders)
     }
 
+    @Test("Data Grid settings saved before Wrap text in cells leave it off, and a choice round-trips")
+    func wrapTextDefaultsToOff() throws {
+        let legacy = try decode(DataGridSettings.self, #"{"showRowNumbers":false}"#)
+        #expect(legacy.wrapText == false)
+        #expect(DataGridSettings.default.wrapText == false)
+
+        var chosen = DataGridSettings.default
+        chosen.wrapText = true
+        let decoded = try decode(DataGridSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.wrapText)
+
+        #expect(try decode(DataGridSettings.self, #"{"wrapText":"yes"}"#).wrapText == false)
+    }
+
     @Test("Data Grid settings saved before results kept per run keep every result, and a choice round-trips")
     func resultSetsKeptPerRunDefaultsToNoLimit() throws {
         let legacy = try decode(DataGridSettings.self, #"{"showRowNumbers":false}"#)

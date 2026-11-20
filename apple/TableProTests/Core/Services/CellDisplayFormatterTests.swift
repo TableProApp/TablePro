@@ -165,6 +165,32 @@ struct CellDisplayFormatterTests {
         #expect(result == "line1 line2\rline3  line4")
     }
 
+    @Test("a grid that wraps asks for the line breaks, each as one LF, and still caps the value")
+    func keepsLineBreaksOnRequest() throws {
+        let kept = CellDisplayFormatter.display(
+            .text("line1\nline2\rline3\r\nline4\n"),
+            columnType: nil,
+            displayFormat: nil,
+            databaseType: nil,
+            keepsLineBreaks: true
+        )
+        #expect(kept.text == "line1\nline2\nline3\nline4")
+
+        let flattened = CellDisplayFormatter.display(.text("a\nb"), columnType: nil, displayFormat: nil, databaseType: nil)
+        #expect(flattened.text == "a b")
+
+        let long = String(repeating: "a\n", count: CellDisplayFormatter.maxDisplayLength)
+        let capped = try #require(CellDisplayFormatter.display(
+            .text(long),
+            columnType: nil,
+            displayFormat: nil,
+            databaseType: nil,
+            keepsLineBreaks: true
+        ).text)
+        #expect((capped as NSString).length == CellDisplayFormatter.maxDisplayLength + 1)
+        #expect(capped.hasSuffix("…"))
+    }
+
     @Test("text over max length is truncated")
     func longTextTruncated() {
         let longString = String(repeating: "a", count: CellDisplayFormatter.maxDisplayLength + 100)

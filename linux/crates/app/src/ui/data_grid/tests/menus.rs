@@ -67,7 +67,7 @@ fn every_header_action_is_in_the_cell_menus_column_submenu() {
     let in_cell = action_names(&menu);
     let header_actions = menu_actions(&header);
 
-    assert_eq!(header_actions.len(), 9, "{header_actions:?}");
+    assert_eq!(header_actions.len(), 10, "{header_actions:?}");
     for (action, column) in &header_actions {
         assert!(column.is_none_or(|column| column == 1), "{action} names another column");
         let counterpart = cell_menu_counterpart(action.as_str());
@@ -95,7 +95,7 @@ fn every_grid_menu_gives_each_item_its_own_access_key() {
     assert_access_keys(&cell_menu(&grid));
     assert_access_keys(&empty);
     assert_access_keys(&data_column(&grid, 1).header_menu().expect("the header's menu"));
-    assert_access_keys(&crate::ui::data_grid::grid_menu::row_numbers_header_menu());
+    assert_access_keys(&crate::ui::data_grid::grid_menu::row_numbers_header_menu(true));
 }
 
 #[gtk4::test]
@@ -326,7 +326,10 @@ fn the_row_number_headers_menu_selects_every_row() {
 
     grid.activate("select-all");
 
-    assert_eq!(action_names(&header), ["grid.select-all", "grid.columns"]);
+    assert_eq!(
+        action_names(&header),
+        ["grid.select-all", "grid.columns", "grid.wrap-text"]
+    );
     assert_eq!(
         accel_of(&header, "grid.select-all"),
         Some(Some("<Primary>a".to_owned()))

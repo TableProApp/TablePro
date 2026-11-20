@@ -41,6 +41,12 @@ public sealed partial class DefinitionTabView : UserControl, ITabContent, IDefin
 
     public DataGridView? Grid => null;
 
+    public bool? WrapsText => null;
+
+    public void SetWrapsText(bool wraps)
+    {
+    }
+
     public bool GridIsTarget => false;
 
     public TextBox? MessagesTarget => DefinitionText.Visibility == Visibility.Visible ? DefinitionText : null;

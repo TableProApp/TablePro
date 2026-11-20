@@ -1618,6 +1618,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuShowSavedQueries.IsChecked = workspace?.SavedQueriesVisible ?? false;
         MenuShowAssistant.IsEnabled = workspace?.CanShowAssistant ?? false;
         MenuShowAssistant.IsChecked = workspace?.AssistantVisible ?? false;
+        MenuWrapText.IsEnabled = tab?.WrapsText is not null;
+        MenuWrapText.IsChecked = tab?.WrapsText ?? false;
         var canAsk = workspace?.CanAskAssistant ?? false;
         MenuAiReview.IsEnabled = canAsk;
         MenuAiExplain.IsEnabled = canAsk;
@@ -1790,6 +1792,16 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     }
 
     private void OnFilterObjects(object sender, RoutedEventArgs e) => Workspace?.FocusFilter();
+
+    private void OnToggleWrapText(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab is { WrapsText: { } wraps } tab)
+        {
+            tab.SetWrapsText(!wraps);
+        }
+
+        UpdateCommands();
+    }
 
     private async void OnToggleHistory(object sender, RoutedEventArgs e)
     {

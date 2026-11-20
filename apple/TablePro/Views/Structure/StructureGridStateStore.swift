@@ -18,6 +18,7 @@ final class StructureGridStateStore: DataGridStateStore {
     var displayFormats: [ValueDisplayFormat?] = []
     var selectionSnapshot = GridSelectionSnapshot.empty
     var viewportAnchor: GridViewportPlacement?
+    var wrapsText = false
     let layoutScope: DataGridLayoutScope = .ephemeral
 
     var columnLayout: ColumnLayoutState {

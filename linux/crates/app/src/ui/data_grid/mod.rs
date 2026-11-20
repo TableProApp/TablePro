@@ -83,6 +83,9 @@ impl DataGrid {
         let columns = config.columns.clone();
         let sorting = config.sorting;
         let rules = config.rules.clone();
+        // Read once: the setting is what a new grid opens with, and an open one keeps its own.
+        imp.wrap
+            .set(config.wrap_text && config.settings.grid_preferences().snapshot().wrap_text);
         imp.column_view
             .update_property(&[gtk::accessible::Property::Label(&config.label)]);
         imp.config.replace(Some(config));

@@ -1,6 +1,6 @@
 # 0003: TablePro's own data grid control
 
-- **Status**: Accepted; column order amended by [0013](0013-row-details-column-layout-and-selection-summary.md)
+- **Status**: Accepted; column order amended by [0013](0013-row-details-column-layout-and-selection-summary.md); one line per cell and the fixed row height superseded by [0024](0024-wrapped-cells-and-uneven-rows.md)
 - **Date**: 2026-11-03
 
 ## Context

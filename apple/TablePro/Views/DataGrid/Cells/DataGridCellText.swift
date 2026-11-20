@@ -32,6 +32,46 @@ internal extension String {
         flattenedOntoOneLine(keepingLoneCarriageReturns: true)
     }
 
+    // What a wrapping cell lays out: every break form is one LF, CRLF counts once, and a break that ends the value goes.
+    var keepingLineBreaksForCell: String {
+        var text = self
+        let normalized: String? = text.withUTF8 { bytes in
+            var output: [UInt8] = []
+            var copiedUpTo = 0
+            var index = 0
+            var changed = false
+            while index < bytes.count {
+                var length = Self.lineBreakLength(in: bytes, at: index)
+                guard length > 0 else {
+                    index += 1
+                    continue
+                }
+                if bytes[index] == 0x0D, index + 1 < bytes.count, bytes[index + 1] == 0x0A {
+                    length = 2
+                }
+                let endsText = index + length == bytes.count
+                if length == 1, bytes[index] == 0x0A, !endsText {
+                    index += 1
+                    continue
+                }
+                if !changed {
+                    output.reserveCapacity(bytes.count)
+                    changed = true
+                }
+                output.append(contentsOf: bytes[copiedUpTo..<index])
+                if !endsText {
+                    output.append(0x0A)
+                }
+                index += length
+                copiedUpTo = index
+            }
+            guard changed else { return nil }
+            output.append(contentsOf: bytes[copiedUpTo...])
+            return String(bytes: output, encoding: .utf8)
+        }
+        return normalized ?? self
+    }
+
     // What a cell shows while marks are off: the lone CR reads as the space it always did.
     var shownWithoutMarks: String {
         guard utf8.contains(0x0D) else { return self }

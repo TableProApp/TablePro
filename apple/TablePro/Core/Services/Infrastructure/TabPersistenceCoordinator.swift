@@ -215,8 +215,10 @@ internal final class TabPersistenceCoordinator: ObservableObject {
             return RestoreResult(tabs: [], selectedTabId: nil, source: .none)
         }
 
-        let defaultPageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
-        var restoredTabs = state.tabs.map { QueryTab(from: $0, defaultPageSize: defaultPageSize) }
+        let dataGrid = AppSettingsManager.shared.dataGrid
+        var restoredTabs = state.tabs.map {
+            QueryTab(from: $0, defaultPageSize: dataGrid.defaultPageSize, defaultWrapsText: dataGrid.wrapText)
+        }
         FileTabBaseline.hydrate(&restoredTabs)
         RestoredHiddenColumns.hydrate(
             &restoredTabs,

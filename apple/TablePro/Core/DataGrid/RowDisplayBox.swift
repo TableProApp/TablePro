@@ -46,6 +46,31 @@ final class RowDisplayBox {
     }
 }
 
+// The lines each measured row needs while its grid wraps. A row with no entry has not been measured and stands one line tall.
+@MainActor
+final class RowLineCountStore {
+    private var counts: [RowID: Int] = [:]
+    // Rises whenever a count is dropped, so one measured off the main actor can tell it went stale on the way back.
+    private(set) var generation = 0
+
+    subscript(id: RowID) -> Int? {
+        get { counts[id] }
+        set { counts[id] = newValue }
+    }
+
+    var isEmpty: Bool { counts.isEmpty }
+
+    func remove(_ id: RowID) {
+        generation &+= 1
+        counts.removeValue(forKey: id)
+    }
+
+    func removeAll() {
+        generation &+= 1
+        counts.removeAll(keepingCapacity: true)
+    }
+}
+
 @MainActor
 final class RowDisplayCache {
     // Callers mutate a box in place, so only the cost recorded at insertion matches what was added to `totalCost`.
@@ -63,10 +88,13 @@ final class RowDisplayCache {
     private(set) var invalidations = 0
     private let countLimit: Int
     private let costLimit: Int
+    // A row's line count follows from its text, so every call that drops text drops the count with it.
+    private let lineCounts: RowLineCountStore?
 
-    init(countLimit: Int = 50_000, costLimit: Int = 64 * 1_024 * 1_024) {
+    init(countLimit: Int = 50_000, costLimit: Int = 64 * 1_024 * 1_024, lineCounts: RowLineCountStore? = nil) {
         self.countLimit = countLimit
         self.costLimit = costLimit
+        self.lineCounts = lineCounts
     }
 
     func box(forID id: RowID) -> RowDisplayBox? {
@@ -106,6 +134,7 @@ final class RowDisplayCache {
 
     func removeAll() {
         invalidations &+= 1
+        lineCounts?.removeAll()
         storage.removeAll(keepingCapacity: true)
         highlights.removeAll(keepingCapacity: true)
         insertionOrder.removeAll(keepingCapacity: true)
@@ -116,6 +145,7 @@ final class RowDisplayCache {
     // Row ids are positional: a row edited in place keeps its id and would otherwise be served its pre-edit text.
     func clearValues(forID id: RowID) {
         invalidations &+= 1
+        lineCounts?.remove(id)
         highlights.removeValue(forKey: id)
         guard let existing = storage[id] else { return }
         totalCost -= existing.cost
@@ -127,6 +157,7 @@ final class RowDisplayCache {
     func clearValues(forDataIndexes dataIndexes: Set<Int>) {
         guard !dataIndexes.isEmpty else { return }
         invalidations &+= 1
+        lineCounts?.removeAll()
         highlights.removeAll(keepingCapacity: true)
         storage = storage.mapValues { entry in
             for index in dataIndexes {

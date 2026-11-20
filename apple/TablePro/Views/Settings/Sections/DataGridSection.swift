@@ -39,6 +39,8 @@ struct DataGridSection: View {
             Toggle("Smart value detection", isOn: $settings.enableSmartValueDetection)
             Toggle("Show invisible characters", isOn: $settings.showInvisibleCharacters)
                 .help(String(localized: "Mark zero-width, control and special space characters in cells and value fields"))
+            Toggle("Wrap text in cells", isOn: $settings.wrapText)
+                .help(String(localized: "Long values wrap onto up to 10 lines. Applies to new tabs; View > Wrap Text changes the open grid."))
             Toggle("Color values by type", isOn: $valueColors.colorsValuesByType)
                 .help(String(localized: "Draw strings, numbers, dates and other typed values in the colors of the theme's Values section"))
                 .accessibilityIdentifier("color-values-by-type-toggle")

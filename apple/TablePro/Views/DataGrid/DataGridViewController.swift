@@ -14,6 +14,9 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
     let container = DataGridContainerView()
     let editingState = DataGridEditingState()
     let menuState = DataGridMenuState()
+    let wrapState = DataGridWrapState()
+    // Read by responds(to:), which AppKit may ask from outside the main actor's checking; written on the main actor only.
+    nonisolated(unsafe) var answersRowHeights = false
 
     private(set) lazy var selectionSummaryTracker = SelectionSummaryTracker(
         inputProvider: { [weak self] in self?.selectionSummaryInput() }
@@ -65,6 +68,14 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
     var panes: [DataGridPane] { container.panes }
     var gridHasFocus: Bool { container.gridHasFocus }
 
+    // A table that is not wrapping never sees heightOfRow, so it stays the fixed-pitch table it has always been.
+    override func responds(to aSelector: Selector!) -> Bool {
+        if aSelector == #selector(NSTableViewDelegate.tableView(_:heightOfRow:)) {
+            return answersRowHeights
+        }
+        return super.responds(to: aSelector)
+    }
+
     // MARK: - Lifecycle
 
     override func loadView() {
@@ -94,6 +105,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         observeTheme()
         observeFind()
         applyTableSettings()
+        applyWrapMode()
         reloadAll()
         needsViewportRestore = model.store.viewportAnchor != nil
         // Attaching publishes the summary state, which SwiftUI refuses inside the update that made this view.
@@ -117,6 +129,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         knownWidthsSawRows = false
         savedWidthIDs = []
         pendingPageReveal = nil
+        wrapState.geometry = nil
         mount()
     }
 
@@ -163,6 +176,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
             applyStagedViewport()
         }
         updateFittingHeight()
+        measureViewportRows()
         scheduleAccessibilityRemount()
         if pendingPageReveal != nil {
             // The page scrolls once its own layout is done, so its document already holds the grid's new height.
@@ -285,6 +299,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         applyRowNumberWidth()
         refreshHeaders()
         redrawVisibleRows()
+        syncWrapGeometry()
     }
 
     private func dataGridSettingsDidChange() {
@@ -308,6 +323,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         } else if previous.showInvisibleCharacters != settings.showInvisibleCharacters {
             redrawVisibleRows()
         }
+        syncWrapGeometry()
     }
 
     private func valueColorSettingsDidChange() {
@@ -321,6 +337,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
     func reformatText() {
         model.display.cache.removeAll()
         redrawVisibleRows()
+        noteAllRowHeights()
         startBackgroundPrewarm()
     }
 

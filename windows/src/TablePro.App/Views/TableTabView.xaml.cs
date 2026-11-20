@@ -48,6 +48,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             () => workbench.Settings,
             restore,
             filters);
+        Results.WrapsText = _model.WrapsText;
         _model.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
         // As macOS keeps a table's column layout: by name, so the table's own changes since are taken in.
         _columns = columns;
@@ -127,6 +128,15 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     public DataGridView? Grid => _showsStructure && _structure is { } structure ? structure.Grid : Results.GridView;
 
     public bool GridIsTarget => _showsStructure || Results.ShowsGrid;
+
+    // The rows wrap, not the structure's grid, so Structure offers no wrap.
+    public bool? WrapsText => _showsStructure ? null : _model.WrapsText;
+
+    public void SetWrapsText(bool wraps)
+    {
+        Results.WrapsText = wraps;
+        _model.SetWrapsText(wraps);
+    }
 
     public TextBox? MessagesTarget
     {
@@ -1239,6 +1249,8 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(ColumnsMenu());
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(GridMenus.WrapText(this));
         return menu;
     }
 

@@ -4198,6 +4198,15 @@ New fingerprint: {2}</value>
   <data name="NullDisplayBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>NULL display</value>
   </data>
+  <data name="GridWrapCard.Header" xml:space="preserve">
+    <value>Wrap text in cells</value>
+  </data>
+  <data name="GridWrapCard.Description" xml:space="preserve">
+    <value>Long values wrap onto up to 10 lines in new tabs. An open tab keeps its own choice.</value>
+  </data>
+  <data name="GridWrapSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Wrap text in cells</value>
+  </data>
   <data name="HistoryRetentionCard.Header" xml:space="preserve">
     <value>Keep runs for</value>
   </data>
@@ -5003,6 +5012,9 @@ New fingerprint: {2}</value>
   <data name="GridMenuColumns" xml:space="preserve">
     <value>Columns</value>
   </data>
+  <data name="GridMenuWrapText" xml:space="preserve">
+    <value>Wrap text</value>
+  </data>
   <data name="GridMenuResetColumns" xml:space="preserve">
     <value>Reset columns</value>
   </data>
@@ -5550,6 +5562,12 @@ New fingerprint: {2}</value>
   </data>
   <data name="MenuShowAssistant.AccessKey" xml:space="preserve">
     <value>A</value>
+  </data>
+  <data name="MenuWrapText.Text" xml:space="preserve">
+    <value>Wrap text</value>
+  </data>
+  <data name="MenuWrapText.AccessKey" xml:space="preserve">
+    <value>W</value>
   </data>
   <data name="MenuAiReview.Text" xml:space="preserve">
     <value>Review with AI</value>

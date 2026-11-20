@@ -802,6 +802,19 @@ final class MainContentCommandActions: ObservableObject {
         coordinator.presentHighlightRules()
     }
 
+    var canToggleWrapText: Bool {
+        coordinator?.canToggleWrapText ?? false
+    }
+
+    var wrapsGridText: Bool {
+        coordinator?.wrapsGridText ?? false
+    }
+
+    func toggleWrapText() {
+        guard canToggleWrapText, let coordinator else { return }
+        coordinator.toggleWrapText()
+    }
+
     func showFindBar(replace: Bool = false) {
         guard canUseGridFindCommands else { return }
         coordinator?.findCoordinator.showFind(replace: replace)

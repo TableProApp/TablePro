@@ -9,6 +9,7 @@ mod sorting;
 mod summary;
 mod values;
 mod view;
+mod wrap;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;

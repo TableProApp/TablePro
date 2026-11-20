@@ -100,6 +100,9 @@ public sealed record AppSettings
     // What a grid shows in a NULL cell.
     public string NullDisplay { get; set; } = DefaultNullDisplay;
 
+    // Whether a new tab's grid wraps long values; an open tab keeps the choice it started with or was given.
+    public bool GridWrapText { get; set; }
+
     // Unpinned history older than this is dropped; 0 keeps every age.
     public int HistoryRetentionDays { get; set; } = DefaultHistoryRetentionDays;
 

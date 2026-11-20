@@ -50,7 +50,8 @@ public sealed partial class QueryTabView
         bool fileUnsaved = false,
         SqlFileRead? onDisk = null,
         IReadOnlyList<int>? foldedLines = null,
-        string? customTitle = null)
+        string? customTitle = null,
+        bool? wrapText = null)
     {
         var engineId = share.Session.EngineId;
         var restoring = filePath is not null && onDisk is null;
@@ -78,7 +79,9 @@ public sealed partial class QueryTabView
             onDisk,
             restoring: restoring,
             resultEdits: this,
-            customTitle: customTitle);
+            customTitle: customTitle,
+            wrapText: wrapText);
+        Results.WrapsText = _model.WrapsText;
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", _model.Title));
         ShowDatabase();
         _model.StateChanged += (_, _) => OnModelStateChanged();
@@ -201,6 +204,14 @@ public sealed partial class QueryTabView
     public SqlEditor? Editor => SqlText;
 
     public DataGridView? Grid => Results.GridView;
+
+    public bool? WrapsText => _model.WrapsText;
+
+    public void SetWrapsText(bool wraps)
+    {
+        Results.WrapsText = wraps;
+        _model.SetWrapsText(wraps);
+    }
 
     public bool GridIsTarget => _target == EditTarget.Grid && Results.ShowsGrid;
 
@@ -678,6 +689,15 @@ public sealed partial class QueryTabView
         }
 
         args.Handled = true;
+        if (grid.HeaderColumnOf(args.OriginalSource) >= 0)
+        {
+            // A header's menu holds what is the whole grid's, not a cell's.
+            var header = new MenuFlyout();
+            header.Items.Add(GridMenus.WrapText(this));
+            GridMenus.Show(header, grid, args);
+            return;
+        }
+
         // Rows still arriving would be exported or shared as if they were all of them.
         var finished = !IsRunning && Results.ShownSet is { IsFinished: true };
         var menu = new MenuFlyout();

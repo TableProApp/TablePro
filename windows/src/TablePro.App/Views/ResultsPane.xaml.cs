@@ -73,6 +73,13 @@ public sealed partial class ResultsPane : UserControl, IResultsView
 
     public DataGridView GridView => ResultGrid;
 
+    // The tab's own choice, not a setting: DisplaySettings would push one value into every open tab.
+    public bool WrapsText
+    {
+        get => ResultGrid.WrapsText;
+        set => ResultGrid.WrapsText = value;
+    }
+
     public TextBox MessagesBox => MessagesText;
 
     internal TextBox JsonTextBox => _jsonView.TextBox;

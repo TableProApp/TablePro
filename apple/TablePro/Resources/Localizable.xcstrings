@@ -108564,6 +108564,9 @@
         }
       }
     },
+    "Long values wrap onto up to 10 lines. Applies to new tabs; View > Wrap Text changes the open grid." : {
+
+    },
     "Longest" : {
 
     },
@@ -223333,6 +223336,12 @@
           }
         }
       }
+    },
+    "Wrap Text" : {
+
+    },
+    "Wrap text in cells" : {
+
     },
     "Wrench" : {
       "extractionState" : "manual",
