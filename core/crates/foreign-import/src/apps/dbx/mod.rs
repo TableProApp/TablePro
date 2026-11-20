@@ -164,7 +164,12 @@ fn configs(db: &Database) -> Result<Vec<(Config, String)>, ForeignImportError> {
                 engine.map(|engine| (config, engine))
             }
             Err(error) => {
-                tracing::warn!(%error, "skipping a DBX connection that does not parse");
+                // Not the message, which can quote a password an older DBX left in the JSON.
+                tracing::warn!(
+                    line = error.line(),
+                    column = error.column(),
+                    "skipping a DBX connection that does not parse"
+                );
                 None
             }
         })

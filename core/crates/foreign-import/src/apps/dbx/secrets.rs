@@ -194,7 +194,12 @@ impl Secrets {
                 Ok(blob) if blob.kind == "ssh" => (blob.password, blob.key_passphrase),
                 Ok(_) => (None, None),
                 Err(error) => {
-                    tracing::warn!(%error, "a DBX tunnel profile's secrets do not parse");
+                    // Not the message, which can quote the password it met.
+                    tracing::warn!(
+                        line = error.line(),
+                        column = error.column(),
+                        "a DBX tunnel profile's secrets do not parse"
+                    );
                     self.missed = true;
                     (None, None)
                 }
