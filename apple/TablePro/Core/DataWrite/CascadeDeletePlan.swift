@@ -35,7 +35,7 @@ struct ReferencingKey: Equatable, Sendable {
 
     // Catalogs report one row per column pair, so a composite key is regrouped by its name.
     static func keys(
-        from foreignKeys: [String: [ForeignKeyInfo]],
+        from foreignKeys: [CatalogName: [ForeignKeyInfo]],
         pointingInto scope: DatabaseScope,
         slot: EngineNamespaceSlot
     ) -> [ReferencingKey] {
@@ -54,7 +54,7 @@ struct ReferencingKey: Equatable, Sendable {
                 keys.append(
                     ReferencingKey(
                         name: first.name,
-                        table: table,
+                        table: table.text,
                         columns: group.map(\.column),
                         referencedTable: first.referencedTable,
                         referencedColumns: group.map(\.referencedColumn),
@@ -76,9 +76,10 @@ struct ReferencingKey: Equatable, Sendable {
         )
         switch slot {
         case .schema:
-            return target.database == scope.database && (scope.schema == nil || target.schema == scope.schema)
+            return CatalogName.same(target.database, scope.database)
+                && (scope.schema == nil || CatalogName.same(target.schema, scope.schema))
         case .database:
-            return target.database == scope.database
+            return CatalogName.same(target.database, scope.database)
         case .unqualified:
             return true
         }
@@ -253,7 +254,7 @@ struct CascadeDeletePlan: Equatable, Sendable {
     }
 
     private struct EffectID: Hashable {
-        let table: String
+        let table: CatalogName
         let kind: CascadeEffect.Kind
     }
 
@@ -299,7 +300,7 @@ struct CascadeDeletePlan: Equatable, Sendable {
                         parent: $0
                     )
                 }
-                let id = EffectID(table: key.table, kind: kind(of: key))
+                let id = EffectID(table: tableNames.key(key.table), kind: kind(of: key))
                 if let position = positions[id] {
                     effects[position].record(childRows, constraint: key.name)
                 } else {
@@ -331,11 +332,11 @@ struct CascadeDeletePlan: Equatable, Sendable {
     // Rows of the effect's table the same save deletes anyway, which neither block it nor get rewritten.
     func rowsDeletedAnyway(alongside effect: CascadeEffect, root: CascadeDeleteRoot) -> [CascadeRowSet] {
         var rows: [CascadeRowSet] = []
-        if effect.table == root.table, let deleted = root.primaryKeyRows {
+        if CatalogName.same(effect.table, root.table), let deleted = root.primaryKeyRows {
             rows.append(deleted)
         }
         if effect.kind != .delete,
-           let cascade = effects.first(where: { $0.table == effect.table && $0.kind == .delete }),
+           let cascade = effects.first(where: { CatalogName.same($0.table, effect.table) && $0.kind == .delete }),
            cascade.isCountable {
             rows.append(contentsOf: cascade.paths)
         }

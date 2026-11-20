@@ -42,8 +42,8 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
     internal var status: ConnectionStatus = .connected
     internal var serverVersion: String? { nil }
 
-    private var columns: [String: [ColumnInfo]]
-    private let foreignKeys: [String: [ForeignKeyInfo]]
+    private var columns: [CatalogName: [ColumnInfo]]
+    private let foreignKeys: [CatalogName: [ForeignKeyInfo]]
     private let holds: [CatalogReadHold]
     private let failingReads: Int
     private let lock = NSLock()
@@ -51,8 +51,8 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
 
     internal init(
         connection: DatabaseConnection,
-        columns: [String: [ColumnInfo]],
-        foreignKeys: [String: [ForeignKeyInfo]] = [:],
+        columns: [CatalogName: [ColumnInfo]],
+        foreignKeys: [CatalogName: [ForeignKeyInfo]] = [:],
         holds: [CatalogReadHold],
         failingReads: Int
     ) {
@@ -67,7 +67,7 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
         lock.withLock { reads }
     }
 
-    internal func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
+    internal func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]] {
         let index = lock.withLock {
             defer { reads += 1 }
             return reads
@@ -82,7 +82,7 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
 
     // A table created elsewhere between two reads.
     internal func addTable(_ name: String, columns tableColumns: [ColumnInfo]) {
-        lock.withLock { columns[name] = tableColumns }
+        lock.withLock { columns[CatalogName(name)] = tableColumns }
     }
 
     private var listedTables: [TableInfo] = []
@@ -96,7 +96,7 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
         lock.withLock { failsTableListing = true }
     }
 
-    internal func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] { foreignKeys }
+    internal func fetchAllForeignKeys() async throws -> [CatalogName: [ForeignKeyInfo]] { foreignKeys }
 
     internal func connect() async throws {}
     internal func disconnect() {}
@@ -120,7 +120,7 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
         return tables
     }
     internal func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
-    internal func fetchColumns(table: String) async throws -> [ColumnInfo] { lock.withLock { columns[table] ?? [] } }
+    internal func fetchColumns(table: String) async throws -> [ColumnInfo] { lock.withLock { columns[CatalogName(table)] ?? [] } }
     internal func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
     internal func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
     internal func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
@@ -177,7 +177,7 @@ internal struct ERDiagramLoadFixture {
         columnsPerTable: Int = 50,
         holds: [CatalogReadHold] = [],
         failingReads: Int = 0,
-        foreignKeys: [String: [ForeignKeyInfo]] = [:],
+        foreignKeys: [CatalogName: [ForeignKeyInfo]] = [:],
         schema: String? = nil
     ) {
         let connection = TestFixtures.makeConnection(database: "main", type: .duckdb)
@@ -185,7 +185,7 @@ internal struct ERDiagramLoadFixture {
             let columns = (0 ..< columnsPerTable).map { column in
                 TestFixtures.makeColumnInfo(name: "column_\(column)", isPrimaryKey: column == 0)
             }
-            return ("table_\(table)", columns)
+            return (CatalogName("table_\(table)"), columns)
         })
         let driver = ERDiagramCatalogDriver(
             connection: connection,

@@ -47,7 +47,7 @@ private final class MockFilterDriver: DatabaseDriver, @unchecked Sendable {
         columnsPerTable[table.lowercased()] ?? []
     }
 
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]] { columnsPerTable }
+    func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]] { columnsPerTable.keyedByCatalogName }
 
     func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }

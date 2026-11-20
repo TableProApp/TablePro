@@ -8,7 +8,7 @@ enum ERDiagramMermaidWriter {
         var lines = ["erDiagram"]
 
         for node in nodes {
-            let name = names[node.tableName] ?? entityName(node.tableName)
+            let name = names[CatalogName(node.tableName)] ?? entityName(node.tableName)
             guard !node.displayColumns.isEmpty else {
                 lines.append("    \(name)")
                 continue
@@ -28,8 +28,8 @@ enum ERDiagramMermaidWriter {
         for edge in ERDiagramExportOrder.edges(of: graph) {
             let role = edge.cardinality == .manyToMany ? edge.fkName : edge.fromColumn
             lines.append(
-                "    \(names[edge.fromTable] ?? entityName(edge.fromTable)) \(relationship(edge.cardinality))"
-                    + " \(names[edge.toTable] ?? entityName(edge.toTable))"
+                "    \(names[CatalogName(edge.fromTable)] ?? entityName(edge.fromTable)) \(relationship(edge.cardinality))"
+                    + " \(names[CatalogName(edge.toTable)] ?? entityName(edge.toTable))"
                     + " : \(quoted(role))"
             )
         }
@@ -54,11 +54,11 @@ enum ERDiagramMermaidWriter {
     }
 
     // Two tables fitted to one name would merge into one entity, so the later one takes a suffix.
-    static func entityNames(for tables: [String]) -> [String: String] {
-        var names: [String: String] = [:]
+    static func entityNames(for tables: [String]) -> [CatalogName: String] {
+        var names: [CatalogName: String] = [:]
         var taken: Set<String> = []
-        for table in tables.sorted() {
-            let base = fitted(table)
+        for table in Set(tables.map { CatalogName($0) }).sorted() {
+            let base = fitted(table.text)
             var candidate = base
             var suffix = 2
             while taken.contains(candidate) {
@@ -145,9 +145,9 @@ enum ERDiagramExportOrder {
     }
 
     static func edges(of graph: ERDiagramGraph) -> [EREdge] {
-        let tables = Set(graph.nodes.map(\.tableName))
+        let tables = Set(graph.nodes.map { CatalogName($0.tableName) })
         return graph.edges
-            .filter { tables.contains($0.fromTable) && tables.contains($0.toTable) }
+            .filter { tables.contains(CatalogName($0.fromTable)) && tables.contains(CatalogName($0.toTable)) }
             .sorted { lhs, rhs in
                 (lhs.fromTable, lhs.toTable, lhs.fromColumn, lhs.toColumn, lhs.fkName)
                     < (rhs.fromTable, rhs.toTable, rhs.fromColumn, rhs.toColumn, rhs.fkName)

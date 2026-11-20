@@ -9,7 +9,7 @@ import TableProSQLQuoting
 
 internal struct JoinQuerySQLWriter {
     internal let graph: JoinGraph
-    internal let columnTypes: [String: [String: ColumnType]]
+    internal let columnTypes: [CatalogName: [String: ColumnType]]
     internal let dialect: SQLDialectDescriptor
     internal let databaseType: DatabaseType
     internal let schema: String?
@@ -41,13 +41,13 @@ internal struct JoinQuerySQLWriter {
         return lines.joined(separator: "\n")
     }
 
-    private func source(_ table: String) -> String {
-        guard let schema else { return quote(table) }
-        return "\(quote(schema)).\(quote(table))"
+    private func source(_ table: CatalogName) -> String {
+        guard let schema else { return quote(table.text) }
+        return "\(quote(schema)).\(quote(table.text))"
     }
 
-    private func column(_ table: String, _ column: String) -> String {
-        "\(quote(table)).\(quote(column))"
+    private func column(_ table: CatalogName, _ column: String) -> String {
+        "\(quote(table.text)).\(quote(column))"
     }
 
     private func onClause(_ relationship: JoinRelationship) -> String {
@@ -66,7 +66,7 @@ internal struct JoinQuerySQLWriter {
             dialect: dialect,
             columns: names,
             columnTypes: names.compactMap { types[$0] },
-            quoteIdentifier: { "\(quote(table)).\(quote($0))" },
+            quoteIdentifier: { "\(quote(table.text)).\(quote($0))" },
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
             databaseType: databaseType,
             stringEscapes: stringEscapes

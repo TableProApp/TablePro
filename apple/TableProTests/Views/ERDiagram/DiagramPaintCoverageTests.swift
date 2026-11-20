@@ -35,7 +35,7 @@ struct DiagramPaintCoverageTests {
                 near.id: rect(centredOn: Self.nearNodeCentre),
                 far.id: rect(centredOn: Self.farNodeCentre)
             ],
-            nodeIndex: [near.tableName: near.id, far.tableName: far.id],
+            nodeIndex: [CatalogName(near.tableName): near.id, CatalogName(far.tableName): far.id],
             clusterColors: [:],
             selectedNodeIds: [],
             size: Self.canvasSize

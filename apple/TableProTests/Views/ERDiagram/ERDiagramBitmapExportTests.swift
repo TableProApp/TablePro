@@ -8,7 +8,7 @@ struct ERDiagramBitmapExportTests {
         let columns = [ERColumnDisplay(id: "id", name: "id", dataType: "integer", isPrimaryKey: true, isForeignKey: false, isNullable: false)]
         var nodes: [ERTableNode] = []
         var rects: [UUID: CGRect] = [:]
-        var index: [String: UUID] = [:]
+        var index: [CatalogName: UUID] = [:]
         for (offset, origin) in origins.enumerated() {
             let node = ERTableNode(id: UUID(), tableName: "t\(offset)", columns: columns, displayColumns: columns, clusterId: 0)
             nodes.append(node)
@@ -16,7 +16,7 @@ struct ERDiagramBitmapExportTests {
                 origin: origin,
                 size: CGSize(width: ERDiagramLayout.nodeWidth, height: ERDiagramLayout.estimateHeight(columnCount: 1))
             )
-            index[node.tableName] = node.id
+            index[CatalogName(node.tableName)] = node.id
         }
         return ERDiagramScene(nodes: nodes, edges: [], nodeRects: rects, nodeIndex: index)
     }

@@ -56,11 +56,11 @@ struct ERDiagramEdgeCullingTests {
     ]
 
     private func strokes(of edges: [EREdge], in dirtyRect: CGRect) -> [CGRect] {
-        var index: [String: UUID] = [:]
+        var index: [CatalogName: UUID] = [:]
         var nodeRects: [UUID: CGRect] = [:]
         for (name, rect) in Self.rects {
             let id = UUID()
-            index[name] = id
+            index[CatalogName(name)] = id
             nodeRects[id] = rect
         }
         let recorder = StrokeRecorder()

@@ -923,7 +923,7 @@ private final class StatementRecordingDriver: DatabaseDriver, @unchecked Sendabl
     func fetchTables() async throws -> [TableInfo] { [] }
     func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
     func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]] { [:] }
+    func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]] { [:] }
     func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
     func fetchApproximateRowCount(table: String) async throws -> Int? { nil }

@@ -71,7 +71,7 @@ enum ERDiagramEdgeRenderer {
         tolerance: CGFloat,
         edges: [EREdge],
         nodeRects: [UUID: CGRect],
-        nodeIndex: [String: UUID]
+        nodeIndex: [CatalogName: UUID]
     ) -> UUID? {
         routes(edges: edges, nodeRects: nodeRects, nodeIndex: nodeIndex)
             .reversed()
@@ -84,10 +84,10 @@ enum ERDiagramEdgeRenderer {
             .edge.id
     }
 
-    static func routes(edges: [EREdge], nodeRects: [UUID: CGRect], nodeIndex: [String: UUID]) -> [Route] {
+    static func routes(edges: [EREdge], nodeRects: [UUID: CGRect], nodeIndex: [CatalogName: UUID]) -> [Route] {
         let resolved: [ResolvedEdge] = edges.compactMap { edge -> ResolvedEdge? in
-            guard let fromId = nodeIndex[edge.fromTable],
-                  let toId = nodeIndex[edge.toTable],
+            guard let fromId = nodeIndex[CatalogName(edge.fromTable)],
+                  let toId = nodeIndex[CatalogName(edge.toTable)],
                   let fromRect = nodeRects[fromId],
                   let toRect = nodeRects[toId]
             else { return nil }
@@ -96,7 +96,7 @@ enum ERDiagramEdgeRenderer {
 
         // A self edge never takes a border port, so it stays out of the port counts.
         let pairs = resolved.filter { $0.fromId != $0.toId }
-        var selfLoopIndex: [String: Int] = [:]
+        var selfLoopIndex: [[CatalogName]: Int] = [:]
         var selfLoopCounts: [UUID: Int] = [:]
         for item in resolved where item.fromId == item.toId {
             selfLoopIndex[edgeKey(item)] = selfLoopCounts[item.fromId, default: 0]
@@ -124,8 +124,8 @@ enum ERDiagramEdgeRenderer {
             edgesByDest[key]?.sort { $0.fromRect.midX < $1.fromRect.midX }
         }
 
-        var srcPortIndex: [String: Int] = [:]
-        var dstPortIndex: [String: Int] = [:]
+        var srcPortIndex: [[CatalogName]: Int] = [:]
+        var dstPortIndex: [[CatalogName]: Int] = [:]
         for (_, group) in edgesBySource {
             for (idx, item) in group.enumerated() {
                 srcPortIndex[edgeKey(item)] = idx
@@ -177,8 +177,8 @@ enum ERDiagramEdgeRenderer {
         }
     }
 
-    private static func edgeKey(_ item: ResolvedEdge) -> String {
-        "\(item.edge.fromTable).\(item.edge.fkName).\(item.edge.fromColumn)"
+    private static func edgeKey(_ item: ResolvedEdge) -> [CatalogName] {
+        [CatalogName(item.edge.fromTable), CatalogName(item.edge.fkName), CatalogName(item.edge.fromColumn)]
     }
 
     // MARK: - Self Loop

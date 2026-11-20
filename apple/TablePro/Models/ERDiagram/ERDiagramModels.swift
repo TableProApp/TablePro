@@ -54,7 +54,7 @@ struct EREdge: Identifiable, Equatable, Sendable {
 struct ERDiagramGraph: Sendable {
     var nodes: [ERTableNode]
     var edges: [EREdge]
-    var nodeIndex: [String: UUID]
+    var nodeIndex: [CatalogName: UUID]
     var junctionTableIds: Set<UUID> = []
     var manyToManyEdges: [EREdge] = []
 
@@ -64,11 +64,11 @@ struct ERDiagramGraph: Sendable {
         guard collapseJunctions, !junctionTableIds.isEmpty else { return self }
 
         let visibleNodes = nodes.filter { !junctionTableIds.contains($0.id) }
-        let visibleNodeIndex = visibleNodes.reduce(into: [String: UUID]()) { result, node in
-            result[node.tableName] = node.id
+        let visibleNodeIndex = visibleNodes.reduce(into: [CatalogName: UUID]()) { result, node in
+            result[CatalogName(node.tableName)] = node.id
         }
         let visibleEdges = edges.filter { edge in
-            guard let fromId = nodeIndex[edge.fromTable], let toId = nodeIndex[edge.toTable] else { return false }
+            guard let fromId = nodeId(of: edge.fromTable), let toId = nodeId(of: edge.toTable) else { return false }
             return !junctionTableIds.contains(fromId) && !junctionTableIds.contains(toId)
         }
 
@@ -80,15 +80,19 @@ struct ERDiagramGraph: Sendable {
             manyToManyEdges: manyToManyEdges
         )
     }
+
+    func nodeId(of table: String) -> UUID? {
+        nodeIndex[CatalogName(table)]
+    }
 }
 
 // MARK: - Graph Builder
 
 enum ERDiagramGraphBuilder {
     static func build(
-        allColumns: [String: [ColumnInfo]],
-        allForeignKeys: [String: [ForeignKeyInfo]],
-        allIndexes: [String: [IndexInfo]] = [:],
+        allColumns: [CatalogName: [ColumnInfo]],
+        allForeignKeys: [CatalogName: [ForeignKeyInfo]],
+        allIndexes: [CatalogName: [IndexInfo]] = [:],
         isLocal: (ForeignKeyInfo) -> Bool = { _ in true }
     ) -> ERDiagramGraph {
         let allForeignKeys = ForeignKeyCatalogNames.canonicalized(
@@ -97,16 +101,16 @@ enum ERDiagramGraphBuilder {
         )
         // A key into another schema still badges its column, but draws no edge to a same-named local table.
         let localForeignKeys = allForeignKeys.mapValues { $0.filter(isLocal) }
-        var nodeIndex: [String: UUID] = [:]
+        var nodeIndex: [CatalogName: UUID] = [:]
         var nodes: [ERTableNode] = []
 
-        let fkColumnsByTable: [String: Set<String>] = allForeignKeys.mapValues { fks in
+        let fkColumnsByTable: [CatalogName: Set<String>] = allForeignKeys.mapValues { fks in
             Set(fks.map(\.column))
         }
-        let columnsByTable: [String: [String: ColumnInfo]] = allColumns.mapValues { columns in
+        let columnsByTable: [CatalogName: [String: ColumnInfo]] = allColumns.mapValues { columns in
             Dictionary(columns.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         }
-        let uniqueSingleColumnsByTable: [String: Set<String>] = allColumns.reduce(into: [:]) { result, entry in
+        let uniqueSingleColumnsByTable: [CatalogName: Set<String>] = allColumns.reduce(into: [:]) { result, entry in
             let (tableName, columns) = entry
             var unique: Set<String> = []
             let primaryKeyColumns = columns.filter(\.isPrimaryKey).map(\.name)
@@ -122,12 +126,13 @@ enum ERDiagramGraphBuilder {
 
         var junctionTableIds: Set<UUID> = []
 
-        for tableName in allColumns.keys.sorted() {
+        for key in allColumns.keys.sorted() {
+            let tableName = key.text
             let id = stableId(for: tableName)
-            nodeIndex[tableName] = id
+            nodeIndex[key] = id
 
-            let columns = allColumns[tableName] ?? []
-            let fkColumns = fkColumnsByTable[tableName] ?? []
+            let columns = allColumns[key] ?? []
+            let fkColumns = fkColumnsByTable[key] ?? []
 
             let displayColumns = columns.map { col in
                 ERColumnDisplay(
@@ -141,9 +146,8 @@ enum ERDiagramGraphBuilder {
             }
 
             let isJunction = junctionParents(
-                tableName: tableName,
                 columns: columns,
-                foreignKeys: localForeignKeys[tableName] ?? []
+                foreignKeys: localForeignKeys[key] ?? []
             ) != nil
             if isJunction { junctionTableIds.insert(id) }
 
@@ -158,16 +162,16 @@ enum ERDiagramGraphBuilder {
         }
 
         var edges: [EREdge] = []
-        var seenFKNames: Set<String> = []
+        var seenFKNames: Set<[CatalogName]> = []
 
         // Sorted, because a dictionary's order changes per launch and decides port order on ties.
-        for tableName in localForeignKeys.keys.sorted() {
-            for fk in localForeignKeys[tableName] ?? [] {
+        for key in localForeignKeys.keys.sorted() {
+            let tableName = key.text
+            for fk in localForeignKeys[key] ?? [] {
                 let edgeKey = "\(tableName).\(fk.name).\(fk.column)"
-                guard !seenFKNames.contains(edgeKey) else { continue }
-                seenFKNames.insert(edgeKey)
+                guard seenFKNames.insert([key, CatalogName(fk.name), CatalogName(fk.column)]).inserted else { continue }
 
-                guard nodeIndex[fk.referencedTable] != nil else { continue }
+                guard nodeIndex[CatalogName(fk.referencedTable)] != nil else { continue }
 
                 edges.append(EREdge(
                     id: stableId(for: edgeKey),
@@ -177,8 +181,8 @@ enum ERDiagramGraphBuilder {
                     toTable: fk.referencedTable,
                     toColumn: fk.referencedColumn,
                     cardinality: inferCardinality(
-                        column: columnsByTable[tableName]?[fk.column],
-                        uniqueColumns: uniqueSingleColumnsByTable[tableName] ?? []
+                        column: columnsByTable[key]?[fk.column],
+                        uniqueColumns: uniqueSingleColumnsByTable[key] ?? []
                     )
                 ))
             }
@@ -221,7 +225,6 @@ enum ERDiagramGraphBuilder {
     }
 
     private static func junctionParents(
-        tableName: String,
         columns: [ColumnInfo],
         foreignKeys: [ForeignKeyInfo]
     ) -> (String, String)? {
@@ -233,7 +236,7 @@ enum ERDiagramGraphBuilder {
 
         var orderedParents: [String] = []
         for fk in foreignKeys where pkColumns.contains(fk.column) {
-            if !orderedParents.contains(fk.referencedTable) {
+            if !orderedParents.contains(where: { CatalogName.same($0, fk.referencedTable) }) {
                 orderedParents.append(fk.referencedTable)
             }
         }
@@ -242,18 +245,18 @@ enum ERDiagramGraphBuilder {
     }
 
     private static func buildManyToManyEdges(
-        allColumns: [String: [ColumnInfo]],
-        allForeignKeys: [String: [ForeignKeyInfo]],
-        nodeIndex: [String: UUID]
+        allColumns: [CatalogName: [ColumnInfo]],
+        allForeignKeys: [CatalogName: [ForeignKeyInfo]],
+        nodeIndex: [CatalogName: UUID]
     ) -> [EREdge] {
         var edges: [EREdge] = []
-        for tableName in allColumns.keys.sorted() {
+        for key in allColumns.keys.sorted() {
+            let tableName = key.text
             guard let (parentA, parentB) = junctionParents(
-                tableName: tableName,
-                columns: allColumns[tableName] ?? [],
-                foreignKeys: allForeignKeys[tableName] ?? []
+                columns: allColumns[key] ?? [],
+                foreignKeys: allForeignKeys[key] ?? []
             ) else { continue }
-            guard nodeIndex[parentA] != nil, nodeIndex[parentB] != nil else { continue }
+            guard nodeIndex[CatalogName(parentA)] != nil, nodeIndex[CatalogName(parentB)] != nil else { continue }
 
             edges.append(EREdge(
                 id: stableId(for: "mn.\(tableName)"),

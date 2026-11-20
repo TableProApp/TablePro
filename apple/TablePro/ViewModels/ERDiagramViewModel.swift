@@ -77,7 +77,7 @@ final class ERDiagramViewModel: ObservableObject {
 
     private var fullGraph: ERDiagramGraph = .empty
     // The bulk column read takes in views too, and a view is edited on the terms its own kind allows.
-    private(set) var objectKinds: [String: TableInfo.TableType] = [:]
+    private(set) var objectKinds: [CatalogName: TableInfo.TableType] = [:]
 
     // MARK: - Canvas Viewport
 
@@ -256,13 +256,13 @@ final class ERDiagramViewModel: ObservableObject {
 
     private func fetchGraph(
         in scope: DatabaseScope
-    ) async throws -> (ERDiagramGraph, [String: TableInfo.TableType]?) {
+    ) async throws -> (ERDiagramGraph, [CatalogName: TableInfo.TableType]?) {
         let (columns, foreignKeys, indexes, tables) = try await services.databaseManager.withMetadataDriver(
             scope: scope, workload: .bulk
         ) { driver in
             let cols = try await driver.fetchAllColumns()
             let fks = try await driver.fetchAllForeignKeys()
-            let idx = try await driver.fetchIndexes(forTables: Array(fks.keys))
+            let idx = try await driver.fetchIndexes(forTables: fks.keys.map(\.text))
             // Nil keeps the kinds already known, so a failed read never turns a view into a table.
             let tables: [TableInfo]?
             do {
@@ -273,7 +273,9 @@ final class ERDiagramViewModel: ObservableObject {
             }
             return (cols, fks, idx, tables)
         }
-        let kinds = tables.map { Dictionary($0.map { ($0.name, $0.type) }, uniquingKeysWith: { first, _ in first }) }
+        let kinds = tables.map {
+            Dictionary($0.map { (CatalogName($0.name), $0.type) }, uniquingKeysWith: { first, _ in first })
+        }
         return (
             ERDiagramGraphBuilder.build(
                 allColumns: columns,
@@ -369,7 +371,7 @@ final class ERDiagramViewModel: ObservableObject {
         guard var placement = pendingPlacement, placement.tableName == nil,
               change.connectionId == connectionId,
               loadState == .loaded,
-              fullGraph.nodeIndex[change.name] == nil,
+              fullGraph.nodeId(of: change.name) == nil,
               change.scope.database == (scope?.database ?? databaseName),
               change.scope.schema?.nilIfEmpty == scope?.schema?.nilIfEmpty
         else { return }
@@ -467,9 +469,9 @@ final class ERDiagramViewModel: ObservableObject {
     }
 
     func persistPositions() {
-        let namedPositions = positionOverrides.reduce(into: [String: CGPoint]()) { result, pair in
+        let namedPositions = positionOverrides.reduce(into: [CatalogName: CGPoint]()) { result, pair in
             if let name = nodeIdToName[pair.key] {
-                result[name] = pair.value
+                result[CatalogName(name)] = pair.value
             }
         }
         ERDiagramPositionStorage.shared.save(namedPositions, connectionId: connectionId, schemaKey: schemaKey)

@@ -1115,10 +1115,10 @@ public extension PluginDatabaseDriver {
     // Whether `fetchAllColumns` reads every table in one request or a fixed few, whatever its completeness.
     var fetchesAllColumnsInOneRequest: Bool { providesBulkColumnFetch }
 
-    /// Default: fetches columns per-table sequentially (N+1 round-trips).
-    /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.COLUMNS).
+    // One read per table. A driver with a schema-wide query overrides it.
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let tables = try await fetchTables(schema: schema)
+        try PluginCatalogNameCollision.requireDistinctSpellings(tables.map(\.name))
         var result: [String: [PluginColumnInfo]] = [:]
         for table in tables {
             try Task.checkCancellation()
@@ -1150,10 +1150,10 @@ public extension PluginDatabaseDriver {
     /// CockroachDB and Redshift as variants of its own type and neither has the bulk query.
     var providesBulkForeignKeyFetch: Bool { false }
 
-    /// Default: fetches foreign keys per-table sequentially (N+1 round-trips).
-    /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.KEY_COLUMN_USAGE).
+    // One read per table. A driver with a schema-wide query overrides it.
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let tables = try await fetchTables(schema: schema)
+        try PluginCatalogNameCollision.requireDistinctSpellings(tables.map(\.name))
         var result: [String: [PluginForeignKeyInfo]] = [:]
         for table in tables {
             try Task.checkCancellation()
@@ -1199,10 +1199,10 @@ public extension PluginDatabaseDriver {
     func fetchAllDependentSequences(schema: String?) async throws -> [String: [PluginSequenceInfo]] { [:] }
     func fetchAllDependentTypes(schema: String?) async throws -> [String: [PluginEnumTypeInfo]] { [:] }
 
-    /// Default: fetches indexes per-table sequentially (N+1 round-trips).
-    /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.STATISTICS).
+    // One read per table. A driver with a schema-wide query overrides it.
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
         let tables = try await fetchTables(schema: schema)
+        try PluginCatalogNameCollision.requireDistinctSpellings(tables.map(\.name))
         var result: [String: [PluginIndexInfo]] = [:]
         for table in tables {
             try Task.checkCancellation()
@@ -1215,13 +1215,11 @@ public extension PluginDatabaseDriver {
     /// Answers whether `fetchAllTableMetadata` is a single query rather than the N+1 default below.
     var providesBulkTableMetadataFetch: Bool { false }
 
-    /// Default: fetches metadata per-table sequentially (N+1 round-trips).
-    /// SQL drivers should override with a single bulk query (e.g. SHOW TABLE STATUS with no filter).
-    ///
-    /// A table whose metadata cannot be read is left out rather than throwing. The caller wants
-    /// the descriptive fields, and one unreadable table is not a reason to lose the other 199.
+    // One read per table. A table whose metadata cannot be read is left out: one unreadable table is not a reason to
+    // lose the rest.
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
         let tables = try await fetchTables(schema: schema)
+        try PluginCatalogNameCollision.requireDistinctSpellings(tables.map(\.name))
         var result: [String: PluginTableMetadata] = [:]
         for table in tables {
             try Task.checkCancellation()

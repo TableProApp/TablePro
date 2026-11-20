@@ -149,7 +149,7 @@ internal enum MCPSchemaSearch {
             var matches: [Match] = []
             for table in allColumns.keys.sorted() {
                 for column in allColumns[table] ?? [] where column.name.lowercased().contains(needle) {
-                    matches.append(.column(name: column.name, table: table, schema: schema, dataType: column.dataType))
+                    matches.append(.column(name: column.name, table: table.text, schema: schema, dataType: column.dataType))
                 }
             }
             return ColumnRead(schema: schema, matches: matches)

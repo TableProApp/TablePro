@@ -4,7 +4,7 @@ struct ERDiagramScene {
     var nodes: [ERTableNode] = []
     var edges: [EREdge] = []
     var nodeRects: [UUID: CGRect] = [:]
-    var nodeIndex: [String: UUID] = [:]
+    var nodeIndex: [CatalogName: UUID] = [:]
     var clusterColors: [UUID: NSColor] = [:]
     var selectedNodeIds: [UUID] = []
     var selectedEdgeId: UUID?
@@ -25,8 +25,8 @@ enum ERDiagramSceneRenderer {
         var bounds = scene.nodeRects.values.reduce(CGRect.null) { $0.union($1) }
 
         var selfLoopIndex: [UUID: Int] = [:]
-        for edge in scene.edges where edge.fromTable == edge.toTable {
-            guard let nodeId = scene.nodeIndex[edge.fromTable], let rect = scene.nodeRects[nodeId] else { continue }
+        for edge in scene.edges where CatalogName.same(edge.fromTable, edge.toTable) {
+            guard let nodeId = scene.nodeIndex[CatalogName(edge.fromTable)], let rect = scene.nodeRects[nodeId] else { continue }
             let index = selfLoopIndex[nodeId, default: 0]
             selfLoopIndex[nodeId] = index + 1
             bounds = bounds.union(ERDiagramEdgeRenderer.selfLoopBounds(in: rect, index: index))

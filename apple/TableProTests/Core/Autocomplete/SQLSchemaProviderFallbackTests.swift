@@ -54,9 +54,9 @@ private final class MockFallbackDriver: DatabaseDriver, @unchecked Sendable {
         return columnsPerTable[table.lowercased()] ?? []
     }
 
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
+    func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]] {
         fetchAllColumnsCallCount += 1
-        return columnsPerTable
+        return columnsPerTable.keyedByCatalogName
     }
 
     var fetchesAllColumnsInOneRequest: Bool { true }

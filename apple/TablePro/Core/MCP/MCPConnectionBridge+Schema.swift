@@ -166,7 +166,7 @@ extension MCPConnectionBridge {
 
     static func indexEntries(using driver: DatabaseDriver, schema: String?, table: String?) async throws -> [JsonValue] {
         let targets: [String]
-        let bulkIndexes: [String: [IndexInfo]]?
+        let bulkIndexes: [CatalogName: [IndexInfo]]?
         if let table {
             targets = [table]
             bulkIndexes = nil
@@ -178,7 +178,7 @@ extension MCPConnectionBridge {
         for target in targets {
             let indexes: [IndexInfo]
             if let bulkIndexes {
-                indexes = bulkIndexes[target] ?? []
+                indexes = bulkIndexes[CatalogName(target)] ?? []
             } else {
                 indexes = (try? await driver.fetchIndexes(table: target)) ?? []
             }
@@ -191,14 +191,15 @@ extension MCPConnectionBridge {
         return entries
     }
 
-    // Nil sends the caller to the per-table reads: the driver has no single-query form, or it failed.
-    private static func schemaIndexes(using driver: DatabaseDriver, schema: String?) async throws -> [String: [IndexInfo]]? {
+    // Nil sends the caller to the per-table reads: the driver has no single-query form, or it failed, which a schema
+    // holding two names Swift's String equates makes it do.
+    private static func schemaIndexes(using driver: DatabaseDriver, schema: String?) async throws -> [CatalogName: [IndexInfo]]? {
         guard let plugin = CompareMetadataService.pluginDriver(from: driver), plugin.providesBulkIndexFetch else {
             return nil
         }
         do {
             let indexes = try await plugin.fetchAllIndexes(schema: schema ?? plugin.currentSchema)
-            return indexes.mapValues { $0.map(IndexInfo.init) }
+            return indexes.keyedByCatalogName.mapValues { $0.map(IndexInfo.init) }
         } catch let cancellation as CancellationError {
             throw cancellation
         } catch {
@@ -216,7 +217,7 @@ extension MCPConnectionBridge {
         ) { driver in
             if let table {
                 let keys = try await driver.fetchForeignKeys(table: table)
-                return [table: keys]
+                return [CatalogName(table): keys]
             }
             let names = try await driver.fetchTables(schema: schema).map(\.name)
             return try await driver.fetchForeignKeys(forTables: names)
@@ -225,7 +226,7 @@ extension MCPConnectionBridge {
         let payload: [JsonValue] = entries.keys.sorted().compactMap { key in
             guard let keys = entries[key], !keys.isEmpty else { return nil }
             return .object([
-                "table": .string(key),
+                "table": .string(key.text),
                 "foreign_keys": .array(keys.map(MCPConnectionBridge.encode(foreignKey:)))
             ])
         }

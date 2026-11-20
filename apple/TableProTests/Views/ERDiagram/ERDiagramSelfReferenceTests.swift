@@ -161,13 +161,13 @@ struct ERDiagramSelfReferenceTests {
 
     @Test("A foreign key that references its own table becomes an edge")
     func graphBuilderKeepsASelfForeignKey() {
-        let columns: [String: [ColumnInfo]] = [
+        let columns: [CatalogName: [ColumnInfo]] = [
             "employees": [
                 ColumnInfo(name: "id", dataType: "integer", isNullable: false, isPrimaryKey: true),
                 ColumnInfo(name: "manager_id", dataType: "integer", isNullable: true, isPrimaryKey: false)
             ]
         ]
-        let keys: [String: [ForeignKeyInfo]] = [
+        let keys: [CatalogName: [ForeignKeyInfo]] = [
             "employees": [
                 ForeignKeyInfo(name: "fk_manager", column: "manager_id", referencedTable: "employees", referencedColumn: "id")
             ]

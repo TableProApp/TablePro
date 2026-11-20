@@ -442,11 +442,11 @@ extension DatabaseTreeOutlineCoordinator {
 
     private func hierarchicalListingRows(schema: String) -> [TableInfo]? {
         guard let matches = hierarchicalListing(answering: schema) else { return nil }
-        return matches.rowsBySchema[schema] ?? []
+        return matches.rowsBySchema[CatalogName(schema)] ?? []
     }
 
     internal func hierarchicalListingMatchesTable(in schema: String) -> Bool {
-        hierarchicalListing(answering: schema)?.matched.contains(schema) ?? false
+        hierarchicalListing(answering: schema)?.matched.contains(CatalogName(schema)) ?? false
     }
 
     private func hierarchicalListing(answering schema: String) -> DatabaseTreeFilter.SchemaListingMatches? {
@@ -687,7 +687,7 @@ extension DatabaseTreeOutlineCoordinator {
               !systemSchemas.contains(schema),
               let matches = listingMatches(database: database), matches.answers(for: schema)
         else { return nil }
-        return matches.rowsBySchema[schema] ?? []
+        return matches.rowsBySchema[CatalogName(schema)] ?? []
     }
 
     /// The schema-grouped shape reads its objects from the connection's own schema service and the

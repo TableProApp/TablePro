@@ -5,25 +5,26 @@
 
 import Foundation
 
-// One object per row id, so AppKit keeps a row's disclosure and selection across rebuilds.
+// One object per row id, so AppKit keeps a row's disclosure and selection across rebuilds. Ids key by bytes: two
+// tables or schemas whose names Swift's String equates are two rows.
 struct DatabaseTreeNodeCache: ExpressibleByDictionaryLiteral {
-    private var nodes: [String: DatabaseTreeNode]
+    private var nodes: [CatalogName: DatabaseTreeNode]
     // Nil once a row came or went. The selection is what reads it, and that changes far less often than rows do.
     private var tableIndex: [TableInfo: [DatabaseTreeNode]]?
 
     init(dictionaryLiteral elements: (String, DatabaseTreeNode)...) {
-        nodes = Dictionary(elements) { _, last in last }
+        nodes = Dictionary(elements.map { (CatalogName($0.0), $0.1) }) { _, last in last }
     }
 
     subscript(id: String) -> DatabaseTreeNode? {
-        get { nodes[id] }
+        get { nodes[CatalogName(id)] }
         set {
-            nodes[id] = newValue
+            nodes[CatalogName(id)] = newValue
             tableIndex = nil
         }
     }
 
-    var values: Dictionary<String, DatabaseTreeNode>.Values {
+    var values: Dictionary<CatalogName, DatabaseTreeNode>.Values {
         nodes.values
     }
 

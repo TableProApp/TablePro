@@ -12,19 +12,19 @@ internal struct JoinRelationship: Hashable, Sendable, Identifiable {
     }
 
     internal let name: String
-    internal let childTable: String
-    internal let parentTable: String
+    internal let childTable: CatalogName
+    internal let parentTable: CatalogName
     internal let columnPairs: [ColumnPair]
 
-    internal var id: String {
-        IdentityPath.joined([childTable, name, parentTable], separator: "|")
+    internal var id: [CatalogName] {
+        [childTable, CatalogName(name), parentTable]
     }
 
-    internal func links(_ table: String, to other: String) -> Bool {
+    internal func links(_ table: CatalogName, to other: CatalogName) -> Bool {
         (childTable == table && parentTable == other) || (childTable == other && parentTable == table)
     }
 
-    internal func partner(of table: String) -> String? {
+    internal func partner(of table: CatalogName) -> CatalogName? {
         if childTable == table { return parentTable }
         if parentTable == table { return childTable }
         return nil
@@ -32,26 +32,33 @@ internal struct JoinRelationship: Hashable, Sendable, Identifiable {
 }
 
 internal struct JoinStep: Hashable, Sendable {
-    internal let table: String
+    internal let table: CatalogName
     internal let relationship: JoinRelationship
 }
 
+// Tables are keyed by name bytes: a schema can hold two tables whose names Swift's String equates.
 internal struct JoinGraph: Sendable {
-    internal let columnsByTable: [String: [String]]
+    internal let columnsByTable: [CatalogName: [String]]
     internal let relationships: [JoinRelationship]
     // A key from a table to itself is left out: it joins nothing between two tables.
-    private let relationshipsByTable: [String: [JoinRelationship]]
+    private let relationshipsByTable: [CatalogName: [JoinRelationship]]
 
     internal static let empty = JoinGraph(columnsByTable: [:], relationships: [])
 
-    internal var tableNames: [String] {
-        columnsByTable.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    internal var tableNames: [CatalogName] {
+        columnsByTable.keys.sorted { lhs, rhs in
+            switch lhs.text.localizedStandardCompare(rhs.text) {
+            case .orderedAscending: true
+            case .orderedDescending: false
+            case .orderedSame: lhs < rhs
+            }
+        }
     }
 
-    internal init(columnsByTable: [String: [String]], relationships: [JoinRelationship]) {
+    internal init(columnsByTable: [CatalogName: [String]], relationships: [JoinRelationship]) {
         self.columnsByTable = columnsByTable
         self.relationships = relationships
-        var byTable: [String: [JoinRelationship]] = [:]
+        var byTable: [CatalogName: [JoinRelationship]] = [:]
         for relationship in relationships where relationship.childTable != relationship.parentTable {
             byTable[relationship.childTable, default: []].append(relationship)
             byTable[relationship.parentTable, default: []].append(relationship)
@@ -62,13 +69,13 @@ internal struct JoinGraph: Sendable {
     // A composite key arrives as one row per column under one name. `isLocal` drops a key into another
     // schema, which would otherwise join a same-named table of this one.
     internal init(
-        columns: [String: [String]],
-        foreignKeys: [String: [ForeignKeyInfo]],
+        columns: [CatalogName: [String]],
+        foreignKeys: [CatalogName: [ForeignKeyInfo]],
         isLocal: (ForeignKeyInfo) -> Bool
     ) {
         struct KeyIdentity: Hashable {
-            let name: String
-            let parent: String
+            let name: CatalogName
+            let parent: CatalogName
         }
 
         let foreignKeys = ForeignKeyCatalogNames.canonicalized(foreignKeys, columns: columns)
@@ -77,8 +84,9 @@ internal struct JoinGraph: Sendable {
             var order: [KeyIdentity] = []
             var pairsByKey: [KeyIdentity: [JoinRelationship.ColumnPair]] = [:]
             for key in foreignKeys[childTable] ?? [] {
-                guard columns[key.referencedTable] != nil, isLocal(key) else { continue }
-                let identity = KeyIdentity(name: key.name, parent: key.referencedTable)
+                let parent = CatalogName(key.referencedTable)
+                guard columns[parent] != nil, isLocal(key) else { continue }
+                let identity = KeyIdentity(name: CatalogName(key.name), parent: parent)
                 let pair = JoinRelationship.ColumnPair(child: key.column, parent: key.referencedColumn)
                 if pairsByKey[identity] == nil {
                     order.append(identity)
@@ -89,7 +97,7 @@ internal struct JoinGraph: Sendable {
             }
             for identity in order {
                 relationships.append(JoinRelationship(
-                    name: identity.name,
+                    name: identity.name.text,
                     childTable: childTable,
                     parentTable: identity.parent,
                     columnPairs: pairsByKey[identity] ?? []
@@ -99,22 +107,22 @@ internal struct JoinGraph: Sendable {
         self.init(columnsByTable: columns, relationships: relationships)
     }
 
-    internal func columns(of table: String) -> [String] {
+    internal func columns(of table: CatalogName) -> [String] {
         columnsByTable[table] ?? []
     }
 
-    internal func relationships(between table: String, and other: String) -> [JoinRelationship] {
+    internal func relationships(between table: CatalogName, and other: CatalogName) -> [JoinRelationship] {
         (relationshipsByTable[table] ?? []).filter { $0.partner(of: table) == other }
     }
 
     // Two tables that only share a parent multiply each other's rows, so that hop costs extra and a
     // junction or a chain of the same length wins.
-    internal func path(to table: String, from joined: [String]) -> [JoinStep]? {
+    internal func path(to table: CatalogName, from joined: [CatalogName]) -> [JoinStep]? {
         guard !joined.contains(table) else { return [] }
         guard columnsByTable[table] != nil else { return nil }
 
         struct State: Hashable {
-            let table: String
+            let table: CatalogName
             let arrivedAsParent: Bool
         }
         struct Entry {

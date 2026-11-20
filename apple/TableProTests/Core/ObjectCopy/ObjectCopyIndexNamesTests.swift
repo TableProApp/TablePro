@@ -176,7 +176,7 @@ struct ObjectCopyIndexNamesTests {
 
     @Test("An index on a table the copy replaces does not cost the new table its name")
     func indexOnAReplacedTableIsFree() {
-        let existing = ["orders": ["orders_user_id"], "Orders_Archive": ["orders_archive_user_id"]]
+        let existing: [CatalogName: [String]] = ["orders": ["orders_user_id"], "Orders_Archive": ["orders_archive_user_id"]]
         #expect(ObjectCopyIndexNames.kept(existing, droppingFirst: ["orders"]) == ["orders_archive_user_id"])
 
         var taken = ObjectCopyIndexNames.kept(existing, droppingFirst: ["orders"])
@@ -188,7 +188,7 @@ struct ObjectCopyIndexNamesTests {
 
     @Test("A table is dropped by its exact name, so a same-named table in another case keeps its indexes")
     func droppedTableMatchesExactly() {
-        let existing = ["Orders": ["orders_user_id"]]
+        let existing: [CatalogName: [String]] = ["Orders": ["orders_user_id"]]
         #expect(ObjectCopyIndexNames.kept(existing, droppingFirst: ["orders"]) == ["orders_user_id"])
     }
 

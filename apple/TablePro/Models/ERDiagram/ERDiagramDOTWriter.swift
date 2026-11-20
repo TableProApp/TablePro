@@ -6,10 +6,10 @@ enum ERDiagramDOTWriter {
 
     static func document(for graph: ERDiagramGraph) -> String {
         let nodes = ERDiagramExportOrder.nodes(of: graph)
-        var ports: [String: [String: String]] = [:]
+        var ports: [CatalogName: [String: String]] = [:]
         for node in nodes {
             let all = portIds(for: node.columns.map(\.name))
-            ports[node.tableName] = all.filter { name, _ in node.displayColumns.contains { $0.name == name } }
+            ports[CatalogName(node.tableName)] = all.filter { name, _ in node.displayColumns.contains { $0.name == name } }
         }
 
         var lines = [
@@ -27,7 +27,7 @@ enum ERDiagramDOTWriter {
                 "            <TR><TD ALIGN=\"LEFT\" BGCOLOR=\"\(headerColor)\"><B>\(html(node.tableName))</B></TD></TR>"
             )
             for column in node.displayColumns {
-                lines.append("            <TR>\(cell(for: column, port: ports[node.tableName]?[column.name]))</TR>")
+                lines.append("            <TR>\(cell(for: column, port: ports[CatalogName(node.tableName)]?[column.name]))</TR>")
             }
             lines.append("        </TABLE>")
             lines.append("    >];")
@@ -74,8 +74,8 @@ enum ERDiagramDOTWriter {
     }
 
     // A column the view hides, or a many-to-many edge, has no port: the edge meets the table.
-    private static func endpoint(_ table: String, column: String, ports: [String: [String: String]]) -> String {
-        guard let port = ports[table]?[column] else { return quoted(table) }
+    private static func endpoint(_ table: String, column: String, ports: [CatalogName: [String: String]]) -> String {
+        guard let port = ports[CatalogName(table)]?[column] else { return quoted(table) }
         return "\(quoted(table)):\(quoted(port))"
     }
 

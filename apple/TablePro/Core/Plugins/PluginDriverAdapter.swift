@@ -979,20 +979,55 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     var fetchesAllColumnsInOneRequest: Bool { pluginDriver.fetchesAllColumnsInOneRequest }
 
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
-        let pluginResult = try await pluginDriver.fetchAllColumns(schema: pluginDriver.currentSchema)
-        return pluginResult.mapValues { $0.map(ColumnInfo.init) }
+    func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]] {
+        let schema = pluginDriver.currentSchema
+        do {
+            return try await pluginDriver.fetchAllColumns(schema: schema).keyedByCatalogName
+                .mapValues { $0.map(ColumnInfo.init) }
+        } catch is PluginCatalogNameCollision {
+            return try await readEachTable(in: schema, reading: "columns") { table in
+                try await pluginDriver.fetchColumns(table: table, schema: schema).map(ColumnInfo.init)
+            }
+        }
     }
 
     var providesBulkForeignKeyFetch: Bool { pluginDriver.providesBulkForeignKeyFetch }
 
-    func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
+    func fetchAllForeignKeys() async throws -> [CatalogName: [ForeignKeyInfo]] {
         try await fetchAllForeignKeys(schema: nil)
     }
 
-    func fetchAllForeignKeys(schema: String?) async throws -> [String: [ForeignKeyInfo]] {
-        let pluginResult = try await pluginDriver.fetchAllForeignKeys(schema: schema ?? pluginDriver.currentSchema)
-        return pluginResult.mapValues { $0.map(ForeignKeyInfo.init) }
+    func fetchAllForeignKeys(schema: String?) async throws -> [CatalogName: [ForeignKeyInfo]] {
+        let schema = schema ?? pluginDriver.currentSchema
+        do {
+            return try await pluginDriver.fetchAllForeignKeys(schema: schema).keyedByCatalogName
+                .mapValues { $0.map(ForeignKeyInfo.init) }
+        } catch is PluginCatalogNameCollision {
+            return try await readEachTable(in: schema, reading: "foreign keys") { table in
+                let keys = try await pluginDriver.fetchForeignKeys(table: table, schema: schema)
+                return keys.isEmpty ? nil : keys.map(ForeignKeyInfo.init)
+            }
+        }
+    }
+
+    // The schema-wide answer named two objects Swift's String equates, so each listed object is read alone.
+    private func readEachTable<Value>(
+        in schema: String?,
+        reading what: String,
+        _ read: (String) async throws -> Value?
+    ) async throws -> [CatalogName: Value] {
+        var result: [CatalogName: Value] = [:]
+        for table in try await pluginDriver.fetchTables(schema: schema) {
+            try Task.checkCancellation()
+            do {
+                if let value = try await read(table.name) { result[CatalogName(table.name)] = value }
+            } catch {
+                try Task.checkCancellation()
+                if error is CancellationError { throw error }
+                Self.logger.debug("Skipping \(what, privacy: .public) for one table: \(error.publicLogShape, privacy: .public)")
+            }
+        }
+        return result
     }
 
     func fetchAllDatabaseMetadata() async throws -> [DatabaseMetadata] {

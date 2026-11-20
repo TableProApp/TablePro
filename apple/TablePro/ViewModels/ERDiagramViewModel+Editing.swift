@@ -212,7 +212,7 @@ extension ERDiagramViewModel {
     }
 
     func kind(of table: String) -> TableInfo.TableType {
-        objectKinds[table] ?? .table
+        objectKinds[CatalogName(table)] ?? .table
     }
 
     // Nothing is offered while a save runs, the way the Structure tab locks its grid.
@@ -363,7 +363,7 @@ extension ERDiagramViewModel {
     }
 
     private func isColumnDropped(_ column: String, in table: String) -> Bool {
-        guard let id = graph.nodeIndex[table], let node = node(withId: id) else { return false }
+        guard let id = graph.nodeId(of: table), let node = node(withId: id) else { return false }
         return node.columns.first { $0.name == column }?.stagedEdit == .dropped
     }
 
@@ -469,7 +469,7 @@ extension ERDiagramViewModel {
     }
 
     func columnNames(of table: String) -> [String] {
-        guard let id = stagedFullGraph.nodeIndex[table],
+        guard let id = stagedFullGraph.nodeId(of: table),
               let node = stagedFullGraph.nodes.first(where: { $0.id == id })
         else { return [] }
         return node.columns.filter { $0.stagedEdit != .dropped }.map(\.name)
@@ -477,7 +477,7 @@ extension ERDiagramViewModel {
 
     // In table order, which is the key's own order unless it was declared in another; the reader can reorder the pairs.
     func referencedKeyColumns(in table: String) -> [String] {
-        guard let id = stagedFullGraph.nodeIndex[table],
+        guard let id = stagedFullGraph.nodeId(of: table),
               let node = stagedFullGraph.nodes.first(where: { $0.id == id })
         else { return [] }
         let kept = node.columns.filter { $0.stagedEdit != .dropped }

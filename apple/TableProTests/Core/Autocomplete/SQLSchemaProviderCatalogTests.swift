@@ -70,14 +70,18 @@ struct SQLSchemaProviderCatalogTests {
         #expect(await Self.names(provider, "users") == nil)
     }
 
-    @Test("Two tables whose names differ only in case answer neither")
-    func caseOnlyNamesAreNotAnswered() async {
+    @Test("Two tables whose names differ only in case each answer their own columns")
+    func caseOnlyNamesAnswerTheirOwnColumns() async {
         let driver = Self.completeDriver()
-        driver.allColumnsToReturn = ["Users": Self.idColumn, "users": Self.idColumn]
+        driver.allColumnsToReturn = [
+            "Users": [TestFixtures.makeColumnInfo(name: "upper_id")],
+            "users": [TestFixtures.makeColumnInfo(name: "lower_id")]
+        ]
         let provider = await Self.seeded(driver, tables: [TestFixtures.makeTableInfo(name: "Users"), Self.users])
 
-        #expect(await Self.names(provider, "users") == nil)
-        #expect(await Self.names(provider, "Users") == nil)
+        #expect(await Self.names(provider, "users") == ["lower_id"])
+        #expect(await Self.names(provider, "Users") == ["upper_id"])
+        #expect(await Self.names(provider, "USERS") == nil)
     }
 
     @Test("A completion read for another spelling of the name never answers the grid")
