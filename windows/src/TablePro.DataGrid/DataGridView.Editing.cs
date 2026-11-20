@@ -364,14 +364,18 @@ public sealed partial class DataGridView
         _editText = EditorText(editor);
         AutomationProperties.SetName(editor, _names[column]);
         PlaceEditor();
+        // Focus needs the box in the tree, not loaded, so keys typed right after F2 or Tab reach it, not the grid.
+        editor.ApplyTemplate();
+        FocusEditor(editor);
     }
 
-    // The editor takes focus once it is in the tree; a box whose edit has already ended does not.
+    // A grid out of the tree could not focus the box; selecting again here would select over typed text.
     private void OnEditorLoaded(object sender, RoutedEventArgs e)
     {
-        if (IsEditing && ReferenceEquals(sender, _editor))
+        if (IsEditing && sender is TextBox editor && ReferenceEquals(editor, _editor)
+            && editor.FocusState == FocusState.Unfocused)
         {
-            FocusEditor((TextBox)sender);
+            FocusEditor(editor);
         }
     }
 

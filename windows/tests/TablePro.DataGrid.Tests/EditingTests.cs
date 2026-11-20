@@ -43,6 +43,26 @@ public sealed class EditingTests
         grid.CancelEdit();
     });
 
+    // Keys typed right after F2 or Tab go to whatever has focus, before the new box has loaded.
+    [Fact]
+    public Task TheEditorHasFocusAsItOpensAndKeepsWhatIsTypedBeforeItLoads() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await ShowEditableAsync(new SyntheticData());
+        grid.SelectCell(4, 1, extend: false);
+
+        grid.BeginEdit();
+
+        var editor = grid.Editor!;
+        Assert.NotEqual(FocusState.Unfocused, editor.FocusState);
+        Assert.Equal("r4c1", editor.SelectedText);
+        editor.SelectedText = "typed";
+        await SettleAsync(grid);
+        Assert.Equal("typed", editor.Text);
+        Assert.Equal("", editor.SelectedText);
+        Assert.NotEqual(FocusState.Unfocused, editor.FocusState);
+        grid.CancelEdit();
+    });
+
     [Fact]
     public Task TheEditorCoversAWrappedRowAndWrapsItsTextAndWithWrapOffIsOneRowAgain() => WinUiHost.RunAsync(async () =>
     {
