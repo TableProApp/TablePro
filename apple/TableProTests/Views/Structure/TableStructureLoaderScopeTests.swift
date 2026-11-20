@@ -69,7 +69,7 @@ struct TableStructureLoaderScopeTests {
         _ = try await loader.triggers()
         _ = try await loader.coreTabs(includingForeignKeys: true, includingTableComment: true)
         _ = try await loader.tableComment()
-        _ = try await loader.perform { try await $0.fetchTableDDL(table: "t") }
+        _ = try await loader.perform { try await $0.fetchTableDDL(table: "t", schema: nil) }
     }
 
     @Test("Every structure read runs on the tab's database, never on the browsed one")

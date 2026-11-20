@@ -144,8 +144,9 @@ internal enum MCPSchemaSearch {
         metadata: ScopedMetadataProviding
     ) async throws -> ColumnRead {
         try await metadata.withMetadataDriver(scope: scope, workload: .bulk) { driver in
-            let schema = (driver as? SchemaSwitchable)?.currentSchema
-            let allColumns = try await driver.fetchAllColumns()
+            let allColumns = try await driver.fetchAllColumns(schema: scope.schema)
+            // A scope with no schema read the connection's own, which each match still names.
+            let schema = scope.schema ?? (driver as? SchemaSwitchable)?.currentSchema
             var matches: [Match] = []
             for table in allColumns.keys.sorted() {
                 for column in allColumns[table] ?? [] where column.name.lowercased().contains(needle) {

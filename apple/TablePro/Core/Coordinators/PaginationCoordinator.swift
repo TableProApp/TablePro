@@ -248,14 +248,16 @@ final class PaginationCoordinator: ObservableObject {
         countSQL: String?,
         safeModeIsReadOnly: Bool
     ) async -> Result<Int?, Error> {
+        let schema = scope.schema
         do {
             let count = try await DatabaseManager.shared.withRowCountDriver(scope: scope, filtered: !filters.isEmpty) { driver in
                 if let browseFilters {
-                    return try await driver.fetchExactRowCount(table: tableName, browseFilters: browseFilters)
+                    return try await driver.fetchExactRowCount(table: tableName, schema: schema, browseFilters: browseFilters)
                 }
                 return try await ExactRowCounter.count(
                     on: driver,
                     table: tableName,
+                    schema: schema,
                     filters: filters,
                     logicMode: logicMode,
                     countSQL: countSQL,

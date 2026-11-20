@@ -70,12 +70,14 @@ struct TableStructureLoader {
 
     func tableComment() async throws -> String? {
         let table = tableName
-        return try await perform { try await $0.fetchObjectComment(tableName: table) }
+        let schema = scope.schema
+        return try await perform { try await $0.fetchObjectComment(tableName: table, schema: schema) }
     }
 
     func tableOptions() async throws -> TableOptions? {
         let table = tableName
-        return try await perform { try await $0.fetchTableOptions(tableName: table) }
+        let schema = scope.schema
+        return try await perform { try await $0.fetchTableOptions(tableName: table, schema: schema) }
     }
 
     func tableOptionsCatalog() async throws -> TableOptionsCatalog? {
@@ -108,10 +110,10 @@ struct TableStructureLoader {
             let indexes = try await driver.fetchIndexes(table: table, schema: schema)
             let foreignKeys = includingForeignKeys ? try await driver.fetchForeignKeys(table: table, schema: schema) : []
             let comment: MetadataFetchOutcome<String?>? = includingTableComment
-                ? await Self.outcome { try await driver.fetchObjectComment(tableName: table) }
+                ? await Self.outcome { try await driver.fetchObjectComment(tableName: table, schema: schema) }
                 : nil
             let options: MetadataFetchOutcome<TableOptions?>? = includingTableOptions
-                ? await Self.outcome { try await driver.fetchTableOptions(tableName: table) }
+                ? await Self.outcome { try await driver.fetchTableOptions(tableName: table, schema: schema) }
                 : nil
             return CoreTabs(
                 columns: columns, indexes: indexes, foreignKeys: foreignKeys, tableComment: comment, tableOptions: options

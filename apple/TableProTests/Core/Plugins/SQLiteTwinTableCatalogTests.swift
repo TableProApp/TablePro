@@ -38,8 +38,8 @@ struct SQLiteTwinTableCatalogTests {
             try? FileManager.default.removeItem(atPath: file.path)
         }
 
-        let columns = try await file.adapter.fetchAllColumns()
-        let keys = try await file.adapter.fetchAllForeignKeys()
+        let columns = try await file.adapter.fetchAllColumns(schema: nil)
+        let keys = try await file.adapter.fetchAllForeignKeys(schema: nil)
 
         #expect(columns[Self.composed]?.map(\.name) == ["id", "a"])
         #expect(columns[Self.decomposed]?.map(\.name) == ["id", "b"])

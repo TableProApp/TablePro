@@ -29,8 +29,9 @@ enum ObjectCommentEditing {
     /// predate a change made in another window or another app.
     static func currentComment(of target: DatabaseObjectTarget) async throws -> String? {
         let name = target.name
+        let schema = target.schema
         return try await DatabaseManager.shared.withMetadataDriver(scope: target.scope) { driver in
-            try await driver.fetchObjectComment(tableName: name)
+            try await driver.fetchObjectComment(tableName: name, schema: schema)
         }
     }
 

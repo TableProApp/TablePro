@@ -920,13 +920,11 @@ private final class StatementRecordingDriver: DatabaseDriver, @unchecked Sendabl
     func cancelQuery() throws {}
     func applyQueryTimeout(_ seconds: Int) async throws {}
 
-    func fetchTables() async throws -> [TableInfo] { [] }
     func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
-    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
-    func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]] { [:] }
-    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
+    func fetchAllColumns(schema: String?) async throws -> [CatalogName: [ColumnInfo]] { [:] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
     func fetchDatabases() async throws -> [String] { [] }
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         DatabaseMetadata(
@@ -940,8 +938,8 @@ private final class StatementRecordingDriver: DatabaseDriver, @unchecked Sendabl
         )
     }
 
-    func fetchTableDDL(table: String) async throws -> String { "" }
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         TableMetadata(
             tableName: tableName,
             dataSize: nil,
@@ -957,7 +955,7 @@ private final class StatementRecordingDriver: DatabaseDriver, @unchecked Sendabl
         )
     }
 
-    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}

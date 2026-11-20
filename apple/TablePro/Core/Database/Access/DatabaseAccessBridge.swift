@@ -650,17 +650,20 @@ internal actor DatabaseAccessBridge {
         let scope = operation.scope
         try await ensureConnected(scope.connectionId)
         let manager = await databaseManager
+        let schema = scope.schema
         return try await manager.withMetadataDriver(scope: scope) { driver -> (count: Int?, isApproximate: Bool) in
             reach.mark()
             if exact {
-                let value = try await driver.fetchExactRowCount(table: table, filters: filters, logicMode: logicMode)
+                let value = try await driver.fetchExactRowCount(
+                    table: table, schema: schema, filters: filters, logicMode: logicMode
+                )
                 return (value, false)
             }
             if !filters.isEmpty {
                 let value = try await driver.fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
                 return (value, false)
             }
-            return (try await driver.fetchApproximateRowCount(table: table), true)
+            return (try await driver.fetchApproximateRowCount(table: table, schema: schema), true)
         }
     }
 

@@ -78,15 +78,12 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
         let source = SQLSchemaProvider.ColumnMetadataSource(
             fetchColumns: { table, schema in
                 try await metadataProvider.withMetadataDriver(scope: scope) { driver in
-                    if let schema {
-                        return try await driver.fetchColumns(table: table, schema: schema)
-                    }
-                    return try await driver.fetchColumns(table: table)
+                    try await driver.fetchColumns(table: table, schema: schema ?? scope.schema)
                 }
             },
             fetchAllColumns: {
                 try await metadataProvider.withMetadataDriver(scope: scope, workload: .bulk) { driver in
-                    try await driver.fetchAllColumns()
+                    try await driver.fetchAllColumns(schema: scope.schema)
                 }
             },
             fetchSchemaTables: { schema in
@@ -96,14 +93,14 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
             },
             sampleFieldPaths: { table, limit in
                 try await metadataProvider.withMetadataDriver(scope: scope) { driver in
-                    try await driver.sampleFieldPaths(table: table, limit: limit)
+                    try await driver.sampleFieldPaths(table: table, schema: scope.schema, limit: limit)
                 }
             },
             fetchForeignKeys: { table, schema in
                 try await metadataProvider.withMetadataDriver(scope: scope) { driver -> [ForeignKeyInfo] in
                     let type = driver.connection.type
                     guard type.supportsForeignKeys else { return [] }
-                    let keys = try await driver.fetchForeignKeys(table: table, schema: schema)
+                    let keys = try await driver.fetchForeignKeys(table: table, schema: schema ?? scope.schema)
                     // A key into another schema would pair with a same-named table of this one. On an engine with no
                     // schema layer a qualifier names a database. With no schema named, the keys come from the
                     // driver's current one, and a scope with no schema would keep keys into every schema.

@@ -16,7 +16,7 @@ extension PluginDriverAdapter {
     // names no schema and reads with none.
     func fetchServerObjects(ofKind kindId: String, schema: String?) async throws -> [ServerObjectInfo] {
         let isDatabaseScoped = pluginDriver.serverObjectKinds.first { $0.id == kindId }?.scope == .database
-        let resolvedSchema = isDatabaseScoped ? nil : (schema ?? pluginDriver.currentSchema)
+        let resolvedSchema = isDatabaseScoped ? nil : readSchema(schema)
         do {
             return try await pluginDriver.fetchServerObjects(ofKind: kindId, schema: resolvedSchema)
                 .filter { $0.kindId == kindId }

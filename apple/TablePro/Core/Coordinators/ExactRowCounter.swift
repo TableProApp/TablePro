@@ -24,22 +24,18 @@ internal enum ExactRowCounter {
         return exactRowCountIsFullScan ? .driverCount : .driverCountThenHostSQL(countSQL)
     }
 
-    /// The exact number of keys a browse search lists, counted only when the table it narrows is
-    /// smaller than `tableSizeLimit`.
-    ///
-    /// Nothing short of walking every key the search could match is exact, and that walk visits the
-    /// whole table, so the table's own size bounds it the way the estimate bounds an automatic
-    /// `COUNT(*)`. An unknown or larger table answers nil and the total stays unknown, with
-    /// `Count Exactly` offered for it.
+    // An exact search count walks the whole table, so the table's size bounds it the way the estimate bounds an automatic COUNT(*).
+    // An unknown or larger table answers nil, which leaves Count Exactly on offer.
     internal static func countBrowseSearch(
         on driver: DatabaseDriver,
         table: String,
+        schema: String?,
         search: BrowseSearchState,
         tableSizeLimit: Int
     ) async throws -> Int? {
-        guard let tableSize = try await driver.fetchApproximateRowCount(table: table),
+        guard let tableSize = try await driver.fetchApproximateRowCount(table: table, schema: schema),
               tableSize < tableSizeLimit else { return nil }
-        return try await driver.fetchExactRowCount(table: table, browseFilters: search.pluginQueryFilters)
+        return try await driver.fetchExactRowCount(table: table, schema: schema, browseFilters: search.pluginQueryFilters)
     }
 
     // `safeModeIsReadOnly` reaches the host's COUNT(*), which carries the user's raw filter. A driver's own count builds
@@ -47,6 +43,7 @@ internal enum ExactRowCounter {
     internal static func count(
         on driver: DatabaseDriver,
         table: String,
+        schema: String?,
         filters: [TableFilter],
         logicMode: FilterLogicMode,
         countSQL: String?,
@@ -59,12 +56,12 @@ internal enum ExactRowCounter {
         )
         switch chosen {
         case .driverCount:
-            return try await driver.fetchExactRowCount(table: table, filters: filters, logicMode: logicMode)
+            return try await driver.fetchExactRowCount(table: table, schema: schema, filters: filters, logicMode: logicMode)
         case .hostCountSQL(let sql):
             return try await hostCount(sql, on: driver, safeModeIsReadOnly: safeModeIsReadOnly)
         case .driverCountThenHostSQL(let sql):
             if let counted = try await driverCountAllowingFallback(
-                on: driver, table: table, filters: filters, logicMode: logicMode
+                on: driver, table: table, schema: schema, filters: filters, logicMode: logicMode
             ) {
                 return counted
             }
@@ -84,11 +81,12 @@ internal enum ExactRowCounter {
     private static func driverCountAllowingFallback(
         on driver: DatabaseDriver,
         table: String,
+        schema: String?,
         filters: [TableFilter],
         logicMode: FilterLogicMode
     ) async throws -> Int? {
         do {
-            return try await driver.fetchExactRowCount(table: table, filters: filters, logicMode: logicMode)
+            return try await driver.fetchExactRowCount(table: table, schema: schema, filters: filters, logicMode: logicMode)
         } catch {
             try Task.checkCancellation()
             logger.warning("Driver count failed, falling back to COUNT(*): \(error.localizedDescription)")

@@ -67,7 +67,7 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
         lock.withLock { reads }
     }
 
-    internal func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]] {
+    internal func fetchAllColumns(schema: String?) async throws -> [CatalogName: [ColumnInfo]] {
         let index = lock.withLock {
             defer { reads += 1 }
             return reads
@@ -96,7 +96,7 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
         lock.withLock { failsTableListing = true }
     }
 
-    internal func fetchAllForeignKeys() async throws -> [CatalogName: [ForeignKeyInfo]] { foreignKeys }
+    internal func fetchAllForeignKeys(schema: String?) async throws -> [CatalogName: [ForeignKeyInfo]] { foreignKeys }
 
     internal func connect() async throws {}
     internal func disconnect() {}
@@ -114,19 +114,17 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
         Self.emptyResult
     }
 
-    internal func fetchTables() async throws -> [TableInfo] {
+    internal func fetchTables(schema: String?) async throws -> [TableInfo] {
         let (tables, fails) = lock.withLock { (listedTables, failsTableListing) }
         guard !fails else { throw CatalogReadFailure() }
         return tables
     }
-    internal func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
-    internal func fetchColumns(table: String) async throws -> [ColumnInfo] { lock.withLock { columns[CatalogName(table)] ?? [] } }
-    internal func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    internal func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    internal func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+    internal func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { lock.withLock { columns[CatalogName(table)] ?? [] } }
+    internal func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    internal func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
     internal func fetchDatabases() async throws -> [String] { [] }
-    internal func fetchTableDDL(table: String) async throws -> String { "" }
-    internal func fetchViewDefinition(view: String) async throws -> String { "" }
+    internal func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    internal func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
 
     internal func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         DatabaseMetadata(
@@ -140,7 +138,7 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
         )
     }
 
-    internal func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    internal func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         TableMetadata(
             tableName: tableName,
             dataSize: nil,

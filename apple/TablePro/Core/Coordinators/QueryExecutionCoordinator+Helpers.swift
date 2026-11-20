@@ -822,7 +822,7 @@ extension QueryExecutionCoordinator {
             do {
                 let count = try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
                     try await ExactRowCounter.countBrowseSearch(
-                        on: driver, table: tableName, search: search, tableSizeLimit: tableSizeLimit
+                        on: driver, table: tableName, schema: scope.schema, search: search, tableSizeLimit: tableSizeLimit
                     )
                 }
                 return count.map { RowCountOutcome.count($0, isApproximate: false) }
@@ -837,6 +837,7 @@ extension QueryExecutionCoordinator {
                     try await ExactRowCounter.count(
                         on: driver,
                         table: tableName,
+                        schema: scope.schema,
                         filters: exactCount.filters,
                         logicMode: exactCount.logicMode,
                         countSQL: sql,

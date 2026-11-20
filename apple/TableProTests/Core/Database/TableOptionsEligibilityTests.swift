@@ -72,7 +72,7 @@ struct TableOptionsEligibilityTests {
     func adapterMapsOptionsAndCatalog() async throws {
         let driver = adapter(writesOptions: true)
 
-        let options = try await driver.fetchTableOptions(tableName: "orders")
+        let options = try await driver.fetchTableOptions(tableName: "orders", schema: nil)
         let catalog = try #require(try await driver.fetchTableOptionsCatalog())
         let defaults = try await driver.fetchDefaultTableOptions(schema: "shop")
 
@@ -92,7 +92,7 @@ struct TableOptionsEligibilityTests {
             connection: TestFixtures.makeConnection(type: .postgresql), pluginDriver: NoOptionsDriver()
         )
 
-        #expect(try await driver.fetchTableOptions(tableName: "orders") == nil)
+        #expect(try await driver.fetchTableOptions(tableName: "orders", schema: nil) == nil)
         #expect(try await driver.fetchTableOptionsCatalog() == nil)
         #expect(driver.tableOptionsStatement(
             tableName: "orders", schema: nil, change: PluginTableOptionsChange(autoIncrement: 5)

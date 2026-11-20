@@ -15,6 +15,7 @@ private final class CatalogStubDriver: DatabaseDriver, @unchecked Sendable {
     var serverVersion: String? { nil }
 
     var schemas: [String] = []
+    var browsedSchema: String?
     var browsedTables: [TableInfo] = []
     var tablesBySchema: [String: [TableInfo]] = [:]
 
@@ -32,17 +33,19 @@ private final class CatalogStubDriver: DatabaseDriver, @unchecked Sendable {
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult { .empty }
 
     func fetchSchemas() async throws -> [String] { schemas }
-    func fetchTables() async throws -> [TableInfo] { browsedTables }
-    func fetchTables(schema: String?) async throws -> [TableInfo] { tablesBySchema[schema ?? ""] ?? [] }
+    // Nil names the connection's own schema, which is the browsed one.
+    func fetchTables(schema: String?) async throws -> [TableInfo] {
+        guard let schema, schema != browsedSchema else { return browsedTables }
+        return tablesBySchema[schema] ?? []
+    }
 
-    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
-    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
-    func fetchTableDDL(table: String) async throws -> String { "" }
-    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
 
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         TableMetadata(
             tableName: tableName, dataSize: nil, indexSize: nil, totalSize: nil,
             avgRowLength: nil, rowCount: nil, comment: nil, engine: nil,
@@ -108,6 +111,7 @@ struct FavoriteTableCatalogReaderTests {
         let service = SchemaService()
         let connection = TestFixtures.makeConnection(id: connectionId, database: "shop", type: type)
         let driver = CatalogStubDriver(connection: connection)
+        driver.browsedSchema = "public"
         driver.browsedTables = [table("users", schema: "public")]
         driver.tablesBySchema = ["sales": [table("orders", schema: "sales")]]
         await service.load(

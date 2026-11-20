@@ -164,9 +164,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     // MARK: - Schema Operations
 
-    /// Fetch all tables in the database
-    func fetchTables() async throws -> [TableInfo]
-
+    // Nil names the connection's own schema; every read below takes the one its caller's scope holds.
     func fetchTables(schema: String?) async throws -> [TableInfo]
 
     /// Every schema's tables in one call, or nil when the engine has no such call and the caller
@@ -187,14 +185,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// a MySQL or Oracle partition name is unique only within its own table.
     func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo]
 
-    /// Fetch columns for a specific table
-    func fetchColumns(table: String) async throws -> [ColumnInfo]
-
-    /// Fetch columns for a table in a specific schema (for cross-schema FK lookups)
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo]
 
     // Every table's columns, keyed by name bytes: an engine can hold two names Swift's String equates.
-    func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]]
+    func fetchAllColumns(schema: String?) async throws -> [CatalogName: [ColumnInfo]]
 
     // One query that also reports every column `fetchColumns` does, so Compare can trust it.
     var providesBulkColumnFetch: Bool { get }
@@ -204,38 +198,26 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Dotted field paths a document store exposes for a collection, for query authoring.
     /// Default implementation returns nothing, which is correct for every SQL driver.
-    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath]
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath]
 
-    /// Fetch indexes for a specific table
-    func fetchIndexes(table: String) async throws -> [IndexInfo]
-
-    /// Fetch foreign keys for a specific table
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo]
-
-    /// The same reads for a table in a named container, for a caller that knows which one it means.
-    ///
-    /// A caller that names a container for one part of a table's description and not the rest gets
-    /// a description of two different tables: the columns of one and the indexes, keys and size of
-    /// whichever the connection happens to be on. Each of these defaults to the unqualified read,
-    /// so a driver that cannot tell containers apart is unaffected.
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo]
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo]
     func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String>
+    // From catalog statistics, for the pager; nil where the engine keeps none.
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
+    // A view answers with its own CREATE VIEW.
     func fetchTableDDL(table: String, schema: String?) async throws -> String
+    // The CREATE INDEX and COMMENT statements `fetchTableDDL` does not carry inline.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String]
     func fetchCommentDDL(table: String, schema: String?) async throws -> [String]
 
-    /// Fetch triggers for a specific table
-    func fetchTriggers(table: String) async throws -> [TriggerInfo]
     func fetchTriggers(table: String, schema: String?) async throws -> [TriggerInfo]
-    func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo]
 
-    /// Trigger editing hooks (optional — nil when unsupported)
-    func createTriggerTemplate(table: String) -> String?
-    func fetchTriggerDefinition(name: String, table: String) async throws -> String?
-    func generateDropTriggerSQL(name: String, table: String) -> String?
+    // Nil when the driver cannot edit triggers.
+    func createTriggerTemplate(table: String, schema: String?) -> String?
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String?
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String?
     var triggerEditUsesReplace: Bool { get }
     var supportsTransactionalDDL: Bool { get }
 
@@ -269,18 +251,13 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func tableDefinitionDidChange(table: String, schema: String?)
 
-    func fetchAllForeignKeys() async throws -> [CatalogName: [ForeignKeyInfo]]
     func fetchAllForeignKeys(schema: String?) async throws -> [CatalogName: [ForeignKeyInfo]]
 
     /// Whether `fetchAllForeignKeys` is a single query. False means it degrades to one round trip
     /// per table, which is too expensive to run ahead of the user.
     var providesBulkForeignKeyFetch: Bool { get }
 
-    func fetchForeignKeys(forTables tableNames: [String]) async throws -> [CatalogName: [ForeignKeyInfo]]
-
-    /// Fetch an approximate row count using fast database-specific metadata.
-    /// Returns nil if not available (e.g., SQLite). Used for instant pagination display.
-    func fetchApproximateRowCount(table: String) async throws -> Int?
+    func fetchForeignKeys(forTables tableNames: [String], schema: String?) async throws -> [CatalogName: [ForeignKeyInfo]]
 
     /// Fetch an exact row count for the table filtered by `filters`.
     /// Returns nil when the driver can't count a filtered set, so the caller falls back.
@@ -288,40 +265,29 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Fetch an exact row count for a user-initiated request. Drivers that cap their automatic
     /// counts to keep browsing responsive must not apply that cap here.
-    func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int?
+    func fetchExactRowCount(
+        table: String,
+        schema: String?,
+        filters: [TableFilter],
+        logicMode: FilterLogicMode
+    ) async throws -> Int?
 
     /// The exact count of a browse narrowed by a search the plugin defines, such as Redis's key
     /// pattern and type, rather than by table filters. Nil when the driver has no such count.
-    func fetchExactRowCount(table: String, browseFilters: [PluginQueryFilter]) async throws -> Int?
+    func fetchExactRowCount(table: String, schema: String?, browseFilters: [PluginQueryFilter]) async throws -> Int?
 
-    /// The statement that creates the named relation: a view answers with its own `CREATE VIEW`.
-    func fetchTableDDL(table: String) async throws -> String
+    // The PostgreSQL enum types a table's columns use, as (name, labels). Empty elsewhere.
+    func fetchDependentTypes(forTable table: String, schema: String?) async throws -> [(name: String, labels: [String])]
 
-    /// The CREATE INDEX statements this table needs that `fetchTableDDL` does not already declare.
-    /// Empty on an engine whose CREATE TABLE carries them inline. Default returns empty.
-    func fetchIndexDDL(table: String) async throws -> [String]
+    // The sequences a table's columns use, as (name, CREATE SEQUENCE). Empty elsewhere.
+    func fetchDependentSequences(forTable table: String, schema: String?) async throws -> [(name: String, ddl: String)]
 
-    /// The COMMENT statements that reattach this relation's comment and its column comments. Empty
-    /// on an engine whose CREATE TABLE carries them inline. Default returns empty.
-    func fetchCommentDDL(table: String) async throws -> [String]
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String
 
-    /// Fetch dependent type definitions (e.g., PostgreSQL enum types) for a table.
-    /// Returns array of (typeName, labels) pairs. Default returns empty.
-    func fetchDependentTypes(forTable table: String) async throws -> [(name: String, labels: [String])]
-
-    /// Fetch dependent sequence definitions (e.g., PostgreSQL sequences used by table columns).
-    /// Returns array of (sequenceName, CREATE SEQUENCE DDL) pairs. Default returns empty.
-    func fetchDependentSequences(forTable table: String) async throws -> [(name: String, ddl: String)]
-
-    /// Fetch the view definition (SELECT statement) for a specific view
-    func fetchViewDefinition(view: String) async throws -> String
-
-    /// Fetch table metadata (size, comment, engine, etc.)
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata
     func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata
 
     // The comment alone, which some engines answer without the row probe their metadata runs.
-    func fetchObjectComment(tableName: String) async throws -> String?
+    func fetchObjectComment(tableName: String, schema: String?) async throws -> String?
 
     /// Fetch list of all databases on the server
     func fetchDatabases() async throws -> [String]
@@ -460,7 +426,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
     // MARK: - Table Options
 
     /// Nil where the engine has no table options.
-    func fetchTableOptions(tableName: String) async throws -> TableOptions?
+    func fetchTableOptions(tableName: String, schema: String?) async throws -> TableOptions?
 
     func fetchTableOptionsCatalog() async throws -> TableOptionsCatalog?
 
@@ -667,12 +633,12 @@ extension DatabaseDriver {
         throw PluginDriverUnsupportedOperation.explainPlan
     }
 
-    func fetchIndexDDL(table: String) async throws -> [String] { [] }
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] { [] }
 
-    func fetchCommentDDL(table: String) async throws -> [String] { [] }
+    func fetchCommentDDL(table: String, schema: String?) async throws -> [String] { [] }
 
-    func fetchObjectComment(tableName: String) async throws -> String? {
-        try await fetchTableMetadata(tableName: tableName).comment
+    func fetchObjectComment(tableName: String, schema: String?) async throws -> String? {
+        try await fetchTableMetadata(tableName: tableName, schema: schema).comment
     }
 
     func resolveQueryCompletionProfile(
@@ -769,57 +735,19 @@ extension DatabaseDriver {
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? { nil }
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? { nil }
 
-    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        try await fetchColumns(table: table)
-    }
-
-    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
-        try await fetchIndexes(table: table)
-    }
-
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        try await fetchForeignKeys(table: table)
-    }
-
     func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String> { [] }
 
-    func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo] {
-        try await fetchCheckConstraints(table: table)
-    }
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo] { [] }
 
-    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        try await fetchApproximateRowCount(table: table)
-    }
-
-    func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        try await fetchTableDDL(table: table)
-    }
-
-    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
-        try await fetchIndexDDL(table: table)
-    }
-
-    func fetchCommentDDL(table: String, schema: String?) async throws -> [String] {
-        try await fetchCommentDDL(table: table)
-    }
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? { nil }
 
     func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] { [] }
 
-    func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
+    func fetchTriggers(table: String, schema: String?) async throws -> [TriggerInfo] { [] }
 
-    func fetchTriggers(table: String, schema: String?) async throws -> [TriggerInfo] {
-        try await fetchTriggers(table: table)
-    }
-
-    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
-        try await fetchTableMetadata(tableName: tableName)
-    }
-
-    func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo] { [] }
-
-    func createTriggerTemplate(table: String) -> String? { nil }
-    func fetchTriggerDefinition(name: String, table: String) async throws -> String? { nil }
-    func generateDropTriggerSQL(name: String, table: String) -> String? { nil }
+    func createTriggerTemplate(table: String, schema: String?) -> String? { nil }
+    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? { nil }
+    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? { nil }
     var triggerEditUsesReplace: Bool { false }
     var supportsTransactionalDDL: Bool { false }
 
@@ -961,33 +889,29 @@ extension DatabaseDriver {
     var providesBulkForeignKeyFetch: Bool { false }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [CatalogName: [ForeignKeyInfo]] {
-        try await fetchAllForeignKeys()
-    }
-
-    func fetchAllForeignKeys() async throws -> [CatalogName: [ForeignKeyInfo]] {
-        let allTables = try await fetchTables()
+        let allTables = try await fetchTables(schema: schema)
         return try await readEachTable(allTables.map(\.name), skippingFailures: true, reading: "foreign keys") { name in
-            let keys = try await fetchForeignKeys(table: name)
+            let keys = try await fetchForeignKeys(table: name, schema: schema)
             return keys.isEmpty ? nil : keys
         }
     }
 
-    func fetchForeignKeys(forTables tableNames: [String]) async throws -> [CatalogName: [ForeignKeyInfo]] {
+    func fetchForeignKeys(forTables tableNames: [String], schema: String?) async throws -> [CatalogName: [ForeignKeyInfo]] {
         if providesBulkForeignKeyFetch, tableNames.count > 5 {
-            let all = try await fetchAllForeignKeys()
+            let all = try await fetchAllForeignKeys(schema: schema)
             let nameSet = Set(tableNames.map { CatalogName($0) })
             return all.filter { nameSet.contains($0.key) }
         }
         // Without a bulk query the schema-wide read is a round trip per schema table; past five names an error still fails it.
         return try await readEachTable(tableNames, skippingFailures: tableNames.count <= 5, reading: "foreign keys") { name in
-            let keys = try await fetchForeignKeys(table: name)
+            let keys = try await fetchForeignKeys(table: name, schema: schema)
             return keys.isEmpty ? nil : keys
         }
     }
 
-    func fetchIndexes(forTables tableNames: [String]) async throws -> [CatalogName: [IndexInfo]] {
+    func fetchIndexes(forTables tableNames: [String], schema: String?) async throws -> [CatalogName: [IndexInfo]] {
         try await readEachTable(tableNames, skippingFailures: true, reading: "indexes") { name in
-            let indexes = try await fetchIndexes(table: name)
+            let indexes = try await fetchIndexes(table: name, schema: schema)
             return indexes.isEmpty ? nil : indexes
         }
     }
@@ -1018,51 +942,35 @@ extension DatabaseDriver {
         if error is CancellationError { throw error }
     }
 
-    func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath] {
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
         []
     }
 
-    func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]] {
-        let allTables = try await fetchTables()
+    func fetchAllColumns(schema: String?) async throws -> [CatalogName: [ColumnInfo]] {
+        let allTables = try await fetchTables(schema: schema)
         return try await readEachTable(allTables.map(\.name), skippingFailures: true, reading: "columns") { name in
-            try await fetchColumns(table: name)
+            try await fetchColumns(table: name, schema: schema)
         }
     }
 
-    /// Default: no dependent types (MySQL/SQLite don't have standalone enum types)
-    func fetchDependentTypes(forTable table: String) async throws -> [(name: String, labels: [String])] {
+    func fetchDependentTypes(forTable table: String, schema: String?) async throws -> [(name: String, labels: [String])] {
         []
     }
 
-    /// Default: no dependent sequences (MySQL/SQLite don't use standalone sequences)
-    func fetchDependentSequences(forTable table: String) async throws -> [(name: String, ddl: String)] {
+    func fetchDependentSequences(forTable table: String, schema: String?) async throws -> [(name: String, ddl: String)] {
         []
     }
 
-    func fetchAllDependentTypes(forTables tables: [String]) async throws -> [String: [(name: String, labels: [String])]] {
-        var result: [String: [(name: String, labels: [String])]] = [:]
-        for table in tables {
-            let types = try await fetchDependentTypes(forTable: table)
-            if !types.isEmpty { result[table] = types }
-        }
-        return result
-    }
-
-    func fetchAllDependentSequences(forTables tables: [String]) async throws -> [String: [(name: String, ddl: String)]] {
-        var result: [String: [(name: String, ddl: String)]] = [:]
-        for table in tables {
-            let seqs = try await fetchDependentSequences(forTable: table)
-            if !seqs.isEmpty { result[table] = seqs }
-        }
-        return result
-    }
-
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? { nil }
-    func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
+    func fetchExactRowCount(
+        table: String,
+        schema: String?,
+        filters: [TableFilter],
+        logicMode: FilterLogicMode
+    ) async throws -> Int? {
         try await fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
     }
-    func fetchExactRowCount(table: String, browseFilters: [PluginQueryFilter]) async throws -> Int? { nil }
+    func fetchExactRowCount(table: String, schema: String?, browseFilters: [PluginQueryFilter]) async throws -> Int? { nil }
 
     func maintenanceOperations() -> [PluginMaintenanceOperation]? { nil }
     func maintenanceStatements(
@@ -1087,7 +995,7 @@ extension DatabaseDriver {
 
     func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? { nil }
 
-    func fetchTableOptions(tableName: String) async throws -> TableOptions? { nil }
+    func fetchTableOptions(tableName: String, schema: String?) async throws -> TableOptions? { nil }
 
     func fetchTableOptionsCatalog() async throws -> TableOptionsCatalog? { nil }
 
@@ -1111,10 +1019,6 @@ extension DatabaseDriver {
     func fetchSchemas() async throws -> [String] { [] }
 
     func fetchExternalSchemaNames() async throws -> Set<String> { [] }
-
-    func fetchTables(schema: String?) async throws -> [TableInfo] {
-        try await fetchTables()
-    }
 
     func fetchTablesInAllSchemas() async throws -> [TableInfo]? { nil }
 

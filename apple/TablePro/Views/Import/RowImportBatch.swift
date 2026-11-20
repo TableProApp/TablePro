@@ -62,12 +62,12 @@ internal final class RowImportBatch: ObservableObject {
             Services(
                 fetchTables: { scope in
                     try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                        try await driver.fetchTables()
+                        try await driver.fetchTables(schema: scope.schema)
                     }
                 },
                 fetchColumns: { table, scope in
                     try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                        try await driver.fetchColumns(table: table)
+                        try await driver.fetchColumns(table: table, schema: scope.schema)
                     }.map(\.name)
                 },
                 detectFields: { formatId, url, table in
