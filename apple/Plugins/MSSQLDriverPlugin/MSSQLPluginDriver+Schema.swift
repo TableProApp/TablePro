@@ -216,12 +216,20 @@ extension MSSQLPluginDriver {
         try await exportCatalog.fetchAllColumns(schema: schema)
     }
 
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await exportCatalog.fetchAllColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
     var providesBulkForeignKeyFetch: Bool { true }
 
     var tableDDLIncludesForeignKeys: Bool { MSSQLExportCatalog.tableDDLIncludesForeignKeys }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         try await exportCatalog.fetchAllForeignKeys(schema: schema)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await exportCatalog.fetchAllForeignKeys(schema: schema, keepsSpellingsApart: true)
     }
 
     private static let metadataLogger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")

@@ -4,6 +4,8 @@ import Testing
 
 private let composed = "caf\u{E9}"
 private let decomposed = "cafe\u{301}"
+private let composedAcute = "\u{E9}"
+private let decomposedAcute = "e\u{301}"
 
 private struct Denied: LocalizedError {
     var errorDescription: String? { "permission denied" }
@@ -359,6 +361,76 @@ struct ExportUnicodeNameTests {
         #expect(document.anchors[0] != document.anchors[1])
         #expect(document.columnRows(at: 2).first?.references.first?.anchor == document.anchors[1])
         #expect(document.foreignKeyRows(at: 2).first?.target.anchor == document.anchors[1])
+    }
+
+    @Test("A plain column keeps its values when a generated column of its table is named alike in another Unicode form")
+    func twinColumnKeepsItsValues() async throws {
+        let source = ByteExactCatalog([
+            Relation(schema: "uni", name: "t", columns: [
+                column("id"),
+                column(composedAcute),
+                PluginColumnInfo(name: decomposedAcute, dataType: "integer", isGenerated: true),
+            ]),
+        ])
+        let output = try await dump([table("t", in: "uni")], from: source)
+
+        #expect(count("INSERT INTO \"t\" (\"id\", \"\(composedAcute)\") VALUES", in: output.text) == 1)
+    }
+
+    @Test("Two keys of one table whose names differ only in Unicode form are each added")
+    func twinConstraintsAreEachAdded() async throws {
+        let source = ByteExactCatalog([
+            Relation(schema: "uni", name: "p", columns: [column("id")]),
+            Relation(schema: "uni", name: "t", columns: [column("a"), column("b")], foreignKeys: [
+                foreignKey("fk_\(composedAcute)", from: "a", to: "p", in: "uni"),
+                foreignKey("fk_\(decomposedAcute)", from: "b", to: "p", in: "uni"),
+            ]),
+        ])
+        let output = try await dump([table("p", in: "uni"), table("t", in: "uni")], from: source)
+
+        #expect(count(
+            "ALTER TABLE \"t\" ADD CONSTRAINT \"fk_\(composedAcute)\" FOREIGN KEY (\"a\") REFERENCES \"p\" (\"id\");",
+            in: output.text) == 1)
+        #expect(count(
+            "ALTER TABLE \"t\" ADD CONSTRAINT \"fk_\(decomposedAcute)\" FOREIGN KEY (\"b\") REFERENCES \"p\" (\"id\");",
+            in: output.text) == 1)
+    }
+
+    @Test("An upsert updates a column named like a key column in another Unicode form")
+    func upsertUpdatesTheTwinOfAKeyColumn() {
+        let renderer = SQLExportInsertRenderer(dialect: .postgres) { "\"\($0)\"" }
+        let rendered = renderer.render(
+            mode: .updateExisting, tableRef: "\"t\"", quotedColumns: "", overriding: "",
+            columnNames: [composedAcute, decomposedAcute], primaryKeyColumns: [composedAcute]
+        )
+
+        #expect(Array(rendered.suffix.utf8) == Array(
+            "\nON CONFLICT (\"\(composedAcute)\") DO UPDATE SET \"\(decomposedAcute)\" = EXCLUDED.\"\(decomposedAcute)\"".utf8
+        ))
+    }
+
+    @Test("The Data Dictionary lists a key under its own column and apart from a key named alike")
+    func dictionaryKeepsTwinColumnsAndKeysApart() {
+        let document = DataDictionaryDocument(
+            title: "uni", databaseTypeId: "PostgreSQL", generatedAt: Date(timeIntervalSince1970: 0),
+            objects: [
+                DataDictionaryObject(name: "p", container: "uni", kind: .table, columns: [column("id")]),
+                DataDictionaryObject(
+                    name: "t", container: "uni", kind: .table,
+                    columns: [column(composedAcute), column(decomposedAcute)],
+                    foreignKeys: [
+                        foreignKey("fk_\(composedAcute)", from: decomposedAcute, to: "p", in: "uni"),
+                        foreignKey("fk_\(decomposedAcute)", from: decomposedAcute, to: "p", in: "uni"),
+                    ]
+                ),
+            ]
+        )
+        let columns = document.columnRows(at: 1)
+        let keys = document.foreignKeyRows(at: 1)
+
+        #expect(columns.map { $0.references.count } == [0, 2])
+        #expect(keys.map { Array($0.name.utf8) } == [Array("fk_\(composedAcute)".utf8), Array("fk_\(decomposedAcute)".utf8)])
+        #expect(keys.map { $0.columns.count } == [1, 1])
     }
 
     @Test("Objects from two schemas named alike in different Unicode forms are named with their schema")

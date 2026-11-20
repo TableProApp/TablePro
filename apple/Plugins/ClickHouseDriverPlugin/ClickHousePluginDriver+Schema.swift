@@ -121,6 +121,14 @@ nonisolated extension ClickHousePluginDriver {
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: false)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         // Pre-fetch PK columns for all tables. Falls back to sorting_key when
         // primary_key is empty (MergeTree without explicit PRIMARY KEY clause).
         // Note: expression-based keys like toDate(col) won't match bare column names.
@@ -148,6 +156,9 @@ nonisolated extension ClickHousePluginDriver {
             ORDER BY table, position
             """
         let result = try await execute(query: sql)
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: pkResult.rows + result.rows, nameAt: 0)
+        }
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             guard let tableName = row[safe: 0]?.asText,

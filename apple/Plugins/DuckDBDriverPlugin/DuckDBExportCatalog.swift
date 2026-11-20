@@ -55,9 +55,17 @@ nonisolated enum DuckDBExportCatalog {
         }
     }
 
-    static func allColumns(catalog: String, schema: String, run: Run) async throws -> [String: [PluginColumnInfo]] {
+    static func allColumns(
+        catalog: String,
+        schema: String,
+        keepsSpellingsApart: Bool = false,
+        run: Run
+    ) async throws -> [String: [PluginColumnInfo]] {
         let result = try await run(DuckDBSchemaQueries.columnsForSchema, [.text(catalog), .text(schema)])
         let pkResult = try await run(DuckDBSchemaQueries.primaryKeyColumnsForSchema, [.text(catalog), .text(schema)])
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: result.rows + pkResult.rows, nameAt: 0)
+        }
         var pkMap: [String: Set<String>] = [:]
         for row in pkResult.rows {
             if let tableName = row[safe: 0]?.asText, let colName = row[safe: 1]?.asText {

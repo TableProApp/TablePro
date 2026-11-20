@@ -69,7 +69,11 @@ nonisolated enum SQLiteCatalogReads {
     }
 
     // `m.sql` rides along so the generation expressions come from the CREATE statement without a read per table.
-    static func allColumns(schema: String?, run: Run) async throws -> [String: [PluginColumnInfo]] {
+    static func allColumns(
+        schema: String?,
+        keepsSpellingsApart: Bool = false,
+        run: Run
+    ) async throws -> [String: [PluginColumnInfo]] {
         let query = """
             SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk,
                    p.hidden, m.sql
@@ -79,6 +83,9 @@ nonisolated enum SQLiteCatalogReads {
             ORDER BY m.name, p.cid
             """
         let result = try await run(query)
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
+        }
 
         var allColumns: [String: [PluginColumnInfo]] = [:]
         var expressionsByTable: [String: [String: String]] = [:]
@@ -125,10 +132,17 @@ nonisolated enum SQLiteCatalogReads {
         return allColumns
     }
 
-    static func allForeignKeys(schema: String?, run: Run) async throws -> [String: [PluginForeignKeyInfo]] {
+    static func allForeignKeys(
+        schema: String?,
+        keepsSpellingsApart: Bool = false,
+        run: Run
+    ) async throws -> [String: [PluginForeignKeyInfo]] {
         let result = try await run(
             SQLiteForeignKeyGrouping.schemaForeignKeysQuery(schema: schema, excludingTableGlob: nil)
         )
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
+        }
         return SQLiteForeignKeyGrouping.foreignKeysByTable(schema: schema, fromRows: result.rows)
     }
 

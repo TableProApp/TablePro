@@ -42,6 +42,13 @@ extension HanaPluginDriver {
         return HanaCatalogMapping.columnsByTable(from: result.rows)
     }
 
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        let owner = try effectiveSchema(schema)
+        let result = try await execute(query: HanaCatalogQueries.columns(schema: owner, table: nil))
+        try PluginNameSpellings.requireDistinctSpellings(HanaCatalogMapping.columns(from: result.rows).map(\.table))
+        return HanaCatalogMapping.columnsByTable(from: result.rows)
+    }
+
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         let owner = try effectiveSchema(schema)
         let result = try await execute(query: HanaCatalogQueries.indexes(schema: owner, table: table))

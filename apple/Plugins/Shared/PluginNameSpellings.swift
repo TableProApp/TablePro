@@ -16,6 +16,25 @@ nonisolated enum PluginNameSpellings {
             }
         }
     }
+
+    static func requireDistinctSpellings(in rows: [[PluginCellValue]], nameAt column: Int) throws {
+        try requireDistinctSpellings(rows.lazy.compactMap { $0[safe: column]?.asText })
+    }
+
+    // The table-by-table read PluginKit's default makes, for a driver with no schema-wide one.
+    static func readEachTable<Value>(
+        _ tables: [String],
+        read: (String) async throws -> [Value]
+    ) async throws -> [String: [Value]] {
+        try requireDistinctSpellings(tables)
+        var answer: [String: [Value]] = [:]
+        for table in tables {
+            try Task.checkCancellation()
+            let values = try await read(table)
+            if !values.isEmpty { answer[table] = values }
+        }
+        return answer
+    }
 }
 
 nonisolated struct PluginNameSpellingError: PluginDriverError {

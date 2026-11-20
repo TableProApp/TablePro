@@ -322,6 +322,14 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: false)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let database = connection?.currentDatabase
         let targetSchema = schema ?? connection?.currentSchema
         guard let database, let targetSchema else { return [:] }
@@ -332,6 +340,9 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             result = try await rawQuery(SnowflakeSchemaQueries.bulkColumns(database: database, schema: targetSchema))
         } catch let error as SnowflakeError where error.indicatesInaccessibleObject {
             return [:]
+        }
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(result.rows.compactMap { Self.text($0, 0) })
         }
 
         var columnsByTable: [String: [PluginColumnInfo]] = [:]

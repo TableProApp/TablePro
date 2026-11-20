@@ -284,23 +284,15 @@ nonisolated struct RedshiftMobileExportCatalog: MobileExportCatalog {
     }
 
     func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] {
-        try await catalog.fetchAllColumns(schema: schema(databaseName))
+        try await catalog.fetchAllColumnsForExport(schema: schema(databaseName))
     }
 
     func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] {
         try await catalog.fetchForeignKeys(table: table, schema: schema(databaseName))
     }
 
-    // The Mac's Redshift driver has no bulk read, so PluginKit's default asks table by table.
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] {
-        let schema = schema(databaseName)
-        var grouped: [String: [PluginForeignKeyInfo]] = [:]
-        for table in try await catalog.fetchTables(schema: schema) {
-            try Task.checkCancellation()
-            let foreignKeys = try await catalog.fetchForeignKeys(table: table.name, schema: schema)
-            if !foreignKeys.isEmpty { grouped[table.name] = foreignKeys }
-        }
-        return grouped
+        try await catalog.fetchAllForeignKeysForExport(schema: schema(databaseName))
     }
 
     func fetchObjectDDL(_ object: PluginExportTable) async throws -> String {

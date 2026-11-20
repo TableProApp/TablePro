@@ -418,23 +418,37 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: false)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let datasetId = dataset(for: schema)
         guard !datasetId.isEmpty else { return [:] }
         do {
-            return try await bulkColumns(datasetId: datasetId)
+            return try await bulkColumns(datasetId: datasetId, keepsSpellingsApart: keepsSpellingsApart)
+        } catch let error as PluginNameSpellingError {
+            throw error
         } catch {
             Self.logger.info(
                 "Bulk column fetch failed, reading tables one by one: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
+            let tables = try await fetchTables(schema: schema)
+            if keepsSpellingsApart {
+                try PluginNameSpellings.requireDistinctSpellings(tables.map(\.name))
+            }
             var columns: [String: [PluginColumnInfo]] = [:]
-            for table in try await fetchTables(schema: schema) {
+            for table in tables {
                 columns[table.name] = try await fetchColumns(table: table.name, schema: schema)
             }
             return columns
         }
     }
 
-    private func bulkColumns(datasetId: String) async throws -> [String: [PluginColumnInfo]] {
+    private func bulkColumns(datasetId: String, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let conn = try requireConnection()
         let source = BigQueryQueryBuilder.qualifiedTable(
             projectId: conn.projectId,
@@ -447,8 +461,15 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             ORDER BY table_name, ordinal_position
             """
         let result = try await conn.executeQuery(sql, defaultDataset: datasetId)
+        let rows = result.queryResponse.rows ?? []
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(rows.compactMap { row -> String? in
+                guard let cell = row.f?.first, case .string(let tableName) = cell.v else { return nil }
+                return tableName
+            })
+        }
         var columns: [String: [PluginColumnInfo]] = [:]
-        for row in result.queryResponse.rows ?? [] {
+        for row in rows {
             let cells = row.f ?? []
             guard cells.count >= 4,
                   case .string(let tableName) = cells[0].v,

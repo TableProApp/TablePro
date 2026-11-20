@@ -5,7 +5,8 @@
 #
 # Builds this checkout's PostgreSQL driver, SQL export and Data Dictionary plugins with SwiftPM, loads a fixture with
 # two tables named café (composed and decomposed, one keyed to the other, a generated and a plain column of one name),
-# two sequences and two enum types named alike the same way, and two schemas named café with a table t each. For each
+# two sequences and two enum types named alike the same way, a table with a plain and a generated column named é and
+# two foreign keys named fk_é the same way, and two schemas named café with a table t each. For each
 # set it exports every table with each table read alone and with the schema-wide reads the driver declares, diffs the
 # two dumps and the two dictionaries, then restores the schema-wide dump into emptied schemas and compares the catalog
 # and the rows with what was dumped.
@@ -91,7 +92,8 @@ let package = Package(
         .target(name: "ProbeDriver", dependencies: [
             "CLibPQ", core("TableProPluginKit"), core("TableProCoreTypes"), core("TableProKerberos"),
             core("TableProGeometry"), core("TableProPostgreSQLCore"), core("TableProSQLVocabulary"),
-            core("TableProSQLQuoting"), core("TableProTLSClientIdentity"), core("TableProLogRedaction")
+            core("TableProSQLQuoting"), core("TableProTLSClientIdentity"), core("TableProLogRedaction"),
+            core("TableProSQLGrammar")
         ], path: "Sources/ProbeDriver", swiftSettings: settings),
         .target(name: "ProbeSQLExport", dependencies: [core("TableProPluginKit"), core("TableProGzip")],
             path: "Sources/ProbeSQLExport", swiftSettings: settings),
@@ -138,9 +140,13 @@ CREATE INDEX U&"cafe\0301_ref" ON U&"cafe\0301" (ref);
 COMMENT ON TABLE "café" IS 'composed';
 COMMENT ON TABLE U&"cafe\0301" IS 'decomposed';
 CREATE TABLE plain (id integer PRIMARY KEY, note text);
+CREATE TABLE twin_names (id integer PRIMARY KEY, "é" integer, U&"e\0301" integer GENERATED ALWAYS AS (id * 5) STORED,
+    p integer, q integer, CONSTRAINT "fk_é" FOREIGN KEY (p) REFERENCES plain (id),
+    CONSTRAINT U&"fk_e\0301" FOREIGN KEY (q) REFERENCES plain (id));
 INSERT INTO "café" (mood) VALUES ('x'), ('y');
 INSERT INTO U&"cafe\0301" (a, mood, ref) VALUES (7, 'p', 1), (8, 'q', 2);
 INSERT INTO plain VALUES (1, 'one');
+INSERT INTO twin_names (id, "é", p, q) VALUES (1, 7, 1, 1);
 SQL
     ;;
     schemas) cat <<'SQL'

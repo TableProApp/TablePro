@@ -77,7 +77,8 @@ let package = Package(
         .target(name: "ProbeDriver", dependencies: [
             "CLibPQ", core("TableProPluginKit"), core("TableProCoreTypes"), core("TableProKerberos"),
             core("TableProGeometry"), core("TableProPostgreSQLCore"), core("TableProSQLVocabulary"),
-            core("TableProSQLQuoting"), core("TableProTLSClientIdentity"), core("TableProLogRedaction")
+            core("TableProSQLQuoting"), core("TableProTLSClientIdentity"), core("TableProLogRedaction"),
+            core("TableProSQLGrammar")
         ], path: "Sources/ProbeDriver", swiftSettings: settings),
         .target(name: "ProbeSQLExport", dependencies: [core("TableProPluginKit"), core("TableProGzip")],
             path: "Sources/ProbeSQLExport", swiftSettings: settings),

@@ -20,8 +20,11 @@ extension MySQLPluginDriver {
         return result.rows.compactMap { DatabendCatalog.column(from: $0) }
     }
 
-    func databendAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+    func databendAllColumns(schema: String?, keepsSpellingsApart: Bool = false) async throws -> [String: [PluginColumnInfo]] {
         let result = try await execute(query: DatabendCatalog.allColumnsQuery(database: effectiveSchema(schema)))
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
+        }
         var columns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             guard let table = row[safe: 0]?.asText,

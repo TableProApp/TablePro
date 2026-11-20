@@ -106,6 +106,14 @@ extension DamengPluginDriver {
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: false)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let owner = effectiveSchema(schema)
         let result = try await executeParameterized(
             query: """
@@ -140,6 +148,9 @@ extension DamengPluginDriver {
                 """,
             parameters: [.text(owner)]
         )
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
+        }
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             guard let table = row[safe: 0]?.asText,
