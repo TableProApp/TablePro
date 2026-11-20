@@ -25,11 +25,26 @@ struct SQLExportBinaryLiteralTests {
     /// `standard_conforming_strings`, which this dump never sets. Measured on PostgreSQL 17.11 with
     /// it off: the cast form stored `\x4134323433` and reported success, so the restore wrote
     /// different bytes and raised nothing.
-    @Test("Every PostgreSQL-family engine gets decode, which means the same under either escape mode")
+    @Test("A true PostgreSQL-family engine gets decode, which means the same under either escape mode")
     func postgresUsesDecode() {
-        for typeId in ["PostgreSQL", "Greenplum", "AlloyDB", "Citus", "CockroachDB", "PGlite", "Redshift"] {
+        for typeId in ["PostgreSQL", "Greenplum", "AlloyDB", "Citus", "CockroachDB", "PGlite"] {
             #expect(SQLExportBinaryLiteral.render(sample, databaseTypeId: typeId) == "decode('414243', 'hex')")
         }
+    }
+
+    /// KingbaseES documents `decode` only as Oracle's DECODE(expr, search, result), so it reads
+    /// `decode('414243','hex')` as that and restores wrong bytes; it takes the bytea cast instead.
+    /// Spelling from the app's measured `CompareSQLLiteral.postgresFamilyBinaryLiteral`.
+    @Test("KingbaseES takes the bytea cast, not decode")
+    func kingbaseESUsesByteaCast() {
+        #expect(SQLExportBinaryLiteral.render(sample, databaseTypeId: "KingbaseES") == "'\\x414243'::bytea")
+    }
+
+    /// Redshift has no bytea and reads VARBYTE, which takes `from_hex`, not `decode`. Spelling from
+    /// the app's measured `CompareSQLLiteral.postgresFamilyBinaryLiteral`.
+    @Test("Redshift takes from_hex, not decode")
+    func redshiftUsesFromHex() {
+        #expect(SQLExportBinaryLiteral.render(sample, databaseTypeId: "Redshift") == "from_hex('414243')")
     }
 
     // Measured on DuckDB 1.5.2: X'414243' stores the bytes of the text x414243.
