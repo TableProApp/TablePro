@@ -32,6 +32,7 @@ struct Options {
     mode: ConnectDialogMode,
     tags: Vec<tablepro_storage::ConnectionTag>,
     ai_assistant: bool,
+    new_project: Option<uuid::Uuid>,
 }
 
 impl Default for Options {
@@ -45,6 +46,7 @@ impl Default for Options {
             mode: ConnectDialogMode::Create,
             tags: Vec::new(),
             ai_assistant: false,
+            new_project: None,
         }
     }
 }
@@ -96,6 +98,7 @@ fn open(options: Options) -> Harness {
         interaction: CredentialInteraction::Unattended,
         tasks: runtime.tasks(),
         saved_connections: Arc::from(options.saved),
+        new_project: options.new_project,
         tags: Arc::from(options.tags),
         remembered_driver: options.remembered.to_owned(),
         ai_assistant: options.ai_assistant,
@@ -869,6 +872,48 @@ fn a_reopened_entry_keeps_its_id_after_the_host_changes() {
     assert!(!edited.is_new);
     assert_eq!(edited.connection.host, "db2.example.com");
     assert_eq!(edited.connection.name, "app@db2.example.com");
+}
+
+#[gtk4::test]
+fn a_new_connection_lands_in_the_active_project_and_a_reopened_one_keeps_its_own() {
+    let (active, other) = (uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+    let first = open(Options {
+        new_project: Some(active),
+        ..Options::default()
+    });
+    let _first_window = present(&first.dialog);
+    fill_network(&first.dialog);
+    let log = SignalLog::connect(&first.dialog, "submitted", |values| {
+        values[1].get::<ConnectSubmission>().expect("a submission")
+    });
+    without_criticals(|| first.dialog.imp().connect_button.emit_clicked());
+    let saved = log.take().remove(0).pending_save.connection;
+    drop(log);
+    assert_eq!(saved.project_id, Some(active));
+
+    // Reopened after a failed connect while another project is active.
+    let reopened = open(Options {
+        saved: vec![saved.clone()],
+        prefill: Some(ConnectPrefill {
+            connection: saved.clone(),
+            password: None,
+        }),
+        new_project: Some(other),
+        ..Options::default()
+    });
+    let _reopened_window = present(&reopened.dialog);
+    let log = SignalLog::connect(&reopened.dialog, "submitted", |values| {
+        values[1].get::<ConnectSubmission>().expect("a submission")
+    });
+    without_criticals(|| reopened.dialog.imp().connect_button.emit_clicked());
+
+    let edited = log.take().remove(0).pending_save;
+    assert!(!edited.is_new);
+    assert_eq!(
+        edited.connection.project_id,
+        Some(active),
+        "an edit moved the connection"
+    );
 }
 
 #[gtk4::test]

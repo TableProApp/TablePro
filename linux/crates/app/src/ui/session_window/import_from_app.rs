@@ -36,8 +36,14 @@ impl SessionWindow {
         };
         let editor = state.services.saved_connection_editor.clone();
         let history = state.services.history().ready_store();
+        // Another app has no projects, so what it adds lands in the active one.
+        let project = state
+            .services
+            .saved_connections
+            .active_project()
+            .map(|project| project.id);
         crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
-            let message = match editor.add_imported(review, plan).await {
+            let message = match editor.add_imported(review, plan, project).await {
                 Ok(imported) => {
                     let (queries, queries_available) = if imported.applied.queries.is_empty() {
                         (None, false)

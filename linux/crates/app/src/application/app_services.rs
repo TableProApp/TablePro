@@ -20,6 +20,7 @@ use tablepro_storage::{QueryHistory, StoragePaths};
 use crate::config;
 use crate::runtime::GioProcessHold;
 use crate::services::account_service::{AccountHandle, AccountService, DesktopBrowser, KeyringRefreshToken};
+use crate::services::active_project::ActiveProject;
 use crate::services::active_session::ActiveSession;
 use crate::services::ai_service::AiService;
 use crate::services::connection_deletion::ConnectionDeletion;
@@ -49,6 +50,9 @@ pub struct AppServices {
     pub tasks: Tasks,
     /// The saved connections every picker shows, following the store.
     pub saved_connections: Rc<SavedConnectionList>,
+    // The setting, where the MCP server's threads read it for each call.
+    pub active_project: ActiveProject,
+    pub(crate) project_menu: Rc<crate::ui::projects::ProjectMenu>,
     /// Edits, copies and regroups saved connections with their secrets.
     pub saved_connection_editor: SavedConnectionEditor,
     /// Shows a file selected in the file manager.
@@ -123,6 +127,18 @@ impl AppServices {
         let open_sessions = OpenSessions::new(storage.workspaces().clone(), application_hold.clone());
         let drivers = Arc::new(drivers);
         let saved_connections = SavedConnectionList::follow(storage.connections(), drivers.clone());
+        let active_project = ActiveProject::default();
+        active_project.set(settings.active_project());
+        saved_connections.set_active_project(settings.active_project());
+        let (following, mirror) = (Rc::downgrade(&saved_connections), active_project.clone());
+        // Never disconnected: the settings and the list both live as long as the process.
+        settings.connect_active_project_changed(move |project| {
+            mirror.set(project);
+            if let Some(list) = following.upgrade() {
+                list.set_active_project(project);
+            }
+        });
+        let project_menu = crate::ui::projects::ProjectMenu::follow(saved_connections.clone());
         let saved_connection_editor =
             SavedConnectionEditor::new(storage.connections().clone(), storage.secrets().clone(), tasks.clone());
         let ai = AiService::new(settings.clone(), tasks.clone(), None);
@@ -138,6 +154,8 @@ impl AppServices {
             storage: Rc::new(storage),
             tasks,
             saved_connections,
+            active_project,
+            project_menu,
             saved_connection_editor,
             file_revealer: Rc::new(FileLauncherRevealer),
             ai,

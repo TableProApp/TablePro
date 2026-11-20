@@ -312,6 +312,12 @@
       <description>Id of the driver last connected to, so the dialog opens on it with its own default port.</description>
     </key>
 
+    <key name="active-project" type="s">
+      <default>''</default>
+      <summary>Active project</summary>
+      <description>Id of the project whose connections the lists show. Empty shows all connections, as an id no project has does.</description>
+    </key>
+
     <key name="csv-null-to-empty" type="b">
       <default>true</default>
       <summary>Write NULL as an empty field</summary>

@@ -7,6 +7,21 @@ use super::{ConnectionList, ConnectionStore, ConnectionsDocument, RemoveOutcome}
 use crate::error::StorageError;
 use crate::{ConnectionColor, ConnectionGroup, ConnectionGroupName, GroupIcon, GroupTree};
 
+mod projects;
+
+pub(super) use projects::{Landing, merge_projects};
+
+// Where a group's name is its own: under its parent, or among its project's top-level groups.
+type Place = (Option<Uuid>, Option<Uuid>);
+
+fn place_of(group: &ConnectionGroup) -> Place {
+    place(group.parent_id, group.project_id)
+}
+
+fn place(parent: Option<Uuid>, project: Option<Uuid>) -> Place {
+    (parent, project.filter(|_| parent.is_none()))
+}
+
 impl ConnectionStore {
     pub fn list_blocking(&self) -> Result<ConnectionList, StorageError> {
         let mut state = self.lock();
@@ -19,13 +34,16 @@ impl ConnectionStore {
                 return Err(StorageError::GroupExists { id: group.id });
             }
             document.check_room(group.parent_id)?;
-            if document.name_taken(group.parent_id, &group.name, &[]) {
+            let (_, project) = place_of(&group);
+            document.check_project(project)?;
+            if document.name_taken(place_of(&group), &group.name, &[]) {
                 return Err(StorageError::GroupNameTaken {
                     name: group.name.as_str().to_owned(),
                 });
             }
             let stored = ConnectionGroup {
                 order: document.next_group_order(group.parent_id),
+                project_id: project,
                 ..group
             };
             document.groups.push(stored.clone());
@@ -36,7 +54,7 @@ impl ConnectionStore {
     pub fn rename_group_blocking(&self, id: Uuid, name: ConnectionGroupName) -> Result<(), StorageError> {
         self.edit(|document| {
             let index = document.group_index(id)?;
-            if document.name_taken(document.groups[index].parent_id, &name, &[id]) {
+            if document.name_taken(place_of(&document.groups[index]), &name, &[id]) {
                 return Err(StorageError::GroupNameTaken {
                     name: name.as_str().to_owned(),
                 });
@@ -144,21 +162,25 @@ impl ConnectionStore {
         })
     }
 
-    /// How the Linux app files a connection under a group it names.
+    /// How the Linux app files a connection under a group it names, at the top in `project`.
     pub fn move_connections_to_group_named_blocking(
         &self,
         ids: &[Uuid],
         parent: Option<Uuid>,
+        project: Option<Uuid>,
         name: ConnectionGroupName,
     ) -> Result<ConnectionGroup, StorageError> {
         self.edit(|document| {
             let moving = document.saved_ids(ids)?;
-            let group = match document.group_named(parent, &name) {
+            let (_, project) = place(parent, project);
+            document.check_project(project)?;
+            let group = match document.group_named((parent, project), &name) {
                 Some(group) => group,
                 None => {
                     document.check_room(parent)?;
                     let group = ConnectionGroup {
                         order: document.next_group_order(parent),
+                        project_id: project,
                         ..ConnectionGroup::new(name, parent)
                     };
                     document.groups.push(group.clone());
@@ -199,14 +221,14 @@ impl ConnectionsDocument {
             .ok_or(StorageError::GroupNotFound { id })
     }
 
-    fn name_taken(&self, parent: Option<Uuid>, name: &ConnectionGroupName, except: &[Uuid]) -> bool {
+    fn name_taken(&self, at: Place, name: &ConnectionGroupName, except: &[Uuid]) -> bool {
         self.groups
             .iter()
-            .any(|group| group.parent_id == parent && !except.contains(&group.id) && group.name.same_name(name))
+            .any(|group| place_of(group) == at && !except.contains(&group.id) && group.name.same_name(name))
     }
 
-    pub(super) fn group_named(&self, parent: Option<Uuid>, name: &ConnectionGroupName) -> Option<ConnectionGroup> {
-        let siblings: Vec<&ConnectionGroup> = self.groups.iter().filter(|group| group.parent_id == parent).collect();
+    pub(super) fn group_named(&self, at: Place, name: &ConnectionGroupName) -> Option<ConnectionGroup> {
+        let siblings: Vec<&ConnectionGroup> = self.groups.iter().filter(|group| place_of(group) == at).collect();
         siblings
             .iter()
             .find(|group| group.name == *name)
@@ -235,20 +257,27 @@ impl ConnectionsDocument {
             tree.check_place(Some(group.id), parent)?;
         }
         let siblings: Vec<&ConnectionGroup> = tree.children(parent);
-        let mut names: Vec<&ConnectionGroupName> = siblings.iter().map(|group| &group.name).collect();
+        // A group that comes up to the top stays in the project of the top-level group it leaves.
+        let membership = self.membership();
+        let mut names: Vec<(Place, &ConnectionGroupName)> =
+            siblings.iter().map(|group| (place_of(group), &group.name)).collect();
         for group in arriving {
-            if names.iter().any(|name| name.same_name(&group.name)) {
+            let landing = place(parent, membership.of_group(group.id));
+            if names
+                .iter()
+                .any(|(at, name)| *at == landing && name.same_name(&group.name))
+            {
                 return Err(StorageError::GroupNameTaken {
                     name: group.name.as_str().to_owned(),
                 });
             }
-            names.push(&group.name);
+            names.push((landing, &group.name));
         }
         let ids: Vec<Uuid> = siblings.iter().map(|group| group.id).collect();
         Ok(placed(&ids, moving, before))
     }
 
-    fn saved_ids(&self, ids: &[Uuid]) -> Result<Vec<Uuid>, StorageError> {
+    pub(super) fn saved_ids(&self, ids: &[Uuid]) -> Result<Vec<Uuid>, StorageError> {
         let saved: HashSet<Uuid> = self.connections.iter().map(|connection| connection.id).collect();
         let present: Vec<Uuid> = unique(ids).into_iter().filter(|id| saved.contains(id)).collect();
         match (present.is_empty(), ids.first()) {
@@ -284,7 +313,11 @@ fn rank_of(rank: usize) -> u32 {
 }
 
 // A group matched by id keeps its place, so an import never makes a cycle.
-pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[ConnectionGroup]) -> HashMap<Uuid, Uuid> {
+pub(super) fn merge_groups(
+    local: &mut Vec<ConnectionGroup>,
+    incoming: &[ConnectionGroup],
+    landing: &Landing<'_>,
+) -> HashMap<Uuid, Uuid> {
     // Maps rather than scans, so a crafted file of many groups cannot hold the store for minutes.
     let mut at: HashMap<Uuid, usize> = local
         .iter()
@@ -309,7 +342,7 @@ pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[Connect
     for group in &walk {
         if let Some(&index) = at.get(&group.id) {
             let held = &mut local[index];
-            if !names.taken_by_another(held.parent_id, &group.name, held.id) {
+            if !names.taken_by_another(place_of(held), &group.name, held.id) {
                 names.remove(held);
                 held.name = group.name.clone();
                 names.add(held);
@@ -322,20 +355,26 @@ pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[Connect
     for group in walk {
         let parent = group.parent_id.and_then(|id| same.get(&id).copied());
         let full = parent.filter(|id| depth.get(id).is_some_and(|level| *level >= ConnectionGroup::MAX_DEPTH));
+        // A file's top-level group that a full path folded away has a parent here, so no project of its own.
+        let spot = place(
+            parent,
+            landing.project(group.project_id.filter(|_| group.parent_id.is_none())),
+        );
         if at.contains_key(&group.id) {
             same.insert(group.id, group.id);
         } else if let Some(deepest) = full {
             // macOS cuts the path the same way, so the connections land in the deepest group allowed.
             same.insert(group.id, deepest);
         } else if let Some(owner) = names
-            .exactly(parent, &group.name)
-            .or_else(|| names.in_any_case(parent, &group.name))
+            .exactly(spot, &group.name)
+            .or_else(|| names.in_any_case(spot, &group.name))
         {
             same.insert(group.id, owner);
         } else {
             let order = next.entry(parent).or_insert(0);
             let added = ConnectionGroup {
                 parent_id: parent,
+                project_id: spot.1,
                 order: *order,
                 ..group.clone()
             };
@@ -351,17 +390,55 @@ pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[Connect
     same
 }
 
+// The file's groups down to `leaf` for an entry that keeps its project, matched by name alone so the
+// groups the import landed elsewhere stay there. None when the file names a project, which then decides.
+pub(super) fn merge_group_path(
+    local: &mut Vec<ConnectionGroup>,
+    incoming: &[ConnectionGroup],
+    leaf: Uuid,
+    landing: &Landing<'_>,
+) -> Option<Uuid> {
+    let by_id: HashMap<Uuid, &ConnectionGroup> = incoming.iter().map(|group| (group.id, group)).collect();
+    let mut path: Vec<&ConnectionGroup> = Vec::new();
+    let mut seen = HashSet::new();
+    let mut next = Some(leaf);
+    while let Some(group) = next.and_then(|id| by_id.get(&id).copied()) {
+        if !seen.insert(group.id) {
+            return None;
+        }
+        path.push(group);
+        next = group.parent_id;
+    }
+    let root = path.last()?;
+    if root.parent_id.is_some() || landing.named(root.project_id).is_some() {
+        return None;
+    }
+    let mut parent = None;
+    let mut copies = Vec::with_capacity(path.len());
+    for group in path.into_iter().rev() {
+        let copy = ConnectionGroup {
+            id: Uuid::new_v4(),
+            parent_id: parent,
+            ..group.clone()
+        };
+        parent = Some(copy.id);
+        copies.push(copy);
+    }
+    let same = merge_groups(local, &copies, landing);
+    parent.and_then(|id| same.get(&id).copied())
+}
+
 #[derive(Default)]
 struct SiblingNames {
-    exact: HashMap<(Option<Uuid>, String), Uuid>,
-    folded: HashMap<(Option<Uuid>, String), Vec<Uuid>>,
+    exact: HashMap<(Place, String), Uuid>,
+    folded: HashMap<(Place, String), Vec<Uuid>>,
 }
 
 impl SiblingNames {
     fn add(&mut self, group: &ConnectionGroup) {
         self.add_exact(group);
         self.folded
-            .entry((group.parent_id, group.name.as_str().to_lowercase()))
+            .entry((place_of(group), group.name.as_str().to_lowercase()))
             .or_default()
             .push(group.id);
     }
@@ -369,39 +446,41 @@ impl SiblingNames {
     // An added group stays out of the any-case match, so a file's own `Work` and `work` stay two groups.
     fn add_exact(&mut self, group: &ConnectionGroup) {
         self.exact
-            .entry((group.parent_id, group.name.as_str().to_owned()))
+            .entry((place_of(group), group.name.as_str().to_owned()))
             .or_insert(group.id);
     }
 
     fn remove(&mut self, group: &ConnectionGroup) {
-        let exact = (group.parent_id, group.name.as_str().to_owned());
+        let exact = (place_of(group), group.name.as_str().to_owned());
         if self.exact.get(&exact) == Some(&group.id) {
             self.exact.remove(&exact);
         }
         if let Some(ids) = self
             .folded
-            .get_mut(&(group.parent_id, group.name.as_str().to_lowercase()))
+            .get_mut(&(place_of(group), group.name.as_str().to_lowercase()))
         {
             ids.retain(|id| *id != group.id);
         }
     }
 
-    fn exactly(&self, parent: Option<Uuid>, name: &ConnectionGroupName) -> Option<Uuid> {
-        self.exact.get(&(parent, name.as_str().to_owned())).copied()
+    fn exactly(&self, at: Place, name: &ConnectionGroupName) -> Option<Uuid> {
+        self.exact.get(&(at, name.as_str().to_owned())).copied()
     }
 
-    fn in_any_case(&self, parent: Option<Uuid>, name: &ConnectionGroupName) -> Option<Uuid> {
+    fn in_any_case(&self, at: Place, name: &ConnectionGroupName) -> Option<Uuid> {
         self.folded
-            .get(&(parent, name.as_str().to_lowercase()))
+            .get(&(at, name.as_str().to_lowercase()))
             .and_then(|ids| ids.first().copied())
     }
 
-    fn taken_by_another(&self, parent: Option<Uuid>, name: &ConnectionGroupName, except: Uuid) -> bool {
+    fn taken_by_another(&self, at: Place, name: &ConnectionGroupName, except: Uuid) -> bool {
         self.folded
-            .get(&(parent, name.as_str().to_lowercase()))
+            .get(&(at, name.as_str().to_lowercase()))
             .is_some_and(|ids| ids.iter().any(|id| *id != except))
     }
 }
 
+#[cfg(test)]
+mod project_tests;
 #[cfg(test)]
 mod tests;

@@ -12,6 +12,8 @@ actor RecordingSyncTransport: IOSSyncTransport {
     private(set) var pushedRecords: [CKRecord] = []
     private(set) var pushedDeletions: [CKRecord.ID] = []
     private(set) var pullCount = 0
+    private(set) var fullFetchCount = 0
+    private var answersOnlyFullFetches = false
     private var fetchable: [CKRecord.ID: CKRecord] = [:]
     private(set) var fetchedRecordIDs: [CKRecord.ID] = []
     private(set) var subscriptionSaves = 0
@@ -32,6 +34,11 @@ actor RecordingSyncTransport: IOSSyncTransport {
     func answerPulls(with records: [CKRecord], deletions: [CKRecord.ID] = []) {
         remoteRecords = records
         remoteDeletions = deletions
+    }
+
+    // A server nothing changed on: a pull from a token brings nothing, and only a full fetch lists the records.
+    func answerOnlyFullFetches() {
+        answersOnlyFullFetches = true
     }
 
     // Served to a fetch by id, as the server holds it.
@@ -74,6 +81,11 @@ actor RecordingSyncTransport: IOSSyncTransport {
     func pull(since token: CKServerChangeToken?) async throws -> PullResult {
         pullCount += 1
         await beforePull?()
+        if token == nil {
+            fullFetchCount += 1
+        } else if answersOnlyFullFetches {
+            return PullResult(changedRecords: [], deletedRecordIDs: [], newToken: newToken)
+        }
         return PullResult(changedRecords: remoteRecords, deletedRecordIDs: remoteDeletions, newToken: newToken)
     }
 

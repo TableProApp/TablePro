@@ -14,10 +14,13 @@ final class AppState {
     private var connectionsState: Loadable<[DatabaseConnection]> = .loading
     private var groupsState: Loadable<[ConnectionGroup]> = .loading
     private var tagsState: Loadable<[ConnectionTag]> = .loading
+    // Outside `loadStatus`: a projects file that fails to load reads as no projects, never as a locked library.
+    private var projectsState: Loadable<[ConnectionProject]> = .loading
 
     var connections: [DatabaseConnection] { connectionsState.value ?? [] }
     var groups: [ConnectionGroup] { groupsState.value ?? [] }
     var tags: [ConnectionTag] { tagsState.value ?? ConnectionTag.presets }
+    var projects: [ConnectionProject] { projectsState.value ?? [] }
 
     var loadStatus: LoadStatus {
         if connectionsState.isFailed || groupsState.isFailed || tagsState.isFailed {
@@ -61,6 +64,7 @@ final class AppState {
     private let storage: ConnectionPersistence
     private let groupStorage: GroupPersistence
     private let tagStorage: TagPersistence
+    private let projectStorage: ProjectPersistence
 
     init(
         libraryDirectory: URL = LibraryStorage.defaultDirectory,
@@ -85,6 +89,7 @@ final class AppState {
         savedQueries = SavedQueryLibrary(directory: libraryDirectory, syncCoordinator: syncCoordinator)
         groupStorage = GroupPersistence(directory: libraryDirectory)
         tagStorage = TagPersistence(directory: libraryDirectory)
+        projectStorage = ProjectPersistence(directory: libraryDirectory)
         let driverFactory: any DriverFactory = injectedDriverFactory
             ?? IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localDatabaseFiles, secureStore: secureStore)
         self.secureStore = secureStore
@@ -152,7 +157,21 @@ final class AppState {
         syncCoordinator.onGroupsChanged = { [weak self] merged in
             guard let self else { return false }
             guard merged != self.groups || self.unsavedLibraryParts.contains(.groups) else { return true }
-            return self.persist(groups: merged, onlyIfSaved: true)
+            guard self.persist(groups: merged, onlyIfSaved: true) else { return false }
+            self.publishLibrary()
+            return true
+        }
+
+        syncCoordinator.getProjects = { [weak self] in
+            self?.projectsState.value
+        }
+
+        syncCoordinator.onProjectsChanged = { [weak self] merged in
+            guard let self, self.areProjectsWritable else { return false }
+            guard merged != self.projects || self.unsavedLibraryParts.contains(.projects) else { return true }
+            guard self.persist(projects: merged, onlyIfSaved: true) else { return false }
+            self.publishLibrary()
+            return true
         }
 
         syncCoordinator.onTagsChanged = { [weak self] merged in
@@ -223,6 +242,10 @@ final class AppState {
 
     func retryLoadIfFailed() {
         savedQueries.retryLoadIfFailed()
+        if projectsState.isFailed {
+            loadProjects()
+            publishLibrary()
+        }
         guard loadStatus == .failed else { return }
         Self.logger.info("Retrying persistence load after previous failure")
         loadPersistedData()
@@ -255,9 +278,10 @@ final class AppState {
         return false
     }
 
+    // The widget, Spotlight and the Shortcuts parameters show the active project, like the list.
     private func publishLibrary() {
         guard loadStatus == .ready else { return }
-        libraryPublisher.publish(connections)
+        libraryPublisher.publish(scopedConnections)
     }
 
     @discardableResult
@@ -307,6 +331,17 @@ final class AppState {
         } catch {
             tagsState = .failed(error)
             Self.logger.error("Tags load failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
+        }
+
+        loadProjects()
+    }
+
+    private func loadProjects() {
+        do {
+            projectsState = .loaded(try projectStorage.load())
+        } catch {
+            projectsState = .failed(error)
+            Self.logger.error("Projects load failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -407,8 +442,30 @@ final class AppState {
         return saved
     }
 
+    @discardableResult
+    private func persist(projects: [ConnectionProject], onlyIfSaved: Bool = false) -> Bool {
+        var saved = true
+        do {
+            let pending = pendingUnreadableRemovals.projects
+            try projectStorage.save(projects, removingUnreadable: pending.intersection(projectStorage.unreadableIds))
+            settleUnreadableRemovals(UnreadableCopies(projects: pending))
+        } catch {
+            saved = false
+            Self.logger.error("Failed to save projects: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
+        }
+        guard saved || !onlyIfSaved else { return false }
+        markLibraryPart(.projects, saved: saved)
+        projectsState = .loaded(projects)
+        return saved
+    }
+
     var unreadableCopies: UnreadableCopies {
-        UnreadableCopies(connections: storage.unreadableIds, groups: groupStorage.unreadableIds, tags: tagStorage.unreadableIds)
+        UnreadableCopies(
+            connections: storage.unreadableIds,
+            groups: groupStorage.unreadableIds,
+            tags: tagStorage.unreadableIds,
+            projects: projectStorage.unreadableIds
+        )
     }
 
     // Unread copies another device deleted, removed by the next save of their file so their ids stay protected until
@@ -432,6 +489,7 @@ final class AppState {
         if !deleted.connections.isEmpty { unsavedLibraryParts.insert(.connections) }
         if !deleted.groups.isEmpty { unsavedLibraryParts.insert(.groups) }
         if !deleted.tags.isEmpty { unsavedLibraryParts.insert(.tags) }
+        if !deleted.projects.isEmpty { unsavedLibraryParts.insert(.projects) }
     }
 
     // What belonged to a connection another device deleted goes with it, as for one this device could read.
@@ -473,6 +531,163 @@ final class AppState {
         Set(groups.map(\.id))
     }
 
+    // MARK: - Projects
+
+    // False while the projects file could not be read: the list shows All Connections and no project is written.
+    var areProjectsWritable: Bool {
+        isLibraryWritable && projectsState.isLoaded
+    }
+
+    var orderedProjects: [ConnectionProject] {
+        ConnectionLibraryEditing.orderedProjects(projects)
+    }
+
+    var projectScope: LibraryProjectScope {
+        LibraryProjectScope(groups: groups, projects: projects)
+    }
+
+    // Nil is All Connections, which an id no project holds reads as too.
+    var activeProjectId: UUID? {
+        projectScope.resolved(libraryPreferences.activeProjectId)
+    }
+
+    var activeProject: ConnectionProject? {
+        activeProjectId.flatMap { id in projects.first { $0.id == id } }
+    }
+
+    // What the list, search and every chooser show. Storage, sync, cleanup and lookups by id read the full lists.
+    var scopedLibrary: LibraryScopedLibrary<DatabaseConnection, ConnectionGroup> {
+        projectScope.scoped(connections: connections, groups: groups, active: libraryPreferences.activeProjectId)
+    }
+
+    // For a group picker. A record opened from outside the active project still finds the group it is in.
+    func groupChoices(including groupId: UUID?) -> [ConnectionGroup] {
+        let scoped = scopedGroups
+        guard let groupId, !scoped.contains(where: { $0.id == groupId }) else { return scoped }
+        return groups
+    }
+
+    var scopedConnections: [DatabaseConnection] { scopedLibrary.connections }
+    var scopedGroups: [ConnectionGroup] { scopedLibrary.groups }
+    var scopedConnectionIds: Set<UUID> { scopedLibrary.connectionIds }
+
+    func setActiveProject(_ projectId: UUID?) {
+        guard projectId != libraryPreferences.activeProjectId else { return }
+        libraryPreferences.setActiveProject(projectId)
+        publishLibrary()
+    }
+
+    @discardableResult
+    func addProject(named name: String) -> ProjectWriteOutcome {
+        guard areProjectsWritable else { return .refused }
+        let result = ConnectionLibraryEditing.addingProject(named: name, to: projects)
+        guard case .applied(let id) = result.outcome else { return result.outcome }
+        persist(projects: result.projects)
+        syncCoordinator.markDirtyProject(id)
+        syncCoordinator.scheduleSyncAfterChange()
+        return result.outcome
+    }
+
+    // An import brings its own id, colour and icon.
+    @discardableResult
+    func addImportedProject(_ project: ConnectionProject) -> Bool {
+        guard areProjectsWritable else { return false }
+        guard !projectStorage.unreadableIds.contains(project.id), !projects.contains(where: { $0.id == project.id }) else {
+            logUnreadableIdRefusal()
+            return false
+        }
+        persist(projects: projects + [project])
+        syncCoordinator.markDirtyProject(project.id)
+        syncCoordinator.scheduleSyncAfterChange()
+        return true
+    }
+
+    @discardableResult
+    func renameProject(_ id: UUID, to name: String) -> ProjectWriteOutcome {
+        guard areProjectsWritable else { return .refused }
+        let result = ConnectionLibraryEditing.renamingProject(id, to: name, in: projects)
+        guard case .applied = result.outcome else { return result.outcome }
+        persist(projects: result.projects)
+        syncCoordinator.markDirtyProject(id)
+        syncCoordinator.scheduleSyncAfterChange()
+        return result.outcome
+    }
+
+    func reorderProjects(_ orderedIds: [UUID]) {
+        guard areProjectsWritable else { return }
+        let result = ConnectionLibraryEditing.reorderingProjects(orderedIds, in: projects)
+        guard !result.changed.isEmpty else { return }
+        persist(projects: result.projects)
+        for id in result.changed {
+            syncCoordinator.markDirtyProject(id)
+        }
+        syncCoordinator.scheduleSyncAfterChange()
+    }
+
+    func deleteProject(_ id: UUID) {
+        guard areProjectsWritable else { return }
+        guard let change = ConnectionLibraryEditing.deletingProject(
+            id,
+            projects: projects,
+            groups: groups,
+            connections: connections
+        ) else { return }
+        persist(projects: change.projects)
+        persistAssignment(
+            groups: change.groups,
+            connections: change.connections,
+            changedGroupIds: change.changedGroupIds,
+            changedConnectionIds: change.changedConnectionIds
+        )
+        if libraryPreferences.activeProjectId == id {
+            libraryPreferences.setActiveProject(nil)
+        }
+        publishLibrary()
+        syncCoordinator.markDeletedProject(id)
+        syncCoordinator.scheduleSyncAfterChange()
+    }
+
+    // A connection inside a group is left where it is: it moves with its top-level group.
+    func moveToProject(_ projectId: UUID?, connections connectionIds: Set<UUID>, groups groupIds: Set<UUID>) {
+        guard !refuseWriteIfNotReady() else { return }
+        let change = ConnectionLibraryEditing.assigningProject(
+            projectId,
+            toConnections: connectionIds.subtracting(storage.unreadableIds),
+            groups: groupIds,
+            in: connections,
+            groups: groups
+        )
+        guard !change.changedGroupIds.isEmpty || !change.changedConnectionIds.isEmpty else { return }
+        persistAssignment(
+            groups: change.groups,
+            connections: change.connections,
+            changedGroupIds: change.changedGroupIds,
+            changedConnectionIds: change.changedConnectionIds
+        )
+        publishLibrary()
+        syncCoordinator.scheduleSyncAfterChange()
+    }
+
+    private func persistAssignment(
+        groups updatedGroups: [ConnectionGroup],
+        connections updatedConnections: [DatabaseConnection],
+        changedGroupIds: [UUID],
+        changedConnectionIds: [UUID]
+    ) {
+        if !changedGroupIds.isEmpty {
+            persist(groups: updatedGroups)
+            for id in changedGroupIds {
+                syncCoordinator.markDirtyGroup(id)
+            }
+        }
+        if !changedConnectionIds.isEmpty {
+            persist(connections: updatedConnections)
+            for id in changedConnectionIds where syncsConnection(id) {
+                syncCoordinator.markDirty(id)
+            }
+        }
+    }
+
     // MARK: - Connections
 
     func isConnectionRemoved(_ id: UUID) -> Bool {
@@ -485,7 +700,15 @@ final class AppState {
 
     @discardableResult
     func addConnection(_ connection: DatabaseConnection) -> Bool {
-        apply(ConnectionLibraryEditing.adding(connection, to: connections, validGroupIds: validGroupIds))
+        apply(ConnectionLibraryEditing.adding(connection, to: connections, groups: groups))
+    }
+
+    // What the person makes lands in the project they are looking at. An import and the sample name their own.
+    @discardableResult
+    func addConnectionToActiveProject(_ connection: DatabaseConnection) -> Bool {
+        var placed = connection
+        placed.projectId = activeProjectId
+        return addConnection(placed)
     }
 
     @discardableResult
@@ -494,7 +717,7 @@ final class AppState {
         guard let change = ConnectionLibraryEditing.mutatingConnection(
             id,
             in: connections,
-            validGroupIds: validGroupIds,
+            groups: groups,
             mutate
         ) else { return .missing }
         return apply(change) ? .applied : .unchanged
@@ -510,7 +733,7 @@ final class AppState {
             toGroup: groupId,
             before: before,
             in: connections,
-            validGroupIds: validGroupIds
+            groups: groups
         ))
     }
 
@@ -530,8 +753,13 @@ final class AppState {
         libraryPreferences.setFavoritesOrder(previousOrder + added)
     }
 
+    // The list shows one project and the saved order holds every project's, so the new order is merged in.
     func reorderFavorites(_ orderedIds: [UUID]) {
-        libraryPreferences.setFavoritesOrder(orderedIds)
+        libraryPreferences.setFavoritesOrder(LibraryOrdering.favoritesOrder(
+            libraryPreferences.favoritesOrder,
+            scoped: orderedIds,
+            reorderedTo: orderedIds
+        ))
     }
 
     func duplicateConnection(_ connection: DatabaseConnection) {
@@ -606,6 +834,13 @@ final class AppState {
     }
 
     @discardableResult
+    func addGroupToActiveProject(_ group: ConnectionGroup) -> LibraryWriteOutcome {
+        var placed = group
+        placed.projectId = activeProjectId
+        return addGroup(placed)
+    }
+
+    @discardableResult
     func mutateGroup(_ id: UUID, _ mutate: (inout ConnectionGroup) -> Void) -> LibraryWriteOutcome {
         guard !refuseWriteIfNotReady() else { return .refused }
         guard groups.contains(where: { $0.id == id }) else { return .missing }
@@ -614,6 +849,7 @@ final class AppState {
         }
         guard result.changed else { return .unchanged }
         persist(groups: result.groups)
+        publishLibrary()
         syncCoordinator.markDirtyGroup(id)
         syncCoordinator.scheduleSyncAfterChange()
         return .applied
@@ -640,6 +876,9 @@ final class AppState {
 
         for id in change.changedConnectionIds where syncsConnection(id) {
             syncCoordinator.markDirty(id)
+        }
+        for id in change.changedGroupIds {
+            syncCoordinator.markDirtyGroup(id)
         }
         for id in change.removedGroupIds {
             syncCoordinator.markDeletedGroup(id)
@@ -799,4 +1038,5 @@ private enum LibraryPart {
     case connections
     case groups
     case tags
+    case projects
 }

@@ -43,6 +43,8 @@ public partial class App : Application
             AccountSetup.Configuration(folder),
             new SystemBrowser(DispatcherQueue.GetForCurrentThread()),
             AccountSetup.Portal());
+        // Before any window lists a project: the switchers and scoped lists follow the events this read raises.
+        _ = workbench.ReadScopeAsync();
         _window = new MainWindow(workbench);
         _window.SessionSaved += (_, _) => ReleaseFolder();
         _window.Closed += (_, _) => ReleaseFolder();

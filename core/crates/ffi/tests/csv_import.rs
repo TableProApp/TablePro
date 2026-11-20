@@ -347,6 +347,7 @@ async fn confirm_writes_asks_first_and_read_only_refuses() {
         tags: Vec::new(),
         ai_policy: None,
         external_access: None,
+        project_id: None,
     };
     let saved = library.save(record, ConnectionSecrets::default()).await.unwrap();
     let session = core

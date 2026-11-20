@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use uuid::Uuid;
 
-use super::ConnectionStore;
+use super::{ConnectionStore, Writer};
 use crate::cloudkit::{self, CloudPull, CloudRecords};
 use crate::error::StorageError;
 
@@ -14,7 +14,7 @@ impl ConnectionStore {
 
     // The host adds unknown connections before applying their placement fields.
     pub fn apply_cloud_pull_blocking(&self, pull: &CloudPull) -> Result<(), StorageError> {
-        self.edit(|document| {
+        self.change(Writer::Pull, |document| {
             let deleted: HashSet<Uuid> = pull.deleted.connections.iter().copied().collect();
             document.connections.retain(|saved| !deleted.contains(&saved.id));
             document.favorites.retain(|id| !deleted.contains(id));

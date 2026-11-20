@@ -13,6 +13,8 @@ pub struct ImportedConnection {
     // Matched in any case in its place and made where missing; names past MAX_DEPTH are dropped.
     pub group_path: Vec<ConnectionGroupName>,
     pub replaces: Option<Uuid>,
+    // Where a new top-level group or ungrouped connection lands; a replaced entry keeps its own.
+    pub project_id: Option<Uuid>,
 }
 
 impl ConnectionStore {
@@ -24,7 +26,8 @@ impl ConnectionStore {
         imported: Vec<ImportedConnection>,
     ) -> Result<Vec<SavedConnection>, StorageError> {
         let mut state = self.lock_to_write();
-        let mut document = self.ensure_current(&mut state)?;
+        let before = self.ensure_current(&mut state)?;
+        let mut document = before.clone();
         if !document.lists_as(expected) {
             return Err(StorageError::ImportOutdated);
         }
@@ -34,11 +37,9 @@ impl ConnectionStore {
             .map(|saved| (saved.name.clone(), saved.id))
             .collect();
         let mut saved = Vec::with_capacity(imported.len());
+        let was = before.membership();
         for entry in imported {
-            let group_id = document.ensure_group_path(&entry.group_path);
             let mut connection = entry.connection;
-            connection.group_id = group_id;
-            connection.last_opened_at = None;
             let target = entry.replaces.and_then(|id| {
                 document.connections.iter().position(|existing| {
                     existing.id == id
@@ -48,6 +49,17 @@ impl ConnectionStore {
                         })
                 })
             });
+            // Before the groups: a path made in the import's project would take a replaced entry there.
+            let replaced = target.and_then(|_| before.connections.iter().find(|held| Some(held.id) == entry.replaces));
+            let project = match replaced {
+                Some(replaced) => was.of_connection(replaced),
+                None => entry
+                    .project_id
+                    .filter(|id| document.projects.iter().any(|held| held.id == *id)),
+            };
+            connection.group_id = document.ensure_group_path(&entry.group_path, project);
+            connection.project_id = project;
+            connection.last_opened_at = None;
             match target {
                 Some(index) => {
                     let existing = &document.connections[index];
@@ -69,11 +81,17 @@ impl ConnectionStore {
                     document.connections.push(connection.clone());
                 }
             }
-            saved.push(connection);
+            saved.push(connection.id);
         }
         if saved.is_empty() {
-            return Ok(saved);
+            return Ok(Vec::new());
         }
+        document.keep_membership(&before);
+        // As stored, so each entry reports the project it landed in.
+        let saved: Vec<SavedConnection> = saved
+            .into_iter()
+            .filter_map(|id| document.connections.iter().find(|held| held.id == id).cloned())
+            .collect();
         self.commit(&mut state, document)?;
         Ok(saved)
     }
@@ -94,16 +112,19 @@ impl ConnectionsDocument {
             && self.groups.as_slice() == &*list.groups
             && self.tags.as_slice() == &*list.tags
             && self.favorites.as_slice() == &*list.favorites
+            && self.projects.as_slice() == &*list.projects
     }
 
-    fn ensure_group_path(&mut self, path: &[ConnectionGroupName]) -> Option<Uuid> {
+    fn ensure_group_path(&mut self, path: &[ConnectionGroupName], project: Option<Uuid>) -> Option<Uuid> {
         let mut parent = None;
         for name in path.iter().take(ConnectionGroup::MAX_DEPTH) {
-            let group = match self.group_named(parent, name) {
+            let at = (parent, project.filter(|_| parent.is_none()));
+            let group = match self.group_named(at, name) {
                 Some(group) => group,
                 None => {
                     let group = ConnectionGroup {
                         order: self.next_group_order(parent),
+                        project_id: at.1,
                         ..ConnectionGroup::new(name.clone(), parent)
                     };
                     self.groups.push(group.clone());
@@ -148,6 +169,7 @@ mod tests {
             last_opened_at: None,
             color: None,
             group_id: None,
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,
@@ -173,6 +195,7 @@ mod tests {
             connection,
             group_path: path.iter().map(|part| name(part)).collect(),
             replaces: None,
+            project_id: None,
         }
     }
 
@@ -233,11 +256,13 @@ mod tests {
                     connection: alike,
                     group_path: Vec::new(),
                     replaces: Some(held.id),
+                    project_id: None,
                 },
                 ImportedConnection {
                     connection: elsewhere,
                     group_path: Vec::new(),
                     replaces: Some(held.id),
+                    project_id: None,
                 },
             ],
         );

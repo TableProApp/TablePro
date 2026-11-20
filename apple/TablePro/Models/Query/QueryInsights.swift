@@ -54,6 +54,8 @@ struct QueryInsightsRequest: Sendable, Equatable {
     var until: Date?
     var limit: Int
     var referenceDate: Date
+    // Nil is every connection. Set when every connection of the active project is asked for.
+    var allowedConnectionIds: Set<UUID>?
 
     init(
         scope: QueryHistoryScope,
@@ -61,8 +63,10 @@ struct QueryInsightsRequest: Sendable, Equatable {
         since: Date? = nil,
         until: Date? = nil,
         limit: Int = QueryInsightsRequest.defaultLimit,
-        referenceDate: Date = Date()
+        referenceDate: Date = Date(),
+        allowedConnectionIds: Set<UUID>? = nil
     ) {
+        self.allowedConnectionIds = allowedConnectionIds
         self.scope = scope
         self.sources = sources
         self.since = since
@@ -73,6 +77,7 @@ struct QueryInsightsRequest: Sendable, Equatable {
 
     var matchesNothing: Bool {
         if sources.isEmpty { return true }
+        if let allowedConnectionIds, allowedConnectionIds.isEmpty { return true }
         if let since, let until, since > until { return true }
         return false
     }

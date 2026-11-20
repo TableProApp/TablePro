@@ -33,7 +33,10 @@ use tablepro_session::{
 };
 use tablepro_ssh::{SshRuntimeCell, SshServices};
 use tablepro_storage::query_history::NewEntry;
-use tablepro_storage::{ConnectionGroup, ConnectionGroupName, ConnectionStore, SavedConnection, StoragePaths};
+use tablepro_storage::{
+    ConnectionGroup, ConnectionGroupName, ConnectionProject, ConnectionProjectName, ConnectionStore, SavedConnection,
+    StoragePaths,
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -59,6 +62,7 @@ struct TestHost {
     approves: AtomicBool,
     asked: Mutex<Vec<WriteApproval>>,
     recorded: Mutex<Vec<NewEntry>>,
+    active_project: Mutex<Option<Uuid>>,
 }
 
 #[async_trait]
@@ -77,6 +81,10 @@ impl McpHost for TestHost {
 
     async fn open_connections(&self) -> Vec<Uuid> {
         self.sessions.lock().expect("sessions").keys().copied().collect()
+    }
+
+    fn active_project(&self) -> Option<Uuid> {
+        *self.active_project.lock().expect("active project")
     }
 
     async fn open(&self, _connection: SavedConnection) -> OpenOutcome {
@@ -105,6 +113,7 @@ struct Harness {
     _dir: tempfile::TempDir,
     server: McpServer,
     host: Arc<TestHost>,
+    store: ConnectionStore,
     ids: Ids,
 }
 
@@ -127,6 +136,7 @@ fn saved(id: Uuid, name: &str, file: &Path, access: ExternalAccess) -> SavedConn
         last_opened_at: None,
         color: None,
         group_id: None,
+        project_id: None,
         order: 0,
         tags: Vec::new(),
         icon: None,
@@ -268,7 +278,7 @@ async fn harness() -> Harness {
     let token = AccessToken::from_secret(SecretString::from(TOKEN.to_owned())).expect("a token");
     let context = ToolContext {
         host: host.clone(),
-        connections: store,
+        connections: store.clone(),
     };
     let server = McpServer::start(0, token, context, "0.0.0-test", &tasks())
         .await
@@ -277,6 +287,7 @@ async fn harness() -> Harness {
         _dir: dir,
         server,
         host,
+        store,
         ids,
     }
 }
@@ -612,6 +623,75 @@ async fn a_blocked_connection_is_not_listed_and_does_not_exist() {
     assert_eq!(listed["connections"][1]["safe_mode"], "read_only");
     assert!(blocked_failed);
     assert!(blocked.starts_with("not_found:"), "{blocked}");
+}
+
+async fn listed_names(harness: &Harness) -> Vec<String> {
+    let (failed, text) = call(harness, "list_connections", json!({})).await;
+    assert!(!failed, "{text}");
+    parsed(&text)["connections"]
+        .as_array()
+        .expect("connections")
+        .iter()
+        .filter_map(|connection| connection["name"].as_str().map(str::to_owned))
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_apps_active_project_scopes_the_listing_and_a_call_by_id() {
+    let harness = harness().await;
+    let store = &harness.store;
+    let project = store
+        .create_project_blocking(ConnectionProject::new(
+            ConnectionProjectName::new("Acme").expect("a project name"),
+        ))
+        .expect("a project");
+    let work = store
+        .list_blocking()
+        .expect("the list")
+        .groups
+        .iter()
+        .find(|group| group.name.as_str() == "Work")
+        .expect("Work")
+        .id;
+    store
+        .move_groups_to_project_blocking(&[work], Some(project.id))
+        .expect("Work in the project");
+    store
+        .move_connections_to_project_blocking(&[harness.ids.writable, harness.ids.blocked], Some(project.id))
+        .expect("Writable and Blocked in the project");
+    let describe = |id: Uuid| json!({ "connection_id": id.to_string(), "table": "orders" });
+
+    assert_eq!(
+        listed_names(&harness).await,
+        ["Closed", "Locked", "Readable", "Writable"]
+    );
+    *harness.host.active_project.lock().expect("active project") = Some(project.id);
+
+    assert_eq!(listed_names(&harness).await, ["Closed", "Readable", "Writable"]);
+    let (failed, inside) = call(&harness, "describe_table", describe(harness.ids.readable)).await;
+    assert!(!failed, "{inside}");
+    let (failed, outside) = call(&harness, "describe_table", describe(harness.ids.locked)).await;
+    assert!(failed);
+    assert!(outside.starts_with("out_of_scope:"), "{outside}");
+    assert!(
+        !outside.contains("Locked"),
+        "the refusal names the connection: {outside}"
+    );
+    // Blocked stays as if it did not exist, in the project or out of it.
+    let (failed, blocked) = call(&harness, "describe_table", describe(harness.ids.blocked)).await;
+    assert!(failed);
+    assert!(blocked.starts_with("not_found:"), "{blocked}");
+
+    // Read for each call: the switch back applies to the next one.
+    *harness.host.active_project.lock().expect("active project") = None;
+    let (failed, again) = call(&harness, "describe_table", describe(harness.ids.locked)).await;
+    assert!(!failed, "{again}");
+
+    // A project the list no longer holds is All Connections.
+    *harness.host.active_project.lock().expect("active project") = Some(Uuid::new_v4());
+    assert_eq!(listed_names(&harness).await.len(), 4);
+    let (failed, text) = call(&harness, "describe_table", describe(harness.ids.locked)).await;
+    assert!(!failed, "{text}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

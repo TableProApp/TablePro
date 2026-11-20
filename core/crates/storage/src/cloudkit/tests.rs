@@ -33,6 +33,7 @@ fn saved(id: Uuid, name: &str) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group_id: None,
+        project_id: None,
         order: 0,
         tags: Vec::new(),
         icon: None,
@@ -837,4 +838,96 @@ fn two_devices_editing_apart_converge_and_then_send_nothing() {
             assert_eq!(sent, CloudRecords::default(), "seed {seed}");
         }
     }
+}
+
+#[test]
+fn a_pull_keeps_the_project_a_group_and_a_connection_are_in() {
+    use crate::{ConnectionProject, ConnectionProjectName};
+
+    let (loose, filed) = (Uuid::new_v4(), Uuid::new_v4());
+    let mut device = Device::new(&[saved(loose, "loose"), saved(filed, "filed")]);
+    let store = device.store.clone();
+    let project = store
+        .create_project_blocking(ConnectionProject::new(
+            ConnectionProjectName::new("Acme").expect("a project name"),
+        ))
+        .expect("the project");
+    let work = store
+        .create_group_blocking(ConnectionGroup {
+            project_id: Some(project.id),
+            ..ConnectionGroup::new(ConnectionGroupName::new("Work").expect("a group name"), None)
+        })
+        .expect("the group");
+    store
+        .move_connections_blocking(&[filed], Some(work.id), None)
+        .expect("the move");
+    store
+        .move_connections_to_project_blocking(&[loose], Some(project.id))
+        .expect("the move");
+    let mut server = Server::default();
+    device.push(&mut server);
+
+    // Another device renames the group, so the pull rebuilds it from a record with no project.
+    if let Some(record) = server.groups.get_mut(&upper(work.id)) {
+        record.name = Some("Office".to_owned());
+    }
+    device.pull(&server);
+
+    let list = device.list();
+    assert_eq!(list.projects.len(), 1);
+    let group = list.groups.iter().find(|group| group.id == work.id).expect("the group");
+    assert_eq!(group.name.as_str(), "Office");
+    assert_eq!(group.project_id, Some(project.id));
+    let scoped = list.scoped(Some(project.id));
+    assert_eq!(scoped.connections.len(), 2);
+    assert_eq!(scoped.groups.len(), 1);
+}
+
+#[test]
+fn a_pull_that_deletes_a_group_leaves_its_members_in_the_groups_project() {
+    use crate::{ConnectionProject, ConnectionProjectName};
+
+    let (filed, nested) = (Uuid::new_v4(), Uuid::new_v4());
+    let mut device = Device::new(&[saved(filed, "filed"), saved(nested, "nested")]);
+    let store = device.store.clone();
+    let project = store
+        .create_project_blocking(ConnectionProject::new(
+            ConnectionProjectName::new("Acme").expect("a project name"),
+        ))
+        .expect("the project");
+    let work = store
+        .create_group_blocking(ConnectionGroup {
+            project_id: Some(project.id),
+            ..ConnectionGroup::new(ConnectionGroupName::new("Work").expect("a group name"), None)
+        })
+        .expect("the group");
+    let inner = store
+        .create_group_blocking(ConnectionGroup::new(
+            ConnectionGroupName::new("Inner").expect("a group name"),
+            Some(work.id),
+        ))
+        .expect("the subgroup");
+    store
+        .move_connections_blocking(&[filed], Some(work.id), None)
+        .expect("the move");
+    store
+        .move_connections_blocking(&[nested], Some(inner.id), None)
+        .expect("the move");
+    let mut server = Server::default();
+    device.push(&mut server);
+
+    // Another device deletes the top-level group; its record is gone and nothing names a project.
+    server.groups.remove(&upper(work.id));
+    device.pull(&server);
+
+    let list = device.list();
+    assert!(list.groups.iter().all(|group| group.id != work.id));
+    let scoped = list.scoped(Some(project.id));
+    let names: Vec<&str> = {
+        let mut names: Vec<&str> = scoped.connections.iter().map(|saved| saved.name.as_str()).collect();
+        names.sort_unstable();
+        names
+    };
+    assert_eq!(names, ["filed", "nested"]);
+    assert!(scoped.groups.iter().any(|group| group.id == inner.id));
 }

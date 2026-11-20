@@ -100,6 +100,7 @@ async fn saved(library: &ConnectionLibrary, name: &str) -> String {
         tags: Vec::new(),
         ai_policy: None,
         external_access: None,
+        project_id: None,
     };
     library.save(record, ConnectionSecrets::default()).await.unwrap().id
 }
@@ -108,7 +109,7 @@ async fn saved(library: &ConnectionLibrary, name: &str) -> String {
 async fn a_library_writes_its_records_and_then_has_nothing_to_send() {
     let dir = TempDir::new().unwrap();
     let library = library(&dir);
-    let work = library.create_group("Work".to_owned(), None).await.unwrap();
+    let work = library.create_group("Work".to_owned(), None, None).await.unwrap();
     let id = saved(&library, "production").await;
     library
         .move_to_group(vec![id.clone()], Some(work.id.clone()), None)

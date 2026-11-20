@@ -22,6 +22,7 @@ pub const STYLE_SCHEME: &str = "style-scheme";
 pub const VIM_KEYBINDINGS: &str = "vim-keybindings";
 pub const CONNECT_DIALOG_DRIVER: &str = "connect-dialog-driver";
 pub const RESTORE_SESSION: &str = "restore-session";
+pub const ACTIVE_PROJECT: &str = "active-project";
 pub const LAST_SEEN_VERSION: &str = "last-seen-version";
 pub const SHARE_USAGE_DATA: &str = "share-usage-data";
 pub const USAGE_DAYS: &str = "usage-days";

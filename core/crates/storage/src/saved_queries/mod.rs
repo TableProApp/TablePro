@@ -137,6 +137,22 @@ impl SavedQueries {
         rows.into_iter().map(row_to_saved_query).collect()
     }
 
+    // In the order `list(None)` gives.
+    pub async fn list_for(&self, connections: &[Uuid]) -> Result<Vec<SavedQuery>, StorageError> {
+        sqlx::query(concat!(
+            "SELECT ",
+            columns!(),
+            " FROM saved_queries WHERE connection_id IN (SELECT value FROM json_each(?)) \
+             ORDER BY connection_name COLLATE NOCASE, name COLLATE NOCASE, id"
+        ))
+        .bind(crate::query_history::id_set(connections))
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(row_to_saved_query)
+        .collect()
+    }
+
     pub async fn snapshot(&self, connection: Uuid) -> Result<SavedQueriesSnapshot, StorageError> {
         let mut transaction = self.pool.begin().await?;
         let queries = sqlx::query(concat!(
@@ -746,6 +762,29 @@ mod tests {
         assert_eq!(store.list(Some(first)).await.expect("list")[0].query, "SELECT 1");
         assert_eq!(store.list(Some(second)).await.expect("list")[0].query, "SELECT 2");
         assert_eq!(store.list(None).await.expect("list all").len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_list_for_a_set_of_connections_holds_only_theirs() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root).await;
+        let (first, second, outside) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let mut named = new_query("b", "SELECT 1", first);
+        named.connection_name = "alpha".to_owned();
+        store.save(named).await.expect("save");
+        let mut named = new_query("a", "SELECT 2", second);
+        named.connection_name = "beta".to_owned();
+        store.save(named).await.expect("save");
+        store.save(new_query("c", "SELECT 3", outside)).await.expect("save");
+
+        let mut many: Vec<Uuid> = (0..40_000).map(|_| Uuid::new_v4()).collect();
+        many.extend([second, first]);
+        let listed = store.list_for(&many).await.expect("list");
+
+        let names: Vec<&str> = listed.iter().map(|query| query.name.as_str()).collect();
+        assert_eq!(names, ["b", "a"]);
+        assert!(store.list_for(&[]).await.expect("list").is_empty());
+        assert_eq!(store.list(None).await.expect("list").len(), 3);
     }
 
     #[tokio::test]

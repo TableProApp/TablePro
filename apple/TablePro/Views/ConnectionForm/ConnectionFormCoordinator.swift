@@ -544,7 +544,14 @@ final class ConnectionFormCoordinator: ObservableObject {
         clearedSecrets.append { self.storage.applyStagedDeletions(stagedSecrets) }
 
         var savedConnections = storage.loadConnections()
+        let savedGroups = services.groupStorage.loadGroups()
         if isNew {
+            // A new connection lands in the active project. Inside a group it stores none of its own.
+            connectionToSave.projectId = LibraryProjectNormalizer.connectionProjectId(
+                ConnectionScope.shared.activeProjectId,
+                groupId: connectionToSave.groupId,
+                groups: savedGroups
+            )
             connectionToSave.sortOrder = ConnectionStorage.nextSortOrder(
                 in: savedConnections,
                 groupId: connectionToSave.groupId
@@ -569,6 +576,13 @@ final class ConnectionFormCoordinator: ObservableObject {
                 saveError = String(localized: "This connection was deleted on another device or window. Your changes were not saved.")
                 return
             }
+            // Read before the save: a connection the form takes out of a group keeps that group's project.
+            connectionToSave.projectId = LibraryProjectNormalizer.movingConnections(
+                [connectionToSave.id],
+                toGroup: connectionToSave.groupId,
+                connections: savedConnections,
+                groups: savedGroups
+            ).connectionProjectId(connectionToSave.id, current: savedConnections[index].projectId)
             if savedConnections[index].groupId != connectionToSave.groupId {
                 connectionToSave.sortOrder = ConnectionStorage.nextSortOrder(
                     in: savedConnections,

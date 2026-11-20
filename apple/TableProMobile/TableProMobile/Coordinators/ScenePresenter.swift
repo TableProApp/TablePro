@@ -11,6 +11,7 @@ enum SceneSheet: Identifiable {
     case newGroup(parentId: UUID?)
     case editGroup(ConnectionGroup)
     case tags
+    case projects
     case settings
     case importFile(URL)
     case export
@@ -26,6 +27,7 @@ enum SceneSheet: Identifiable {
         case .newGroup(let parentId): "newGroup-\(parentId?.uuidString ?? "root")"
         case .editGroup(let group): "editGroup-\(group.id.uuidString)"
         case .tags: "tags"
+        case .projects: "projects"
         case .settings: "settings"
         case .importFile(let url): "importFile-\(url.absoluteString)"
         case .export: "export"

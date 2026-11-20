@@ -10,8 +10,9 @@ use tablepro_core::{
 };
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{
-    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionStore, ConnectionTag, ConnectionTagName,
-    SavedConnection, SavedSshAuth, SavedSshConfig, StorageError, english_secret_label,
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionList, ConnectionProject, ConnectionProjectName,
+    ConnectionStore, ConnectionTag, ConnectionTagName, ProjectMembership, SavedConnection, SavedSshAuth,
+    SavedSshConfig, StorageError, english_secret_label,
 };
 use uuid::Uuid;
 
@@ -179,6 +180,10 @@ pub struct ConnectionRecord {
     // Always set on a record read back; None on a save keeps the stored level, Read Only for a new connection.
     #[uniffi(default = None)]
     pub external_access: Option<ExternalAccessTag>,
+    // Read back, the project it shows in: its top-level group's when grouped. On a save it places a connection
+    // with no group, and None keeps the stored one.
+    #[uniffi(default = None)]
+    pub project_id: Option<String>,
 }
 
 // Each secret as the form holds it: None keeps what is stored, an empty string is stored as one.
@@ -228,6 +233,17 @@ pub struct GroupRecord {
     pub parent_id: Option<String>,
     pub order: u32,
     pub color: Option<String>,
+    // The project it shows in, which its top-level group names.
+    pub project_id: Option<String>,
+}
+
+// All connections is no project and has no record (core ADR 0041).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ProjectRecord {
+    pub id: String,
+    pub name: String,
+    pub order: u32,
+    pub color: Option<String>,
 }
 
 // A label several connections share; they name it by id, so a rename or a new colour reaches all of them.
@@ -246,6 +262,10 @@ pub struct LibrarySnapshot {
     pub favorites: Vec<String>,
     pub recent: Vec<String>,
     pub tags: Vec<TagRecord>,
+    // Every project in its order, whatever the scope.
+    pub projects: Vec<ProjectRecord>,
+    // The project the lists are narrowed to; None for all connections, also when the id asked for names no project.
+    pub scope: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
@@ -464,6 +484,15 @@ impl ConnectionLibrary {
         }
     }
 
+    // A read that fails now still gives the record, with the project it stores.
+    async fn shown(&self, saved: SavedConnection) -> ConnectionRecord {
+        let entry = saved.clone();
+        match self.blocking(move |store| Ok(shown_project(store, &entry))).await {
+            Ok(project) => ConnectionRecord::shown(&saved, project),
+            Err(_) => ConnectionRecord::from(&saved),
+        }
+    }
+
     pub(crate) async fn blocking<T, F>(&self, work: F) -> Result<T, CoreError>
     where
         T: Send + 'static,
@@ -483,39 +512,18 @@ impl ConnectionLibrary {
 
 #[uniffi::export]
 impl ConnectionLibrary {
+    // The whole library, which a reader by id uses whatever project the app shows.
     pub async fn snapshot(&self) -> Result<LibrarySnapshot, CoreError> {
-        self.blocking(|store| {
-            let list = store.list_blocking()?;
-            let tree = list.group_tree();
-            let mut groups = Vec::new();
-            for group in tree.walk() {
-                groups.push(GroupRecord::from(group));
-            }
-            let mut connections: Vec<ConnectionRecord> = list
-                .connections_in(None)
-                .into_iter()
-                .map(ConnectionRecord::from)
-                .collect();
-            for group in tree.walk() {
-                connections.extend(
-                    list.connections_in(Some(group.id))
-                        .into_iter()
-                        .map(ConnectionRecord::from),
-                );
-            }
-            Ok(LibrarySnapshot {
-                connections,
-                groups,
-                favorites: list.favorites.iter().map(Uuid::to_string).collect(),
-                recent: list
-                    .recent(RECENT_LIMIT)
-                    .into_iter()
-                    .map(|saved| saved.id.to_string())
-                    .collect(),
-                tags: list.tags.iter().map(TagRecord::from).collect(),
-            })
-        })
-        .await
+        self.blocking(|store| Ok(snapshot_of(&store.list_blocking()?, None)))
+            .await
+    }
+
+    // What one project shows: its connections, groups, favourites and its own recent ones. None, and an id no
+    // project holds, give the whole library.
+    pub async fn snapshot_in(&self, project_id: Option<String>) -> Result<LibrarySnapshot, CoreError> {
+        let project = optional_id(project_id.as_deref())?;
+        self.blocking(move |store| Ok(snapshot_of(&store.list_blocking()?, project)))
+            .await
     }
 
     // Creates the connection when its id is empty or unknown, and stores the secrets the form holds.
@@ -529,6 +537,7 @@ impl ConnectionLibrary {
             return Err(CoreError::failed("library.name_required", "a connection needs a name"));
         }
         let group_id = optional_id(record.group_id.as_deref())?;
+        let project_id = optional_id(record.project_id.as_deref())?;
         let id = match record.id.trim() {
             "" => None,
             id => Some(parse_id(id)?),
@@ -542,20 +551,25 @@ impl ConnectionLibrary {
             Some(id) => self.held_values(id, kinds).await?,
             None => Vec::new(),
         };
-        let (saved, before) = self
+        let (saved, before, shown) = self
             .blocking(move |store| {
                 if let Some(id) = id {
                     let mut before = None;
                     let updated = store.update_blocking(id, |saved| {
                         before = Some(saved.clone());
                         apply(&record, &tls, name.clone(), group_id, saved);
+                        if project_id.is_some() {
+                            saved.project_id = project_id;
+                        }
                     })?;
                     if let Some(updated) = updated {
-                        return Ok((updated, before));
+                        let shown = shown_project(store, &updated);
+                        return Ok((updated, before, shown));
                     }
                 }
                 let mut created = blank(id.unwrap_or_else(Uuid::new_v4));
                 apply(&record, &tls, name, group_id, &mut created);
+                created.project_id = project_id;
                 store.upsert_blocking(created.clone())?;
                 let listed = store
                     .list_blocking()?
@@ -564,7 +578,8 @@ impl ConnectionLibrary {
                     .find(|saved| saved.id == created.id)
                     .cloned()
                     .unwrap_or(created);
-                Ok((listed, None))
+                let shown = shown_project(store, &listed);
+                Ok((listed, None, shown))
             })
             .await?;
         if let Some((error, tried)) = self.store_secrets(&saved, typed).await? {
@@ -575,7 +590,7 @@ impl ConnectionLibrary {
             }
             return Err(error);
         }
-        Ok(ConnectionRecord::from(&saved))
+        Ok(ConnectionRecord::shown(&saved, shown))
     }
 
     // Secrets go first, so a refused store leaves the connection listed to delete again, never a secret no entry names.
@@ -680,15 +695,89 @@ impl ConnectionLibrary {
         .await
     }
 
-    pub async fn create_group(&self, name: String, parent_id: Option<String>) -> Result<GroupRecord, CoreError> {
+    // A top-level group is made in `project_id`; a subgroup follows its top-level group, whatever is passed.
+    pub async fn create_group(
+        &self,
+        name: String,
+        parent_id: Option<String>,
+        project_id: Option<String>,
+    ) -> Result<GroupRecord, CoreError> {
         let name = group_name(&name)?;
         let parent = optional_id(parent_id.as_deref())?;
+        let project_id = optional_id(project_id.as_deref())?.filter(|_| parent.is_none());
         self.blocking(move |store| {
-            Ok(GroupRecord::from(
-                &store.create_group_blocking(ConnectionGroup::new(name, parent))?,
-            ))
+            let group = store.create_group_blocking(ConnectionGroup {
+                project_id,
+                ..ConnectionGroup::new(name, parent)
+            })?;
+            let membership = store.list_blocking()?.membership();
+            Ok(GroupRecord::shown(&group, &membership))
         })
         .await
+    }
+
+    // Last in the list; a name another project holds in any case is refused with storage.project_name_taken.
+    pub async fn create_project(&self, name: String, color: Option<String>) -> Result<ProjectRecord, CoreError> {
+        let name = project_name(&name)?;
+        let color = optional_color(color)?;
+        self.blocking(move |store| {
+            let project = ConnectionProject {
+                color,
+                ..ConnectionProject::new(name)
+            };
+            Ok(ProjectRecord::from(&store.create_project_blocking(project)?))
+        })
+        .await
+    }
+
+    pub async fn rename_project(&self, id: String, name: String) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
+        let name = project_name(&name)?;
+        self.blocking(move |store| Ok(store.rename_project_blocking(id, name)?))
+            .await
+    }
+
+    // None takes the colour off.
+    pub async fn set_project_color(&self, id: String, color: Option<String>) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
+        let color = optional_color(color)?;
+        self.blocking(move |store| Ok(store.set_project_color_blocking(id, color)?))
+            .await
+    }
+
+    // Its groups and connections stay, in no project.
+    pub async fn delete_project(&self, id: String) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
+        self.blocking(move |store| {
+            store.delete_project_blocking(id)?;
+            Ok(())
+        })
+        .await
+    }
+
+    // Before the project named, or at the end.
+    pub async fn move_projects(&self, ids: Vec<String>, before: Option<String>) -> Result<(), CoreError> {
+        let ids = parse_ids(&ids)?;
+        let before = optional_id(before.as_deref())?;
+        self.blocking(move |store| Ok(store.move_projects_blocking(&ids, before)?))
+            .await
+    }
+
+    // Connections with no group, into the project or out of every one. A grouped one refuses the whole move with
+    // storage.connection_grouped: its top-level group moves instead.
+    pub async fn move_to_project(&self, ids: Vec<String>, project_id: Option<String>) -> Result<(), CoreError> {
+        let ids = parse_ids(&ids)?;
+        let project = optional_id(project_id.as_deref())?;
+        self.blocking(move |store| Ok(store.move_connections_to_project_blocking(&ids, project)?))
+            .await
+    }
+
+    // Top-level groups with everything in them; a subgroup refuses with storage.group_not_top_level.
+    pub async fn move_groups_to_project(&self, ids: Vec<String>, project_id: Option<String>) -> Result<(), CoreError> {
+        let ids = parse_ids(&ids)?;
+        let project = optional_id(project_id.as_deref())?;
+        self.blocking(move |store| Ok(store.move_groups_to_project_blocking(&ids, project)?))
+            .await
     }
 
     pub async fn rename_group(&self, id: String, name: String) -> Result<(), CoreError> {
@@ -701,10 +790,7 @@ impl ConnectionLibrary {
     // None takes the colour off; the id is one ConnectionColor names, as a tag's is.
     pub async fn set_group_color(&self, id: String, color: Option<String>) -> Result<(), CoreError> {
         let id = parse_id(&id)?;
-        let color = color
-            .filter(|color| !color.trim().is_empty())
-            .map(|color| tag_color(&color))
-            .transpose()?;
+        let color = optional_color(color)?;
         self.blocking(move |store| Ok(store.set_group_color_blocking(id, color)?))
             .await
     }
@@ -789,7 +875,7 @@ impl ConnectionLibrary {
             })
             .await;
         let error = match written {
-            Ok(stored) => return Ok(ConnectionRecord::from(&stored.unwrap_or(copy))),
+            Ok(stored) => return Ok(self.shown(stored.unwrap_or(copy)).await),
             Err(error) => error,
         };
         // A write can fail after the file was replaced, as when the folder's sync fails; a listed copy keeps its secrets.
@@ -798,7 +884,7 @@ impl ConnectionLibrary {
             .blocking(move |store| Ok(store.list_blocking()?.connections.iter().any(|saved| saved.id == id)))
             .await;
         match listed {
-            Ok(true) => Ok(ConnectionRecord::from(&copy)),
+            Ok(true) => Ok(self.shown(copy).await),
             Ok(false) => {
                 self.forget_secrets(copy.id).await;
                 Err(error)
@@ -807,27 +893,32 @@ impl ConnectionLibrary {
         }
     }
 
-    // The saved connections, groups and tags as a TablePro connections file at `path`, which appears only once
-    // whole. It carries no passwords: those stay in the system's store. Gives how many connections it holds.
-    pub async fn export_file(&self, path: String) -> Result<u32, CoreError> {
+    // The saved connections, groups, tags and projects as a TablePro connections file at `path`, which appears
+    // only once whole: what `project_id` shows and that project alone, or everything for None. It carries no
+    // passwords: those stay in the system's store. Gives how many connections it holds.
+    pub async fn export_file(&self, path: String, project_id: Option<String>) -> Result<u32, CoreError> {
+        let project = optional_id(project_id.as_deref())?;
         self.blocking(move |store| {
-            let count = store.list_blocking()?.connections.len();
-            let bytes = store.export_blocking()?;
+            let count = store.list_blocking()?.scoped(project).connections.len();
+            let bytes = store.export_scoped_blocking(project)?;
             write_whole_file(&path, &bytes)?;
             Ok(u32::try_from(count).unwrap_or(u32::MAX))
         })
         .await
     }
 
-    // Merges a TablePro connections file; it carries no passwords.
-    pub async fn import_file(&self, path: String) -> Result<ImportSummary, CoreError> {
+    // Merges a TablePro connections file; it carries no passwords. A project the file names wins; a new entry it
+    // files under none lands in `project_id`.
+    pub async fn import_file(&self, path: String, project_id: Option<String>) -> Result<ImportSummary, CoreError> {
+        let project = optional_id(project_id.as_deref())?;
         let _held = self.hold_writes().await;
         self.blocking(move |store| {
             let path = PathBuf::from(path);
             let bytes = std::fs::read(&path).map_err(|error| {
                 CoreError::failed("library.import_unreadable", format!("{}: {error}", path.display()))
             })?;
-            let report = store.import_blocking(&path, &bytes)?;
+            let preview = store.preview_import_into_blocking(&path, &bytes, project)?;
+            let report = store.apply_import_blocking(&preview)?;
             Ok(ImportSummary {
                 added: u32::try_from(report.added).unwrap_or(u32::MAX),
                 updated: u32::try_from(report.updated).unwrap_or(u32::MAX),
@@ -872,7 +963,54 @@ fn tag_color(color: &str) -> Result<ConnectionColor, CoreError> {
         .ok_or_else(|| CoreError::failed("library.unknown_color", format!("{color} is not a colour")))
 }
 
-fn optional_id(id: Option<&str>) -> Result<Option<Uuid>, CoreError> {
+fn optional_color(color: Option<String>) -> Result<Option<ConnectionColor>, CoreError> {
+    color
+        .filter(|color| !color.trim().is_empty())
+        .map(|color| tag_color(&color))
+        .transpose()
+}
+
+fn project_name(name: &str) -> Result<ConnectionProjectName, CoreError> {
+    ConnectionProjectName::new(name).map_err(|error| CoreError::failed(error.code(), error.to_string()))
+}
+
+// A list that cannot be read leaves the project the entry stores.
+fn shown_project(store: &ConnectionStore, saved: &SavedConnection) -> Option<Uuid> {
+    match store.list_blocking() {
+        Ok(list) => list.effective_project(saved),
+        Err(_) => saved.project_id,
+    }
+}
+
+// Membership is read from the whole list, so a record says its project in either scope.
+fn snapshot_of(whole: &ConnectionList, project: Option<Uuid>) -> LibrarySnapshot {
+    let membership = whole.membership();
+    let scope = whole.resolved_scope(project);
+    let list = whole.scoped(scope);
+    let tree = list.group_tree();
+    let record = |saved: &SavedConnection| ConnectionRecord::shown(saved, membership.of_connection(saved));
+    let mut groups = Vec::new();
+    let mut connections: Vec<ConnectionRecord> = list.connections_in(None).into_iter().map(record).collect();
+    for group in tree.walk() {
+        groups.push(GroupRecord::shown(group, &membership));
+        connections.extend(list.connections_in(Some(group.id)).into_iter().map(record));
+    }
+    LibrarySnapshot {
+        connections,
+        groups,
+        favorites: list.favorites.iter().map(Uuid::to_string).collect(),
+        recent: list
+            .recent(RECENT_LIMIT)
+            .into_iter()
+            .map(|saved| saved.id.to_string())
+            .collect(),
+        tags: list.tags.iter().map(TagRecord::from).collect(),
+        projects: whole.projects_in_order().into_iter().map(ProjectRecord::from).collect(),
+        scope: scope.map(|id| id.to_string()),
+    }
+}
+
+pub(crate) fn optional_id(id: Option<&str>) -> Result<Option<Uuid>, CoreError> {
     id.filter(|id| !id.trim().is_empty()).map(parse_id).transpose()
 }
 
@@ -899,6 +1037,7 @@ pub(crate) fn blank(id: Uuid) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group_id: None,
+        project_id: None,
         order: 0,
         tags: Vec::new(),
         icon: None,
@@ -1056,18 +1195,40 @@ impl From<&SavedConnection> for ConnectionRecord {
             tags: saved.tags.iter().map(Uuid::to_string).collect(),
             ai_policy: Some(saved.ai_policy.into()),
             external_access: Some(saved.external_access.into()),
+            project_id: saved.project_id.map(|id| id.to_string()),
         }
     }
 }
 
-impl From<&ConnectionGroup> for GroupRecord {
-    fn from(group: &ConnectionGroup) -> Self {
+impl ConnectionRecord {
+    pub(crate) fn shown(saved: &SavedConnection, project: Option<Uuid>) -> Self {
+        Self {
+            project_id: project.map(|id| id.to_string()),
+            ..Self::from(saved)
+        }
+    }
+}
+
+impl GroupRecord {
+    fn shown(group: &ConnectionGroup, membership: &ProjectMembership) -> Self {
         Self {
             id: group.id.to_string(),
             name: group.name.as_str().to_owned(),
             parent_id: group.parent_id.map(|id| id.to_string()),
             order: group.order,
             color: group.color.map(|color| color.id().to_owned()),
+            project_id: membership.of_group(group.id).map(|id| id.to_string()),
+        }
+    }
+}
+
+impl From<&ConnectionProject> for ProjectRecord {
+    fn from(project: &ConnectionProject) -> Self {
+        Self {
+            id: project.id.to_string(),
+            name: project.name.as_str().to_owned(),
+            order: project.order,
+            color: project.color.map(|color| color.id().to_owned()),
         }
     }
 }

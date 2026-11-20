@@ -1,4 +1,5 @@
 pub mod account_service;
+pub mod active_project;
 pub mod active_session;
 pub(crate) mod ai_service;
 pub mod cell_overlay;

@@ -100,6 +100,21 @@ pub enum StorageError {
 
     #[error("groups nest at most {max} levels deep")]
     GroupTooDeep { max: usize },
+
+    #[error("no project has the id {id}")]
+    ProjectNotFound { id: uuid::Uuid },
+
+    #[error("a project with the id {id} already exists")]
+    ProjectExists { id: uuid::Uuid },
+
+    #[error("another project is named {name}")]
+    ProjectNameTaken { name: String },
+
+    #[error("the connection {id} is in a group, which decides its project")]
+    ConnectionGrouped { id: uuid::Uuid },
+
+    #[error("the group {id} is inside another group, which decides its project")]
+    GroupNotTopLevel { id: uuid::Uuid },
 }
 
 impl StorageError {
@@ -136,6 +151,11 @@ impl StorageError {
             Self::GroupNameTaken { .. } => "storage.group_name_taken",
             Self::GroupCycle { .. } => "storage.group_cycle",
             Self::GroupTooDeep { .. } => "storage.group_too_deep",
+            Self::ProjectNotFound { .. } => "storage.project_not_found",
+            Self::ProjectExists { .. } => "storage.project_exists",
+            Self::ProjectNameTaken { .. } => "storage.project_name_taken",
+            Self::ConnectionGrouped { .. } => "storage.connection_grouped",
+            Self::GroupNotTopLevel { .. } => "storage.group_not_top_level",
         }
     }
 }
@@ -167,6 +187,14 @@ mod tests {
             .code(),
             StorageError::GroupCycle { id }.code(),
             StorageError::GroupTooDeep { max: 3 }.code(),
+            StorageError::ProjectNotFound { id }.code(),
+            StorageError::ProjectExists { id }.code(),
+            StorageError::ProjectNameTaken {
+                name: "Acme".to_owned(),
+            }
+            .code(),
+            StorageError::ConnectionGrouped { id }.code(),
+            StorageError::GroupNotTopLevel { id }.code(),
         ];
 
         assert_eq!(
@@ -178,6 +206,11 @@ mod tests {
                 "storage.group_name_taken",
                 "storage.group_cycle",
                 "storage.group_too_deep",
+                "storage.project_not_found",
+                "storage.project_exists",
+                "storage.project_name_taken",
+                "storage.connection_grouped",
+                "storage.group_not_top_level",
             ]
         );
     }

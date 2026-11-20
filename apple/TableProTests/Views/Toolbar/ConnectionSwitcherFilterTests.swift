@@ -49,6 +49,60 @@ struct ConnectionSwitcherFilterTests {
     }
 }
 
+struct ConnectionSwitcherFilterFieldTests {
+    private let tag = ConnectionTag(name: "production", color: .red)
+    private let clients = ConnectionGroup(name: "Clients")
+
+    private func context(_ groups: [ConnectionGroup]) -> ConnectionSwitcherFilter.Context {
+        ConnectionSwitcherFilter.Context(tags: [tag], groups: groups)
+    }
+
+    @Test("A connection is found by its tag, as the Welcome search finds it")
+    func tagMatch() {
+        var connection = TestFixtures.makeConnection(name: "Primary", database: "app")
+        connection.tagIds = [tag.id]
+
+        #expect(ConnectionSwitcherFilter.matches(connection, query: "production", context: context([])))
+        #expect(ConnectionSwitcherFilter.matches(connection, query: "prdn", context: context([])))
+        #expect(!ConnectionSwitcherFilter.matches(connection, query: "production"))
+    }
+
+    @Test("A connection is found by its username and its engine name")
+    func usernameAndTypeMatch() {
+        var connection = TestFixtures.makeConnection(name: "Primary", database: "app", type: .postgresql)
+        connection.username = "reporting"
+
+        #expect(ConnectionSwitcherFilter.matches(connection, query: "reporting", context: context([])))
+        #expect(ConnectionSwitcherFilter.matches(connection, query: "postgres", context: context([])))
+    }
+
+    @Test("A connection is found by any group on its path")
+    func groupPathMatch() {
+        let acme = ConnectionGroup(name: "Acme", parentId: clients.id)
+        var connection = TestFixtures.makeConnection(name: "Primary", database: "app")
+        connection.groupId = acme.id
+        let context = context([clients, acme])
+
+        #expect(ConnectionSwitcherFilter.matches(connection, query: "acme", context: context))
+        #expect(ConnectionSwitcherFilter.matches(connection, query: "clients", context: context))
+        #expect(ConnectionSwitcherFilter.matches(connection, query: "clients acme", context: context))
+        #expect(!ConnectionSwitcherFilter.matches(connection, query: "zzz", context: context))
+    }
+
+    @Test("A name match still outranks a match through a tag")
+    func nameOutranksATag() throws {
+        var tagged = TestFixtures.makeConnection(name: "Replica", database: "app")
+        tagged.tagIds = [tag.id]
+        let named = TestFixtures.makeConnection(name: "production", database: "app")
+        let context = context([])
+
+        let tagScore = try #require(ConnectionSwitcherFilter.score(tagged, query: "production", context: context))
+        let nameScore = try #require(ConnectionSwitcherFilter.score(named, query: "production", context: context))
+
+        #expect(nameScore > tagScore)
+    }
+}
+
 struct ConnectionSwitcherSelectionTests {
     @Test("Empty list yields no selection")
     func emptyList() {

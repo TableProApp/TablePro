@@ -11,12 +11,13 @@ import Foundation
 internal enum ScriptingSnapshot {
     // MARK: - Connections
 
+    // The list follows the active project. A script that names a connection by id still reaches it.
     internal static func connections() -> [ScriptConnection] {
-        ExternalConnectionDirectory.listings().map(ScriptConnection.init(listing:))
+        ExternalConnectionDirectory.listingsInActiveProject().map(ScriptConnection.init(listing:))
     }
 
     internal static func connection(withId id: UUID) -> ScriptConnection? {
-        connections().first { $0.connectionId == id }
+        ExternalConnectionDirectory.listings().first { $0.id == id }.map(ScriptConnection.init(listing:))
     }
 
     // Rechecked on paths that skip `connections()` (current tab). Read from storage: nothing syncs the level onto a live session.

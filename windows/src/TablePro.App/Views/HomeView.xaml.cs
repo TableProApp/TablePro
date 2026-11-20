@@ -28,7 +28,7 @@ public sealed partial class HomeView : UserControl
     private readonly HashSet<string> _collapsed = [];
     private readonly LibrarySelection _selection = new();
     private LibrarySnapshot _snapshot = new([], [], [], []);
-    private int _reload;
+    private readonly LibraryReads _reads = new();
     private int _rebuild;
     private bool _rebuilding;
     private bool _checking;
@@ -44,6 +44,28 @@ public sealed partial class HomeView : UserControl
         InitializeComponent();
         ConnectionTree.ItemInvoked += OnLibraryItemInvoked;
         workbench.LibraryChanged += async (_, _) => await ReloadAsync().ConfigureAwait(true);
+        // A rename changes the switcher's text and leaves the scope alone.
+        workbench.ProjectChanged += (_, _) => ShowSwitcher();
+        workbench.ScopeChanged += async (_, _) =>
+        {
+            ShowSwitcher();
+            // A snapshot of this scope already, as the one a library change brought, is not read twice.
+            if (_reads.ScopeNeedsRead(ScopedSet.Of(_snapshot), workbench.Scope))
+            {
+                await ReloadAsync().ConfigureAwait(true);
+            }
+        };
+        workbench.ScopeReadFailed += async (_, failed) =>
+        {
+            ShowMessage(Strings.Error(failed.Error), InfoBarSeverity.Error);
+            ShowSwitcher();
+            // A reload that ran during the failed switch read the project the setting has left.
+            if (failed.Reverted && _reads.ScopeNeedsRead(ScopedSet.Of(_snapshot), workbench.Scope))
+            {
+                await ReloadAsync().ConfigureAwait(true);
+            }
+        };
+        ShowSwitcher();
         Loaded += async (_, _) => await ReloadAsync().ConfigureAwait(true);
         // The tag dots take the theme's shade of their colour.
         ActualThemeChanged += (_, _) => Rebuild();
@@ -51,7 +73,8 @@ public sealed partial class HomeView : UserControl
 
     public ObservableCollection<LibraryItem> Items { get; } = [];
 
-    public bool IsLibraryEmpty => _snapshot.Connections.Count == 0 && _snapshot.Groups.Count == 0;
+    // An empty project is not an empty library: the first-run page is for a library with nothing in it.
+    public bool IsLibraryEmpty => LibraryScope.Emptiness(_snapshot) == LibraryEmptiness.Library;
 
     private bool Selecting => ConnectionTree.SelectionMode == TreeViewSelectionMode.Multiple;
 
@@ -76,11 +99,11 @@ public sealed partial class HomeView : UserControl
 
     public async Task ReloadAsync()
     {
-        var reload = ++_reload;
+        var read = _reads.Start();
         LibrarySnapshot snapshot;
         try
         {
-            snapshot = await _workbench.Library.GetSnapshotAsync().ConfigureAwait(true);
+            snapshot = await _workbench.Library.GetSnapshotAsync(_workbench.ActiveProject).ConfigureAwait(true);
         }
         catch (TableProException exception)
         {
@@ -88,15 +111,60 @@ public sealed partial class HomeView : UserControl
             return;
         }
 
-        // A later reload started while this one read the file; its snapshot is the newer one.
-        if (reload != _reload)
+        // A later reload started while this one read the file; its snapshot is the newer one, or the project's.
+        if (!_reads.Show(read))
         {
             return;
         }
 
         _snapshot = snapshot;
+        ShowSwitcher();
         Rebuild();
     }
+
+    private void ShowSwitcher()
+    {
+        var name = _workbench.ActiveProjectRecord?.Name ?? Strings.Get("ProjectAllConnections");
+        ProjectSwitcher.Content = name;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            ProjectSwitcher, Strings.Format("ProjectSwitcherName", name));
+    }
+
+    private void OnProjectMenuOpening(object sender, object e) =>
+        ProjectMenus.Fill(
+            ProjectMenu.Items,
+            _workbench,
+            string.Empty,
+            async () => await NewProjectAsync().ConfigureAwait(true),
+            async () => await ManageProjectsAsync().ConfigureAwait(true));
+
+    // The new project becomes the active one, since the next step is to put connections in it.
+    public async Task NewProjectAsync()
+    {
+        ConnectionProject? created = null;
+        await AskNameAsync(
+            Strings.Get("NewProjectTitle"),
+            string.Empty,
+            Strings.Get("CreateButton"),
+            async name => created = await _workbench.Library.CreateProjectAsync(name).ConfigureAwait(true))
+            .ConfigureAwait(true);
+        if (created is not null)
+        {
+            _workbench.SetActiveProject(created.Id);
+        }
+    }
+
+    public async Task ManageProjectsAsync()
+    {
+        if (XamlRoot is null || WindowDialogs.IsOpen(XamlRoot))
+        {
+            return;
+        }
+
+        await ManageProjectsDialog.RunAsync(this, _workbench).ConfigureAwait(true);
+    }
+
+    private void OnSearchAllConnections(object sender, RoutedEventArgs e) => _workbench.SetActiveProject(null);
 
     private void Rebuild()
     {
@@ -105,13 +173,27 @@ public sealed partial class HomeView : UserControl
             return;
         }
 
-        var empty = IsLibraryEmpty;
-        GetStarted.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+        var emptiness = LibraryScope.Emptiness(_snapshot);
+        var empty = emptiness != LibraryEmptiness.NotEmpty;
+        var firstRun = emptiness == LibraryEmptiness.Library;
+        GetStarted.Visibility = firstRun ? Visibility.Visible : Visibility.Collapsed;
+        EmptyProject.Visibility = emptiness == LibraryEmptiness.Project ? Visibility.Visible : Visibility.Collapsed;
+        if (LibraryScope.Active(_snapshot) is { } active)
+        {
+            EmptyProjectTitle.Text = Strings.Format("EmptyProjectTitle", active.Name);
+        }
+
         ConnectionTree.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
         LibrarySearch.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
-        foreach (var command in new UIElement[] { LibrarySeparator, NewGroupButton, TagsButton, SelectButton })
+        foreach (var command in new UIElement[] { TagsButton, SelectButton })
         {
             command.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        // An empty project still takes a new group; the first-run page offers only its cards.
+        foreach (var command in new UIElement[] { LibrarySeparator, NewGroupButton })
+        {
+            command.Visibility = firstRun ? Visibility.Collapsed : Visibility.Visible;
         }
 
         if (empty && Selecting)
@@ -138,7 +220,10 @@ public sealed partial class HomeView : UserControl
         ApplyExpansion(Items);
         SyncChecks();
         UpdateSelectionCommands();
-        NoResultsText.Visibility = searching && Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var nothingFound = searching && Items.Count == 0 && !empty;
+        NoResultsText.Visibility = nothingFound ? Visibility.Visible : Visibility.Collapsed;
+        SearchAllConnectionsButton.Visibility =
+            nothingFound && _snapshot.Scope is not null ? Visibility.Visible : Visibility.Collapsed;
 
         // The tree sets each new row's state in a later pass, which can fold a row opened here (seen on Arm64).
         var reveal = _reveal;
@@ -368,6 +453,14 @@ public sealed partial class HomeView : UserControl
                     ? _workbench.Library.RemoveFavoritesAsync(ids)
                     : _workbench.Library.AddFavoritesAsync(ids)).ConfigureAwait(true));
             menu.Items.Add(MoveMenu(targets));
+            if (_snapshot.Projects.Count > 0 && LibraryScope.CanMove(targets))
+            {
+                menu.Items.Add(ProjectMenus.MoveMenu(
+                    _snapshot.Projects,
+                    targets.Select(target => target.ProjectId),
+                    project => Write(() => _workbench.Library.MoveToProjectAsync(ids, project))));
+            }
+
             menu.Items.Add(TagMenu(targets));
             menu.Items.Add(new MenuFlyoutSeparator());
             AddItem(menu, "MenuDelete", Symbol.Delete, async () => await DeleteConnectionsAsync(targets).ConfigureAwait(true));
@@ -377,6 +470,14 @@ public sealed partial class HomeView : UserControl
             AddItem(menu, "MenuNewSubgroup", Symbol.NewFolder, async () => await NewGroupAsync(group.Id).ConfigureAwait(true));
             AddItem(menu, "MenuRename", Symbol.Rename, () => StartRename(item));
             menu.Items.Add(GroupColorMenu(group));
+            if (_snapshot.Projects.Count > 0 && LibraryScope.CanMove(group))
+            {
+                menu.Items.Add(ProjectMenus.MoveMenu(
+                    _snapshot.Projects,
+                    [group.ProjectId],
+                    project => Write(() => _workbench.Library.MoveGroupsToProjectAsync([group.Id], project))));
+            }
+
             menu.Items.Add(new MenuFlyoutSeparator());
             AddItem(menu, "MenuDelete", Symbol.Delete, async () => await DeleteGroupAsync(group).ConfigureAwait(true));
         }
@@ -596,7 +697,7 @@ public sealed partial class HomeView : UserControl
         _shell.EditConnection(copy);
     }
 
-    // The file is the one Import reads: every connection, group and tag, and no password.
+    // The file is the one Import reads: what the active project shows, or the whole library, and no password.
     public async Task ExportConnectionsAsync()
     {
         if (XamlRoot is not { } root)
@@ -618,7 +719,7 @@ public sealed partial class HomeView : UserControl
 
         try
         {
-            var count = await _workbench.Library.ExportAsync(result.Path).ConfigureAwait(true);
+            var count = await _workbench.Library.ExportAsync(result.Path, _snapshot.Scope).ConfigureAwait(true);
             ShowMessage(Strings.Plural("ExportConnectionsDone", count, count), InfoBarSeverity.Success);
         }
         catch (TableProException exception)
@@ -634,6 +735,12 @@ public sealed partial class HomeView : UserControl
             return;
         }
 
+        // As Linux offers it: the runs stay unless asked, and then show only under all connections.
+        var history = new CheckBox
+        {
+            Content = Strings.Plural("DeleteHistoryChoice", connections.Count, connections.Count),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(history, "DeleteHistoryCheckBox");
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
@@ -641,22 +748,59 @@ public sealed partial class HomeView : UserControl
             Title = connections is [var single]
                 ? Strings.Format("DeleteConnectionTitle", single.Name)
                 : Strings.Plural("DeleteConnectionsTitle", connections.Count, connections.Count),
-            Content = Strings.Plural("DeleteConnectionsMessage", connections.Count, connections.Count),
+            Content = new StackPanel
+            {
+                Spacing = 12,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = Strings.Plural("DeleteConnectionsMessage", connections.Count, connections.Count),
+                        TextWrapping = TextWrapping.Wrap,
+                    },
+                    history,
+                },
+            },
             PrimaryButtonText = Strings.Get("DeleteButton"),
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary)
+        if (await WindowDialogs.ShowAsync(dialog, this) != ContentDialogResult.Primary)
         {
-            await Write(async () =>
-            {
-                foreach (var id in Ids(connections))
-                {
-                    await _workbench.Library.DeleteAsync(id).ConfigureAwait(true);
-                    await _workbench.ForgetSavedQueriesAsync(id).ConfigureAwait(true);
-                }
-            }).ConfigureAwait(true);
+            return;
         }
+
+        var deleteHistory = history.IsChecked == true;
+        var cleanup = new DeletedConnectionCleanup();
+        await Write(async () =>
+        {
+            foreach (var id in Ids(connections))
+            {
+                await _workbench.Library.DeleteAsync(id).ConfigureAwait(true);
+                await _workbench.PurgeDeletedAsync(id, deleteHistory, cleanup).ConfigureAwait(true);
+            }
+        }).ConfigureAwait(true);
+        if (!cleanup.IsClean)
+        {
+            ShowMessage(LeftBehind(cleanup), InfoBarSeverity.Warning);
+        }
+    }
+
+    // The dialog promised they leave the PC, so what stayed is said, as Linux reports a failed purge.
+    private static string LeftBehind(DeletedConnectionCleanup cleanup)
+    {
+        if (cleanup.HistoryKept == 0)
+        {
+            return Strings.Plural("DeleteKeptSavedQueries", cleanup.SavedQueriesKept, cleanup.SavedQueriesKept);
+        }
+
+        if (cleanup.SavedQueriesKept == 0)
+        {
+            return Strings.Plural("DeleteKeptHistory", cleanup.HistoryKept, cleanup.HistoryKept);
+        }
+
+        var count = Math.Max(cleanup.SavedQueriesKept, cleanup.HistoryKept);
+        return Strings.Plural("DeleteKeptBoth", count, count);
     }
 
     private async Task DeleteGroupAsync(ConnectionGroup group)
@@ -700,7 +844,7 @@ public sealed partial class HomeView : UserControl
             Strings.Get("NewGroupTitle"),
             string.Empty,
             Strings.Get("CreateButton"),
-            name => _workbench.Library.CreateGroupAsync(name, parent));
+            name => _workbench.Library.CreateGroupAsync(name, parent, _snapshot.Scope));
 
     private Task NewTagAsync(List<Guid> connections)
     {

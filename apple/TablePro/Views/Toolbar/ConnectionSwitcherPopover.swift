@@ -14,19 +14,46 @@ enum ConnectionSwitcherFilter {
     // A file connection's database is a whole path, which a short query matches letter by letter.
     private static let hostOrDatabaseWeight = 0.6
 
-    static func matches(_ connection: DatabaseConnection, query: String) -> Bool {
+    // What the Welcome search reads beyond name, host and database. A tag or a group is found by its
+    // own name, so each is a candidate of its own.
+    struct Context {
+        var tagNames: [UUID: String] = [:]
+        var groupPaths: [UUID: [String]] = [:]
+
+        static let empty = Context()
+
+        init() {}
+
+        init(tags: [ConnectionTag], groups: [ConnectionGroup]) {
+            tagNames = Dictionary(tags.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+            let graph = LibraryGroupGraph(groups: groups)
+            groupPaths = Dictionary(
+                groups.map { ($0.id, graph.pathNames(to: $0.id)) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }
+
+        func secondaryFields(of connection: DatabaseConnection) -> [String] {
+            let path = connection.groupId.flatMap { groupPaths[$0] } ?? []
+            return [connection.host, connection.database, connection.username, connection.libraryTypeName]
+                + connection.tagIds.compactMap { tagNames[$0] }
+                + path
+                + (path.count > 1 ? [path.joined(separator: " ")] : [])
+        }
+    }
+
+    static func matches(_ connection: DatabaseConnection, query: String, context: Context = .empty) -> Bool {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return true }
         return FuzzyMatcher.matches(query: trimmed, candidate: connection.name)
-            || FuzzyMatcher.matches(query: trimmed, candidate: connection.host)
-            || FuzzyMatcher.matches(query: trimmed, candidate: connection.database)
+            || context.secondaryFields(of: connection).contains { FuzzyMatcher.matches(query: trimmed, candidate: $0) }
     }
 
-    static func score(_ connection: DatabaseConnection, query: String) -> Double? {
+    static func score(_ connection: DatabaseConnection, query: String, context: Context = .empty) -> Double? {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
         let nameScore = FuzzyMatcher.match(query: trimmed, candidate: connection.name).map { Double($0.score) }
-        let otherScores = [connection.host, connection.database].compactMap { candidate in
+        let otherScores = context.secondaryFields(of: connection).compactMap { candidate in
             FuzzyMatcher.match(query: trimmed, candidate: candidate).map { Double($0.score) * hostOrDatabaseWeight }
         }
         return ([nameScore].compactMap { $0 } + otherScores).max()
@@ -42,13 +69,18 @@ enum ConnectionSwitcherSelection {
     }
 
     // Never the row selected before the query: it can still match through its database path.
-    static func preferred(in entries: [ConnectionSwitcherEntry], query: String, current: UUID?) -> UUID? {
+    static func preferred(
+        in entries: [ConnectionSwitcherEntry],
+        query: String,
+        current: UUID?,
+        context: ConnectionSwitcherFilter.Context = .empty
+    ) -> UUID? {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
             return entries.first { $0.id == current }?.id ?? entries.first?.id
         }
         var best: (id: UUID, score: Double)?
         for entry in entries {
-            guard let score = ConnectionSwitcherFilter.score(entry.connection, query: query),
+            guard let score = ConnectionSwitcherFilter.score(entry.connection, query: query, context: context),
                   score > (best?.score ?? -.infinity) else { continue }
             best = (entry.id, score)
         }
@@ -151,11 +183,17 @@ struct ConnectionSwitcherPopover: View {
     }
 
     private var filteredOpen: [ConnectionSwitcherEntry] {
-        openEntries.filter { ConnectionSwitcherFilter.matches($0.connection, query: searchText) }
+        let context = filterContext
+        return openEntries.filter { ConnectionSwitcherFilter.matches($0.connection, query: searchText, context: context) }
     }
 
     private var filteredSaved: [DatabaseConnection] {
-        inactiveSaved.filter { ConnectionSwitcherFilter.matches($0, query: searchText) }
+        let context = filterContext
+        return inactiveSaved.filter { ConnectionSwitcherFilter.matches($0, query: searchText, context: context) }
+    }
+
+    private var filterContext: ConnectionSwitcherFilter.Context {
+        ConnectionSwitcherFilter.Context(tags: tags, groups: groups)
     }
 
     private var orderedIds: [UUID] {
@@ -227,6 +265,10 @@ struct ConnectionSwitcherPopover: View {
             settleSelection()
         }
         .onReceive(AppEvents.shared.connectionListStateChanged) { _ in
+            reload()
+            settleSelection()
+        }
+        .onReceive(ConnectionScope.shared.scopedSetChanged) { _ in
             reload()
             settleSelection()
         }
@@ -399,8 +441,8 @@ struct ConnectionSwitcherPopover: View {
 
     private func reload() {
         let saved = ConnectionStorage.shared.loadConnections()
-        savedConnections = saved
         groups = GroupStorage.shared.loadGroups()
+        savedConnections = ConnectionSwitcherSections.listedSaved(saved, groups: groups, scope: .shared)
         tags = TagStorage.shared.loadTags()
 
         let hosted = WindowManager.shared.hostedWorkspaces()
@@ -425,7 +467,8 @@ struct ConnectionSwitcherPopover: View {
         selectedConnectionId = ConnectionSwitcherSelection.preferred(
             in: sections.flatMap(\.items),
             query: searchText,
-            current: currentConnectionId
+            current: currentConnectionId,
+            context: filterContext
         )
     }
 
@@ -482,6 +525,17 @@ struct ConnectionSwitcherPopover: View {
 // MARK: - Sections
 
 internal enum ConnectionSwitcherSections {
+    // The saved rows follow the active project. An open connection is listed from its session or its
+    // window, never from here, so the one on screen stays in the list whatever project is active.
+    @MainActor
+    internal static func listedSaved(
+        _ saved: [DatabaseConnection],
+        groups: [ConnectionGroup],
+        scope: ConnectionScope
+    ) -> [DatabaseConnection] {
+        scope.scoped(connections: saved, groups: groups).connections
+    }
+
     /// `excluding` drops one connection before Recent is capped, so the cap counts only rows that
     /// can be shown.
     internal static func build(

@@ -20,11 +20,23 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock
-            x:Uid="HomeTitle"
-            Margin="0,0,0,12"
-            AutomationProperties.HeadingLevel="Level1"
-            Style="{StaticResource TitleTextBlockStyle}" />
+        <StackPanel Margin="0,0,0,12" Orientation="Horizontal" Spacing="16">
+            <TextBlock
+                x:Uid="HomeTitle"
+                VerticalAlignment="Center"
+                AutomationProperties.HeadingLevel="Level1"
+                Style="{StaticResource TitleTextBlockStyle}" />
+            <!-- Its content is the active project's name; the same choices are in File, Project. -->
+            <DropDownButton
+                x:Name="ProjectSwitcher"
+                x:Uid="ProjectSwitcher"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="ProjectSwitcher">
+                <DropDownButton.Flyout>
+                    <MenuFlyout x:Name="ProjectMenu" Placement="BottomEdgeAlignedLeft" Opening="OnProjectMenuOpening" />
+                </DropDownButton.Flyout>
+            </DropDownButton>
+        </StackPanel>
 
         <Grid Grid.Row="1" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
@@ -218,13 +230,51 @@
             </TreeView.ItemTemplate>
         </TreeView>
 
-        <TextBlock
-            x:Name="NoResultsText"
-            x:Uid="NoResultsText"
+        <StackPanel
+            x:Name="EmptyProject"
             Grid.Row="3"
-            Margin="0,24,0,0"
+            Margin="0,48,0,0"
             HorizontalAlignment="Center"
-            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-            Visibility="Collapsed" />
+            AutomationProperties.AutomationId="EmptyProject"
+            Spacing="8"
+            Visibility="Collapsed">
+            <TextBlock
+                x:Name="EmptyProjectTitle"
+                HorizontalAlignment="Center"
+                AutomationProperties.AutomationId="EmptyProjectTitle"
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource SubtitleTextBlockStyle}"
+                TextWrapping="Wrap" />
+            <TextBlock
+                x:Uid="EmptyProjectMessage"
+                HorizontalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextWrapping="Wrap" />
+            <Button
+                x:Uid="EmptyProjectNewConnection"
+                x:Name="EmptyProjectNewConnection"
+                Margin="0,8,0,0"
+                HorizontalAlignment="Center"
+                AutomationProperties.AutomationId="EmptyProjectNewConnection"
+                Click="OnNewConnection"
+                Style="{StaticResource AccentButtonStyle}" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Margin="0,24,0,0" HorizontalAlignment="Center" Spacing="8">
+            <TextBlock
+                x:Name="NoResultsText"
+                x:Uid="NoResultsText"
+                HorizontalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Visibility="Collapsed" />
+            <!-- Only inside a project: the rest of the library may hold the match. -->
+            <HyperlinkButton
+                x:Name="SearchAllConnectionsButton"
+                x:Uid="SearchAllConnectionsButton"
+                HorizontalAlignment="Center"
+                AutomationProperties.AutomationId="SearchAllConnectionsButton"
+                Click="OnSearchAllConnections"
+                Visibility="Collapsed" />
+        </StackPanel>
     </Grid>
 </UserControl>

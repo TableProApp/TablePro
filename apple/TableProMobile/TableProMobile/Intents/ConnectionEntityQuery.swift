@@ -10,6 +10,6 @@ struct ConnectionEntityQuery: EntityQuery {
     }
 
     func suggestedEntities() async throws -> [ConnectionEntity] {
-        IntentConnectionLoader.load().map(ConnectionEntity.init(connection:))
+        IntentConnectionLoader.suggested().map(ConnectionEntity.init(connection:))
     }
 }
