@@ -23,8 +23,10 @@ final class ERDiagramPositionStorage {
     func save(_ positions: [CatalogName: CGPoint], connectionId: UUID, schemaKey: String) {
         var stored: [String: CodablePoint] = [:]
         for (name, point) in positions.sorted(by: { $0.key < $1.key }) {
-            // A String key equates two table names a server keeps apart, so the second is stored by its bytes.
-            let key = stored[name.text] == nil ? name.text : name.exactKey
+            // A String key equates two table names a server keeps apart, so the second is stored by its bytes, as is a
+            // name that starts the way such a key does.
+            let isLiteral = stored[name.text] == nil && !name.text.hasPrefix(CatalogName.bytesPrefix)
+            let key = isLiteral ? name.text : name.bytesKey
             stored[key] = CodablePoint(x: point.x, y: point.y)
         }
         try? defaults.write(stored, to: key(connectionId: connectionId, schemaKey: schemaKey))

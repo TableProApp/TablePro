@@ -153,10 +153,10 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         coordinator.windowState = windowState
         coordinator.childrenCache = [
             "": [database],
-            database.id: [schema],
-            schema.id: [group],
-            group.id: [parent],
-            parent.id: [child]
+            CatalogName(database.id): [schema],
+            CatalogName(schema.id): [group],
+            CatalogName(group.id): [parent],
+            CatalogName(parent.id): [child]
         ]
         outlineView.dataSource = coordinator
         outlineView.delegate = coordinator
@@ -227,7 +227,7 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         let coordinator = DatabaseTreeOutlineCoordinator()
         coordinator.connectionId = connectionId
         coordinator.windowState = windowState
-        coordinator.childrenCache = ["": [table, group], group.id: [view]]
+        coordinator.childrenCache = ["": [table, group], CatalogName(group.id): [view]]
         coordinator.nodeCache = [table.id: table, group.id: group]
         outlineView.dataSource = coordinator
         outlineView.delegate = coordinator
@@ -282,7 +282,7 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         coordinator.connectionId = connectionId
         coordinator.windowState = windowState
         coordinator.activeDatabase = "archive"
-        coordinator.childrenCache = ["": [oldView, group], group.id: [activeView]]
+        coordinator.childrenCache = ["": [oldView, group], CatalogName(group.id): [activeView]]
         coordinator.nodeCache = [oldView.id: oldView, group.id: group]
         outlineView.dataSource = coordinator
         outlineView.delegate = coordinator
@@ -390,7 +390,7 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         coordinator.connectionId = connectionId
         coordinator.windowState = windowState
         coordinator.activeDatabase = "shop"
-        coordinator.childrenCache = ["": [schema], schema.id: [group], group.id: [table]]
+        coordinator.childrenCache = ["": [schema], CatalogName(schema.id): [group], CatalogName(group.id): [table]]
         coordinator.nodeCache = [schema.id: schema, group.id: group, table.id: table]
         outlineView.dataSource = coordinator
         outlineView.delegate = coordinator
@@ -519,10 +519,10 @@ struct DatabaseTreeObjectGroupHierarchyTests {
         coordinator.windowState = windowState
         coordinator.childrenCache = [
             "": [database],
-            database.id: [schema],
-            schema.id: [group],
-            group.id: [parent],
-            parent.id: [child]
+            CatalogName(database.id): [schema],
+            CatalogName(schema.id): [group],
+            CatalogName(group.id): [parent],
+            CatalogName(parent.id): [child]
         ]
         outlineView.dataSource = coordinator
         outlineView.delegate = coordinator

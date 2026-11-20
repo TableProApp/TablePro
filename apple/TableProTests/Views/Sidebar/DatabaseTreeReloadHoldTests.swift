@@ -42,7 +42,7 @@ struct DatabaseTreeReloadHoldTests {
             kind: .tableFolder(DatabaseTreeFolderRef(folder: folder, members: []))
         )
         let coordinator = DatabaseTreeOutlineCoordinator()
-        coordinator.childrenCache = ["": [node], node.id: []]
+        coordinator.childrenCache = ["": [node], CatalogName(node.id): []]
         coordinator.nodeCache = [node.id: node]
         outlineView.dataSource = coordinator
         outlineView.delegate = coordinator

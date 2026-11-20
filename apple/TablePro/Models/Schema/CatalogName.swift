@@ -38,9 +38,17 @@ struct CatalogName: Hashable, Sendable, Comparable, CustomStringConvertible, Exp
     }
 
     // A String equal to another one's exactly when their bytes are, for keys built by joining strings. An ASCII name
-    // has no other spelling, so it stays as it is.
+    // has no other spelling, so it stays as it is unless it starts the way an encoded key does.
     var exactKey: String {
-        text.utf8.allSatisfy { $0 < 0x80 } ? text : Self.bytesPrefix + text.utf8.map { String(format: "%02x", $0) }.joined()
+        isPlainKey ? text : bytesKey
+    }
+
+    var isPlainKey: Bool {
+        text.utf8.allSatisfy { $0 < 0x80 } && !text.hasPrefix(Self.bytesPrefix)
+    }
+
+    var bytesKey: String {
+        Self.bytesPrefix + text.utf8.map { String(format: "%02x", $0) }.joined()
     }
 
     init?(exactKey key: String) {
@@ -64,7 +72,7 @@ struct CatalogName: Hashable, Sendable, Comparable, CustomStringConvertible, Exp
         }
     }
 
-    private static let bytesPrefix = "\u{1}utf8:"
+    static let bytesPrefix = "\u{1}utf8:"
 
     static func same(_ lhs: String?, _ rhs: String?) -> Bool {
         switch (lhs, rhs) {

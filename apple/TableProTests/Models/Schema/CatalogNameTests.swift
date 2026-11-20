@@ -27,6 +27,14 @@ struct CatalogNameTests {
         #expect(CatalogName(exactKey: "orders") == nil)
     }
 
+    @Test("A literal name shaped like an encoded key is encoded too, so it never stands for another name")
+    func prefixShapedNamesAreEncoded() {
+        let literal = CatalogName(CatalogName.bytesPrefix + "c3a9")
+
+        #expect(literal.exactKey != CatalogName("\u{E9}").exactKey)
+        #expect(CatalogName(exactKey: literal.exactKey) == literal)
+    }
+
     @Test("Two twin tables are two table infos, and two twin schemas two scope keys")
     func tablesAndScopesKeepTwinsApart() {
         let tables = Set([

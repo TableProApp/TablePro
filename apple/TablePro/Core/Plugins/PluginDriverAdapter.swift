@@ -985,7 +985,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             return try await pluginDriver.fetchAllColumns(schema: schema).keyedByCatalogName
                 .mapValues { $0.map(ColumnInfo.init) }
         } catch is PluginCatalogNameCollision {
-            return try await readEachTable(in: schema, reading: "columns") { table in
+            return try await readEachTable(in: schema) { table in
                 try await pluginDriver.fetchColumns(table: table, schema: schema).map(ColumnInfo.init)
             }
         }
@@ -1003,29 +1003,23 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             return try await pluginDriver.fetchAllForeignKeys(schema: schema).keyedByCatalogName
                 .mapValues { $0.map(ForeignKeyInfo.init) }
         } catch is PluginCatalogNameCollision {
-            return try await readEachTable(in: schema, reading: "foreign keys") { table in
+            return try await readEachTable(in: schema) { table in
                 let keys = try await pluginDriver.fetchForeignKeys(table: table, schema: schema)
                 return keys.isEmpty ? nil : keys.map(ForeignKeyInfo.init)
             }
         }
     }
 
-    // The schema-wide answer named two objects Swift's String equates, so each listed object is read alone.
+    // The schema-wide answer named two objects Swift's String equates, so each listed object is read alone. A table that
+    // cannot be read fails the read, as the schema-wide one would have.
     private func readEachTable<Value>(
         in schema: String?,
-        reading what: String,
         _ read: (String) async throws -> Value?
     ) async throws -> [CatalogName: Value] {
         var result: [CatalogName: Value] = [:]
         for table in try await pluginDriver.fetchTables(schema: schema) {
             try Task.checkCancellation()
-            do {
-                if let value = try await read(table.name) { result[CatalogName(table.name)] = value }
-            } catch {
-                try Task.checkCancellation()
-                if error is CancellationError { throw error }
-                Self.logger.debug("Skipping \(what, privacy: .public) for one table: \(error.publicLogShape, privacy: .public)")
-            }
+            if let value = try await read(table.name) { result[CatalogName(table.name)] = value }
         }
         return result
     }

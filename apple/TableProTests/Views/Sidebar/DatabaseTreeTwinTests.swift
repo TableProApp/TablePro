@@ -34,6 +34,29 @@ struct DatabaseTreeTwinTests {
         #expect(groups.rowsBySchema[CatalogName(TwinNames.decomposed)]?.map(\.name) == ["b"])
     }
 
+    @Test("Each of two twin schemas resolves its own children, and expands on its own")
+    func twinSchemaChildrenStayApart() {
+        let coordinator = DatabaseTreeOutlineCoordinator()
+        let composed = DatabaseTreeNode(
+            id: DatabaseTreeNode.schemaId(database: "shop", schema: TwinNames.composed),
+            kind: .schema(database: "shop", schema: TwinNames.composed)
+        )
+        let decomposed = DatabaseTreeNode(
+            id: DatabaseTreeNode.schemaId(database: "shop", schema: TwinNames.decomposed),
+            kind: .schema(database: "shop", schema: TwinNames.decomposed)
+        )
+        let first = DatabaseTreeNode(id: "first", kind: .schema(database: "shop", schema: "first"))
+        let second = DatabaseTreeNode(id: "second", kind: .schema(database: "shop", schema: "second"))
+        coordinator.childrenCache = [CatalogName(composed.id): [first], CatalogName(decomposed.id): [second]]
+
+        #expect(coordinator.resolvedChildren(of: composed).first === first)
+        #expect(coordinator.resolvedChildren(of: decomposed).first === second)
+        #expect(Set([
+            DatabaseSchemaKey(database: "shop", schema: TwinNames.composed),
+            DatabaseSchemaKey(database: "shop", schema: TwinNames.decomposed)
+        ]).count == 2)
+    }
+
     @Test("Each twin table keeps a row object of its own")
     func nodeCacheKeepsTwinRowsApart() {
         var cache: DatabaseTreeNodeCache = [:]

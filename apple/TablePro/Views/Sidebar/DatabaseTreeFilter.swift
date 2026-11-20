@@ -7,15 +7,36 @@ import Foundation
 import TableProPluginKit
 import TableProUtilities
 
+// Names compare by bytes: two schemas Swift's String equates are two containers.
 struct DatabaseTreeContainerKey: Hashable {
     let database: String
     let schema: String?
     let searchText: String
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        CatalogName.same(lhs.database, rhs.database) && CatalogName.same(lhs.schema, rhs.schema)
+            && lhs.searchText == rhs.searchText
+    }
+
+    func hash(into hasher: inout Hasher) {
+        CatalogName.hash(database, into: &hasher)
+        CatalogName.hash(schema, into: &hasher)
+        hasher.combine(searchText)
+    }
 }
 
 struct DatabaseTreeContainerSlot: Hashable {
     let database: String
     let schema: String?
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        CatalogName.same(lhs.database, rhs.database) && CatalogName.same(lhs.schema, rhs.schema)
+    }
+
+    func hash(into hasher: inout Hasher) {
+        CatalogName.hash(database, into: &hasher)
+        CatalogName.hash(schema, into: &hasher)
+    }
 }
 
 // Equal only while both hold the same storage: `TableInfo ==` leaves out the comment and row count a row draws.

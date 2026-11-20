@@ -7,15 +7,36 @@ import Combine
 import Foundation
 import TableProPluginKit
 
+// Names compare by bytes: two schemas or tables Swift's String equates are two rows to expand.
 struct DatabaseSchemaKey: Hashable, Sendable, Codable {
     let database: String
     let schema: String
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        CatalogName.same(lhs.database, rhs.database) && CatalogName.same(lhs.schema, rhs.schema)
+    }
+
+    func hash(into hasher: inout Hasher) {
+        CatalogName.hash(database, into: &hasher)
+        CatalogName.hash(schema, into: &hasher)
+    }
 }
 
 struct DatabaseTableKey: Hashable, Sendable, Codable {
     let database: String
     let schema: String?
     let table: String
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        CatalogName.same(lhs.database, rhs.database) && CatalogName.same(lhs.schema, rhs.schema)
+            && CatalogName.same(lhs.table, rhs.table)
+    }
+
+    func hash(into hasher: inout Hasher) {
+        CatalogName.hash(database, into: &hasher)
+        CatalogName.hash(schema, into: &hasher)
+        CatalogName.hash(table, into: &hasher)
+    }
 }
 
 struct PendingTableOperation: Identifiable, Equatable, Sendable {

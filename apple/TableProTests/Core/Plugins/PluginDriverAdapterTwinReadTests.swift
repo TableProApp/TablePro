@@ -40,8 +40,11 @@ private final class TwinCatalogDriver: PluginDriverStub, @unchecked Sendable {
         return names.map { PluginTableInfo(name: $0, schema: schema, comment: nil) }
     }
 
+    var unreadable: String?
+
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         recorded.withLock { $0.perTable += 1 }
+        if let unreadable, table.utf8.elementsEqual(unreadable.utf8) { throw URLError(.cannotOpenFile) }
         return [PluginColumnInfo(name: Self.column(of: table), dataType: "int")]
     }
 
@@ -91,6 +94,14 @@ struct PluginDriverAdapterTwinReadTests {
         #expect(columns[CatalogName(TwinNames.composed)]?.map(\.name) == [TwinCatalogDriver.column(of: TwinNames.composed)])
         #expect(columns[CatalogName(TwinNames.decomposed)]?.map(\.name) == [TwinCatalogDriver.column(of: TwinNames.decomposed)])
         #expect(driver.calls == TwinCatalogDriver.Calls(tables: 1, perTable: 3, bulk: 1))
+    }
+
+    @Test("A twin table that cannot be read alone fails the read, as the schema-wide one would have")
+    func unreadableTwinFailsTheRead() async {
+        let driver = TwinCatalogDriver()
+        driver.unreadable = TwinNames.decomposed
+
+        await #expect(throws: URLError.self) { try await Self.adapter(driver).fetchAllColumns() }
     }
 
     @Test("Without twins the bulk read stays one read")

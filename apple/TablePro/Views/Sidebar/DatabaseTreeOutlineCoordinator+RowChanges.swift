@@ -45,13 +45,13 @@ extension DatabaseTreeOutlineCoordinator {
     // False with nothing applied when only a whole reload can say what changed. AppKit asks a closed row for its
     // children each time it opens, so only the open rows are walked.
     internal func applyRowChanges(
-        from drawnChildren: [String: [DatabaseTreeNode]],
+        from drawnChildren: [CatalogName: [DatabaseTreeNode]],
         in outlineView: NSOutlineView
     ) -> Bool {
         var changes: [(parent: DatabaseTreeNode?, change: DatabaseTreeRowChange)] = []
         var pending: [DatabaseTreeNode?] = [nil]
         while let parent = pending.popLast() {
-            guard let drawn = drawnChildren[parent?.id ?? ""] else { return false }
+            guard let drawn = drawnChildren[CatalogName(parent?.id ?? "")] else { return false }
             let children = resolvedChildren(of: parent)
             let change = DatabaseTreeRowChange.between(drawn, children)
             guard canApply(change, children: children, under: parent, in: outlineView) else { return false }

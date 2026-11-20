@@ -346,7 +346,8 @@ struct ERDiagramDragTests {
             "orders": CGPoint(x: 512.5, y: -128.25),
             "customers": CGPoint(x: 0, y: 940),
             CatalogName(TwinNames.composed): CGPoint(x: 1, y: 2),
-            CatalogName(TwinNames.decomposed): CGPoint(x: 3, y: 4)
+            CatalogName(TwinNames.decomposed): CGPoint(x: 3, y: 4),
+            CatalogName(CatalogName.bytesPrefix + "61"): CGPoint(x: 5, y: 6)
         ]
         defer { ERDiagramPositionStorage.shared.clear(connectionId: connectionId, schemaKey: schemaKey) }
 
