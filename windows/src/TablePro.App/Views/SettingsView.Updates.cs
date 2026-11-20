@@ -45,7 +45,7 @@ public sealed partial class SettingsView
                 false),
             UpdateState.Installing state => (
                 Strings.Format("UpdateInstallingHeadline", state.Version),
-                Strings.Format("UpdateInstallingDetail", state.Percent),
+                Strings.Format("UpdateInstallingDetail", state.Percent / 100.0),
                 null,
                 true),
             UpdateState.ReadyToRestart state => (

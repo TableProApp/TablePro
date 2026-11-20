@@ -78,7 +78,7 @@ public sealed partial class SettingsView : UserControl
         PageSizeBox.Items.Clear();
         foreach (var size in AppSettings.PageSizeChoices.Append(settings.PageSize).Distinct().Order())
         {
-            PageSizeBox.Items.Add(new ComboBoxItem { Content = Strings.Format("PageSizeOption", size), Tag = size });
+            PageSizeBox.Items.Add(new ComboBoxItem { Content = Strings.Plural("PageSizeOption", size, size), Tag = size });
         }
 
         PageSizeBox.SelectedItem = PageSizeBox.Items
@@ -134,8 +134,8 @@ public sealed partial class SettingsView : UserControl
     }
 
     private static string NotifyAfterLabel(int seconds) => seconds < 60
-        ? Strings.Format("NotifyAfterSeconds", seconds)
-        : seconds == 60 ? Strings.Get("NotifyAfterMinute") : Strings.Format("NotifyAfterMinutes", seconds / 60);
+        ? Strings.Plural("NotifyAfterSeconds", seconds, seconds)
+        : Strings.Plural("NotifyAfterMinutes", seconds / 60, seconds / 60);
 
     private void OnNotifyToggled(object sender, RoutedEventArgs e)
     {
@@ -215,7 +215,7 @@ public sealed partial class SettingsView : UserControl
     {
         0 => Strings.Get("HistoryRetentionForever"),
         365 => Strings.Get("HistoryRetentionYear"),
-        _ => Strings.Format("HistoryRetentionDays", days),
+        _ => Strings.Plural("HistoryRetentionDays", days, days),
     };
 
     private static string MaxEntriesLabel(int entries) => entries == 0

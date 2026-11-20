@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using TablePro.DataGrid.Automation;
 using TablePro.DataGrid.Model;
+using TablePro.Graphics;
 using Windows.System;
 
 namespace TablePro.DataGrid;
@@ -23,7 +24,7 @@ public sealed partial class DataGridView
     private int _editSession;
     private bool _committing;
     private bool _isEditable;
-    private string _defaultText = "DEFAULT";
+    private string _defaultText = HostStrings.Get("GridDefaultText");
 
     public bool IsEditable
     {
@@ -66,11 +67,11 @@ public sealed partial class DataGridView
         }
     }
 
-    public string EditedStatus { get; set; } = "edited";
+    public string EditedStatus { get; set; } = HostStrings.Get("GridEditedStatus");
 
-    public string NewRowStatus { get; set; } = "new row";
+    public string NewRowStatus { get; set; } = HostStrings.Get("GridNewRowStatus");
 
-    public string DeletedStatus { get; set; } = "marked for deletion";
+    public string DeletedStatus { get; set; } = HostStrings.Get("GridDeletedStatus");
 
     public event EventHandler<GridEditStartingEventArgs>? CellEditStarting;
 

@@ -14,7 +14,6 @@
 
         <TitleBar
             x:Name="AppTitleBar"
-            Title="TablePro"
             AutomationProperties.AutomationId="AppTitleBar"
             BackRequested="OnBackRequested"
             PaneToggleRequested="OnPaneToggleRequested">
@@ -100,28 +99,28 @@
             </MenuBarItem>
 
             <MenuBarItem x:Uid="EditMenu" x:Name="EditMenu">
-                <MenuFlyoutItem x:Uid="MenuUndo" x:Name="MenuUndo" Click="OnUndo" KeyboardAcceleratorTextOverride="Ctrl+Z">
+                <MenuFlyoutItem x:Uid="MenuUndo" x:Name="MenuUndo" Click="OnUndo">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Undo" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
-                <MenuFlyoutItem x:Uid="MenuRedo" x:Name="MenuRedo" Click="OnRedo" KeyboardAcceleratorTextOverride="Ctrl+Y">
+                <MenuFlyoutItem x:Uid="MenuRedo" x:Name="MenuRedo" Click="OnRedo">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Redo" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
                 <MenuFlyoutSeparator />
-                <MenuFlyoutItem x:Uid="MenuCut" x:Name="MenuCut" Click="OnCut" KeyboardAcceleratorTextOverride="Ctrl+X">
+                <MenuFlyoutItem x:Uid="MenuCut" x:Name="MenuCut" Click="OnCut">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Cut" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
-                <MenuFlyoutItem x:Uid="MenuCopy" x:Name="MenuCopy" Click="OnCopy" KeyboardAcceleratorTextOverride="Ctrl+C">
+                <MenuFlyoutItem x:Uid="MenuCopy" x:Name="MenuCopy" Click="OnCopy">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Copy" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
-                <MenuFlyoutItem x:Uid="MenuPaste" x:Name="MenuPaste" Click="OnPaste" KeyboardAcceleratorTextOverride="Ctrl+V">
+                <MenuFlyoutItem x:Uid="MenuPaste" x:Name="MenuPaste" Click="OnPaste">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Paste" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
-                <MenuFlyoutItem x:Uid="MenuSelectAll" x:Name="MenuSelectAll" Click="OnSelectAll" KeyboardAcceleratorTextOverride="Ctrl+A" />
+                <MenuFlyoutItem x:Uid="MenuSelectAll" x:Name="MenuSelectAll" Click="OnSelectAll" />
                 <MenuFlyoutSeparator />
-                <MenuFlyoutItem x:Uid="MenuFind" x:Name="MenuFind" Click="OnFind" KeyboardAcceleratorTextOverride="Ctrl+F">
+                <MenuFlyoutItem x:Uid="MenuFind" x:Name="MenuFind" Click="OnFind">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Find" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
-                <MenuFlyoutItem x:Uid="MenuReplace" x:Name="MenuReplace" Click="OnReplace" KeyboardAcceleratorTextOverride="Ctrl+H" />
+                <MenuFlyoutItem x:Uid="MenuReplace" x:Name="MenuReplace" Click="OnReplace" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuAddRow" x:Name="MenuAddRow" Click="OnAddRow" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Add" /></MenuFlyoutItem.Icon>
@@ -136,7 +135,7 @@
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <!-- The grid takes Delete itself, so the menu only names the key. -->
-                <MenuFlyoutItem x:Uid="MenuDeleteRows" x:Name="MenuDeleteRows" Click="OnDeleteRows" IsEnabled="False" KeyboardAcceleratorTextOverride="Delete">
+                <MenuFlyoutItem x:Uid="MenuDeleteRows" x:Name="MenuDeleteRows" Click="OnDeleteRows" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Delete" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
             </MenuBarItem>

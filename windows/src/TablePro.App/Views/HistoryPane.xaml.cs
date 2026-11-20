@@ -310,7 +310,7 @@ public sealed partial class HistoryItem
         MarkVisibility = glyph.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         PinName = entry.Pinned ? Strings.Get("HistoryPinned") : string.Empty;
         PinVisibility = entry.Pinned ? Visibility.Visible : Visibility.Collapsed;
-        AccessibleName = string.Join(", ", new[] { FirstLine, Detail, MarkName, PinName }.Where(part => part.Length > 0));
+        AccessibleName = Strings.List(new[] { FirstLine, Detail, MarkName, PinName }.Where(part => part.Length > 0));
     }
 
     public HistoryEntry Entry { get; }

@@ -226,8 +226,8 @@ public sealed record RowsJson(string Text, int Rows, int Total, int Deleted, boo
         long left)
     {
         var cell = block.Get(row, column);
-        // DEFAULT has no value until the server gives it one.
-        if ((cell.State & (CellState.Null | CellState.Default | CellState.Missing)) != 0)
+        // DEFAULT has no value until the server gives it one; an unreadable value has none to write, as a copy leaves it out.
+        if ((cell.State & (CellState.Null | CellState.Default | CellState.Missing | CellState.Unreadable)) != 0)
         {
             writer.WriteNullValue();
             return;

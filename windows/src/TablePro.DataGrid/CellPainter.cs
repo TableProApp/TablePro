@@ -63,8 +63,9 @@ internal sealed unsafe class CellPainter : IDisposable
     private ID2D1SolidColorBrush* _selectionBrush;
     private int _brushGeneration = -1;
     private GridColors _colors;
-    private string _defaultText = "DEFAULT";
+    private string _defaultText = string.Empty;
     private string _nullText = NullWord;
+    private string _unreadableFormat = "{0}";
 
     public CellPainter(SurfaceDevice device, string? family, float fontSize, GridColors colors)
     {
@@ -87,6 +88,20 @@ internal sealed unsafe class CellPainter : IDisposable
             if (!string.Equals(_defaultText, value, StringComparison.Ordinal))
             {
                 _defaultText = value;
+                Version++;
+            }
+        }
+    }
+
+    // What a value the driver could not read shows, its type's name as {0}.
+    public string UnreadableFormat
+    {
+        get => _unreadableFormat;
+        set
+        {
+            if (!string.Equals(_unreadableFormat, value, StringComparison.Ordinal))
+            {
+                _unreadableFormat = value;
                 Version++;
             }
         }
@@ -225,8 +240,9 @@ internal sealed unsafe class CellPainter : IDisposable
         else if ((state & CellState.Unreadable) != 0)
         {
             ink = deleted ? CellInk.Deleted : CellInk.Placeholder;
-            layout = Create(text, _null, width, height);
-            length = text.Length;
+            var shown = Unreadable(text);
+            layout = Create(shown, _null, width, height);
+            length = shown.Length;
         }
         else if ((state & CellState.Default) != 0)
         {
@@ -290,6 +306,9 @@ internal sealed unsafe class CellPainter : IDisposable
         }
         return Measure(text, placeholder ? _null : _text);
     }
+
+    public string Unreadable(ReadOnlySpan<char> typeName) =>
+        string.Format(CultureInfo.CurrentCulture, _unreadableFormat, typeName.ToString());
 
     public float MeasureDefault() => _defaultText.Length == 0 ? 0 : Measure(_defaultText, _default);
 

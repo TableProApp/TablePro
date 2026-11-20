@@ -55,8 +55,6 @@ public sealed partial class StructureView : UserControl
         InitializeComponent();
         _tab = tab;
         StructureGrid.SizeColumnsToContent = true;
-        StructureGrid.SortedAscendingStatus = Strings.Get("GridSortedAscending");
-        StructureGrid.SortedDescendingStatus = Strings.Get("GridSortedDescending");
         // The rows are held here, so a header click sorts them here, as the macOS structure grid sorts.
         StructureGrid.SortRequested += (_, sort) => ShowRows(sort);
         DisplaySettings.Follow(StructureGrid);
@@ -143,7 +141,7 @@ public sealed partial class StructureView : UserControl
                 Headers(IndexHeaders),
                 structure.Indexes.Select(index => Row(
                     index.Name,
-                    string.Join(", ", index.Keys),
+                    Strings.List(index.Keys),
                     YesNo(index.Unique),
                     index.Predicate ?? string.Empty)).ToList(),
                 Strings.Get("StructureNoIndexes")),
@@ -151,9 +149,9 @@ public sealed partial class StructureView : UserControl
                 Headers(ForeignKeyHeaders),
                 structure.ForeignKeys.Select(key => Row(
                     key.Name,
-                    string.Join(", ", key.Columns),
+                    Strings.List(key.Columns),
                     key.ReferencedTable,
-                    string.Join(", ", key.ReferencedColumns),
+                    Strings.List(key.ReferencedColumns),
                     key.ReferencedSchema ?? string.Empty,
                     key.OnDelete ?? string.Empty,
                     key.OnUpdate ?? string.Empty)).ToList(),

@@ -146,7 +146,7 @@ internal sealed partial class JsonResultView : UserControl
 
         if (json.Deleted > 0)
         {
-            line = Strings.Format("JsonRowsDeleted", line, json.Deleted);
+            line = Strings.Plural("JsonRowsDeleted", json.Deleted, line, json.Deleted);
         }
 
         return cut ? Strings.Format("JsonTextCut", line) : line;

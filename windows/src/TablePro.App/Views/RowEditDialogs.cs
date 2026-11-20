@@ -57,7 +57,7 @@ internal static class RowEditDialogs
     public static async Task<bool> ConfirmDeleteAsync(FrameworkElement owner, string table, int rows) =>
         await ShowAsync(owner, new ContentDialog
         {
-            Title = rows == 1 ? Strings.Format("DeleteRowsTitleOne", table) : Strings.Format("DeleteRowsTitleMany", rows, table),
+            Title = Strings.Plural("DeleteRowsTitle", rows, rows, table),
             Content = Strings.Get("DeleteRowsMessage"),
             PrimaryButtonText = Strings.Get("DeleteRowsAction"),
             CloseButtonText = Strings.Get("Cancel"),
@@ -142,7 +142,7 @@ internal static class RowEditDialogs
     }
 
     private static string Title(string name, int statements) =>
-        $"{Strings.Get(name)} ({(statements == 1 ? Strings.Get("StatementCountOne") : Strings.Format("StatementCountMany", statements))})";
+        Strings.Format("JoinParenthetical", Strings.Get(name), Strings.Plural("StatementCount", statements, statements));
 
     private static TextBlock StatementsBlock(IReadOnlyList<PlannedStatement> statements, string automationId)
     {

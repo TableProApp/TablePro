@@ -176,7 +176,7 @@ internal static class CatalogDialogs
 
     // The other tables by name, qualified only where their schema is not the table's.
     public static string Names(TableName table, IReadOnlyList<TableName> others) =>
-        string.Join(", ", others.Select(other =>
+        Strings.List(others.Select(other =>
             other.Schema is { } schema && !string.Equals(schema, table.Schema, StringComparison.Ordinal)
                 ? $"{schema}.{other.Name}"
                 : other.Name));

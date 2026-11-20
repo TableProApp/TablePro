@@ -105,7 +105,7 @@ public sealed partial class DataGridView
         var cell = Cell(row, column);
         if (!cell.IsTruncated)
         {
-            return cell.Text.ToString();
+            return ShownText(cell);
         }
         using var reader = _data!.OpenReader();
         var block = new CellBlock();
@@ -121,8 +121,11 @@ public sealed partial class DataGridView
             return false;
         }
         var cell = Cell(row, column);
+        var unreadable = (cell.State & CellState.Unreadable) != 0;
         return !cell.IsNull && !cell.IsDefault && !cell.Text.IsEmpty
-            && (cell.IsTruncated || Painter.Measure(cell.Text) > _columns.Width(column) - (CellPainter.Padding * 2));
+            && (cell.IsTruncated
+                || Painter.Measure(unreadable ? ShownText(cell) : cell.Text, unreadable)
+                    > _columns.Width(column) - (CellPainter.Padding * 2));
     }
 
     // Twice the hover time, or one and a half within the reshow window after a tip closed.

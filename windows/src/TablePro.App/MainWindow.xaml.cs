@@ -67,7 +67,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         _primary = this;
         InitializeComponent();
         Prepare();
-        Title = "TablePro";
+        Title = Strings.Get("AppDisplayName");
+        AppTitleBar.Title = Title;
         _saves = new SessionWriter(workbench.Sessions);
         _saveTimer = DispatcherQueue.CreateTimer();
         _saveTimer.Interval = SaveDelay;
@@ -1293,11 +1294,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private async Task<bool> ConfirmStopRunningAsync(List<(string Connection, IWorkspaceTab Tab)> running)
     {
         Activate();
-        var one = running.Count == 1;
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock
         {
-            Text = Strings.Get(one ? "CloseRunningRollsBackOne" : "CloseRunningRollsBackMany"),
+            Text = Strings.Plural("CloseRunningRollsBack", running.Count, running.Count),
             TextWrapping = TextWrapping.Wrap,
         });
         var tabs = new TextBlock
@@ -1311,7 +1311,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         {
             XamlRoot = Root.XamlRoot,
             RequestedTheme = Root.ActualTheme,
-            Title = one ? Strings.Get("CloseRunningTitleOne") : Strings.Format("CloseRunningTitleMany", running.Count),
+            Title = Strings.Plural("CloseRunningTitle", running.Count, running.Count),
             Content = content,
             PrimaryButtonText = Strings.Get("CloseRunningButton"),
             CloseButtonText = Strings.Get("Cancel"),

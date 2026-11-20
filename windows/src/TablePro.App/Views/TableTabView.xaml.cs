@@ -39,10 +39,6 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         InitializeComponent();
         Results.ShowsEdits = true;
         var grid = Results.GridView;
-        grid.DefaultText = Strings.Get("GridDefaultText");
-        grid.EditedStatus = Strings.Get("GridEditedStatus");
-        grid.NewRowStatus = Strings.Get("GridNewRowStatus");
-        grid.DeletedStatus = Strings.Get("GridDeletedStatus");
         _model = new TableTab(
             new CoreTabSession(share),
             this,
@@ -308,7 +304,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             XamlRoot = XamlRoot,
             RequestedTheme = ActualTheme,
             Title = Strings.Get("AllRowsTitle"),
-            Content = Strings.Format("AllRowsMessage", total),
+            Content = Strings.Plural("AllRowsMessage", total, total),
             PrimaryButtonText = Strings.Get("AllRowsButton"),
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Close,
@@ -415,11 +411,10 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
         if (waits)
         {
-            sentences.Add(
-                waiting == 1 ? Strings.Get("RecoveredWaitingOne") : Strings.Format("RecoveredWaitingMany", waiting));
+            sentences.Add(Strings.Plural("RecoveredWaiting", waiting, waiting));
         }
 
-        var message = string.Join(" ", sentences);
+        var message = Strings.Sentences([.. sentences]);
         RecoveredBar.Severity = waits || saveBlocked ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
         RecoveredBar.Title = Strings.Get(waits ? "RecoveredWaitingTitle" : "RecoveredEditsTitle");
         RecoveredBar.IsClosable = !waits;
@@ -529,7 +524,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         PreviousPageButton.IsEnabled = !busy && page.HasPrevious;
         NextPageButton.IsEnabled = !busy && page.HasNext;
         LastPageButton.IsEnabled = !busy && page.HasLast;
-        PageSizeButton.Label = Strings.Format("PageSizeLabel", page.Size);
+        PageSizeButton.Label = Strings.Plural("PageSizeLabel", page.Size, page.Size);
         PageSizeButton.IsEnabled = !busy;
         // Going to a page needs the count, as on macOS; until it lands the button names the page alone.
         GoToPageButton.Label = page.Count is { } count
@@ -561,11 +556,11 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
         if (page.Total is { } total)
         {
-            return Strings.Format("StatusPageOf", page.FirstRow, page.LastRow, total, run.Milliseconds);
+            return Strings.Plural("StatusPageOf", total, page.FirstRow, page.LastRow, total, run.Milliseconds);
         }
 
         return page.ShownEstimate is { } estimate
-            ? Strings.Format("StatusPageOfAbout", page.FirstRow, page.LastRow, estimate, run.Milliseconds)
+            ? Strings.Plural("StatusPageOfAbout", estimate, page.FirstRow, page.LastRow, estimate, run.Milliseconds)
             : Strings.Format("StatusPage", page.FirstRow, page.LastRow, run.Milliseconds);
     }
 
@@ -917,7 +912,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             var table = choice.Table.Schema is { } schema && !string.Equals(schema, _model.Table.Schema, StringComparison.Ordinal)
                 ? $"{schema}.{choice.Table.Name}"
                 : choice.Table.Name;
-            return Strings.Format("ReferenceKey", table, string.Join(", ", choice.Columns));
+            return Strings.Format("ReferenceKey", table, Strings.List(choice.Columns));
         }).ToList();
         var counts = shorts.CountBy(label => label).ToDictionary(StringComparer.Ordinal);
         return [.. choices.Select((choice, index) =>
@@ -945,7 +940,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         {
             var item = new RadioMenuFlyoutItem
             {
-                Text = Strings.Format("PageSizeOption", size),
+                Text = Strings.Plural("PageSizeOption", size, size),
                 GroupName = "PageSize",
                 IsChecked = size == page.Size,
             };

@@ -344,6 +344,49 @@ public sealed class RowsJsonTests
         public ValueKind? Kind(int row, int column) => row < rows.Length ? rows[row][column] : null;
     }
 
+    // The grid words an unreadable value from its type's name, which is not the value.
+    [Fact]
+    public void AValueTheDriverCouldNotReadIsWrittenAsNull()
+    {
+        var json = Write(new UnreadableData(), null, [Column("at", ValueKind.Undecodable)], null);
+
+        Assert.Equal(
+            """
+            [
+              {
+                "at": null
+              }
+            ]
+            """.ReplaceLineEndings("\n"),
+            json.Text);
+    }
+
+    private sealed class UnreadableData : IGridData, IGridReader
+    {
+        public int RowCount => 1;
+
+        public int ColumnCount => 1;
+
+        public string GetColumnName(int column) => "at";
+
+        public IGridReader OpenReader() => this;
+
+        public void Read(int firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters, CellBlock block)
+        {
+            block.Reset(firstRow, Math.Min(rowCount, 1 - firstRow), firstColumn, Math.Min(columnCount, 1), maxCharacters);
+            if (firstRow == 0 && rowCount > 0 && firstColumn == 0 && columnCount > 0)
+            {
+                block.AddUnreadable("TIME WITH TIME ZONE"u8);
+            }
+        }
+
+        public string? ReadWhole(int row, int column) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+
     private static RowsJson Write(
         IGridData data,
         GridEdits? edits,

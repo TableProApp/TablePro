@@ -156,7 +156,7 @@ public sealed partial class MainWindow
                 ShowUpdateBar(
                     UpdateBarShows.Offer,
                     InfoBarSeverity.Informational,
-                    Strings.Format("UpdateInstallingDetail", installing.Percent),
+                    Strings.Format("UpdateInstallingDetail", installing.Percent / 100.0),
                     null);
                 break;
             case UpdateState.Failed failed when _updateBar == UpdateBarShows.Offer:

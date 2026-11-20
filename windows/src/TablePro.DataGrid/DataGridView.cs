@@ -188,7 +188,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
         IsTabStop = true;
         UseSystemFocusVisuals = false;
-        AutomationProperties.SetName(this, "Results");
+        AutomationProperties.SetName(this, HostStrings.Get("GridName"));
         GotFocus += (_, _) => UpdateFocusBox();
         LostFocus += (_, _) => UpdateFocusBox();
         Loaded += OnLoaded;
@@ -230,9 +230,9 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     public bool ShowsCellTips { get; set; }
 
     // A column header's UIA ItemStatus, which the HeaderItem control type gives its sort order in.
-    public string SortedAscendingStatus { get; set; } = "Sorted ascending";
+    public string SortedAscendingStatus { get; set; } = HostStrings.Get("GridSortedAscending");
 
-    public string SortedDescendingStatus { get; set; } = "Sorted descending";
+    public string SortedDescendingStatus { get; set; } = HostStrings.Get("GridSortedDescending");
 
     // What a NULL cell shows and UIA reads; null or empty is the word NULL. A copy still writes an empty cell.
     [System.Diagnostics.CodeAnalysis.AllowNull]
@@ -546,8 +546,12 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     internal string CellName(int row, int column)
     {
         var cell = Cell(row, column);
-        return cell.IsNull ? _nullText : cell.IsDefault ? DefaultText : cell.Text.ToString();
+        return cell.IsNull ? _nullText : cell.IsDefault ? DefaultText : ShownText(cell);
     }
+
+    // A value the driver could not read holds its type's name, which the grid words.
+    internal string ShownText(CellText cell) =>
+        (cell.State & CellState.Unreadable) != 0 ? Painter.Unreadable(cell.Text) : cell.Text.ToString();
 
     internal void OnDeviceLost()
     {
@@ -642,6 +646,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         {
             DefaultText = _defaultText,
             NullText = _nullText,
+            UnreadableFormat = HostStrings.Get("GridUnreadable"),
         };
         FontWarmupTask = Task.WhenAll(
             FontWarmup.Start(s_device.DWrite, painter.FamilyName, BaseFontSize, PreferSoftwareRendering),

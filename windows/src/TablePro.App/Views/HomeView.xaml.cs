@@ -202,8 +202,10 @@ public sealed partial class HomeView : UserControl
         return item;
     }
 
-    private string Describe(SavedConnection connection) =>
-        $"{_workbench.EngineName(connection.EngineId)}  {ConnectionSearch.Describe(connection, _workbench.IsFileEngine(connection.EngineId))}";
+    private string Describe(SavedConnection connection) => Strings.Format(
+        "ConnectionDescription",
+        _workbench.EngineName(connection.EngineId),
+        ConnectionSearch.Describe(connection, _workbench.IsFileEngine(connection.EngineId)));
 
     private void OnSearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args) => Rebuild();
 
@@ -617,7 +619,7 @@ public sealed partial class HomeView : UserControl
         try
         {
             var count = await _workbench.Library.ExportAsync(result.Path).ConfigureAwait(true);
-            ShowMessage(Strings.Format(count == 1 ? "ExportConnectionsDoneOne" : "ExportConnectionsDone", count), InfoBarSeverity.Success);
+            ShowMessage(Strings.Plural("ExportConnectionsDone", count, count), InfoBarSeverity.Success);
         }
         catch (TableProException exception)
         {
@@ -636,10 +638,10 @@ public sealed partial class HomeView : UserControl
         {
             XamlRoot = XamlRoot,
             RequestedTheme = ActualTheme,
-            Title = connections.Count == 1
-                ? Strings.Format("DeleteConnectionTitle", connections[0].Name)
-                : Strings.Format("DeleteConnectionsTitle", connections.Count),
-            Content = Strings.Get(connections.Count == 1 ? "DeleteConnectionMessage" : "DeleteConnectionsMessage"),
+            Title = connections is [var single]
+                ? Strings.Format("DeleteConnectionTitle", single.Name)
+                : Strings.Plural("DeleteConnectionsTitle", connections.Count, connections.Count),
+            Content = Strings.Plural("DeleteConnectionsMessage", connections.Count, connections.Count),
             PrimaryButtonText = Strings.Get("DeleteButton"),
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Close,

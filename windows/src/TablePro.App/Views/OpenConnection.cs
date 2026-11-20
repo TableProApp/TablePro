@@ -151,7 +151,8 @@ internal sealed class OpenConnection : IConnectionView<DatabaseSession>
             _ => string.Empty,
         };
         AutomationProperties.SetItemStatus(RailItem, status);
-        ToolTipService.SetToolTip(RailItem, status.Length == 0 ? Title : $"{Title} ({status})");
+        ToolTipService.SetToolTip(
+            RailItem, status.Length == 0 ? Title : Strings.Format("JoinParenthetical", Title, status));
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 

@@ -343,7 +343,7 @@ public sealed partial class WorkspaceView
                 await CatalogDialogs.ShowRefusedAsync(
                         this,
                         Strings.Get(failedTitle),
-                        $"{Strings.Error(unknown.Error)} {Strings.Get("CatalogChangeUnknown")}")
+                        Strings.Sentences(Strings.Error(unknown.Error), Strings.Get("CatalogChangeUnknown")))
                     .ConfigureAwait(true);
                 if (Holds(session))
                 {

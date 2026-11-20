@@ -15,8 +15,8 @@
     Version="0.1.0.0" />
 
   <Properties>
-    <DisplayName>TablePro</DisplayName>
-    <PublisherDisplayName>TablePro</PublisherDisplayName>
+    <DisplayName>ms-resource:AppDisplayName</DisplayName>
+    <PublisherDisplayName>ms-resource:AppPublisher</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
@@ -34,8 +34,8 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="TablePro"
-        Description="A native database client"
+        DisplayName="ms-resource:AppDisplayName"
+        Description="ms-resource:AppDescription"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
@@ -49,118 +49,118 @@
         <!-- tablepro:// links: share links (docs/decisions/0009-share-links.md), connect and settings links. -->
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="tablepro">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <!-- The database URL schemes the core reads (docs/decisions/0018, Links and files). -->
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="cassandra">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="ch">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="clickhouse">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="cql">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="duckdb">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="mariadb">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="mongodb">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="mongodb+srv">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="mssql">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="mysql">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="mysqlx">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="postgres">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="postgresql">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="redis">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="rediss">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="scylla">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="scylladb">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="sqlite">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="sqlite3">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="sqlserver">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="valkey">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="valkeys">
-            <uap:DisplayName>TablePro</uap:DisplayName>
+            <uap:DisplayName>ms-resource:AppDisplayName</uap:DisplayName>
           </uap:Protocol>
         </uap:Extension>
         <!-- A click on a notification reaches the app through this COM class, starting it when it is not running. -->
@@ -177,7 +177,7 @@
         <!-- A .sql file opens in a query tab, a database file as a connection that saves nothing. -->
         <uap:Extension Category="windows.fileTypeAssociation">
           <uap:FileTypeAssociation Name="sql">
-            <uap:DisplayName>SQL script</uap:DisplayName>
+            <uap:DisplayName>ms-resource:FileTypeSqlScript</uap:DisplayName>
             <uap:SupportedFileTypes>
               <uap:FileType>.sql</uap:FileType>
               <uap:FileType>.psql</uap:FileType>
@@ -187,7 +187,7 @@
         </uap:Extension>
         <uap:Extension Category="windows.fileTypeAssociation">
           <uap:FileTypeAssociation Name="sqlite">
-            <uap:DisplayName>SQLite database</uap:DisplayName>
+            <uap:DisplayName>ms-resource:FileTypeSqlite</uap:DisplayName>
             <uap:SupportedFileTypes>
               <uap:FileType>.db</uap:FileType>
               <uap:FileType>.db3</uap:FileType>
@@ -201,7 +201,7 @@
         </uap:Extension>
         <uap:Extension Category="windows.fileTypeAssociation">
           <uap:FileTypeAssociation Name="duckdb">
-            <uap:DisplayName>DuckDB database</uap:DisplayName>
+            <uap:DisplayName>ms-resource:FileTypeDuckDb</uap:DisplayName>
             <uap:SupportedFileTypes>
               <uap:FileType>.duckdb</uap:FileType>
               <uap:FileType>.ddb</uap:FileType>
@@ -216,8 +216,8 @@
       Executable="tablepro-cli.exe"
       EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="TablePro command"
-        Description="The tablepro command for terminals and scripts"
+        DisplayName="ms-resource:CommandDisplayName"
+        Description="ms-resource:CommandDescription"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png"

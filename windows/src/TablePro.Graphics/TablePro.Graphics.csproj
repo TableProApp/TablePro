@@ -14,7 +14,7 @@
     <AppxGeneratePriEnabled Condition="'$(OS)' != 'Windows_NT'">false</AppxGeneratePriEnabled>
   </PropertyGroup>
 
-  <!-- The layer is shared by the controls, not offered to the app. -->
+  <!-- The layer is shared by the controls, not offered to the app; HostStrings alone is public, for the app's strings. -->
   <ItemGroup>
     <InternalsVisibleTo Include="TablePro.Editor" />
     <InternalsVisibleTo Include="TablePro.DataGrid" />

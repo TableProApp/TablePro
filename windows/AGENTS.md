@@ -17,13 +17,13 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `src/TablePro.Interop`: the library the app calls. Its public API is hand-written; `Generated/` holds the uniffi-bindgen-cs and csbindgen output, all `internal`, so a generator upgrade cannot change what the app sees. The project is AOT and trim compatible, and its analyzers fail the build otherwise.
 - `tests/TablePro.Interop.Tests`: xunit v3 tests against the real core and real SQLite files. `Live/` reads a table, the core's value corpus (`core/crates/test-support/corpus`) and a save on each engine's server, or in process for DuckDB; a server's tests skip where `ci/live-servers.ps1` did not start it (`docs/decisions/0016-live-server-tests.md`).
 - `src/TablePro.Editor.Model`: the editor's text, carets, undo history, find, line-state highlighter and the Vim engine (`Vim/`, a port of the macOS one). Plain `net10.0` with no WinUI, so `tests/TablePro.Editor.Model.Tests` runs anywhere.
-- `src/TablePro.Graphics`: the one text and drawing stack the controls share: Direct3D, Direct2D and DirectWrite through TerraFX, the editor's swap chain and line layouts, theme colors, and the font fallback warm-up. Its types are internal to the controls.
+- `src/TablePro.Graphics`: the one text and drawing stack the controls share: Direct3D, Direct2D and DirectWrite through TerraFX, the editor's swap chain and line layouts, theme colors and the font fallback warm-up, internal to the controls; and `HostStrings`, the app's strings with their plural forms, which the controls and the app read (`docs/decisions/0021-localization.md`).
 - `src/TablePro.Editor`: the `SqlEditor` control over that model: Direct2D and DirectWrite in a SwapChainPanel, TSF, the UIA text provider, and the core's lexer through `CoreSqlLexer`.
 - `src/TablePro.DataGrid.Model`: the grid's columns, selection, keys, cell blocks read from the core (`ResultSetData`), pending edits laid over them (`EditedGridData`) and Excel-style copy. Plain `net10.0`, so `tests/TablePro.DataGrid.Model.Tests` runs anywhere; its `Needs=Core` tests load the real core.
 - `src/TablePro.DataGrid`: the `DataGridView` control: ItemsRepeater rows that draw their cells with DirectWrite into composition surfaces, frozen columns, the header row, in-place cell editing with pending-change marks, and UIA peers.
 - `tests/TablePro.DataGrid.Tests` and `tests/TablePro.Editor.Tests`: each control in a real WinUI window on a thread of its own, the app and window from `tests/Shared/WinUiApp.cs`. They run on Windows and only compile elsewhere.
 - `tests/TablePro.DataGrid.Gate` and `tests/TablePro.DataGrid.Gate.Uia`: the grid's timing and behavior gate, outside the solution. `ci/run-gate.ps1` builds and runs it; `.github/workflows/windows-grid-gate.yml` runs it by dispatch.
-- `src/TablePro.App`: the WinUI app: one window, the rail, the Connections page, the connection form window, Settings and a workspace per connection (`docs/decisions/0004-app-shell.md`). Strings are in `Strings/en-US/Resources.resw`. The package's `tablepro.exe` alias runs `tablepro-cli.exe`, which the core's build links beside the library (`docs/decisions/0019-mcp-server-and-command-line.md`).
+- `src/TablePro.App`: the WinUI app: one window, the rail, the Connections page, the connection form window, Settings and a workspace per connection (`docs/decisions/0004-app-shell.md`). Strings are in `Strings/en-US/Resources.resw` (`docs/decisions/0021-localization.md`). The package's `tablepro.exe` alias runs `tablepro-cli.exe`, which the core's build links beside the library (`docs/decisions/0019-mcp-server-and-command-line.md`).
 - `src/TablePro.App.Model`: the app's settings and session files, the library tree, the connection form's fields, the object folders, the tab and connection lifecycles over small session, editor and run interfaces, and a table tab's pending edits. Plain `net10.0`, so `tests/TablePro.App.Model.Tests` runs anywhere.
 - `tests/TablePro.App.UITests`: UI Automation tests (FlaUI) that launch the built app with a data folder of their own, and the installed MSIX once `TABLEPRO_PACKAGE` names its family.
 - `ci/live-servers.ps1`: starts one server the `Live/` interop tests reach on the x64 runner, for `windows.yml`.
@@ -105,8 +105,9 @@ Pass `-p:UniffiBindgenCs=<path>` when it is not on `PATH`; the target refuses an
 ## Every change
 
 1. **Tests.** Behavior of the interop library gets a test in `tests/` against a real database file. Behavior of the core gets its Rust test in `core/crates/ffi`.
-2. **Code style.** `.editorconfig` and the analyzers; a warning fails the build. A comment is one `//` line that says why, never what: no XML doc and no multi-line block.
-3. **Commits and pull requests** follow the root rules, with scope `windows` or `windows-<area>`.
+2. **Strings.** Every word the app shows is in `src/TablePro.App/Strings/en-US/Resources.resw`: `x:Uid` in XAML, `Strings.Get`, `Format` or `Plural` in the app, `HostStrings` in a control. A count takes `Plural` and `{n:N0}`, never a comparison with one, and a join of words is a string too (`docs/decisions/0021-localization.md`). `LocalizationTests` fails on the common shapes; a literal a helper passes on to a control is the review's to catch.
+3. **Code style.** `.editorconfig` and the analyzers; a warning fails the build. A comment is one `//` line that says why, never what: no XML doc and no multi-line block.
+4. **Commits and pull requests** follow the root rules, with scope `windows` or `windows-<area>`.
 
 ## CI
 

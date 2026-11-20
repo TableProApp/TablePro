@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.UI.Text;
@@ -382,8 +381,8 @@ public sealed partial class AssistantPane : UserControl
         var total = (end.InputTokens ?? 0) + (end.OutputTokens ?? 0);
         var tokens = end.InputTokens is null && end.OutputTokens is null
             ? null
-            : Strings.Format("AssistantTokens", total.ToString("N0", CultureInfo.CurrentCulture));
-        turn.Ended(string.Join(' ', new[] { note, tokens }.OfType<string>()));
+            : Strings.Plural("AssistantTokens", total, total);
+        turn.Ended(Strings.Sentences(note, tokens));
         Announce(Strings.Get("AssistantAnswered"));
     }
 
@@ -574,7 +573,7 @@ public sealed partial class AssistantPane : UserControl
             Root.Children.Add(Question(asked));
             if (described.Count > 0)
             {
-                Root.Children.Add(pane.Caption(Strings.Format("AssistantSentStructure", string.Join(", ", described))));
+                Root.Children.Add(pane.Caption(Strings.Format("AssistantSentStructure", Strings.List(described))));
             }
 
             AutomationProperties.SetAutomationId(_reply, "AssistantReply");

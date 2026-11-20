@@ -51,8 +51,6 @@ public sealed partial class ResultsPane : UserControl, IResultsView
         Placeholder.Text = Strings.Get("ResultsEmpty");
         ResultGrid.SizeColumnsToContent = true;
         ResultGrid.ShowsCellTips = true;
-        ResultGrid.SortedAscendingStatus = Strings.Get("GridSortedAscending");
-        ResultGrid.SortedDescendingStatus = Strings.Get("GridSortedDescending");
         ResultGrid.SortRequested += (_, sort) =>
         {
             _sort = ToData(sort);
@@ -750,12 +748,8 @@ public sealed partial class ResultsPane : UserControl, IResultsView
     private string RowsText(RunResult result, long milliseconds) => WithDropped(SetText(result, milliseconds));
 
     // One line says how many earlier sets the limit dropped, after the status of its own.
-    private string WithDropped(string status) => _droppedSets switch
-    {
-        0 => status,
-        1 => Strings.Format("ResultsDroppedOne", status),
-        _ => Strings.Format("ResultsDroppedOther", status, _droppedSets),
-    };
+    private string WithDropped(string status) =>
+        _droppedSets == 0 ? status : Strings.Plural("ResultsDropped", _droppedSets, status, _droppedSets);
 
     private string SetText(RunResult result, long milliseconds) =>
         RowsStatus?.Invoke(result.Rows, milliseconds, result.Truncated)
@@ -1068,7 +1062,7 @@ public sealed partial class ResultsPane : UserControl, IResultsView
                 IsTextSelectionEnabled = true,
             };
             AutomationProperties.SetAutomationId(shown, label + "Value");
-            AutomationProperties.SetName(shown, $"{title.Text}: {value}");
+            AutomationProperties.SetName(shown, Strings.Format("JoinLabelValue", title.Text, value));
             var copy = new Button { Content = new SymbolIcon(Symbol.Copy), Padding = new Thickness(6) };
             AutomationProperties.SetName(copy, Strings.Format("SummaryCopy", title.Text));
             ToolTipService.SetToolTip(copy, Strings.Format("SummaryCopy", title.Text));

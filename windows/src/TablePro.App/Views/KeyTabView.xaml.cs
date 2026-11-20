@@ -165,9 +165,7 @@ public sealed partial class KeyTabView : UserControl, ITabContent, IKeyTabView
             KeyKind.Set or KeyKind.SortedSet => "Members",
             _ => "Entries",
         };
-        return length == 1
-            ? Strings.Get("KeyLength" + unit + "One")
-            : Strings.Format("KeyLength" + unit + "Many", length);
+        return Strings.Plural("KeyLength" + unit, length, length);
     }
 
     private static string TtlWords(KeyTtl ttl)
@@ -193,8 +191,8 @@ public sealed partial class KeyTabView : UserControl, ITabContent, IKeyTabView
 
     private static string ShownWords(KeyWindow window) =>
         window.Length is { } length && length > window.Rows
-            ? Strings.Format("KeyStatusShownOf", window.Rows, length)
-            : Strings.Format("KeyStatusShown", window.Rows);
+            ? Strings.Plural("KeyStatusShownOf", length, window.Rows, length)
+            : Strings.Plural("KeyStatusShown", window.Rows, window.Rows);
 
     // A string longer than one window: its row holds the start, cut where a character ends.
     private void ShowCut(KeyWindow window)
@@ -202,7 +200,8 @@ public sealed partial class KeyTabView : UserControl, ITabContent, IKeyTabView
         string? message = null;
         if (window is { Kind: KeyKind.Text, Truncated: true, Length: { } total } && _rows is { RowCount: > 0 } rows)
         {
-            message = Strings.Format("KeyCut", ByteCount(rows.GetCellText(0, 0) ?? string.Empty), total);
+            var shown = ByteCount(rows.GetCellText(0, 0) ?? string.Empty);
+            message = Strings.Plural("KeyCut", shown, shown, total);
         }
 
         CutBar.Message = message ?? string.Empty;
