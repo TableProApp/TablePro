@@ -14,6 +14,8 @@ nonisolated struct DuckDBTransferLane {
     var exportResult: duckdb_result?
     var exportColumns: [DuckDBStreamColumn] = []
     var exportGeneration: UInt64 = 0
+    // The export's prepare ran in a transaction opened for it, which ends with the export.
+    var exportOwnsTransaction = false
 }
 
 nonisolated extension DuckDBDriver {
@@ -106,10 +108,14 @@ extension DuckDBActor {
     }
 
     func closeExportResult(lane id: UInt64) {
-        guard var result = transferLanes[id]?.exportResult else { return }
+        guard let lane = transferLanes[id], var result = lane.exportResult else { return }
         duckdb_destroy_result(&result)
         transferLanes[id]?.exportResult = nil
         transferLanes[id]?.exportColumns = []
+        if lane.exportOwnsTransaction {
+            transferLanes[id]?.exportOwnsTransaction = false
+            DuckDBPreparedRun.rollback(on: lane.connection)
+        }
     }
 
     func holdsExportResult(lane id: UInt64?) -> Bool {
@@ -289,8 +295,38 @@ extension DuckDBActor {
         let plan = try planColumns(connection: lane.connection, query: query)
         let streamQuery = plan.contains(where: { $0.castToText }) ? Self.castedQuery(originalQuery: query, columns: plan) : query
 
+        // A prepare commits nothing on its own (DuckDBPreparedRun). A lane with no transaction to prepare in reads the
+        // whole result unprepared.
+        let ownsTransaction = Self.prepareTransaction(on: lane.connection, session: transactionState(lane: id))
+        var exporting = false
+        defer {
+            if ownsTransaction == true, !exporting { DuckDBPreparedRun.rollback(on: lane.connection) }
+        }
+        let result = try ownsTransaction == nil
+            ? Self.wholeResult(streamQuery, on: lane.connection)
+            : Self.streamedResult(streamQuery, on: lane.connection)
+        let generation = lane.exportGeneration &+ 1
+        transferLanes[id]?.exportGeneration = generation
+        transferLanes[id]?.exportResult = result
+        transferLanes[id]?.exportColumns = plan
+        transferLanes[id]?.exportOwnsTransaction = ownsTransaction == true
+        exporting = true
+        return (PluginStreamHeader(columns: plan.map(\.name), columnTypeNames: plan.map(\.typeName)), generation)
+    }
+
+    private static func wholeResult(_ sql: String, on connection: duckdb_connection) throws -> duckdb_result {
+        var result = duckdb_result()
+        guard duckdb_query(connection, sql, &result) != DuckDBError else {
+            let message = duckdb_result_error(&result).map { String(cString: $0) } ?? "Failed to execute query"
+            duckdb_destroy_result(&result)
+            throw DuckDBDriverError.queryFailed(message)
+        }
+        return result
+    }
+
+    private static func streamedResult(_ sql: String, on connection: duckdb_connection) throws -> duckdb_result {
         var statement: duckdb_prepared_statement?
-        guard duckdb_prepare(lane.connection, streamQuery, &statement) != DuckDBError, let prepared = statement else {
+        guard duckdb_prepare(connection, sql, &statement) != DuckDBError, let prepared = statement else {
             let message = duckdb_prepare_error(statement).map { String(cString: $0) } ?? "Failed to prepare statement"
             duckdb_destroy_prepare(&statement)
             throw DuckDBDriverError.queryFailed(message)
@@ -310,11 +346,7 @@ extension DuckDBActor {
             duckdb_destroy_result(&result)
             throw DuckDBDriverError.queryFailed(message)
         }
-        let generation = lane.exportGeneration &+ 1
-        transferLanes[id]?.exportGeneration = generation
-        transferLanes[id]?.exportResult = result
-        transferLanes[id]?.exportColumns = plan
-        return (PluginStreamHeader(columns: plan.map(\.name), columnTypeNames: plan.map(\.typeName)), generation)
+        return result
     }
 
     // Nil at the end, which releases the result.
@@ -326,8 +358,14 @@ extension DuckDBActor {
         var chunk = duckdb_stream_fetch_chunk(result)
         guard chunk != nil else {
             let failure = duckdb_result_error(&result).map { String(cString: $0) }
+            // A read that ran to its end commits the transaction opened for it; closing rolls one back.
+            let commits = failure == nil && lane.exportOwnsTransaction
+            if commits { transferLanes[id]?.exportOwnsTransaction = false }
             closeExportResult(lane: id)
             if let failure { throw DuckDBDriverError.queryFailed(failure) }
+            if commits, let failure = DuckDBPreparedRun.commit(on: lane.connection) {
+                throw DuckDBDriverError.queryFailed(failure)
+            }
             return nil
         }
         defer { duckdb_destroy_data_chunk(&chunk) }

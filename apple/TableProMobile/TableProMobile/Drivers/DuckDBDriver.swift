@@ -207,6 +207,8 @@ actor DuckDBActor {
     var streamResult: duckdb_result?
     var streamColumns: [DuckDBStreamColumn] = []
     var streamGeneration: UInt64 = 0
+    // The stream's prepare ran in a transaction opened for it, which ends with the stream.
+    var streamOwnsTransaction = false
 
     // The linked extensions, core_functions among them, exist only once DuckDB's generated loader has registered them.
     private nonisolated static let registeredExtensions: Int32 = duckdb_register_static_extensions()

@@ -242,10 +242,10 @@ final class DuckDBDriverTests: XCTestCase {
             XCTFail("a superseded stream must not read the stream that replaced it")
         } catch is CancellationError {}
 
-        await actor.endStream(first)
+        try await actor.endStream(first)
         let chunk = try await actor.fetchStreamChunk(stream: second, options: .default)
         XCTAssertEqual(chunk?.map { $0.first?.displayString }, ["100", "101", "102"])
-        await actor.endStream(second)
+        try await actor.endStream(second)
     }
 
     func testAnotherStatementEndsTheOpenStreamAsCancelled() async throws {
@@ -436,7 +436,7 @@ struct DuckDBDriverTransactionStateTests {
         #expect(await driver.sessionTransactionState() == .unknown)
         let next = try await driver.actor.fetchStreamChunk(stream: stream, options: .default)
         #expect(next?.isEmpty == false)
-        await driver.actor.endStream(stream)
+        try await driver.actor.endStream(stream)
         #expect(await driver.sessionTransactionState() == .idle)
         try await driver.disconnect()
     }

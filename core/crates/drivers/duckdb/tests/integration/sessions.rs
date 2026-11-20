@@ -291,3 +291,74 @@ async fn a_state_read_given_up_loses_the_session() {
     }
     panic!("every state read finished before it was given up");
 }
+
+// DuckDB prepares through a statement that never writes, and invalidated the whole database when a binding took a
+// sequence value outside a transaction (ADR 0040).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_binding_that_takes_a_sequence_value_leaves_the_database_open() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    let editor = session(connection.as_ref()).await;
+
+    run(editor.as_ref(), "CREATE SEQUENCE seq START 20").await;
+    let (read, rows) = run(editor.as_ref(), "SELECT * FROM range(nextval('seq'))").await;
+    let (set, _) = run(editor.as_ref(), "SET memory_limit = nextval('seq') || 'GB'").await;
+    let (_, current) = run(editor.as_ref(), "SELECT currval('seq')").await;
+    let (after, _) = run(editor.as_ref(), "SELECT count(*) FROM duckdb_tables()").await;
+
+    assert_eq!(read.end, RunEnd::Completed);
+    assert_eq!(rows.rows().len(), 20);
+    assert_eq!(set.end, RunEnd::Completed);
+    assert_eq!(current.rows(), vec![vec![Value::Int(21)]]);
+    assert_eq!(after.end, RunEnd::Completed);
+    assert_eq!(after.transaction_state, TransactionState::Idle);
+    editor.close().await;
+    connection.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_script_that_ends_its_transaction_reads_the_next_binding_outside_one() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    let editor = session(connection.as_ref()).await;
+
+    run(
+        editor.as_ref(),
+        "CREATE SEQUENCE seq START 20; CREATE TABLE t (a INTEGER)",
+    )
+    .await;
+    let (script, rows) = run(
+        editor.as_ref(),
+        "BEGIN; INSERT INTO t VALUES (1); SELECT * FROM range(nextval('seq')); COMMIT; \
+         SELECT * FROM range(nextval('seq'))",
+    )
+    .await;
+    let (_, kept) = run(editor.as_ref(), "SELECT count(*) FROM t").await;
+
+    assert_eq!(script.end, RunEnd::Completed);
+    assert_eq!(rows.rows().len(), 41);
+    assert_eq!(script.transaction_state, TransactionState::Idle);
+    assert_eq!(kept.rows(), vec![vec![Value::Int(1)]]);
+    editor.close().await;
+    connection.close().await.unwrap();
+}
+
+// The read stops at the limit with its sequence values unfinished, which aborts the transaction it runs in.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_writing_read_cut_at_the_row_limit_completes() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    let editor = session(connection.as_ref()).await;
+    let limited = RunOptions::new(CancellationToken::new()).with_row_limit(RowLimit::new(10).unwrap());
+
+    run(editor.as_ref(), "CREATE SEQUENCE seq").await;
+    let (read, rows) = run_with(editor.as_ref(), "SELECT nextval('seq') FROM range(1000000)", limited).await;
+    let (after, _) = run(editor.as_ref(), "SELECT 1").await;
+
+    assert_eq!(read.end, RunEnd::Completed);
+    assert_eq!(rows.rows().len(), 10);
+    assert_eq!(read.transaction_state, TransactionState::Idle);
+    assert_eq!(after.end, RunEnd::Completed);
+    editor.close().await;
+    connection.close().await.unwrap();
+}
