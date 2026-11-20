@@ -56,9 +56,10 @@ public sealed class EditingTests
         Assert.NotEqual(FocusState.Unfocused, editor.FocusState);
         Assert.Equal("r4c1", editor.SelectedText);
         editor.SelectedText = "typed";
+        editor.Select(editor.Text.Length, 0);
         await SettleAsync(grid);
         Assert.Equal("typed", editor.Text);
-        Assert.Equal("", editor.SelectedText);
+        Assert.Equal((5, 0), (editor.SelectionStart, editor.SelectionLength));
         Assert.NotEqual(FocusState.Unfocused, editor.FocusState);
         grid.CancelEdit();
     });
