@@ -81,6 +81,15 @@ struct CellValueContentDetectorTests {
         #expect(CellValueContentDetector.detect("s:99:\"short\";") == .phpSerialized)
     }
 
+    @Test("a token prefix without a numeric payload stays plain")
+    func tokenPrefixWithoutNumericPayloadIsPlain() {
+        #expect(CellValueContentDetector.detect(#"C:\Users\me\file.txt"#) == .plain)
+        #expect(CellValueContentDetector.detect("a:b") == .plain)
+        #expect(CellValueContentDetector.detect("i:love coffee") == .plain)
+        #expect(CellValueContentDetector.detect("s:omething") == .plain)
+        #expect(CellValueContentDetector.detect("b:ar") == .plain)
+    }
+
     @Test("value above 5 MB is plain regardless of shape")
     func sizeCapEnforced() {
         let huge = String(repeating: "a", count: 5_000_001)
