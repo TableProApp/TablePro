@@ -133,7 +133,7 @@ fi
 while IFS= read -r source; do
     ln -s "$source" "$SOURCES/driver_$(basename "$source")"
 done < <(find "$PLUGINS/$FOLDER" -name '*.swift' -not -path '*/Tests/*')
-for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox; do
+for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginNameSpellings; do
     [ -f "$PLUGINS/Shared/$shared.swift" ] && ln -s "$PLUGINS/Shared/$shared.swift" "$SOURCES/shared_$shared.swift"
 done
 # The SQLite driver compiles the shared spill too; a --root from before it has none.

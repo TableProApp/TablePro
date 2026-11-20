@@ -25,10 +25,17 @@ extension MySQLPluginDriver {
         return StarRocksCatalog.markingMaterializedViews(Set(materialized), in: tables)
     }
 
-    func starrocksColumns(database: String, table: String?) async throws -> [String: [PluginColumnInfo]] {
+    func starrocksColumns(
+        database: String,
+        table: String?,
+        keepsSpellingsApart: Bool = false
+    ) async throws -> [String: [PluginColumnInfo]] {
         let rows = try await execute(
             ownStatement: StarRocksCatalog.columns(database: database, table: table)
         ).rows
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: rows, nameAt: 0)
+        }
         return StarRocksCatalog.columnsByTable(from: rows)
     }
 

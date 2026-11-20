@@ -57,10 +57,14 @@ nonisolated struct OracleExportCatalog: Sendable {
         return result.rows.compactMap(OracleSchemaQueries.parseColumnRow).map(\.pluginColumnInfo)
     }
 
-    func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+    func fetchAllColumns(schema: String?, keepsSpellingsApart: Bool = false) async throws -> [String: [PluginColumnInfo]] {
         let result = try await run(OracleSchemaQueries.allColumns(schema: effectiveSchema(schema), release: release))
+        let parsedRows = result.rows.compactMap(OracleSchemaQueries.parseTableColumnRow)
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(parsedRows.map { $0.table })
+        }
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
-        for (table, column) in result.rows.compactMap(OracleSchemaQueries.parseTableColumnRow) {
+        for (table, column) in parsedRows {
             columnsByTable[table, default: []].append(column.pluginColumnInfo)
         }
         return columnsByTable
@@ -81,8 +85,14 @@ nonisolated struct OracleExportCatalog: Sendable {
         }
     }
 
-    func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+    func fetchAllForeignKeys(
+        schema: String?,
+        keepsSpellingsApart: Bool = false
+    ) async throws -> [String: [PluginForeignKeyInfo]] {
         let rows = try await cells(OracleSchemaQueries.allForeignKeys(schema: effectiveSchema(schema)))
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: rows, nameAt: 0)
+        }
         var fksByTable: [String: [PluginForeignKeyInfo]] = [:]
         for row in rows {
             guard let tableName = row[safe: 0]?.asText,

@@ -855,6 +855,18 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return try await DuckDBExportCatalog.allColumns(catalog: try requireCatalog(), schema: schemaName, run: catalogRun)
     }
 
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await DuckDBExportCatalog.allColumns(
+            catalog: try requireCatalog(), schema: resolveSchema(schema), keepsSpellingsApart: true, run: catalogRun
+        )
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await PluginNameSpellings.readEachTable(try await fetchTables(schema: schema).map(\.name)) {
+            try await fetchForeignKeys(table: $0, schema: schema)
+        }
+    }
+
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         let schemaName = resolveSchema(schema)
         let catalog = try requireCatalog()

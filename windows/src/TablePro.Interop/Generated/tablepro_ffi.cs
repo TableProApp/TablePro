@@ -20406,6 +20406,9 @@ internal record AppLinkInfo {
         string? Pane
     ) : AppLinkInfo {}
     
+    public record StartMcpServer: AppLinkInfo {}
+    
+    
 
     
 }
@@ -20436,6 +20439,9 @@ class FfiConverterTypeAppLinkInfo : FfiConverterRustBuffer<AppLinkInfo>{
                 return new AppLinkInfo.OpenSettings(
                     FfiConverterOptionalString.INSTANCE.Read(stream)
                 );
+            case 5:
+                return new AppLinkInfo.StartMcpServer(
+                );
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAppLinkInfo.Read()", value));
         }
@@ -20459,6 +20465,8 @@ class FfiConverterTypeAppLinkInfo : FfiConverterRustBuffer<AppLinkInfo>{
             case AppLinkInfo.OpenSettings variant_value:
                 return 4
                     + FfiConverterOptionalString.INSTANCE.AllocationSize(variant_value.Pane);
+            case AppLinkInfo.StartMcpServer variant_value:
+                return 4;
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAppLinkInfo.AllocationSize()", value));
         }
@@ -20485,6 +20493,9 @@ class FfiConverterTypeAppLinkInfo : FfiConverterRustBuffer<AppLinkInfo>{
             case AppLinkInfo.OpenSettings variant_value:
                 stream.WriteInt(4);
                 FfiConverterOptionalString.INSTANCE.Write(variant_value.Pane, stream);
+                break;
+            case AppLinkInfo.StartMcpServer variant_value:
+                stream.WriteInt(5);
                 break;
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAppLinkInfo.Write()", value));

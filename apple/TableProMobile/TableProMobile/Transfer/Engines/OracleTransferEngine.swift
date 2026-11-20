@@ -113,7 +113,7 @@ nonisolated struct OracleMobileExportCatalog: MobileExportCatalog {
     }
 
     func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] {
-        try await catalog.fetchAllColumns(schema: schema(databaseName))
+        try await catalog.fetchAllColumns(schema: schema(databaseName), keepsSpellingsApart: true)
     }
 
     func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] {
@@ -121,7 +121,7 @@ nonisolated struct OracleMobileExportCatalog: MobileExportCatalog {
     }
 
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] {
-        try await catalog.fetchAllForeignKeys(schema: schema(databaseName))
+        try await catalog.fetchAllForeignKeys(schema: schema(databaseName), keepsSpellingsApart: true)
     }
 
     func fetchIndexDDL(table: String, databaseName: String) async throws -> [String] {

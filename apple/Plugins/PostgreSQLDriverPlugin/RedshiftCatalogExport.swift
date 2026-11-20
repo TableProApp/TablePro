@@ -107,12 +107,22 @@ nonisolated struct RedshiftCatalogExport: Sendable {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: false)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let resolvedSchema = schema ?? currentSchema
         if isExternalSchema(resolvedSchema) {
-            let external = await fetchExternalAllColumns(schema: resolvedSchema)
+            let external = try await fetchExternalAllColumns(
+                schema: resolvedSchema, keepsSpellingsApart: keepsSpellingsApart
+            )
             if !external.isEmpty { return external }
         }
-        return try await fetchLocalAllColumns(schema: resolvedSchema)
+        return try await fetchLocalAllColumns(schema: resolvedSchema, keepsSpellingsApart: keepsSpellingsApart)
     }
 
     private func fetchExternalColumns(schema: String, table: String) async -> [PluginColumnInfo] {
@@ -130,26 +140,33 @@ nonisolated struct RedshiftCatalogExport: Sendable {
         }
     }
 
-    private func fetchExternalAllColumns(schema: String) async -> [String: [PluginColumnInfo]] {
+    private func fetchExternalAllColumns(
+        schema: String,
+        keepsSpellingsApart: Bool
+    ) async throws -> [String: [PluginColumnInfo]] {
+        let rows: [[PluginCellValue]]
         do {
-            let query = RedshiftExternalSchemaQueries.listExternalColumns(schema: schema, table: nil, database: database)
-            var allColumns: [String: [PluginColumnInfo]] = [:]
-            for row in try await read(query) {
-                guard row.count >= 3,
-                      let tableName = row[0].asText,
-                      let name = row[1].asText,
-                      let dataType = row[2].asText
-                else { continue }
-                let column = Self.externalColumn(name: name, dataType: dataType, row: row, typeIndex: 2)
-                allColumns[tableName, default: []].append(column)
-            }
-            return allColumns
+            rows = try await read(RedshiftExternalSchemaQueries.listExternalColumns(schema: schema, table: nil, database: database))
         } catch {
             Self.logger.warning(
                 "svv_external_columns failed for schema \(schema, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
             return [:]
         }
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: rows, nameAt: 0)
+        }
+        var allColumns: [String: [PluginColumnInfo]] = [:]
+        for row in rows {
+            guard row.count >= 3,
+                  let tableName = row[0].asText,
+                  let name = row[1].asText,
+                  let dataType = row[2].asText
+            else { continue }
+            let column = Self.externalColumn(name: name, dataType: dataType, row: row, typeIndex: 2)
+            allColumns[tableName, default: []].append(column)
+        }
+        return allColumns
     }
 
     // External columns carry no default, charset, collation, comment or key, and `external_type` is a Hive type
@@ -180,9 +197,13 @@ nonisolated struct RedshiftCatalogExport: Sendable {
         }
     }
 
-    private func fetchLocalAllColumns(schema: String) async throws -> [String: [PluginColumnInfo]] {
+    private func fetchLocalAllColumns(schema: String, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
+        let rows = try await read(RedshiftSchemaQueries.columnsQuery(schema: schema, table: nil))
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: rows, nameAt: 0)
+        }
         var allColumns: [String: [PluginColumnInfo]] = [:]
-        for row in try await read(RedshiftSchemaQueries.columnsQuery(schema: schema, table: nil)) {
+        for row in rows {
             guard row.count >= 5,
                   let tableName = row[0].asText,
                   let column = Self.localColumn(row, tableNameOffset: 1)
@@ -240,6 +261,13 @@ nonisolated struct RedshiftCatalogExport: Sendable {
             )
         )
         return PostgreSQLCatalogForeignKeys.foreignKeys(from: try await read(query).map { $0.map(\.asText) })
+    }
+
+    // Redshift has no schema-wide key read, so the export asks table by table, as PluginKit's default does.
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await PluginNameSpellings.readEachTable(try await fetchTables(schema: schema).map(\.name)) {
+            try await fetchForeignKeys(table: $0, schema: schema)
+        }
     }
 
     // MARK: - Definitions

@@ -125,7 +125,7 @@ struct DataDictionaryDocument {
         let object = objects[index]
         return object.columns.map { column in
             let references = object.foreignKeys
-                .filter { $0.column == column.name }
+                .filter { $0.column.utf8.elementsEqual(column.name.utf8) }
                 .map { reference(to: $0, from: object) }
             return DataDictionaryColumnRow(
                 name: column.name,
@@ -158,16 +158,17 @@ struct DataDictionaryDocument {
     // A composite key arrives as one entry per column under one name.
     func foreignKeyRows(at index: Int) -> [DataDictionaryForeignKeyRow] {
         let object = objects[index]
-        var order: [String] = []
-        var groups: [String: [PluginForeignKeyInfo]] = [:]
+        var order: [[UInt8]] = []
+        var groups: [[UInt8]: [PluginForeignKeyInfo]] = [:]
         for key in object.foreignKeys {
-            if groups[key.name] == nil { order.append(key.name) }
-            groups[key.name, default: []].append(key)
+            let name = PluginExportSpelling.key(key.name)
+            if groups[name] == nil { order.append(name) }
+            groups[name, default: []].append(key)
         }
         return order.compactMap { name in
             guard let group = groups[name], let first = group.first else { return nil }
             return DataDictionaryForeignKeyRow(
-                name: name,
+                name: first.name,
                 columns: group.map(\.column),
                 target: reference(to: first, from: object, includesColumn: false),
                 referencedColumns: group.map(\.referencedColumn),

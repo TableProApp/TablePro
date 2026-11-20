@@ -121,7 +121,9 @@ nonisolated struct MySQLTransferCatalog: MobileExportCatalog {
 
     func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] {
         guard reader.hasInformationSchema else { return [:] }
-        return try await reader.informationSchemaColumns(schema: schema(for: databaseName), table: nil)
+        return try await reader.informationSchemaColumns(
+            schema: schema(for: databaseName), table: nil, keepsSpellingsApart: true
+        )
     }
 
     func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] {
@@ -134,7 +136,7 @@ nonisolated struct MySQLTransferCatalog: MobileExportCatalog {
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] {
         let database = reader.effectiveSchema(schema(for: databaseName))
         guard reader.flavor.hasMySQLObjectCatalogs, reader.hasForeignKeyCatalog, !database.isEmpty else { return [:] }
-        return try await reader.catalogForeignKeys(database: database, table: nil)
+        return try await reader.catalogForeignKeys(database: database, table: nil, keepsSpellingsApart: true)
     }
 
     var tableDDLIncludesForeignKeys: Bool { MySQLExportCatalog.tableDDLIncludesForeignKeys }

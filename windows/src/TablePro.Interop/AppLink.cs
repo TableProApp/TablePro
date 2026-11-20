@@ -19,6 +19,9 @@ public abstract record AppLink
 
     public sealed record OpenSettings(string? Pane) : AppLink;
 
+    // tablepro://integrations/start-mcp: the MCP server starts where Settings has it on, and nothing shows.
+    public sealed record StartMcpServer : AppLink;
+
     // Throws TableProException with a link.* code for a link the app does not read.
     public static AppLink Parse(string link)
     {
@@ -30,6 +33,7 @@ public abstract record AppLink
                 Guid.Parse(table.ConnectionId), table.Database, table.Schema, table.Table),
             Native.AppLinkInfo.OpenQuery query => new OpenQuery(Guid.Parse(query.ConnectionId), query.Sql),
             Native.AppLinkInfo.OpenSettings settings => new OpenSettings(settings.Pane),
+            Native.AppLinkInfo.StartMcpServer => new StartMcpServer(),
             _ => throw new InvalidOperationException("The core gave a link this library does not know."),
         };
     }

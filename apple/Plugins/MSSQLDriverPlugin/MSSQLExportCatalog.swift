@@ -270,8 +270,13 @@ nonisolated struct MSSQLExportCatalog: Sendable {
         try await columnRows(table: table, schema: schema).map(\.pluginColumnInfo)
     }
 
-    func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+    func fetchAllColumns(schema: String?, keepsSpellingsApart: Bool = false) async throws -> [String: [PluginColumnInfo]] {
         let result = try await run(MSSQLSchemaQueries.allColumns(schema: effectiveSchema(schema)))
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(
+                in: result.rows, nameAt: MSSQLSchemaQueries.allColumnsTableNameIndex
+            )
+        }
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             let cells = row.map(\.asText)
@@ -298,12 +303,18 @@ nonisolated struct MSSQLExportCatalog: Sendable {
         try await foreignKeyRows(table: table, schema: schema).map(Self.foreignKey)
     }
 
-    func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+    func fetchAllForeignKeys(
+        schema: String?,
+        keepsSpellingsApart: Bool = false
+    ) async throws -> [String: [PluginForeignKeyInfo]] {
         let result = try await run(MSSQLSchemaQueries.foreignKeys(schema: effectiveSchema(schema), table: nil))
+        let parsedRows = result.rows.compactMap { MSSQLSchemaQueries.parseForeignKeyRow($0.map { $0.asText }) }
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(parsedRows.compactMap(\.table))
+        }
         var fksByTable: [String: [PluginForeignKeyInfo]] = [:]
-        for row in result.rows {
-            guard let parsed = MSSQLSchemaQueries.parseForeignKeyRow(row.map { $0.asText }),
-                  let table = parsed.table else { continue }
+        for parsed in parsedRows {
+            guard let table = parsed.table else { continue }
             fksByTable[table, default: []].append(Self.foreignKey(parsed))
         }
         return fksByTable

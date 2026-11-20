@@ -59,7 +59,8 @@ mkdir -p "$WORK/Sources/Probe"
 for source in "$ROOT"/Plugins/PostgreSQLDriverPlugin/*.swift; do
     ln -s "$source" "$WORK/Sources/Probe/$(basename "$source")"
 done
-for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox; do
+for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginNameSpellings; do
+    [[ -f "$ROOT/Plugins/Shared/$shared.swift" ]] || continue
     ln -s "$ROOT/Plugins/Shared/$shared.swift" "$WORK/Sources/Probe/$shared.swift"
 done
 ln -s "$PROBES/postgresql-shadowing-probe.swift" "$WORK/Sources/Probe/Probe.swift"

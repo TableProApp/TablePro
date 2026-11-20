@@ -96,7 +96,8 @@ mkdir -p "$SOURCES"
 while IFS= read -r source; do
     ln -s "$source" "$SOURCES/driver_$(basename "$source")"
 done < <(find "$PLUGINS/$FOLDER" -name '*.swift' -not -path '*/Tests/*')
-for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginRedirectRefusingDelegate; do
+for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginRedirectRefusingDelegate \
+    PluginNameSpellings; do
     [ -f "$PLUGINS/Shared/$shared.swift" ] && ln -s "$PLUGINS/Shared/$shared.swift" "$SOURCES/shared_$shared.swift"
 done
 dependencies='.product(name: "TableProPluginKit", package: "TableProCore"),
