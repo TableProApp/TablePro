@@ -215,31 +215,34 @@ final class ERDiagramAccessibilityTree {
     /// Built once per rebuild rather than per table, because asking every table to scan every edge
     /// is quadratic on a schema large enough to need this.
     struct Joins {
-        private var references: [String: Set<String>] = [:]
-        private var referencedBy: [String: Set<String>] = [:]
-        private var related: [String: Set<String>] = [:]
-        private var selfReferencing: Set<String> = []
+        private var references: [CatalogName: Set<CatalogName>] = [:]
+        private var referencedBy: [CatalogName: Set<CatalogName>] = [:]
+        private var related: [CatalogName: Set<CatalogName>] = [:]
+        private var selfReferencing: Set<CatalogName> = []
 
         init(scene: ERDiagramScene) {
             for edge in scene.edges {
-                guard edge.fromTable != edge.toTable else {
-                    selfReferencing.insert(edge.fromTable)
+                let from = CatalogName(edge.fromTable)
+                let to = CatalogName(edge.toTable)
+                guard from != to else {
+                    selfReferencing.insert(from)
                     continue
                 }
                 // A collapsed junction becomes one synthetic edge between the two parents, and that
                 // relationship is symmetric: the hidden table owns both foreign keys, so neither
                 // parent references the other.
                 if edge.cardinality == .manyToMany {
-                    related[edge.fromTable, default: []].insert(edge.toTable)
-                    related[edge.toTable, default: []].insert(edge.fromTable)
+                    related[from, default: []].insert(to)
+                    related[to, default: []].insert(from)
                     continue
                 }
-                references[edge.fromTable, default: []].insert(edge.toTable)
-                referencedBy[edge.toTable, default: []].insert(edge.fromTable)
+                references[from, default: []].insert(to)
+                referencedBy[to, default: []].insert(from)
             }
         }
 
-        func description(of table: String) -> String? {
+        func description(of tableName: String) -> String? {
+            let table = CatalogName(tableName)
             var parts: [String] = []
             if let names = list(references[table]) {
                 parts.append(String(format: String(localized: "references %@"), names))
@@ -256,9 +259,9 @@ final class ERDiagramAccessibilityTree {
             return parts.isEmpty ? nil : parts.joined(separator: ", ")
         }
 
-        private func list(_ names: Set<String>?) -> String? {
+        private func list(_ names: Set<CatalogName>?) -> String? {
             guard let names, !names.isEmpty else { return nil }
-            return names.sorted().joined(separator: ", ")
+            return names.sorted().map(\.text).joined(separator: ", ")
         }
     }
 }

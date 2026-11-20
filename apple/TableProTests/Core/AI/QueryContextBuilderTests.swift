@@ -236,7 +236,7 @@ private final class ContextFakeDriver: DatabaseDriver, @unchecked Sendable {
         return columns[table] ?? []
     }
 
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]] { columns }
+    func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]] { columns.keyedByCatalogName }
 
     func fetchIndexes(table: String) async throws -> [IndexInfo] {
         if let message = indexErrors[table] { throw ContextFakeError(message: message) }

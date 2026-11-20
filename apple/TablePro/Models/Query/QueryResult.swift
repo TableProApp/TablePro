@@ -246,14 +246,16 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         self.isTemporary = isTemporary
     }
 
+    // Names compare by bytes: a server keeps apart two tables whose names Swift's String equates.
     static func == (lhs: TableInfo, rhs: TableInfo) -> Bool {
-        lhs.name == rhs.name && lhs.type == rhs.type && lhs.schema == rhs.schema && lhs.isTemporary == rhs.isTemporary
+        CatalogName.same(lhs.name, rhs.name) && lhs.type == rhs.type && CatalogName.same(lhs.schema, rhs.schema)
+            && lhs.isTemporary == rhs.isTemporary
     }
 
     func hash(into hasher: inout Hasher) {
-        hasher.combine(name)
+        CatalogName.hash(name, into: &hasher)
         hasher.combine(type)
-        hasher.combine(schema)
+        CatalogName.hash(schema, into: &hasher)
         hasher.combine(isTemporary)
     }
 }

@@ -11,13 +11,24 @@ final class ERDiagramPositionStorage {
         JSONDefaultsKey("com.TablePro.erDiagram.positions.\(connectionId.uuidString).\(schemaKey)")
     }
 
-    func load(connectionId: UUID, schemaKey: String) -> [String: CGPoint] {
+    func load(connectionId: UUID, schemaKey: String) -> [CatalogName: CGPoint] {
         let stored = defaults.read(key(connectionId: connectionId, schemaKey: schemaKey)).value ?? [:]
-        return stored.mapValues { CGPoint(x: $0.x, y: $0.y) }
+        var positions: [CatalogName: CGPoint] = [:]
+        for (key, point) in stored {
+            positions[CatalogName(exactKey: key) ?? CatalogName(key)] = CGPoint(x: point.x, y: point.y)
+        }
+        return positions
     }
 
-    func save(_ positions: [String: CGPoint], connectionId: UUID, schemaKey: String) {
-        let stored = positions.mapValues { CodablePoint(x: $0.x, y: $0.y) }
+    func save(_ positions: [CatalogName: CGPoint], connectionId: UUID, schemaKey: String) {
+        var stored: [String: CodablePoint] = [:]
+        for (name, point) in positions.sorted(by: { $0.key < $1.key }) {
+            // A String key equates two table names a server keeps apart, so the second is stored by its bytes, as is a
+            // name that starts the way such a key does.
+            let isLiteral = stored[name.text] == nil && !name.text.hasPrefix(CatalogName.bytesPrefix)
+            let key = isLiteral ? name.text : name.bytesKey
+            stored[key] = CodablePoint(x: point.x, y: point.y)
+        }
         try? defaults.write(stored, to: key(connectionId: connectionId, schemaKey: schemaKey))
     }
 

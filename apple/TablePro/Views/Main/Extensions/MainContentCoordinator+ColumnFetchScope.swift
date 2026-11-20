@@ -247,11 +247,14 @@ extension MainContentCoordinator {
         return (columns, cachedSchemaColumns(for: tab)?.columnTypes(aligningWith: columns) ?? [])
     }
 
-    /// Built entirely from the tab's scope. Keying it on where the user is browsing
-    /// makes two tabs on same-named tables in different databases share one entry.
+    // Built from the tab's scope alone, not where the user browses, with names by bytes, so tables in two databases,
+    // or two tables or schemas whose names Swift's String equates, keep entries of their own.
     func schemaColumnsKey(_ tableName: String, scope: DatabaseScope?) -> String {
-        guard let scope else { return "\(connectionId):::\(tableName)" }
+        let table = CatalogName(tableName).exactKey
+        guard let scope else { return "\(connectionId):::\(table)" }
         let binding = scope.isSessionBound ? ":session" : ""
-        return "\(scope.connectionId):\(scope.database):\(scope.schema ?? ""):\(tableName)\(binding)"
+        let database = CatalogName(scope.database).exactKey
+        let schema = CatalogName(scope.schema ?? "").exactKey
+        return "\(scope.connectionId):\(database):\(schema):\(table)\(binding)"
     }
 }

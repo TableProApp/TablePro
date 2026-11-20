@@ -30,7 +30,7 @@ struct ERDiagramDragTests {
         let node = ERTableNode(id: nodeId, tableName: name, columns: [], displayColumns: [], clusterId: nil)
         var graph = viewModel.graph
         graph.nodes.append(node)
-        graph.nodeIndex[name] = nodeId
+        graph.nodeIndex[CatalogName(name)] = nodeId
         viewModel.graph = graph
         viewModel.setPositionOverride(nodeId: nodeId, position: position)
         return nodeId
@@ -342,7 +342,13 @@ struct ERDiagramDragTests {
     func storedPositionsSurviveARoundTrip() {
         let connectionId = UUID()
         let schemaKey = "app.public"
-        let positions = ["orders": CGPoint(x: 512.5, y: -128.25), "customers": CGPoint(x: 0, y: 940)]
+        let positions: [CatalogName: CGPoint] = [
+            "orders": CGPoint(x: 512.5, y: -128.25),
+            "customers": CGPoint(x: 0, y: 940),
+            CatalogName(TwinNames.composed): CGPoint(x: 1, y: 2),
+            CatalogName(TwinNames.decomposed): CGPoint(x: 3, y: 4),
+            CatalogName(CatalogName.bytesPrefix + "61"): CGPoint(x: 5, y: 6)
+        ]
         defer { ERDiagramPositionStorage.shared.clear(connectionId: connectionId, schemaKey: schemaKey) }
 
         ERDiagramPositionStorage.shared.save(positions, connectionId: connectionId, schemaKey: schemaKey)

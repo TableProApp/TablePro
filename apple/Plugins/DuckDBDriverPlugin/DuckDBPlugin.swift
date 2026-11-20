@@ -852,7 +852,9 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let schemaName = resolveSchema(schema)
-        return try await DuckDBExportCatalog.allColumns(catalog: try requireCatalog(), schema: schemaName, run: catalogRun)
+        return try await DuckDBExportCatalog.allColumns(
+            catalog: try requireCatalog(), schema: schemaName, keepsSpellingsApart: true, run: catalogRun
+        )
     }
 
     func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {

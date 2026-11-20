@@ -107,7 +107,7 @@ nonisolated struct RedshiftCatalogExport: Sendable {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        try await allColumns(schema: schema, keepsSpellingsApart: false)
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
     }
 
     func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {

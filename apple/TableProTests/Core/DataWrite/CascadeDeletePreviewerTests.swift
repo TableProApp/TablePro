@@ -17,7 +17,7 @@ struct CascadeDeletePreviewerTests {
         rows: [[.text("1"), .text("Ann")], [.text("2"), .text("Bo")], [.text("3"), .text("Cy")]]
     )
 
-    private static let foreignKeys: [String: [ForeignKeyInfo]] = [
+    private static let foreignKeys: [CatalogName: [ForeignKeyInfo]] = [
         "orders": [
             ForeignKeyInfo(
                 name: "fk_orders_customer", column: "customer_id", referencedTable: "customers",
@@ -45,7 +45,7 @@ struct CascadeDeletePreviewerTests {
     ]
 
     private static func environment(
-        foreignKeys: @escaping @MainActor () async throws -> [String: [ForeignKeyInfo]] = { Self.foreignKeys },
+        foreignKeys: @escaping @MainActor () async throws -> [CatalogName: [ForeignKeyInfo]] = { Self.foreignKeys },
         tableNames: CascadeTableNames = CascadeTableNames(ignoresCase: false),
         otherSchemas: (@MainActor () async throws -> Bool)? = nil,
         holdsTransaction: (@MainActor () async -> Bool)? = nil,
@@ -213,7 +213,7 @@ struct CascadeDeletePreviewerTests {
 
     @Test("A key that spells its parent in another case still reaches it where names ignore case")
     func caseInsensitiveParentName() async {
-        let foreignKeys: [String: [ForeignKeyInfo]] = [
+        let foreignKeys: [CatalogName: [ForeignKeyInfo]] = [
             "orders": [
                 ForeignKeyInfo(
                     name: "fk_orders_customer", column: "customer_id", referencedTable: "CUSTOMERS",
@@ -320,7 +320,7 @@ struct CascadeDeletePreviewerTests {
 
     @Test("Rows a cascade deletes anyway are not counted as blocking the delete")
     func cascadeDeletedRowsDoNotBlock() async {
-        let foreignKeys: [String: [ForeignKeyInfo]] = [
+        let foreignKeys: [CatalogName: [ForeignKeyInfo]] = [
             "orders": [
                 ForeignKeyInfo(
                     name: "fk_orders_customer", column: "customer_id", referencedTable: "customers",

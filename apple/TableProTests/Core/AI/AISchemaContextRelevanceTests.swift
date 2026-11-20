@@ -26,7 +26,7 @@ struct AISchemaContextRelevanceTests {
     private static func names(
         question: String,
         query: String = "",
-        columns: [String: [ColumnInfo]] = [:],
+        columns: [CatalogName: [ColumnInfo]] = [:],
         maxTables: Int = 2
     ) -> [String] {
         AISchemaContext.relevantTableNames(
@@ -38,8 +38,8 @@ struct AISchemaContextRelevanceTests {
         )
     }
 
-    private static func everyTableColumns(_ extra: [String: [ColumnInfo]]) -> [String: [ColumnInfo]] {
-        var columns = Dictionary(uniqueKeysWithValues: tables.map { ($0.name, [TestFixtures.makeColumnInfo(name: "id")]) })
+    private static func everyTableColumns(_ extra: [CatalogName: [ColumnInfo]]) -> [CatalogName: [ColumnInfo]] {
+        var columns = Dictionary(uniqueKeysWithValues: tables.map { (CatalogName($0.name), [TestFixtures.makeColumnInfo(name: "id")]) })
         columns.merge(extra) { _, new in new }
         return columns
     }
@@ -63,7 +63,7 @@ struct AISchemaContextRelevanceTests {
 
     @Test("Columns loaded for some tables only do not count")
     func partialColumnsAreIgnored() {
-        let columns = ["audit_log": [TestFixtures.makeColumnInfo(name: "customer_note")]]
+        let columns: [CatalogName: [ColumnInfo]] = ["audit_log": [TestFixtures.makeColumnInfo(name: "customer_note")]]
         #expect(Self.names(question: "customer", columns: columns).first == "customers")
         #expect(!Self.names(question: "note", columns: columns).contains("audit_log"))
     }

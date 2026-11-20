@@ -1360,3 +1360,43 @@ extension SchemaService.SchemaKey {
         self.init(connectionId: scope.connectionId, database: scope.database, schema: schema)
     }
 }
+
+// The keys compare names by bytes: two databases or schemas Swift's String equates are two catalogs.
+extension SchemaService.CatalogKey {
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+            && CatalogName.same(lhs.schema, rhs.schema)
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(connectionId)
+        CatalogName.hash(database, into: &hasher)
+        CatalogName.hash(schema, into: &hasher)
+    }
+}
+
+extension SchemaService.SchemaKey {
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+            && CatalogName.same(lhs.schema, rhs.schema)
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(connectionId)
+        CatalogName.hash(database, into: &hasher)
+        CatalogName.hash(schema, into: &hasher)
+    }
+}
+
+extension SchemaService.LoadKey {
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.connectionId == rhs.connectionId && lhs.scope?.catalogKey == rhs.scope?.catalogKey
+            && lhs.scope?.isSessionBound == rhs.scope?.isSessionBound
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(connectionId)
+        hasher.combine(scope?.catalogKey)
+        hasher.combine(scope?.isSessionBound)
+    }
+}

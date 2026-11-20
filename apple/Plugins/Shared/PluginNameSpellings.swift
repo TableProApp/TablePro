@@ -1,18 +1,16 @@
 import Foundation
 import TableProPluginKit
 
-// A server keeps apart names Swift's String equates (NFC and NFD spellings), so a read keyed by String throws on an
-// answer that names one object in two spellings rather than merge the two.
+// A server keeps apart names Swift's String equates (NFC and NFD spellings), so a read keyed by String throws
+// `PluginCatalogNameCollision` on an answer that names one object in two spellings rather than merge the two, and the
+// host reads each object alone.
 nonisolated enum PluginNameSpellings {
-    static func requireDistinctSpellings(
-        _ names: some Sequence<String>,
-        failure: (String) -> any Error = { PluginNameSpellingError(name: $0) }
-    ) throws {
+    static func requireDistinctSpellings(_ names: some Sequence<String>) throws {
         var seen = Set<String>()
         for name in names {
             let (inserted, known) = seen.insert(name)
             if !inserted, !known.utf8.elementsEqual(name.utf8) {
-                throw failure(name)
+                throw PluginCatalogNameCollision(name: name)
             }
         }
     }
@@ -34,13 +32,5 @@ nonisolated enum PluginNameSpellings {
             if !values.isEmpty { answer[table] = values }
         }
         return answer
-    }
-}
-
-nonisolated struct PluginNameSpellingError: PluginDriverError {
-    let name: String
-
-    var pluginErrorMessage: String {
-        "Two objects share the name \(name) in different Unicode forms"
     }
 }

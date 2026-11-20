@@ -49,8 +49,9 @@ final class AIChatViewModel: ObservableObject {
         return services.schemaService.tables(for: id)
     }
 
-    @Published var columnsByTable: [String: [ColumnInfo]] = [:]
-    @Published var foreignKeysByTable: [String: [ForeignKeyInfo]] = [:]
+    // Keyed by name bytes: a schema can hold two tables whose names Swift's String equates.
+    @Published var columnsByTable: [CatalogName: [ColumnInfo]] = [:]
+    @Published var foreignKeysByTable: [CatalogName: [ForeignKeyInfo]] = [:]
 
     @Published var currentQuery: String?
     @Published var queryResults: String?
@@ -109,7 +110,7 @@ final class AIChatViewModel: ObservableObject {
     var onDeviceTurnID: UUID?
     @Published var onDeviceRefusal: OnDeviceRefusal?
     var queryContextMetadata: any ScopedMetadataProviding
-    var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
+    var inFlightColumnFetches: [CatalogName: Task<Void, Never>] = [:]
     var inFlightSchemaLoad: Task<Void, Never>?
     var relevantTableNames: [String] = []
     var schemaRanker: @Sendable (AISchemaRankingInput) -> [String] = AISchemaContext.relevantTableNames(for:)
@@ -123,7 +124,8 @@ final class AIChatViewModel: ObservableObject {
     // A release bumps it, so a load still reading from disk lands in nothing.
     var transcriptEpoch = 0
     var bulkColumnReadTableCount: Int?
-    var schemaCacheScope: String?
+    // Compared by bytes, so a switch between two schemas whose names Swift's String equates drops the cache.
+    var schemaCacheScope: CatalogName?
     // A custom command's message carries its rendered schema, so its tables are ranked by the user's words.
     var schemaQuestionOverride: (turnID: UUID, text: String)?
     nonisolated(unsafe) var streamingTask: Task<Void, Never>?

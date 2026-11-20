@@ -437,6 +437,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         }
 
         let tables = try await fetchTables(schema: schema)
+        try PluginNameSpellings.requireDistinctSpellings(tables.map(\.name))
         let concurrencyLimit = 4
         var result: [String: [PluginColumnInfo]] = [:]
 

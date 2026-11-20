@@ -41,12 +41,13 @@ final class ERDiagramSchemaEdits {
     private let executionGate: any ExecutionGate
     private let objectKind: @MainActor (String) -> TableInfo.TableType
 
-    private(set) var sessions: [String: StructureEditingSession] = [:]
-    private(set) var tableOrder: [String] = []
-    private var undoTables: [String] = []
-    private var redoTables: [String] = []
-    private var loading: [String: Task<StructureEditingSession, any Error>] = [:]
-    private var appliedSubscriptions: [String: AnyCancellable] = [:]
+    // Keyed by name bytes: a schema can hold two tables whose names Swift's String equates.
+    private(set) var sessions: [CatalogName: StructureEditingSession] = [:]
+    private(set) var tableOrder: [CatalogName] = []
+    private var undoTables: [CatalogName] = []
+    private var redoTables: [CatalogName] = []
+    private var loading: [CatalogName: Task<StructureEditingSession, any Error>] = [:]
+    private var appliedSubscriptions: [CatalogName: AnyCancellable] = [:]
     private var isApplyingQueue = false
     private var generation = 0
 
@@ -79,6 +80,10 @@ final class ERDiagramSchemaEdits {
     }
 
     var editedTables: [String] {
+        editedNames.map(\.text)
+    }
+
+    private var editedNames: [CatalogName] {
         tableOrder.filter { sessions[$0]?.changeManager.hasChanges == true }
     }
 
@@ -86,28 +91,34 @@ final class ERDiagramSchemaEdits {
     // first; a key dropped here may hold a column another table drops or changes, so this one goes
     // first. Only the referenced columns count, and a cycle keeps the order the edits were made in.
     var saveOrder: [String] {
-        let tables = editedTables
-        var prerequisites: [String: Set<String>] = [:]
+        orderedForSave.map(\.text)
+    }
+
+    private var orderedForSave: [CatalogName] {
+        let tables = editedNames
+        var prerequisites: [CatalogName: Set<CatalogName>] = [:]
         for table in tables {
             guard let changes = sessions[table]?.changeManager.pendingChanges.values else { continue }
             for change in changes {
                 switch change {
                 case .addForeignKey(let key), .modifyForeignKey(_, let key):
-                    guard key.referencedTable != table, tables.contains(key.referencedTable),
-                          !gainedColumns(of: key.referencedTable).isDisjoint(with: key.referencedColumns)
+                    let referenced = CatalogName(key.referencedTable)
+                    guard referenced != table, tables.contains(referenced),
+                          !gainedColumns(of: referenced).isDisjoint(with: key.referencedColumns)
                     else { continue }
-                    prerequisites[table, default: []].insert(key.referencedTable)
+                    prerequisites[table, default: []].insert(referenced)
                 case .deleteForeignKey(let key):
-                    guard key.referencedTable != table, tables.contains(key.referencedTable),
-                          !changedColumns(of: key.referencedTable).isDisjoint(with: key.referencedColumns)
+                    let referenced = CatalogName(key.referencedTable)
+                    guard referenced != table, tables.contains(referenced),
+                          !changedColumns(of: referenced).isDisjoint(with: key.referencedColumns)
                     else { continue }
-                    prerequisites[key.referencedTable, default: []].insert(table)
+                    prerequisites[referenced, default: []].insert(table)
                 default:
                     continue
                 }
             }
         }
-        var ordered: [String] = []
+        var ordered: [CatalogName] = []
         var remaining = tables
         while !remaining.isEmpty {
             let placed = Set(ordered)
@@ -128,7 +139,7 @@ final class ERDiagramSchemaEdits {
         return sessions[table]?.changeManager.canRedo ?? false
     }
 
-    private func gainedColumns(of table: String) -> Set<String> {
+    private func gainedColumns(of table: CatalogName) -> Set<String> {
         guard let changes = sessions[table]?.changeManager.pendingChanges.values else { return [] }
         return Set(changes.compactMap { change -> String? in
             switch change {
@@ -139,7 +150,7 @@ final class ERDiagramSchemaEdits {
         })
     }
 
-    private func changedColumns(of table: String) -> Set<String> {
+    private func changedColumns(of table: CatalogName) -> Set<String> {
         guard let changes = sessions[table]?.changeManager.pendingChanges.values else { return [] }
         return Set(changes.compactMap { change -> String? in
             switch change {
@@ -150,7 +161,7 @@ final class ERDiagramSchemaEdits {
         })
     }
 
-    func tableEdits() -> [String: ERDiagramStagedOverlay.TableEdits] {
+    func tableEdits() -> [CatalogName: ERDiagramStagedOverlay.TableEdits] {
         sessions.reduce(into: [:]) { result, entry in
             guard entry.value.changeManager.hasChanges else { return }
             result[entry.key] = ERDiagramStagedOverlay.TableEdits(entry.value.changeManager)
@@ -158,16 +169,17 @@ final class ERDiagramSchemaEdits {
     }
 
     func workingColumns(of table: String) -> [EditableColumnDefinition]? {
-        sessions[table]?.changeManager.workingColumns
+        sessions[CatalogName(table)]?.changeManager.workingColumns
     }
 
     // MARK: - Sessions
 
     func session(for table: String) async throws -> StructureEditingSession {
-        if let existing = sessions[table] { return existing }
-        if let inFlight = loading[table] {
+        let name = CatalogName(table)
+        if let existing = sessions[name] { return existing }
+        if let inFlight = loading[name] {
             let loaded = try await inFlight.value
-            return sessions[table] ?? loaded
+            return sessions[name] ?? loaded
         }
         let session = StructureEditingSession(
             identity: "er-diagram.\(databaseName).\(schemaName ?? "").\(table)",
@@ -183,14 +195,14 @@ final class ERDiagramSchemaEdits {
             try await session.loadEditingBaseline(provider: provider)
             return session
         }
-        loading[table] = task
-        defer { loading[table] = nil }
+        loading[name] = task
+        defer { loading[name] = nil }
         let loaded = try await task.value
-        adopt(loaded, for: table)
-        return sessions[table] ?? loaded
+        adopt(loaded, for: name)
+        return sessions[name] ?? loaded
     }
 
-    private func adopt(_ session: StructureEditingSession, for table: String) {
+    private func adopt(_ session: StructureEditingSession, for table: CatalogName) {
         guard sessions[table] == nil else { return }
         sessions[table] = session
         appliedSubscriptions[table] = session.$appliedVersion
@@ -200,14 +212,14 @@ final class ERDiagramSchemaEdits {
             }
     }
 
-    private func sessionAppliedOutsideSave(_ table: String) {
+    private func sessionAppliedOutsideSave(_ table: CatalogName) {
         guard !isApplyingQueue, sessions[table]?.changeManager.hasChanges == false else { return }
         forget(table)
         onChange?()
         onAppliedOutsideSave?()
     }
 
-    private func forget(_ table: String) {
+    private func forget(_ table: CatalogName) {
         sessions.removeValue(forKey: table)?.releaseViewWiring()
         appliedSubscriptions.removeValue(forKey: table)
         tableOrder.removeAll { $0 == table }
@@ -222,7 +234,8 @@ final class ERDiagramSchemaEdits {
         }
     }
 
-    private func recordEdit(on table: String) {
+    private func recordEdit(on tableName: String) {
+        let table = CatalogName(tableName)
         if !tableOrder.contains(table) {
             tableOrder.append(table)
         }
@@ -274,8 +287,8 @@ final class ERDiagramSchemaEdits {
             session.changeManager.pendingChanges.values.contains { change in
                 switch change {
                 case .addForeignKey(let key), .modifyForeignKey(_, let key):
-                    (key.referencedTable == table && key.referencedColumns.contains(column))
-                        || (owner == table && key.columns.contains(column))
+                    (CatalogName.same(key.referencedTable, table) && key.referencedColumns.contains(column))
+                        || (owner == CatalogName(table) && key.columns.contains(column))
                 default:
                     false
                 }
@@ -346,7 +359,7 @@ final class ERDiagramSchemaEdits {
 
     func previewStatements() async -> [String] {
         var statements: [String] = []
-        for table in saveOrder {
+        for table in orderedForSave {
             guard let session = sessions[table] else { continue }
             do {
                 let plan = try await session.stagedSavePlan(for: session.changeManager.getChangesArray())
@@ -373,13 +386,13 @@ final class ERDiagramSchemaEdits {
             onChange?()
         }
         var applied: [String] = []
-        for table in saveOrder {
+        for table in orderedForSave {
             guard let session = sessions[table] else { continue }
             let result = await session.applyStagedChanges(coordinator: coordinator)
             switch result {
             case .applied:
                 forget(table)
-                applied.append(table)
+                applied.append(table.text)
             case .nothingToApply:
                 forget(table)
             case .refused, .failed:

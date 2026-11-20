@@ -43,12 +43,13 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
 
     internal var nodeCache: DatabaseTreeNodeCache = [:]
     internal var rebuildPass = 0
-    internal var childrenCache: [String: [DatabaseTreeNode]] = [:]
+    // Keyed by the parent row's id bytes, which hold its names: two schemas Swift's String equates are two parents.
+    internal var childrenCache: [CatalogName: [DatabaseTreeNode]] = [:]
     internal var objectBucketsCache: [DatabaseTreeContainerKey: DatabaseTreeObjectBuckets] = [:]
     internal var listingMatchesCache: [DatabaseTreeContainerKey: DatabaseTreeFilter.SchemaListingMatches] = [:]
     internal var bucketMemo = DatabaseTreeBucketMemo<DatabaseTreeContainerSlot>()
-    internal var loadedContentMemo = DatabaseTreeBucketMemo<String>()
-    internal var tableRowMemo: [String: DatabaseTreeTableRows] = [:]
+    internal var loadedContentMemo = DatabaseTreeBucketMemo<CatalogName>()
+    internal var tableRowMemo: [CatalogName: DatabaseTreeTableRows] = [:]
     /// Whether a routine row shows its signature depends on the other rows in its own section, so
     /// the label is decided where the section is built and looked up here when the row draws.
     internal var routineDisplayLabels: [String: String] = [:]

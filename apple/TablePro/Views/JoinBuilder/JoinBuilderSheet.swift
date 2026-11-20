@@ -139,17 +139,17 @@ private struct JoinBuilderTableList: View {
         }
     }
 
-    private func tableRow(_ table: String) -> some View {
+    private func tableRow(_ table: CatalogName) -> some View {
         Toggle(isOn: Binding(
             get: { model.isIncluded(table) },
             set: { model.setIncluded($0, table: table) }
         )) {
-            Label(table, systemImage: "tablecells")
+            Label(table.text, systemImage: "tablecells")
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
         .toggleStyle(.checkbox)
-        .accessibilityIdentifier("join-builder-table-\(table)")
+        .accessibilityIdentifier("join-builder-table-\(table.text)")
     }
 
     private func columnRow(_ column: JoinColumnRef) -> some View {
@@ -163,7 +163,7 @@ private struct JoinBuilderTableList: View {
         }
         .toggleStyle(.checkbox)
         .padding(.leading, 22)
-        .accessibilityLabel(String(format: String(localized: "%1$@ column of %2$@"), column.column, column.table))
+        .accessibilityLabel(String(format: String(localized: "%1$@ column of %2$@"), column.column, column.table.text))
     }
 }
 
@@ -204,10 +204,10 @@ private struct JoinBuilderDetails: View {
     @ViewBuilder
     private func joinRow(index: Int, table: JoinQueryDraft.Table) -> some View {
         if index == 0 {
-            LabeledContent(String(localized: "From"), value: table.name)
+            LabeledContent(String(localized: "From"), value: table.name.text)
         } else {
             VStack(alignment: .leading, spacing: 6) {
-                Picker(table.name, selection: Binding(
+                Picker(table.name.text, selection: Binding(
                     get: { table.kind },
                     set: { model.setKind($0, forTableAt: index) }
                 )) {

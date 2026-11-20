@@ -322,7 +322,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        try await allColumns(schema: schema, keepsSpellingsApart: false)
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
     }
 
     func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {

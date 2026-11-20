@@ -193,10 +193,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch columns for a table in a specific schema (for cross-schema FK lookups)
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo]
 
-    /// Fetch columns for ALL tables in a single batch query (avoids N+1).
-    /// Returns a dictionary keyed by table name.
-    /// Default implementation falls back to per-table fetchColumns.
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]]
+    // Every table's columns, keyed by name bytes: an engine can hold two names Swift's String equates.
+    func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]]
 
     // One query that also reports every column `fetchColumns` does, so Compare can trust it.
     var providesBulkColumnFetch: Bool { get }
@@ -271,16 +269,14 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func tableDefinitionDidChange(table: String, schema: String?)
 
-    /// Fetch foreign keys for all tables in the current database/schema in bulk.
-    /// Default implementation falls back to per-table fetchForeignKeys.
-    func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]]
-    func fetchAllForeignKeys(schema: String?) async throws -> [String: [ForeignKeyInfo]]
+    func fetchAllForeignKeys() async throws -> [CatalogName: [ForeignKeyInfo]]
+    func fetchAllForeignKeys(schema: String?) async throws -> [CatalogName: [ForeignKeyInfo]]
 
     /// Whether `fetchAllForeignKeys` is a single query. False means it degrades to one round trip
     /// per table, which is too expensive to run ahead of the user.
     var providesBulkForeignKeyFetch: Bool { get }
 
-    func fetchForeignKeys(forTables tableNames: [String]) async throws -> [String: [ForeignKeyInfo]]
+    func fetchForeignKeys(forTables tableNames: [String]) async throws -> [CatalogName: [ForeignKeyInfo]]
 
     /// Fetch an approximate row count using fast database-specific metadata.
     /// Returns nil if not available (e.g., SQLite). Used for instant pagination display.
@@ -567,7 +563,7 @@ extension SchemaSwitchable {
     /// disagree about when it is redundant: the pooled metadata driver kept sending an `ALTER SESSION`
     /// the session driver knew to skip, and on Oracle that spare statement was the one that hung (#2294).
     func switchSchemaIfNeeded(to schema: String) async throws {
-        guard currentSchema != schema else { return }
+        guard !CatalogName.same(currentSchema, schema) else { return }
         try await switchSchema(to: schema)
     }
 }
@@ -964,11 +960,11 @@ extension DatabaseDriver {
 
     var providesBulkForeignKeyFetch: Bool { false }
 
-    func fetchAllForeignKeys(schema: String?) async throws -> [String: [ForeignKeyInfo]] {
+    func fetchAllForeignKeys(schema: String?) async throws -> [CatalogName: [ForeignKeyInfo]] {
         try await fetchAllForeignKeys()
     }
 
-    func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
+    func fetchAllForeignKeys() async throws -> [CatalogName: [ForeignKeyInfo]] {
         let allTables = try await fetchTables()
         return try await readEachTable(allTables.map(\.name), skippingFailures: true, reading: "foreign keys") { name in
             let keys = try await fetchForeignKeys(table: name)
@@ -976,10 +972,10 @@ extension DatabaseDriver {
         }
     }
 
-    func fetchForeignKeys(forTables tableNames: [String]) async throws -> [String: [ForeignKeyInfo]] {
+    func fetchForeignKeys(forTables tableNames: [String]) async throws -> [CatalogName: [ForeignKeyInfo]] {
         if providesBulkForeignKeyFetch, tableNames.count > 5 {
             let all = try await fetchAllForeignKeys()
-            let nameSet = Set(tableNames)
+            let nameSet = Set(tableNames.map { CatalogName($0) })
             return all.filter { nameSet.contains($0.key) }
         }
         // Without a bulk query the schema-wide read is a round trip per schema table; past five names an error still fails it.
@@ -989,7 +985,7 @@ extension DatabaseDriver {
         }
     }
 
-    func fetchIndexes(forTables tableNames: [String]) async throws -> [String: [IndexInfo]] {
+    func fetchIndexes(forTables tableNames: [String]) async throws -> [CatalogName: [IndexInfo]] {
         try await readEachTable(tableNames, skippingFailures: true, reading: "indexes") { name in
             let indexes = try await fetchIndexes(table: name)
             return indexes.isEmpty ? nil : indexes
@@ -1001,12 +997,12 @@ extension DatabaseDriver {
         skippingFailures: Bool,
         reading what: String,
         _ read: (String) async throws -> Value?
-    ) async throws -> [String: Value] {
-        var result: [String: Value] = [:]
+    ) async throws -> [CatalogName: Value] {
+        var result: [CatalogName: Value] = [:]
         for name in tableNames {
             try Task.checkCancellation()
             do {
-                if let value = try await read(name) { result[name] = value }
+                if let value = try await read(name) { result[CatalogName(name)] = value }
             } catch {
                 try Self.rethrowIfCancelled(error)
                 guard skippingFailures else { throw error }
@@ -1026,7 +1022,7 @@ extension DatabaseDriver {
         []
     }
 
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
+    func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]] {
         let allTables = try await fetchTables()
         return try await readEachTable(allTables.map(\.name), skippingFailures: true, reading: "columns") { name in
             try await fetchColumns(table: name)

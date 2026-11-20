@@ -114,7 +114,7 @@ struct ForeignKeysForTablesReadTests {
 
         #expect(driver.log.perTableReads == sixTables)
         #expect(driver.log.tableListings == 0)
-        #expect(Set(keys.keys) == Set(sixTables))
+        #expect(Set(keys.keys) == Set(sixTables.map { CatalogName($0) }))
         #expect(keys["t3"]?.first?.name == "fk_t3")
     }
 
@@ -126,7 +126,7 @@ struct ForeignKeysForTablesReadTests {
 
         #expect(driver.log.bulkReads == 1)
         #expect(driver.log.perTableReads.isEmpty)
-        #expect(Set(keys.keys) == Set(sixTables))
+        #expect(Set(keys.keys) == Set(sixTables.map { CatalogName($0) }))
     }
 
     @Test("Past five tables without a bulk read, a table that cannot be read still fails the read")

@@ -30,7 +30,7 @@ struct ClickHouseExportTwinNameTests {
     func exportColumnReadThrowsOnTwins() async throws {
         let driver = Self.server(tables: [composed, decomposed]).connectedDriver()
 
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await driver.fetchAllColumnsForExport(schema: "vb")
         }
     }

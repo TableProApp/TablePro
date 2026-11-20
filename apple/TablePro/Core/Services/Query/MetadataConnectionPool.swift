@@ -54,6 +54,19 @@ final class MetadataConnectionPool {
             self.workload = workload
             slot = scope.schema == nil ? .home : .followsSchema
         }
+
+        // By bytes: a connection to one of two databases Swift's String equates never serves the other.
+        static func == (lhs: Key, rhs: Key) -> Bool {
+            lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+                && lhs.workload == rhs.workload && lhs.slot == rhs.slot
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            CatalogName.hash(database, into: &hasher)
+            hasher.combine(workload)
+            hasher.combine(slot)
+        }
     }
 
     private struct OpenKey: Hashable, Sendable {
@@ -61,6 +74,16 @@ final class MetadataConnectionPool {
         let schema: String?
         // Set for a lease inside another lease's work, so its open is its own and nobody queues on it.
         let owner: UUID?
+
+        static func == (lhs: OpenKey, rhs: OpenKey) -> Bool {
+            lhs.key == rhs.key && CatalogName.same(lhs.schema, rhs.schema) && lhs.owner == rhs.owner
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(key)
+            CatalogName.hash(schema, into: &hasher)
+            hasher.combine(owner)
+        }
     }
 
     private enum LeaseOutcome<T: Sendable>: Sendable {
@@ -283,7 +306,7 @@ final class MetadataConnectionPool {
 
     internal func markInFlight(scope: DatabaseScope, workload: Workload = .interactive) {
         let list = entries[Key(scope: scope, workload: workload)] ?? []
-        let entry = list.first(where: { $0.schema == scope.schema }) ?? list.first
+        let entry = list.first(where: { CatalogName.same($0.schema, scope.schema) }) ?? list.first
         entry?.inFlightCount += 1
     }
 
@@ -452,14 +475,14 @@ final class MetadataConnectionPool {
     ) -> Entry? {
         let candidates = (entries[key] ?? []).filter { !held.contains(ObjectIdentifier($0)) && isUsable($0) }
         let idle = candidates.filter { isIdle($0) }
-        if let onSchema = idle.first(where: { $0.schema == schema }) {
+        if let onSchema = idle.first(where: { CatalogName.same($0.schema, schema) }) {
             return onSchema
         }
         if let any = idle.min(by: { $0.lastUsed < $1.lastUsed }) {
             return any
         }
         guard held.isEmpty else { return nil }
-        return candidates.first { $0.inFlightCount > 0 && $0.queuedSchema == schema }
+        return candidates.first { $0.inFlightCount > 0 && CatalogName.same($0.queuedSchema, schema) }
     }
 
     private func claim(_ entry: Entry, for schema: String?) {
@@ -475,7 +498,8 @@ final class MetadataConnectionPool {
         }
         let unconditionally = entry.forcesNextSwitch
         // Asked on every lease: Snowflake's drivers for one connection share a session, so another one may have moved it.
-        if !unconditionally, switchable.currentSchema == schema {
+        // By bytes: two schemas Swift's String equates are two schemas to the server.
+        if !unconditionally, CatalogName.same(switchable.currentSchema, schema) {
             entry.schema = schema
             return true
         }

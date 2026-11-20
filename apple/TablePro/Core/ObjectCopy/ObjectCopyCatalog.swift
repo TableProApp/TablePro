@@ -112,15 +112,17 @@ internal struct ObjectCopyCatalog {
     internal func indexNames(
         in endpoint: DatabaseEndpoint,
         connection: DatabaseConnection
-    ) async throws -> [String: [String]] {
+    ) async throws -> [CatalogName: [String]] {
         try await manager.ensureConnected(connection)
         let schema = endpoint.schema?.nilIfEmpty
         return try await manager.withMetadataDriver(scope: endpoint.scope, workload: .bulk) { driver in
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else { return [:] }
             do {
-                return try await plugin.fetchAllIndexes(schema: schema).mapValues { $0.map(\.name) }
+                return try await plugin.fetchAllIndexes(schema: schema).keyedByCatalogName.mapValues { $0.map(\.name) }
             } catch let cancellation as CancellationError {
                 throw cancellation
+            } catch is PluginCatalogNameCollision {
+                return try await Self.indexNamesReadAlone(using: plugin, schema: schema)
             } catch {
                 Self.logger.warning(
                     "Target index names unreadable: \(error.publicLogShape, privacy: .public)"
@@ -128,6 +130,21 @@ internal struct ObjectCopyCatalog {
                 return [:]
             }
         }
+    }
+
+    // The schema-wide answer named two tables Swift's String equates, so each table's indexes are read alone.
+    nonisolated private static func indexNamesReadAlone(
+        using plugin: any PluginDatabaseDriver,
+        schema: String?
+    ) async throws -> [CatalogName: [String]] {
+        var names: [CatalogName: [String]] = [:]
+        for table in try await plugin.fetchTables(schema: schema) {
+            try Task.checkCancellation()
+            guard let indexes = try? await plugin.fetchIndexes(table: table.name, schema: schema), !indexes.isEmpty
+            else { continue }
+            names[CatalogName(table.name)] = indexes.map(\.name)
+        }
+        return names
     }
 
     /// The schemas a database-wide copy would have to cover, so the sheet can refuse rather than

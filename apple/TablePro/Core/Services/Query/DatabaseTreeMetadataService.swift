@@ -15,15 +15,36 @@ import TableProSQLGrammar
 final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     static let shared = DatabaseTreeMetadataService()
 
+    // The keys compare names by bytes: two databases, schemas or tables Swift's String equates are two to the server.
     struct DatabaseKey: Hashable, Sendable {
         let connectionId: UUID
         let database: String
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            CatalogName.hash(database, into: &hasher)
+        }
     }
 
     struct ObjectsKey: Hashable, Sendable {
         let connectionId: UUID
         let database: String
         let schema: String?
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+                && CatalogName.same(lhs.schema, rhs.schema)
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            CatalogName.hash(database, into: &hasher)
+            CatalogName.hash(schema, into: &hasher)
+        }
     }
 
     // A `.database` kind, and every kind on an engine without schemas, is keyed with no schema.
@@ -32,6 +53,18 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         let database: String
         let schema: String?
         let kindId: String
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+                && CatalogName.same(lhs.schema, rhs.schema) && lhs.kindId == rhs.kindId
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            CatalogName.hash(database, into: &hasher)
+            CatalogName.hash(schema, into: &hasher)
+            hasher.combine(kindId)
+        }
     }
 
     struct PartitionsKey: Hashable, Sendable {
@@ -39,6 +72,18 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         let database: String
         let schema: String?
         let table: String
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.connectionId == rhs.connectionId && CatalogName.same(lhs.database, rhs.database)
+                && CatalogName.same(lhs.schema, rhs.schema) && CatalogName.same(lhs.table, rhs.table)
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(connectionId)
+            CatalogName.hash(database, into: &hasher)
+            CatalogName.hash(schema, into: &hasher)
+            CatalogName.hash(table, into: &hasher)
+        }
     }
 
     /// Carries the revision it started under, so a read after a change never joins a fetch that

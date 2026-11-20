@@ -109,7 +109,7 @@ struct RedshiftCatalogExportTests {
             [Self.decomposed, "id", "integer", "NO", nil, nil, nil, nil, "YES"].cells,
         ] }
 
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await Self.catalog(recorder).fetchAllColumnsForExport(schema: nil)
         }
         #expect(recorder.statements == [RedshiftSchemaQueries.columnsQuery(schema: "public", table: nil)])
@@ -127,7 +127,7 @@ struct RedshiftCatalogExportTests {
             [Self.decomposed, "payload", "int", "true", "0"].cells,
         ] }
 
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await Self.catalog(recorder, externalSchemas: ["spectrum"]).fetchAllColumnsForExport(schema: "spectrum")
         }
         #expect(recorder.statements == [
@@ -150,7 +150,7 @@ struct RedshiftCatalogExportTests {
         let twins = CatalogReadRecorder { statement in
             statement == listing ? [[Self.composed, "BASE TABLE"].cells, [Self.decomposed, "BASE TABLE"].cells] : []
         }
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await Self.catalog(twins).fetchAllForeignKeysForExport(schema: nil)
         }
         #expect(twins.statements == [listing])

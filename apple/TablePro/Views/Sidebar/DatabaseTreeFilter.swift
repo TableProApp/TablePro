@@ -7,15 +7,36 @@ import Foundation
 import TableProPluginKit
 import TableProUtilities
 
+// Names compare by bytes: two schemas Swift's String equates are two containers.
 struct DatabaseTreeContainerKey: Hashable {
     let database: String
     let schema: String?
     let searchText: String
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        CatalogName.same(lhs.database, rhs.database) && CatalogName.same(lhs.schema, rhs.schema)
+            && lhs.searchText == rhs.searchText
+    }
+
+    func hash(into hasher: inout Hasher) {
+        CatalogName.hash(database, into: &hasher)
+        CatalogName.hash(schema, into: &hasher)
+        hasher.combine(searchText)
+    }
 }
 
 struct DatabaseTreeContainerSlot: Hashable {
     let database: String
     let schema: String?
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        CatalogName.same(lhs.database, rhs.database) && CatalogName.same(lhs.schema, rhs.schema)
+    }
+
+    func hash(into hasher: inout Hasher) {
+        CatalogName.hash(database, into: &hasher)
+        CatalogName.hash(schema, into: &hasher)
+    }
 }
 
 // Equal only while both hold the same storage: `TableInfo ==` leaves out the comment and row count a row draws.
@@ -190,16 +211,16 @@ enum DatabaseTreeFilter {
     }
 
     // The fields `TableInfo.id` is built from, without escaping and joining a string for every row.
-    // The id reads an empty schema as none, so the key does too.
+    // The id reads an empty schema as none, so the key does too. Names by bytes, as the server keeps them.
     private struct TableIdentity: Hashable {
-        let name: String
-        let schema: String?
+        let name: CatalogName
+        let schema: CatalogName?
         let type: TableInfo.TableType
         let isTemporary: Bool
 
         init(_ table: TableInfo) {
-            name = table.name
-            schema = table.schema?.isEmpty == false ? table.schema : nil
+            name = CatalogName(table.name)
+            schema = table.schema?.isEmpty == false ? table.schema.map { CatalogName($0) } : nil
             type = table.type
             isTemporary = table.isTemporary
         }
@@ -313,7 +334,7 @@ enum DatabaseTreeFilter {
         }
         let unanswered: SchemaSearchVerdict = search.admits(database: database, schema: schema) ? .unknown : .noMatch
         let listingAnswers = listingCoversSchema && listingMatches?.answers(for: schema) == true
-        if listingAnswers, listingMatches?.matched.contains(schema) == true { return .match }
+        if listingAnswers, listingMatches?.matched.contains(CatalogName(schema)) == true { return .match }
         if let loadedContent { return loadedContent.isSettled ? .noMatch : unanswered }
         return listingAnswers || !listingCoversSchema ? .noMatch : unanswered
     }
@@ -397,7 +418,7 @@ enum DatabaseTreeFilter {
         let matched = search.isEmpty
             ? browsable
             : browsable.filter { search.matchesContainer(database: database, schema: $0) || contentMatches($0) }
-        return deduplicated(matched, by: { $0 })
+        return deduplicated(matched, by: { CatalogName($0) })
     }
 
     /// While searching, a container's kind section opens only when it holds a match. Opening every
@@ -425,11 +446,11 @@ enum DatabaseTreeFilter {
     /// comparison per table per schema on every redraw. A schema outside `covered`, the set a filtered
     /// listing was read for, was never asked about, so the listing cannot say it holds no match.
     struct SchemaListingMatches: Equatable {
-        let listed: Set<String>
-        let matched: Set<String>
+        let listed: Set<CatalogName>
+        let matched: Set<CatalogName>
         let unlisted: Set<String>
         let covered: Set<String>?
-        let rowsBySchema: [String: [TableInfo]]
+        let rowsBySchema: [CatalogName: [TableInfo]]
 
         init(listing: CatalogTableListing.Result, database: String, searchText: String, covered: Set<String>? = nil) {
             self.init(
@@ -443,9 +464,9 @@ enum DatabaseTreeFilter {
 
         init(groups: SchemaListingGroups, unlisted: Set<String>, database: String, searchText: String, covered: Set<String>?) {
             let search = SidebarSearch(searchText)
-            var matched: Set<String> = []
+            var matched: Set<CatalogName> = []
             for (schema, rows) in groups.rowsBySchema
-            where rows.contains(where: { search.matchesObject(named: $0.name, database: database, schema: schema) }) {
+            where rows.contains(where: { search.matchesObject(named: $0.name, database: database, schema: schema.text) }) {
                 matched.insert(schema)
             }
             self.listed = Set(groups.rowsBySchema.keys)
@@ -463,13 +484,13 @@ enum DatabaseTreeFilter {
     // A keystroke changes which schemas match, never which rows each schema lists, so the grouping
     // waits for the next listing. Grouping 50,000 rows again on every keystroke copied each of them.
     struct SchemaListingGroups {
-        let rowsBySchema: [String: [TableInfo]]
+        let rowsBySchema: [CatalogName: [TableInfo]]
 
         init(tables: [TableInfo]) {
-            var rowsBySchema: [String: [TableInfo]] = [:]
+            var rowsBySchema: [CatalogName: [TableInfo]] = [:]
             for table in tables {
                 guard let schema = table.schema else { continue }
-                rowsBySchema[schema, default: []].append(table)
+                rowsBySchema[CatalogName(schema), default: []].append(table)
             }
             self.rowsBySchema = rowsBySchema
         }
@@ -560,7 +581,7 @@ enum DatabaseTreeFilter {
         guard let listingMatches, listingMatches.answers(for: schema) else {
             return search.admits(database: database, schema: schema) ? .unknown : .noMatch
         }
-        return listingMatches.matched.contains(schema) ? .match : .noMatch
+        return listingMatches.matched.contains(CatalogName(schema)) ? .match : .noMatch
     }
 
     /// A schema's objects as the tree has loaded them, filtered by the search. Nil until its tables
@@ -581,7 +602,7 @@ enum DatabaseTreeFilter {
         // While searching, overtaken tables yield to the listing's, as the tree draws them.
         if !searchText.isEmpty, let schema, let listingMatches, listingMatches.answers(for: schema),
            !service.isTablesCurrent(connectionId: connectionId, database: database, schema: schema) {
-            tables = listingMatches.rowsBySchema[schema] ?? []
+            tables = listingMatches.rowsBySchema[CatalogName(schema)] ?? []
         }
         let serverKinds = service.serverKinds(connectionId: connectionId, database: database, schema: schema)
         return objectBuckets(
@@ -611,8 +632,9 @@ enum DatabaseTreeFilter {
     ) -> [String] {
         guard !SidebarSearch(searchText).isEmpty, let listingMatches else { return [] }
         return listingMatches.listed
+            .map(\.text)
             .filter { schema in
-                guard schema != browsedSchema, !hiddenSchemas.contains(schema) else { return false }
+                guard !CatalogName.same(schema, browsedSchema), !hiddenSchemas.contains(schema) else { return false }
                 if let keptSchemas, !keptSchemas.contains(schema) { return false }
                 return schemaSearchVerdict(
                     schema: schema,

@@ -419,7 +419,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        try await allColumns(schema: schema, keepsSpellingsApart: false)
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
     }
 
     func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -431,7 +431,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         guard !datasetId.isEmpty else { return [:] }
         do {
             return try await bulkColumns(datasetId: datasetId, keepsSpellingsApart: keepsSpellingsApart)
-        } catch let error as PluginNameSpellingError {
+        } catch let error as PluginCatalogNameCollision {
             throw error
         } catch {
             Self.logger.info(

@@ -31,7 +31,7 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var fetchColumnsCallCount = 0
     var fetchColumnsCalls: [String] = []
     var fetchAllColumnsCallCount = 0
-    var allColumnsToReturn: [String: [ColumnInfo]] = [:]
+    var allColumnsToReturn: [CatalogName: [ColumnInfo]] = [:]
     var fetchSchemaTablesCalls: [String] = []
     var applyQueryTimeoutValues: [Int] = []
     var cancelQueryCallCount = 0
@@ -326,7 +326,7 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
 
     var fetchAllColumnsError: Error?
 
-    func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
+    func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]] {
         fetchAllColumnsCallCount += 1
         if let fetchAllColumnsError {
             throw fetchAllColumnsError
@@ -841,8 +841,8 @@ struct SQLSchemaProviderTests {
     @Test("A requested column preload caches every table the fetch returned")
     func eagerLoadCachesEveryFetchedTable() async {
         let names = (0..<40).map { "table_\($0)" }
-        let allColumns: [String: [ColumnInfo]] = names.reduce(into: [:]) { result, name in
-            result[name] = [TestFixtures.makeColumnInfo(name: "col_of_\(name)")]
+        let allColumns: [CatalogName: [ColumnInfo]] = names.reduce(into: [:]) { result, name in
+            result[CatalogName(name)] = [TestFixtures.makeColumnInfo(name: "col_of_\(name)")]
         }
         let source = SQLSchemaProvider.ColumnMetadataSource(
             fetchColumns: { _, _ in [] },
@@ -1292,16 +1292,16 @@ struct SQLSchemaProviderTests {
 
 /// Holds each bulk column read until the test releases it, and answers it by call order.
 private actor PreloadGate {
-    private let answers: [[String: [ColumnInfo]]]
+    private let answers: [[CatalogName: [ColumnInfo]]]
     private var held: [Int: CheckedContinuation<Void, Never>] = [:]
     private var holdingWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
     private(set) var calls = 0
 
-    init(answers: [[String: [ColumnInfo]]]) {
+    init(answers: [[CatalogName: [ColumnInfo]]]) {
         self.answers = answers
     }
 
-    func fetch() async -> [String: [ColumnInfo]] {
+    func fetch() async -> [CatalogName: [ColumnInfo]] {
         calls += 1
         let call = calls
         await withCheckedContinuation { continuation in

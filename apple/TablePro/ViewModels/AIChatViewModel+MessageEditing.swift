@@ -94,9 +94,9 @@ extension AIChatViewModel {
     }
 
     private func resolveTableAttachment(name: String) -> String? {
-        let columns = columnsByTable[name] ?? []
+        let columns = columnsByTable[CatalogName(name)] ?? []
         guard !columns.isEmpty else { return nil }
-        let foreignKeys = foreignKeysByTable[name] ?? []
+        let foreignKeys = foreignKeysByTable[CatalogName(name)] ?? []
         var lines: [String] = ["## Table \(name)"]
         for column in columns {
             lines.append("- \(column.name): \(column.dataType)")

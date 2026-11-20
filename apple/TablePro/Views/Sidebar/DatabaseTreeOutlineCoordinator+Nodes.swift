@@ -12,6 +12,14 @@ struct DatabaseTreeTableRows {
     enum Schema: Equatable {
         case own
         case fixed(String?)
+
+        static func == (lhs: Schema, rhs: Schema) -> Bool {
+            switch (lhs, rhs) {
+            case (.own, .own): true
+            case let (.fixed(left), .fixed(right)): CatalogName.same(left, right)
+            default: false
+            }
+        }
     }
 
     // How many rows at each end of a new list are the rows already built. A load usually changes a few of thousands,
@@ -57,7 +65,7 @@ extension DatabaseTreeOutlineCoordinator {
     }
 
     internal func resolvedChildren(of item: Any?) -> [DatabaseTreeNode] {
-        let key = (item as? DatabaseTreeNode)?.id ?? ""
+        let key = CatalogName((item as? DatabaseTreeNode)?.id ?? "")
         if let cached = childrenCache[key] { return cached }
         let built = buildChildren(of: item as? DatabaseTreeNode)
         childrenCache[key] = built
@@ -386,7 +394,7 @@ extension DatabaseTreeOutlineCoordinator {
                 schema: schema,
                 searchText: searchText,
                 database: browsingDatabase,
-                filter: { self.loadedContentMemo.buckets(for: schema, source: $0) }
+                filter: { self.loadedContentMemo.buckets(for: CatalogName(schema), source: $0) }
             ),
             listingMatches: schemaService.loadedScope(for: connectionId).flatMap { listingMatches(database: $0.database) },
             listingCoversSchema: !systemSchemas.contains(schema)
@@ -442,11 +450,11 @@ extension DatabaseTreeOutlineCoordinator {
 
     private func hierarchicalListingRows(schema: String) -> [TableInfo]? {
         guard let matches = hierarchicalListing(answering: schema) else { return nil }
-        return matches.rowsBySchema[schema] ?? []
+        return matches.rowsBySchema[CatalogName(schema)] ?? []
     }
 
     internal func hierarchicalListingMatchesTable(in schema: String) -> Bool {
-        hierarchicalListing(answering: schema)?.matched.contains(schema) ?? false
+        hierarchicalListing(answering: schema)?.matched.contains(CatalogName(schema)) ?? false
     }
 
     private func hierarchicalListing(answering schema: String) -> DatabaseTreeFilter.SchemaListingMatches? {
@@ -687,7 +695,7 @@ extension DatabaseTreeOutlineCoordinator {
               !systemSchemas.contains(schema),
               let matches = listingMatches(database: database), matches.answers(for: schema)
         else { return nil }
-        return matches.rowsBySchema[schema] ?? []
+        return matches.rowsBySchema[CatalogName(schema)] ?? []
     }
 
     /// The schema-grouped shape reads its objects from the connection's own schema service and the
@@ -897,7 +905,9 @@ extension DatabaseTreeOutlineCoordinator {
             return node
         }
         let rows = SameRows(rows: tables)
-        let built = tableRowMemo[parentId].flatMap { $0.database == database && $0.schema == schema ? $0 : nil }
+        let built = tableRowMemo[CatalogName(parentId)].flatMap {
+            CatalogName.same($0.database, database) && $0.schema == schema ? $0 : nil
+        }
         if let built, built.tables == rows {
             for (node, table) in zip(built.nodes, tables) {
                 _ = reused(node, for: table)
@@ -915,7 +925,7 @@ extension DatabaseTreeOutlineCoordinator {
             let tableRef = ref(tables[index])
             return node(id: DatabaseTreeNode.tableId(tableRef), kind: .table(tableRef))
         }
-        tableRowMemo[parentId] = DatabaseTreeTableRows(tables: rows, database: database, schema: schema, nodes: nodes)
+        tableRowMemo[CatalogName(parentId)] = DatabaseTreeTableRows(tables: rows, database: database, schema: schema, nodes: nodes)
         return nodes
     }
 

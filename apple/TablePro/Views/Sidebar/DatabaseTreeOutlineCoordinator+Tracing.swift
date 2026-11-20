@@ -73,8 +73,8 @@ extension DatabaseTreeOutlineCoordinator {
     private func settledRowCount(in outlineView: NSOutlineView) -> Int? {
         for (parentId, children) in childrenCache {
             guard children.count == 1, case .status(.loading) = children[0].kind else { continue }
-            guard !parentId.isEmpty else { return nil }
-            if let parent = nodeCache[parentId], outlineView.row(forItem: parent) >= 0, outlineView.isItemExpanded(parent) {
+            guard !parentId.text.isEmpty else { return nil }
+            if let parent = nodeCache[parentId.text], outlineView.row(forItem: parent) >= 0, outlineView.isItemExpanded(parent) {
                 return nil
             }
         }

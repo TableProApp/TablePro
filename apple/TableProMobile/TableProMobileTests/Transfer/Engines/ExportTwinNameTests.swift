@@ -28,10 +28,10 @@ struct ExportTwinNameTests {
         _ = try await driver.execute(query: "CREATE TABLE \"\(decomposed)\" (id INTEGER PRIMARY KEY, s INTEGER REFERENCES p (id))")
         let catalog = SQLiteTransferCatalog(driver: driver)
 
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllColumns(databaseName: "")
         }
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllForeignKeys(databaseName: "")
         }
         let own = try await catalog.fetchColumns(table: decomposed, databaseName: "")
@@ -50,10 +50,10 @@ struct ExportTwinNameTests {
             context: MobileTransferContext(databaseType: .duckdb, database: nil, schema: nil)
         )
 
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllColumns(databaseName: "main")
         }
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllForeignKeys(databaseName: "main")
         }
         let keys = try await catalog.fetchForeignKeys(table: decomposed, databaseName: "main")
@@ -104,10 +104,10 @@ struct ExportTwinNameTests {
             openedDatabase: "shop"
         )
 
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllColumns(databaseName: "shop")
         }
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllForeignKeys(databaseName: "shop")
         }
     }
@@ -133,10 +133,10 @@ struct ExportTwinNameTests {
             script: ExportCatalogScript(databaseTypeId: DatabaseType.mssql.rawValue, session: nil)
         )
 
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllColumns(databaseName: "sales")
         }
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllForeignKeys(databaseName: "sales")
         }
     }
@@ -181,10 +181,10 @@ struct ExportTwinNameTests {
             script: ExportCatalogScript(databaseTypeId: DatabaseType.oracle.rawValue, session: nil)
         )
 
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllColumns(databaseName: "APP")
         }
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllForeignKeys(databaseName: "APP")
         }
     }
@@ -211,10 +211,10 @@ struct ExportTwinNameTests {
             standardConformingStrings: true
         )
 
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllColumns(databaseName: "")
         }
-        await #expect(throws: PluginNameSpellingError.self) {
+        await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllForeignKeys(databaseName: "")
         }
         #expect(reads.statements.last == listing)

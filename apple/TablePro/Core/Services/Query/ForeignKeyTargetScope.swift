@@ -52,7 +52,7 @@ internal enum ForeignKeyTargetScope {
         }
     }
 
-    // A part the origin or the engine leaves unnamed cannot rule a key out.
+    // A part the origin or the engine leaves unnamed cannot rule a key out. Names compare by bytes, as the server does.
     internal static func pointsWithin(
         _ origin: DatabaseScope,
         referencedDatabase: String?,
@@ -65,9 +65,9 @@ internal enum ForeignKeyTargetScope {
             referencedSchema: referencedSchema,
             slot: slot
         )
-        let sameDatabase = origin.database.isEmpty || target.database == origin.database
+        let sameDatabase = origin.database.isEmpty || CatalogName.same(target.database, origin.database)
         guard let schema = origin.schema, let targetSchema = target.schema else { return sameDatabase }
-        return sameDatabase && targetSchema == schema
+        return sameDatabase && CatalogName.same(targetSchema, schema)
     }
 
     internal static func tableScope(

@@ -24,7 +24,7 @@ struct ERDiagramLayoutTests {
             let cols = (0..<columnsPerTable).map { column("\(name)_\($0)") }
             return ERTableNode(id: UUID(), tableName: name, columns: cols, displayColumns: cols, clusterId: nil)
         }
-        let index = Dictionary(uniqueKeysWithValues: nodes.map { ($0.tableName, $0.id) })
+        let index = Dictionary(uniqueKeysWithValues: nodes.map { (CatalogName($0.tableName), $0.id) })
         let edges = foreignKeys.enumerated().map { offset, fk in
             EREdge(
                 id: UUID(),

@@ -65,7 +65,7 @@ struct SchemaForeignKeyStoreTests {
         let store = SchemaForeignKeyStore()
         let doomed = makeScope(UUID())
         let survivor = makeScope(UUID())
-        let foreignKeys = ["orders": [makeForeignKey(column: "customer_id", referencedTable: "customers")]]
+        let foreignKeys: [CatalogName: [ForeignKeyInfo]] = ["orders": [makeForeignKey(column: "customer_id", referencedTable: "customers")]]
         store.store(foreignKeys, for: doomed)
         store.store(foreignKeys, for: survivor)
 

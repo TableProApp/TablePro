@@ -4,7 +4,7 @@ enum ERClusterAnalyzer {
     static func assignClusters(
         nodes: [ERTableNode],
         edges: [EREdge],
-        nodeIndex: [String: UUID]
+        nodeIndex: [CatalogName: UUID]
     ) -> [UUID: Int] {
         guard !nodes.isEmpty else { return [:] }
 
@@ -43,8 +43,8 @@ enum ERClusterAnalyzer {
         }
 
         for edge in edges {
-            guard let from = nodeIndex[edge.fromTable],
-                  let to = nodeIndex[edge.toTable],
+            guard let from = nodeIndex[CatalogName(edge.fromTable)],
+                  let to = nodeIndex[CatalogName(edge.toTable)],
                   from != to
             else { continue }
             union(from, to)

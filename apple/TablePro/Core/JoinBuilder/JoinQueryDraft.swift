@@ -27,7 +27,7 @@ internal enum JoinKind: String, CaseIterable, Identifiable, Sendable {
 }
 
 internal struct JoinColumnRef: Hashable, Sendable {
-    internal let table: String
+    internal let table: CatalogName
     internal let column: String
 }
 
@@ -66,12 +66,12 @@ internal struct JoinFilter: Identifiable, Equatable, Sendable {
 
 internal struct JoinQueryDraft: Equatable, Sendable {
     internal struct Table: Identifiable, Equatable, Sendable {
-        internal let name: String
+        internal let name: CatalogName
         internal var kind: JoinKind = .inner
         internal var condition: JoinRelationship?
         internal var selectedColumns: [String] = []
 
-        internal var id: String { name }
+        internal var id: CatalogName { name }
     }
 
     internal private(set) var tables: [Table] = []
@@ -79,15 +79,15 @@ internal struct JoinQueryDraft: Equatable, Sendable {
 
     internal var isEmpty: Bool { tables.isEmpty }
 
-    internal func contains(_ table: String) -> Bool {
+    internal func contains(_ table: CatalogName) -> Bool {
         tables.contains { $0.name == table }
     }
 
-    internal func index(of table: String) -> Int? {
+    internal func index(of table: CatalogName) -> Int? {
         tables.firstIndex { $0.name == table }
     }
 
-    internal mutating func add(_ table: String, in graph: JoinGraph) {
+    internal mutating func add(_ table: CatalogName, in graph: JoinGraph) {
         guard !contains(table), graph.columnsByTable[table] != nil else { return }
         guard !tables.isEmpty else {
             tables.append(Table(name: table))
@@ -102,7 +102,7 @@ internal struct JoinQueryDraft: Equatable, Sendable {
         }
     }
 
-    internal mutating func remove(_ table: String, in graph: JoinGraph) {
+    internal mutating func remove(_ table: CatalogName, in graph: JoinGraph) {
         guard let removed = index(of: table) else { return }
         tables.remove(at: removed)
         filters.removeAll { $0.column.table == table }
@@ -143,7 +143,7 @@ internal struct JoinQueryDraft: Equatable, Sendable {
     }
 
     // Only a join that named the removed table changes; a cross join the user chose stays one.
-    private mutating func relinkConditions(afterRemoving removed: String, in graph: JoinGraph) {
+    private mutating func relinkConditions(afterRemoving removed: CatalogName, in graph: JoinGraph) {
         for index in tables.indices {
             guard index > 0 else {
                 tables[index].condition = nil

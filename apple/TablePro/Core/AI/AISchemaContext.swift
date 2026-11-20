@@ -26,7 +26,7 @@ struct AISchemaTable: Sendable {
 
 struct AISchemaRankingInput: Sendable {
     let tables: [TableInfo]
-    let columnsByTable: [String: [ColumnInfo]]
+    let columnsByTable: [CatalogName: [ColumnInfo]]
     let question: String
     let queryReferences: [TableReference]
     let defaultSchema: String?
@@ -177,7 +177,7 @@ struct AISchemaContext {
     // follow, best first.
     static func relevantTableNames(
         in tables: [TableInfo],
-        columnsByTable: [String: [ColumnInfo]],
+        columnsByTable: [CatalogName: [ColumnInfo]],
         question: String,
         queryReferences: [TableReference] = [],
         defaultSchema: String? = nil,
@@ -187,14 +187,15 @@ struct AISchemaContext {
         var names = indices(of: queryReferences, in: tables, defaultSchema: defaultSchema).map { tables[$0].name }
         // Columns count only once every table has them, or a table loaded on an earlier turn would
         // outrank a better match whose columns were never read.
-        let columns = tables.allSatisfy { columnsByTable[$0.name] != nil } ? columnsByTable : [:]
+        let columns = tables.allSatisfy { columnsByTable[CatalogName($0.name)] != nil } ? columnsByTable : [:]
         let documents = tables.map { table in
-            var details = (columns[table.name] ?? []).flatMap { [$0.name, $0.comment ?? ""] }
+            var details = (columns[CatalogName(table.name)] ?? []).flatMap { [$0.name, $0.comment ?? ""] }
             if let comment = table.comment { details.append(comment) }
             return SchemaRelevanceDocument(name: table.name, details: details)
         }
-        var seen = Set(names)
-        for offset in SchemaRelevanceRanker.rank(documents, for: question) where seen.insert(tables[offset].name).inserted {
+        var seen = Set(names.map { CatalogName($0) })
+        for offset in SchemaRelevanceRanker.rank(documents, for: question)
+            where seen.insert(CatalogName(tables[offset].name)).inserted {
             names.append(tables[offset].name)
         }
         return names

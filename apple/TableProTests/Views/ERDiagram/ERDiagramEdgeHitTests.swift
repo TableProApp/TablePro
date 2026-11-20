@@ -17,7 +17,7 @@ struct ERDiagramEdgeHitTests {
         ]
     }
 
-    private var nodeIndex: [String: UUID] {
+    private var nodeIndex: [CatalogName: UUID] {
         ["orders": left, "customers": right]
     }
 

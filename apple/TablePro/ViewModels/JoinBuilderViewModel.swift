@@ -53,7 +53,7 @@ internal final class JoinBuilderViewModel: ObservableObject {
 
     internal struct Catalog {
         let graph: JoinGraph
-        let columnTypes: [String: [String: ColumnType]]
+        let columnTypes: [CatalogName: [String: ColumnType]]
     }
 
     internal let launch: JoinBuilderLaunchRequest
@@ -64,7 +64,7 @@ internal final class JoinBuilderViewModel: ObservableObject {
     @Published internal private(set) var draft = JoinQueryDraft()
     @Published internal var tableFilter = ""
 
-    private var columnTypes: [String: [String: ColumnType]] = [:]
+    private var columnTypes: [CatalogName: [String: ColumnType]] = [:]
     private var qualifyingSchema: String?
     private let services: AppServices
 
@@ -82,10 +82,10 @@ internal final class JoinBuilderViewModel: ObservableObject {
         ).qualifiedDescription
     }
 
-    internal var filteredTables: [String] {
+    internal var filteredTables: [CatalogName] {
         let term = tableFilter.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !term.isEmpty else { return graph.tableNames }
-        return graph.tableNames.filter { $0.localizedCaseInsensitiveContains(term) || draft.contains($0) }
+        return graph.tableNames.filter { $0.text.localizedCaseInsensitiveContains(term) || draft.contains($0) }
     }
 
     internal var sql: String? {
@@ -111,7 +111,7 @@ internal final class JoinBuilderViewModel: ObservableObject {
     }
 
     internal var crossJoinedTables: [String] {
-        draft.tables.dropFirst().filter { $0.condition == nil }.map(\.name)
+        draft.tables.dropFirst().filter { $0.condition == nil }.map(\.name.text)
     }
 
     private var scope: DatabaseScope? {
@@ -151,7 +151,7 @@ internal final class JoinBuilderViewModel: ObservableObject {
         qualifyingSchema = SchemaQualifiedName.explicitSchema(scope.schema, databaseType: connection.type)
         var seeded = JoinQueryDraft()
         for table in launch.tables {
-            seeded.add(table, in: graph)
+            seeded.add(CatalogName(table), in: graph)
         }
         draft = seeded
         loadState = .loaded
@@ -194,11 +194,11 @@ internal final class JoinBuilderViewModel: ObservableObject {
 
     // MARK: - Editing
 
-    internal func isIncluded(_ table: String) -> Bool {
+    internal func isIncluded(_ table: CatalogName) -> Bool {
         draft.contains(table)
     }
 
-    internal func setIncluded(_ isIncluded: Bool, table: String) {
+    internal func setIncluded(_ isIncluded: Bool, table: CatalogName) {
         if isIncluded {
             draft.add(table, in: graph)
         } else {
