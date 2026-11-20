@@ -189,6 +189,9 @@ public sealed class WorkspaceTabs<TItem>
             .Where(tab => tab is { Kind: TabKind.Query, IsRunning: true }),
     ];
 
+    // A query running or a page loading: someone is waiting on it, so the license ask waits too.
+    public bool AnyRunning => _view.Items.Select(_view.ContentOf).OfType<IWorkspaceTab>().Any(tab => tab.IsRunning);
+
     // The tabs of a window that closed, so Reopen closed tab brings them back here in their order.
     public void KeepClosed(IReadOnlyList<SessionTab> tabs)
     {

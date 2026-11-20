@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using FlaUI.Core;
@@ -58,6 +59,11 @@ internal sealed class AppSession : IDisposable
     public static AppSession Relaunch(string dataFolder, string theme, bool maximize = true) =>
         new(dataFolder, theme, () => LaunchBuild(dataFolder, []), maximize);
 
+    // With variables the app reads besides the data folder, such as the license ask's quiet period.
+    public static AppSession LaunchWithEnvironment(
+        string dataFolder, string theme, IReadOnlyDictionary<string, string> environment) =>
+        new(dataFolder, theme, () => Application.Launch(StartInfo(dataFolder, [], environment)));
+
     // Started as Explorer or a browser starts it, with files or links on its command line.
     public static AppSession LaunchWith(string dataFolder, string theme, params string[] arguments) =>
         new(dataFolder, theme, () => LaunchBuild(dataFolder, arguments));
@@ -85,7 +91,8 @@ internal sealed class AppSession : IDisposable
     private static Application LaunchBuild(string dataFolder, IReadOnlyList<string> arguments) =>
         Application.Launch(StartInfo(dataFolder, arguments));
 
-    private static ProcessStartInfo StartInfo(string dataFolder, IReadOnlyList<string> arguments)
+    private static ProcessStartInfo StartInfo(
+        string dataFolder, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string>? environment = null)
     {
         var path = Environment.GetEnvironmentVariable("TABLEPRO_APP");
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
@@ -100,6 +107,11 @@ internal sealed class AppSession : IDisposable
         }
 
         start.Environment["TABLEPRO_DATA_DIR"] = dataFolder;
+        foreach (var (name, value) in environment ?? ReadOnlyDictionary<string, string>.Empty)
+        {
+            start.Environment[name] = value;
+        }
+
         return start;
     }
 

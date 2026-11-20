@@ -137,6 +137,17 @@ public sealed partial class LocalizationTests
     }
 
     [Fact]
+    public void EveryFeatureSettingsListsHasItsNameAndDescription()
+    {
+        var missing = PlanFeatures.OnWindows
+            .SelectMany(feature => new[] { "PlanFeature_" + feature.Code, "PlanFeatureDescription_" + feature.Code })
+            .Where(name => !s_strings.Value.ContainsKey(name))
+            .ToList();
+
+        Assert.Empty(missing);
+    }
+
+    [Fact]
     public void EveryPluralFormHasTheOtherForm()
     {
         var strings = s_strings.Value;

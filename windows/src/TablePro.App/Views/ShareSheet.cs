@@ -321,7 +321,7 @@ internal sealed class ShareSheet
         var tag = new HyperlinkButton
         {
             Content = Strings.Get("ProTag"),
-            NavigateUri = AccountSetup.PricingUri,
+            NavigateUri = AccountSetup.Pricing("app-share"),
             VerticalAlignment = VerticalAlignment.Bottom,
             Visibility = Visibility.Collapsed,
         };
