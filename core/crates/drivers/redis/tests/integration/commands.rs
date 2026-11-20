@@ -289,6 +289,14 @@ async fn a_typed_select_moves_the_editor_and_a_queued_one_only_when_exec_runs_it
     run(session.as_ref(), "EXEC").await;
     let executed = session.database();
     run(session.as_ref(), "RESET").await;
+    let reset = session.database();
+    // RESET logs the link out of the password user too.
+    let login = fixture.password_credentials();
+    run(
+        session.as_ref(),
+        &format!("AUTH {} \"{}\"", login.username, login.password),
+    )
+    .await;
 
     assert_eq!(typed.as_deref(), Some("2"));
     assert_eq!(discarded.as_deref(), Some("2"));
@@ -299,7 +307,7 @@ async fn a_typed_select_moves_the_editor_and_a_queued_one_only_when_exec_runs_it
         })
     );
     assert_eq!(executed.as_deref(), Some("4"));
-    assert_eq!(session.database().as_deref(), Some("0"));
+    assert_eq!(reset.as_deref(), Some("0"));
     assert_eq!(on_server(session.as_ref()).await, "0");
 }
 
