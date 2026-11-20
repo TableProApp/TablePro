@@ -25,10 +25,28 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
 
     static let shared = SchemaProviderRegistry()
 
-    private var providers: [DatabaseScope: SQLSchemaProvider] = [:]
-    private var loadedScopes: Set<DatabaseScope> = []
-    private var populationTasks: [DatabaseScope: Task<Void, Never>] = [:]
-    private var populationGenerations: [DatabaseScope: Int] = [:]
+    // A scope's own == leaves its names to String, which equates two schemas a server keeps apart.
+    private struct ScopeKey: Hashable {
+        let scope: DatabaseScope
+
+        init(_ scope: DatabaseScope) {
+            self.scope = scope
+        }
+
+        static func == (lhs: ScopeKey, rhs: ScopeKey) -> Bool {
+            lhs.scope.catalogKey == rhs.scope.catalogKey && lhs.scope.isSessionBound == rhs.scope.isSessionBound
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(scope.catalogKey)
+            hasher.combine(scope.isSessionBound)
+        }
+    }
+
+    private var providers: [ScopeKey: SQLSchemaProvider] = [:]
+    private var loadedScopes: Set<ScopeKey> = []
+    private var populationTasks: [ScopeKey: Task<Void, Never>] = [:]
+    private var populationGenerations: [ScopeKey: Int] = [:]
     private var refCounts: [UUID: Int] = [:]
     private var removalTasks: [UUID: Task<Void, Never>] = [:]
     private let metadataDriverProvider: any ScopedMetadataProviding
@@ -58,11 +76,11 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
     }
 
     func provider(for scope: DatabaseScope) -> SQLSchemaProvider? {
-        providers[scope]
+        providers[ScopeKey(scope)]
     }
 
     func isPopulated(_ scope: DatabaseScope) -> Bool {
-        providers[scope] != nil && loadedScopes.contains(scope)
+        providers[ScopeKey(scope)] != nil && loadedScopes.contains(ScopeKey(scope))
     }
 
     func getOrCreate(for scope: DatabaseScope) -> SQLSchemaProvider {
@@ -71,7 +89,7 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
             removalTask.cancel()
             removalTasks.removeValue(forKey: connectionId)
         }
-        if let existing = providers[scope] {
+        if let existing = providers[ScopeKey(scope)] {
             return existing
         }
         let metadataProvider = metadataDriverProvider
@@ -127,7 +145,7 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
             }
         )
         let provider = SQLSchemaProvider(metadataSource: source)
-        providers[scope] = provider
+        providers[ScopeKey(scope)] = provider
         /// Never the scope being created. The quick switcher fabricates a scope when there is no
         /// browse cursor, and such a scope is in neither `liveScopes` nor the browse exemption, so
         /// eviction would drop the provider this call is about to return and the next
@@ -141,7 +159,7 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
     @discardableResult
     func prepare(for scope: DatabaseScope, connection: DatabaseConnection? = nil) async -> SQLSchemaProvider {
         let provider = getOrCreate(for: scope)
-        if !loadedScopes.contains(scope), !isFilledByBrowseOwner(scope) {
+        if !loadedScopes.contains(ScopeKey(scope)), !isFilledByBrowseOwner(scope) {
             await populate(scope: scope, provider: provider, connection: connection)
         }
         await provider.requestColumnPreload()
@@ -152,7 +170,9 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
     /// assembles. A tab restored at launch mounts before the catalog starts loading, so an idle
     /// catalog is still the owner's; only a failed one gets no sync, and the editor fills it.
     private func isFilledByBrowseOwner(_ scope: DatabaseScope) -> Bool {
-        guard metadataDriverProvider.browseScope(for: scope.connectionId) == scope else { return false }
+        guard metadataDriverProvider.browseScope(for: scope.connectionId).map(ScopeKey.init) == ScopeKey(scope) else {
+            return false
+        }
         switch browseCatalogState(scope.connectionId) {
         case .idle, .loading, .loaded:
             return true
@@ -164,7 +184,7 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
     /// A preload that served the previous table list is read again only while something renders
     /// the scope, so a closed tab's columns are not refetched on every catalog change.
     private func rendersScope(_ scope: DatabaseScope) -> Bool {
-        liveScopeProvider?.liveScopes(for: scope.connectionId).contains(scope) ?? true
+        liveScopeProvider?.liveScopes(for: scope.connectionId).contains { ScopeKey($0) == ScopeKey(scope) } ?? true
     }
 
     /// A catalog change repopulates every provider it reaches except the browse scope, which
@@ -178,21 +198,21 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
     /// fetch's commit is refused when it lands.
     func refreshCatalog(for change: CatalogChange) async {
         guard !change.kinds.isEmpty else { return }
-        let browseScope = metadataDriverProvider.browseScope(for: change.connectionId)
-        let live = liveScopeProvider?.liveScopes(for: change.connectionId)
-        let matching = providers.filter { scope, _ in
-            scope.connectionId == change.connectionId
-                && scope != browseScope
-                && change.reaches(database: scope.database, schema: scope.schema)
-                && (live?.contains(scope) ?? true)
+        let browseScope = metadataDriverProvider.browseScope(for: change.connectionId).map(ScopeKey.init)
+        let live = liveScopeProvider?.liveScopes(for: change.connectionId).map(ScopeKey.init)
+        let matching = providers.filter { key, _ in
+            key.scope.connectionId == change.connectionId
+                && key != browseScope
+                && change.reaches(database: key.scope.database, schema: key.scope.schema)
+                && (live?.contains(key) ?? true)
         }
-        for scope in matching.keys {
-            populationGenerations[scope, default: 0] &+= 1
-            populationTasks.removeValue(forKey: scope)?.cancel()
+        for key in matching.keys {
+            populationGenerations[key, default: 0] &+= 1
+            populationTasks.removeValue(forKey: key)?.cancel()
         }
         await withTaskGroup(of: Void.self) { group in
-            for (scope, provider) in matching {
-                group.addTask { await self.populate(scope: scope, provider: provider, connection: nil) }
+            for (key, provider) in matching {
+                group.addTask { await self.populate(scope: key.scope, provider: provider, connection: nil) }
             }
         }
     }
@@ -207,14 +227,14 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
         provider: SQLSchemaProvider,
         connection: DatabaseConnection?
     ) async {
-        if let existing = populationTasks[scope] {
+        if let existing = populationTasks[ScopeKey(scope)] {
             await existing.value
             return
         }
         let metadataProvider = metadataDriverProvider
         let resolvedConnection = connection ?? DatabaseManager.shared.session(for: scope.connectionId)?.connection
         let databases = knownDatabases(for: scope)
-        let generation = populationGenerations[scope, default: 0]
+        let generation = populationGenerations[ScopeKey(scope), default: 0]
 
         let task = Task { [weak self] in
             let registry = self
@@ -254,10 +274,10 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
                 await registry?.markLoadFailed(scope: scope, generation: generation)
             }
         }
-        populationTasks[scope] = task
+        populationTasks[ScopeKey(scope)] = task
         await task.value
-        if populationTasks[scope] == task {
-            populationTasks.removeValue(forKey: scope)
+        if populationTasks[ScopeKey(scope)] == task {
+            populationTasks.removeValue(forKey: ScopeKey(scope))
         }
     }
 
@@ -266,16 +286,16 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
     /// Recording the scope as loaded on the strength of that write would leave its replacement
     /// permanently unfilled, so the identity of the provider written to is the fence.
     private func markPopulated(scope: DatabaseScope, provider: SQLSchemaProvider, generation: Int) -> Bool {
-        guard providers[scope] === provider, populationGenerations[scope, default: 0] == generation else { return false }
-        loadedScopes.insert(scope)
+        guard providers[ScopeKey(scope)] === provider, populationGenerations[ScopeKey(scope), default: 0] == generation else { return false }
+        loadedScopes.insert(ScopeKey(scope))
         return true
     }
 
     /// Clears the loaded flag so the next `prepare` retries, but only while this population is
     /// still the one filling the scope. A superseded fetch that fails has nothing to report.
     private func markLoadFailed(scope: DatabaseScope, generation: Int) {
-        guard populationGenerations[scope, default: 0] == generation else { return }
-        loadedScopes.remove(scope)
+        guard populationGenerations[ScopeKey(scope), default: 0] == generation else { return }
+        loadedScopes.remove(ScopeKey(scope))
     }
 
     /// `SchemaRefreshService` fills the browse scope with the union of every schema the sidebar
@@ -284,10 +304,10 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
     /// list, narrowing what the sidebar had already gathered.
     @discardableResult
     func notePopulatedExternally(scope: DatabaseScope) -> Task<Void, Never>? {
-        guard let provider = providers[scope] else { return nil }
-        loadedScopes.insert(scope)
-        populationGenerations[scope, default: 0] &+= 1
-        populationTasks.removeValue(forKey: scope)?.cancel()
+        guard let provider = providers[ScopeKey(scope)] else { return nil }
+        loadedScopes.insert(ScopeKey(scope))
+        populationGenerations[ScopeKey(scope), default: 0] &+= 1
+        populationTasks.removeValue(forKey: ScopeKey(scope))?.cancel()
         guard rendersScope(scope) else { return nil }
         return Task { await provider.renewColumnPreload() }
     }
@@ -298,7 +318,7 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
     /// flag, is what separates "the owner filled this while I was fetching" from "this is a
     /// refresh of a scope that was already loaded".
     private func canCommitPopulation(of scope: DatabaseScope, generation: Int) -> Bool {
-        populationGenerations[scope, default: 0] == generation
+        populationGenerations[ScopeKey(scope), default: 0] == generation
     }
 
     private func knownDatabases(for scope: DatabaseScope) -> [String] {
@@ -337,7 +357,7 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
     }
 
     func purgeUnused() {
-        let orphanedIds = Set(providers.keys.map(\.connectionId)).filter { connectionId in
+        let orphanedIds = Set(providers.keys.map(\.scope.connectionId)).filter { connectionId in
             let count = refCounts[connectionId] ?? 0
             let hasPendingRemoval = removalTasks[connectionId] != nil
             return count <= 0 && !hasPendingRemoval
@@ -378,7 +398,7 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
         respectingSoftLimit: Bool,
         keeping protected: DatabaseScope?
     ) {
-        let held = providers.keys.filter { $0.connectionId == connectionId }
+        let held = providers.keys.filter { $0.scope.connectionId == connectionId }
         if respectingSoftLimit {
             guard held.count > Self.softProviderLimit else { return }
         }
@@ -389,26 +409,26 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
         /// and `coordinator.browseScope` is nil in that window too so `liveScopes` cannot protect
         /// it either. Wait for the session to come back.
         guard let browseScope = metadataDriverProvider.browseScope(for: connectionId) else { return }
-        var keep = liveScopeProvider.liveScopes(for: connectionId)
-        keep.insert(browseScope)
+        var keep = Set(liveScopeProvider.liveScopes(for: connectionId).map(ScopeKey.init))
+        keep.insert(ScopeKey(browseScope))
         if let protected {
-            keep.insert(protected)
+            keep.insert(ScopeKey(protected))
         }
         let evictable = held.filter { !keep.contains($0) }
         guard !evictable.isEmpty else { return }
         Self.logger.info(
             "Evicting \(evictable.count) unheld schema provider(s) for connection \(connectionId, privacy: .public)"
         )
-        dropProviders(for: connectionId) { evictable.contains($0) }
+        dropProviders(for: connectionId) { scope in evictable.contains(ScopeKey(scope)) }
     }
 
     private func dropProviders(for connectionId: UUID, where matches: (DatabaseScope) -> Bool) {
-        let doomed = providers.keys.filter { $0.connectionId == connectionId && matches($0) }
-        for scope in doomed {
-            providers.removeValue(forKey: scope)
-            loadedScopes.remove(scope)
-            populationGenerations[scope, default: 0] &+= 1
-            populationTasks.removeValue(forKey: scope)?.cancel()
+        let doomed = providers.keys.filter { $0.scope.connectionId == connectionId && matches($0.scope) }
+        for key in doomed {
+            providers.removeValue(forKey: key)
+            loadedScopes.remove(key)
+            populationGenerations[key, default: 0] &+= 1
+            populationTasks.removeValue(forKey: key)?.cancel()
         }
     }
 }

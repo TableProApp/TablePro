@@ -32,6 +32,17 @@ struct TwinCatalogKeyTests {
             != DatabaseTreeMetadataService.DatabaseKey(connectionId: Self.connectionId, database: TwinNames.decomposed))
     }
 
+    @Test("Two schemas whose names differ only in Unicode form complete from providers of their own")
+    func twinSchemasGetTheirOwnProvider() {
+        let registry = SchemaProviderRegistry()
+
+        let composed = registry.getOrCreate(for: Self.scope(schema: TwinNames.composed))
+        let decomposed = registry.getOrCreate(for: Self.scope(schema: TwinNames.decomposed))
+
+        #expect(composed !== decomposed)
+        #expect(registry.provider(for: Self.scope(schema: TwinNames.decomposed)) === decomposed)
+    }
+
     @Test("A key into a twin schema points outside this one")
     func foreignKeyTargetComparesSchemasByBytes() {
         #expect(!ForeignKeyTargetScope.pointsWithin(
