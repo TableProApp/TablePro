@@ -117,12 +117,43 @@ enum QueryMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
+                String(localized: "Open Value Editor"),
+                action: #selector(MainSplitViewController.openValueEditor(_:)),
+                shortcut: .openValueEditor,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
                 String(localized: "Preview FK Reference"),
                 action: #selector(MainSplitViewController.previewFKReference(_:)),
                 shortcut: .previewFKReference,
                 keyboard: keyboard
             ),
+            MenuItemFactory.separator
+        ] + pageItems(keyboard: keyboard) + [
             MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Review with AI"),
+                action: #selector(MainSplitViewController.reviewQueryWithAI(_:)),
+                shortcut: .aiReviewQuery,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Explain with AI"),
+                action: #selector(MainSplitViewController.explainQueryWithAI(_:)),
+                shortcut: .aiExplainQuery,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Optimize with AI"),
+                action: #selector(MainSplitViewController.optimizeQueryWithAI(_:)),
+                shortcut: .aiOptimizeQuery,
+                keyboard: keyboard
+            )
+        ])
+    }
+
+    private static func pageItems(keyboard: KeyboardSettings) -> [NSMenuItem] {
+        [
             MenuItemFactory.item(
                 String(localized: "First Page"),
                 action: #selector(MainSplitViewController.goToFirstPage(_:)),
@@ -146,26 +177,7 @@ enum QueryMenuBuilder {
                 action: #selector(MainSplitViewController.goToLastPage(_:)),
                 shortcut: .lastPage,
                 keyboard: keyboard
-            ),
-            MenuItemFactory.separator,
-            MenuItemFactory.item(
-                String(localized: "Review with AI"),
-                action: #selector(MainSplitViewController.reviewQueryWithAI(_:)),
-                shortcut: .aiReviewQuery,
-                keyboard: keyboard
-            ),
-            MenuItemFactory.item(
-                String(localized: "Explain with AI"),
-                action: #selector(MainSplitViewController.explainQueryWithAI(_:)),
-                shortcut: .aiExplainQuery,
-                keyboard: keyboard
-            ),
-            MenuItemFactory.item(
-                String(localized: "Optimize with AI"),
-                action: #selector(MainSplitViewController.optimizeQueryWithAI(_:)),
-                shortcut: .aiOptimizeQuery,
-                keyboard: keyboard
             )
-        ])
+        ]
     }
 }

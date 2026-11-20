@@ -131,6 +131,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case truncateTable
     case toggleHeaderRow
     case previewFKReference
+    case openValueEditor
     case saveAsFavorite
     case previousPage
     case nextPage
@@ -214,7 +215,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
              .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7, .setCellsToValue,
              .restorePreviousValues,
-             .truncateTable, .toggleHeaderRow, .previewFKReference, .saveAsFavorite, .previousPage,
+             .truncateTable, .toggleHeaderRow, .previewFKReference, .openValueEditor, .saveAsFavorite, .previousPage,
              .nextPage, .firstPage, .lastPage, .refresh, .export, .exportResults, .importData, .jumpToColumn:
             return .dataGrid
         case .navigateBack, .navigateForward,
@@ -266,7 +267,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
             return .editor
         case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
              .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7, .setCellsToValue,
-             .delete, .truncateTable, .previewFKReference, .saveAsFavorite,
+             .delete, .truncateTable, .previewFKReference, .openValueEditor, .saveAsFavorite,
              .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters, .jumpToColumn,
              .copyCellValue, .copyAsCsv, .copyAsCsvWithHeaders, .copyAsMarkdown, .copyAsInClause,
              .copyAsInsert, .copyAsUpdate,
@@ -282,6 +283,18 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
 
     var switchesRecentTabs: Bool {
         self == .switchToRecentTab || self == .switchToLeastRecentTab
+    }
+
+    /// The focused grid reads this action's key from `keyDown`, whatever its modifiers, so its menu
+    /// item never carries a key equivalent. Its default, Option-Return, breaks a line in a text
+    /// field, and AppKit hands an equivalent to the menu before the field sees the key.
+    var isReadByFocusedGrid: Bool {
+        self == .openValueEditor
+    }
+
+    // A key the focused grid reads loses to any menu key equivalent, whatever surface that item acts on.
+    func contends(with other: ShortcutAction) -> Bool {
+        isReadByFocusedGrid || other.isReadByFocusedGrid || context.overlaps(other.context)
     }
 
     var allowsBareKey: Bool {
@@ -378,6 +391,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .truncateTable: return String(localized: "Truncate Table")
         case .toggleHeaderRow: return String(localized: "Switch First Row Between Header/Data")
         case .previewFKReference: return String(localized: "Preview FK Reference")
+        case .openValueEditor: return String(localized: "Open Value Editor")
         case .saveAsFavorite: return String(localized: "Save as Favorite")
         case .toggleTableBrowser: return String(localized: "Toggle Table Browser")
         case .showTablesList: return String(localized: "Show Tables")
@@ -570,7 +584,7 @@ struct KeyboardSettings: Codable, Equatable {
             guard let other = ShortcutAction(rawValue: rawValue), other != action, !override.isCleared else {
                 continue
             }
-            guard override == key, other.context.overlaps(action.context) else { continue }
+            guard override == key, other.contends(with: action) else { continue }
             if let module = other.module, !AppModule.storedEnabledModules().contains(module) {
                 continue
             }
@@ -596,7 +610,7 @@ struct KeyboardSettings: Codable, Equatable {
     ) -> ShortcutAction? {
         guard !key.isCleared else { return nil }
         for other in ShortcutAction.allCases where other != action && other.isAvailable(enabledModules: enabledModules) {
-            guard action.context.overlaps(other.context),
+            guard action.contends(with: other),
                   let otherKey = shortcut(for: other), !otherKey.isCleared,
                   otherKey == key else { continue }
             return other
@@ -636,7 +650,8 @@ struct KeyboardSettings: Codable, Equatable {
     /// bare (modifier-less) key. Bare keys dispatch through the responder chain in
     /// the focused view, not through a global menu key-equivalent.
     func keyboardShortcut(for action: ShortcutAction) -> KeyboardShortcut? {
-        guard let key = shortcut(for: action), !key.isCleared, key.hasModifier || key.isFunctionKey,
+        guard !action.isReadByFocusedGrid,
+              let key = shortcut(for: action), !key.isCleared, key.hasModifier || key.isFunctionKey,
               let equivalent = key.swiftUIKeyEquivalent else {
             return nil
         }
@@ -648,7 +663,8 @@ struct KeyboardSettings: Codable, Equatable {
     /// a cleared binding, an unrepresentable key, or a bare key, which reaches the
     /// focused responder directly rather than through a global menu key-equivalent.
     func menuKeyEquivalent(for action: ShortcutAction) -> (characters: String, modifiers: NSEvent.ModifierFlags)? {
-        guard let key = shortcut(for: action), !key.isCleared, key.hasModifier || key.isFunctionKey,
+        guard !action.isReadByFocusedGrid,
+              let key = shortcut(for: action), !key.isCleared, key.hasModifier || key.isFunctionKey,
               let characters = key.menuKeyEquivalent else {
             return nil
         }
@@ -724,6 +740,7 @@ struct KeyboardSettings: Codable, Equatable {
         .truncateTable: .special(.delete, option: true),
         .toggleHeaderRow: .character("h", command: true, shift: true),
         .previewFKReference: .special(.space),
+        .openValueEditor: .special(.return, option: true),
         .saveAsFavorite: .character("d", command: true),
         .previousPage: .character("[", command: true),
         .nextPage: .character("]", command: true),

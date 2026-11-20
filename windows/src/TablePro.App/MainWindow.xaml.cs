@@ -635,6 +635,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         // Another program may have changed an open .sql file while the window was in the background.
         Activated += async (_, args) =>
         {
+            _primary.NoteActivation(this, args.WindowActivationState != WindowActivationState.Deactivated);
             // Notifications may have been turned on in Windows Settings while this window was in the back.
             if (args.WindowActivationState != WindowActivationState.Deactivated)
             {
@@ -657,6 +658,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         _workbench.LibraryChanged += OnLibraryChanged;
         AppWindow.Closing += OnClosing;
         Closed += OnClosed;
+        Closed += (_, _) => _primary.NoteActivation(this, active: false);
     }
 
     private MainWindow OpenTabWindow(OpenConnection connection, WindowPlacement? placement)

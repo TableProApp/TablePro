@@ -1,6 +1,6 @@
 # 0008: Signing in to the TablePro account
 
-- **Status**: Accepted
+- **Status**: Accepted; Settings' Account section amended by [0023](0023-license-ask-and-paid-feature-gate.md)
 - **Date**: 2026-11-13
 
 ## Context

@@ -246,14 +246,37 @@
             </MenuBarItem>
         </MenuBar>
 
-        <!-- App-wide news about the app itself: an update to install, or the update that just arrived. -->
-        <InfoBar
-            x:Name="UpdateBar"
-            Grid.Row="2"
-            AutomationProperties.AutomationId="UpdateBar"
-            IsOpen="False"
-            Severity="Informational"
-            Closed="OnUpdateBarClosed" />
+        <StackPanel Grid.Row="2">
+            <!-- App-wide news about the app itself: an update to install, or the update that just arrived. -->
+            <InfoBar
+                x:Name="UpdateBar"
+                AutomationProperties.AutomationId="UpdateBar"
+                IsOpen="False"
+                Severity="Informational"
+                Closed="OnUpdateBarClosed" />
+
+            <!-- The license ask: inline, since nothing waits on its answer (docs/decisions/0023-license-ask-and-paid-feature-gate.md). -->
+            <InfoBar
+                x:Name="LicenseAskBar"
+                AutomationProperties.AutomationId="LicenseAskBar"
+                IsOpen="False"
+                Severity="Informational"
+                Closed="OnLicenseAskClosed">
+                <InfoBar.Content>
+                    <StackPanel Margin="0,0,0,12" Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Uid="LicenseAskBuy"
+                            AutomationProperties.AutomationId="LicenseAskBuy"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Click="OnLicenseAskBuy" />
+                        <Button
+                            x:Uid="LicenseAskPersonal"
+                            AutomationProperties.AutomationId="LicenseAskPersonal"
+                            Click="OnLicenseAskPersonal" />
+                    </StackPanel>
+                </InfoBar.Content>
+            </InfoBar>
+        </StackPanel>
 
         <NavigationView
             x:Name="Rail"

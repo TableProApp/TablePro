@@ -1,4 +1,4 @@
-# 0023: Connection projects on the Connections page
+# 0024: Connection projects on the Connections page
 
 - **Status**: Accepted
 - **Date**: 2026-11-20

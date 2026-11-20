@@ -8,7 +8,9 @@ use tablepro_core::ddl::{GeneratedStorage, IdentityStyle, SchemaObjectKind};
 use tablepro_core::meta::{ObjectScope, TableRef};
 use tablepro_core::{DriverError, ServerCode, Value};
 
-use crate::support::{TestFile, apply, call, connect, writable};
+use crate::support::{
+    TestFile, apply, assert_refused_as_malformed, call, connect, sqlite_refuses_a_stored_tail, writable,
+};
 
 #[tokio::test]
 async fn strict_table_is_not_dynamic() {
@@ -518,8 +520,8 @@ async fn a_create_statement_past_ten_million_bytes_does_not_open() {
     );
 }
 
-// SQLite parses a stored CREATE text only to its statement's end, so a crafted file can carry any tail after it; the
-// catalog reads that parse the text refuse it past the same cap, before parsing it.
+// SQLite before 3.54.0 parses a stored CREATE text only to its statement's end, so a crafted file can carry any tail
+// after it; the catalog reads that parse the text refuse it past the same cap, before parsing it.
 #[tokio::test]
 async fn a_stored_create_text_past_the_cap_is_refused_before_it_is_parsed() {
     let file = TestFile::new().await;
@@ -536,6 +538,10 @@ async fn a_stored_create_text_past_the_cap_is_refused_before_it_is_parsed() {
         .await
         .unwrap();
     writer.close().await.unwrap();
+    if sqlite_refuses_a_stored_tail() {
+        assert_refused_as_malformed(&file).await;
+        return;
+    }
     let connection = file.open().await;
     let table = TableRef::unqualified("t");
 
@@ -586,6 +592,10 @@ async fn a_stored_text_is_read_to_its_first_statement() {
         .await
         .unwrap();
     writer.close().await.unwrap();
+    if sqlite_refuses_a_stored_tail() {
+        assert_refused_as_malformed(&file).await;
+        return;
+    }
     let connection = file.open().await;
     let table = TableRef::unqualified("c");
 

@@ -385,6 +385,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
     internal IReadOnlyList<IWorkspaceTab> RunningQueries() => _tabs.RunningQueries();
 
+    internal bool IsBusy => _tabs.AnyRunning;
+
     internal void KeepClosed(IReadOnlyList<SessionTab> tabs)
     {
         _tabs.KeepClosed(tabs);

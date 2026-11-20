@@ -31,6 +31,7 @@ public sealed partial class SettingsView : UserControl
         InitializeComponent();
         VersionText.Text = Strings.Format("VersionText", AppStorage.Version);
         DataFolderCard.Description = workbench.Folder;
+        ShowLicenseLinks();
         Load();
         ShowAccount();
         // The workbench outlives the page only while the window is open, so the page listens while it is shown.
@@ -467,6 +468,7 @@ public sealed partial class SettingsView : UserControl
         AccountRefreshButton.IsEnabled = !_accountBusy;
         AccountDetails.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
         DevicesExpander.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
+        ShowPlanFeatures(panel);
         ShowAccountNotice(panel);
     }
 
@@ -553,19 +555,24 @@ public sealed partial class SettingsView : UserControl
                 await RunAccountAsync(account => account.SignOutAsync());
                 break;
             default:
-                _accountError = null;
-                try
-                {
-                    await _workbench.SignInAsync();
-                }
-                catch (TableProException exception)
-                {
-                    _accountError = exception.Error;
-                }
-
-                ShowAccount();
+                await StartSignInAsync();
                 break;
         }
+    }
+
+    private async Task StartSignInAsync()
+    {
+        _accountError = null;
+        try
+        {
+            await _workbench.SignInAsync();
+        }
+        catch (TableProException exception)
+        {
+            _accountError = exception.Error;
+        }
+
+        ShowAccount();
     }
 
     private async void OnAccountRefresh(object sender, RoutedEventArgs e) =>

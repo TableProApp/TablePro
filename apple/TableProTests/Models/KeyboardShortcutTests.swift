@@ -275,6 +275,19 @@ struct ShortcutConflictTests {
         )
         #expect(conflict == nil)
     }
+
+    @Test("A key the focused grid reads conflicts with an editor binding, whose menu item would take it first")
+    func gridReadKeyConflictsAcrossContexts() {
+        let settings = KeyboardSettings.default
+        #expect(settings.findConflict(for: .special(.return, command: true), excluding: .openValueEditor) == .executeQuery)
+        #expect(settings.findConflict(for: .special(.return, option: true), excluding: .formatQuery) == .openValueEditor)
+    }
+
+    @Test("An editor action bound to the grid-read default stands that default down")
+    func editorOverrideClaimsGridReadDefault() {
+        let settings = KeyboardSettings(shortcuts: [ShortcutAction.formatQuery.rawValue: .special(.return, option: true)])
+        #expect(settings.shortcut(for: .openValueEditor) == nil)
+    }
 }
 
 struct KeyboardSettingsSanitizeTests {

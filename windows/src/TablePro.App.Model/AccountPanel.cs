@@ -38,9 +38,6 @@ public sealed record AccountPanel(
     AccountNotice? Notice,
     IReadOnlyList<AccountDevice> LimitDevices)
 {
-    // The feature the server resolves for Pro, a seated team member's included (share links PLAN, Decisions).
-    public const string ProFeature = "shared_links";
-
     public static AccountPanel Unavailable { get; } = new(AccountStage.Unavailable, null, null, false, null, []);
 
     public static AccountPanel For(AccountStatus status, bool signingIn)
@@ -61,7 +58,8 @@ public sealed record AccountPanel(
             stage,
             title,
             status.Email,
-            status.Features.Contains(ProFeature, StringComparer.Ordinal),
+            // The server resolves Pro to this code, a seated team member's included (share links PLAN, Decisions).
+            status.Features.Contains(PlanFeatures.SharedLinks, StringComparer.Ordinal),
             NoticeOf(status),
             devices);
     }

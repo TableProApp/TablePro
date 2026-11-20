@@ -2945,6 +2945,72 @@ New fingerprint: {2}</value>
   <data name="DevicePlatform_ios" xml:space="preserve">
     <value>iOS</value>
   </data>
+  <data name="PlanFeaturesExpander.Header" xml:space="preserve">
+    <value>Features</value>
+  </data>
+  <data name="PlanFeaturesExpander.Description" xml:space="preserve">
+    <value>What your plan includes on this computer</value>
+  </data>
+  <data name="PlanFeatureIncluded" xml:space="preserve">
+    <value>Included</value>
+  </data>
+  <data name="PlanFeatureNotIncluded" xml:space="preserve">
+    <value>Not included</value>
+  </data>
+  <data name="PlanFeature_shared_links" xml:space="preserve">
+    <value>Pro options for shared links</value>
+  </data>
+  <data name="PlanFeatureDescription_shared_links" xml:space="preserve">
+    <value>Share without the Free plan's limits on live links, rows and expiry.</value>
+  </data>
+  <data name="BuyLicenseLink.Content" xml:space="preserve">
+    <value>Buy a license</value>
+  </data>
+  <data name="LicensingGuideLink.Content" xml:space="preserve">
+    <value>Learn more about licensing</value>
+  </data>
+  <data name="LicenseNeedsPlan" xml:space="preserve">
+    <value>{0} needs a paid plan</value>
+    <comment>{0} is the name of a feature.</comment>
+  </data>
+  <data name="LicenseDeviceLimitMessage" xml:space="preserve">
+    <value>Remove a device in Settings to use your plan on this computer.</value>
+  </data>
+  <data name="LicenseOfflineExpiredTitle" xml:space="preserve">
+    <value>Your offline file has expired</value>
+  </data>
+  <data name="LicenseOfflineExpiredMessage" xml:space="preserve">
+    <value>Sign in to use your plan on this computer.</value>
+  </data>
+  <data name="LicenseNotVerifiedMessage" xml:space="preserve">
+    <value>Connect to the internet to verify your plan.</value>
+  </data>
+  <data name="LicenseBuy" xml:space="preserve">
+    <value>Buy a license</value>
+  </data>
+  <data name="LicenseUpgrade" xml:space="preserve">
+    <value>Upgrade plan</value>
+  </data>
+  <data name="LicenseOpenAccountSettings" xml:space="preserve">
+    <value>Open account settings</value>
+  </data>
+  <data name="LicenseAskTitle_one" xml:space="preserve">
+    <value>You've used TablePro on {0:N0} day</value>
+    <comment>{0} is the number of days TablePro was in use.</comment>
+  </data>
+  <data name="LicenseAskTitle_other" xml:space="preserve">
+    <value>You've used TablePro on {0:N0} days</value>
+    <comment>{0} is the number of days TablePro was in use.</comment>
+  </data>
+  <data name="LicenseAskMessage" xml:space="preserve">
+    <value>TablePro is free for everyone, at work too, and none of it will become paid. If TablePro is part of your work now, please buy a license. Licenses are what pay for the next release.</value>
+  </data>
+  <data name="LicenseAskBuy.Content" xml:space="preserve">
+    <value>Buy a license</value>
+  </data>
+  <data name="LicenseAskPersonal.Content" xml:space="preserve">
+    <value>I use it personally</value>
+  </data>
   <data name="MenuShareResult.Text" xml:space="preserve">
     <value>Share result...</value>
   </data>

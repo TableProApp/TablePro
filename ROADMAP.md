@@ -29,16 +29,16 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 
 | Section | Boxes | Done |
 |---|---|---|
-| Phase 0: Release blockers | 16 | 4 |
+| Phase 0: Release blockers | 16 | 5 |
 | Phase 1: Core enablers | 23 | 9 |
-| Phase 2: Windows daily use | 62 | 41 |
+| Phase 2: Windows daily use | 62 | 42 |
 | Phase 3: Standard features both apps lack | 118 | 0 |
 | Phase 4: Advanced tier | 57 | 0 |
 | Phase 5: Engines | 27 | 0 |
 | Phase 6: Quality bars | 8 | 0 |
 | Phase 7: Sync and teams | 15 | 0 |
 | Phase 8: Beyond the market | 40 | 0 |
-| Total | 366 | 54 |
+| Total | 366 | 56 |
 
 ## Where each app stands
 
@@ -75,7 +75,7 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 - [x] **R-03** Dry run of `release-windows.yml` from main: the x64 and Arm64 packages, the bundle, install-and-start tests and winget validation, unsigned (ADR 0005): [run 43164825446](https://github.com/TableProApp/TablePro/actions/runs/43164825446)
 - [ ] **R-04** Real hardware: Windows 10 build 17763, Native AOT, Mica on a GPU, TabView in the title bar on Windows 10, loading from a signed MSIX (ADR 0001, 0004)
 - [x] **R-05** Drop the Windows App SDK metapackage (41.8 MB of unused ONNX and DirectML per architecture): the app takes the WinUI component and prunes the metapackage the Community Toolkit names (ADR 0005): #4232
-- [ ] **R-06** Updates: an App Installer file or the Store, an in-app update check, stable and beta channels
+- [x] **R-06** Updates: an App Installer file or the Store, an in-app update check, stable and beta channels: #4361
 - [x] **R-07** Live-server Windows tests for the 7 engines no Windows suite connects to: MySQL, SQL Server, DuckDB, ClickHouse, Cassandra, MongoDB, Redis: #4321
 - [ ] **R-08** Windows user guide on docs.tablepro.app and the download page
 - [ ] **R-09** First `windows-v0.1.0` tag, once the rest of Phase 0 and every CORE item in Phase 2 are done; no public build before it (D-04)
@@ -201,7 +201,7 @@ The first public Windows release waits for every CORE item here and the Windows 
 - [ ] **W-51** Open Quickly: objects, saved and past queries, commands · STD · needs C-13
 - [x] **W-52** Settings: editor font family, grid font, NULL display, history, AI and MCP pages · CORE · #4285, #4319, #4326
 - [x] **W-53** A toast when a long query finishes in a background tab · STD: #4325
-- [ ] **W-54** Every string localizable, the editor's menu and find bar included; English only for now · STD
+- [x] **W-54** Every string localizable, the editor's menu and find bar included; English only for now · STD · #4362
 - [x] **W-55** Editor colour schemes · STD: #4324
 - [x] **W-56** Grid accessibility: row header peers, and a workaround for the empty `ColumnHeaders` in Windows App SDK 2.6.4 · CORE: #4282
 
@@ -210,7 +210,7 @@ The first public Windows release waits for every CORE item here and the Windows 
 - [x] **W-57** AI assistant: providers, chat with schema context, Explain, Review, Optimize, Fix, AI policy per connection · STD · needs C-17: #4319
 - [x] **W-58** MCP server with an External Clients level per connection · ADV · #4326
 - [ ] **W-59** Account page, license ask, and the paid-feature gate on the macOS license (D-02) · STD · needs C-19 · partly #4253: the license ask and the gate on paid features are left
-- [ ] **W-60** `tablepro://` and database URL links · STD · partly #4253, #4325: `tablepro://import` waits on how the macOS import fields map, and matching a database URL to a saved connection waits on that logic moving into the core
+- [ ] **W-60** `tablepro://` and database URL links · STD · partly #4253, #4325, #4360: `tablepro://import` needs the core connection record to carry every macOS field, which changes `linux/` and waits on Linux 0.1.0; `integrations/pair` waits on A-09; matching a database URL to a saved connection waits on that logic moving into the core
 - [x] **W-61** File associations for .sql, SQLite and DuckDB files · STD: #4325
 - [x] **W-62** Launch arguments and the `tablepro` CLI (the execution alias reads only a share link today) · STD · #4325, #4326
 

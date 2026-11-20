@@ -11,6 +11,8 @@ internal sealed partial class Workbench : IDisposable
     private Task<QueryHistory?>? _history;
     private Task<SavedQueries?>? _savedQueries;
     private Task<TableProAccount?>? _account;
+    // Set once the account has read its file and the keyring: until then its status is the core's first SignedOut.
+    private TableProAccount? _readAccount;
     private CancellationTokenSource? _signingIn;
     private readonly ScopeWatch _scope = new();
 
@@ -130,6 +132,14 @@ internal sealed partial class Workbench : IDisposable
 
     // account.tablepro.app, or a development build's local account service.
     public Uri Portal { get; private set; } = AccountSetup.ProductionPortal;
+
+    // Null until the account has read what this computer holds, and when it could not start.
+    public bool? HasLicense => _readAccount is null ? null : LicenseAsk.HasLicense(AccountStatus);
+
+    // The one gate every paid feature asks: the core's answer for its code (core ADR 0016), and what to show instead,
+    // null when the feature is available. AccountChanged says when to ask again.
+    public LicenseNotice? Gate(string feature) =>
+        LicenseGate.For(feature, _readAccount?.Access(feature), AccountStatus);
 
     public DatabaseEngine? Engine(string id) => Engines.FirstOrDefault(engine => engine.Id == id);
 
@@ -344,8 +354,10 @@ internal sealed partial class Workbench : IDisposable
     {
         try
         {
+            // The core restores the last sign-in after it opens, and the first change is that restore.
             await foreach (var status in account.ReadStatusChangesAsync(_lifetime.Token).ConfigureAwait(true))
             {
+                _readAccount = account;
                 ShowAccount(status);
             }
         }
@@ -472,6 +484,7 @@ internal sealed partial class Workbench : IDisposable
     {
         _lifetime.Cancel();
         _signingIn?.Cancel();
+        _readAccount = null;
         if (_savedQueries is { IsCompletedSuccessfully: true, Result: { } savedQueries })
         {
             savedQueries.Dispose();

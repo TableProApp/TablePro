@@ -143,6 +143,7 @@ extension DataGridViewController {
 
     // validateMenuItem asks this first; nil leaves the item to the other commands.
     func validateEditingCommand(_ item: NSValidatedUserInterfaceItem) -> Bool? {
+        if item.action == #selector(openValueEditor(_:)) { return canOpenValueEditorForActiveCell }
         guard item.action == #selector(previewFKReference(_:)) else { return nil }
         if editingState.foreignKeyPreview?.isShown == true { return true }
         guard let active = model.selection.activeCell else { return false }
