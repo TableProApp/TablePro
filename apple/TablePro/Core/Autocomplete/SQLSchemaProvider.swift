@@ -400,7 +400,7 @@ actor SQLSchemaProvider {
 
     // Only a table the new list names keeps its columns: an emptied schema leaves nothing in the list to say it is gone.
     private func markColumnsStale(listedIn newTables: [TableInfo]) {
-        let listed = Set(newTables.map { cacheKey(listedName($0.name, schema: $0.schema)) })
+        let listed = Set(newTables.map { listedKey($0.name, schema: $0.schema) })
         removeColumns(forKeys: Set(columnCache.keys.filter { !listed.contains($0) }))
         staleColumnKeys = Set(columnCache.keys)
         staleRereadsStarted.removeAll()
@@ -558,7 +558,7 @@ actor SQLSchemaProvider {
             readByFolded[name.text.lowercased(), default: []].append(name)
         }
         let listedByFolded = Dictionary(grouping: tables.filter { isInEagerLoadSchema($0) }) { $0.name.lowercased() }
-        let readSchema = schemaSpelling(eagerLoadSchema)
+        let readSchema = eagerLoadSchema
 
         for table in tables where isInEagerLoadSchema(table) {
             var readName = CatalogName(table.name)
@@ -571,7 +571,7 @@ actor SQLSchemaProvider {
             guard let columns = pending.removeValue(forKey: readName) else { continue }
             insertIntoColumnCache(
                 columns,
-                forKey: cacheKey(listedName(table.name, schema: table.schema)),
+                forKey: listedKey(table.name, schema: table.schema),
                 readFor: ListedName(schema: readSchema, name: readName.text)
             )
         }
@@ -675,16 +675,21 @@ actor SQLSchemaProvider {
         startColumnPreloadIfStale(retryingFailure: false)
     }
 
+    // As asked, never resolved: only a read of exactly this spelling may answer the grid.
     private func listedName(_ table: String, schema: String?) -> ListedName {
-        ListedName(schema: schemaSpelling(schema ?? eagerLoadSchema), name: table)
+        ListedName(schema: schema ?? eagerLoadSchema, name: table)
+    }
+
+    private func listedKey(_ table: String, schema: String?) -> ColumnCacheKey {
+        cacheKey(ListedName(schema: schemaSpelling(schema ?? eagerLoadSchema), name: table))
     }
 
     private func listsOnce(table: String, schema: String?, key: ColumnCacheKey) -> Bool {
         if listedNames == nil {
             var index: [ColumnCacheKey: Set<ListedName>] = [:]
             for listed in tables {
-                let name = listedName(listed.name, schema: listed.schema)
-                index[cacheKey(name), default: []].insert(name)
+                index[listedKey(listed.name, schema: listed.schema), default: []]
+                    .insert(listedName(listed.name, schema: listed.schema))
             }
             listedNames = index
         }

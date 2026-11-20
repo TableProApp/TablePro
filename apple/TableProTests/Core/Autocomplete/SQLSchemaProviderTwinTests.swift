@@ -45,6 +45,19 @@ struct SQLSchemaProviderTwinTests {
         #expect(driver.fetchColumnsCallCount == 0)
     }
 
+    @Test("The grid is answered only for the schema spelling the preload read, though completion matches either")
+    func catalogKeepsTheReadSchemaSpelling() async {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "Sales"
+        driver.allColumnsToReturn = ["users": Self.column("id")]
+        let provider = await Self.seeded(driver, tables: [TestFixtures.makeTableInfo(name: "users", schema: "Sales")])
+
+        #expect(await provider.catalogColumns(forTable: "users", schema: "Sales")?.map(\.name) == ["id"])
+        #expect(await provider.catalogColumns(forTable: "users", schema: "sales") == nil)
+        #expect(await provider.getColumns(for: "users", schema: "sales").map(\.name) == ["id"])
+        #expect(driver.fetchColumnsCallCount == 0)
+    }
+
     @Test("A table of a twin schema is not answered from the preloaded schema's namesake")
     func twinSchemasKeepTheirTables() async {
         let driver = MockDatabaseDriver()
