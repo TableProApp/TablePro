@@ -113,6 +113,12 @@ extension DamengPluginDriver {
         try await allColumns(schema: schema, keepsSpellingsApart: true)
     }
 
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await PluginNameSpellings.readEachTable(try await fetchTables(schema: schema).map(\.name)) {
+            try await fetchForeignKeys(table: $0, schema: schema)
+        }
+    }
+
     private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let owner = effectiveSchema(schema)
         let result = try await executeParameterized(

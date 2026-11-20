@@ -36,7 +36,8 @@ nonisolated enum DuckDBExportCatalog {
             DuckDBSchemaQueries.primaryKeyColumnsForTable,
             [.text(catalog), .text(schema), .text(table)]
         )
-        let pkColumns = Set(pkResult.rows.compactMap { $0[safe: 0]?.asText })
+        // By bytes: a table can hold two columns whose names differ only in Unicode form.
+        let pkColumns = Set(pkResult.rows.compactMap { $0[safe: 0]?.asText.map { Array($0.utf8) } })
 
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText,
@@ -47,7 +48,7 @@ nonisolated enum DuckDBExportCatalog {
                 name: name,
                 dataType: dataType,
                 isNullable: isNullableFlag(row[safe: 2]?.asText),
-                isPrimaryKey: pkColumns.contains(name),
+                isPrimaryKey: pkColumns.contains(Array(name.utf8)),
                 defaultValue: row[safe: 3]?.asText,
                 comment: row[safe: 5]?.asText?.nilIfEmpty,
                 allowedValues: enumValues(dataType: dataType)
@@ -66,10 +67,10 @@ nonisolated enum DuckDBExportCatalog {
         if keepsSpellingsApart {
             try PluginNameSpellings.requireDistinctSpellings(in: result.rows + pkResult.rows, nameAt: 0)
         }
-        var pkMap: [String: Set<String>] = [:]
+        var pkMap: [String: Set<[UInt8]>] = [:]
         for row in pkResult.rows {
             if let tableName = row[safe: 0]?.asText, let colName = row[safe: 1]?.asText {
-                pkMap[tableName, default: []].insert(colName)
+                pkMap[tableName, default: []].insert(Array(colName.utf8))
             }
         }
 
@@ -84,7 +85,7 @@ nonisolated enum DuckDBExportCatalog {
                 name: columnName,
                 dataType: dataType,
                 isNullable: isNullableFlag(row[safe: 3]?.asText),
-                isPrimaryKey: pkMap[tableName]?.contains(columnName) ?? false,
+                isPrimaryKey: pkMap[tableName]?.contains(Array(columnName.utf8)) ?? false,
                 defaultValue: row[safe: 4]?.asText,
                 comment: row[safe: 6]?.asText?.nilIfEmpty,
                 allowedValues: enumValues(dataType: dataType)

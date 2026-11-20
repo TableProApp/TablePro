@@ -60,7 +60,8 @@ nonisolated extension ClickHousePluginDriver {
         let primaryKey = pkResult.rows.first.flatMap { $0[safe: 0]?.asText } ?? ""
         let sortingKey = pkResult.rows.first.flatMap { $0[safe: 1]?.asText } ?? ""
         let keyString = primaryKey.isEmpty ? sortingKey : primaryKey
-        let pkColumns = Set(keyString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
+        // By bytes: a table can hold two columns whose names differ only in Unicode form.
+        let pkColumns = Set(keyString.split(separator: ",").map { Array($0.trimmingCharacters(in: .whitespaces).utf8) })
 
         let sql = """
             SELECT name, type, default_kind, default_expression, comment
@@ -94,7 +95,7 @@ nonisolated extension ClickHousePluginDriver {
                 name: name,
                 dataType: dataType,
                 isNullable: isNullable,
-                isPrimaryKey: pkColumns.contains(name),
+                isPrimaryKey: pkColumns.contains(Array(name.utf8)),
                 defaultValue: defaultValue,
                 extra: extra,
                 comment: (comment?.isEmpty == false) ? comment : nil,
@@ -138,14 +139,14 @@ nonisolated extension ClickHousePluginDriver {
             WHERE database = \(database)
             """
         let pkResult = try await execute(query: pkSql)
-        var pkLookup: [String: Set<String>] = [:]
+        var pkLookup: [String: Set<[UInt8]>] = [:]
         for row in pkResult.rows {
             guard let tableName = row[safe: 0]?.asText else { continue }
             let primaryKey = (row[safe: 1]?.asText) ?? ""
             let sortingKey = (row[safe: 2]?.asText) ?? ""
             let keyString = primaryKey.isEmpty ? sortingKey : primaryKey
             guard !keyString.isEmpty else { continue }
-            let cols = Set(keyString.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) })
+            let cols = Set(keyString.split(separator: ",").map { Array(String($0).trimmingCharacters(in: .whitespaces).utf8) })
             pkLookup[tableName] = cols
         }
 
@@ -181,7 +182,7 @@ nonisolated extension ClickHousePluginDriver {
                 name: colName,
                 dataType: dataType,
                 isNullable: isNullable,
-                isPrimaryKey: pkLookup[tableName]?.contains(colName) == true,
+                isPrimaryKey: pkLookup[tableName]?.contains(Array(colName.utf8)) == true,
                 defaultValue: defaultValue,
                 extra: extra,
                 comment: (comment?.isEmpty == false) ? comment : nil,

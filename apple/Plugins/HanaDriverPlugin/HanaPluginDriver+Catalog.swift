@@ -49,6 +49,12 @@ extension HanaPluginDriver {
         return HanaCatalogMapping.columnsByTable(from: result.rows)
     }
 
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await PluginNameSpellings.readEachTable(try await fetchTables(schema: schema).map(\.name)) {
+            try await fetchForeignKeys(table: $0, schema: schema)
+        }
+    }
+
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         let owner = try effectiveSchema(schema)
         let result = try await execute(query: HanaCatalogQueries.indexes(schema: owner, table: table))

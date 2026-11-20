@@ -61,6 +61,23 @@ struct ExportTwinNameTests {
         #expect(keys.map { $0.column } == ["s"])
     }
 
+    @Test("DuckDB: only the key column is a key when another column is named alike in another Unicode form")
+    func duckDBTwinColumnIsNotAKey() async throws {
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        _ = try await driver.execute(query: "CREATE TABLE t (\"\u{E9}\" INTEGER PRIMARY KEY, \"e\u{301}\" INTEGER, v INTEGER)")
+        let catalog = try await driver.makeExportCatalog(
+            context: MobileTransferContext(databaseType: .duckdb, database: nil, schema: nil)
+        )
+
+        let own = try await catalog.fetchColumns(table: "t", databaseName: "main")
+        let all = try await catalog.fetchAllColumns(databaseName: "main")
+        try await driver.disconnect()
+
+        #expect(own.map { $0.isPrimaryKey } == [true, false, false])
+        #expect(all["t"]?.map { $0.isPrimaryKey } == [true, false, false])
+    }
+
     @Test("MySQL: the export reads throw on two tables named alike in different Unicode forms")
     func mysqlThrowsOnTwins() async throws {
         let reads = RecordedCatalogReads([

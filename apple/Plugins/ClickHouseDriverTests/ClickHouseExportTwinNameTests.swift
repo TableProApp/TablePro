@@ -4,6 +4,8 @@ import Testing
 
 private let composed = "caf\u{E9}"
 private let decomposed = "cafe\u{301}"
+private let composedAcute = "\u{E9}"
+private let decomposedAcute = "e\u{301}"
 
 // ClickHouse compares table names by their bytes, so two names that differ only in Unicode form are two tables.
 struct ClickHouseExportTwinNameTests {
@@ -45,5 +47,34 @@ struct ClickHouseExportTwinNameTests {
         #expect(exported.requests.count == 2)
         #expect(exportColumns.keys.sorted() == ["a", "b"])
         #expect(exportColumns["a"]?.map { $0.isPrimaryKey } == sharedColumns["a"]?.map { $0.isPrimaryKey })
+    }
+
+    @Test("Only the key column is a key when another column of its table is named alike in another Unicode form")
+    func twinColumnIsNotAKey() async throws {
+        let server = ClickHouseStubServer { request in
+            if request.body.contains("SELECT primary_key, sorting_key FROM system.tables") {
+                return Self.tsv(["primary_key", "sorting_key"], [[composedAcute, composedAcute]])
+            }
+            if request.body.contains("FROM system.tables") {
+                return Self.tsv(["name", "primary_key", "sorting_key"], [["t", composedAcute, composedAcute]])
+            }
+            if request.body.contains("SELECT table, name") {
+                return Self.tsv(
+                    ["table", "name", "type", "default_kind", "default_expression", "comment"],
+                    [["t", composedAcute, "UInt32", "", "", ""], ["t", decomposedAcute, "UInt32", "", "", ""]]
+                )
+            }
+            return Self.tsv(
+                ["name", "type", "default_kind", "default_expression", "comment"],
+                [[composedAcute, "UInt32", "", "", ""], [decomposedAcute, "UInt32", "", "", ""]]
+            )
+        }
+        let driver = server.connectedDriver()
+
+        let own = try await driver.fetchColumns(table: "t", schema: "vb")
+        let all = try await driver.fetchAllColumnsForExport(schema: "vb")
+
+        #expect(own.map { $0.isPrimaryKey } == [true, false])
+        #expect(all["t"]?.map { $0.isPrimaryKey } == [true, false])
     }
 }

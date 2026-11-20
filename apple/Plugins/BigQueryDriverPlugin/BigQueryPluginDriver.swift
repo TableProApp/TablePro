@@ -26,7 +26,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     private var _projectId: String?
     private var _serverVersion: String?
     private var _currentDataset: String?
-    private var _tableSchemaCache: [String: CachedResource] = [:]
+    // By bytes: a dataset can hold two tables whose names differ only in Unicode form.
+    private var _tableSchemaCache: [[UInt8]: CachedResource] = [:]
     private var _queryTimeoutSeconds: Int?
     private var _lastJobElapsed: TimeInterval?
 
@@ -515,22 +516,28 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     func cachedTableFields(datasetId: String, tableId: String) -> [BQTableFieldSchema]? {
-        lock.withLock { _tableSchemaCache["\(datasetId).\(tableId)"]?.resource.schema?.fields }
+        lock.withLock { _tableSchemaCache[Self.cacheKey(datasetId: datasetId, tableId: tableId)]?.resource.schema?.fields }
     }
 
     func cachedTable(datasetId: String, tableId: String) async throws -> BQTableResource {
-        let cached: CachedResource? = lock.withLock { _tableSchemaCache["\(datasetId).\(tableId)"] }
+        let cached: CachedResource? = lock.withLock { _tableSchemaCache[Self.cacheKey(datasetId: datasetId, tableId: tableId)] }
         if let cached, Date().timeIntervalSince(cached.cachedAt) < Self.cacheTTL {
             return cached.resource
         }
         return try await loadTable(datasetId: datasetId, tableId: tableId)
     }
 
+    private static func cacheKey(datasetId: String, tableId: String) -> [UInt8] {
+        Array("\(datasetId).\(tableId)".utf8)
+    }
+
     private func loadTable(datasetId: String, tableId: String) async throws -> BQTableResource {
         do {
             let resource = try await requireConnection().getTable(datasetId: datasetId, tableId: tableId)
             lock.withLock {
-                _tableSchemaCache["\(datasetId).\(tableId)"] = CachedResource(resource: resource, cachedAt: Date())
+                _tableSchemaCache[Self.cacheKey(datasetId: datasetId, tableId: tableId)] = CachedResource(
+                    resource: resource, cachedAt: Date()
+                )
             }
             return resource
         } catch {
