@@ -102,6 +102,14 @@ pub(crate) fn read_target(target: &str) -> Result<Option<SecretString>, SecretEr
     read(target)
 }
 
+// Another app's generic credential, one blob as that app wrote it: TablePro's own parts are never followed into it.
+pub(crate) fn read_generic(target: &str) -> Result<Option<SecretString>, SecretError> {
+    match Credentials.read(target)? {
+        Some(stored) => decode(&stored.blob).map(Some),
+        None => Ok(None),
+    }
+}
+
 // The MCP token of one data folder (`mcp::token_target`).
 pub(crate) struct FolderToken {
     manager: Arc<CredentialManager>,
@@ -577,6 +585,30 @@ mod tests {
             Some("hunter2".to_owned())
         );
         assert!(!missing.is_stored());
+    }
+
+    #[test]
+    fn another_app_s_generic_credential_reads_as_the_text_it_wrote() {
+        let target = format!("TableProTest-{}.other-app", Uuid::new_v4());
+        // As the keyring crate writes a password: UTF-16 with no terminator.
+        let blob: Vec<u8> = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+
+        Credentials.write(&target, &blob, "label", None).unwrap();
+        let found = read_generic(&target).unwrap();
+        Credentials.write(&target, b"odd", "label", None).unwrap();
+        let not_text = read_generic(&target);
+        Credentials.delete(&target).unwrap();
+        let gone = read_generic(&target).unwrap();
+
+        assert_eq!(
+            found.map(|secret| secret.expose_secret().to_owned()),
+            Some("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8".to_owned())
+        );
+        assert!(not_text.is_err());
+        assert!(gone.is_none());
     }
 
     #[tokio::test]

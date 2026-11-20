@@ -41,7 +41,7 @@ mkdir -p "$SOURCES"
 for source in "$ROOT"/Plugins/SQLiteDriverPlugin/*.swift "$ROOT"/Plugins/SharedSpill/*.swift; do
     ln -s "$source" "$SOURCES/driver_$(basename "$source")"
 done
-for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox; do
+for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginNameSpellings; do
     [ -f "$ROOT/Plugins/Shared/$shared.swift" ] && ln -s "$ROOT/Plugins/Shared/$shared.swift" "$SOURCES/shared_$shared.swift"
 done
 for helper in TablePro/Core/RemoteSQLite/RemoteSQLiteAgentSource.swift TablePro/Core/RemoteSQLite/RemoteSQLiteWire.swift \

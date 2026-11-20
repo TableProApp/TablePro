@@ -135,7 +135,8 @@ nonisolated public struct SQLExportInsertRenderer {
         columnNames: [String],
         primaryKeyColumns: [String]
     ) -> Rendered {
-        let updatable = columnNames.filter { !primaryKeyColumns.contains($0) }
+        let keyColumns = Set(primaryKeyColumns.map(PluginExportSpelling.key))
+        let updatable = columnNames.filter { !keyColumns.contains(PluginExportSpelling.key($0)) }
         switch dialect {
         case .mysql:
             guard !updatable.isEmpty else {

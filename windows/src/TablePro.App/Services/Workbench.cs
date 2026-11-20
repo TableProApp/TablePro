@@ -57,6 +57,9 @@ internal sealed partial class Workbench : IDisposable
 
     public AppSettings Settings { get; private set; }
 
+    // The one update check, which every window's Help menu, the primary's bar and Settings show.
+    public Updater Updates { get; } = new();
+
     // Shared by every workspace and kept in the session file.
     public double ObjectPaneWidth { get; set; } = ObjectPane.DefaultWidth;
 

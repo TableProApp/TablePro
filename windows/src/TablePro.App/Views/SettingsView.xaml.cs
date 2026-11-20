@@ -18,14 +18,16 @@ public sealed partial class SettingsView : UserControl
     public static readonly Uri IssuesUri = new("https://github.com/TableProApp/TablePro/issues/new/choose");
 
     private readonly Workbench _workbench;
+    private readonly IShell _shell;
     private bool _loading;
     private bool _accountBusy;
     private CoreError? _accountError;
     private int _devicesGeneration;
 
-    internal SettingsView(Workbench workbench)
+    internal SettingsView(Workbench workbench, IShell shell)
     {
         _workbench = workbench;
+        _shell = shell;
         InitializeComponent();
         VersionText.Text = Strings.Format("VersionText", AppStorage.Version);
         DataFolderCard.Description = workbench.Folder;
@@ -38,13 +40,17 @@ public sealed partial class SettingsView : UserControl
             _workbench.AccountChanged += OnAccountChanged;
             _workbench.McpChanged -= OnMcpChanged;
             _workbench.McpChanged += OnMcpChanged;
+            _workbench.Updates.Changed -= OnUpdatesChanged;
+            _workbench.Updates.Changed += OnUpdatesChanged;
             ShowAccount();
             ShowMcp();
+            ShowUpdateState();
         };
         Unloaded += (_, _) =>
         {
             _workbench.AccountChanged -= OnAccountChanged;
             _workbench.McpChanged -= OnMcpChanged;
+            _workbench.Updates.Changed -= OnUpdatesChanged;
         };
     }
 
@@ -115,6 +121,7 @@ public sealed partial class SettingsView : UserControl
         ShowNotificationState();
         LoadAssistant();
         LoadMcp();
+        LoadUpdates();
         _loading = false;
     }
 

@@ -274,6 +274,23 @@
                 Style="{StaticResource CaptionTextBlockStyle}"
                 TextWrapping="Wrap" />
 
+            <TextBlock x:Uid="UpdatesHeader" x:Name="UpdatesHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Name="UpdateCard" AutomationProperties.AutomationId="UpdateCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE895;" /></toolkit:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <ProgressRing x:Name="UpdateProgress" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
+                    <Button x:Name="UpdateButton" AutomationProperties.AutomationId="UpdateButton" Click="OnUpdateButton" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="UpdateChannelCard" x:Name="UpdateChannelCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7C1;" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="UpdateChannelBox" x:Uid="UpdateChannelBox" AutomationProperties.AutomationId="UpdateChannelBox" MinWidth="200" SelectionChanged="OnUpdateChannelChanged">
+                    <ComboBoxItem x:Uid="UpdateChannelStable" Tag="Stable" />
+                    <ComboBoxItem x:Uid="UpdateChannelBeta" Tag="Beta" />
+                </ComboBox>
+            </toolkit:SettingsCard>
+            <HyperlinkButton x:Uid="WhatsNewLink" x:Name="WhatsNewLink" AutomationProperties.AutomationId="WhatsNewLink" Click="OnWhatsNew" />
+
             <TextBlock x:Uid="AboutHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsExpander x:Name="AboutExpander" x:Uid="AboutExpander" AutomationProperties.AutomationId="AboutExpander">
                 <toolkit:SettingsExpander.HeaderIcon>

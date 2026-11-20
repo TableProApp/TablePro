@@ -415,6 +415,14 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: false)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let query = """
             SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk
             FROM \(SQLiteMasterQueries.catalogTable(schema: schema)) m,
@@ -423,6 +431,9 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ORDER BY m.name, p.cid
             """
         let result = try await execute(query: query)
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
+        }
 
         var allColumns: [String: [PluginColumnInfo]] = [:]
 
@@ -457,8 +468,20 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await allForeignKeys(schema: schema, keepsSpellingsApart: false)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await allForeignKeys(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allForeignKeys(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginForeignKeyInfo]] {
         let query = SQLiteForeignKeyGrouping.schemaForeignKeysQuery(schema: schema, excludingTableGlob: "libsql_*")
-        return SQLiteForeignKeyGrouping.foreignKeysByTable(schema: schema, fromRows: try await execute(query: query).rows)
+        let rows = try await execute(query: query).rows
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: rows, nameAt: 0)
+        }
+        return SQLiteForeignKeyGrouping.foreignKeysByTable(schema: schema, fromRows: rows)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {

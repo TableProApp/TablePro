@@ -705,7 +705,8 @@ fn host() -> Arc<dyn ForeignHost> {
     Arc::new(tablepro_foreign_import::PlainHost)
 }
 
-// No installed-app lookup and no other app's keychain; the user's DPAPI opens a key another app sealed to them.
+// No installed-app lookup and no other app's keychain. The user's DPAPI opens a key another app sealed to them, and
+// Credential Manager hands over another app's generic credential, as it does to any app the user runs.
 #[cfg(windows)]
 struct WindowsHost;
 
@@ -713,6 +714,29 @@ struct WindowsHost;
 impl ForeignHost for WindowsHost {
     fn data_protection(&self) -> Option<Arc<dyn tablepro_foreign_import::DataProtection>> {
         Some(Arc::new(dpapi::UserDataProtection))
+    }
+
+    fn credential_manager(&self) -> Option<Arc<dyn tablepro_foreign_import::ForeignCredentialManager>> {
+        Some(Arc::new(UserCredentials))
+    }
+}
+
+#[cfg(windows)]
+struct UserCredentials;
+
+#[cfg(windows)]
+impl tablepro_foreign_import::ForeignCredentialManager for UserCredentials {
+    fn read_generic(&self, target: &str) -> tablepro_foreign_import::KeychainRead {
+        use tablepro_foreign_import::KeychainRead;
+
+        match crate::credential_manager::read_generic(target) {
+            Ok(Some(secret)) => KeychainRead::Found(secret),
+            Ok(None) => KeychainRead::NotFound,
+            Err(error) => {
+                tracing::warn!(%error, "another app's credential did not read");
+                KeychainRead::Denied
+            }
+        }
     }
 }
 
@@ -723,25 +747,31 @@ pub(crate) mod dpapi {
         CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptUnprotectData,
     };
 
-    // CryptUnprotectData with no entropy and no prompt, as IntelliJ seals its KeePass main key.
+    // CryptUnprotectData with no prompt: IntelliJ seals its KeePass main key with no entropy, DBX its key's copy with
+    // some.
     pub(crate) struct UserDataProtection;
 
     impl tablepro_foreign_import::DataProtection for UserDataProtection {
-        fn unprotect(&self, blob: &[u8]) -> Option<Vec<u8>> {
+        fn unprotect(&self, blob: &[u8], entropy: &[u8]) -> Option<Vec<u8>> {
             let input = CRYPT_INTEGER_BLOB {
                 cbData: u32::try_from(blob.len()).ok()?,
                 pbData: blob.as_ptr().cast_mut(),
+            };
+            let entropy = CRYPT_INTEGER_BLOB {
+                cbData: u32::try_from(entropy.len()).ok()?,
+                pbData: entropy.as_ptr().cast_mut(),
             };
             let mut output = CRYPT_INTEGER_BLOB {
                 cbData: 0,
                 pbData: std::ptr::null_mut(),
             };
-            // SAFETY: input points at `blob` for the call; output is written by the call and freed by `take`.
+            // SAFETY: input and entropy point at the caller's slices for the call; output is written by the call and
+            // freed by `take`.
             let ok = unsafe {
                 CryptUnprotectData(
                     &input,
                     std::ptr::null_mut(),
-                    std::ptr::null(),
+                    optional(&entropy),
                     std::ptr::null(),
                     std::ptr::null(),
                     CRYPTPROTECT_UI_FORBIDDEN,
@@ -756,14 +786,27 @@ pub(crate) mod dpapi {
         }
     }
 
+    // No entropy is a null pointer, as the sealing app passed it.
+    fn optional(entropy: &CRYPT_INTEGER_BLOB) -> *const CRYPT_INTEGER_BLOB {
+        if entropy.cbData == 0 {
+            std::ptr::null()
+        } else {
+            std::ptr::from_ref(entropy)
+        }
+    }
+
     // The other side, for tests: what an app seals for the signed-in user.
     #[cfg(test)]
-    pub(crate) fn protect(data: &[u8]) -> Option<Vec<u8>> {
+    pub(crate) fn protect(data: &[u8], entropy: &[u8]) -> Option<Vec<u8>> {
         use windows_sys::Win32::Security::Cryptography::CryptProtectData;
 
         let input = CRYPT_INTEGER_BLOB {
             cbData: u32::try_from(data.len()).ok()?,
             pbData: data.as_ptr().cast_mut(),
+        };
+        let entropy = CRYPT_INTEGER_BLOB {
+            cbData: u32::try_from(entropy.len()).ok()?,
+            pbData: entropy.as_ptr().cast_mut(),
         };
         let mut output = CRYPT_INTEGER_BLOB {
             cbData: 0,
@@ -774,7 +817,7 @@ pub(crate) mod dpapi {
             CryptProtectData(
                 &input,
                 std::ptr::null(),
-                std::ptr::null(),
+                optional(&entropy),
                 std::ptr::null(),
                 std::ptr::null(),
                 CRYPTPROTECT_UI_FORBIDDEN,
@@ -790,7 +833,10 @@ pub(crate) mod dpapi {
         }
         let length = usize::try_from(blob.cbData).unwrap_or(0);
         // SAFETY: the call that filled `blob` allocated `cbData` bytes at `pbData`, freed once copied.
-        let bytes = unsafe { std::slice::from_raw_parts(blob.pbData, length) }.to_vec();
+        let unsealed = unsafe { std::slice::from_raw_parts_mut(blob.pbData, length) };
+        let bytes = unsealed.to_vec();
+        // LocalFree releases the block as it is, so the key would stay in freed memory.
+        secrecy::zeroize::Zeroize::zeroize(unsealed);
         // SAFETY: `pbData` came from LocalAlloc inside the call and is freed once.
         unsafe {
             LocalFree(blob.pbData.cast());
@@ -806,12 +852,28 @@ pub(crate) mod dpapi {
 
         #[test]
         fn a_blob_sealed_for_this_user_opens_and_another_does_not() {
-            let sealed = protect(b"main key").expect("a sealed blob");
+            let sealed = protect(b"main key", &[]).expect("a sealed blob");
             assert_eq!(
-                UserDataProtection.unprotect(&sealed).as_deref(),
+                UserDataProtection.unprotect(&sealed, &[]).as_deref(),
                 Some(b"main key".as_slice())
             );
-            assert_eq!(UserDataProtection.unprotect(b"not a blob"), None);
+            assert_eq!(UserDataProtection.unprotect(b"not a blob", &[]), None);
+        }
+
+        #[test]
+        fn a_blob_sealed_with_entropy_opens_only_with_the_same_entropy() {
+            let entropy: Vec<u8> = "com.dbx.app.secret-store.v1"
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes)
+                .collect();
+            let sealed = protect(b"key material", &entropy).expect("a sealed blob");
+
+            assert_eq!(
+                UserDataProtection.unprotect(&sealed, &entropy).as_deref(),
+                Some(b"key material".as_slice())
+            );
+            assert_eq!(UserDataProtection.unprotect(&sealed, &[]), None);
+            assert_eq!(UserDataProtection.unprotect(&sealed, b"other"), None);
         }
     }
 }

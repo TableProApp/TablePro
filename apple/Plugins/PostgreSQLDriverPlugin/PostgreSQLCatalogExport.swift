@@ -260,25 +260,15 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
         guard answer.count < ceiling else {
             throw PostgreSQLCatalogReadError(message: "A schema-wide catalog read reached \(answer.count) rows")
         }
-        try requireDistinctSpellings(answer.lazy.compactMap { $0.last?.asText })
+        try PluginNameSpellings.requireDistinctSpellings(
+            answer.lazy.compactMap { $0.last?.asText }, failure: PostgreSQLCatalogReadError.twinRelations
+        )
         var grouped: [String: [[PluginCellValue]]] = [:]
         for row in answer {
             guard let relation = row.last?.asText else { continue }
             grouped[relation, default: []].append(row)
         }
         return grouped
-    }
-
-    // An export's schema-wide answer is keyed by String, which would merge two relations whose names differ only in
-    // Unicode form, so such an answer throws and the export reads each table alone.
-    static func requireDistinctSpellings(_ relations: some Sequence<String>) throws {
-        var seen = Set<String>()
-        for relation in relations {
-            let (inserted, known) = seen.insert(relation)
-            if !inserted, !known.utf8.elementsEqual(relation.utf8) {
-                throw PostgreSQLCatalogReadError(message: "Two relations share the name \(relation) in different Unicode forms")
-            }
-        }
     }
 
     func fetchAllIndexDDL(schema: String?) async throws -> [String: [String]] {
@@ -409,7 +399,10 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
 
     func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let answers = try await columnCatalog(schema: schema ?? currentSchema, table: nil)
-        try Self.requireDistinctSpellings(answers.columns.compactMap { $0.first?.asText } + answers.spelledRelations)
+        try PluginNameSpellings.requireDistinctSpellings(
+            answers.columns.compactMap { $0.first?.asText } + answers.spelledRelations,
+            failure: PostgreSQLCatalogReadError.twinRelations
+        )
         return Self.columnsByTable(answers)
     }
 
@@ -623,7 +616,9 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
 
     func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let decoded = try await schemaForeignKeys(schema: schema)
-        try Self.requireDistinctSpellings(decoded.map(\.table))
+        try PluginNameSpellings.requireDistinctSpellings(
+            decoded.map(\.table), failure: PostgreSQLCatalogReadError.twinRelations
+        )
         return Self.foreignKeysByTable(decoded)
     }
 
@@ -1045,4 +1040,8 @@ nonisolated struct PostgreSQLCatalogReadError: PluginDriverError {
     let message: String
 
     var pluginErrorMessage: String { message }
+
+    static func twinRelations(_ relation: String) -> any Error {
+        PostgreSQLCatalogReadError(message: "Two relations share the name \(relation) in different Unicode forms")
+    }
 }

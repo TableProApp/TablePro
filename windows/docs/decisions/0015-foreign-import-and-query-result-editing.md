@@ -1,6 +1,6 @@
 # 0015: Importing from other apps and editing a query result
 
-- **Status**: Accepted
+- **Status**: Accepted; DBX's passwords amended by core 0039
 - **Date**: 2026-11-18
 
 ## Context
@@ -14,7 +14,7 @@ Each works as the macOS app's does, in Windows sentence case, over the core's re
 ### Import from another app
 
 - The Connections page's Import button and the File menu offer Import from file... (TablePro's own file, as before) and Import from another app....
-- A ContentDialog lists the apps Windows has, each with what was found or "Not found on this PC"; Navicat imports an `.ncx` export picked with the system open picker. Passwords and saved queries are options, each offered where the app keeps them somewhere TablePro can read on Windows: decrypted from the app's own files, or DataGrip's KeePass file, whose main key opens with the user's DPAPI.
+- A ContentDialog lists the apps Windows has, each with what was found or "Not found on this PC"; Navicat imports an `.ncx` export picked with the system open picker. Passwords and saved queries are options, each offered where the app keeps them somewhere TablePro can read on Windows: decrypted from the app's own files, DataGrip's KeePass file, whose main key opens with the user's DPAPI, or DBX's own file, whose key sits in Credential Manager.
 - The review lists every connection with a check box, what it connects to, its group, the saved connection it matches, and every note the core makes about it. A match starts unchecked and offers Add as copy, Replace when both connect the same way, and Keep existing, add queries when the row brings saved queries. Saved queries follow their connection and say why one cannot import. A bar says when passwords stayed behind.
 - Import writes once: the connections, their passwords into Credential Manager, then the saved queries. The Connections page then says what landed. A library changed meanwhile refuses and asks to import again.
 
@@ -33,5 +33,5 @@ Each works as the macOS app's does, in Windows sentence case, over the core's re
 
 ## Consequences
 
-- DBX's passwords stay behind on Windows, as on every platform, until the core reads its key.
+- DBX's passwords import with the key DBX keeps in Credential Manager, which the core reads ([core 0039](../../../core/docs/decisions/0039-dbx-passwords-from-its-key.md)); the dialog offers them as it does DataGrip's.
 - Pending changes in a query result are not kept in the session file: the rows are gone after a relaunch, unlike a table tab's page.

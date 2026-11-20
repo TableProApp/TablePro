@@ -135,6 +135,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     public bool IsPrimary => ReferenceEquals(_primary, this);
 
+    // Shut down, with its windows hidden, until the process ends or an update's restart replaces it.
+    internal bool IsEnding => _primary._closing;
+
     public bool CanMoveTabs => !_primary._checkingClose && !_closing;
 
     public bool AcceptsTabs => !_isSpare && !_primary._checkingClose && AppWindow.IsVisible;
@@ -594,6 +597,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             }
         };
         ShowRecentFiles();
+        WatchUpdates();
         _workbench.RecentFilesChanged += OnRecentFilesChanged;
         _workbench.SettingsChanged += OnSettingsChanged;
         _workbench.LibraryChanged += OnLibraryChanged;
@@ -635,7 +639,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         Close();
     }
 
-    private SettingsView Settings() => _settings ??= new SettingsView(_workbench);
+    private SettingsView Settings() => _settings ??= new SettingsView(_workbench, this);
 
     private void Restore(SessionState state)
     {
@@ -1183,7 +1187,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
     }
 
-    private async Task RequestCloseAsync(bool askAboutRunning = true)
+    // afterShutDown runs once the session is saved and every connection closed, before the primary window closes.
+    private async Task RequestCloseAsync(bool askAboutRunning = true, Func<Task>? afterShutDown = null)
     {
         if (_primary._checkingClose || _closing)
         {
@@ -1227,7 +1232,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
             if (IsPrimary)
             {
-                await ShutDownAsync();
+                await ShutDownAsync(keepFolder: afterShutDown is not null);
+                if (afterShutDown is not null)
+                {
+                    await afterShutDown();
+                }
             }
             else
             {
@@ -1339,7 +1348,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     }
 
     // Window.Close raises no AppWindow.Closing, so Exit runs this itself before it closes the primary.
-    private async Task ShutDownAsync()
+    // keepFolder holds the data folder past the shutdown, so a launch meanwhile hands over to this ending app.
+    private async Task ShutDownAsync(bool keepFolder = false)
     {
         if (_closing)
         {
@@ -1356,7 +1366,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         // Before any tab closes, since a closed tab is no longer in what the session lists; its work was asked about.
         _ = _saves?.Save(SessionSnapshot(withWork: false), last: true);
         _workbench.SaveUnsavedSettings();
-        SessionSaved?.Invoke(this, EventArgs.Empty);
+        if (!keepFolder)
+        {
+            SessionSaved?.Invoke(this, EventArgs.Empty);
+        }
+
         DropSpare();
         var windows = AllWindows.ToList();
         foreach (var window in windows)

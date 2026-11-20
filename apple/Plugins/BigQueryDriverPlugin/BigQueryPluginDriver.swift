@@ -26,7 +26,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     private var _projectId: String?
     private var _serverVersion: String?
     private var _currentDataset: String?
-    private var _tableSchemaCache: [String: CachedResource] = [:]
+    // By bytes: a dataset can hold two tables whose names differ only in Unicode form.
+    private var _tableSchemaCache: [[UInt8]: CachedResource] = [:]
     private var _queryTimeoutSeconds: Int?
     private var _lastJobElapsed: TimeInterval?
 
@@ -418,23 +419,37 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: false)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let datasetId = dataset(for: schema)
         guard !datasetId.isEmpty else { return [:] }
         do {
-            return try await bulkColumns(datasetId: datasetId)
+            return try await bulkColumns(datasetId: datasetId, keepsSpellingsApart: keepsSpellingsApart)
+        } catch let error as PluginNameSpellingError {
+            throw error
         } catch {
             Self.logger.info(
                 "Bulk column fetch failed, reading tables one by one: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
+            let tables = try await fetchTables(schema: schema)
+            if keepsSpellingsApart {
+                try PluginNameSpellings.requireDistinctSpellings(tables.map(\.name))
+            }
             var columns: [String: [PluginColumnInfo]] = [:]
-            for table in try await fetchTables(schema: schema) {
+            for table in tables {
                 columns[table.name] = try await fetchColumns(table: table.name, schema: schema)
             }
             return columns
         }
     }
 
-    private func bulkColumns(datasetId: String) async throws -> [String: [PluginColumnInfo]] {
+    private func bulkColumns(datasetId: String, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let conn = try requireConnection()
         let source = BigQueryQueryBuilder.qualifiedTable(
             projectId: conn.projectId,
@@ -447,8 +462,15 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             ORDER BY table_name, ordinal_position
             """
         let result = try await conn.executeQuery(sql, defaultDataset: datasetId)
+        let rows = result.queryResponse.rows ?? []
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(rows.compactMap { row -> String? in
+                guard let cell = row.f?.first, case .string(let tableName) = cell.v else { return nil }
+                return tableName
+            })
+        }
         var columns: [String: [PluginColumnInfo]] = [:]
-        for row in result.queryResponse.rows ?? [] {
+        for row in rows {
             let cells = row.f ?? []
             guard cells.count >= 4,
                   case .string(let tableName) = cells[0].v,
@@ -494,22 +516,28 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     func cachedTableFields(datasetId: String, tableId: String) -> [BQTableFieldSchema]? {
-        lock.withLock { _tableSchemaCache["\(datasetId).\(tableId)"]?.resource.schema?.fields }
+        lock.withLock { _tableSchemaCache[Self.cacheKey(datasetId: datasetId, tableId: tableId)]?.resource.schema?.fields }
     }
 
     func cachedTable(datasetId: String, tableId: String) async throws -> BQTableResource {
-        let cached: CachedResource? = lock.withLock { _tableSchemaCache["\(datasetId).\(tableId)"] }
+        let cached: CachedResource? = lock.withLock { _tableSchemaCache[Self.cacheKey(datasetId: datasetId, tableId: tableId)] }
         if let cached, Date().timeIntervalSince(cached.cachedAt) < Self.cacheTTL {
             return cached.resource
         }
         return try await loadTable(datasetId: datasetId, tableId: tableId)
     }
 
+    private static func cacheKey(datasetId: String, tableId: String) -> [UInt8] {
+        Array("\(datasetId).\(tableId)".utf8)
+    }
+
     private func loadTable(datasetId: String, tableId: String) async throws -> BQTableResource {
         do {
             let resource = try await requireConnection().getTable(datasetId: datasetId, tableId: tableId)
             lock.withLock {
-                _tableSchemaCache["\(datasetId).\(tableId)"] = CachedResource(resource: resource, cachedAt: Date())
+                _tableSchemaCache[Self.cacheKey(datasetId: datasetId, tableId: tableId)] = CachedResource(
+                    resource: resource, cachedAt: Date()
+                )
             }
             return resource
         } catch {

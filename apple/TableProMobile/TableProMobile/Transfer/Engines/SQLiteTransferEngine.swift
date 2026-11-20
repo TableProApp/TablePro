@@ -62,7 +62,7 @@ nonisolated struct SQLiteTransferCatalog: MobileExportCatalog {
     }
 
     func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] {
-        try await SQLiteCatalogReads.allColumns(schema: nil, run: run)
+        try await SQLiteCatalogReads.allColumns(schema: nil, keepsSpellingsApart: true, run: run)
     }
 
     func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] {
@@ -71,7 +71,7 @@ nonisolated struct SQLiteTransferCatalog: MobileExportCatalog {
     }
 
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] {
-        try await SQLiteCatalogReads.allForeignKeys(schema: nil, run: run)
+        try await SQLiteCatalogReads.allForeignKeys(schema: nil, keepsSpellingsApart: true, run: run)
     }
 
     var tableDDLIncludesForeignKeys: Bool { SQLiteCatalogReads.tableDDLIncludesForeignKeys }

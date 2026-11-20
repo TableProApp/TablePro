@@ -17,7 +17,10 @@ pub use app::{ForeignApp, ForeignImporter, ImportRequest, Inventory, PasswordSou
 pub use collect::{CollectedConnection, CollectedImport, CollectedSavedQuery, PasswordOutcome};
 pub use dirs::{ForeignAppDirs, ForeignPlatform};
 pub use error::ForeignImportError;
-pub use host::{DataProtection, ForeignHost, ForeignKeychain, KeychainRead, PlainHost};
+pub use host::{
+    DataProtection, ForeignCredentialManager, ForeignHost, ForeignKeychain, ForeignSecretService, KeychainRead,
+    PlainHost, SecretScope,
+};
 pub use record::{
     ForeignColor, ForeignConnection, ForeignConnectionRecord, ForeignCredentials, ForeignJumpHost, ForeignSavedQuery,
     ForeignSsh, ForeignSshAuth, ForeignSsl, ForeignSslMode, SavedQueryContent, TLS_SETTINGS_UNREAD,

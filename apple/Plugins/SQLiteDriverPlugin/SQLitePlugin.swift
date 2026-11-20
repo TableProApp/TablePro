@@ -475,12 +475,20 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await SQLiteCatalogReads.allColumns(schema: schema, run: catalogRun)
     }
 
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await SQLiteCatalogReads.allColumns(schema: schema, keepsSpellingsApart: true, run: catalogRun)
+    }
+
     var providesBulkForeignKeyFetch: Bool { true }
 
     var tableDDLIncludesForeignKeys: Bool { SQLiteCatalogReads.tableDDLIncludesForeignKeys }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         try await SQLiteCatalogReads.allForeignKeys(schema: schema, run: catalogRun)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await SQLiteCatalogReads.allForeignKeys(schema: schema, keepsSpellingsApart: true, run: catalogRun)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
