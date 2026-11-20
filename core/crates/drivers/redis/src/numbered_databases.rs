@@ -1,6 +1,6 @@
 use redis::Value as Reply;
 use tablepro_core::meta::SchemaInfo;
-use tablepro_core::{CatalogBudget, DriverError, StopRequest};
+use tablepro_core::{DriverError, StopRequest};
 
 use crate::errors::server_error;
 use crate::link::{Link, command, stoppable};
@@ -11,6 +11,10 @@ const ASSUMED: u32 = 16;
 // `databases` and `cluster-databases` go up to the largest `int`.
 const MOST: u32 = 2_147_483_647;
 
+// The most a managed service runs (ElastiCache's `cluster-databases`): one number from the server must not build a
+// list of any length. A database past it is still reached by its number.
+const LISTED: u32 = 10_000;
+
 // Named by the index, as SELECT, a saved connection and a connection URL spell it (core ADR 0038).
 pub(crate) async fn list(
     link: &Link,
@@ -18,19 +22,19 @@ pub(crate) async fn list(
     cluster: bool,
     stop: &StopRequest,
 ) -> Result<Vec<SchemaInfo>, DriverError> {
-    let count = count(link, own, cluster, stop).await?;
-    let mut budget = CatalogBudget::default();
-    let mut databases = Vec::new();
-    for index in 0..count {
-        let name = index.to_string();
-        budget.charge(size_of::<SchemaInfo>().saturating_add(name.len()))?;
-        databases.push(SchemaInfo {
-            name,
+    Ok(databases(count(link, own, cluster, stop).await?, own))
+}
+
+fn databases(count: u32, own: u32) -> Vec<SchemaInfo> {
+    let listed = count.min(LISTED);
+    (0..listed)
+        .chain((own >= listed).then_some(own))
+        .map(|index| SchemaInfo {
+            name: index.to_string(),
             is_default: index == own,
             is_system: false,
-        });
-    }
-    Ok(databases)
+        })
+        .collect()
 }
 
 // Managed services deny CONFIG yet run more than 16 (Azure 64, Memorystore 100); Redis Cluster serves database 0 alone.
@@ -148,6 +152,33 @@ mod tests {
         assert_eq!(keyspace_databases(info), [0, 20]);
         assert_eq!(keyspace_databases("# Keyspace\r\n"), Vec::<u32>::new());
         assert_eq!(keyspace_databases("dbx:keys=1\r\ndb:keys=1\r\n"), Vec::<u32>::new());
+    }
+
+    #[test]
+    fn the_list_is_every_database_with_the_connections_own_marked() {
+        let listed = databases(16, 3);
+
+        assert_eq!(listed.len(), 16);
+        assert_eq!(listed[0].name, "0");
+        assert_eq!(listed[15].name, "15");
+        let own: Vec<&str> = listed
+            .iter()
+            .filter(|database| database.is_default)
+            .map(|database| database.name.as_str())
+            .collect();
+        assert_eq!(own, ["3"]);
+        assert!(listed.iter().all(|database| !database.is_system));
+    }
+
+    #[test]
+    fn a_count_past_any_managed_service_is_cut_but_keeps_the_connections_own() {
+        let listed = databases(MOST, 12_345);
+
+        assert_eq!(listed.len(), 10_001);
+        assert_eq!(listed[9_999].name, "9999");
+        assert_eq!(listed[10_000].name, "12345");
+        assert!(listed[10_000].is_default);
+        assert_eq!(databases(10_000, 0).len(), 10_000);
     }
 
     #[test]
