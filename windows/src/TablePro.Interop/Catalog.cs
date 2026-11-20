@@ -150,13 +150,13 @@ public sealed class PageResume : IDisposable
 
 public enum DatabaseLayout
 {
-    // A connection reaches one database: a file, or numbered databases of keys.
+    // A connection reaches one database, such as a file.
     OneDatabase,
 
     // The server's databases are the schemas the catalog lists, so one connection reads every one.
     AsSchemas,
 
-    // Each database holds schemas of its own; a connection's catalog describes the one it opened.
+    // Each database holds schemas, or Redis's keys, of its own; a connection's catalog describes the one it opened.
     WithSchemas,
 }
 

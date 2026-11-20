@@ -123,6 +123,11 @@ jobs:
           New-ItemProperty -Path $key -Name DumpFolder -Value $folder -PropertyType ExpandString -Force | Out-Null
           New-ItemProperty -Path $key -Name DumpType -Value 1 -PropertyType DWord -Force | Out-Null
           New-ItemProperty -Path $key -Name DumpCount -Value 4 -PropertyType DWord -Force | Out-Null
+      # After the interop tests, so the Live tests stay in the live job (windows/docs/decisions/0016-live-server-tests.md).
+      - name: Start Redis for the UI tests
+        if: matrix.name == 'x64'
+        shell: pwsh
+        run: windows/ci/live-servers.ps1 -Server Redis
       - name: UI tests
         if: matrix.app
         working-directory: windows

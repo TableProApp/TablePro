@@ -1,6 +1,7 @@
 use tablepro_core::column::{ColumnType, SqlExpression};
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError, Placeholder, SqlDialect,
+    BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError,
+    Placeholder, SqlDialect,
 };
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, TypeSyntaxError};
@@ -23,6 +24,11 @@ impl SqlDialect for RedisDialect {
 
     fn grammar(&self) -> SqlGrammar {
         SqlGrammar::Redis
+    }
+
+    // Each numbered database holds its own keys and a link reads the one it selected (core ADR 0038).
+    fn database_layout(&self) -> DatabaseLayout {
+        DatabaseLayout::WithSchemas
     }
 
     /// A key's name as one argument of a command: as it is where redis-cli
@@ -116,6 +122,11 @@ mod tests {
         assert!(dialect.parse_type("integer").is_err());
         assert!(dialect.parse_expression("1 + 1").is_err());
         assert_eq!(dialect.grammar(), SqlGrammar::Redis);
+    }
+
+    #[test]
+    fn another_numbered_database_is_a_session_of_its_own() {
+        assert_eq!(RedisDialect.database_layout(), DatabaseLayout::WithSchemas);
     }
 
     #[test]

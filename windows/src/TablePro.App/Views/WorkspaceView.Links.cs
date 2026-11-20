@@ -9,7 +9,8 @@ public sealed partial class WorkspaceView
 {
     internal DatabaseLayout? Layout => _session?.Layout;
 
-    internal string? SessionDatabase => _session?.Database;
+    // A connection saved with no database is in the one the server lists as the login's, once the button learned it.
+    internal string? OwnDatabase => _session is null ? null : _session.Database ?? _listedOwnDatabase;
 
     // The catalog's entry, so a view opens as a view; false when the connection went while the catalog was read.
     internal async Task<bool> OpenLinkedTableAsync(string? schema, string table)

@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace TablePro.Interop.Tests.Live;
 
 public sealed class RedisTests : IDisposable
@@ -71,19 +73,47 @@ public sealed class RedisTests : IDisposable
         Assert.Null(after);
     }
 
+    [Fact]
+    public async Task TheNumberedDatabasesAreListedAndAnEditorMovesBetweenThem()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var session = await ConnectAsync(cancellationToken);
+        var databases = await session.GetDatabasesAsync(cancellationToken);
+        await using var editor = await session.OpenEditorAsync("3", cancellationToken);
+        var opened = editor.Database;
+        await ExecuteAsync(editor, $"SET {_prefix}third three", cancellationToken);
+        await editor.UseDatabaseAsync("5", cancellationToken);
+        var moved = editor.Database;
+        await ExecuteAsync(editor, "SELECT 7", cancellationToken);
+        await using var third = await ConnectAsync(cancellationToken, database: "3");
+
+        Assert.Equal(DatabaseLayout.WithSchemas, session.Layout);
+        Assert.Equal(
+            Enumerable.Range(0, 16).Select(index => index.ToString(CultureInfo.InvariantCulture)),
+            databases.Select(database => database.Name));
+        Assert.Equal(["0"], databases.Where(database => database.IsDefault).Select(database => database.Name));
+        Assert.Equal("3", opened);
+        Assert.Equal("5", moved);
+        Assert.Equal("7", editor.Database);
+        Assert.Null(await ReadWindowAsync(session, "third", cancellationToken));
+        Assert.Equal((KeyKind.Text, Rows(["three"])), await ReadAsync(third, "third", cancellationToken));
+        var listedInThird = await third.GetDatabasesAsync(cancellationToken);
+        Assert.Equal(["3"], listedInThird.Where(database => database.IsDefault).Select(database => database.Name));
+    }
+
     public void Dispose()
     {
         _core.Dispose();
         Directory.Delete(_directory, recursive: true);
     }
 
-    private async Task<DatabaseSession> ConnectAsync(CancellationToken cancellationToken)
+    private async Task<DatabaseSession> ConnectAsync(CancellationToken cancellationToken, string? database = null)
     {
         var server = LiveServer.Require("REDIS");
         var saved = await _core.Library.SaveAsync(
             new SavedConnection(null, "Redis", "redis", LiveServer.Host, server.Port, "0", server.UserName, TlsSettings.Disabled),
             server.Secrets);
-        return await _core.ConnectAsync(saved.Id!.Value, cancellationToken: cancellationToken);
+        return await _core.ConnectAsync(saved.Id!.Value, database: database, cancellationToken: cancellationToken);
     }
 
     private static async Task ExecuteAsync(QueryEditor editor, string command, CancellationToken cancellationToken)
