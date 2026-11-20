@@ -11,7 +11,7 @@ use tablepro_core::statement::{GuardedStatement, Statement, StatementBuilder};
 use tablepro_core::{
     CallOptions, ConnectEnvironment, ConnectOptions, ConnectTarget, Connection, DatabaseDriver, DriverError,
     EditorSession, FileEndpoint, ForeignKeyMode, QueryResult, ResultEvent, ResultSink, RowLimit, RunOptions,
-    RunSummary, SinkFlow, UserSql, WorkspaceSettings, WriteBatch, WriteKind, WriteReport,
+    RunSummary, ServerCode, SinkFlow, UserSql, WorkspaceSettings, WriteBatch, WriteKind, WriteReport,
 };
 use tablepro_driver_sqlite::SqliteDriver;
 use tablepro_test_support::conformance::test_liveness;
@@ -65,6 +65,21 @@ pub async fn connect(endpoint: FileEndpoint, settings: WorkspaceSettings) -> Res
     SqliteDriver
         .connect(options(endpoint, settings), CancellationToken::new())
         .await
+}
+
+// SQLite 3.54.0 refuses a schema whose stored text runs past its statement's end; an older one reads the statement.
+pub fn sqlite_refuses_a_stored_tail() -> bool {
+    // SAFETY: reads a constant of the linked library.
+    unsafe { libsqlite3_sys::sqlite3_libversion_number() >= 3_054_000 }
+}
+
+pub async fn assert_refused_as_malformed(file: &TestFile) {
+    let opened = connect(file.endpoint(), writable()).await.map(|_| ());
+    assert!(
+        matches!(&opened, Err(DriverError::Server(diagnostics))
+            if matches!(diagnostics.code, Some(ServerCode::Sqlite { primary: 11, .. }))),
+        "{opened:?}"
+    );
 }
 
 /// A call bound loose enough for a loaded machine.

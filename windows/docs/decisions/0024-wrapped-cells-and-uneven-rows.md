@@ -1,4 +1,4 @@
-# 0023: Wrapped cells and rows of uneven height
+# 0024: Wrapped cells and rows of uneven height
 
 - **Status**: Accepted
 - **Date**: 2026-11-20

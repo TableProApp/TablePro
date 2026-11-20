@@ -146,6 +146,16 @@ public sealed record AppSettings
     // The package version that last started, so the first start of a newer one says it was updated.
     public string? LastLaunchedVersion { get; set; }
 
+    // The distinct local days the app was in use and the last of them, for the license ask (LicenseAsk).
+    public int UsageDays { get; set; }
+
+    public DateOnly? LastUsageDay { get; set; }
+
+    // The day the license ask last showed, and how it was answered, null until it is.
+    public DateOnly? LicenseAskDay { get; set; }
+
+    public LicenseAskAnswer? LicenseAskAnswer { get; set; }
+
     // What the chosen provider's requests take, or null while the assistant is off.
     [JsonIgnore]
     public AiSettings? Assistant => AiProvider is { } provider ? AssistantFor(provider) : null;
@@ -199,6 +209,8 @@ public sealed record AppSettings
         McpServerPort = Math.Clamp(McpServerPort, LowestMcpServerPort, ushort.MaxValue),
         UpdateChannel = UpdateChannel is { } channel && Enum.IsDefined(channel) ? channel : null,
         LastLaunchedVersion = ReleaseVersions.TryParse(LastLaunchedVersion, out var launched) ? launched.ToString() : null,
+        UsageDays = Math.Max(0, UsageDays),
+        LicenseAskAnswer = LicenseAskAnswer is { } answer && Enum.IsDefined(answer) ? answer : null,
     };
 }
 

@@ -39,7 +39,9 @@ fn script_plan_matches_sqlite3_complete() {
     for text in CORPUS {
         for end in (0..=text.len()).filter(|&end| text.is_char_boundary(end)) {
             let prefix = &text[..end];
-            let c_prefix = CString::new(prefix).unwrap();
+            // SQLite 3.54 counts a `--` comment still open at the end of the input as unfinished; a script's end
+            // ends it, as the newline does here.
+            let c_prefix = CString::new(format!("{prefix}\n")).unwrap();
             // SAFETY: c_prefix is a valid NUL-terminated string that outlives the call.
             let sqlite_complete = unsafe { libsqlite3_sys::sqlite3_complete(c_prefix.as_ptr()) } != 0;
             assert_eq!(plan_is_complete(prefix), sqlite_complete, "{prefix:?}");

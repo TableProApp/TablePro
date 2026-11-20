@@ -31,7 +31,7 @@ This amends the one-line cell of 0003. The window keeps two fetches. `tablepro_c
 ## Consequences
 
 - The one-line text of a value that holds NEL, U+2028, U+2029 or a C1 control changes: each is now one space, one byte where it was two or three. A test pins the new text (`every_line_break_form_is_one_space_on_one_line`); `text_is_cut_at_a_character_and_kept_on_one_line` and the cursor's window tests hold as they were, since their values hold LF and tab only.
-- A kept `\n` may stand for CR LF or another form, as a space may stand for a tab. A grid that copies from display text has to read such a cell whole; the Windows grid marks it lossy ([Windows 0023](../../../windows/docs/decisions/0023-wrapped-cells-and-uneven-rows.md)).
+- A kept `\n` may stand for CR LF or another form, as a space may stand for a tab. A grid that copies from display text has to read such a cell whole; the Windows grid marks it lossy ([Windows 0024](../../../windows/docs/decisions/0024-wrapped-cells-and-uneven-rows.md)).
 - A trailing break is kept in the window. A grid that does not want an empty last line drops it.
 - `window_abi.rs` gained an export, so `windows/src/TablePro.Interop/Generated/WindowMethods.g.cs` was generated again.
 - The Linux app reads its rows through the Rust API and has its own display text, so it does not call either fetch.

@@ -2,7 +2,7 @@ using TablePro.DataGrid.Model;
 
 namespace TablePro.DataGrid;
 
-// Wrapped cells and the uneven rows they make: windows/docs/decisions/0023-wrapped-cells-and-uneven-rows.md.
+// Wrapped cells and the uneven rows they make: windows/docs/decisions/0024-wrapped-cells-and-uneven-rows.md.
 public sealed partial class DataGridView
 {
     // The most lines a wrapped cell shows; text past them ends in an ellipsis.

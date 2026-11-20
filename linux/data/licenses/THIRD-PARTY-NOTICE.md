@@ -4206,12 +4206,12 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- sqlx-core 0.9.0
-- sqlx-macros-core 0.9.0
-- sqlx-macros 0.9.0
-- sqlx-mysql 0.9.0
-- sqlx-sqlite 0.9.0
-- sqlx 0.9.0
+- sqlx-core 0.9.1
+- sqlx-macros-core 0.9.1
+- sqlx-macros 0.9.1
+- sqlx-mysql 0.9.1
+- sqlx-sqlite 0.9.1
+- sqlx 0.9.1
 
 ~~~~text
 Copyright (C) SQLx Contributors
@@ -4717,7 +4717,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- libsqlite3-sys 0.37.0
+- libsqlite3-sys 0.40.0
 
 ~~~~text
 Copyright (c) 2014 The rusqlite developers
