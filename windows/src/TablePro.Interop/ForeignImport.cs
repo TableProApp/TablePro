@@ -24,7 +24,8 @@ public sealed record ForeignAppDirs(string Home, string Config, string Data)
 
 public enum ForeignPasswordSource
 {
-    // The system's own store, which another app reads only on macOS; DataGrip can keep them in a KeePass file instead.
+    // The system's own store, which another app reads only on macOS; DataGrip can keep them in a KeePass file instead,
+    // and DBX keeps there only the key to its own file.
     Keychain,
     // Its own files under a fixed key, decrypted while reading.
     AppFiles,

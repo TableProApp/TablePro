@@ -210,7 +210,7 @@ impl ForeignImporter {
             )),
             ForeignApp::BeekeeperStudio => Box::new(apps::beekeeper::Beekeeper::locate(&self.dirs)),
             ForeignApp::Navicat => Box::new(apps::navicat::Navicat::new(self.picked_file.clone())),
-            ForeignApp::Dbx => Box::new(apps::dbx::Dbx::locate(&self.dirs)),
+            ForeignApp::Dbx => Box::new(apps::dbx::Dbx::locate(&self.dirs, self.host.as_ref())),
         }
     }
 }

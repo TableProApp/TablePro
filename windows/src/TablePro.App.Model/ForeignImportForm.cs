@@ -98,6 +98,9 @@ public enum ForeignPasswordNote
     // DataGrip can keep them in a KeePass file, which the core opens with DPAPI.
     PasswordFile,
 
+    // DBX encrypts them under a key it keeps in Credential Manager, which the core reads.
+    KeyInCredentialManager,
+
     // Where Windows does not let another app read them.
     SystemStore,
 }
@@ -518,6 +521,7 @@ public sealed class ForeignImportForm : IDisposable
         {
             null or { Passwords: ForeignPasswordSource.AppFiles } => ForeignPasswordNote.DecryptedWhileReading,
             { App: ForeignApp.DataGrip } => ForeignPasswordNote.PasswordFile,
+            { App: ForeignApp.Dbx } => ForeignPasswordNote.KeyInCredentialManager,
             _ => ForeignPasswordNote.SystemStore,
         };
         var offered = source is not null && note != ForeignPasswordNote.SystemStore;

@@ -4422,6 +4422,9 @@ New fingerprint: {2}</value>
   <data name="ImportAppPasswords_PasswordFile" xml:space="preserve">
     <value>Read from the password file of {0} when it keeps one there</value>
   </data>
+  <data name="ImportAppPasswords_KeyInCredentialManager" xml:space="preserve">
+    <value>Decrypted with the key {0} keeps in Credential Manager</value>
+  </data>
   <data name="ImportAppPasswords_SystemStore" xml:space="preserve">
     <value>{0} keeps passwords in the system's store, and Windows doesn't let TablePro read it</value>
   </data>
