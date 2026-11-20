@@ -21,9 +21,12 @@
 #   --only  run the columns whose declared type contains <type>
 #   --keep  leave the tables behind for a look
 #
+# The harness compiles the Swift sources and links the package products project.yml gives the plugin targets, read
+# with xcodegen, so a shared file or product a plugin gains reaches it too. It is built before any server starts.
 # With no server listening on the engine's port, the script starts one in Docker as tablepro-corpus-<engine> and
 # leaves it running for the next run. TP_CORPUS_HOST, TP_CORPUS_PORT, TP_CORPUS_USER, TP_CORPUS_PASSWORD and
-# TP_CORPUS_DATABASE point it at another server instead and disable Docker access.
+# TP_CORPUS_DATABASE point it at another server instead and disable Docker access. The cells are written for a UTC
+# session: PostgreSQL gets it from the client, a MySQL or MariaDB server has to run with time_zone +00:00.
 # TP_CORPUS_BUILD_DIR keeps the harness between runs.
 # Exits 1 when a check fails, 3 when it cannot run.
 
@@ -50,10 +53,9 @@ PLUGINS="$ROOT/Plugins"
 CORPUS="$PLUGINS/ColumnTypeCorpus/Corpus/$ENGINE.json"
 PASSWORD_DEFAULT="TpCorpus#2026"
 
-# Per engine: plugin folder, principal class, C module, TableProCore products, link flags, image, port, user,
-# database, and the command that answers once the server takes connections.
+# Per engine: plugin folder, principal class, C module, link flags, image, port, user, database, and the command that
+# answers once the server takes connections.
 C_MODULE=""
-PRODUCTS="TableProLogRedaction"
 LINK=""
 IMAGE=""
 PORT_IN=""
@@ -65,7 +67,6 @@ READY=()
 case "$ENGINE" in
     postgresql)
         FOLDER=PostgreSQLDriverPlugin CLASS=PostgreSQLPlugin C_MODULE=CLibPQ
-        PRODUCTS="TableProCoreTypes TableProGeometry TableProKerberos TableProLogRedaction TableProPostgreSQLCore TableProSQLVocabulary TableProTLSClientIdentity"
         LINK="$ROOT/Libs/libpq.a $ROOT/Libs/libpgcommon.a $ROOT/Libs/libpgport.a -lssl.3 -lcrypto.3 -lz -framework GSS -lcom_err"
         IMAGE=postgres:17-alpine PORT_IN=5432 PORT=15467 USER_DEFAULT=postgres DATABASE_DEFAULT=postgres
         DOCKER_ENV=(-e "POSTGRES_PASSWORD=$PASSWORD_DEFAULT")
@@ -73,7 +74,6 @@ case "$ENGINE" in
         ;;
     mysql | mariadb)
         FOLDER=MySQLDriverPlugin CLASS=MySQLPlugin C_MODULE=CMariaDB
-        PRODUCTS="TableProCoreTypes TableProGeometry TableProKerberos TableProLogRedaction TableProMySQLCore TableProSQLQuoting TableProSQLVocabulary"
         LINK="$ROOT/Libs/libmariadb.a -lssl.3 -lcrypto.3 -liconv -lz"
         USER_DEFAULT=root DATABASE_DEFAULT=tp_corpus PORT_IN=3306
         if [ "$ENGINE" = mysql ]; then
@@ -88,18 +88,16 @@ case "$ENGINE" in
         ;;
     clickhouse)
         FOLDER=ClickHouseDriverPlugin CLASS=ClickHousePlugin
-        PRODUCTS="TableProNumberFormatting TableProTLSClientIdentity"
         IMAGE=clickhouse/clickhouse-server:25.8 PORT_IN=8123 PORT=18123 USER_DEFAULT=default DATABASE_DEFAULT=tp_corpus
         DOCKER_ENV=(-e "CLICKHOUSE_PASSWORD=$PASSWORD_DEFAULT" -e CLICKHOUSE_DB=tp_corpus)
         READY=(clickhouse-client --password "$PASSWORD_DEFAULT" --query "SELECT 1")
         ;;
     duckdb)
-        FOLDER=DuckDBDriverPlugin CLASS=DuckDBPlugin C_MODULE=CDuckDB PRODUCTS="TableProSQLVocabulary"
+        FOLDER=DuckDBDriverPlugin CLASS=DuckDBPlugin C_MODULE=CDuckDB
         LINK="-Xlinker -force_load -Xlinker $ROOT/Libs/libduckdb.a -lc++"
         ;;
     mssql)
         FOLDER=MSSQLDriverPlugin CLASS=MSSQLPlugin C_MODULE=CFreeTDS
-        PRODUCTS="TableProCoreTypes TableProKerberos TableProLogRedaction TableProMSSQLCore TableProSQLQuoting TableProSQLVocabulary"
         LINK="$ROOT/Libs/libsybdb.a -lssl.3 -lcrypto.3 -liconv -framework GSS -lcom_err"
         # SQL Server proper rather than Azure SQL Edge, which has no CLR types (geometry, geography, hierarchyid).
         IMAGE=mcr.microsoft.com/mssql/server:2022-latest PORT_IN=1433 PORT=14367 USER_DEFAULT=sa DATABASE_DEFAULT=tp_corpus
@@ -116,7 +114,7 @@ case "$ENGINE" in
         FIELDS="oracleServiceName=FREEPDB1"
         ;;
     sqlite)
-        FOLDER=SQLiteDriverPlugin CLASS=SQLitePlugin PRODUCTS="CSQLite TableProSQLiteCore TableProWireIO"
+        FOLDER=SQLiteDriverPlugin CLASS=SQLitePlugin
         LINK="$ROOT/Libs/libsqlite3_vendored.a"
         ;;
     *)
@@ -127,6 +125,8 @@ esac
 
 [ -f "$CORPUS" ] || { echo "no corpus at $CORPUS" >&2; exit 3; }
 command -v swift > /dev/null || { echo "swift not found" >&2; exit 3; }
+command -v xcodegen > /dev/null || { echo "xcodegen not found (brew install xcodegen)" >&2; exit 3; }
+command -v python3 > /dev/null || { echo "python3 not found" >&2; exit 3; }
 for library in $LINK; do
     case "$library" in
         /*) [ -f "$library" ] || { echo "not found: $library (run scripts/download-libs.sh)" >&2; exit 3; } ;;
@@ -136,34 +136,12 @@ done
 HOST="${TP_CORPUS_HOST:-127.0.0.1}"
 PORT="${TP_CORPUS_PORT:-${PORT:-0}}"
 USER_NAME="${TP_CORPUS_USER:-$USER_DEFAULT}"
-PASSWORD="${TP_CORPUS_PASSWORD:-$PASSWORD_DEFAULT}"
+PASSWORD="${TP_CORPUS_PASSWORD-$PASSWORD_DEFAULT}"
 DATABASE="${TP_CORPUS_DATABASE:-$DATABASE_DEFAULT}"
 CONTAINER="tablepro-corpus-$ENGINE"
 EXTERNAL_SERVER=0
 if [ -n "${TP_CORPUS_HOST+x}${TP_CORPUS_PORT+x}${TP_CORPUS_USER+x}${TP_CORPUS_PASSWORD+x}${TP_CORPUS_DATABASE+x}" ]; then
     EXTERNAL_SERVER=1
-fi
-
-if [ -n "$IMAGE" ] && ! nc -z "$HOST" "$PORT" > /dev/null 2>&1; then
-    if [ "$EXTERNAL_SERVER" -eq 1 ]; then
-        echo "no server at $HOST:$PORT; explicit connection settings disable Docker startup" >&2
-        exit 3
-    fi
-    command -v docker > /dev/null || { echo "no server at $HOST:$PORT and no docker to start one" >&2; exit 3; }
-    if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
-        echo "starting container $CONTAINER"
-        docker start "$CONTAINER" > /dev/null || exit 3
-    else
-        echo "starting $IMAGE as $CONTAINER on $HOST:$PORT"
-        docker run -d --name "$CONTAINER" ${DOCKER_ENV[@]+"${DOCKER_ENV[@]}"} -p "$HOST:$PORT:$PORT_IN" "$IMAGE" \
-            > /dev/null || exit 3
-    fi
-fi
-if [ "$EXTERNAL_SERVER" -eq 0 ] && [ ${#READY[@]} -gt 0 ] && docker ps --format '{{.Names}}' 2> /dev/null | grep -qx "$CONTAINER"; then
-    for _ in $(seq 1 120); do
-        docker exec "$CONTAINER" "${READY[@]}" > /dev/null 2>&1 && break
-        sleep 2
-    done
 fi
 
 WORK="${TP_CORPUS_BUILD_DIR:-}"
@@ -175,38 +153,105 @@ SOURCES="$WORK/Sources/Probe"
 rm -rf "$SOURCES" "$WORK/CModule"
 mkdir -p "$SOURCES"
 
-link_sources() {
-    local prefix="$1" directory="$2" source
-    while IFS= read -r source; do
-        ln -s "$source" "$SOURCES/${prefix}_$(basename "$source")"
-    done < <(find "$directory" -name '*.swift' -not -path '*/Tests/*')
-}
-link_sources driver "$PLUGINS/$FOLDER"
-link_sources corpus "$PLUGINS/ColumnTypeCorpus"
-link_sources csv "$PLUGINS/CSVExportPlugin"
-link_sources json "$PLUGINS/JSONExportPlugin"
-link_sources sql "$PLUGINS/SQLExportPlugin"
-[ "$FOLDER" = SQLiteDriverPlugin ] && link_sources spill "$PLUGINS/SharedSpill"
-for shared in PluginConnectTimeout PluginExportOutputBuffer PluginExportSpelling PluginHexText PluginNameSpellings \
-    PluginQueryTimeout PluginURLSessionTaskBox; do
-    [ -f "$PLUGINS/Shared/$shared.swift" ] && ln -s "$PLUGINS/Shared/$shared.swift" "$SOURCES/shared_$shared.swift"
+# The templated spec gives each target's sources with its templates applied; the plain one keeps the product names
+# of a package dependency, which the templated dump leaves out.
+for dump in json:spec parsed-json:targets; do
+    if ! xcodegen dump --spec "$ROOT/project.yml" --type "${dump%%:*}" --file "$WORK/${dump#*:}.json" > /dev/null 2>&1; then
+        echo "xcodegen cannot read $ROOT/project.yml" >&2
+        exit 3
+    fi
 done
+python3 -I - "$WORK/spec.json" "$WORK/targets.json" "$ROOT" "$FOLDER" CSVExportPlugin JSONExportPlugin SQLExportPlugin \
+    > "$WORK/inputs.txt" << 'PYTHON' || exit 3
+import json
+import os
+import sys
 
+spec_path, targets_path, root, *folders = sys.argv[1:]
+spec = json.load(open(spec_path))
+templated = json.load(open(targets_path))["targets"]
+templates = spec.get("targetTemplates", {})
+packages = spec.get("packages", {})
+
+
+def target_named_for(folder):
+    names = [
+        name for name, target in spec["targets"].items()
+        if "DriverPlugin" in (target.get("templates") or [])
+        and (target.get("templateAttributes") or {}).get("folder") == folder
+    ]
+    if len(names) != 1:
+        sys.exit(f"project.yml has {len(names)} plugin targets for Plugins/{folder}")
+    return names[0]
+
+
+def dependencies(entry, seen):
+    found = list(entry.get("dependencies") or [])
+    for name in entry.get("templates") or []:
+        if name not in seen:
+            seen.add(name)
+            found += dependencies(templates.get(name, {}), seen)
+    return found
+
+
+sources, products = [], []
+for folder in folders:
+    name = target_named_for(folder)
+    for source in templated[name].get("sources") or []:
+        path = os.path.join(root, source["path"])
+        if os.path.isdir(path):
+            for directory, subdirectories, files in os.walk(path):
+                subdirectories[:] = sorted(d for d in subdirectories if d != "Tests")
+                sources += [os.path.join(directory, f) for f in sorted(files) if f.endswith(".swift")]
+        elif path.endswith(".swift"):
+            sources.append(path)
+    for dependency in dependencies(spec["targets"][name], set()):
+        package = dependency.get("package")
+        if package is None:
+            continue
+        location = (packages.get(package) or {}).get("path")
+        if location is None:
+            sys.exit(f"{name} links package {package}, which is not a local path")
+        for product in dependency.get("products") or [dependency.get("product")]:
+            products.append((os.path.join(root, location), product))
+
+for path in dict.fromkeys(sources):
+    print(f"source\t{path}")
+for location, product in dict.fromkeys(products):
+    print(f"product\t{location}\t{product}")
+PYTHON
+
+link_source() {
+    local relative="${1#"$PLUGINS"/}"
+    ln -s "$1" "$SOURCES/${relative//\//_}"
+}
+while IFS= read -r source; do
+    link_source "$source"
+done < <(find "$PLUGINS/ColumnTypeCorpus" -name '*.swift')
+while IFS=$'\t' read -r kind first second; do
+    [ "$kind" = source ] && link_source "$first"
+done < "$WORK/inputs.txt"
+
+# What the runner and the Probe main below import on their own.
 dependencies='.product(name: "TableProPluginKit", package: "TableProCore"),
-                .product(name: "TableProGzip", package: "TableProCore"),
-                .product(name: "TableProSQLGrammar", package: "TableProCore"),
-                .product(name: "TableProProcess", package: "TableProCore"),'
-for product in $PRODUCTS; do
-    dependencies="$dependencies
-                .product(name: \"$product\", package: \"TableProCore\"),"
-done
+                .product(name: "TableProSQLGrammar", package: "TableProCore"),'
 packages=".package(path: \"$ROOT/Packages/TableProCore\"),"
-if [ "$ENGINE" = oracle ]; then
-    packages="$packages
-        .package(path: \"$ROOT/Packages/TableProOracle\"),"
-    dependencies="$dependencies
-                .product(name: \"TableProOracleCore\", package: \"TableProOracle\"),"
-fi
+while IFS=$'\t' read -r kind first second; do
+    [ "$kind" = product ] || continue
+    package="$(basename "$first")"
+    case "$dependencies" in
+        *"\"$second\", package: \"$package\""*) ;;
+        *) dependencies="$dependencies
+                .product(name: \"$second\", package: \"$package\"),"
+            ;;
+    esac
+    case "$packages" in
+        *"\"$first\""*) ;;
+        *) packages="$packages
+        .package(path: \"$first\"),"
+            ;;
+    esac
+done < "$WORK/inputs.txt"
 system_target=""
 swift_flags=""
 if [ -n "$C_MODULE" ]; then
@@ -334,6 +379,34 @@ enum Probe {
 }
 SWIFT
 
+echo "building the $ENGINE harness (the first build takes a few minutes)"
+(cd "$WORK" && swift build -c debug > "$WORK/build.log" 2>&1) || {
+    grep -E "error:" "$WORK/build.log" | head -30 >&2
+    exit 3
+}
+
+if [ -n "$IMAGE" ] && ! nc -z "$HOST" "$PORT" > /dev/null 2>&1; then
+    if [ "$EXTERNAL_SERVER" -eq 1 ]; then
+        echo "no server at $HOST:$PORT; explicit connection settings disable Docker startup" >&2
+        exit 3
+    fi
+    command -v docker > /dev/null || { echo "no server at $HOST:$PORT and no docker to start one" >&2; exit 3; }
+    if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+        echo "starting container $CONTAINER"
+        docker start "$CONTAINER" > /dev/null || exit 3
+    else
+        echo "starting $IMAGE as $CONTAINER on $HOST:$PORT"
+        docker run -d --name "$CONTAINER" ${DOCKER_ENV[@]+"${DOCKER_ENV[@]}"} -p "$HOST:$PORT:$PORT_IN" "$IMAGE" \
+            > /dev/null || exit 3
+    fi
+fi
+if [ "$EXTERNAL_SERVER" -eq 0 ] && [ ${#READY[@]} -gt 0 ] && docker ps --format '{{.Names}}' 2> /dev/null | grep -qx "$CONTAINER"; then
+    for _ in $(seq 1 120); do
+        docker exec "$CONTAINER" "${READY[@]}" > /dev/null 2>&1 && break
+        sleep 2
+    done
+fi
+
 # A database file the caller names only gets the runner's tables; a scratch one is made fresh, and outlives the run
 # when --keep asks for the tables.
 case "$ENGINE" in
@@ -350,11 +423,7 @@ case "$ENGINE" in
         ;;
 esac
 
-echo "building the $ENGINE harness (the first build takes a few minutes)"
-(cd "$WORK" && swift build -c debug > "$WORK/build.log" 2>&1) || {
-    grep -E "error:" "$WORK/build.log" | head -30 >&2
-    exit 3
-}
 # A session takes the client's zone for TIMESTAMP WITH LOCAL TIME ZONE and the like, so the cells read the same on
-# every Mac.
-TZ=UTC "$WORK/.build/debug/Probe" "$CORPUS" "$HOST" "$PORT" "$USER_NAME" "$PASSWORD" "$DATABASE" "$FIELDS" "$ONLY" "$KEEP"
+# every Mac. libpq sends PGTZ as the session's TimeZone, over whatever the server defaults to.
+TZ=UTC PGTZ=UTC "$WORK/.build/debug/Probe" "$CORPUS" "$HOST" "$PORT" "$USER_NAME" "$PASSWORD" "$DATABASE" "$FIELDS" \
+    "$ONLY" "$KEEP"
