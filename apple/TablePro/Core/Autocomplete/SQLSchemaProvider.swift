@@ -157,7 +157,7 @@ actor SQLSchemaProvider {
 
         let task = Task<Void, Never> {
             do {
-                let fetched = try await driver.fetchTables()
+                let fetched = try await driver.fetchTables(schema: nil)
                 await self.setLoadedTables(fetched)
             } catch {
                 Self.logger.error(
@@ -217,9 +217,7 @@ actor SQLSchemaProvider {
             do {
                 if let source { return try await source.fetchColumns(tableName, schema) }
                 guard let driver else { return nil }
-                return schema != nil
-                    ? try await driver.fetchColumns(table: tableName, schema: schema)
-                    : try await driver.fetchColumns(table: tableName)
+                return try await driver.fetchColumns(table: tableName, schema: schema)
             } catch {
                 Self.logger.error(
                     "Column fetch failed for autocomplete table=\(tableName) error=\(error.publicLogShape, privacy: .public)"
@@ -500,7 +498,7 @@ actor SQLSchemaProvider {
                 if let source {
                     allColumns = try await source.fetchAllColumns()
                 } else if let driver {
-                    allColumns = try await driver.fetchAllColumns()
+                    allColumns = try await driver.fetchAllColumns(schema: nil)
                 } else {
                     return
                 }

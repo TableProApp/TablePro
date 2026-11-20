@@ -593,7 +593,7 @@ struct TableQueryBuilderRefusedConditionTests {
         let raw = TableFilter.rawCondition("1=1);WITH doomed AS (SELECT * FROM users) DELETE FROM doomed;--")
 
         #expect(try await adapter.fetchFilteredRowCount(table: "users", filters: [raw], logicMode: .and) == nil)
-        #expect(try await adapter.fetchExactRowCount(table: "users", filters: [raw], logicMode: .and) == nil)
+        #expect(try await adapter.fetchExactRowCount(table: "users", schema: nil, filters: [raw], logicMode: .and) == nil)
         #expect(!driver.wasCounted)
     }
 }

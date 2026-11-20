@@ -143,7 +143,7 @@ struct TableDDLComposerTests {
         stub.indexDDL["v"] = ["CREATE UNIQUE CLUSTERED INDEX [IX_v] ON [dbo].[v] ([id])"]
         let adapter = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .mssql), pluginDriver: stub)
 
-        let ddl = try await TableDDLComposer.fetchDDL(for: "v", using: adapter, includesDependencies: true)
+        let ddl = try await TableDDLComposer.fetchDDL(for: "v", using: adapter, includesDependencies: true, schema: nil)
 
         #expect(ddl == """
             CREATE VIEW dbo.v WITH SCHEMABINDING AS SELECT id FROM dbo.t;

@@ -107,13 +107,12 @@ final class CatalogReadCountingDriver: DatabaseDriver, @unchecked Sendable {
         return schemasToReturn
     }
 
-    func fetchTables() async throws -> [TableInfo] {
-        record("tables")
-        return []
-    }
-
+    // A read of the connection's own schema is recorded without a colon, so `perSchemaReads` skips it.
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let schema = schema ?? ""
+        guard let schema else {
+            record("tables")
+            return []
+        }
         record("tables:\(schema)")
         if let tablesError { throw tablesError }
         let snapshot = tablesBySchema[schema] ?? []
@@ -159,14 +158,13 @@ final class CatalogReadCountingDriver: DatabaseDriver, @unchecked Sendable {
         return []
     }
 
-    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
-    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
-    func fetchTableDDL(table: String) async throws -> String { "" }
-    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
 
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         TableMetadata(
             tableName: tableName, dataSize: nil, indexSize: nil, totalSize: nil,
             avgRowLength: nil, rowCount: nil, comment: nil, engine: nil,
@@ -320,8 +318,8 @@ struct SchemaGroupedRefreshCostTests {
         await refreshService(driver, connection: connection, browsing: "s5")
             .refreshForSchemaSwitch(connectionId: connection.id)
 
-        #expect(driver.reads.contains("tables"))
-        #expect(driver.perSchemaReads.isEmpty)
+        #expect(driver.reads.contains("tables:s5"))
+        #expect(driver.perSchemaReads.allSatisfy { $0.hasSuffix(":s5") })
         #expect(tree.isTablesCurrent(connectionId: connection.id, database: connection.database, schema: "s3"))
         await disconnect(connection)
     }
@@ -373,7 +371,7 @@ struct SchemaGroupedRefreshCostTests {
         #expect(driver.reads.isEmpty)
 
         await fixture.coordinator.refreshTables()
-        #expect(driver.reads.contains("tables"))
+        #expect(driver.reads.contains { $0.hasPrefix("tables") })
     }
 
     private static func services(schemaService: SchemaService, schemaRefreshService: SchemaRefreshService) -> AppServices {

@@ -102,10 +102,11 @@ enum TriggerEditSource {
     static func resolve(
         _ trigger: TriggerInfo,
         table: String,
+        schema: String?,
         databaseType: DatabaseType,
         on driver: any DatabaseDriver
     ) async throws -> String {
-        if let editable = try? await driver.fetchTriggerDefinition(name: trigger.name, table: table), !editable.isEmpty {
+        if let editable = try? await driver.fetchTriggerDefinition(name: trigger.name, table: table, schema: schema), !editable.isEmpty {
             return editable
         }
         do {
@@ -236,7 +237,7 @@ struct TriggerDetailView: View {
         let tableName = tableName
         Task {
             let generated = try? await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                driver.createTriggerTemplate(table: tableName)
+                driver.createTriggerTemplate(table: tableName, schema: scope.schema)
             }
             let template = (generated ?? nil)
                 ?? "CREATE TRIGGER trigger_name\nAFTER INSERT ON \(tableName)\nBEGIN\nEND;"
@@ -251,7 +252,9 @@ struct TriggerDetailView: View {
             let databaseType = connection.type
             do {
                 let source = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                    try await TriggerEditSource.resolve(trigger, table: tableName, databaseType: databaseType, on: driver)
+                    try await TriggerEditSource.resolve(
+                        trigger, table: tableName, schema: scope.schema, databaseType: databaseType, on: driver
+                    )
                 }
                 editorSheet = TriggerEditorSheetItem(
                     mode: .edit(originalName: trigger.name, originalDefinition: source),

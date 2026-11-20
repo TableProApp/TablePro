@@ -314,10 +314,11 @@ struct TableTransferSheet: View {
             .filter { !$0.safeModeLevel.blocksAllWrites }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         do {
+            let scope = sourceScope
             let tables = try await DatabaseManager.shared.withMetadataDriver(
-                scope: sourceScope, workload: .bulk
+                scope: scope, workload: .bulk
             ) { driver in
-                try await driver.fetchTables()
+                try await driver.fetchTables(schema: scope.schema)
             }
             sourceTables = tables.filter { $0.type != .sequence }.map { table in
                 ExportObjectItem(
@@ -379,18 +380,18 @@ struct TableTransferSheet: View {
         defer { isMatching = false }
 
         for table in tables where sourceColumns[table] == nil {
-            sourceColumns[table] = await columns(
-                of: table, on: sourceScope, schema: nil)
+            sourceColumns[table] = await columns(of: table, on: sourceScope)
         }
         guard let destinationScope else { return }
         for table in tables where destinationColumns[table] == nil {
-            let found = await columns(of: table, on: destinationScope, schema: nil)
+            let found = await columns(of: table, on: destinationScope)
             destinationColumns[table] = found.isEmpty ? nil : found
         }
     }
 
     @MainActor
-    private func columns(of table: String, on scope: DatabaseScope, schema: String?) async -> [String] {
+    private func columns(of table: String, on scope: DatabaseScope) async -> [String] {
+        let schema = scope.schema
         do {
             return try await DatabaseManager.shared.withMetadataDriver(
                 scope: scope, workload: .interactive

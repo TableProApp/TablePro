@@ -214,8 +214,8 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         )
     }
 
-    /// Holds the next `fetchTables()` after it has read `tablesToReturn`, the way a real fetch has
-    /// already read the server when it stalls on the wire.
+    // Holds the next `fetchTables(schema: nil)` after it has read `tablesToReturn`, the way a real fetch has
+    // already read the server when it stalls on the wire.
     var pausesNextFetchTables = false
     var onFetchTablesPaused: (@Sendable () -> Void)?
     private var fetchTablesGate: CheckedContinuation<Void, Never>?
@@ -223,22 +223,6 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     func resumeFetchTables() {
         fetchTablesGate?.resume()
         fetchTablesGate = nil
-    }
-
-    func fetchTables() async throws -> [TableInfo] {
-        fetchTablesCallCount += 1
-        if let fetchTablesError {
-            throw fetchTablesError
-        }
-        let snapshot = tablesToReturn
-        if pausesNextFetchTables {
-            pausesNextFetchTables = false
-            await withCheckedContinuation { continuation in
-                fetchTablesGate = continuation
-                onFetchTablesPaused?()
-            }
-        }
-        return snapshot
     }
 
     /// Holds the next one-schema `fetchTables(schema:)` after it has read its rows.
@@ -251,12 +235,24 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         schemaTablesGate = nil
     }
 
+    // `fetchScopedTablesCallCount` counts every read, `fetchTablesCallCount` only those that name no schema.
     func fetchTables(schema: String?) async throws -> [TableInfo] {
         fetchScopedTablesCallCount += 1
+        if schema == nil { fetchTablesCallCount += 1 }
         if let fetchTablesError {
             throw fetchTablesError
         }
-        guard let schema else { return tablesToReturn }
+        guard let schema else {
+            let snapshot = tablesToReturn
+            if pausesNextFetchTables {
+                pausesNextFetchTables = false
+                await withCheckedContinuation { continuation in
+                    fetchTablesGate = continuation
+                    onFetchTablesPaused?()
+                }
+            }
+            return snapshot
+        }
         fetchSchemaTablesCalls.append(schema)
         if let error = schemaTablesErrors[schema] {
             throw error
@@ -316,7 +312,7 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
 
     var fetchColumnsError: Error?
 
-    func fetchColumns(table: String) async throws -> [ColumnInfo] {
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         fetchColumnsCallCount += 1
         fetchColumnsCalls.append(table)
         await fetchColumnsGate?.wait()
@@ -326,7 +322,7 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
 
     var fetchAllColumnsError: Error?
 
-    func fetchAllColumns() async throws -> [CatalogName: [ColumnInfo]] {
+    func fetchAllColumns(schema: String?) async throws -> [CatalogName: [ColumnInfo]] {
         fetchAllColumnsCallCount += 1
         if let fetchAllColumnsError {
             throw fetchAllColumnsError
@@ -339,9 +335,8 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var bulkColumnReadIsComplete = false
     var providesBulkColumnFetch: Bool { bulkColumnReadIsComplete }
 
-    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
 
     var bulkForeignKeyFetch = false
     var providesBulkForeignKeyFetch: Bool { bulkForeignKeyFetch }
@@ -361,8 +356,8 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         return concurrentRefreshAvailabilityToReturn
     }
 
-    func fetchTableDDL(table: String) async throws -> String { "" }
-    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
 
     var tableCommentToReturn: String?
     var fetchTableMetadataError: Error?
@@ -378,7 +373,7 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         fetchTableMetadataGate = nil
     }
 
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         fetchTableMetadataCalls.append(tableName)
         if let fetchTableMetadataError {
             throw fetchTableMetadataError

@@ -748,7 +748,7 @@ struct RowImportSheet: View {
         }
         do {
             databaseObjects = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                try await driver.fetchTables()
+                try await driver.fetchTables(schema: scope.schema)
             }
             catalogNameKeys = NewTableNaming.comparisonKeys(for: databaseObjects.map(\.name))
             tableListError = nil
@@ -845,7 +845,10 @@ struct RowImportSheet: View {
         loadError = nil
         do {
             let (columns, indexes) = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                (try await driver.fetchColumns(table: table), try? await driver.fetchIndexes(table: table))
+                (
+                    try await driver.fetchColumns(table: table, schema: scope.schema),
+                    try? await driver.fetchIndexes(table: table, schema: scope.schema)
+                )
             }
             guard !Task.isCancelled else { return }
             if indexes == nil {

@@ -88,7 +88,7 @@ struct PluginDriverAdapterTwinReadTests {
     func twinColumnsAreReadAlone() async throws {
         let driver = TwinCatalogDriver()
 
-        let columns = try await Self.adapter(driver).fetchAllColumns()
+        let columns = try await Self.adapter(driver).fetchAllColumns(schema: nil)
 
         #expect(columns.count == 3)
         #expect(columns[CatalogName(TwinNames.composed)]?.map(\.name) == [TwinCatalogDriver.column(of: TwinNames.composed)])
@@ -101,15 +101,15 @@ struct PluginDriverAdapterTwinReadTests {
         let driver = TwinCatalogDriver()
         driver.unreadable = TwinNames.decomposed
 
-        await #expect(throws: URLError.self) { try await Self.adapter(driver).fetchAllColumns() }
+        await #expect(throws: URLError.self) { try await Self.adapter(driver).fetchAllColumns(schema: nil) }
     }
 
     @Test("Without twins the bulk read stays one read")
     func plainSchemaStaysOneRead() async throws {
         let driver = TwinCatalogDriver(names: ["orders", "customers"])
 
-        let columns = try await Self.adapter(driver).fetchAllColumns()
-        let keys = try await Self.adapter(driver).fetchAllForeignKeys()
+        let columns = try await Self.adapter(driver).fetchAllColumns(schema: nil)
+        let keys = try await Self.adapter(driver).fetchAllForeignKeys(schema: nil)
 
         #expect(columns.count == 2)
         #expect(keys.isEmpty)
@@ -120,7 +120,7 @@ struct PluginDriverAdapterTwinReadTests {
     func twinForeignKeysAreReadAlone() async throws {
         let driver = TwinCatalogDriver()
 
-        let keys = try await Self.adapter(driver).fetchAllForeignKeys()
+        let keys = try await Self.adapter(driver).fetchAllForeignKeys(schema: nil)
 
         #expect(Array(keys.keys) == [CatalogName(TwinNames.decomposed)])
         #expect(keys[CatalogName(TwinNames.composed)] == nil)

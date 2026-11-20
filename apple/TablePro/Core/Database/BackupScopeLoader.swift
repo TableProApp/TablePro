@@ -80,7 +80,7 @@ enum BackupScopeLoader {
                 let tables = try await DatabaseManager.shared.withMetadataDriver(
                     scope: scope, workload: .bulk
                 ) { driver in
-                    try await driver.fetchTables()
+                    try await driver.fetchTables(schema: nil)
                 }
                 return tables.filter(\.type.isBackupSelectable).map {
                     NativeDumpObject(name: $0.name, isPartitionedParent: $0.type == .partitionedTable)

@@ -67,12 +67,7 @@ struct ExportDriverMetadataReader: ExportMetadataReading {
     }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        try await withDriver { driver in
-            if let schema {
-                return try await driver.fetchTables(schema: schema)
-            }
-            return try await driver.fetchTables()
-        }
+        try await withDriver { try await $0.fetchTables(schema: schema) }
     }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? {

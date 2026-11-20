@@ -227,13 +227,14 @@ extension MainContentCoordinator {
     func editViewDefinition(_ ref: DatabaseTreeTableRef) {
         guard !ref.isInAttachedDatabase(of: connection.type), let target = objectTarget(for: ref) else { return }
         let viewName = ref.table.name
+        let schema = target.schema
         Task {
             let lineComment = self.services.pluginManager.editorLanguage(for: self.connection.type).lineCommentMarker
             let query: String
             do {
                 let read = try await DatabaseManager.shared.withMetadataDriver(scope: target.scope) { driver in
                     do {
-                        return ViewDefinitionRead.definition(try await driver.fetchViewDefinition(view: viewName))
+                        return ViewDefinitionRead.definition(try await driver.fetchViewDefinition(view: viewName, schema: schema))
                     } catch {
                         return ViewDefinitionRead.unreadable(
                             error, template: driver.editViewFallbackTemplate(viewName: viewName)

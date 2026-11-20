@@ -46,7 +46,12 @@ private final class RefreshMockDriver: DatabaseDriver, @unchecked Sendable {
         QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
     }
 
-    func fetchTables() async throws -> [TableInfo] {
+    // A schema with no entry in `schemaTablesToReturn` is the scope's own, which the browsed list answers.
+    func fetchTables(schema: String?) async throws -> [TableInfo] {
+        if let schema, let listed = schemaTablesToReturn[schema] {
+            if let schemaTablesError { throw schemaTablesError }
+            return listed
+        }
         tablesCallCount += 1
         if pausesFetchTables {
             await withCheckedContinuation { continuation in
@@ -58,20 +63,13 @@ private final class RefreshMockDriver: DatabaseDriver, @unchecked Sendable {
         return tablesToReturn
     }
 
-    func fetchTables(schema: String?) async throws -> [TableInfo] {
-        guard let schema else { return try await fetchTables() }
-        if let schemaTablesError { throw schemaTablesError }
-        return schemaTablesToReturn[schema] ?? []
-    }
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
 
-    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
-    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
-    func fetchTableDDL(table: String) async throws -> String { "" }
-    func fetchViewDefinition(view: String) async throws -> String { "" }
-
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         TableMetadata(
             tableName: tableName, dataSize: nil, indexSize: nil, totalSize: nil,
             avgRowLength: nil, rowCount: nil, comment: nil, engine: nil,
