@@ -114,8 +114,8 @@ internal sealed class Updater
         });
     }
 
-    // ForceTargetAppShutdown closes the app through Restart Manager, which writes the session and starts the new
-    // version (AppRestart); a call that returns without that leaves the new version for the next start.
+    // ForceTargetAppShutdown ends the process through Restart Manager, which starts the new version (AppRestart); a
+    // call that returns without that leaves the new version for the next start.
     public async Task InstallAsync()
     {
         if (State is not UpdateState.Available available || _offered is not { } file)

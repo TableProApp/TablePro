@@ -37,9 +37,9 @@ public sealed partial class ShellTests
             }
 
             // A runner cannot install from an App Installer file (ADR 0020), so the check reads the release channel's file.
-            var card = app.Find("UpdateCard");
+            var updateCard = app.Find("UpdateCard");
             var checkedLine = Retry.WhileNull(
-                () => card.FindAllDescendants().Select(element => AppSession.TextOf(element)).FirstOrDefault(text =>
+                () => updateCard.FindAllDescendants().Select(element => AppSession.TextOf(element)).FirstOrDefault(text =>
                     text.StartsWith("Last checked: ", StringComparison.Ordinal)
                     || text.StartsWith("Couldn't check for updates: Response status code", StringComparison.Ordinal)
                     || text.StartsWith("Couldn't check for updates: the update file", StringComparison.Ordinal)),
