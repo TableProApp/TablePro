@@ -68,10 +68,15 @@ hex() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
 
 WORK="$(mktemp -d)"
 CREATED=0
+# The server's general log settings as found, restored on exit when --count changed them.
+LOG_SETTINGS=""
 mariadb_run() {
     MYSQL_PWD="${PROBE_PASSWORD:-}" mariadb --no-defaults -h "$HOST" -P "$PORT" -u "$USER_NAME" -N -B "$@"
 }
 cleanup() {
+    if [[ -n "$LOG_SETTINGS" ]]; then
+        mariadb_run -e "$LOG_SETTINGS" > /dev/null 2>&1 || true
+    fi
     if [[ $CREATED -eq 1 ]]; then
         mariadb_run -e "DROP DATABASE IF EXISTS $DATABASE" > /dev/null 2>&1 || true
     fi
@@ -251,11 +256,14 @@ SCHEMA=""
 [[ $ENGINE == mariadb ]] && SCHEMA="$DATABASE"
 
 if [[ $MODE == count ]]; then
+    LOG_SETTINGS="$(mariadb_run -e "SELECT CONCAT('SET GLOBAL general_log = 0; SET GLOBAL log_output = ', QUOTE(@@GLOBAL.log_output),
+        '; SET GLOBAL general_log_file = ', QUOTE(@@GLOBAL.general_log_file),
+        '; SET GLOBAL general_log = ', @@GLOBAL.general_log)")"
     mariadb_run -e "SET GLOBAL log_output = 'FILE'; SET GLOBAL general_log_file = '$WORK/general.log';
         SET GLOBAL general_log = 1"
     PROBE_PASSWORD="${PROBE_PASSWORD:-}" "$PROBE" "$TYPE_ID" "${CONNECT[@]}" "$SCHEMA" "$WORK" count "all=*" || exit 2
     mariadb_run -e "SET GLOBAL general_log = 0"
-    echo "statements the 50-table export sent: $(grep -E $'\tQuery\t' "$WORK/general.log" | grep -vc 'general_log')"
+    echo "statements the 50-table export sent: $(grep -E $'[0-9]+ Query\t' "$WORK/general.log" | grep -vc 'general_log')"
     exit 0
 fi
 
