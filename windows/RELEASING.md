@@ -60,7 +60,7 @@ The maintainer does these once, in this order: a tag runs the workflow file at t
    - Installs the bundle on Windows Server 2022 (x64, build 20348, the oldest Windows a hosted runner has) and Windows 11 (Arm64), and runs `TheInstalledPackageStartsAndKeepsItsFilesInLocalState` from the UI tests on each, in light and dark.
    - For a release, writes the winget manifest and runs `winget validate` on it.
    - Publishes the GitHub release with the bundle, the App Installer file and `SHA256SUMS`, a pre-release for a beta, which a reviewer approves. The repository's latest release stays the macOS one.
-   - Writes the channel files into a copy of `gh-pages` in a job with no write access, and the GitHub release job pushes them; Pages deploys them, so installs on that channel find the update.
+   - Tries the channel files on a copy of `gh-pages` in a job with no write access, then the GitHub release job moves them on `gh-pages` itself, one release at a time, and Pages deploys them, so installs on that channel find the update.
    - For a release, opens the winget-pkgs pull request with wingetcreate, which a reviewer approves.
 4. **Afterwards**: check that `https://updates.tablepro.app/windows/TablePro.appinstaller` (or `TablePro-Beta.appinstaller`) names the new version, and watch the winget-pkgs pull request. Its bots validate and install the package, and a label such as `Needs-Author-Feedback` waits for an answer.
 
