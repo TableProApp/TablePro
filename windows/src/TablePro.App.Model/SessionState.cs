@@ -32,6 +32,10 @@ public sealed record SessionTab
 
     public long? Offset { get; set; }
 
+    // Whether a table or query tab's grid wraps its cells; a session written before the choice existed has none.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? WrapText { get; set; }
+
     // The ObjectKind name a table or definition tab was opened for.
     public string? ObjectKind { get; set; }
 

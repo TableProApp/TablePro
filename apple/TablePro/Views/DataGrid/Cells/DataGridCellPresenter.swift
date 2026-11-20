@@ -33,6 +33,8 @@ final class DataGridCellPresenter {
     private var highlightRuleSet = HighlightRuleSet.empty
     // Indexed by data index: the draw path reads it once per cell.
     private var presentations: [DataGridColumnPresentation] = []
+    // Set by the grid while it wraps, so the text it caches keeps its line breaks.
+    var keepsLineBreaks = false
 
     init(model: DataGridModel, valueColors: ValueColorSettings = AppSettingsManager.shared.valueColors) {
         self.model = model
@@ -209,7 +211,8 @@ final class DataGridCellPresenter {
             rawValue,
             columnType: type,
             displayFormat: format,
-            databaseType: databaseType
+            databaseType: databaseType,
+            keepsLineBreaks: keepsLineBreaks
         )
         let text = formatted.text ?? rawValue.asText ?? ""
 
@@ -228,8 +231,93 @@ final class DataGridCellPresenter {
         return (text, formatted.isFormatted)
     }
 
+    // MARK: - Wrap
+
+    struct WrapMeasure {
+        let geometry: DataGridWrapGeometry
+        let rows: TableRows
+        let formats: [ValueDisplayFormat?]
+        let databaseType: DatabaseType?
+        let checkboxColumns: Set<Int>
+    }
+
+    func makeWrapMeasure(_ geometry: DataGridWrapGeometry) -> WrapMeasure? {
+        guard let model else { return nil }
+        let rows = model.rows
+        prepareRowState(rows: rows)
+        return WrapMeasure(
+            geometry: geometry,
+            rows: rows,
+            formats: model.store.displayFormats,
+            databaseType: model.configuration.traits.databaseType,
+            checkboxColumns: model.configuration.checkboxColumns
+        )
+    }
+
+    // The lines of the row's tallest cell over every column the grid shows, by the rules the draw follows.
+    func wrapLineCount(of row: Row, measure: WrapMeasure) -> Int {
+        let geometry = measure.geometry
+        let state = visualState(of: row)
+        let absent = measure.rows.absentColumns(of: row.id)
+        let unloaded = measure.rows.unloadedColumns(of: row.id)
+        let columnCount = measure.rows.columns.count
+        var lines = 1
+        for column in geometry.columns where column.dataIndex >= 0 && column.dataIndex < row.values.count {
+            let dataIndex = column.dataIndex
+            let rawValue = row.values[dataIndex]
+            let isExpression = state.isExpression(columnIndex: dataIndex)
+            guard !measure.checkboxColumns.contains(dataIndex),
+                  DataGridCellContent.placeholder(
+                      for: rawValue,
+                      isAbsent: absent.contains(dataIndex),
+                      isExpression: isExpression,
+                      unloadedByteCount: unloaded[dataIndex],
+                      marksEmptyText: geometry.marksEmptyText
+                  ) == nil else { continue }
+            let text = displayText(
+                of: row,
+                dataIndex: dataIndex,
+                type: column.type,
+                formats: measure.formats,
+                databaseType: measure.databaseType,
+                columnCount: columnCount
+            )
+            let accessory = DataGridCellAccessory.visible(for: column.kind, isEditable: geometry.isEditable, rawValue: rawValue.asText)
+            lines = max(lines, DataGridWrapLayout.lineCount(
+                of: text,
+                width: accessory.availableTextWidth(in: NSRect(x: 0, y: 0, width: column.width, height: 0)),
+                face: isExpression ? geometry.medium : geometry.regular,
+                marksInvisibles: geometry.marksInvisibles
+            ))
+            if lines >= DataGridWrapLayout.maximumLines { break }
+        }
+        return lines
+    }
+
+    private func prewarmWrap(for rows: [Row], in tableRows: TableRows, geometry: DataGridWrapGeometry, generation: Int) -> DataGridPrewarmWrap {
+        prepareRowState(rows: tableRows)
+        let measurable = rows.filter { row in
+            visualState(of: row).expressionColumns.isEmpty
+                && tableRows.absentColumns(of: row.id).isEmpty
+                && !tableRows.hasUnloadedValues(row.id)
+        }
+        return DataGridPrewarmWrap(
+            columns: geometry.columns.map { DataGridPrewarmWrap.Column(dataIndex: $0.dataIndex, width: $0.width, kind: $0.kind) },
+            face: geometry.regular,
+            isEditable: geometry.isEditable,
+            marksEmptyText: geometry.marksEmptyText,
+            marksInvisibles: geometry.marksInvisibles,
+            measurableRows: Set(measurable.map(\.id)),
+            generation: generation
+        )
+    }
+
     // Copies the next rows of the window that have no text yet, and where the walk stopped.
-    func prewarmBatch(in window: Range<Int>, from start: Int) -> (batch: DataGridPrewarmBatch?, next: Int)? {
+    func prewarmBatch(
+        in window: Range<Int>,
+        from start: Int,
+        wrap geometry: DataGridWrapGeometry? = nil
+    ) -> (batch: DataGridPrewarmBatch?, next: Int)? {
         guard let model, start < window.upperBound else { return nil }
         let rows = model.rows
         let order = model.order
@@ -250,16 +338,42 @@ final class DataGridCellPresenter {
             formats: model.store.displayFormats,
             databaseType: model.configuration.traits.databaseType,
             dateFormat: DateFormattingService.shared.currentFormat,
-            invalidations: cache.invalidations
+            invalidations: cache.invalidations,
+            keepsLineBreaks: keepsLineBreaks,
+            wrap: geometry.map {
+                prewarmWrap(for: copied, in: rows, geometry: $0, generation: model.display.lineCounts.generation)
+            }
         )
         return (batch, index)
     }
 
     // False when cached text was dropped while the batch formatted, so what came back may describe old values.
-    func installPrewarmed(_ formatted: sending [(id: RowID, box: RowDisplayBox)], of batch: DataGridPrewarmBatch) -> Bool {
-        guard let cache = model?.display.cache, cache.invalidations == batch.invalidations else { return false }
-        for (id, box) in formatted where cache.box(forID: id) == nil {
-            cache.setBox(box, forID: id)
+    func installPrewarmed(
+        _ formatted: sending [(id: RowID, box: RowDisplayBox, lineCount: Int?)],
+        of batch: DataGridPrewarmBatch
+    ) -> Bool {
+        var grown: [RowID] = []
+        return installPrewarmed(formatted, of: batch, grownRows: &grown)
+    }
+
+    // `grownRows` takes the rows measured taller than the one line the table was told, for the grid to note.
+    func installPrewarmed(
+        _ formatted: sending [(id: RowID, box: RowDisplayBox, lineCount: Int?)],
+        of batch: DataGridPrewarmBatch,
+        grownRows: inout [RowID]
+    ) -> Bool {
+        guard let display = model?.display, display.cache.invalidations == batch.invalidations,
+              batch.keepsLineBreaks == keepsLineBreaks else { return false }
+        let cache = display.cache
+        let lineCounts = display.lineCounts
+        let takesLineCounts = batch.wrap?.generation == lineCounts.generation
+        for entry in formatted where cache.box(forID: entry.id) == nil {
+            cache.setBox(entry.box, forID: entry.id)
+            guard takesLineCounts, let lineCount = entry.lineCount, lineCounts[entry.id] == nil else { continue }
+            lineCounts[entry.id] = lineCount
+            if lineCount > 1 {
+                grownRows.append(entry.id)
+            }
         }
         return true
     }

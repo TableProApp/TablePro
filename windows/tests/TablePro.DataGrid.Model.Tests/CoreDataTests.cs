@@ -55,6 +55,35 @@ public sealed class CoreDataTests
         Assert.Equal("", lines[5]);
     }
 
+    [Fact]
+    public async Task AReaderThatKeepsLineBreaksReadsEachAsOneNewlineAndCopiesTheValuesOwn()
+    {
+        await using var database = await CoreDatabase.CreateAsync();
+        using var data = await database.QueryAsync(
+            "SELECT 'one' || char(13) || char(10) || 'two' AS note, 'tab' || char(9) || 'here' AS name, 'word' AS plain "
+            + "UNION ALL SELECT 'first' || char(8232) || 'second' || char(10), 'two words', printf('%.600c', 'x')");
+        using var cache = new CellCache(data.Data.OpenReader());
+
+        Assert.Equal("one  two", cache.Get(0, 0, 64).Text.ToString());
+        Assert.Equal("first second ", cache.Get(1, 0, 64).Text.ToString());
+
+        cache.KeepsLineBreaks = true;
+
+        var crlf = cache.Get(0, 0, 64);
+        Assert.Equal("one\ntwo", crlf.Text.ToString());
+        Assert.Equal(CellState.Lossy, crlf.State);
+        Assert.Equal("first\nsecond", cache.Get(1, 0, 64).Text.ToString());
+        Assert.Equal("tab here", cache.Get(0, 1, 64).Text.ToString());
+        Assert.Equal(CellState.Lossy, cache.Get(1, 1, 64).State);
+        Assert.Equal(CellState.None, cache.Get(0, 2, 64).State);
+        Assert.True(cache.Get(1, 2, 64).IsTruncated);
+
+        using var reader = data.Data.OpenReader();
+        reader.KeepsLineBreaks = true;
+        var tsv = GridCopy.Tsv(reader, new CellRange(0, 0, 0, 1), TestContext.Current.CancellationToken);
+        Assert.Equal("\"one\r\ntwo\"\t\"tab\there\"\r\n", tsv);
+    }
+
     // DuckDB hands an editor run a TIMETZ as the time alone, which the driver cannot read back.
     [Fact]
     public async Task AValueTheDriverCouldNotReadKeepsItsTypeAndCopiesAsNothing()

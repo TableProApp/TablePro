@@ -347,6 +347,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `grid-use-system-font` | `b` | `true` | |
 | `grid-font` | `s` | `Monospace 10` | |
 | `show-invisible-characters` | `b` | `true` | |
+| `grid-wrap-text` | `b` | `false` | What a new tab's grid opens with; an open tab keeps its own |
 | `auto-show-inspector` | `b` | `false` | |
 | `row-copy-format` | `s` | `rows` | rows, rows-headers, json, csv, csv-headers, markdown |
 | `default-sort` | `s` | `none` | `none`, `primary-key`, `first-column` |

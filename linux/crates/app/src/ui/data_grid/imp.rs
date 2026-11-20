@@ -102,6 +102,8 @@ pub struct DataGrid {
     pub(super) scheme_style: RefCell<Option<super::scheme_colors::SchemeStyle>>,
     pub(super) applied_date_format: Cell<Option<tablepro_linux_platform::settings::DateFormat>>,
     pub(super) cell_font: RefCell<Option<super::cell_font::CellFont>>,
+    /// Shared with the cells, which read it as they draw.
+    pub(super) wrap: std::rc::Rc<super::columns::WrapState>,
 }
 
 #[glib::object_subclass]

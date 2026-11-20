@@ -13,9 +13,10 @@ use crate::syntax;
 /// Cells are column by column: the cell of row `r` and column `c` is
 /// `(c - first_column) * row_count + (r - first_row)`. A cell's text is
 /// `text[offsets[cell]..offsets[cell + 1]]`, UTF-8, at most the fetch's
-/// `max_chars` characters on one line. `nulls` and `truncated` hold a
-/// bit per cell, lowest bit first. `column_kinds` and `cell_kinds` hold
-/// a `ValueKind` byte each, and a cell's kind says what its `raw` holds.
+/// `max_chars` characters, on one line unless the fetch keeps line
+/// breaks. `nulls` and `truncated` hold a bit per cell, lowest bit
+/// first. `column_kinds` and `cell_kinds` hold a `ValueKind` byte each,
+/// and a cell's kind says what its `raw` holds.
 #[repr(C)]
 pub struct TpWindow {
     pub first_row: u64,
@@ -72,6 +73,38 @@ pub unsafe extern "C" fn tablepro_cursor_fetch(
         cursor
             .cursor
             .fetch(first_row, row_count, first_column, column_count, max_chars)
+            .map_or(null(), |window| window as *const TpWindow)
+    }));
+    fetched.unwrap_or(null())
+}
+
+/// As `tablepro_cursor_fetch`, for a grid that wraps its cells: each line
+/// break in a cell's text, whatever its form (LF, CR LF, CR, VT, FF, NEL,
+/// U+2028, U+2029), is one `\n`. `max_chars` counts the value's
+/// characters, so a CR LF counts two. Every other control character is
+/// a space, as there.
+///
+/// # Safety
+///
+/// `cursor` is null or a cursor `ResultSet::open_cursor` returned and no
+/// one freed, used by one thread at a time.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tablepro_cursor_fetch_lines(
+    cursor: *mut TpCursor,
+    first_row: u64,
+    row_count: u32,
+    first_column: u32,
+    column_count: u32,
+    max_chars: u32,
+) -> *const TpWindow {
+    // SAFETY: the caller passes null or a live cursor no other thread uses.
+    let Some(cursor) = (unsafe { cursor.as_mut() }) else {
+        return null();
+    };
+    let fetched = catch_unwind(AssertUnwindSafe(|| {
+        cursor
+            .cursor
+            .fetch_lines(first_row, row_count, first_column, column_count, max_chars)
             .map_or(null(), |window| window as *const TpWindow)
     }));
     fetched.unwrap_or(null())

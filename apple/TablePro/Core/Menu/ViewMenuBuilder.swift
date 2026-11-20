@@ -98,6 +98,8 @@ enum ViewMenuBuilder {
                 String(localized: "Highlight Rules…"),
                 action: #selector(MainSplitViewController.showHighlightRules(_:))
             ),
+            // A focused data grid answers this itself; the window answers for the selected tab's grid otherwise.
+            MenuItemFactory.item(String(localized: "Wrap Text"), action: #selector(MainSplitViewController.toggleWrapText(_:))),
             MenuItemFactory.item(
                 String(localized: "Show Query History"),
                 action: #selector(MainSplitViewController.toggleQueryHistory(_:)),

@@ -276,6 +276,7 @@ extension DataGridViewController {
         }
         isRebuildingColumns = false
         geometryDidChange()
+        syncWrapGeometry()
         model.columnGeometryDidChange(widths: named, order: nil)
     }
 
@@ -294,6 +295,8 @@ extension DataGridViewController {
             updateFrozenPane()
         }
         geometryDidChange()
+        // AppKit posts the resize once the drag ends, so the rows are measured again once, not on every step.
+        syncWrapGeometry()
         model.columnGeometryDidChange(widths: [id.name: tableColumn.width], order: nil)
     }
 

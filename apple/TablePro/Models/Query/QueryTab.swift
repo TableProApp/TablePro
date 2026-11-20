@@ -64,6 +64,8 @@ struct QueryTab: Identifiable, Equatable {
     var columnLayout: ColumnLayoutState
     // On the tab, not the grid: JSON mode, the inspector and the Edit menu's row commands read the order unmounted (#2251).
     var valueFilter: GridValueFilterState
+    // Seeded from the Data Grid setting when the tab is made; a later change of the setting leaves it alone.
+    var wrapsText = false
     var sessionHighlightRules: [HighlightRule] = []
     // Set only by Reveal, after the user authenticated; never saved, so a reopened tab masks again.
     var revealsMaskedValues = false
@@ -169,7 +171,7 @@ struct QueryTab: Identifiable, Equatable {
         self.restoredCursorLength = nil
     }
 
-    init(from persisted: PersistedTab, defaultPageSize: Int) {
+    init(from persisted: PersistedTab, defaultPageSize: Int, defaultWrapsText: Bool = false) {
         self.id = persisted.id
         self.title = persisted.tabType.fixedTitle ?? persisted.title
         // A file names its tab, and a blank fallback would leave an emptied name with no title.
@@ -212,6 +214,7 @@ struct QueryTab: Identifiable, Equatable {
             columnContentWidths: persisted.columnContentWidths
         )
         self.valueFilter = GridValueFilterState()
+        self.wrapsText = persisted.wrapsText ?? defaultWrapsText
         self.pagination = PaginationState(pageSize: defaultPageSize)
         self.chartConfiguration = ResultChartConfiguration()
         self.mapConfiguration = ResultMapConfiguration()
@@ -370,6 +373,7 @@ struct QueryTab: Identifiable, Equatable {
             collapsedFoldRanges: Self.foldBounds(collapsedFoldRanges, in: persistedQuery),
             columnWidths: widths,
             columnContentWidths: contentWidths,
+            wrapsText: wrapsText,
             isPinned: isPinned,
             isTemporary: tableContext.isTemporary
         )

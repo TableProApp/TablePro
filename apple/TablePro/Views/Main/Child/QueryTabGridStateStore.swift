@@ -170,6 +170,17 @@ final class QueryTabGridStateStore: DataGridStateStore {
         }
     }
 
+    // MARK: - Wrap
+
+    var wrapsText: Bool {
+        get { tab?.wrapsText ?? false }
+        set {
+            guard let coordinator, tab?.wrapsText != newValue else { return }
+            coordinator.tabManager.mutate(tabId: tabId) { $0.wrapsText = newValue }
+            coordinator.persistence.saveAggregated()
+        }
+    }
+
     // MARK: - Viewport
 
     var viewportAnchor: GridViewportPlacement? {

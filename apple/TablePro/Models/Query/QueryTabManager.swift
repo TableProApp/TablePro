@@ -375,6 +375,7 @@ final class QueryTabManager: ObservableObject {
             tabTitle = nextTitle()
         }
         var newTab = QueryTab(title: tabTitle, tabType: .query)
+        newTab.wrapsText = AppSettingsManager.shared.dataGrid.wrapText
         // Held as a name, so a move or a restore never renumbers it; clearing it comes back to the same title.
         if keepsTitle, title != nil, sourceFileURL == nil {
             newTab.automaticTitle = tabTitle
@@ -505,6 +506,7 @@ final class QueryTabManager: ObservableObject {
             tableName: tableName
         )
         newTab.pagination = PaginationState(pageSize: pageSize)
+        newTab.wrapsText = AppSettingsManager.shared.dataGrid.wrapText
         newTab.tableContext.databaseName = databaseName
         newTab.tableContext.objectType = objectType
         newTab.tableContext.isTemporary = isTemporary

@@ -754,6 +754,20 @@ struct MainMenuValidationTests {
         #expect(!enabled(#selector(MainSplitViewController.showHighlightRules(_:)), context))
     }
 
+    @Test("Wrap Text needs a connected data grid that offers it")
+    func wrapTextNeedsDataGrid() {
+        var context = MenuValidationContext()
+        context.canToggleWrapText = true
+        #expect(!enabled(#selector(MainSplitViewController.toggleWrapText(_:)), context))
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.toggleWrapText(_:)), context))
+        context.isAgentMode = true
+        #expect(!enabled(#selector(MainSplitViewController.toggleWrapText(_:)), context))
+        context.isAgentMode = false
+        context.canToggleWrapText = false
+        #expect(!enabled(#selector(MainSplitViewController.toggleWrapText(_:)), context))
+    }
+
     @Test("Capability flags gate driver-specific commands")
     func capabilitiesGateCommands() {
         var context = MenuValidationContext()

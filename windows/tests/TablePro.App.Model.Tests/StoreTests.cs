@@ -119,6 +119,54 @@ public sealed class StoreTests : IDisposable
     }
 
     [Fact]
+    public void WrappingTextInCellsStartsOffAndComesBackAsSaved()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "theme": "Dark" }""");
+        var store = new SettingsStore(path);
+        var older = store.Load();
+
+        store.Save(older with { GridWrapText = true });
+
+        Assert.False(new AppSettings().GridWrapText);
+        Assert.False(older.GridWrapText);
+        Assert.True(store.Load().GridWrapText);
+        Assert.False(store.Load().WordWrap);
+    }
+
+    [Fact]
+    public void ATabsWrapChoiceComesBackAndASessionWrittenBeforeItHasNone()
+    {
+        var path = File("session.json");
+        var store = new SessionStore(path);
+        store.Save(new SessionState
+        {
+            Connections =
+            [
+                new SessionConnection
+                {
+                    FilePath = @"C:\data\app.sqlite",
+                    Name = "app",
+                    EngineId = "sqlite",
+                    Tabs =
+                    [
+                        new SessionTab { Kind = TabKind.Query, Title = "Query 1", Sql = "SELECT 1", WrapText = true },
+                        new SessionTab { Kind = TabKind.Table, Title = "orders", Table = "orders", WrapText = false },
+                        new SessionTab { Kind = TabKind.Table, Title = "people", Table = "people" },
+                    ],
+                },
+            ],
+        });
+
+        var tabs = store.Load().Connections[0].Tabs;
+
+        Assert.True(tabs[0].WrapText);
+        Assert.False(tabs[1].WrapText);
+        Assert.Null(tabs[2].WrapText);
+        Assert.Equal(3, System.IO.File.ReadAllText(path).Split("wrapText").Length);
+    }
+
+    [Fact]
     public void TheEditorSettingsStartAsMacOSStartsThemAndComeBackAsSaved()
     {
         var path = File("settings.json");

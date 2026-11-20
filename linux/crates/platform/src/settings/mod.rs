@@ -149,6 +149,14 @@ impl AppSettings {
         self.set_boolean(keys::SHOW_INVISIBLE_CHARACTERS, show)
     }
 
+    pub fn grid_wrap_text(&self) -> bool {
+        self.grid_preferences().snapshot().wrap_text
+    }
+
+    pub fn set_grid_wrap_text(&self, wrap: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::GRID_WRAP_TEXT, wrap)
+    }
+
     pub fn date_format(&self) -> DateFormat {
         self.grid_preferences().snapshot().date_format
     }

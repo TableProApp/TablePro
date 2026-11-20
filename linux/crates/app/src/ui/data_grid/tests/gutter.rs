@@ -237,13 +237,17 @@ impl Drop for TestStyle {
 }
 
 fn wide_rows(count: i64) -> Grid {
+    wide_rows_of(count, |id, n| format!("value {id}-{n}"))
+}
+
+fn wide_rows_of(count: i64, value: impl Fn(i64, usize) -> String) -> Grid {
     use tablepro_core::Value;
     let mut columns = vec![crate::ui::data_grid::test_grid::named("id", "integer", true)];
     columns.extend((0..12).map(|n| crate::ui::data_grid::test_grid::named(&format!("column_{n}"), "text", false)));
     let rows = (1..=count)
         .map(|id| {
             std::iter::once(Value::Int(id))
-                .chain((0..12).map(|n| Value::Text(format!("value {id}-{n}"))))
+                .chain((0..12).map(|n| Value::Text(value(id, n))))
                 .collect()
         })
         .collect();
@@ -545,6 +549,32 @@ fn the_gutter_matches_font_and_density_changes() {
     drop(style);
     after_next_frame(&grid.window);
     assert_aligned(&grid);
+}
+
+#[gtk4::test]
+fn the_gutter_follows_rows_grown_by_wrapped_text() {
+    let grid = wide_rows_of(60, |id, n| match (id % 3, n) {
+        (0, 0) => "several words that wrap ".repeat(6),
+        _ => format!("value {id}-{n}"),
+    });
+    grid.grid
+        .data_view_column(1)
+        .expect("the first text column")
+        .set_fixed_width(160);
+    grid.activate("wrap-text");
+    sideways(&grid);
+    after_next_frame(&grid.window);
+
+    let (short, tall) = (row_widget(&grid.cell_of(1, 1)), row_widget(&grid.cell_of(3, 1)));
+    assert!(tall.height() > short.height(), "no row grew");
+    let (_, number) = gutter(&grid.cell_of(3, 1));
+    let top = number.compute_bounds(&tall).expect("the number's place in its row");
+    assert!(
+        top.y() + top.height() <= short.height() as f32,
+        "the number left the first line of its row: {top:?}"
+    );
+    assert_aligned(&grid);
+    assert_pinned_pixels(&grid);
 }
 
 #[gtk4::test]

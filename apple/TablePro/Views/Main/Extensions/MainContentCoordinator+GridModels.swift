@@ -190,7 +190,7 @@ extension MainContentCoordinator {
     private func gridCommands(for tab: QueryTab, isSelected: Bool, isEditable: Bool) -> Set<DataGridCommand> {
         var commands: Set<DataGridCommand> = [
             .hideColumns, .showRowsAsJSON, .exportResults, .shareResult, .navigateForeignKey,
-            .highlightValues, .displayAs, .freezeColumns, .valueFilter
+            .highlightValues, .displayAs, .freezeColumns, .valueFilter, .wrapText
         ]
         let operations = isEditable ? (activeViewWriteTarget?.operations ?? .all) : []
         if operations.contains(.insert) {
@@ -208,6 +208,28 @@ extension MainContentCoordinator {
         if findCoordinator.offersSearchAllRows(forTab: tab.id) { commands.insert(.searchAllRows) }
         if isSelected, canClearActiveQueryResults { commands.insert(.clearResults) }
         return commands
+    }
+
+    // MARK: - Wrap
+
+    private var wrappableGridModel: DataGridModel? {
+        guard hasMountedDataGrid, let tab = tabManager.selectedTab, tab.display.resultsViewMode == .data,
+              let model = existingGridModel(forTab: tab.id),
+              model.configuration.commands.contains(.wrapText) else { return nil }
+        return model
+    }
+
+    var canToggleWrapText: Bool {
+        wrappableGridModel != nil
+    }
+
+    var wrapsGridText: Bool {
+        wrappableGridModel?.wrapsText ?? false
+    }
+
+    func toggleWrapText() {
+        guard let model = wrappableGridModel else { return }
+        model.setWrapsText(!model.wrapsText)
     }
 
     // MARK: - Display caches

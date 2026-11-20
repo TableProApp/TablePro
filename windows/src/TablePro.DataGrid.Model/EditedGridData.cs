@@ -149,6 +149,12 @@ public sealed class EditedGridData : IGridData
 
         private int ColumnCount => arrangement?.Count ?? data.ColumnCount;
 
+        public bool KeepsLineBreaks
+        {
+            get => inner.KeepsLineBreaks;
+            set => inner.KeepsLineBreaks = value;
+        }
+
         // The data's rows come from its own reader into scratch blocks; new rows are never asked of the data.
         public void Read(int firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters, CellBlock block)
         {
@@ -177,7 +183,7 @@ public sealed class EditedGridData : IGridData
                 added = Math.Max(0, end - start);
                 firstAdded = start - dataRows;
             }
-            block.Reset(firstRow, read + added, firstColumn, columns, maxCharacters);
+            block.Reset(firstRow, read + added, firstColumn, columns, maxCharacters, KeepsLineBreaks);
             block.EnsureCapacity(Characters(firstRow, read, firstAdded, added, maxCharacters));
             for (var index = 0; index < _runs.Count; index++)
             {

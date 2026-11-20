@@ -41,6 +41,7 @@ struct MenuValidationContext: Equatable {
     var canFocusInspector = false
     var canFocusAssistant = false
     var canPresentHighlightRules = false
+    var canToggleWrapText = false
     var isQueryTab = false
     var hasResultRows = false
     // Export Results reaches a Table Health tab's findings, which no result set holds.
@@ -330,6 +331,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canUseTableResultCommands
         case #selector(showHighlightRules(_:)):
             return context.isConnected && context.canPresentHighlightRules
+        case #selector(toggleWrapText(_:)):
+            return context.isConnected && context.canToggleWrapText
         case #selector(pinResult(_:)):
             return context.canPinResultTab
         case #selector(compareResult(_:)):
@@ -730,6 +733,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canFocusInspector: canFocusInspector,
             canFocusAssistant: canFocusAssistant,
             canPresentHighlightRules: actions.canPresentHighlightRules,
+            canToggleWrapText: actions.canToggleWrapText,
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
             hasTableHealthFindings: actions.hasTableHealthFindings,
@@ -928,6 +932,8 @@ extension MainSplitViewController: NSMenuItemValidation {
                     ?? String(localized: "Release File Lock"),
                 on: menuItem
             )
+        case #selector(toggleWrapText(_:)):
+            setState(commandActions?.wrapsGridText == true ? .on : .off, on: menuItem)
         case #selector(setResultView(_:)):
             setState(isCurrentResultView(menuItem) ? .on : .off, on: menuItem)
         case #selector(setContentModeFromMenu(_:)):

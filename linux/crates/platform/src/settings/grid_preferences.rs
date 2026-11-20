@@ -205,6 +205,8 @@ pub struct GridPreferenceValues {
     pub row_copy_format: RowCopyFormat,
     pub auto_show_inspector: bool,
     pub show_invisible_characters: bool,
+    /// What a new grid opens with. An open grid keeps its own.
+    pub wrap_text: bool,
 }
 
 impl Default for GridPreferenceValues {
@@ -221,6 +223,7 @@ impl Default for GridPreferenceValues {
             row_copy_format: RowCopyFormat::Rows,
             auto_show_inspector: false,
             show_invisible_characters: true,
+            wrap_text: false,
         }
     }
 }
@@ -232,6 +235,7 @@ impl GridPreferenceValues {
             row_copy_format: RowCopyFormat::from_nick(&settings.string(keys::ROW_COPY_FORMAT)),
             auto_show_inspector: settings.boolean(keys::AUTO_SHOW_INSPECTOR),
             show_invisible_characters: settings.boolean(keys::SHOW_INVISIBLE_CHARACTERS),
+            wrap_text: settings.boolean(keys::GRID_WRAP_TEXT),
             default_sort: DefaultSort::from_nick(&settings.string(keys::DEFAULT_SORT)),
             default_sort_direction: GridSortDirection::from_nick(&settings.string(keys::DEFAULT_SORT_DIRECTION)),
             show_row_numbers: settings.boolean(keys::SHOW_ROW_NUMBERS),
@@ -317,6 +321,7 @@ impl GridPreferences {
                     | keys::ROW_COPY_FORMAT
                     | keys::AUTO_SHOW_INSPECTOR
                     | keys::SHOW_INVISIBLE_CHARACTERS
+                    | keys::GRID_WRAP_TEXT
             ) && let Some(preferences) = weak.upgrade()
             {
                 preferences.update(GridPreferenceValues::read(settings));

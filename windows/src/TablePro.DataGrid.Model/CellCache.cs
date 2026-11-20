@@ -28,6 +28,21 @@ public sealed class CellCache : IDisposable
 
     public int BlockCount => _blocks.Count;
 
+    // A block read on one line cannot serve a grid that wraps, nor the reverse, so a change drops every block.
+    public bool KeepsLineBreaks
+    {
+        get => _reader.KeepsLineBreaks;
+        set
+        {
+            if (_reader.KeepsLineBreaks == value)
+            {
+                return;
+            }
+            _reader.KeepsLineBreaks = value;
+            Clear();
+        }
+    }
+
     // The span in the result stays valid until the next Get, which may refill its block.
     public CellText Get(int row, int column, int maxCharacters)
     {

@@ -16,6 +16,7 @@ pub const AUTO_SHOW_INSPECTOR: &str = "auto-show-inspector";
 pub const DEFAULT_SORT: &str = "default-sort";
 pub const DEFAULT_SORT_DIRECTION: &str = "default-sort-direction";
 pub const SHOW_INVISIBLE_CHARACTERS: &str = "show-invisible-characters";
+pub const GRID_WRAP_TEXT: &str = "grid-wrap-text";
 pub const DATE_FORMAT: &str = "date-format";
 pub const ROW_COPY_FORMAT: &str = "row-copy-format";
 pub const STYLE_SCHEME: &str = "style-scheme";

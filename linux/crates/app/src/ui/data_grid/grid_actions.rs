@@ -42,6 +42,25 @@ pub(crate) fn enable(grid: &DataGrid, name: &str, enabled: bool) {
     }
 }
 
+const WRAP_TEXT: &str = "wrap-text";
+
+// Its state is the grid's own, never the setting's, so one tab's choice leaves the others alone.
+fn install_wrap_text(grid: &DataGrid) {
+    if !grid.config().is_some_and(|config| config.wrap_text) {
+        return;
+    }
+    let wrap = gio::SimpleAction::new_stateful(WRAP_TEXT, None, &grid.wraps_text().to_variant());
+    let weak = grid.downgrade();
+    wrap.connect_change_state(move |action, state| {
+        let (Some(grid), Some(wraps)) = (weak.upgrade(), state.and_then(glib::Variant::get::<bool>)) else {
+            return;
+        };
+        action.set_state(&wraps.to_variant());
+        grid.apply_wrap_text(wraps);
+    });
+    grid.imp().actions.add_action(&wrap);
+}
+
 pub fn install(grid: &DataGrid) {
     install_column_actions(grid);
     add(grid, "menu", |grid| {
@@ -71,6 +90,7 @@ pub fn install(grid: &DataGrid) {
             details.set_state(&split_view.shows_sidebar().to_variant());
         }
     });
+    install_wrap_text(grid);
     add(grid, "columns", column_chooser::present);
     add(grid, "highlight-rules", super::highlight_dialog::present);
     grid.edit().install_actions(grid);
@@ -147,6 +167,29 @@ fn install_column_actions(grid: &DataGrid) {
 }
 
 impl DataGrid {
+    pub(crate) fn wraps_text(&self) -> bool {
+        self.imp().wrap.on()
+    }
+
+    /// Wrap long values or draw each on one line, as Wrap Text does.
+    /// Nothing in a grid that does not offer it.
+    pub(crate) fn set_wrap_text(&self, wraps: bool) {
+        if wraps != self.wraps_text()
+            && let Some(wrap) = self.imp().actions.lookup_action(WRAP_TEXT)
+        {
+            wrap.change_state(&wraps.to_variant());
+        }
+    }
+
+    // Every bound cell draws again, which lays it out for the new state and asks for its new height.
+    fn apply_wrap_text(&self, wraps: bool) {
+        if self.imp().wrap.set(wraps) == wraps {
+            return;
+        }
+        self.measure_wrap_glyph();
+        self.redraw();
+    }
+
     /// The data column an action on "the column" means: the cell a menu
     /// opened on, else the focused cell's.
     pub(crate) fn target_column(&self) -> Option<usize> {

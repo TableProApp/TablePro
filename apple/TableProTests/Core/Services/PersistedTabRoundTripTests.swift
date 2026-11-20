@@ -41,6 +41,24 @@ struct PersistedTabRoundTripTests {
         #expect(restored.pendingRestoredSort?[1].direction == .ascending)
     }
 
+    @Test("Wrap Text round-trips with the tab, and a tab saved before it takes the setting it is restored under")
+    func wrapsTextRoundTrip() throws {
+        var tab = tableTab()
+        tab.wrapsText = true
+        let persisted = tab.toPersistedTab()
+        #expect(persisted.wrapsText == true)
+        let decoded = try JSONDecoder().decode(PersistedTab.self, from: JSONEncoder().encode(persisted))
+        #expect(QueryTab(from: decoded, defaultPageSize: 1_000).wrapsText)
+
+        tab.wrapsText = false
+        #expect(!QueryTab(from: tab.toPersistedTab(), defaultPageSize: 1_000, defaultWrapsText: true).wrapsText)
+
+        let legacy = PersistedTab(id: UUID(), title: "Users", query: "SELECT 1", tabType: .table, tableName: "users")
+        #expect(legacy.wrapsText == nil)
+        #expect(QueryTab(from: legacy, defaultPageSize: 1_000, defaultWrapsText: true).wrapsText)
+        #expect(!QueryTab(from: legacy, defaultPageSize: 1_000).wrapsText)
+    }
+
     @Test("Sort columns without a resolved name are dropped from persistence")
     func sortColumnsWithoutNameAreDropped() {
         var tab = tableTab()

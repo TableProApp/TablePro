@@ -48,7 +48,8 @@ enum CellDisplayFormatter {
         _ rawValue: PluginCellValue,
         columnType: ColumnType?,
         displayFormat: ValueDisplayFormat?,
-        databaseType: DatabaseType?
+        databaseType: DatabaseType?,
+        keepsLineBreaks: Bool = false
     ) -> (text: String?, isFormatted: Bool) {
         resolve(
             rawValue,
@@ -56,7 +57,8 @@ enum CellDisplayFormatter {
             displayFormat: displayFormat,
             databaseType: databaseType,
             dates: DateFormattingService.shared.renderer,
-            checksRendering: true
+            checksRendering: true,
+            keepsLineBreaks: keepsLineBreaks
         )
     }
 
@@ -66,7 +68,8 @@ enum CellDisplayFormatter {
         columnType: ColumnType?,
         displayFormat: ValueDisplayFormat?,
         databaseType: DatabaseType?,
-        dates: DateDisplayRenderer
+        dates: DateDisplayRenderer,
+        keepsLineBreaks: Bool = false
     ) -> (text: String?, isFormatted: Bool) {
         resolve(
             rawValue,
@@ -74,7 +77,8 @@ enum CellDisplayFormatter {
             displayFormat: displayFormat,
             databaseType: databaseType,
             dates: dates,
-            checksRendering: true
+            checksRendering: true,
+            keepsLineBreaks: keepsLineBreaks
         )
     }
 
@@ -85,7 +89,8 @@ enum CellDisplayFormatter {
         displayFormat: ValueDisplayFormat?,
         databaseType: DatabaseType?,
         dates: DateDisplayRenderer,
-        checksRendering: Bool
+        checksRendering: Bool,
+        keepsLineBreaks: Bool = false
     ) -> (text: String?, isFormatted: Bool) {
         switch rawValue {
         case .null:
@@ -94,7 +99,7 @@ enum CellDisplayFormatter {
             if let displayFormat,
                displayFormat.isApplicable(to: columnType, databaseType: databaseType),
                let formatted = ValueDisplayFormatter.apply(data, format: displayFormat, columnType: columnType) {
-                return (fitToCell(formatted), true)
+                return (fitToCell(formatted, keepsLineBreaks: keepsLineBreaks), true)
             }
             return (BlobFormattingService.shared.format(data, for: .grid), false)
         case .text(let value):
@@ -102,7 +107,10 @@ enum CellDisplayFormatter {
             if let displayFormat, displayFormat != .raw,
                displayFormat.isApplicable(to: columnType, databaseType: databaseType),
                let formatted = ValueDisplayFormatter.apply(value, format: displayFormat, columnType: columnType, dates: dates) {
-                return (fitToCell(formatted), checksRendering && rendered(formatted, from: value, by: displayFormat))
+                return (
+                    fitToCell(formatted, keepsLineBreaks: keepsLineBreaks),
+                    checksRendering && rendered(formatted, from: value, by: displayFormat)
+                )
             }
             var displayValue = value
             if let columnType {
@@ -118,7 +126,7 @@ enum CellDisplayFormatter {
                     )
                 }
             }
-            return (fitToCell(displayValue), false)
+            return (fitToCell(displayValue, keepsLineBreaks: keepsLineBreaks), false)
         }
     }
 
@@ -139,14 +147,17 @@ enum CellDisplayFormatter {
     }
 
     // Binary read as text carries newlines and runs to megabytes, so all output is capped and flattened. A lone CR stays for the cell to mark.
-    private static func fitToCell(_ value: String) -> String {
+    // A grid that wraps keeps the breaks instead, each as one LF.
+    private static func fitToCell(_ value: String, keepsLineBreaks: Bool) -> String {
         // A value within the cap in UTF-8 is within it in UTF-16, and asking for that length walks the whole value.
-        guard value.utf8.count > maxDisplayLength else { return value.flattenedForCell }
+        guard value.utf8.count > maxDisplayLength else {
+            return keepsLineBreaks ? value.keepingLineBreaksForCell : value.flattenedForCell
+        }
         var displayValue = value
         let nsDisplay = displayValue as NSString
         if nsDisplay.length > maxDisplayLength {
             displayValue = nsDisplay.substring(to: maxDisplayLength) + "…"
         }
-        return displayValue.flattenedForCell
+        return keepsLineBreaks ? displayValue.keepingLineBreaksForCell : displayValue.flattenedForCell
     }
 }

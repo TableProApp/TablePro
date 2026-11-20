@@ -86,7 +86,8 @@ public sealed partial class DataGridView
             Content = text,
             XamlRoot = XamlRoot,
             RequestedTheme = ActualTheme,
-            PlacementRect = new Rect(_columns.PaneX(at.Column), at.Row * _rowHeight, _columns.Width(at.Column), _rowHeight),
+            PlacementRect = new Rect(_columns.PaneX(at.Column), RowTop(at.Row), _columns.Width(at.Column),
+                RowHeightOf(at.Row)),
             Placement = PlacementMode.Top,
         };
         ToolTipService.SetPlacement(pane, PlacementMode.Top);
@@ -108,10 +109,12 @@ public sealed partial class DataGridView
             return ShownText(cell);
         }
         using var reader = _data!.OpenReader();
+        // A wrapped cell's tip breaks its lines where the cell does.
+        reader.KeepsLineBreaks = _wrapsText;
         var block = new CellBlock();
         reader.Read(row, 1, column, 1, TipCharacters, block);
-        var read = block.Get(row, column);
-        return read.IsTruncated ? string.Concat(read.Text, "…") : read.Text.ToString();
+        // A cut value's text ends in the block's own ellipsis already.
+        return block.Get(row, column).Text.ToString();
     }
 
     private bool IsCut(int row, int column)
@@ -122,10 +125,15 @@ public sealed partial class DataGridView
         }
         var cell = Cell(row, column);
         var unreadable = (cell.State & CellState.Unreadable) != 0;
-        return !cell.IsNull && !cell.IsDefault && !cell.Text.IsEmpty
-            && (cell.IsTruncated
-                || Painter.Measure(unreadable ? ShownText(cell) : cell.Text, unreadable)
-                    > _columns.Width(column) - (CellPainter.Padding * 2));
+        if (cell.IsNull || cell.IsDefault || cell.Text.IsEmpty)
+        {
+            return false;
+        }
+        var width = _columns.Width(column) - (CellPainter.Padding * 2);
+        // A wrapped cell shows every line it has room for, so only the lines past the cap are hidden.
+        return cell.IsTruncated || (_wrapsText && !unreadable
+            ? Painter.CountLines(cell.Text, cell.State, (float)width) > MaximumWrapLines
+            : Painter.Measure(unreadable ? ShownText(cell) : cell.Text, unreadable) > width);
     }
 
     // Twice the hover time, or one and a half within the reshow window after a tip closed.

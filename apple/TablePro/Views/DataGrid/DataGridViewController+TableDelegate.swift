@@ -38,6 +38,11 @@ extension DataGridViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("DataGridRowView")
 
+    // Asked only while the grid wraps (see responds(to:)). A row not measured yet stands one line tall.
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        rowHeight(forRow: row, in: tableView)
+    }
+
     // Answers from the active column only, so type-select matches what the reader is looking at.
     func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
         guard tableView === main.tableView,

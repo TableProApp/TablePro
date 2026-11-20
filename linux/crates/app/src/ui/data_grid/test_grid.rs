@@ -112,6 +112,7 @@ pub(crate) struct GridSpec {
     pub find: bool,
     pub filter_by_value: bool,
     pub share: bool,
+    pub wrap_text: bool,
     pub policy: Option<EditPolicy>,
     pub references: Option<super::KeysHandle>,
     pub dialect: Option<DialectSource>,
@@ -132,6 +133,7 @@ impl GridSpec {
             find: false,
             filter_by_value: true,
             share: false,
+            wrap_text: true,
             policy: None,
             references: None,
             dialect: None,
@@ -239,6 +241,7 @@ impl Grid {
             find: spec.find,
             filter_by_value: spec.filter_by_value,
             share: spec.share,
+            wrap_text: spec.wrap_text,
             tasks: runtime.tasks(),
             label: "test grid".to_owned(),
         };

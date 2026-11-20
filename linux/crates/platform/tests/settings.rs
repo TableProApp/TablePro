@@ -655,6 +655,31 @@ async fn invisible_characters_preference_uses_the_shared_snapshot_and_external_u
 }
 
 #[glib::async_test]
+async fn wrap_text_is_off_by_default_and_follows_the_shared_snapshot_and_external_updates() -> TestResult {
+    use gio::prelude::SettingsExt;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let original = preferences.snapshot();
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let changes = observed.clone();
+    preferences.connect_changed(move |preferences| {
+        changes.borrow_mut().push(preferences.snapshot().wrap_text);
+    });
+    assert!(!fixture.settings.grid_wrap_text());
+
+    fixture.settings.set_grid_wrap_text(true)?;
+    assert!(fixture.settings.grid_wrap_text());
+    fixture.settings.gio().set_boolean(keys::GRID_WRAP_TEXT, false)?;
+    assert!(!fixture.settings.grid_wrap_text());
+    assert_eq!(observed.borrow().as_slice(), &[true, false]);
+    assert!(!original.wrap_text);
+    Ok(())
+}
+
+#[glib::async_test]
 async fn date_format_publishes_all_choices_without_changing_other_backends() -> TestResult {
     use gio::prelude::SettingsExt;
     use std::cell::RefCell;

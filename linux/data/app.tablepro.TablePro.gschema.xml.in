@@ -143,6 +143,12 @@
       <description>Whether cells and value fields mark zero-width, control and special space characters.</description>
     </key>
 
+    <key name="grid-wrap-text" type="b">
+      <default>false</default>
+      <summary>Wrap text in data grids</summary>
+      <description>Show long values on several lines in a data grid, up to 10 lines per row. Applies to tabs opened afterwards.</description>
+    </key>
+
     <key name="date-format" type="s">
       <choices>
         <choice value="iso"/>

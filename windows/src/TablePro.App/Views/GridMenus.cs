@@ -1,3 +1,4 @@
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -18,6 +19,21 @@ internal static class GridMenus
         }
 
         item.Click += (_, _) => invoke();
+        return item;
+    }
+
+    // The header menu's Wrap text, checked while the tab's rows wrap, as View > Wrap text is.
+    public static ToggleMenuFlyoutItem WrapText(ITabContent tab)
+    {
+        var wraps = tab.WrapsText ?? false;
+        var item = new ToggleMenuFlyoutItem
+        {
+            Text = Strings.Get("GridMenuWrapText"),
+            IsChecked = wraps,
+            IsEnabled = tab.WrapsText is not null,
+        };
+        AutomationProperties.SetAutomationId(item, "GridMenuWrapText");
+        item.Click += (_, _) => tab.SetWrapsText(!wraps);
         return item;
     }
 

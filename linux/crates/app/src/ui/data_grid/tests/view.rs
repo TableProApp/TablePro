@@ -9,12 +9,13 @@ use crate::test_support::wait_until;
 use crate::ui::data_grid::GridCell;
 use crate::ui::data_grid::test_grid::{Grid, GridSpec, WAIT, two_text_columns};
 
-/// Ask the view for a tooltip at the middle of `cell`, as GTK does when
-/// the pointer rests there. `true` when one is shown.
-fn asks_tooltip(grid: &Grid, cell: &GridCell) -> bool {
+/// Ask the view for a tooltip at the middle of the part of `cell` in
+/// view, as GTK does when the pointer rests there. `true` when one is shown.
+pub(super) fn asks_tooltip(grid: &Grid, cell: &GridCell) -> bool {
     let view = grid.grid.column_view();
     let bounds = cell.compute_bounds(&view).expect("the cell's bounds");
-    let x = (bounds.x() + bounds.width() / 2.0) as i32;
+    let end = (bounds.x() + bounds.width()).min(view.width() as f32);
+    let x = ((bounds.x() + end) / 2.0) as i32;
     let y = (bounds.y() + bounds.height() / 2.0) as i32;
     let tooltip = glib::Object::new::<gtk::Tooltip>();
     view.emit_by_name::<bool>("query-tooltip", &[&x, &y, &false, &tooltip])

@@ -55,10 +55,11 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
     factory.connect_unbind(move |_, item| {
         unwatch(&watches, item.upcast_ref());
     });
+    let offers_wrap = grid.config().is_some_and(|config| config.wrap_text);
     let column = gtk::ColumnViewColumn::builder()
         .title(crate::i18n::pgettext("row number column", "#"))
         .factory(&factory)
-        .header_menu(&grid_menu::row_numbers_header_menu())
+        .header_menu(&grid_menu::row_numbers_header_menu(offers_wrap))
         .resizable(false)
         .build();
     column.set_id(Some("row-numbers"));
@@ -102,6 +103,13 @@ fn show_cell(grid: &DataGrid, cell: &gtk::ColumnViewCell) {
     ) else {
         return;
     };
+    // In a row grown by wrapped text the number sits on the text's first line.
+    let (number_align, icon_align) = match grid.wraps_text() {
+        true => (gtk::Align::Start, gtk::Align::Start),
+        false => (gtk::Align::Center, gtk::Align::Fill),
+    };
+    number.set_valign(number_align);
+    icon.set_valign(icon_align);
     let state = grid.tracked().row_state(&row);
     icon.set_icon_name(state.icon());
     icon.set_visible(state.icon().is_some());

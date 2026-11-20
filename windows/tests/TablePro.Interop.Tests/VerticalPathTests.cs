@@ -223,6 +223,28 @@ public sealed class VerticalPathTests
     }
 
     [Fact]
+    public async Task AWindowThatKeepsLineBreaksHoldsEachAsOneNewlineAndTheOtherStaysOnOneLine()
+    {
+        await using var database = await SqliteDatabase.CreateAsync();
+        using var run = database.Editor.Run(
+            "SELECT 'one' || char(13) || char(10) || 'two' || char(8232) || 'three' || char(9) || 'four' AS note",
+            cancellationToken: TestContext.Current.CancellationToken);
+        await run.Completion;
+        using var set = run.GetResultSet(0)!;
+        using var cursor = set.OpenCursor();
+
+        var kept = cursor.Fetch(0, 1, 0, 1, 100, keepLineBreaks: true).GetText(0, 0);
+        var flat = cursor.Fetch(0, 1, 0, 1, 100).GetText(0, 0);
+        var cut = cursor.Fetch(0, 1, 0, 1, 5, keepLineBreaks: true);
+
+        Assert.Equal("one\ntwo\nthree four", kept);
+        Assert.Equal("one  two three four", flat);
+        Assert.Equal("one\n", cut.GetText(0, 0));
+        Assert.True(cut.IsTruncated(0, 0));
+        Assert.Equal("one\r\ntwo\u2028three\tfour", set.GetCellText(0, 0));
+    }
+
+    [Fact]
     public async Task AWindowOutlivedByALaterFetchRefusesToBeRead()
     {
         await using var database = await SqliteDatabase.CreateAsync();

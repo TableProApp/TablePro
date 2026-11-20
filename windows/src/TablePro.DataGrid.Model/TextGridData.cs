@@ -29,12 +29,14 @@ public sealed class TextGridData : IGridData
     // Nothing changes once made, so every reader reads the same rows.
     private sealed class Reader(IReadOnlyList<string?>[] rows, int width) : IGridReader
     {
+        public bool KeepsLineBreaks { get; set; }
+
         public void Read(int firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters, CellBlock block)
         {
             ArgumentNullException.ThrowIfNull(block);
             var count = Math.Max(0, Math.Min(rowCount, rows.Length - firstRow));
             var columns = Math.Max(0, Math.Min(columnCount, width - firstColumn));
-            block.Reset(firstRow, count, firstColumn, columns, maxCharacters);
+            block.Reset(firstRow, count, firstColumn, columns, maxCharacters, KeepsLineBreaks);
             var characters = 0;
             for (var column = firstColumn; column < firstColumn + columns; column++)
             {
@@ -53,7 +55,7 @@ public sealed class TextGridData : IGridData
                 {
                     if (rows[row][column] is { } text)
                     {
-                        // Cut at the block's cap and on one line, as the core shows a value.
+                        // Cut at the block's cap, on one line or with its breaks kept, as the core shows a value.
                         block.AddTyped(text, CellState.None);
                     }
                     else

@@ -15,6 +15,13 @@ public interface IGridData
 
 public interface IGridReader : IDisposable
 {
+    // On, a cell's line breaks stay in its text, each as one LF; a reader that cannot keep them reads on one line.
+    bool KeepsLineBreaks
+    {
+        get => false;
+        set { }
+    }
+
     // Fills the block with the cells the data holds in the range, column by column, each cut at maxCharacters.
     void Read(int firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters, CellBlock block);
 

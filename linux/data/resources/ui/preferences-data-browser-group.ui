@@ -56,6 +56,12 @@
       </object>
     </child>
     <child>
+      <object class="AdwSwitchRow" id="wrap_text_row">
+        <property name="title" translatable="yes">Wrap Text</property>
+        <property name="subtitle" translatable="yes">New tabs show long values on up to 10 lines</property>
+      </object>
+    </child>
+    <child>
       <object class="AdwComboRow" id="date_format_row">
         <property name="title" translatable="yes">Date Format</property>
         <!-- No subtitle: its width would squeeze the chosen example. -->

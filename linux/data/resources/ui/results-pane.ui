@@ -2,6 +2,14 @@
 <interface>
   <requires lib="gtk" version="4.22"/>
   <requires lib="libadwaita" version="1.9"/>
+  <menu id="view_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Wrap Text</attribute>
+        <attribute name="action">grid.wrap-text</attribute>
+      </item>
+    </section>
+  </menu>
   <template class="TableProResultsPane" parent="AdwBin">
     <property name="child">
       <object class="AdwBreakpointBin">
@@ -105,6 +113,20 @@
                     </style>
                     <accessibility>
                       <property name="label" translatable="yes">Columns</property>
+                    </accessibility>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkMenuButton" id="view_button">
+                    <property name="icon-name">view-more-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">View Options</property>
+                    <property name="menu-model">view_menu</property>
+                    <property name="visible">false</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                    <accessibility>
+                      <property name="label" translatable="yes">View Options</property>
                     </accessibility>
                   </object>
                 </child>

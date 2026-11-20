@@ -16,7 +16,10 @@ internal interface IGridWindow
     // Scrolling columns to show, as (First, Last); Last < First when none.
     (int First, int Last) ColumnWindow { get; }
 
-    double RowHeight { get; }
+    // Where a row starts in its pane and how tall it is: rows differ in height once the grid wraps its cells.
+    double RowTop(int row);
+
+    double RowHeightOf(int row);
 
     // Rows are arranged against this y, a multiple of 4,096 px, so arrange coordinates stay small in a 32M px grid.
     double OriginY { get; }
@@ -100,13 +103,13 @@ internal sealed partial class RowsLayout(IGridWindow grid, bool frozen, LayoutCo
             grid.PrepareRow(element, row);
             _realized[row] = element;
         }
-        var size = new Size(grid.PaneWidth(frozen), grid.RowHeight);
-        foreach (var element in _realized.Values)
+        var width = grid.PaneWidth(frozen);
+        foreach (var (row, element) in _realized)
         {
-            element.Measure(size);
+            element.Measure(new Size(width, grid.RowHeightOf(row)));
         }
         counters.MeasureMilliseconds += Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-        return new Size(grid.PaneWidth(frozen), Math.Max(0, grid.TotalHeight - grid.OriginY));
+        return new Size(width, Math.Max(0, grid.TotalHeight - grid.OriginY));
     }
 
     protected override Size ArrangeOverride(VirtualizingLayoutContext context, Size finalSize)
@@ -114,7 +117,7 @@ internal sealed partial class RowsLayout(IGridWindow grid, bool frozen, LayoutCo
         var width = grid.PaneWidth(frozen);
         foreach (var (row, element) in _realized)
         {
-            element.Arrange(new Rect(0, (row * grid.RowHeight) - grid.OriginY, width, grid.RowHeight));
+            element.Arrange(new Rect(0, grid.RowTop(row) - grid.OriginY, width, grid.RowHeightOf(row)));
         }
         return finalSize;
     }

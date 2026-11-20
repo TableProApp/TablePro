@@ -160,6 +160,8 @@
                 <ToggleMenuFlyoutItem x:Uid="MenuShowHistory" x:Name="MenuShowHistory" Click="OnToggleHistory" IsEnabled="False" />
                 <ToggleMenuFlyoutItem x:Uid="MenuShowSavedQueries" x:Name="MenuShowSavedQueries" Click="OnToggleSavedQueries" IsEnabled="False" />
                 <ToggleMenuFlyoutItem x:Uid="MenuShowAssistant" x:Name="MenuShowAssistant" Click="OnToggleAssistant" IsEnabled="False" />
+                <MenuFlyoutSeparator />
+                <ToggleMenuFlyoutItem x:Uid="MenuWrapText" x:Name="MenuWrapText" Click="OnToggleWrapText" IsEnabled="False" />
             </MenuBarItem>
 
             <MenuBarItem x:Uid="DatabaseMenu" x:Name="DatabaseMenu">

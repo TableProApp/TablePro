@@ -43,6 +43,22 @@ final class DataGridCellRenderer {
         }
     }
 
+    // A wrapped value breaks by its column's width, so the width joins the key.
+    private struct WrapKey: Hashable {
+        let line: LineKey
+        let width: CGFloat
+    }
+
+    private final class WrappedText {
+        let lines: [DataGridWrapLayout.Line]
+        let marks: [[SpecialCharacterMark]]
+
+        init(lines: [DataGridWrapLayout.Line], marks: [[SpecialCharacterMark]]) {
+            self.lines = lines
+            self.marks = marks
+        }
+    }
+
     private struct RowNumberKey: Hashable {
         let number: Int
         let font: NSFont
@@ -55,6 +71,7 @@ final class DataGridCellRenderer {
     private static let maximumLaidOutCharacters = 300
 
     private var lineCache: [LineKey: LaidOutLine] = [:]
+    private var wrapCache: [WrapKey: WrappedText] = [:]
     private var rowNumberLines: [RowNumberKey: CTLine] = [:]
     private var rowNumberMetrics: (font: NSFont, lineHeight: CGFloat, baselineOffset: CGFloat)?
 
@@ -69,10 +86,17 @@ final class DataGridCellRenderer {
 
     func invalidateCachedLines() {
         lineCache.removeAll(keepingCapacity: true)
+        wrapCache.removeAll(keepingCapacity: true)
         rowNumberLines.removeAll(keepingCapacity: true)
     }
 
-    func draw(_ appearance: DataGridCellAppearance, in rect: NSRect, controlView: NSView? = nil) {
+    // `wrap` is set by a grid that wraps: a value breaks over the row's lines, and all else sits on the first.
+    func draw(
+        _ appearance: DataGridCellAppearance,
+        in rect: NSRect,
+        controlView: NSView? = nil,
+        wrap: DataGridWrapMetrics? = nil
+    ) {
         guard rect.width > 0, rect.height > 0, let context = NSGraphicsContext.current?.cgContext else { return }
 
         if let tint = appearance.backgroundTint {
@@ -80,14 +104,19 @@ final class DataGridCellRenderer {
             rect.fill()
         }
 
-        let accessoryRect = appearance.accessory.frame(in: rect)
+        let firstLine = wrap?.firstLine(of: rect) ?? rect
+        let accessoryRect = appearance.accessory.frame(in: firstLine)
 
         context.saveGState()
         context.clip(to: rect)
-        drawText(appearance, in: rect, context: context)
+        if let wrap, !appearance.isPlaceholder {
+            drawWrappedText(appearance, in: rect, metrics: wrap, context: context)
+        } else {
+            drawText(appearance, in: firstLine, context: context)
+        }
         drawAccessory(appearance.accessoryRole, color: appearance.accessoryColor, in: accessoryRect)
         if let mark = appearance.checkboxMark, let controlView {
-            drawCheckbox(mark, in: rect, controlView: controlView)
+            drawCheckbox(mark, in: firstLine, controlView: controlView)
         }
         context.restoreGState()
     }
@@ -160,6 +189,80 @@ final class DataGridCellRenderer {
             )
         }
         context.restoreGState()
+    }
+
+    private func drawWrappedText(
+        _ appearance: DataGridCellAppearance,
+        in rect: NSRect,
+        metrics: DataGridWrapMetrics,
+        context: CGContext
+    ) {
+        guard !appearance.text.isEmpty else { return }
+        let font = appearance.font
+        let width = appearance.accessory.availableTextWidth(in: rect)
+        guard DataGridWrapLayout.canWrap(width: width, font: font) else { return }
+
+        let wrapped = wrappedText(for: appearance, width: width)
+        let textX = rect.minX + DataGridMetrics.cellHorizontalInset
+        let firstBaseline = rect.minY + (metrics.rowHeight - font.ascender + font.descender - font.leading) / 2 + font.ascender
+        context.saveGState()
+        for (index, line) in wrapped.lines.enumerated() {
+            let baseline = firstBaseline + CGFloat(index) * metrics.lineHeight
+            guard baseline - font.ascender < rect.maxY else { break }
+            context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+            context.textPosition = CGPoint(x: textX, y: baseline)
+            CTLineDraw(line.line, context)
+            let marks = wrapped.marks[index]
+            guard !marks.isEmpty else { continue }
+            SpecialCharacterLine.draw(
+                marks,
+                fromX: textX,
+                top: baseline - font.ascender,
+                height: font.ascender - font.descender,
+                in: context
+            )
+        }
+        context.restoreGState()
+    }
+
+    // A line break is a break here, so only the other invisible characters take a mark.
+    private func wrappedText(for appearance: DataGridCellAppearance, width: CGFloat) -> WrappedText {
+        let font = appearance.font
+        let cut = DataGridWrapLayout.bounded(appearance.text, width: width, pointSize: font.pointSize)
+        let key = WrapKey(
+            line: LineKey(
+                shownText: cut.text,
+                isClipped: cut.isCut,
+                font: font,
+                color: appearance.textColor,
+                mark: appearance.textMark,
+                specialCharacterColor: appearance.specialCharacterColor
+            ),
+            width: width
+        )
+        if let cached = wrapCache[key] { return cached }
+
+        var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: appearance.textColor]
+        appearance.textMark?.attributes.forEach { attributes[$0.key] = $0.value }
+        let string = NSAttributedString(string: cut.text, attributes: attributes)
+        let marked = appearance.specialCharacterColor.map {
+            SpecialCharacterText(string, style: SpecialCharacterStyle(color: $0))
+        }
+        let lines = DataGridWrapLayout.lines(
+            of: marked?.string ?? string,
+            width: width,
+            endsCut: cut.isCut,
+            ellipsisAttributes: attributes
+        )
+        let created = WrappedText(
+            lines: lines,
+            marks: lines.map { marked?.marks(from: $0.start, in: $0.source, drawnAs: $0.line) ?? [] }
+        )
+        if wrapCache.count >= Self.lineCacheLimit {
+            wrapCache.removeAll(keepingCapacity: true)
+        }
+        wrapCache[key] = created
+        return created
     }
 
     // The mark is part of the key: the same value struck through is a different drawing.
