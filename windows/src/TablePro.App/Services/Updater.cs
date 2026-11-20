@@ -156,9 +156,16 @@ internal sealed class Updater
         var installedFrom = package.GetAppInstallerInfo()?.Uri;
         var file = UpdateFeeds.ToCheck(installedFrom, channel);
         var offer = UpdateOffer.Parse(await ReadAsync(file).ConfigureAwait(false));
-        if (offer is null || !offer.IsFor(package.Id.Name, package.Id.Publisher))
+        var problem = offer switch
         {
-            return new Finding(null, null, offer is null ? "UpdateFileUnreadable" : "UpdateFileOtherPackage", null);
+            null => "UpdateFileUnreadable",
+            _ when !offer.IsFor(package.Id.Name, package.Id.Publisher) => "UpdateFileOtherPackage",
+            _ when !offer.IsSafeToInstallFrom(file) => "UpdateFileElsewhere",
+            _ => null,
+        };
+        if (offer is null || problem is not null)
+        {
+            return new Finding(null, null, problem, null);
         }
 
         bool available;

@@ -37,12 +37,18 @@ public static class UpdateFeeds
         _ => installedFrom,
     };
 
-    private static bool Same(Uri a, Uri b) => Uri.Compare(
+    // A channel file names a bundle on this repository's Windows releases and nowhere else.
+    public static bool IsReleaseBundle(Uri bundle) =>
+        bundle is { IsAbsoluteUri: true, Scheme: "https" }
+        && string.Equals(bundle.Host, "github.com", StringComparison.OrdinalIgnoreCase)
+        && bundle.AbsolutePath.StartsWith("/TableProApp/TablePro/releases/download/windows-v", StringComparison.Ordinal);
+
+    internal static bool Same(Uri a, Uri b) => Uri.Compare(
         a, b, UriComponents.AbsoluteUri, UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) == 0;
 }
 
-// The main bundle an App Installer file installs.
-public sealed record UpdateOffer(string Name, string Publisher, Version Version)
+// The main bundle an App Installer file installs, where it comes from, and where the file says it lives.
+public sealed record UpdateOffer(string Name, string Publisher, Version Version, Uri Bundle, Uri Location)
 {
     public static UpdateOffer? Parse(string xml)
     {
@@ -71,9 +77,16 @@ public sealed record UpdateOffer(string Name, string Publisher, Version Version)
         return name is { Length: > 0 }
             && publisher is { Length: > 0 }
             && ReleaseVersions.TryParse((string?)main?.Attribute("Version"), out var version)
-                ? new UpdateOffer(name, publisher, version)
+            && Uri.TryCreate((string?)main?.Attribute("Uri"), UriKind.Absolute, out var bundle)
+            && Uri.TryCreate((string?)root.Attribute("Uri"), UriKind.Absolute, out var location)
+                ? new UpdateOffer(name, publisher, version, bundle, location)
                 : null;
     }
+
+    // Windows follows a file whose Uri names another and installs what that one names, unread; a channel file
+    // also has to name a bundle of this repository's releases.
+    public bool IsSafeToInstallFrom(Uri file) =>
+        UpdateFeeds.Same(Location, file) && (UpdateFeeds.ChannelOf(file) is null || UpdateFeeds.IsReleaseBundle(Bundle));
 
     public bool IsFor(string name, string publisher) =>
         string.Equals(Name, name, StringComparison.Ordinal) && string.Equals(Publisher, publisher, StringComparison.Ordinal);

@@ -60,13 +60,13 @@ The maintainer does these once, in this order: a tag runs the workflow file at t
    - Installs the bundle on Windows Server 2022 (x64, build 20348, the oldest Windows a hosted runner has) and Windows 11 (Arm64), and runs `TheInstalledPackageStartsAndKeepsItsFilesInLocalState` from the UI tests on each, in light and dark.
    - For a release, writes the winget manifest and runs `winget validate` on it.
    - Publishes the GitHub release with the bundle, the App Installer file and `SHA256SUMS`, a pre-release for a beta, which a reviewer approves. The repository's latest release stays the macOS one.
-   - Moves the channel files on `gh-pages` and deploys Pages, so installs on that channel find the update.
+   - Writes the channel files into a copy of `gh-pages` in a job with no write access, and the GitHub release job pushes them; Pages deploys them, so installs on that channel find the update.
    - For a release, opens the winget-pkgs pull request with wingetcreate, which a reviewer approves.
 4. **Afterwards**: check that `https://updates.tablepro.app/windows/TablePro.appinstaller` (or `TablePro-Beta.appinstaller`) names the new version, and watch the winget-pkgs pull request. Its bots validate and install the package, and a label such as `Needs-Author-Feedback` waits for an answer.
 
 ## When a run fails
 
 - Nothing reaches users before the GitHub release job. Tags never move: a code fix lands on `main` and ships as the next number.
-- The channel files or Pages failed after the GitHub release: `gh run rerun <run> --failed` runs them again; moving a channel to the version it already names changes nothing.
+- The channel push or Pages failed after the GitHub release: `gh run rerun <run> --failed` runs them again. The release job finds its release made and pushes the files, and pushing a channel file that already names the version changes nothing.
 - A runner or network failure: `gh run rerun <run> --failed`.
 - winget-pkgs rejects the pull request: fix `windows/ci/winget-manifest.py` on `main`, run it on the published bundle with the family name the install step printed, and submit that folder with `wingetcreate submit`. The release stays as published.

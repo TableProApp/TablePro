@@ -5511,6 +5511,9 @@ New fingerprint: {2}</value>
   <data name="UpdateFileOtherPackage" xml:space="preserve">
     <value>Couldn't check for updates: the update file installs another app.</value>
   </data>
+  <data name="UpdateFileElsewhere" xml:space="preserve">
+    <value>Couldn't check for updates: the update file sends the install somewhere else.</value>
+  </data>
   <data name="UpdateChannelCard.Header" xml:space="preserve">
     <value>Update channel</value>
   </data>

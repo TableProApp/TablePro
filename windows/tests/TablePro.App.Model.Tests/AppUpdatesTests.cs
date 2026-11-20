@@ -4,10 +4,17 @@ public sealed class AppUpdatesTests
 {
     private const string Publisher = "CN=TablePro, O=TablePro, C=VN";
 
-    private static string File(string version, string element = "MainBundle") => $"""
+    private const string Bundle =
+        "https://github.com/TableProApp/TablePro/releases/download/windows-v0.3.0/TablePro_0.3.0.99_x64_arm64.msixbundle";
+
+    private static string File(
+        string version,
+        string element = "MainBundle",
+        string location = "https://updates.tablepro.app/windows/TablePro.appinstaller",
+        string bundle = Bundle) => $"""
         <?xml version="1.0" encoding="utf-8"?>
-        <AppInstaller xmlns="http://schemas.microsoft.com/appx/appinstaller/2017/2" Version="{version}" Uri="https://updates.tablepro.app/windows/TablePro.appinstaller">
-          <{element} Name="TablePro" Publisher="{Publisher}" Version="{version}" Uri="https://example.invalid/TablePro.msixbundle" />
+        <AppInstaller xmlns="http://schemas.microsoft.com/appx/appinstaller/2017/2" Version="{version}" Uri="{location}">
+          <{element} Name="TablePro" Publisher="{Publisher}" Version="{version}" Uri="{bundle}" />
           <UpdateSettings>
             <OnLaunch HoursBetweenUpdateChecks="24" />
             <AutomaticBackgroundTask />
@@ -20,7 +27,7 @@ public sealed class AppUpdatesTests
     {
         var offer = UpdateOffer.Parse(File("0.3.0.2"));
 
-        Assert.Equal(new UpdateOffer("TablePro", Publisher, new Version(0, 3, 0, 2)), offer);
+        Assert.Equal(new UpdateOffer("TablePro", Publisher, new Version(0, 3, 0, 2), new Uri(Bundle), UpdateFeeds.Stable), offer);
         Assert.True(offer!.IsFor("TablePro", Publisher));
         Assert.False(offer.IsFor("TablePro", "CN=TablePro Development"));
         Assert.Equal(new Version(1, 2, 3, 99), UpdateOffer.Parse(File("1.2.3.99", "MainPackage"))!.Version);
@@ -34,11 +41,38 @@ public sealed class AppUpdatesTests
         Assert.Null(UpdateOffer.Parse(File("0.3.0")));
         Assert.Null(UpdateOffer.Parse(File("0.3.0.65536")));
         Assert.Null(UpdateOffer.Parse(File("0.3.0.-1")));
+        Assert.Null(UpdateOffer.Parse(File("0.3.0.2", bundle: "not a uri")));
+        Assert.Null(UpdateOffer.Parse(File("0.3.0.2", location: "")));
         Assert.Null(UpdateOffer.Parse("""<AppInstaller Version="1.0.0.0" Uri="https://example.invalid/a" />"""));
         Assert.Null(UpdateOffer.Parse("""
             <!DOCTYPE AppInstaller [<!ENTITY name "TablePro">]>
             <AppInstaller><MainBundle Name="&name;" Publisher="CN=A" Version="1.0.0.99" /></AppInstaller>
             """));
+    }
+
+    [Fact]
+    public void OnlyAFileThatLivesWhereItWasReadAndNamesARelease()
+    {
+        Assert.True(UpdateOffer.Parse(File("0.3.0.99"))!.IsSafeToInstallFrom(UpdateFeeds.Stable));
+        // Windows would install from the file the Uri names, which this check never read.
+        Assert.False(UpdateOffer.Parse(File("0.3.0.99"))!.IsSafeToInstallFrom(UpdateFeeds.Beta));
+        var elsewhere = File("0.3.0.99", location: "https://example.invalid/TablePro.appinstaller");
+        Assert.False(UpdateOffer.Parse(elsewhere)!.IsSafeToInstallFrom(UpdateFeeds.Stable));
+        foreach (var bundle in new[]
+        {
+            "https://example.invalid/TablePro.msixbundle",
+            "http://github.com/TableProApp/TablePro/releases/download/windows-v0.3.0/a.msixbundle",
+            "https://github.com/someone/TablePro/releases/download/windows-v0.3.0/a.msixbundle",
+            "https://github.com/TableProApp/TablePro/releases/download/v0.88.0/a.msixbundle",
+        })
+        {
+            Assert.False(UpdateOffer.Parse(File("0.3.0.99", bundle: bundle))!.IsSafeToInstallFrom(UpdateFeeds.Stable), bundle);
+        }
+
+        // A file of the install's own, as an organisation or a test hosts one, may name its bundle anywhere.
+        const string local = "file:///C:/Users/runner/TablePro.appinstaller";
+        var own = File("0.3.0.99", location: local, bundle: "file:///C:/Users/runner/TablePro.msixbundle");
+        Assert.True(UpdateOffer.Parse(own)!.IsSafeToInstallFrom(new Uri(local)));
     }
 
     [Fact]
