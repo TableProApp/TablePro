@@ -48,12 +48,12 @@ nonisolated internal struct SQLExportRowValueEncoder {
     internal init(
         columns: [String],
         columnTypeNames: [String],
-        excludedColumnNames: Set<String>,
+        excludedColumnNames: Set<[UInt8]>,
         databaseTypeId: String,
         escapeStringLiteral: @escaping (String) -> String
     ) {
         includedColumnIndices = columns.enumerated().compactMap { index, name in
-            excludedColumnNames.contains(name) ? nil : index
+            excludedColumnNames.contains(PluginExportSpelling.key(name)) ? nil : index
         }
         numericIndices = Set(includedColumnIndices.filter { index in
             index < columnTypeNames.count

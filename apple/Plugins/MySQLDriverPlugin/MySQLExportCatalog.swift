@@ -349,7 +349,11 @@ nonisolated struct MySQLExportCatalog: Sendable {
 
     // Two single-catalog reads merged here rather than one join: ShardingSphere-Proxy 5.5.3 answers any join of two
     // `information_schema` tables with an OK packet and no columns, and each read on its own correctly.
-    func catalogForeignKeys(database: String, table: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+    func catalogForeignKeys(
+        database: String,
+        table: String?,
+        keepsSpellingsApart: Bool = false
+    ) async throws -> [String: [PluginForeignKeyInfo]] {
         let columns = try await run(MySQLObjectQueries.foreignKeyColumns(schema: database, table: table))
         let columnRows = columns.rows.compactMap { row -> MySQLForeignKeyCatalog.ColumnRow? in
             guard let tableName = row[safe: 0]?.asText,
@@ -370,6 +374,9 @@ nonisolated struct MySQLExportCatalog: Sendable {
         guard !columnRows.isEmpty else { return [:] }
 
         let actions = try await run(MySQLObjectQueries.referentialActions(schema: database, table: table))
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: columns.rows + actions.rows, nameAt: 0)
+        }
         let actionRows = actions.rows.compactMap { row -> MySQLForeignKeyCatalog.ActionRow? in
             guard let tableName = row[safe: 0]?.asText,
                   let constraint = row[safe: 1]?.asText
@@ -392,13 +399,20 @@ nonisolated struct MySQLExportCatalog: Sendable {
     // MARK: - Columns
 
     // `GENERATION_EXPRESSION` is projected here so the bulk read agrees with the per-table one on generated columns.
-    func informationSchemaColumns(schema: String?, table: String?) async throws -> [String: [PluginColumnInfo]] {
+    func informationSchemaColumns(
+        schema: String?,
+        table: String?,
+        keepsSpellingsApart: Bool = false
+    ) async throws -> [String: [PluginColumnInfo]] {
         let query = MySQLObjectQueries.columnCatalog(
             schema: effectiveSchema(schema),
             table: table,
             projectsGenerationExpression: holds(MySQLServerVersion.hasGenerationExpression(banner:flavor:))
         )
         let result = try await run(query)
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(in: result.rows, nameAt: 0)
+        }
         let createTableClausesByTable = try await oceanbaseDefaultClausesByTable(
             forRows: result.rows, tableColumn: 0, typeColumn: 2, defaultColumn: 6, schema: schema
         )

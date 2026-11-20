@@ -322,6 +322,20 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var fetchesAllColumnsInOneRequest: Bool { true }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: false)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await PluginNameSpellings.readEachTable(try await fetchTables(schema: schema).map(\.name)) {
+            try await fetchForeignKeys(table: $0, schema: schema)
+        }
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
         let database = connection?.currentDatabase
         let targetSchema = schema ?? connection?.currentSchema
         guard let database, let targetSchema else { return [:] }
@@ -333,6 +347,9 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         } catch let error as SnowflakeError where error.indicatesInaccessibleObject {
             return [:]
         }
+        if keepsSpellingsApart {
+            try PluginNameSpellings.requireDistinctSpellings(result.rows.compactMap { Self.text($0, 0) })
+        }
 
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
@@ -341,7 +358,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 name: name,
                 dataType: Self.text(row, 2) ?? "TEXT",
                 isNullable: (Self.text(row, 3) ?? "YES").uppercased() == "YES",
-                isPrimaryKey: primaryKeys[table]?.contains(name.uppercased()) == true,
+                isPrimaryKey: primaryKeys[table]?.contains(Array(name.uppercased().utf8)) == true,
                 defaultValue: Self.text(row, 4),
                 comment: Self.text(row, 5)
             )
@@ -353,18 +370,19 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return columnsByTable
     }
 
-    private func primaryKeysBySchema(database: String, schema: String) async -> [String: Set<String>] {
+    // A column set by bytes: a table can hold two columns whose names differ only in Unicode form.
+    private func primaryKeysBySchema(database: String, schema: String) async -> [String: Set<[UInt8]>] {
         guard let result = try? await rawQuery(
             SnowflakeSchemaQueries.showPrimaryKeysInSchema(database: database, schema: schema)
         ) else { return [:] }
         guard let tableIndex = columnIndex(of: "table_name", in: result),
               let columnIndexInResult = columnIndex(of: "column_name", in: result) else { return [:] }
 
-        var keys: [String: Set<String>] = [:]
+        var keys: [String: Set<[UInt8]>] = [:]
         for row in result.rows {
             guard let table = Self.text(row, tableIndex),
                   let column = Self.text(row, columnIndexInResult) else { continue }
-            keys[table, default: []].insert(column.uppercased())
+            keys[table, default: []].insert(Array(column.uppercased().utf8))
         }
         return keys
     }
@@ -392,7 +410,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     name: column.name,
                     dataType: column.dataType,
                     isNullable: column.isNullable,
-                    isPrimaryKey: primaryKeys.contains(column.name.uppercased()),
+                    isPrimaryKey: primaryKeys.contains(Array(column.name.uppercased().utf8)),
                     defaultValue: column.defaultValue,
                     comment: column.comment
                 )
@@ -423,7 +441,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 name: name,
                 dataType: dataType,
                 isNullable: nullable,
-                isPrimaryKey: primaryKeys.contains(name.uppercased()),
+                isPrimaryKey: primaryKeys.contains(Array(name.uppercased().utf8)),
                 defaultValue: defaultValue,
                 comment: comment
             )
@@ -740,7 +758,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return ddl
     }
 
-    private func fetchPrimaryKeyColumns(table: String, schema: String, database: String) async throws -> Set<String> {
+    private func fetchPrimaryKeyColumns(table: String, schema: String, database: String) async throws -> Set<[UInt8]> {
         let fqn = "\(quoteIdentifier(database)).\(quoteIdentifier(schema)).\(quoteIdentifier(table))"
         guard let result = try? await rawQuery("SHOW PRIMARY KEYS IN TABLE \(fqn)") else {
             return []
@@ -748,10 +766,10 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let columnIndex = result.columns.firstIndex(where: { $0.name.lowercased() == "column_name" }) else {
             return []
         }
-        var keys: Set<String> = []
+        var keys: Set<[UInt8]> = []
         for row in result.rows {
             if let value = Self.text(row, columnIndex) {
-                keys.insert(value.uppercased())
+                keys.insert(Array(value.uppercased().utf8))
             }
         }
         return keys

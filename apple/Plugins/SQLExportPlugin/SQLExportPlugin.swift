@@ -960,13 +960,14 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
     private func groupForeignKeysByConstraint(
         _ fks: [PluginForeignKeyInfo]
     ) -> [[PluginForeignKeyInfo]] {
-        var orderedNames: [String] = []
-        var groups: [String: [PluginForeignKeyInfo]] = [:]
+        var orderedNames: [[UInt8]] = []
+        var groups: [[UInt8]: [PluginForeignKeyInfo]] = [:]
         for fk in fks {
-            if groups[fk.name] == nil {
-                orderedNames.append(fk.name)
+            let name = PluginExportSpelling.key(fk.name)
+            if groups[name] == nil {
+                orderedNames.append(name)
             }
-            groups[fk.name, default: []].append(fk)
+            groups[name, default: []].append(fk)
         }
         return orderedNames.compactMap { groups[$0] }
     }
@@ -1036,7 +1037,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
         var wroteAnyRows = false
         var tally = SQLExportStatementTally()
 
-        let generatedColumnNames = Set(columnInfo.filter { $0.isGenerated }.map { $0.name })
+        let generatedColumnNames = Set(columnInfo.filter(\.isGenerated).map { PluginExportSpelling.key($0.name) })
         let primaryKeyColumns = columnInfo.filter(\.isPrimaryKey).map(\.name)
         let usesOverridingSystemValue = SqlDialect.from(databaseTypeId: dataSource.databaseTypeId) == .postgres
             && columnInfo.contains { $0.identityKind == .always }

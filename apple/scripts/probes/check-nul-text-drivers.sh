@@ -35,8 +35,9 @@ done
 if [ "$ENGINE" = libsql ]; then
     ln -sf "$ROOT/Plugins/SharedSpill/PluginRowSpill.swift" "$SOURCES/PluginRowSpill.swift"
 fi
-for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginRedirectRefusingDelegate; do
-    ln -sf "$ROOT/Plugins/Shared/$shared.swift" "$SOURCES/$shared.swift"
+for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginRedirectRefusingDelegate \
+    PluginNameSpellings; do
+    [ -f "$ROOT/Plugins/Shared/$shared.swift" ] && ln -sf "$ROOT/Plugins/Shared/$shared.swift" "$SOURCES/$shared.swift"
 done
 ln -sf "$ROOT/scripts/probes/nul-text-drivers.swift" "$SOURCES/Probe.swift"
 

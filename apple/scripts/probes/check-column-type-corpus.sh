@@ -187,8 +187,9 @@ link_sources csv "$PLUGINS/CSVExportPlugin"
 link_sources json "$PLUGINS/JSONExportPlugin"
 link_sources sql "$PLUGINS/SQLExportPlugin"
 [ "$FOLDER" = SQLiteDriverPlugin ] && link_sources spill "$PLUGINS/SharedSpill"
-for shared in PluginConnectTimeout PluginExportOutputBuffer PluginExportSpelling PluginHexText PluginQueryTimeout PluginURLSessionTaskBox; do
-    ln -s "$PLUGINS/Shared/$shared.swift" "$SOURCES/shared_$shared.swift"
+for shared in PluginConnectTimeout PluginExportOutputBuffer PluginExportSpelling PluginHexText PluginNameSpellings \
+    PluginQueryTimeout PluginURLSessionTaskBox; do
+    [ -f "$PLUGINS/Shared/$shared.swift" ] && ln -s "$PLUGINS/Shared/$shared.swift" "$SOURCES/shared_$shared.swift"
 done
 
 dependencies='.product(name: "TableProPluginKit", package: "TableProCore"),
