@@ -112,7 +112,27 @@ public sealed partial class MainWindow
             case AppLink.OpenQuery query:
                 await OpenLinkedConnectionAsync(query.ConnectionId, new LinkTarget.Query(query.Sql));
                 break;
+            case AppLink.StartMcpServer:
+                _workbench.RestartFailedMcp();
+                break;
         }
+    }
+
+    // tablepro://integrations/start-mcp asks for nothing on screen, as macOS opens it for its MCP bridge.
+    internal static bool OnlyStartsMcp(ActivationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return !request.IsEmpty && request.Files.Count == 0 && request.Links.All(link =>
+        {
+            try
+            {
+                return AppLink.Parse(link) is AppLink.StartMcpServer;
+            }
+            catch (TableProException)
+            {
+                return false;
+            }
+        });
     }
 
     // A saved connection opens, or comes forward when open; a query link asks first, since anything could send one.
