@@ -1,6 +1,6 @@
 # 0018: Links, file types, notifications, type editors and JSON results
 
-- **Status**: Accepted
+- **Status**: Accepted; `integrations` links amended by [0022](0022-the-mcp-server-starts-from-a-link.md)
 - **Date**: 2026-11-18
 
 ## Context

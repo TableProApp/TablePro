@@ -30,6 +30,8 @@ pub enum AppLink {
     OpenSettings {
         pane: Option<String>,
     },
+    // Starts the MCP server where Settings has it on, as macOS's MCP bridge launches the app with it.
+    StartMcpServer,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -78,6 +80,7 @@ pub fn parse(link: &str) -> Result<AppLink, AppLinkError> {
         "settings" => Ok(AppLink::OpenSettings {
             pane: segments.into_iter().next(),
         }),
+        "integrations" => integrations(&segments),
         _ => Err(AppLinkError::UnknownHost { host: host.to_owned() }),
     }
 }
@@ -128,6 +131,14 @@ fn connect(url: &Url, segments: &[String]) -> Result<AppLink, AppLinkError> {
             })
         }
         [query_word] if query_word == "query" => query(url, connection),
+        _ => Err(AppLinkError::MalformedPath),
+    }
+}
+
+// Pairing a client needs scoped tokens the MCP server does not issue, so `pair` reads as a path the app does not know.
+fn integrations(segments: &[String]) -> Result<AppLink, AppLinkError> {
+    match segments.first().map(String::as_str) {
+        Some("start-mcp") => Ok(AppLink::StartMcpServer),
         _ => Err(AppLinkError::MalformedPath),
     }
 }
@@ -230,6 +241,27 @@ mod tests {
                 pane: Some("notifications".to_owned())
             })
         );
+    }
+
+    #[test]
+    fn an_integrations_link_starts_the_mcp_server_and_pairs_nothing() {
+        assert_eq!(parse("tablepro://integrations/start-mcp"), Ok(AppLink::StartMcpServer));
+        assert_eq!(
+            parse("tablepro://integrations/start-mcp/?x=1"),
+            Ok(AppLink::StartMcpServer)
+        );
+        let refused = [
+            "tablepro://integrations",
+            "tablepro://integrations/pair?client=Raycast&challenge=c&redirect=raycast%3A%2F%2Fx",
+            "tablepro://integrations/stop-mcp",
+        ];
+        for link in refused {
+            assert_eq!(
+                parse(link).map_err(|error| error.code()),
+                Err("link.malformed_path"),
+                "{link}"
+            );
+        }
     }
 
     #[test]

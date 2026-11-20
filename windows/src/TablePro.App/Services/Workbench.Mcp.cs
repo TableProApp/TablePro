@@ -44,6 +44,15 @@ internal sealed partial class Workbench
         McpChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    // As macOS's tablepro://integrations/start-mcp: a running server keeps its clients, and one Settings has off stays off.
+    public void RestartFailedMcp()
+    {
+        if (Settings.McpServerEnabled && McpStatus.State == McpServerState.Failed)
+        {
+            ApplyMcpSettings();
+        }
+    }
+
     // Read from Credential Manager, or made and kept there first, whether or not the server runs.
     public Task<string> GetMcpTokenAsync() =>
         _mcp?.GetAccessTokenAsync() ?? Task.FromException<string>(new InvalidOperationException("No MCP server."));
