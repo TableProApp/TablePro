@@ -74,7 +74,8 @@ internal static class ConnectionCue
             label.Children.Add(chip);
         }
 
-        AutomationProperties.SetName(label, Strings.Format("EnvironmentLabel", string.Join(", ", tags.Select(tag => tag.Name))));
+        AutomationProperties.SetName(
+            label, Strings.Format("EnvironmentLabel", Strings.List(tags.Select(tag => tag.Name))));
         AutomationProperties.SetAutomationId(label, "EnvironmentLabel");
         return label;
     }

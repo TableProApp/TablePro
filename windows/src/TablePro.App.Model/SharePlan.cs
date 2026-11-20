@@ -27,14 +27,14 @@ public enum ShareReadiness
 public sealed record ExpiryChoice(ShareExpiry Expiry, bool Enabled, bool ProTag);
 
 // The footer line: "Free · 3 of 5 links · first 1,000 rows", "Pro · 12 links", or a team's "Data · 4 of 1,000 links".
-public sealed record ShareFooter(bool Pro, long Live, long Limit, long MaxRows, string? Team = null)
-{
-    // "Pro · 1 link" counts its links; the others count against a limit, which stays plural.
-    public string ProKey => Live == 1 ? "ShareFooterProOne" : "ShareFooterProMany";
-}
+public sealed record ShareFooter(bool Pro, long Live, long Limit, long MaxRows, string? Team = null);
 
 // The at-cap line: "You have 7 live links. Free allows 5." and, on Free, "Pro allows up to 1,000."; or a team's.
-public sealed record ShareCap(bool Pro, long Live, long Limit, string? Team = null);
+public sealed record ShareCap(bool Pro, long Live, long Limit, string? Team = null)
+{
+    // The limit the macOS sheet names to a Free account.
+    public const long ProLimit = 1_000;
+}
 
 // Share as: Personal (no TeamId), then each seated team; one whose public links are off is listed, not offered.
 public sealed record ShareOwner(string? TeamId, string? Name, bool Enabled);

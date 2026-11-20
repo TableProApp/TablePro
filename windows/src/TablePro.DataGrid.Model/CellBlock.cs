@@ -31,7 +31,7 @@ public enum CellState : ushort
     // The server's value, with no text: the grid draws its DefaultText.
     Default = 256,
 
-    // A value the driver could not read: the text says so, from its type's name, and a copy leaves it out.
+    // A value the driver could not read: the text is its type's name, and a copy leaves it out.
     Unreadable = 512,
 }
 
@@ -98,16 +98,12 @@ public sealed class CellBlock
 
     public void AddDefault(CellState marks = CellState.None) => Close(CellState.Default | marks);
 
-    // Worded as the Linux grid words it.
+    // The type's name alone: the grid words what the cell shows around it.
     public void AddUnreadable(ReadOnlySpan<byte> typeName)
     {
-        const string Start = "<unreadable ";
-        Reserve(Start.Length + Encoding.UTF8.GetMaxCharCount(typeName.Length) + 1);
+        Reserve(Encoding.UTF8.GetMaxCharCount(typeName.Length));
         var start = _length;
-        Start.CopyTo(_chars.AsSpan(_length));
-        _length += Start.Length;
         _length += Encoding.UTF8.GetChars(typeName, _chars.AsSpan(_length));
-        _chars[_length++] = '>';
         Finish(start, truncated: false, lossy: false, CellState.Unreadable);
     }
 

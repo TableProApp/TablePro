@@ -26,7 +26,7 @@ public sealed class FinishNoticeTests
     [InlineData(192, "3m 12s")]
     [InlineData(3_720, "1h 2m")]
     public void ADurationKeepsItsTwoLargestUnits(double seconds, string text) =>
-        Assert.Equal(text, FinishNotice.Duration(TimeSpan.FromSeconds(seconds)));
+        Assert.Equal(text, FinishNotice.Duration(TimeSpan.FromSeconds(seconds), "{0}h {1}m", "{0}m {1}s", "{0}s"));
 
     [Fact]
     public void AThresholdSettingsDoNotOfferFallsBackToTheDefault()

@@ -41,6 +41,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- The control reads its words from the app that hosts it, so this host carries the app's strings. -->
+  <ItemGroup>
+    <PRIResource Include="../../src/TablePro.App/Strings/en-US/Resources.resw" Link="Strings/en-US/Resources.resw" />
+  </ItemGroup>
+
   <ItemGroup>
     <Compile Include="../Shared/WinUiApp.cs" Link="WinUiApp.cs" />
   </ItemGroup>

@@ -57,10 +57,6 @@ public sealed partial class QueryTabView
         InitializeComponent();
         Results.ShowsEdits = true;
         var grid = Results.GridView;
-        grid.DefaultText = Strings.Get("GridDefaultText");
-        grid.EditedStatus = Strings.Get("GridEditedStatus");
-        grid.NewRowStatus = Strings.Get("GridNewRowStatus");
-        grid.DeletedStatus = Strings.Get("GridDeletedStatus");
         SqlText.Text = onDisk?.Text ?? sql ?? string.Empty;
         SqlText.Lexer = new CoreSqlLexer(Grammars.For(engineId));
         DisplaySettings.Follow(SqlText);
@@ -345,9 +341,7 @@ public sealed partial class QueryTabView
     async Task<bool> IQueryTabView.ConfirmWritesAsync(RunGate gate, string connection)
     {
         var count = gate.Confirm.Count;
-        var message = gate.Destructive
-            ? Strings.Format(count == 1 ? "ConfirmRunDestructiveOne" : "ConfirmRunDestructiveMany", connection)
-            : Strings.Format(count == 1 ? "ConfirmRunWriteOne" : "ConfirmRunWriteMany", connection);
+        var message = Strings.Plural(gate.Destructive ? "ConfirmRunDestructive" : "ConfirmRunWrite", count, connection, count);
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
         var statements = new TextBlock
@@ -363,7 +357,7 @@ public sealed partial class QueryTabView
         {
             XamlRoot = XamlRoot,
             RequestedTheme = ActualTheme,
-            Title = count == 1 ? Strings.Get("ConfirmRunTitleOne") : Strings.Format("ConfirmRunTitleMany", count),
+            Title = Strings.Plural("ConfirmRunTitle", count, count),
             Content = new ScrollViewer { Content = content, MaxHeight = 480 },
             PrimaryButtonText = Strings.Get("ConfirmRunButton"),
             CloseButtonText = Strings.Get("Cancel"),
@@ -987,7 +981,8 @@ public sealed partial class QueryTabView
             VimKeysText.Visibility = Visibility.Collapsed;
             return;
         }
-        var label = vim.ModeLabel;
+        // Vim's own mode names, which Vim's translations word; the command line shows what was typed.
+        var label = vim.Mode == VimMode.CommandLine ? vim.ModeLabel : Strings.Get("VimMode" + vim.Mode);
         VimModeText.Text = label;
         AutomationProperties.SetName(VimModeText, Strings.Format("VimModeName", label));
         VimBadge.Visibility = Visibility.Visible;
@@ -1000,9 +995,9 @@ public sealed partial class QueryTabView
             _ => "VimNormal",
         };
         VisualStateManager.GoToState(this, state, false);
-        var keys = vim.RecordingRegister is { } register
-            ? (vim.PendingKeys + " " + Strings.Format("VimRecording", register)).Trim()
-            : vim.PendingKeys;
+        var keys = vim.RecordingRegister is not { } register ? vim.PendingKeys
+            : vim.PendingKeys.Length == 0 ? Strings.Format("VimRecording", register)
+            : Strings.Format("VimKeysRecording", vim.PendingKeys, register);
         VimKeysText.Text = keys;
         VimKeysText.Visibility = keys.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }

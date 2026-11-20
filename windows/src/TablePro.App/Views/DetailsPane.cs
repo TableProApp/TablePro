@@ -408,7 +408,7 @@ internal sealed partial class DetailsPane : UserControl
         }
 
         var none = Strings.Get("DetailsNotKept");
-        string Size(long? bytes) => bytes is { } value ? ByteSize.Format(value, Strings.Get("DetailsBytes"), CultureInfo.CurrentCulture) : none;
+        string Size(long? bytes) => bytes is { } value ? Strings.FileSize(value) : none;
         var rows = info.Rows is { } estimate
             ? Strings.Format(estimate.IsExact ? "DetailsRowsExact" : "DetailsRowsAbout", estimate.Rows)
             : none;
@@ -428,7 +428,7 @@ internal sealed partial class DetailsPane : UserControl
         };
         var text = new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
         AutomationProperties.SetAutomationId(text, automationId);
-        AutomationProperties.SetName(text, $"{title.Text}: {value}");
+        AutomationProperties.SetName(text, Strings.Format("JoinLabelValue", title.Text, value));
         var figure = new StackPanel { Spacing = 2 };
         figure.Children.Add(title);
         figure.Children.Add(text);

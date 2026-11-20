@@ -57,7 +57,7 @@ public sealed class CoreDataTests
 
     // DuckDB hands an editor run a TIMETZ as the time alone, which the driver cannot read back.
     [Fact]
-    public async Task AValueTheDriverCouldNotReadSaysSoAndCopiesAsNothing()
+    public async Task AValueTheDriverCouldNotReadKeepsItsTypeAndCopiesAsNothing()
     {
         await using var database = await CoreDatabase.CreateAsync("grid.duckdb");
         using var data = await database.QueryAsync("SELECT 1 AS id, TIMETZ '12:30:00+05:30' AS at");
@@ -67,7 +67,7 @@ public sealed class CoreDataTests
         var cell = cache.Get(0, 1, 64);
         var tsv = GridCopy.Tsv(reader, new CellRange(0, 0, 0, 1), TestContext.Current.CancellationToken);
 
-        Assert.Equal("<unreadable TIME WITH TIME ZONE>", cell.Text.ToString());
+        Assert.Equal("TIME WITH TIME ZONE", cell.Text.ToString());
         Assert.Equal(CellState.Unreadable, cell.State);
         Assert.Equal("1\t\r\n", tsv);
     }

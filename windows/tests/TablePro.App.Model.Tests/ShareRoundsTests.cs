@@ -108,18 +108,4 @@ public sealed class ShareRoundsTests
         Assert.Null(rounds.Plan);
         Assert.False(rounds.CanShare(null));
     }
-
-    [Fact]
-    public void TheSummaryLineTakesTheSingularForOneMaskedColumn()
-    {
-        var one = ShareColumns.From(
-            [new ShareColumnMasking("email", new MaskSuggestion(MaskStyle.Email, new MaskReason.ColumnName("email"))), new ShareColumnMasking("id", null)]);
-        var none = Columns();
-
-        Assert.Equal("ShareColumnsSummaryOne", one.SummaryKey);
-        Assert.Equal("ShareColumnsSummaryMany", none.SummaryKey);
-        none.Columns[0].Choose(ShareColumnAction.Mask);
-        none.Columns[1].Choose(ShareColumnAction.Mask);
-        Assert.Equal("ShareColumnsSummaryMany", none.SummaryKey);
-    }
 }

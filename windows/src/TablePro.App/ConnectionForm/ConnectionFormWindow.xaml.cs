@@ -123,7 +123,7 @@ public sealed partial class ConnectionFormWindow : Window
         engine,
         engine.DefaultPort is { } port
             ? Strings.Format("EngineDefaultPort", port)
-            : string.Join(", ", engine.FileSuffixes.Select(suffix => "." + suffix)));
+            : Strings.List(engine.FileSuffixes.Select(suffix => "." + suffix)));
 
     private void FillColors()
     {

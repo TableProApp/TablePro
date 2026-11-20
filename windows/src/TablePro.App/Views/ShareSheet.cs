@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -455,9 +454,10 @@ internal sealed class ShareSheet
         ListOwners(plan);
         _footer.Text = plan.Footer switch
         {
-            { Team: { } team } footer => Strings.Format("ShareFooterTeam", team, footer.Live, footer.Limit),
-            { Pro: true } footer => Strings.Format(footer.ProKey, footer.Live),
-            var footer => Strings.Format("ShareFooterFree", footer.Live, footer.Limit, footer.MaxRows),
+            { Team: { } team } footer => Strings.Format("JoinDot", team, LinksOf(footer)),
+            { Pro: true } footer => Strings.Plural("ShareFooterPro", footer.Live, footer.Live),
+            var footer => Strings.Format(
+                "ShareFooterFree", LinksOf(footer), Strings.Plural("ShareFooterRows", footer.MaxRows, footer.MaxRows)),
         };
         switch (plan.Stage)
         {
@@ -750,6 +750,9 @@ internal sealed class ShareSheet
         return row;
     }
 
+    private static string LinksOf(ShareFooter footer) =>
+        Strings.Plural("ShareFooterLinks", footer.Limit, footer.Live, footer.Limit);
+
     private static string? Reason(ShareColumn column)
     {
         if (column.Suggestion is not { } suggestion)
@@ -773,7 +776,9 @@ internal sealed class ShareSheet
 
         var columns = _columns;
         _columnsSection.Visibility = columns is { Columns.Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
-        ShowColumnsSummary(columns is null ? string.Empty : Strings.Format(columns.SummaryKey, columns.Masked, columns.Removed));
+        ShowColumnsSummary(columns is null
+            ? string.Empty
+            : Strings.Plural("ShareColumnsSummary", columns.Masked, columns.Masked, columns.Removed));
         _detectionNote.Visibility = columns is { HasDetections: true } ? Visibility.Visible : Visibility.Collapsed;
         var noColumns = columns is { RemovesEveryColumn: true };
         _noColumns.IsOpen = noColumns;
@@ -882,9 +887,11 @@ internal sealed class ShareSheet
     private void ShowSummary(SharePlan plan, ShareSummary? summary)
     {
         var cut = summary is not null && plan.CutsRows(summary);
-        _capNote.Text = cut ? Strings.Format("ShareCapNote", summary!.RowsSent, plan.TotalRows) : string.Empty;
+        _capNote.Text = cut ? Strings.Plural("ShareCapNote", plan.TotalRows, summary!.RowsSent, plan.TotalRows) : string.Empty;
         _capNote.Visibility = cut ? Visibility.Visible : Visibility.Collapsed;
-        _columnsNote.Text = summary is null ? string.Empty : Strings.Format("ShareColumnsNote", summary.ColumnsSent);
+        _columnsNote.Text = summary is null
+            ? string.Empty
+            : Strings.Plural("ShareColumnsNote", summary.ColumnsSent, summary.ColumnsSent);
         _columnsNote.Visibility = summary is { ColumnsTruncated: true } ? Visibility.Visible : Visibility.Collapsed;
         var tooLarge = summary?.Refused switch
         {
@@ -975,7 +982,7 @@ internal sealed class ShareSheet
                 .ToList();
             if (kinds.Count > 0)
             {
-                lines.Add(Strings.Format("ShareSecretInSql", string.Join(CultureInfo.CurrentCulture.TextInfo.ListSeparator + " ", kinds)));
+                lines.Add(Strings.Format("ShareSecretInSql", Strings.List(kinds)));
             }
         }
 
@@ -989,7 +996,7 @@ internal sealed class ShareSheet
             var columns = ShareLinks.ScanColumns(names);
             if (columns.Count > 0)
             {
-                lines.Add(Strings.Format("ShareSecretColumns", string.Join(CultureInfo.CurrentCulture.TextInfo.ListSeparator + " ", columns)));
+                lines.Add(Strings.Format("ShareSecretColumns", Strings.List(columns)));
             }
         }
 
@@ -1011,7 +1018,7 @@ internal sealed class ShareSheet
             : [];
         var shown = kinds.Count > 0;
         _personalData.Message = shown
-            ? Strings.Format("ShareHideSqlSuggestion", string.Join(CultureInfo.CurrentCulture.TextInfo.ListSeparator + " ", kinds))
+            ? Strings.Format("ShareHideSqlSuggestion", Strings.List(kinds))
             : string.Empty;
         if (shown != _personalData.IsOpen)
         {
@@ -1048,15 +1055,19 @@ internal sealed class ShareSheet
         {
             Text = plan.Cap switch
             {
-                { Team: { } team } cap => Strings.Format("ShareAtCapTeam", team, cap.Live, cap.Limit),
-                { Pro: true } cap => Strings.Format("ShareAtCapPro", cap.Live, cap.Limit),
-                var cap => Strings.Format("ShareAtCapFree", cap.Live, cap.Limit),
+                { Team: { } team } cap => Strings.Plural("ShareAtCapTeam", cap.Live, team, cap.Live, cap.Limit),
+                { Pro: true } cap => Strings.Plural("ShareAtCapPro", cap.Live, cap.Live, cap.Limit),
+                var cap => Strings.Plural("ShareAtCapFree", cap.Live, cap.Live, cap.Limit),
             },
             TextWrapping = TextWrapping.Wrap,
         });
         if (!plan.Cap.Pro)
         {
-            _atCap.Children.Add(new TextBlock { Text = Strings.Get("ShareAtCapProAllows"), TextWrapping = TextWrapping.Wrap });
+            _atCap.Children.Add(new TextBlock
+            {
+                Text = Strings.Format("ShareAtCapProAllows", ShareCap.ProLimit),
+                TextWrapping = TextWrapping.Wrap,
+            });
         }
 
         foreach (var link in SharePlan.LiveOldestFirst(links, plan.TeamId))
@@ -1203,7 +1214,7 @@ internal sealed class ShareSheet
         _url.Text = created.Url;
         if (created.ColumnsTruncated && _rounds.Plan is { } plan)
         {
-            _doneNote.Text = Strings.Format("ShareColumnsCut", plan.Limits.MaxColumns);
+            _doneNote.Text = Strings.Plural("ShareColumnsCut", plan.Limits.MaxColumns, plan.Limits.MaxColumns);
             _doneNote.Visibility = Visibility.Visible;
         }
 

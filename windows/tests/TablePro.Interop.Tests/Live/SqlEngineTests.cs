@@ -262,11 +262,11 @@ public abstract class SqlEngineTests : IAsyncDisposable
         return RowsById(set).ToDictionary(pair => pair.Key, pair => Shown(set, block, (int)pair.Value, index));
     }
 
-    // The whole value, or what the grid says in place of one the driver could not read.
+    // The whole value, or the corpus's wording of one the driver could not read, from the type the grid is given.
     private static string? Shown(ResultSet set, CellBlock block, int row, int column)
     {
         var cell = block.Get(row, column);
-        return (cell.State & CellState.Unreadable) != 0 ? cell.Text.ToString() : set.GetCellText(row, column);
+        return (cell.State & CellState.Unreadable) != 0 ? $"<unreadable {cell.Text}>" : set.GetCellText(row, column);
     }
 
     private static int ColumnIndex(ResultSet set, string name)

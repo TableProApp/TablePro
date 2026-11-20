@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using TablePro.Editor.Model;
+using TablePro.Graphics;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.Storage;
@@ -385,35 +386,32 @@ public sealed partial class SqlEditor
     {
         var menu = new MenuFlyout();
         // The editor handles these keys itself, so the items only show them.
-        void Add(string text, string keys, Action action)
+        MenuFlyoutItem Add(string name, Action action)
         {
-            var item = new MenuFlyoutItem { Text = text, KeyboardAcceleratorTextOverride = keys };
+            var item = new MenuFlyoutItem
+            {
+                Text = HostStrings.Get(name),
+                KeyboardAcceleratorTextOverride = HostStrings.Get(name + "Keys"),
+            };
             item.Click += (_, _) => action();
             menu.Items.Add(item);
+            return item;
         }
-        Add("Undo", "Ctrl+Z", () => Edit(_model.Undo));
-        Add("Redo", "Ctrl+Y", () => Edit(_model.Redo));
+        Add("EditorMenuUndo", () => Edit(_model.Undo));
+        Add("EditorMenuRedo", () => Edit(_model.Redo));
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add("Cut", "Ctrl+X", Cut);
-        Add("Copy", "Ctrl+C", Copy);
-        Add("Paste", "Ctrl+V", () => _ = PasteAsync());
+        Add("EditorMenuCut", Cut);
+        Add("EditorMenuCopy", Copy);
+        Add("EditorMenuPaste", () => _ = PasteAsync());
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add("Select All", "Ctrl+A", () => _model.SelectAll());
-        Add("Toggle Line Comment", "Ctrl+/", () => Edit(_model.ToggleLineComment));
+        Add("EditorMenuSelectAll", () => _model.SelectAll());
+        Add("EditorMenuToggleComment", () => Edit(_model.ToggleLineComment));
         var foldSeparator = new MenuFlyoutSeparator();
         menu.Items.Add(foldSeparator);
-        var fold = new MenuFlyoutItem { Text = "Fold", KeyboardAcceleratorTextOverride = "Ctrl+Shift+[" };
-        fold.Click += (_, _) => FoldAtCaret();
-        menu.Items.Add(fold);
-        var unfold = new MenuFlyoutItem { Text = "Unfold", KeyboardAcceleratorTextOverride = "Ctrl+Shift+]" };
-        unfold.Click += (_, _) => UnfoldAtCaret();
-        menu.Items.Add(unfold);
-        var foldAll = new MenuFlyoutItem { Text = "Fold All" };
-        foldAll.Click += (_, _) => FoldAll();
-        menu.Items.Add(foldAll);
-        var unfoldAll = new MenuFlyoutItem { Text = "Unfold All" };
-        unfoldAll.Click += (_, _) => UnfoldAll();
-        menu.Items.Add(unfoldAll);
+        var fold = Add("EditorMenuFold", () => FoldAtCaret());
+        var unfold = Add("EditorMenuUnfold", () => UnfoldAtCaret());
+        var foldAll = Add("EditorMenuFoldAll", () => FoldAll());
+        var unfoldAll = Add("EditorMenuUnfoldAll", () => UnfoldAll());
         var own = menu.Items.Count;
         menu.Opening += (_, _) =>
         {

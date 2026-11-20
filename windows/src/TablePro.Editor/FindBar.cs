@@ -24,8 +24,8 @@ internal sealed partial class FindBar : UserControl
         CornerRadius = new CornerRadius(6),
         BorderThickness = new Thickness(1),
     };
-    private readonly TextBox _box = Box("Find", "FindBox");
-    private readonly TextBox _replaceBox = Box("Replace", "ReplaceBox");
+    private readonly TextBox _box = Box("FindBarFind", "FindBox");
+    private readonly TextBox _replaceBox = Box("FindBarReplace", "ReplaceBox");
     private readonly FontIcon _replaceGlyph = new() { Glyph = ExpandGlyph, FontSize = 12 };
     private readonly ToggleButton _replaceToggle = new()
     {
@@ -33,9 +33,10 @@ internal sealed partial class FindBar : UserControl
         MinWidth = 0,
         VerticalAlignment = VerticalAlignment.Stretch,
     };
-    private readonly ToggleButton _matchCase = Toggle("Aa", "Match case");
-    private readonly ToggleButton _wholeWord = Toggle("ab", "Match whole word");
-    private readonly ToggleButton _regex = Toggle(".*", "Use regular expression");
+    private readonly ToggleButton _matchCase = Toggle(HostStrings.Get("FindBarMatchCaseLabel"), "FindBarMatchCase");
+    private readonly ToggleButton _wholeWord = Toggle(HostStrings.Get("FindBarWholeWordLabel"), "FindBarWholeWord");
+    // Regular expression syntax, which no language words differently.
+    private readonly ToggleButton _regex = Toggle(".*", "FindBarRegex");
     private readonly StackPanel _replaceRow = new()
     {
         Orientation = Orientation.Horizontal,
@@ -54,7 +55,7 @@ internal sealed partial class FindBar : UserControl
         Visibility = Visibility.Collapsed;
 
         _replaceToggle.Content = _replaceGlyph;
-        Describe(_replaceToggle, "Toggle Replace (Ctrl+H)", "FindReplaceToggle");
+        Describe(_replaceToggle, "FindBarToggleReplace", "FindReplaceToggle");
         AutomationProperties.SetAutomationId(_regex, "FindRegexToggle");
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
@@ -63,13 +64,13 @@ internal sealed partial class FindBar : UserControl
         row.Children.Add(_wholeWord);
         row.Children.Add(_regex);
         row.Children.Add(_count);
-        row.Children.Add(Button("", "Previous match (Shift+F3)", () => NextRequested?.Invoke(this, true)));
-        row.Children.Add(Button("", "Next match (F3)", () => NextRequested?.Invoke(this, false)));
-        row.Children.Add(Button("", "Close (Esc)", () => CloseRequested?.Invoke(this, EventArgs.Empty)));
+        row.Children.Add(Button("", "FindBarPrevious", () => NextRequested?.Invoke(this, true)));
+        row.Children.Add(Button("", "FindBarNext", () => NextRequested?.Invoke(this, false)));
+        row.Children.Add(Button("", "FindBarClose", () => CloseRequested?.Invoke(this, EventArgs.Empty)));
         _replaceRow.Children.Add(_replaceBox);
-        _replaceRow.Children.Add(TextButton("Replace", "Replace (Enter)", "ReplaceButton",
+        _replaceRow.Children.Add(TextButton("FindBarReplaceButton", "FindBarReplaceTip", "ReplaceButton",
             () => ReplaceRequested?.Invoke(this, EventArgs.Empty)));
-        _replaceRow.Children.Add(TextButton("Replace all", "Replace all (Ctrl+Alt+Enter)", "ReplaceAllButton",
+        _replaceRow.Children.Add(TextButton("FindBarReplaceAll", "FindBarReplaceAllTip", "ReplaceAllButton",
             () => ReplaceAllRequested?.Invoke(this, EventArgs.Empty)));
 
         var rows = new StackPanel { Spacing = 4 };
@@ -135,14 +136,18 @@ internal sealed partial class FindBar : UserControl
             _count.Text = NothingFound();
             return;
         }
-        var count = more ? $"{total}+" : total.ToString(System.Globalization.CultureInfo.CurrentCulture);
-        _count.Text = current > 0 ? $"{current} of {count}" : count;
+        var count = more
+            ? HostStrings.Format("FindBarAtLeast", total)
+            : total.ToString("N0", System.Globalization.CultureInfo.CurrentCulture);
+        _count.Text = current > 0 ? HostStrings.Format("FindBarPosition", current, count) : count;
     }
 
-    public void ShowReplaced(int count) => _count.Text = count == 0 ? NothingFound() : $"{count} replaced";
+    public void ShowReplaced(int count) =>
+        _count.Text = count == 0 ? NothingFound() : HostStrings.Plural("FindBarReplaced", count, count);
 
     private string NothingFound() =>
-        _box.Text.Length == 0 ? string.Empty : TextSearch.IsValid(Query) ? "No results" : "Invalid pattern";
+        _box.Text.Length == 0 ? string.Empty
+        : HostStrings.Get(TextSearch.IsValid(Query) ? "FindBarNoResults" : "FindBarInvalidPattern");
 
     private void ShowReplace(bool shown)
     {
@@ -234,8 +239,9 @@ internal sealed partial class FindBar : UserControl
     private static bool Down(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
 
-    private static void Describe(FrameworkElement element, string tip, string? automationId = null)
+    private static void Describe(FrameworkElement element, string tipName, string? automationId = null)
     {
+        var tip = HostStrings.Get(tipName);
         ToolTipService.SetToolTip(element, tip);
         AutomationProperties.SetName(element, tip);
         if (automationId is not null)
@@ -244,37 +250,38 @@ internal sealed partial class FindBar : UserControl
         }
     }
 
-    private static TextBox Box(string placeholder, string automationId)
+    private static TextBox Box(string placeholderName, string automationId)
     {
+        var placeholder = HostStrings.Get(placeholderName);
         var box = new TextBox { PlaceholderText = placeholder, Width = 220 };
         AutomationProperties.SetName(box, placeholder);
         AutomationProperties.SetAutomationId(box, automationId);
         return box;
     }
 
-    private static ToggleButton Toggle(string label, string tip)
+    private static ToggleButton Toggle(string label, string tipName)
     {
         var toggle = new ToggleButton { Content = label, Padding = new Thickness(8, 4, 8, 4) };
-        Describe(toggle, tip);
+        Describe(toggle, tipName);
         return toggle;
     }
 
-    private static Button Button(string glyph, string tip, Action action)
+    private static Button Button(string glyph, string tipName, Action action)
     {
         var button = new Button
         {
             Content = new FontIcon { Glyph = glyph, FontSize = 12 },
             Padding = new Thickness(8, 6, 8, 6),
         };
-        Describe(button, tip);
+        Describe(button, tipName);
         button.Click += (_, _) => action();
         return button;
     }
 
-    private static Button TextButton(string text, string tip, string automationId, Action action)
+    private static Button TextButton(string textName, string tipName, string automationId, Action action)
     {
-        var button = new Button { Content = text, Padding = new Thickness(8, 4, 8, 4) };
-        ToolTipService.SetToolTip(button, tip);
+        var button = new Button { Content = HostStrings.Get(textName), Padding = new Thickness(8, 4, 8, 4) };
+        ToolTipService.SetToolTip(button, HostStrings.Get(tipName));
         AutomationProperties.SetAutomationId(button, automationId);
         button.Click += (_, _) => action();
         return button;

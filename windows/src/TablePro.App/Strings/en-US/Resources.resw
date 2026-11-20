@@ -90,11 +90,18 @@
   <data name="MenuUndo.Text" xml:space="preserve">
     <value>Undo</value>
   </data>
+  <data name="MenuUndo.KeyboardAcceleratorTextOverride" xml:space="preserve">
+    <value>Ctrl+Z</value>
+    <comment>The keys this item names, as Windows words them in this language.</comment>
+  </data>
   <data name="MenuUndo.AccessKey" xml:space="preserve">
     <value>U</value>
   </data>
   <data name="MenuRedo.Text" xml:space="preserve">
     <value>Redo</value>
+  </data>
+  <data name="MenuRedo.KeyboardAcceleratorTextOverride" xml:space="preserve">
+    <value>Ctrl+Y</value>
   </data>
   <data name="MenuRedo.AccessKey" xml:space="preserve">
     <value>R</value>
@@ -102,11 +109,17 @@
   <data name="MenuCut.Text" xml:space="preserve">
     <value>Cut</value>
   </data>
+  <data name="MenuCut.KeyboardAcceleratorTextOverride" xml:space="preserve">
+    <value>Ctrl+X</value>
+  </data>
   <data name="MenuCut.AccessKey" xml:space="preserve">
     <value>T</value>
   </data>
   <data name="MenuCopy.Text" xml:space="preserve">
     <value>Copy</value>
+  </data>
+  <data name="MenuCopy.KeyboardAcceleratorTextOverride" xml:space="preserve">
+    <value>Ctrl+C</value>
   </data>
   <data name="MenuCopy.AccessKey" xml:space="preserve">
     <value>C</value>
@@ -114,17 +127,26 @@
   <data name="MenuPaste.Text" xml:space="preserve">
     <value>Paste</value>
   </data>
+  <data name="MenuPaste.KeyboardAcceleratorTextOverride" xml:space="preserve">
+    <value>Ctrl+V</value>
+  </data>
   <data name="MenuPaste.AccessKey" xml:space="preserve">
     <value>P</value>
   </data>
   <data name="MenuSelectAll.Text" xml:space="preserve">
     <value>Select all</value>
   </data>
+  <data name="MenuSelectAll.KeyboardAcceleratorTextOverride" xml:space="preserve">
+    <value>Ctrl+A</value>
+  </data>
   <data name="MenuSelectAll.AccessKey" xml:space="preserve">
     <value>A</value>
   </data>
   <data name="MenuFind.Text" xml:space="preserve">
     <value>Find</value>
+  </data>
+  <data name="MenuFind.KeyboardAcceleratorTextOverride" xml:space="preserve">
+    <value>Ctrl+F</value>
   </data>
   <data name="MenuFind.AccessKey" xml:space="preserve">
     <value>F</value>
@@ -447,11 +469,13 @@
   <data name="ResultsKeptOption" xml:space="preserve">
     <value>{0:N0}</value>
   </data>
-  <data name="ResultsDroppedOne" xml:space="preserve">
-    <value>{0} · 1 earlier result was dropped.</value>
+  <data name="ResultsDropped_one" xml:space="preserve">
+    <value>{0} · {1:N0} earlier result was dropped.</value>
+    <comment>{0} is the status of the result shown, {1} the number of earlier results the limit dropped.</comment>
   </data>
-  <data name="ResultsDroppedOther" xml:space="preserve">
+  <data name="ResultsDropped_other" xml:space="preserve">
     <value>{0} · {1:N0} earlier results were dropped.</value>
+    <comment>{0} is the status of the result shown, {1} the number of earlier results the limit dropped.</comment>
   </data>
   <data name="TimeoutCard.Header" xml:space="preserve">
     <value>Query timeout</value>
@@ -774,8 +798,28 @@
   <data name="VimModeName" xml:space="preserve">
     <value>Vim mode: {0}</value>
   </data>
+  <data name="VimModeNormal" xml:space="preserve">
+    <value>NORMAL</value>
+    <comment>Vim's name for its mode, as Vim's own translation words it.</comment>
+  </data>
+  <data name="VimModeInsert" xml:space="preserve">
+    <value>INSERT</value>
+  </data>
+  <data name="VimModeReplace" xml:space="preserve">
+    <value>REPLACE</value>
+  </data>
+  <data name="VimModeVisual" xml:space="preserve">
+    <value>VISUAL</value>
+  </data>
+  <data name="VimModeVisualLine" xml:space="preserve">
+    <value>VISUAL LINE</value>
+  </data>
   <data name="VimRecording" xml:space="preserve">
     <value>recording @{0}</value>
+  </data>
+  <data name="VimKeysRecording" xml:space="preserve">
+    <value>{0} recording @{1}</value>
+    <comment>{0} is the keys typed so far, {1} the register a macro is recorded into.</comment>
   </data>
   <data name="EditorName" xml:space="preserve">
     <value>SQL editor, {0}</value>
@@ -873,8 +917,13 @@
   <data name="DeleteConnectionTitle" xml:space="preserve">
     <value>Delete {0}?</value>
   </data>
-  <data name="DeleteConnectionMessage" xml:space="preserve">
+  <data name="DeleteConnectionsMessage_one" xml:space="preserve">
     <value>The connection, its saved passwords and its saved queries leave this PC. This can't be undone.</value>
+    <comment>{0} is the number of connections.</comment>
+  </data>
+  <data name="DeleteConnectionsMessage_other" xml:space="preserve">
+    <value>The connections, their saved passwords and their saved queries leave this PC. This can't be undone.</value>
+    <comment>{0} is the number of connections.</comment>
   </data>
   <data name="DeleteGroupTitle" xml:space="preserve">
     <value>Delete the group {0}?</value>
@@ -1028,6 +1077,10 @@
   </data>
   <data name="Error_Unknown" xml:space="preserve">
     <value>Something went wrong ({0}).</value>
+  </data>
+  <data name="ErrorWithServerMessage" xml:space="preserve">
+    <value>{0} {1}</value>
+    <comment>{0} is the app's sentence for an error, {1} the database server's own message.</comment>
   </data>
   <data name="Error_driver_file_not_found" xml:space="preserve">
     <value>The database file isn't there.</value>
@@ -1236,11 +1289,13 @@
   <data name="DeleteTagMessage" xml:space="preserve">
     <value>It comes off every connection that has it.</value>
   </data>
-  <data name="DeleteConnectionsTitle" xml:space="preserve">
-    <value>Delete {0} connections?</value>
+  <data name="DeleteConnectionsTitle_one" xml:space="preserve">
+    <value>Delete {0:N0} connection?</value>
+    <comment>{0} is the number of connections, more than one in English; one connection is named instead.</comment>
   </data>
-  <data name="DeleteConnectionsMessage" xml:space="preserve">
-    <value>The connections, their saved passwords and their saved queries leave this PC. This can't be undone.</value>
+  <data name="DeleteConnectionsTitle_other" xml:space="preserve">
+    <value>Delete {0:N0} connections?</value>
+    <comment>{0} is the number of connections, more than one in English; one connection is named instead.</comment>
   </data>
   <data name="DropAddFavorites" xml:space="preserve">
     <value>Add to Favorites</value>
@@ -1338,11 +1393,13 @@
   <data name="RecoveredWaitingTitle" xml:space="preserve">
     <value>Unsaved changes waiting</value>
   </data>
-  <data name="RecoveredWaitingOne" xml:space="preserve">
-    <value>TablePro closed before 1 change was saved. It comes back as pending when a page shows its row and the table can take it.</value>
+  <data name="RecoveredWaiting_one" xml:space="preserve">
+    <value>TablePro closed before {0:N0} change was saved. It comes back as pending when a page shows its row and the table can take it.</value>
+    <comment>{0} is the number of changes not saved.</comment>
   </data>
-  <data name="RecoveredWaitingMany" xml:space="preserve">
+  <data name="RecoveredWaiting_other" xml:space="preserve">
     <value>TablePro closed before {0:N0} changes were saved. They come back as pending when a page shows their rows and the table can take them.</value>
+    <comment>{0} is the number of changes not saved.</comment>
   </data>
   <data name="DiscardWaitingButton.Content" xml:space="preserve">
     <value>Discard</value>
@@ -1359,8 +1416,13 @@
   <data name="TransactionElsewhereFailed" xml:space="preserve">
     <value>{0} has a failed transaction.</value>
   </data>
-  <data name="TransactionElsewhereMany" xml:space="preserve">
-    <value>{0} tabs have open transactions.</value>
+  <data name="TransactionElsewhereTabs_one" xml:space="preserve">
+    <value>{0:N0} tab has an open transaction.</value>
+    <comment>{0} is the number of other tabs, always more than one in English.</comment>
+  </data>
+  <data name="TransactionElsewhereTabs_other" xml:space="preserve">
+    <value>{0:N0} tabs have open transactions.</value>
+    <comment>{0} is the number of other tabs, always more than one in English.</comment>
   </data>
   <data name="CloseHeldTabTitle" xml:space="preserve">
     <value>Close {0}?</value>
@@ -1380,23 +1442,29 @@
   <data name="ShutdownBlockedBoth" xml:space="preserve">
     <value>Changes are not saved, and a transaction is open.</value>
   </data>
-  <data name="ConfirmRunTitleOne" xml:space="preserve">
+  <data name="ConfirmRunTitle_one" xml:space="preserve">
     <value>Run this statement?</value>
+    <comment>{0} is the number of statements.</comment>
   </data>
-  <data name="ConfirmRunTitleMany" xml:space="preserve">
-    <value>Run these {0} statements?</value>
+  <data name="ConfirmRunTitle_other" xml:space="preserve">
+    <value>Run these {0:N0} statements?</value>
+    <comment>{0} is the number of statements.</comment>
   </data>
-  <data name="ConfirmRunWriteOne" xml:space="preserve">
+  <data name="ConfirmRunWrite_one" xml:space="preserve">
     <value>It changes the database on {0}, which asks before every write.</value>
+    <comment>{0} is the connection, {1} the number of statements.</comment>
   </data>
-  <data name="ConfirmRunWriteMany" xml:space="preserve">
+  <data name="ConfirmRunWrite_other" xml:space="preserve">
     <value>They change the database on {0}, which asks before every write.</value>
+    <comment>{0} is the connection, {1} the number of statements.</comment>
   </data>
-  <data name="ConfirmRunDestructiveOne" xml:space="preserve">
+  <data name="ConfirmRunDestructive_one" xml:space="preserve">
     <value>It drops or empties a table, or changes every row of one, on {0}.</value>
+    <comment>{0} is the connection, {1} the number of statements.</comment>
   </data>
-  <data name="ConfirmRunDestructiveMany" xml:space="preserve">
+  <data name="ConfirmRunDestructive_other" xml:space="preserve">
     <value>Some of them drop or empty a table, or change every row of one, on {0}.</value>
+    <comment>{0} is the connection, {1} the number of statements.</comment>
   </data>
   <data name="ConfirmRunButton" xml:space="preserve">
     <value>Run</value>
@@ -1437,11 +1505,21 @@
   <data name="StatusPage" xml:space="preserve">
     <value>Rows {0:N0}-{1:N0} · {2:N0} ms</value>
   </data>
-  <data name="StatusPageOf" xml:space="preserve">
-    <value>{0:N0}-{1:N0} of {2:N0} rows · {3:N0} ms</value>
+  <data name="StatusPageOf_one" xml:space="preserve">
+    <value>{0:N0}-{1:N0} of {2:N0} row · {3:N0} ms</value>
+    <comment>Rows {0} to {1} of {2}, which picks the form; {3} is how long the read took.</comment>
   </data>
-  <data name="StatusPageOfAbout" xml:space="preserve">
+  <data name="StatusPageOf_other" xml:space="preserve">
+    <value>{0:N0}-{1:N0} of {2:N0} rows · {3:N0} ms</value>
+    <comment>Rows {0} to {1} of {2}, which picks the form; {3} is how long the read took.</comment>
+  </data>
+  <data name="StatusPageOfAbout_one" xml:space="preserve">
+    <value>{0:N0}-{1:N0} of about {2:N0} row · {3:N0} ms</value>
+    <comment>Rows {0} to {1} of about {2}, which picks the form; {3} is how long the read took.</comment>
+  </data>
+  <data name="StatusPageOfAbout_other" xml:space="preserve">
     <value>{0:N0}-{1:N0} of about {2:N0} rows · {3:N0} ms</value>
+    <comment>Rows {0} to {1} of about {2}, which picks the form; {3} is how long the read took.</comment>
   </data>
   <data name="MenuMoveTab.Text" xml:space="preserve">
     <value>Move tab to new window</value>
@@ -1473,11 +1551,21 @@
   <data name="GoToPageButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
     <value>Go to page</value>
   </data>
-  <data name="PageSizeLabel" xml:space="preserve">
-    <value>{0:N0} rows</value>
+  <data name="PageSizeLabel_one" xml:space="preserve">
+    <value>{0:N0} row</value>
+    <comment>The page size.</comment>
   </data>
-  <data name="PageSizeOption" xml:space="preserve">
+  <data name="PageSizeLabel_other" xml:space="preserve">
     <value>{0:N0} rows</value>
+    <comment>The page size.</comment>
+  </data>
+  <data name="PageSizeOption_one" xml:space="preserve">
+    <value>{0:N0} row</value>
+    <comment>A page size.</comment>
+  </data>
+  <data name="PageSizeOption_other" xml:space="preserve">
+    <value>{0:N0} rows</value>
+    <comment>A page size.</comment>
   </data>
   <data name="PageSizeAll" xml:space="preserve">
     <value>All rows...</value>
@@ -1494,8 +1582,13 @@
   <data name="AllRowsTitle" xml:space="preserve">
     <value>Show all rows</value>
   </data>
-  <data name="AllRowsMessage" xml:space="preserve">
+  <data name="AllRowsMessage_one" xml:space="preserve">
+    <value>This loads all {0:N0} row on one page. A large table uses a lot of memory.</value>
+    <comment>{0} is the number of rows in the table.</comment>
+  </data>
+  <data name="AllRowsMessage_other" xml:space="preserve">
     <value>This loads all {0:N0} rows on one page. A large table uses a lot of memory.</value>
+    <comment>{0} is the number of rows in the table.</comment>
   </data>
   <data name="AllRowsButton" xml:space="preserve">
     <value>Show all</value>
@@ -1716,17 +1809,21 @@ New fingerprint: {2}</value>
   <data name="ResultPicker.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Result set</value>
   </data>
-  <data name="CloseRunningTitleOne" xml:space="preserve">
+  <data name="CloseRunningTitle_one" xml:space="preserve">
     <value>Stop the running query?</value>
+    <comment>{0} is the number of queries still running.</comment>
   </data>
-  <data name="CloseRunningTitleMany" xml:space="preserve">
-    <value>Stop {0} running queries?</value>
+  <data name="CloseRunningTitle_other" xml:space="preserve">
+    <value>Stop {0:N0} running queries?</value>
+    <comment>{0} is the number of queries still running.</comment>
   </data>
-  <data name="CloseRunningRollsBackOne" xml:space="preserve">
+  <data name="CloseRunningRollsBack_one" xml:space="preserve">
     <value>Closing stops it before it finishes, and rolls back any transaction it has open.</value>
+    <comment>{0} is the number of queries still running.</comment>
   </data>
-  <data name="CloseRunningRollsBackMany" xml:space="preserve">
+  <data name="CloseRunningRollsBack_other" xml:space="preserve">
     <value>Closing stops them before they finish, and rolls back any transaction they have open.</value>
+    <comment>{0} is the number of queries still running.</comment>
   </data>
   <data name="CloseRunningTab" xml:space="preserve">
     <value>{0} on {1}</value>
@@ -1786,6 +1883,9 @@ New fingerprint: {2}</value>
     <value>Duplicate row</value>
   </data>
   <data name="MenuDeleteRows.Text" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="MenuDeleteRows.KeyboardAcceleratorTextOverride" xml:space="preserve">
     <value>Delete</value>
   </data>
   <data name="GridMenuSetValue" xml:space="preserve">
@@ -1926,11 +2026,13 @@ New fingerprint: {2}</value>
   <data name="SaveBeforeCloseTab" xml:space="preserve">
     <value>Do you want to save changes to {0}?</value>
   </data>
-  <data name="DeleteRowsTitleOne" xml:space="preserve">
-    <value>Delete this row from {0}?</value>
+  <data name="DeleteRowsTitle_one" xml:space="preserve">
+    <value>Delete this row from {1}?</value>
+    <comment>{0} is the number of rows, {1} the table.</comment>
   </data>
-  <data name="DeleteRowsTitleMany" xml:space="preserve">
-    <value>Delete {0} rows from {1}?</value>
+  <data name="DeleteRowsTitle_other" xml:space="preserve">
+    <value>Delete {0:N0} rows from {1}?</value>
+    <comment>{0} is the number of rows, {1} the table.</comment>
   </data>
   <data name="DeleteRowsMessage" xml:space="preserve">
     <value>This permanently deletes the selected rows from the database and can't be undone.</value>
@@ -1947,11 +2049,11 @@ New fingerprint: {2}</value>
   <data name="SaveReviewAction" xml:space="preserve">
     <value>Execute</value>
   </data>
-  <data name="StatementCountOne" xml:space="preserve">
-    <value>1 statement</value>
+  <data name="StatementCount_one" xml:space="preserve">
+    <value>{0:N0} statement</value>
   </data>
-  <data name="StatementCountMany" xml:space="preserve">
-    <value>{0} statements</value>
+  <data name="StatementCount_other" xml:space="preserve">
+    <value>{0:N0} statements</value>
   </data>
   <data name="CopyAllButton" xml:space="preserve">
     <value>Copy all</value>
@@ -2349,11 +2451,13 @@ New fingerprint: {2}</value>
   <data name="ExportRunning" xml:space="preserve">
     <value>Exporting to {0}...</value>
   </data>
-  <data name="ExportDoneOne" xml:space="preserve">
+  <data name="ExportDone_one" xml:space="preserve">
     <value>Exported {0:N0} row to {1}</value>
+    <comment>{0} is the number of rows, {1} the file.</comment>
   </data>
-  <data name="ExportDoneMany" xml:space="preserve">
+  <data name="ExportDone_other" xml:space="preserve">
     <value>Exported {0:N0} rows to {1}</value>
+    <comment>{0} is the number of rows, {1} the file.</comment>
   </data>
   <data name="ExportCancelled" xml:space="preserve">
     <value>The export was cancelled. No file was written.</value>
@@ -2937,11 +3041,13 @@ New fingerprint: {2}</value>
   <data name="ShareColumnsHeader" xml:space="preserve">
     <value>Columns</value>
   </data>
-  <data name="ShareColumnsSummaryOne" xml:space="preserve">
-    <value>1 column masked, {1} removed.</value>
+  <data name="ShareColumnsSummary_one" xml:space="preserve">
+    <value>{0:N0} column masked, {1:N0} removed.</value>
+    <comment>{0} is the number of masked columns, which picks the form; {1} the number removed.</comment>
   </data>
-  <data name="ShareColumnsSummaryMany" xml:space="preserve">
-    <value>{0} columns masked, {1} removed.</value>
+  <data name="ShareColumnsSummary_other" xml:space="preserve">
+    <value>{0:N0} columns masked, {1:N0} removed.</value>
+    <comment>{0} is the number of masked columns, which picks the form; {1} the number removed.</comment>
   </data>
   <data name="ShareColumnsDetected" xml:space="preserve">
     <value>TablePro masked columns that look sensitive. Check them before sharing.</value>
@@ -3015,26 +3121,45 @@ New fingerprint: {2}</value>
   <data name="SensitiveValue_Ip" xml:space="preserve">
     <value>IP address</value>
   </data>
-  <data name="ShareCapNote" xml:space="preserve">
+  <data name="ShareCapNote_one" xml:space="preserve">
+    <value>Shares the first {0:N0} of {1:N0} row.</value>
+    <comment>{0} is the number of rows shared, {1} the result's rows, which picks the form.</comment>
+  </data>
+  <data name="ShareCapNote_other" xml:space="preserve">
     <value>Shares the first {0:N0} of {1:N0} rows.</value>
+    <comment>{0} is the number of rows shared, {1} the result's rows, which picks the form.</comment>
   </data>
   <data name="ShareFooterFree" xml:space="preserve">
-    <value>Free · {0:N0} of {1:N0} links · first {2:N0} rows</value>
+    <value>Free · {0} · {1}</value>
+    <comment>{0} counts the links against the plan's limit, {1} says how many rows a link shares.</comment>
   </data>
-  <data name="ShareFooterProOne" xml:space="preserve">
+  <data name="ShareFooterPro_one" xml:space="preserve">
     <value>Pro · {0:N0} link</value>
+    <comment>{0} is the number of live links.</comment>
   </data>
-  <data name="ShareFooterProMany" xml:space="preserve">
+  <data name="ShareFooterPro_other" xml:space="preserve">
     <value>Pro · {0:N0} links</value>
+    <comment>{0} is the number of live links.</comment>
   </data>
-  <data name="ShareAtCapFree" xml:space="preserve">
+  <data name="ShareAtCapFree_one" xml:space="preserve">
+    <value>You have {0:N0} live link. Free allows {1:N0}. Revoke one to share another.</value>
+    <comment>{0} is the number of live links, {1} the plan's limit.</comment>
+  </data>
+  <data name="ShareAtCapFree_other" xml:space="preserve">
     <value>You have {0:N0} live links. Free allows {1:N0}. Revoke one to share another.</value>
+    <comment>{0} is the number of live links, {1} the plan's limit.</comment>
   </data>
-  <data name="ShareAtCapPro" xml:space="preserve">
+  <data name="ShareAtCapPro_one" xml:space="preserve">
+    <value>You have {0:N0} live link. Pro allows {1:N0}. Revoke one to share another.</value>
+    <comment>{0} is the number of live links, {1} the plan's limit.</comment>
+  </data>
+  <data name="ShareAtCapPro_other" xml:space="preserve">
     <value>You have {0:N0} live links. Pro allows {1:N0}. Revoke one to share another.</value>
+    <comment>{0} is the number of live links, {1} the plan's limit.</comment>
   </data>
   <data name="ShareAtCapProAllows" xml:space="preserve">
-    <value>Pro allows up to 1,000.</value>
+    <value>Pro allows up to {0:N0}.</value>
+    <comment>{0} is the number of live links Pro allows.</comment>
   </data>
   <data name="ShareUntitled" xml:space="preserve">
     <value>Untitled link</value>
@@ -3156,19 +3281,27 @@ New fingerprint: {2}</value>
   <data name="ShareAsTeamOff" xml:space="preserve">
     <value>{0} · Public links are off for this team.</value>
   </data>
-  <data name="ShareFooterTeam" xml:space="preserve">
-    <value>{0} · {1:N0} of {2:N0} links</value>
+  <data name="ShareAtCapTeam_one" xml:space="preserve">
+    <value>{0} has {1:N0} live link. The team allows {2:N0}. Revoke one to share another.</value>
+    <comment>{0} is the team, {1} the number of live links, {2} the team's limit.</comment>
   </data>
-  <data name="ShareAtCapTeam" xml:space="preserve">
+  <data name="ShareAtCapTeam_other" xml:space="preserve">
     <value>{0} has {1:N0} live links. The team allows {2:N0}. Revoke one to share another.</value>
+    <comment>{0} is the team, {1} the number of live links, {2} the team's limit.</comment>
   </data>
   <data name="ShareSuspended" xml:space="preserve">
     <value>Suspended</value>
   </data>
-  <data name="ShareColumnsNote" xml:space="preserve">
+  <data name="ShareColumnsNote_one" xml:space="preserve">
+    <value>Shares the first {0:N0} column.</value>
+  </data>
+  <data name="ShareColumnsNote_other" xml:space="preserve">
     <value>Shares the first {0:N0} columns.</value>
   </data>
-  <data name="ShareColumnsCut" xml:space="preserve">
+  <data name="ShareColumnsCut_one" xml:space="preserve">
+    <value>The link shares the first {0:N0} column.</value>
+  </data>
+  <data name="ShareColumnsCut_other" xml:space="preserve">
     <value>The link shares the first {0:N0} columns.</value>
   </data>
   <data name="SharedLinkTitle" xml:space="preserve">
@@ -3321,11 +3454,13 @@ New fingerprint: {2}</value>
   <data name="ConnectionsFileType" xml:space="preserve">
     <value>TablePro connections</value>
   </data>
-  <data name="ExportConnectionsDone" xml:space="preserve">
-    <value>Exported {0} connections. Passwords are not in the file.</value>
+  <data name="ExportConnectionsDone_one" xml:space="preserve">
+    <value>Exported {0:N0} connection. Its password is not in the file.</value>
+    <comment>{0} is the number of connections.</comment>
   </data>
-  <data name="ExportConnectionsDoneOne" xml:space="preserve">
-    <value>Exported 1 connection. Its password is not in the file.</value>
+  <data name="ExportConnectionsDone_other" xml:space="preserve">
+    <value>Exported {0:N0} connections. Passwords are not in the file.</value>
+    <comment>{0} is the number of connections.</comment>
   </data>
   <data name="ExportConnectionsFailed" xml:space="preserve">
     <value>The connections couldn't be exported. {0}</value>
@@ -3528,16 +3663,16 @@ New fingerprint: {2}</value>
   <data name="ImportCsvPlanning" xml:space="preserve">
     <value>Reading the whole file...</value>
   </data>
-  <data name="ImportCsvFieldsOne" xml:space="preserve">
-    <value>1 field</value>
+  <data name="ImportCsvFields_one" xml:space="preserve">
+    <value>{0:N0} field</value>
   </data>
-  <data name="ImportCsvFieldsMany" xml:space="preserve">
+  <data name="ImportCsvFields_other" xml:space="preserve">
     <value>{0:N0} fields</value>
   </data>
-  <data name="ImportCsvRowsOne" xml:space="preserve">
-    <value>1 row</value>
+  <data name="ImportCsvRows_one" xml:space="preserve">
+    <value>{0:N0} row</value>
   </data>
-  <data name="ImportCsvRowsMany" xml:space="preserve">
+  <data name="ImportCsvRows_other" xml:space="preserve">
     <value>{0:N0} rows</value>
   </data>
   <data name="ImportCsvSummary" xml:space="preserve">
@@ -3582,29 +3717,27 @@ New fingerprint: {2}</value>
   <data name="ImportCsvRowFaultUnknown" xml:space="preserve">
     <value>The column can't hold this value.</value>
   </data>
-  <data name="ImportCsvReviewTitleOne" xml:space="preserve">
-    <value>Import 1 row into {0}?</value>
+  <data name="ImportCsvReviewTitle_one" xml:space="preserve">
+    <value>Import {0:N0} row into {1}?</value>
+    <comment>{0} is the number of rows, {1} the table.</comment>
   </data>
-  <data name="ImportCsvReviewTitleMany" xml:space="preserve">
+  <data name="ImportCsvReviewTitle_other" xml:space="preserve">
     <value>Import {0:N0} rows into {1}?</value>
+    <comment>{0} is the number of rows, {1} the table.</comment>
   </data>
-  <data name="ImportCsvReviewOne" xml:space="preserve">
-    <value>The import runs 1 statement.</value>
+  <data name="ImportCsvReview_one" xml:space="preserve">
+    <value>The import runs {0:N0} statement.</value>
   </data>
-  <data name="ImportCsvReviewMany" xml:space="preserve">
+  <data name="ImportCsvReview_other" xml:space="preserve">
     <value>The import runs {0:N0} statements.</value>
   </data>
-  <data name="ImportCsvReviewFirstShown" xml:space="preserve">
-    <value>The import runs {0:N0} statements; the first is shown.</value>
+  <data name="ImportCsvDone_one" xml:space="preserve">
+    <value>Imported {0:N0} row into {1}.</value>
+    <comment>{0} is the number of rows, {1} the table.</comment>
   </data>
-  <data name="ImportCsvReviewSomeShown" xml:space="preserve">
-    <value>The import runs {0:N0} statements; the first {1:N0} are shown.</value>
-  </data>
-  <data name="ImportCsvDoneOne" xml:space="preserve">
-    <value>Imported 1 row into {0}.</value>
-  </data>
-  <data name="ImportCsvDoneMany" xml:space="preserve">
+  <data name="ImportCsvDone_other" xml:space="preserve">
     <value>Imported {0:N0} rows into {1}.</value>
+    <comment>{0} is the number of rows, {1} the table.</comment>
   </data>
   <data name="ImportCsvLine" xml:space="preserve">
     <value>Line {0}</value>
@@ -3714,11 +3847,21 @@ New fingerprint: {2}</value>
   <data name="KeyStatusReading" xml:space="preserve">
     <value>Reading...</value>
   </data>
-  <data name="KeyStatusShown" xml:space="preserve">
+  <data name="KeyStatusShown_one" xml:space="preserve">
     <value>{0:N0} shown</value>
+    <comment>{0} is the number of rows shown.</comment>
   </data>
-  <data name="KeyStatusShownOf" xml:space="preserve">
+  <data name="KeyStatusShown_other" xml:space="preserve">
+    <value>{0:N0} shown</value>
+    <comment>{0} is the number of rows shown.</comment>
+  </data>
+  <data name="KeyStatusShownOf_one" xml:space="preserve">
     <value>{0:N0} of {1:N0} shown</value>
+    <comment>{0} is the number of rows shown, {1} the key's length, which picks the form.</comment>
+  </data>
+  <data name="KeyStatusShownOf_other" xml:space="preserve">
+    <value>{0:N0} of {1:N0} shown</value>
+    <comment>{0} is the number of rows shown, {1} the key's length, which picks the form.</comment>
   </data>
   <data name="KeyStatusMissing" xml:space="preserve">
     <value>Key not found</value>
@@ -3747,34 +3890,34 @@ New fingerprint: {2}</value>
   <data name="KeyType_Stream" xml:space="preserve">
     <value>Stream</value>
   </data>
-  <data name="KeyLengthBytesOne" xml:space="preserve">
-    <value>1 byte</value>
+  <data name="KeyLengthBytes_one" xml:space="preserve">
+    <value>{0:N0} byte</value>
   </data>
-  <data name="KeyLengthBytesMany" xml:space="preserve">
+  <data name="KeyLengthBytes_other" xml:space="preserve">
     <value>{0:N0} bytes</value>
   </data>
-  <data name="KeyLengthFieldsOne" xml:space="preserve">
-    <value>1 field</value>
+  <data name="KeyLengthFields_one" xml:space="preserve">
+    <value>{0:N0} field</value>
   </data>
-  <data name="KeyLengthFieldsMany" xml:space="preserve">
+  <data name="KeyLengthFields_other" xml:space="preserve">
     <value>{0:N0} fields</value>
   </data>
-  <data name="KeyLengthElementsOne" xml:space="preserve">
-    <value>1 element</value>
+  <data name="KeyLengthElements_one" xml:space="preserve">
+    <value>{0:N0} element</value>
   </data>
-  <data name="KeyLengthElementsMany" xml:space="preserve">
+  <data name="KeyLengthElements_other" xml:space="preserve">
     <value>{0:N0} elements</value>
   </data>
-  <data name="KeyLengthMembersOne" xml:space="preserve">
-    <value>1 member</value>
+  <data name="KeyLengthMembers_one" xml:space="preserve">
+    <value>{0:N0} member</value>
   </data>
-  <data name="KeyLengthMembersMany" xml:space="preserve">
+  <data name="KeyLengthMembers_other" xml:space="preserve">
     <value>{0:N0} members</value>
   </data>
-  <data name="KeyLengthEntriesOne" xml:space="preserve">
-    <value>1 entry</value>
+  <data name="KeyLengthEntries_one" xml:space="preserve">
+    <value>{0:N0} entry</value>
   </data>
-  <data name="KeyLengthEntriesMany" xml:space="preserve">
+  <data name="KeyLengthEntries_other" xml:space="preserve">
     <value>{0:N0} entries</value>
   </data>
   <data name="KeyTtlNone" xml:space="preserve">
@@ -3804,8 +3947,13 @@ New fingerprint: {2}</value>
   <data name="KeyTtlDaysAnd" xml:space="preserve">
     <value>Expires in {0:N0} d {1} h</value>
   </data>
-  <data name="KeyCut" xml:space="preserve">
+  <data name="KeyCut_one" xml:space="preserve">
+    <value>Showing the first {0:N0} byte of {1:N0}.</value>
+    <comment>{0} is the number of bytes shown, {1} the value's length in bytes.</comment>
+  </data>
+  <data name="KeyCut_other" xml:space="preserve">
     <value>Showing the first {0:N0} bytes of {1:N0}.</value>
+    <comment>{0} is the number of bytes shown, {1} the value's length in bytes.</comment>
   </data>
   <data name="QueryDatabaseButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
     <value>The database this tab runs in</value>
@@ -3993,7 +4141,10 @@ New fingerprint: {2}</value>
   <data name="HistoryRetentionBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Keep runs for</value>
   </data>
-  <data name="HistoryRetentionDays" xml:space="preserve">
+  <data name="HistoryRetentionDays_one" xml:space="preserve">
+    <value>{0:N0} day</value>
+  </data>
+  <data name="HistoryRetentionDays_other" xml:space="preserve">
     <value>{0:N0} days</value>
   </data>
   <data name="HistoryRetentionYear" xml:space="preserve">
@@ -4055,6 +4206,9 @@ New fingerprint: {2}</value>
   </data>
   <data name="MenuReplace.Text" xml:space="preserve">
     <value>Replace</value>
+  </data>
+  <data name="MenuReplace.KeyboardAcceleratorTextOverride" xml:space="preserve">
+    <value>Ctrl+H</value>
   </data>
   <data name="MenuReplace.AccessKey" xml:space="preserve">
     <value>E</value>
@@ -4332,11 +4486,21 @@ New fingerprint: {2}</value>
   <data name="Error_catalog_safe_mode_changed" xml:space="preserve">
     <value>The connection's Safe Mode changed. Try again to see what it asks.</value>
   </data>
-  <data name="ExportRunningRows" xml:space="preserve">
-    <value>Exporting to {0}... {1:N0} rows</value>
+  <data name="ExportRunningRows_one" xml:space="preserve">
+    <value>Exporting to {0}... {1:N0} row</value>
+    <comment>{0} is the file, {1} the number of rows written so far.</comment>
   </data>
-  <data name="ExportRunningRowsOf" xml:space="preserve">
+  <data name="ExportRunningRows_other" xml:space="preserve">
+    <value>Exporting to {0}... {1:N0} rows</value>
+    <comment>{0} is the file, {1} the number of rows written so far.</comment>
+  </data>
+  <data name="ExportRunningRowsOf_one" xml:space="preserve">
+    <value>Exporting to {0}... {1:N0} of {2:N0} row</value>
+    <comment>{0} is the file, {1} the rows written so far, {2} the rows in all, which picks the form.</comment>
+  </data>
+  <data name="ExportRunningRowsOf_other" xml:space="preserve">
     <value>Exporting to {0}... {1:N0} of {2:N0} rows</value>
+    <comment>{0} is the file, {1} the rows written so far, {2} the rows in all, which picks the form.</comment>
   </data>
   <data name="GridMenuFilter" xml:space="preserve">
     <value>Filter</value>
@@ -4398,17 +4562,17 @@ New fingerprint: {2}</value>
   <data name="ImportAppSourceNotFound" xml:space="preserve">
     <value>Not found on this PC</value>
   </data>
-  <data name="ImportAppSourceConnectionsOne" xml:space="preserve">
-    <value>1 connection found</value>
+  <data name="ImportAppSourceConnections_one" xml:space="preserve">
+    <value>{0:N0} connection found</value>
   </data>
-  <data name="ImportAppSourceConnectionsMany" xml:space="preserve">
-    <value>{0} connections found</value>
+  <data name="ImportAppSourceConnections_other" xml:space="preserve">
+    <value>{0:N0} connections found</value>
   </data>
-  <data name="ImportAppSourceQueriesOne" xml:space="preserve">
-    <value>1 saved query</value>
+  <data name="ImportAppSourceQueries_one" xml:space="preserve">
+    <value>{0:N0} saved query</value>
   </data>
-  <data name="ImportAppSourceQueriesMany" xml:space="preserve">
-    <value>{0} saved queries</value>
+  <data name="ImportAppSourceQueries_other" xml:space="preserve">
+    <value>{0:N0} saved queries</value>
   </data>
   <data name="ImportAppPasswords" xml:space="preserve">
     <value>Import passwords</value>
@@ -4590,44 +4754,56 @@ New fingerprint: {2}</value>
   <data name="ImportAppQuery_AddedByAnotherRow" xml:space="preserve">
     <value>Another query of this name is imported for its connection</value>
   </data>
-  <data name="ImportAppSummaryConnectionsOne" xml:space="preserve">
-    <value>{0} of 1 connection selected</value>
+  <data name="ImportAppSummaryConnections_one" xml:space="preserve">
+    <value>{0:N0} of {1:N0} connection selected</value>
+    <comment>{0} is the number selected, {1} the number found, which picks the form.</comment>
   </data>
-  <data name="ImportAppSummaryConnectionsMany" xml:space="preserve">
-    <value>{0} of {1} connections selected</value>
+  <data name="ImportAppSummaryConnections_other" xml:space="preserve">
+    <value>{0:N0} of {1:N0} connections selected</value>
+    <comment>{0} is the number selected, {1} the number found, which picks the form.</comment>
   </data>
-  <data name="ImportAppSummaryQueriesOne" xml:space="preserve">
-    <value>{0} of 1 saved query selected</value>
+  <data name="ImportAppSummaryQueries_one" xml:space="preserve">
+    <value>{0:N0} of {1:N0} saved query selected</value>
+    <comment>{0} is the number selected, {1} the number found, which picks the form.</comment>
   </data>
-  <data name="ImportAppSummaryQueriesMany" xml:space="preserve">
-    <value>{0} of {1} saved queries selected</value>
+  <data name="ImportAppSummaryQueries_other" xml:space="preserve">
+    <value>{0:N0} of {1:N0} saved queries selected</value>
+    <comment>{0} is the number selected, {1} the number found, which picks the form.</comment>
   </data>
   <data name="ImportAppImporting" xml:space="preserve">
     <value>Importing...</value>
   </data>
-  <data name="ImportAppDone_ConnectionsOne" xml:space="preserve">
-    <value>Imported 1 connection.</value>
+  <data name="ImportAppDone_Connections_one" xml:space="preserve">
+    <value>Imported {0:N0} connection.</value>
+    <comment>{0} is the number of connections imported.</comment>
   </data>
-  <data name="ImportAppDone_ConnectionsMany" xml:space="preserve">
-    <value>Imported {0} connections.</value>
+  <data name="ImportAppDone_Connections_other" xml:space="preserve">
+    <value>Imported {0:N0} connections.</value>
+    <comment>{0} is the number of connections imported.</comment>
   </data>
-  <data name="ImportAppDone_QueriesAddedOne" xml:space="preserve">
-    <value>Added 1 saved query.</value>
+  <data name="ImportAppDone_QueriesAdded_one" xml:space="preserve">
+    <value>Added {0:N0} saved query.</value>
+    <comment>{0} is the number of saved queries.</comment>
   </data>
-  <data name="ImportAppDone_QueriesAddedMany" xml:space="preserve">
-    <value>Added {0} saved queries.</value>
+  <data name="ImportAppDone_QueriesAdded_other" xml:space="preserve">
+    <value>Added {0:N0} saved queries.</value>
+    <comment>{0} is the number of saved queries.</comment>
   </data>
-  <data name="ImportAppDone_QueriesNotAddedOne" xml:space="preserve">
-    <value>1 saved query couldn't be added.</value>
+  <data name="ImportAppDone_QueriesNotAdded_one" xml:space="preserve">
+    <value>{0:N0} saved query couldn't be added.</value>
+    <comment>{0} is the number of saved queries.</comment>
   </data>
-  <data name="ImportAppDone_QueriesNotAddedMany" xml:space="preserve">
-    <value>{0} saved queries couldn't be added.</value>
+  <data name="ImportAppDone_QueriesNotAdded_other" xml:space="preserve">
+    <value>{0:N0} saved queries couldn't be added.</value>
+    <comment>{0} is the number of saved queries.</comment>
   </data>
-  <data name="ImportAppDone_PasswordsNotKeptOne" xml:space="preserve">
-    <value>1 password couldn't be kept in Credential Manager.</value>
+  <data name="ImportAppDone_PasswordsNotKept_one" xml:space="preserve">
+    <value>{0:N0} password couldn't be kept in Credential Manager.</value>
+    <comment>{0} is the number of passwords.</comment>
   </data>
-  <data name="ImportAppDone_PasswordsNotKeptMany" xml:space="preserve">
-    <value>{0} passwords couldn't be kept in Credential Manager.</value>
+  <data name="ImportAppDone_PasswordsNotKept_other" xml:space="preserve">
+    <value>{0:N0} passwords couldn't be kept in Credential Manager.</value>
+    <comment>{0} is the number of passwords.</comment>
   </data>
   <data name="ImportAppDone_Nothing" xml:space="preserve">
     <value>Nothing was imported.</value>
@@ -4806,9 +4982,6 @@ New fingerprint: {2}</value>
   <data name="DetailsNotKept" xml:space="preserve">
     <value>Not reported</value>
   </data>
-  <data name="DetailsBytes" xml:space="preserve">
-    <value>{0:N0} bytes</value>
-  </data>
   <data name="DetailsRowsExact" xml:space="preserve">
     <value>{0:N0}</value>
   </data>
@@ -4899,14 +5072,17 @@ New fingerprint: {2}</value>
   <data name="NotifyAfterBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Only after</value>
   </data>
-  <data name="NotifyAfterSeconds" xml:space="preserve">
-    <value>{0} seconds</value>
+  <data name="NotifyAfterSeconds_one" xml:space="preserve">
+    <value>{0:N0} second</value>
   </data>
-  <data name="NotifyAfterMinute" xml:space="preserve">
-    <value>1 minute</value>
+  <data name="NotifyAfterSeconds_other" xml:space="preserve">
+    <value>{0:N0} seconds</value>
   </data>
-  <data name="NotifyAfterMinutes" xml:space="preserve">
-    <value>{0} minutes</value>
+  <data name="NotifyAfterMinutes_one" xml:space="preserve">
+    <value>{0:N0} minute</value>
+  </data>
+  <data name="NotifyAfterMinutes_other" xml:space="preserve">
+    <value>{0:N0} minutes</value>
   </data>
   <data name="NotificationsOffBar.Title" xml:space="preserve">
     <value>Notifications are off for TablePro</value>
@@ -4917,20 +5093,36 @@ New fingerprint: {2}</value>
   <data name="NotificationsOffLink.Content" xml:space="preserve">
     <value>Open notification settings</value>
   </data>
-  <data name="NotifyRow" xml:space="preserve">
-    <value>1 row in {0}</value>
+  <data name="NotifyRows_one" xml:space="preserve">
+    <value>{0:N0} row in {1}</value>
+    <comment>{0} is the number of rows, {1} how long the query ran.</comment>
   </data>
-  <data name="NotifyRows" xml:space="preserve">
+  <data name="NotifyRows_other" xml:space="preserve">
     <value>{0:N0} rows in {1}</value>
+    <comment>{0} is the number of rows, {1} how long the query ran.</comment>
   </data>
-  <data name="NotifyAffectedOne" xml:space="preserve">
-    <value>1 row changed in {0}</value>
+  <data name="NotifyAffected_one" xml:space="preserve">
+    <value>{0:N0} row changed in {1}</value>
+    <comment>{0} is the number of rows, {1} how long the query ran.</comment>
   </data>
-  <data name="NotifyAffected" xml:space="preserve">
+  <data name="NotifyAffected_other" xml:space="preserve">
     <value>{0:N0} rows changed in {1}</value>
+    <comment>{0} is the number of rows, {1} how long the query ran.</comment>
   </data>
   <data name="NotifyDone" xml:space="preserve">
     <value>Finished in {0}</value>
+  </data>
+  <data name="DurationHoursMinutes" xml:space="preserve">
+    <value>{0:N0}h {1}m</value>
+    <comment>How long a query ran: {0} hours and {1} minutes.</comment>
+  </data>
+  <data name="DurationMinutesSeconds" xml:space="preserve">
+    <value>{0}m {1}s</value>
+    <comment>{0} minutes and {1} seconds.</comment>
+  </data>
+  <data name="DurationSeconds" xml:space="preserve">
+    <value>{0}s</value>
+    <comment>{0} seconds.</comment>
   </data>
   <data name="NotifyFailed" xml:space="preserve">
     <value>Failed after {0}</value>
@@ -4983,8 +5175,13 @@ New fingerprint: {2}</value>
   <data name="JsonRowsCapped" xml:space="preserve">
     <value>{0} · The first {1:N0} only</value>
   </data>
-  <data name="JsonRowsDeleted" xml:space="preserve">
+  <data name="JsonRowsDeleted_one" xml:space="preserve">
     <value>{0} · {1:N0} marked for deletion left out</value>
+    <comment>{0} is the line before, {1} the number of rows marked for deletion.</comment>
+  </data>
+  <data name="JsonRowsDeleted_other" xml:space="preserve">
+    <value>{0} · {1:N0} marked for deletion left out</value>
+    <comment>{0} is the line before, {1} the number of rows marked for deletion.</comment>
   </data>
   <data name="JsonTextCut" xml:space="preserve">
     <value>{0} · The text shows its start; Copy JSON copies all of it</value>
@@ -5187,8 +5384,13 @@ New fingerprint: {2}</value>
   <data name="AssistantRefused" xml:space="preserve">
     <value>The model declined to answer.</value>
   </data>
-  <data name="AssistantTokens" xml:space="preserve">
-    <value>{0} tokens</value>
+  <data name="AssistantTokens_one" xml:space="preserve">
+    <value>{0:N0} token</value>
+    <comment>{0} is the number of tokens the reply used.</comment>
+  </data>
+  <data name="AssistantTokens_other" xml:space="preserve">
+    <value>{0:N0} tokens</value>
+    <comment>{0} is the number of tokens the reply used.</comment>
   </data>
   <data name="AssistantStopped" xml:space="preserve">
     <value>Stopped.</value>
@@ -5438,5 +5640,232 @@ New fingerprint: {2}</value>
   </data>
   <data name="ClientWriteRun" xml:space="preserve">
     <value>Run</value>
+  </data>
+  <data name="EditorMenuUndo" xml:space="preserve">
+    <value>Undo</value>
+    <comment>The SQL editor's context menu.</comment>
+  </data>
+  <data name="EditorMenuUndoKeys" xml:space="preserve">
+    <value>Ctrl+Z</value>
+    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
+  </data>
+  <data name="EditorMenuRedo" xml:space="preserve">
+    <value>Redo</value>
+  </data>
+  <data name="EditorMenuRedoKeys" xml:space="preserve">
+    <value>Ctrl+Y</value>
+    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
+  </data>
+  <data name="EditorMenuCut" xml:space="preserve">
+    <value>Cut</value>
+  </data>
+  <data name="EditorMenuCutKeys" xml:space="preserve">
+    <value>Ctrl+X</value>
+    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
+  </data>
+  <data name="EditorMenuCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="EditorMenuCopyKeys" xml:space="preserve">
+    <value>Ctrl+C</value>
+    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
+  </data>
+  <data name="EditorMenuPaste" xml:space="preserve">
+    <value>Paste</value>
+  </data>
+  <data name="EditorMenuPasteKeys" xml:space="preserve">
+    <value>Ctrl+V</value>
+    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
+  </data>
+  <data name="EditorMenuSelectAll" xml:space="preserve">
+    <value>Select All</value>
+  </data>
+  <data name="EditorMenuSelectAllKeys" xml:space="preserve">
+    <value>Ctrl+A</value>
+    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
+  </data>
+  <data name="EditorMenuToggleComment" xml:space="preserve">
+    <value>Toggle Line Comment</value>
+  </data>
+  <data name="EditorMenuToggleCommentKeys" xml:space="preserve">
+    <value>Ctrl+/</value>
+    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
+  </data>
+  <data name="EditorMenuFold" xml:space="preserve">
+    <value>Fold</value>
+  </data>
+  <data name="EditorMenuFoldKeys" xml:space="preserve">
+    <value>Ctrl+Shift+[</value>
+    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
+  </data>
+  <data name="EditorMenuUnfold" xml:space="preserve">
+    <value>Unfold</value>
+  </data>
+  <data name="EditorMenuUnfoldKeys" xml:space="preserve">
+    <value>Ctrl+Shift+]</value>
+    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
+  </data>
+  <data name="EditorMenuFoldAll" xml:space="preserve">
+    <value>Fold All</value>
+  </data>
+  <data name="EditorMenuUnfoldAll" xml:space="preserve">
+    <value>Unfold All</value>
+  </data>
+  <data name="FindBarFind" xml:space="preserve">
+    <value>Find</value>
+    <comment>The find box's placeholder and name.</comment>
+  </data>
+  <data name="FindBarReplace" xml:space="preserve">
+    <value>Replace</value>
+    <comment>The replace box's placeholder and name.</comment>
+  </data>
+  <data name="FindBarMatchCaseLabel" xml:space="preserve">
+    <value>Aa</value>
+    <comment>The match case toggle's label: an upper and a lower case letter.</comment>
+  </data>
+  <data name="FindBarMatchCase" xml:space="preserve">
+    <value>Match case</value>
+  </data>
+  <data name="FindBarWholeWordLabel" xml:space="preserve">
+    <value>ab</value>
+    <comment>The whole word toggle's label: a short word.</comment>
+  </data>
+  <data name="FindBarWholeWord" xml:space="preserve">
+    <value>Match whole word</value>
+  </data>
+  <data name="FindBarRegex" xml:space="preserve">
+    <value>Use regular expression</value>
+  </data>
+  <data name="FindBarToggleReplace" xml:space="preserve">
+    <value>Toggle Replace (Ctrl+H)</value>
+  </data>
+  <data name="FindBarPrevious" xml:space="preserve">
+    <value>Previous match (Shift+F3)</value>
+  </data>
+  <data name="FindBarNext" xml:space="preserve">
+    <value>Next match (F3)</value>
+  </data>
+  <data name="FindBarClose" xml:space="preserve">
+    <value>Close (Esc)</value>
+  </data>
+  <data name="FindBarReplaceButton" xml:space="preserve">
+    <value>Replace</value>
+    <comment>The button that replaces the current match.</comment>
+  </data>
+  <data name="FindBarReplaceTip" xml:space="preserve">
+    <value>Replace (Enter)</value>
+  </data>
+  <data name="FindBarReplaceAll" xml:space="preserve">
+    <value>Replace all</value>
+  </data>
+  <data name="FindBarReplaceAllTip" xml:space="preserve">
+    <value>Replace all (Ctrl+Alt+Enter)</value>
+  </data>
+  <data name="FindBarNoResults" xml:space="preserve">
+    <value>No results</value>
+  </data>
+  <data name="FindBarInvalidPattern" xml:space="preserve">
+    <value>Invalid pattern</value>
+  </data>
+  <data name="FindBarPosition" xml:space="preserve">
+    <value>{0:N0} of {1}</value>
+    <comment>{0} is the current match, {1} the number of matches.</comment>
+  </data>
+  <data name="FindBarAtLeast" xml:space="preserve">
+    <value>{0:N0}+</value>
+    <comment>More matches than the editor counted: at least {0}.</comment>
+  </data>
+  <data name="FindBarReplaced_one" xml:space="preserve">
+    <value>{0:N0} replaced</value>
+    <comment>{0} is the number of matches replaced.</comment>
+  </data>
+  <data name="FindBarReplaced_other" xml:space="preserve">
+    <value>{0:N0} replaced</value>
+    <comment>{0} is the number of matches replaced.</comment>
+  </data>
+  <data name="GridName" xml:space="preserve">
+    <value>Results</value>
+    <comment>A data grid's name for screen readers where its page names none.</comment>
+  </data>
+  <data name="GridUnreadable" xml:space="preserve">
+    <value>&lt;unreadable {0}&gt;</value>
+    <comment>A cell whose value the database driver could not read; {0} is the database type's name.</comment>
+  </data>
+  <data name="JoinParenthetical" xml:space="preserve">
+    <value>{0} ({1})</value>
+    <comment>A name or title, {0}, with a detail about it, {1}.</comment>
+  </data>
+  <data name="JoinSentences" xml:space="preserve">
+    <value>{0} {1}</value>
+    <comment>Two sentences one after the other.</comment>
+  </data>
+  <data name="JoinDot" xml:space="preserve">
+    <value>{0} · {1}</value>
+    <comment>Two short phrases on one line.</comment>
+  </data>
+  <data name="JoinLabelValue" xml:space="preserve">
+    <value>{0}: {1}</value>
+    <comment>A label, {0}, and its value, {1}.</comment>
+  </data>
+  <data name="ConnectionDescription" xml:space="preserve">
+    <value>{0}  {1}</value>
+    <comment>{0} is the database engine, {1} where the connection goes, such as user@host:5432/sales.</comment>
+  </data>
+  <data name="ListSeparator" xml:space="preserve">
+    <value>, </value>
+    <comment>Between the items of a list of names, such as columns or tags.</comment>
+  </data>
+  <data name="ImportCsvReviewShown_one" xml:space="preserve">
+    <value>The first is shown.</value>
+    <comment>{0} is the number of statements the review shows.</comment>
+  </data>
+  <data name="ImportCsvReviewShown_other" xml:space="preserve">
+    <value>The first {0:N0} are shown.</value>
+    <comment>{0} is the number of statements the review shows.</comment>
+  </data>
+  <data name="ShareFooterLinks_one" xml:space="preserve">
+    <value>{0:N0} of {1:N0} link</value>
+    <comment>{0} is the number of live links, {1} the limit, which picks the form.</comment>
+  </data>
+  <data name="ShareFooterLinks_other" xml:space="preserve">
+    <value>{0:N0} of {1:N0} links</value>
+    <comment>{0} is the number of live links, {1} the limit, which picks the form.</comment>
+  </data>
+  <data name="ShareFooterRows_one" xml:space="preserve">
+    <value>first {0:N0} row</value>
+    <comment>{0} is the number of rows a link shares at most.</comment>
+  </data>
+  <data name="ShareFooterRows_other" xml:space="preserve">
+    <value>first {0:N0} rows</value>
+    <comment>{0} is the number of rows a link shares at most.</comment>
+  </data>
+  <data name="AppDisplayName" xml:space="preserve">
+    <value>TablePro</value>
+    <comment>The app's name in Start, the taskbar and its title bar.</comment>
+  </data>
+  <data name="AppDescription" xml:space="preserve">
+    <value>A native database client</value>
+    <comment>The app's description in its package.</comment>
+  </data>
+  <data name="AppPublisher" xml:space="preserve">
+    <value>TablePro</value>
+    <comment>The publisher's name in the app's package.</comment>
+  </data>
+  <data name="FileTypeSqlScript" xml:space="preserve">
+    <value>SQL script</value>
+    <comment>The name Windows shows for .sql files the app opens.</comment>
+  </data>
+  <data name="FileTypeSqlite" xml:space="preserve">
+    <value>SQLite database</value>
+  </data>
+  <data name="FileTypeDuckDb" xml:space="preserve">
+    <value>DuckDB database</value>
+  </data>
+  <data name="CommandDisplayName" xml:space="preserve">
+    <value>TablePro command</value>
+    <comment>The tablepro command's name in the app's package.</comment>
+  </data>
+  <data name="CommandDescription" xml:space="preserve">
+    <value>The tablepro command for terminals and scripts</value>
   </data>
 </root>

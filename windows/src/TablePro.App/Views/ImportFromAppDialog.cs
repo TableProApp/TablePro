@@ -35,9 +35,7 @@ internal static class ImportFromAppDialog
     public static string Describe(ForeignImportEnding ending)
     {
         ArgumentNullException.ThrowIfNull(ending);
-        return string.Join(' ', ending.Sentences
-            .Select(sentence => Sentence(sentence, ending.Error))
-            .Where(text => text.Length > 0));
+        return Strings.Sentences([.. ending.Sentences.Select(sentence => Sentence(sentence, ending.Error))]);
     }
 
     public static InfoBarSeverity Severity(ForeignImportEnding ending)
@@ -57,10 +55,9 @@ internal static class ImportFromAppDialog
         ForeignImportPart.Nothing => Strings.Get("ImportAppDone_Nothing"),
         ForeignImportPart.Outdated => Strings.Get("ImportAppDone_Outdated"),
         ForeignImportPart.Failed when error is not null =>
-            $"{Strings.Get("ImportAppDone_Failed")} {Strings.Error(error)}",
+            Strings.Sentences(Strings.Get("ImportAppDone_Failed"), Strings.Error(error)),
         ForeignImportPart.Failed => Strings.Get("ImportAppDone_Failed"),
-        _ when sentence.Count == 1 => Strings.Get($"ImportAppDone_{sentence.Part}One"),
-        _ => Strings.Format($"ImportAppDone_{sentence.Part}Many", sentence.Count),
+        _ => Strings.Plural("ImportAppDone_" + sentence.Part, sentence.Count, sentence.Count),
     };
 
     // A style keeps the dialog's own theme, which a brush read from the app's resources in code would not.
@@ -99,18 +96,14 @@ internal static class ImportFromAppDialog
                 return Strings.Get("ImportAppSourceNotFound");
         }
 
-        var connections = source.Connections == 1
-            ? Strings.Get("ImportAppSourceConnectionsOne")
-            : Strings.Format("ImportAppSourceConnectionsMany", source.Connections);
+        var connections = Strings.Plural("ImportAppSourceConnections", source.Connections, source.Connections);
         if (source.SavedQueries == 0)
         {
             return connections;
         }
 
-        var queries = source.SavedQueries == 1
-            ? Strings.Get("ImportAppSourceQueriesOne")
-            : Strings.Format("ImportAppSourceQueriesMany", source.SavedQueries);
-        return $"{connections} · {queries}";
+        var queries = Strings.Plural("ImportAppSourceQueries", source.SavedQueries, source.SavedQueries);
+        return Strings.Format("JoinDot", connections, queries);
     }
 
     private static string ResolutionText(ForeignResolution resolution) => resolution switch
@@ -152,7 +145,7 @@ internal static class ImportFromAppDialog
         ForeignRowNote.JumpHostKeyNotKept dropped =>
             Strings.Format("ImportAppNote_JumpHostKeyNotKept", dropped.Host, dropped.Path),
         ForeignRowNote.FieldsNotKept dropped =>
-            Strings.Format("ImportAppNote_FieldsNotKept", string.Join(", ", dropped.Fields)),
+            Strings.Format("ImportAppNote_FieldsNotKept", Strings.List(dropped.Fields)),
         _ => string.Empty,
     };
 
@@ -170,17 +163,14 @@ internal static class ImportFromAppDialog
 
     private static string SummaryText(ForeignImportSummary summary)
     {
-        var connections = summary.Connections == 1
-            ? Strings.Format("ImportAppSummaryConnectionsOne", summary.SelectedConnections)
-            : Strings.Format("ImportAppSummaryConnectionsMany", summary.SelectedConnections, summary.Connections);
+        var connections = Strings.Plural(
+            "ImportAppSummaryConnections", summary.Connections, summary.SelectedConnections, summary.Connections);
         if (summary.Queries == 0)
         {
             return connections;
         }
 
-        var queries = summary.Queries == 1
-            ? Strings.Format("ImportAppSummaryQueriesOne", summary.IncludedQueries)
-            : Strings.Format("ImportAppSummaryQueriesMany", summary.IncludedQueries, summary.Queries);
+        var queries = Strings.Plural("ImportAppSummaryQueries", summary.Queries, summary.IncludedQueries, summary.Queries);
         return $"{connections}\n{queries}";
     }
 
@@ -640,7 +630,7 @@ internal static class ImportFromAppDialog
                 },
                 "ImportAppRow_" + line.Reference,
                 line.Row.Name);
-            AutomationProperties.SetHelpText(check, string.Join(". ", lines));
+            AutomationProperties.SetHelpText(check, Strings.List(lines));
 
             var grid = new Grid { ColumnSpacing = 12, Padding = new Thickness(0, 4, 0, 4) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -721,7 +711,8 @@ internal static class ImportFromAppDialog
         private string Describe(SavedConnection saved)
         {
             var engine = _workbench.EngineName(saved.EngineId);
-            return $"{engine}  {ConnectionSearch.Describe(saved, _workbench.IsFileEngine(saved.EngineId))}";
+            return Strings.Format(
+                "ConnectionDescription", engine, ConnectionSearch.Describe(saved, _workbench.IsFileEngine(saved.EngineId)));
         }
 
         private void OnSelected(ConnectionRow row, bool selected)

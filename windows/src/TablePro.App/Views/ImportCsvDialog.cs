@@ -130,20 +130,15 @@ internal static class ImportCsvDialog
         };
         return report.Ending switch
         {
-            CsvImportEnding.Imported => report.Rows == 1
-                ? Strings.Format("ImportCsvDoneOne", table.Name)
-                : Strings.Format("ImportCsvDoneMany", report.Rows, table.Name),
+            CsvImportEnding.Imported => Strings.Plural("ImportCsvDone", report.Rows, report.Rows, table.Name),
             CsvImportEnding.NotWritten when report.Lines is null =>
-                Sentences(Strings.Get("ImportCsvNotWritten"), error),
-            CsvImportEnding.NotWritten => Sentences(Strings.Format("ImportCsvRolledBack", lines), error),
+                Strings.Sentences(Strings.Get("ImportCsvNotWritten"), error),
+            CsvImportEnding.NotWritten => Strings.Sentences(Strings.Format("ImportCsvRolledBack", lines), error),
             _ when report.Error is null => Strings.Get("ImportCsvStopped"),
-            _ when report.Lines is not null => Sentences(Strings.Format("ImportCsvUnknownLines", lines), error),
-            _ => Sentences(Strings.Get("ImportCsvUnknown"), error),
+            _ when report.Lines is not null => Strings.Sentences(Strings.Format("ImportCsvUnknownLines", lines), error),
+            _ => Strings.Sentences(Strings.Get("ImportCsvUnknown"), error),
         };
     }
-
-    private static string Sentences(params string?[] parts) =>
-        string.Join(' ', parts.Where(part => !string.IsNullOrEmpty(part)));
 
     // The picker belongs to the window the workspace is in, which a tab window has its own of.
     private static async Task<string?> PickFileAsync(FrameworkElement owner)
@@ -176,13 +171,11 @@ internal static class ImportCsvDialog
         content.Children.Add(Named(
             new TextBlock { Text = Strings.Format("SaveReviewRunsOn", connection), TextWrapping = TextWrapping.Wrap },
             "ImportReviewRunsOn"));
-        var counted = (count, review.Shown) switch
+        var counted = Strings.Plural("ImportCsvReview", count, count);
+        if (review.Shown != count)
         {
-            (1, _) => Strings.Get("ImportCsvReviewOne"),
-            var (all, shown) when shown == all => Strings.Format("ImportCsvReviewMany", all),
-            (_, 1) => Strings.Format("ImportCsvReviewFirstShown", count),
-            _ => Strings.Format("ImportCsvReviewSomeShown", count, review.Shown),
-        };
+            counted = Strings.Sentences(counted, Strings.Plural("ImportCsvReviewShown", review.Shown, review.Shown));
+        }
         content.Children.Add(Named(
             new TextBlock { Text = counted, TextWrapping = TextWrapping.Wrap },
             "ImportReviewCount"));
@@ -198,9 +191,7 @@ internal static class ImportCsvDialog
         var dialog = new ContentDialog
         {
             RequestedTheme = owner.ActualTheme,
-            Title = planned.Rows == 1
-                ? Strings.Format("ImportCsvReviewTitleOne", table.Name)
-                : Strings.Format("ImportCsvReviewTitleMany", planned.Rows, table.Name),
+            Title = Strings.Plural("ImportCsvReviewTitle", planned.Rows, planned.Rows, table.Name),
             Content = new ScrollViewer { Content = content, MaxHeight = 480 },
             PrimaryButtonText = Strings.Get("ImportCsvAction"),
             CloseButtonText = Strings.Get("Cancel"),
@@ -541,12 +532,8 @@ internal static class ImportCsvDialog
 
         private static string SummaryText(CsvPreviewSummary summary)
         {
-            var fields = summary.Fields == 1
-                ? Strings.Get("ImportCsvFieldsOne")
-                : Strings.Format("ImportCsvFieldsMany", summary.Fields);
-            var rows = summary.Rows == 1
-                ? Strings.Get("ImportCsvRowsOne")
-                : Strings.Format("ImportCsvRowsMany", summary.Rows);
+            var fields = Strings.Plural("ImportCsvFields", summary.Fields, summary.Fields);
+            var rows = Strings.Plural("ImportCsvRows", summary.Rows, summary.Rows);
             return Strings.Format(summary.Truncated ? "ImportCsvSummaryTruncated" : "ImportCsvSummary", fields, rows);
         }
 

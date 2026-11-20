@@ -15,15 +15,17 @@ public sealed partial class WorkspaceView
             return;
         }
 
-        var duration = FinishNotice.Duration(end.Elapsed);
+        var duration = FinishNotice.Duration(
+            end.Elapsed,
+            Strings.Get("DurationHoursMinutes"),
+            Strings.Get("DurationMinutesSeconds"),
+            Strings.Get("DurationSeconds"));
         var body = end switch
         {
             // The server's message stays in the app: it can quote the values it refused, and a notification shows anywhere.
             { Failure: not null } => Strings.Format("NotifyFailed", duration),
-            { Rows: 1 } => Strings.Format("NotifyRow", duration),
-            { Rows: { } rows } => Strings.Format("NotifyRows", rows, duration),
-            { RowsAffected: 1 } => Strings.Format("NotifyAffectedOne", duration),
-            { RowsAffected: { } affected } => Strings.Format("NotifyAffected", affected, duration),
+            { Rows: { } rows } => Strings.Plural("NotifyRows", rows, rows, duration),
+            { RowsAffected: { } affected } => Strings.Plural("NotifyAffected", affected, affected, duration),
             _ => Strings.Format("NotifyDone", duration),
         };
         var group = _connection.ConnectionId?.ToString("N") ?? _connection.Title;

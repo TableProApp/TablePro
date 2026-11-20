@@ -49,14 +49,8 @@ public sealed partial class LibraryItem : INotifyPropertyChanged
         ? EngineIcons.Mark(connection.EngineId, connection.Color)
         : GroupGlyph();
 
-    public string AccessibleName
-    {
-        get
-        {
-            var name = string.IsNullOrEmpty(Detail) ? Title : $"{Title}, {Detail}";
-            return Tags.Count == 0 ? name : $"{name}, {string.Join(", ", Tags.Select(tag => tag.Name))}";
-        }
-    }
+    public string AccessibleName => Strings.List(
+        new[] { Title, Detail }.Where(part => !string.IsNullOrEmpty(part)).Concat(Tags.Select(tag => tag.Name)));
 
     public Style TitleStyle => (Style)Application.Current.Resources[
         Node.Kind is LibraryNodeKind.Favorites or LibraryNodeKind.Recent or LibraryNodeKind.AllConnections

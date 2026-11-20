@@ -936,7 +936,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
             var written = await export.ConfigureAwait(true);
             ShowExport(
                 InfoBarSeverity.Success,
-                Strings.Format(written == 1 ? "ExportDoneOne" : "ExportDoneMany", written, name),
+                Strings.Plural("ExportDone", written, written, name),
                 running: false);
         }
         catch (OperationCanceledException)
@@ -1037,14 +1037,14 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
 
         if (total is { } all && all > 0)
         {
-            ExportBar.Message = Strings.Format("ExportRunningRowsOf", name, rows, all);
+            ExportBar.Message = Strings.Plural("ExportRunningRowsOf", all, name, rows, all);
             ExportProgress.IsIndeterminate = false;
             ExportProgress.Maximum = all;
             ExportProgress.Value = Math.Min(rows, all);
         }
         else
         {
-            ExportBar.Message = Strings.Format("ExportRunningRows", name, rows);
+            ExportBar.Message = Strings.Plural("ExportRunningRows", rows, name, rows);
         }
     }
 
@@ -1957,7 +1957,7 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         }
 
         var message = elsewhere.Count > 1
-            ? Strings.Format("TransactionElsewhereMany", elsewhere.Count)
+            ? Strings.Plural("TransactionElsewhereTabs", elsewhere.Count, elsewhere.Count)
             : Strings.Format(
                 elsewhere.Transaction == TransactionState.Failed ? "TransactionElsewhereFailed" : "TransactionElsewhere",
                 elsewhere.Title);

@@ -126,6 +126,16 @@ public sealed class AutomationTests
         Assert.Equal(DataGridAutomationPeer.MaxSelectionPeers, peer.GetSelection().Length);
     });
 
+    // The model keeps an unreadable value's type; the grid words it from the app's strings, as it draws and reads it.
+    [Fact]
+    public Task AValueTheDriverCouldNotReadIsWordedFromTheAppsStrings() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData());
+
+        Assert.Equal("<unreadable money>", grid.ShownText(new Model.CellText("money", Model.CellState.Unreadable)));
+        Assert.Equal("money", grid.ShownText(new Model.CellText("money", Model.CellState.None)));
+    });
+
     // UIA's HeaderItem control type gives a header's sort order as its ItemStatus.
     [Fact]
     public Task AHeaderReportsItsSortOrderAsItsItemStatus() => WinUiHost.RunAsync(async () =>

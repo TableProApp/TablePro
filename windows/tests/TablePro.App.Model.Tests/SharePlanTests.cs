@@ -193,14 +193,6 @@ public sealed class SharePlanTests
     }
 
     [Fact]
-    public void ProsFooterTakesTheSingularForOneLink()
-    {
-        Assert.Equal("ShareFooterProOne", SharePlan.For(Pro with { Live = 1 }, ShareKind.Query).Footer.ProKey);
-        Assert.Equal("ShareFooterProMany", SharePlan.For(Pro, ShareKind.Query).Footer.ProKey);
-        Assert.Equal("ShareFooterProMany", SharePlan.For(Pro with { Live = 0 }, ShareKind.Query).Footer.ProKey);
-    }
-
-    [Fact]
     public void TheCapLineCountsTheLiveLinksWhichADowngradeCanLeaveAboveTheLimit()
     {
         Assert.Equal(new ShareCap(false, 7, 5), SharePlan.For(Free with { Live = 7 }, ShareKind.Query).Cap);
