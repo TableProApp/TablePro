@@ -521,10 +521,19 @@ jobs:
           Open $APPINSTALLER to install it and get later releases as they ship, or run \`winget install TablePro.TablePro\` once winget lists this version.
           EOF
           fi
-          # A rerun after the channel push failed finds the release made; the repository's latest stays the macOS one.
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 \
-            || gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false "${flags[@]}" \
+          # A rerun of the failed jobs after the channel push failed finds its own files published; a rerun of the
+          # whole run rebuilt them, and winget would get hashes of files the release does not have.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir published
+            if ! cmp -s published/SHA256SUMS release/SHA256SUMS; then
+              echo "::error::$TAG is published with other files; rerun only the failed jobs (windows/RELEASING.md)"
+              exit 1
+            fi
+          else
+            # The repository's latest release stays the macOS one.
+            gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false "${flags[@]}" \
               --title "TablePro for Windows $VERSION" --notes-file notes.md
+          fi
       # The tag's own code, which the version job found on main; only a tag push reaches this job.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
