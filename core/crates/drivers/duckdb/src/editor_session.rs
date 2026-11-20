@@ -190,9 +190,15 @@ impl Shared {
         };
         let text = sql.as_str().to_owned();
         let limit = options.row_limit;
-        let traced = self.idle.load(Ordering::SeqCst).then(|| self.catalog.clone());
+        let idle = self.idle.load(Ordering::SeqCst);
+        let traced = idle.then(|| self.catalog.clone());
+        let session = if idle {
+            TransactionState::Idle
+        } else {
+            TransactionState::Unknown
+        };
         let running = stream_into(call, None, sink, move |link, events| {
-            run_script(link, &text, Some(limit), events, &halted, traced.as_deref())
+            run_script(link, &text, Some(limit), events, &halted, traced.as_deref(), session)
         });
         tokio::pin!(running);
         let stop = tokio::select! {

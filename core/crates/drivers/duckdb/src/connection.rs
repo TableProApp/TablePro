@@ -13,7 +13,8 @@ use tablepro_core::{
     CallOptions, CatalogBudget, ColumnInfo, CommitResolution, CommitToken, Connection, DriverError, EditorSession,
     EditorSessionOptions, FileEndpoint, ForeignKeyInfo, LinkState, LinkWatch, LivenessPolicy, LossPhase, OwnedCalls,
     QueryResult, ReadOnlyRefusal, ReadStatement, ResultSink, RowLimit, ServerInfo, SinkFlow, StopRequest,
-    StreamSummary, TimeoutPhase, WorkspaceSettings, WriteAtomicity, WriteBatch, WriteKind, WriteLedger, WriteReport,
+    StreamSummary, TimeoutPhase, TransactionState, WorkspaceSettings, WriteAtomicity, WriteBatch, WriteKind,
+    WriteLedger, WriteReport,
 };
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
@@ -442,7 +443,15 @@ impl Connection for DuckDbConnection {
                     batch(link, "BEGIN TRANSACTION READ ONLY")?;
                     let streamed = match &read {
                         ReadStatement::Generated(statement) => run_bound(link, statement, events),
-                        ReadStatement::User(sql) => run_script(link, sql.as_str(), None, events, &|| false, None),
+                        ReadStatement::User(sql) => run_script(
+                            link,
+                            sql.as_str(),
+                            None,
+                            events,
+                            &|| false,
+                            None,
+                            TransactionState::InTransaction,
+                        ),
                     };
                     link.hold_stops();
                     let _ = batch(link, "ROLLBACK");

@@ -93,12 +93,12 @@ nonisolated extension DuckDBDriver {
                             ColumnInfo(name: $0.name, typeName: $0.typeName, ordinalPosition: 0)
                         }))
                         try await Self.yieldRows(stream: id, options: options, actor: actor, continuation: continuation)
-                        await actor.endStream(id)
+                        try await actor.endStream(id)
                     }
                     continuation.finish()
                 } catch {
                     if let stream {
-                        await actor.endStream(stream)
+                        await actor.abandonStream(stream)
                     }
                     // A cancelled consumer interrupts the query, so the interrupt error is the cancel itself.
                     if error is CancellationError || Task.isCancelled {
@@ -159,6 +159,15 @@ extension DuckDBActor {
             ? Self.castedQuery(originalQuery: query, columns: plan)
             : query
 
+        // A prepare commits nothing on its own (DuckDBPreparedRun), so it runs only inside a transaction it then runs in.
+        guard let ownsTransaction = Self.prepareTransaction(on: connection, session: transactionState()) else {
+            return .materialize
+        }
+        var streaming = false
+        defer {
+            if ownsTransaction, !streaming { DuckDBPreparedRun.rollback(on: connection) }
+        }
+
         var stmt: duckdb_prepared_statement?
         guard duckdb_prepare(connection, streamQuery, &stmt) != DuckDBError, let preparedStmt = stmt else {
             duckdb_destroy_prepare(&stmt)
@@ -187,6 +196,8 @@ extension DuckDBActor {
 
         streamResult = result
         streamColumns = plan
+        streamOwnsTransaction = ownsTransaction
+        streaming = true
         return .rowSet(plan, stream: stream)
     }
 
@@ -251,17 +262,46 @@ extension DuckDBActor {
         return value
     }
 
-    func endStream(_ stream: UInt64) {
+    // True when the prepare runs in a transaction the actor opens for it, false in the session's own, nil when there is
+    // none it may prepare in: a BEGIN inside a transaction aborts it, so only a session DuckDB says holds none gets one.
+    static func prepareTransaction(on connection: duckdb_connection, session: DriverTransactionState) -> Bool? {
+        switch session {
+        case .idle:
+            return DuckDBPreparedRun.begin(on: connection) == nil ? true : nil
+        case .explicitTransaction, .abortedTransaction:
+            return false
+        case .implicitTransaction, .unknown:
+            return nil
+        }
+    }
+
+    // A read that ran to its end commits the transaction opened for it, and a failed COMMIT fails the read.
+    func endStream(_ stream: UInt64) throws {
+        guard stream == streamGeneration else { return }
+        let owned = streamOwnsTransaction
+        streamOwnsTransaction = false
+        closeStreamResult()
+        if owned, let connection, let failure = DuckDBPreparedRun.commit(on: connection) {
+            throw DuckDBDriverError.queryFailed(failure)
+        }
+    }
+
+    func abandonStream(_ stream: UInt64) {
         guard stream == streamGeneration else { return }
         closeStreamResult()
     }
 
+    // A read given up, replaced or closed with the session rolls back the transaction opened for it.
     func closeStreamResult() {
         if var result = streamResult {
             duckdb_destroy_result(&result)
             streamResult = nil
         }
         streamColumns = []
+        if streamOwnsTransaction, let connection {
+            streamOwnsTransaction = false
+            DuckDBPreparedRun.rollback(on: connection)
+        }
     }
 
     /// Marks `stream` as the running query for the length of `body`, so its consumer's cancel can interrupt it. The

@@ -70186,6 +70186,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "DuckDB could not say whether this session holds a transaction, so the statement did not run." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "DuckDB could not verify the server's certificate. Either no CA it trusts signed it, or it was not issued for this host name. DuckDB checks certificates against /etc/ssl/cert.pem and the CA Certificate, and does not read the macOS keychain, so a CA added in Keychain Access is not trusted." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -70223,6 +70227,10 @@
           }
         }
       }
+    },
+    "DuckDB reads %lld statements in this text. Run them one at a time." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "DuckDB reported: %@" : {
       "extractionState" : "manual",
