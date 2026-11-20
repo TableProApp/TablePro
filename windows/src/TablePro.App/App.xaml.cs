@@ -60,7 +60,8 @@ public partial class App : Application
     // Another launch handed over, with the links and files it was started for, if any.
     internal void Activate(ActivationRequest request)
     {
-        if (_window is null || _closed)
+        // A shut-down app takes no new work, as an update holds the folder while Windows installs and restarts it.
+        if (_window is null || _closed || _window.IsEnding)
         {
             return;
         }
