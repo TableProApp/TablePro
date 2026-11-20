@@ -81,6 +81,39 @@ public sealed class EditingTests
         grid.CancelEdit();
     });
 
+    // A TextBox with focus animates its own Height from the last size it showed, then sets Height to NaN.
+    [Fact]
+    public Task EachEditOpensAtItsOwnRowsHeightAfterATallerOne() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WrapChecks.ShowAsync(new WrapData());
+        grid.IsEditable = true;
+        grid.SelectCell(0, 1, extend: false);
+        grid.BeginEdit();
+        await SettleAsync(grid);
+        Assert.True(grid.Editor!.ActualHeight >= grid.RowHeightOf(0) - 1);
+        Assert.True(grid.RowHeightOf(0) > grid.RowHeightOf(2) + 1);
+        grid.CancelEdit();
+
+        grid.SelectCell(2, 1, extend: false);
+        grid.BeginEdit();
+        await SettleAsync(grid);
+        Assert.Equal(grid.RowHeightOf(2), grid.Editor!.ActualHeight, 1.0);
+        grid.CancelEdit();
+
+        grid.WrapsText = false;
+        await SettleAsync(grid);
+        grid.BeginEdit();
+        await SettleAsync(grid);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (clock.ElapsedMilliseconds < 300)
+        {
+            await WinUiHost.NextFrameAsync();
+        }
+        Assert.Equal(grid.RowHeight, grid.Editor!.Height);
+        Assert.Equal(grid.RowHeight, grid.Editor!.ActualHeight, 1.0);
+        grid.CancelEdit();
+    });
+
     [Fact]
     public Task TurningWrapOnKeepsWhatTheOpenEditorHolds() => WinUiHost.RunAsync(async () =>
     {
@@ -235,22 +268,21 @@ public sealed class EditingTests
         grid.BeginEdit();
         await SettleAsync(grid);
 
-        var editor = grid.Editor!;
-        editor.Text = "four";
+        grid.Editor!.Text = "four";
         Assert.True(grid.HandleEditorKey(VirtualKey.Tab, control: false, shift: false));
         await SettleAsync(grid);
 
         Assert.Equal((3, 4, "four"), Assert.Single(commits));
         Assert.True(grid.IsEditing);
         Assert.Equal((3, 5), (grid.FocusedRow, grid.FocusedColumn));
-        Assert.Equal(SyntheticData.Value(3, 5), editor.Text);
+        Assert.Equal(SyntheticData.Value(3, 5), grid.Editor!.Text);
         Assert.True(grid.HandleEditorKey(VirtualKey.Tab, control: false, shift: true));
         Assert.Equal((3, 4), (grid.FocusedRow, grid.FocusedColumn));
         Assert.False(grid.IsEditing);
         await SettleAsync(grid);
 
         Assert.True(grid.IsEditing);
-        Assert.Equal("r3c4", editor.Text);
+        Assert.Equal("r3c4", grid.Editor!.Text);
         Assert.Single(commits);
         grid.CancelEdit();
     });
@@ -277,15 +309,14 @@ public sealed class EditingTests
         grid.BeginEdit();
         await SettleAsync(grid);
 
-        var editor = grid.Editor!;
-        Assert.True(editor.AcceptsReturn);
+        Assert.True(grid.Editor!.AcceptsReturn);
         Assert.True(grid.HandleEditorKey(VirtualKey.Enter, control: true, shift: false));
         Assert.Empty(commits);
         Assert.False(grid.IsEditing);
 
         grid.BeginEdit();
         await SettleAsync(grid);
-        editor.Text = "a\rb";
+        grid.Editor!.Text = "a\rb";
         Assert.True(grid.HandleEditorKey(VirtualKey.Enter, control: true, shift: false));
         Assert.Equal("a\r\nb", Assert.Single(commits));
     });

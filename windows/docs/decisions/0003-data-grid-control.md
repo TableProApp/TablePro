@@ -75,6 +75,7 @@
 - Off until the host sets `IsEditable`. F2, Enter or a double-click on a cell opens the editor; typing does not, as on macOS. `CellEditStarting` gives the host the cell, and the host sets the text or cancels. Text with NUL opens nothing, since a TextBox cannot hold it.
 - F2 and Enter, and Tab in the editor, open the editor once the key is done, so the key's character does not reach the new TextBox.
 - The editor is a stock TextBox in the cell's pane, the frozen one or the scrolling one, so it scrolls with the rows. It takes the cells' font, gets focus and selects its text. A value with a line break opens with AcceptsReturn and grows to four rows.
+- Each edit opens a new TextBox. A TextBox with focus and no Height that wraps or takes returns animates its own Height for 100 ms when its size changes, and sets Height to NaN when that ends (`TextBox::OnSizeChanged`, `TextBox_Partial.cpp`). One reused for the next cell opened at the last cell's height, and a one-line editor lost the grid's Height a moment later (run 44783975649).
 - Enter commits and stays. Tab and Shift+Tab commit and edit the next cell to the right or left, as NSTableView does. Escape cancels. Ctrl+Enter commits a value with line breaks.
 - Losing focus commits, and a refused commit then cancels. Focus that moves to the TextBox's own menus does not. Unloading the grid and setting `FrozenColumnCount` do the same.
 - On those paths the editor's ToolTip closes with it, so the host shows a refused commit's Error itself.
