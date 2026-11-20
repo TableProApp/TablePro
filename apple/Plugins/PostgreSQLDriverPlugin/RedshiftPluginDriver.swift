@@ -106,6 +106,14 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         try await exportCatalog.fetchAllColumns(schema: schema)
     }
 
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await exportCatalog.fetchAllColumnsForExport(schema: schema)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await exportCatalog.fetchAllForeignKeysForExport(schema: schema)
+    }
+
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         try await exportCatalog.fetchIndexes(table: table, schema: schema)
     }

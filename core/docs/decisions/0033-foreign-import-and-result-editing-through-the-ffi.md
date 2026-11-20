@@ -1,6 +1,6 @@
 # 0033: Importing from other apps and editing a query result cross the FFI
 
-- **Status**: Accepted
+- **Status**: Accepted; the Windows host's Credential Manager reads amended by 0039
 - **Date**: 2026-11-18
 
 ## Context

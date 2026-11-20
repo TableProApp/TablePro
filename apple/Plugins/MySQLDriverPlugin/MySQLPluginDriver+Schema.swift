@@ -323,14 +323,30 @@ internal extension MySQLPluginDriver {
     var providesBulkColumnFetch: Bool { !flavor.isStarRocks }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        guard !flavor.isDatabend else { return try await databendAllColumns(schema: schema) }
+        try await allColumns(schema: schema, keepsSpellingsApart: false)
+    }
+
+    func fetchAllColumnsForExport(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        try await allColumns(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allColumns(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginColumnInfo]] {
+        guard !flavor.isDatabend else {
+            return try await databendAllColumns(schema: schema, keepsSpellingsApart: keepsSpellingsApart)
+        }
         let database = effectiveSchema(schema)
-        guard !flavor.isStarRocks else { return try await starrocksColumns(database: database, table: nil) }
+        guard !flavor.isStarRocks else {
+            return try await starrocksColumns(database: database, table: nil, keepsSpellingsApart: keepsSpellingsApart)
+        }
         return try await catalogOrShow(
             database: database,
             catalogExists: serverHasInformationSchema,
-            catalog: { try await self.exportCatalog.informationSchemaColumns(schema: schema, table: nil) },
-            show: { try await self.showColumnsByTable(database: database) }
+            catalog: {
+                try await self.exportCatalog.informationSchemaColumns(
+                    schema: schema, table: nil, keepsSpellingsApart: keepsSpellingsApart
+                )
+            },
+            show: { try await self.showColumnsByTable(database: database, keepsSpellingsApart: keepsSpellingsApart) }
         )
     }
 }

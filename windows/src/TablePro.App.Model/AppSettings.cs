@@ -137,6 +137,12 @@ public sealed record AppSettings
 
     public int McpServerPort { get; set; } = DefaultMcpServerPort;
 
+    // The channel Settings chose; null follows the App Installer file the app was installed from.
+    public UpdateChannel? UpdateChannel { get; set; }
+
+    // The package version that last started, so the first start of a newer one says it was updated.
+    public string? LastLaunchedVersion { get; set; }
+
     // What the chosen provider's requests take, or null while the assistant is off.
     [JsonIgnore]
     public AiSettings? Assistant => AiProvider is { } provider ? AssistantFor(provider) : null;
@@ -188,6 +194,8 @@ public sealed record AppSettings
             ? DefaultCompatibleAddress
             : CompatibleAddress.Trim(),
         McpServerPort = Math.Clamp(McpServerPort, LowestMcpServerPort, ushort.MaxValue),
+        UpdateChannel = UpdateChannel is { } channel && Enum.IsDefined(channel) ? channel : null,
+        LastLaunchedVersion = ReleaseVersions.TryParse(LastLaunchedVersion, out var launched) ? launched.ToString() : null,
     };
 }
 

@@ -34,7 +34,12 @@ pub(super) fn tunnel_profiles(db: &Database) -> HashMap<String, Layer> {
             Ok(layer) => {
                 profiles.insert(id, layer);
             }
-            Err(error) => tracing::warn!(%error, "skipping a DBX tunnel profile that does not parse"),
+            // Not the message, which can quote a password an older DBX left in the JSON.
+            Err(error) => tracing::warn!(
+                line = error.line(),
+                column = error.column(),
+                "skipping a DBX tunnel profile that does not parse"
+            ),
         }
     }
     profiles

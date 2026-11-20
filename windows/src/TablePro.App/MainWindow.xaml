@@ -8,6 +8,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -238,13 +239,23 @@
                 <MenuFlyoutItem x:Uid="MenuReportIssue" x:Name="MenuReportIssue" Click="OnReportIssue" />
                 <MenuFlyoutItem x:Uid="MenuSample" x:Name="MenuSample" Click="OnOpenSample" />
                 <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Name="MenuCheckForUpdates" AutomationProperties.AutomationId="MenuCheckForUpdates" Click="OnCheckForUpdates" />
                 <MenuFlyoutItem x:Uid="MenuAbout" x:Name="MenuAbout" Click="OnAbout" />
             </MenuBarItem>
         </MenuBar>
 
+        <!-- App-wide news about the app itself: an update to install, or the update that just arrived. -->
+        <InfoBar
+            x:Name="UpdateBar"
+            Grid.Row="2"
+            AutomationProperties.AutomationId="UpdateBar"
+            IsOpen="False"
+            Severity="Informational"
+            Closed="OnUpdateBarClosed" />
+
         <NavigationView
             x:Name="Rail"
-            Grid.Row="2"
+            Grid.Row="3"
             AutomationProperties.AutomationId="Rail"
             PaneDisplayMode="LeftCompact"
             IsPaneVisible="False"

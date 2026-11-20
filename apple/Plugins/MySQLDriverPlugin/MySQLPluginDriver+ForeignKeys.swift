@@ -42,14 +42,26 @@ extension MySQLPluginDriver {
     }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await allForeignKeys(schema: schema, keepsSpellingsApart: false)
+    }
+
+    func fetchAllForeignKeysForExport(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        try await allForeignKeys(schema: schema, keepsSpellingsApart: true)
+    }
+
+    private func allForeignKeys(schema: String?, keepsSpellingsApart: Bool) async throws -> [String: [PluginForeignKeyInfo]] {
         guard flavor.hasMySQLObjectCatalogs else { return [:] }
         let database = effectiveSchema(schema)
         let reader = exportCatalog
         return try await catalogOrShow(
             database: database,
             catalogExists: reader.hasForeignKeyCatalog,
-            catalog: { try await reader.catalogForeignKeys(database: database, table: nil) },
-            show: { try await self.showForeignKeysByTable(database: database) }
+            catalog: {
+                try await reader.catalogForeignKeys(
+                    database: database, table: nil, keepsSpellingsApart: keepsSpellingsApart
+                )
+            },
+            show: { try await self.showForeignKeysByTable(database: database, keepsSpellingsApart: keepsSpellingsApart) }
         )
     }
 }

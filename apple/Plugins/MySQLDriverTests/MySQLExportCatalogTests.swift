@@ -376,3 +376,64 @@ struct MySQLExportCatalogTests {
         #expect(driver.tableDDLIncludesForeignKeys)
     }
 }
+
+// MySQL and MariaDB keep two tables whose names differ only in Unicode form apart, which a String key merges.
+extension MySQLExportCatalogTests {
+    private static let composed = "caf\u{E9}"
+    private static let decomposed = "cafe\u{301}"
+
+    @Test("The export's column read throws on two tables named alike in different Unicode forms")
+    func exportColumnReadThrowsOnTwins() async throws {
+        let server = CatalogServer(answers: [[
+            [.text(Self.composed), "id", "int", nil, "NO", "PRI", nil, "", "", nil],
+            [.text(Self.decomposed), "id", "int", nil, "NO", "PRI", nil, "", "", nil],
+        ]])
+
+        await #expect(throws: PluginNameSpellingError.self) {
+            try await makeCatalog(server).informationSchemaColumns(schema: nil, table: nil, keepsSpellingsApart: true)
+        }
+        #expect(await server.sent == [
+            MySQLObjectQueries.columnCatalog(schema: "shop", table: nil, projectsGenerationExpression: true),
+        ])
+    }
+
+    @Test("The export's key read throws on two tables named alike in different Unicode forms")
+    func exportKeyReadThrowsOnTwins() async throws {
+        let server = CatalogServer(answers: [
+            [
+                [.text(Self.composed), "fk_a", "a", "shop", "p", "id"],
+                [.text(Self.decomposed), "fk_b", "b", "shop", "p", "id"],
+            ],
+            [],
+        ])
+
+        await #expect(throws: PluginNameSpellingError.self) {
+            try await makeCatalog(server).catalogForeignKeys(database: "shop", table: nil, keepsSpellingsApart: true)
+        }
+    }
+
+    @Test("Without twins the export reads send the shared reads' statements and answer alike")
+    func exportReadsMatchTheSharedReads() async throws {
+        let columnRows: [[PluginCellValue]] = [
+            ["orders", "id", "int", nil, "NO", "PRI", nil, "", "", nil],
+            ["lines", "order_id", "int", nil, "NO", "", nil, "", "", nil],
+        ]
+        let keyRows: [[PluginCellValue]] = [["lines", "fk_order", "order_id", "shop", "orders", "id"]]
+        let actionRows: [[PluginCellValue]] = [["lines", "fk_order", "CASCADE", "RESTRICT"]]
+        let shared = CatalogServer(answers: [columnRows, keyRows, actionRows])
+        let exported = CatalogServer(answers: [columnRows, keyRows, actionRows])
+
+        let sharedColumns = try await makeCatalog(shared).informationSchemaColumns(schema: nil, table: nil)
+        let sharedKeys = try await makeCatalog(shared).catalogForeignKeys(database: "shop", table: nil)
+        let exportColumns = try await makeCatalog(exported)
+            .informationSchemaColumns(schema: nil, table: nil, keepsSpellingsApart: true)
+        let exportKeys = try await makeCatalog(exported)
+            .catalogForeignKeys(database: "shop", table: nil, keepsSpellingsApart: true)
+
+        #expect(await exported.sent == shared.sent)
+        #expect(await exported.sent.count == 3)
+        #expect(exportColumns.mapValues { columns in columns.map { $0.name } }
+            == sharedColumns.mapValues { columns in columns.map { $0.name } })
+        #expect(exportKeys["lines"]?.map { $0.name } == sharedKeys["lines"]?.map { $0.name })
+    }
+}

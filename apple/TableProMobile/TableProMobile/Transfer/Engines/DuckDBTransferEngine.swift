@@ -69,7 +69,9 @@ nonisolated struct DuckDBTransferCatalog: MobileExportCatalog {
     }
 
     func fetchAllColumns(databaseName: String) async throws -> [String: [PluginColumnInfo]] {
-        try await DuckDBExportCatalog.allColumns(catalog: catalog, schema: schema(for: databaseName), run: run)
+        try await DuckDBExportCatalog.allColumns(
+            catalog: catalog, schema: schema(for: databaseName), keepsSpellingsApart: true, run: run
+        )
     }
 
     func fetchForeignKeys(table: String, databaseName: String) async throws -> [PluginForeignKeyInfo] {
@@ -78,17 +80,14 @@ nonisolated struct DuckDBTransferCatalog: MobileExportCatalog {
         )
     }
 
-    // The plugin has no schema-wide read, so PluginKit's default asks table by table; this does the same.
+    // The plugin has no schema-wide read, so it asks table by table; this does the same.
     func fetchAllForeignKeys(databaseName: String) async throws -> [String: [PluginForeignKeyInfo]] {
         let container = schema(for: databaseName)
-        var keys: [String: [PluginForeignKeyInfo]] = [:]
-        for table in try await DuckDBExportCatalog.tables(catalog: catalog, schema: container, run: run) {
-            try Task.checkCancellation()
-            keys[table.name] = try await DuckDBExportCatalog.foreignKeys(
-                catalog: catalog, schema: container, table: table.name, run: run
-            )
+        let (catalog, run) = (catalog, run)
+        let tables = try await DuckDBExportCatalog.tables(catalog: catalog, schema: container, run: run)
+        return try await PluginNameSpellings.readEachTable(tables.map(\.name)) {
+            try await DuckDBExportCatalog.foreignKeys(catalog: catalog, schema: container, table: $0, run: run)
         }
-        return keys
     }
 
     var tableDDLIncludesForeignKeys: Bool { DuckDBExportCatalog.tableDDLIncludesForeignKeys }

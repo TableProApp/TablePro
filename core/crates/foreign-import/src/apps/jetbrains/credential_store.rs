@@ -179,12 +179,13 @@ fn legacy_encryption(platform: ForeignPlatform) -> &'static str {
     }
 }
 
-// Every main key is decrypted here. CRYPT_32 is BUILT_IN wrapped in the Windows data protection API.
+// Every main key is decrypted here. CRYPT_32 is BUILT_IN wrapped in the Windows data protection API, sealed with no
+// entropy.
 fn decrypt_main_key(encryption: &str, blob: &[u8], protection: Option<&dyn DataProtection>) -> MainKey {
     let unsealed;
     let built_in = match encryption {
         BUILT_IN => blob,
-        CRYPT_32 => match protection.and_then(|protection| protection.unprotect(blob)) {
+        CRYPT_32 => match protection.and_then(|protection| protection.unprotect(blob, &[])) {
             Some(inner) => {
                 unsealed = inner;
                 &unsealed
@@ -296,12 +297,14 @@ mod tests {
 
     const SEAL: &[u8] = b"sealed for this user:";
 
-    // Stands in for DPAPI: a blob opens when it carries this user's seal.
+    // Stands in for DPAPI: a blob opens when it carries this user's seal and is asked for with no entropy.
     struct Sealed;
 
     impl DataProtection for Sealed {
-        fn unprotect(&self, blob: &[u8]) -> Option<Vec<u8>> {
-            blob.strip_prefix(SEAL).map(<[u8]>::to_vec)
+        fn unprotect(&self, blob: &[u8], entropy: &[u8]) -> Option<Vec<u8>> {
+            blob.strip_prefix(SEAL)
+                .filter(|_| entropy.is_empty())
+                .map(<[u8]>::to_vec)
         }
     }
 

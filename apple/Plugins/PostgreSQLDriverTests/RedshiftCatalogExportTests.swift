@@ -98,4 +98,61 @@ struct RedshiftCatalogExportTests {
         let recorder = CatalogReadRecorder { _ in [["-1"].cells] }
         #expect(try await Self.catalog(recorder).fetchApproximateRowCount(table: "orders", schema: nil) == nil)
     }
+
+    private static let composed = "caf\u{E9}"
+    private static let decomposed = "cafe\u{301}"
+
+    @Test("The export's column read throws on two tables named alike in different Unicode forms")
+    func exportColumnReadThrowsOnTwins() async throws {
+        let recorder = CatalogReadRecorder { _ in [
+            [Self.composed, "id", "integer", "NO", nil, nil, nil, nil, "YES"].cells,
+            [Self.decomposed, "id", "integer", "NO", nil, nil, nil, nil, "YES"].cells,
+        ] }
+
+        await #expect(throws: PluginNameSpellingError.self) {
+            try await Self.catalog(recorder).fetchAllColumnsForExport(schema: nil)
+        }
+        #expect(recorder.statements == [RedshiftSchemaQueries.columnsQuery(schema: "public", table: nil)])
+        let distinct = try await Self.catalog(CatalogReadRecorder { _ in [
+            [Self.composed, "id", "integer", "NO", nil, nil, nil, nil, "YES"].cells,
+            ["plain", "id", "integer", "NO", nil, nil, nil, nil, "YES"].cells,
+        ] }).fetchAllColumnsForExport(schema: nil)
+        #expect(distinct.keys.sorted() == [Self.composed, "plain"].sorted())
+    }
+
+    @Test("The export's column read throws on twins an external schema lists, rather than reading local columns")
+    func exportExternalColumnReadThrowsOnTwins() async throws {
+        let recorder = CatalogReadRecorder { _ in [
+            [Self.composed, "payload", "int", "true", "0"].cells,
+            [Self.decomposed, "payload", "int", "true", "0"].cells,
+        ] }
+
+        await #expect(throws: PluginNameSpellingError.self) {
+            try await Self.catalog(recorder, externalSchemas: ["spectrum"]).fetchAllColumnsForExport(schema: "spectrum")
+        }
+        #expect(recorder.statements == [
+            RedshiftExternalSchemaQueries.listExternalColumns(schema: "spectrum", table: nil, database: "dev")
+        ])
+    }
+
+    @Test("The export's key read lists the tables and reads each, and reads none when two are named alike")
+    func exportKeyReadIsTableByTable() async throws {
+        let listing = RedshiftTableCatalog.listingQuery(schema: "public")
+        let plain = CatalogReadRecorder { statement in
+            statement == listing ? [["a", "BASE TABLE"].cells, ["b", "BASE TABLE"].cells] : []
+        }
+        let keys = try await Self.catalog(plain).fetchAllForeignKeysForExport(schema: nil)
+
+        #expect(keys.isEmpty)
+        #expect(plain.statements.count == 3)
+        #expect(plain.statements.first == listing)
+
+        let twins = CatalogReadRecorder { statement in
+            statement == listing ? [[Self.composed, "BASE TABLE"].cells, [Self.decomposed, "BASE TABLE"].cells] : []
+        }
+        await #expect(throws: PluginNameSpellingError.self) {
+            try await Self.catalog(twins).fetchAllForeignKeysForExport(schema: nil)
+        }
+        #expect(twins.statements == [listing])
+    }
 }

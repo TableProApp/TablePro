@@ -45,7 +45,9 @@ mkdir -p "$WORK/Sources/ProbeDriver" "$WORK/Sources/ProbeSQLExport" "$WORK/Sourc
 for source in "$ROOT"/Plugins/PostgreSQLDriverPlugin/*.swift; do
     ln -s "$source" "$WORK/Sources/ProbeDriver/$(basename "$source")"
 done
-for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginRedirectRefusingDelegate; do
+for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginRedirectRefusingDelegate \
+    PluginNameSpellings; do
+    [[ -f "$ROOT/Plugins/Shared/$shared.swift" ]] || continue
     ln -s "$ROOT/Plugins/Shared/$shared.swift" "$WORK/Sources/ProbeDriver/$shared.swift"
 done
 for source in "$ROOT"/Plugins/SQLExportPlugin/*.swift; do
@@ -75,7 +77,8 @@ let package = Package(
         .target(name: "ProbeDriver", dependencies: [
             "CLibPQ", core("TableProPluginKit"), core("TableProCoreTypes"), core("TableProKerberos"),
             core("TableProGeometry"), core("TableProPostgreSQLCore"), core("TableProSQLVocabulary"),
-            core("TableProSQLQuoting"), core("TableProTLSClientIdentity"), core("TableProLogRedaction")
+            core("TableProSQLQuoting"), core("TableProTLSClientIdentity"), core("TableProLogRedaction"),
+            core("TableProSQLGrammar")
         ], path: "Sources/ProbeDriver", swiftSettings: settings),
         .target(name: "ProbeSQLExport", dependencies: [core("TableProPluginKit"), core("TableProGzip")],
             path: "Sources/ProbeSQLExport", swiftSettings: settings),

@@ -1,9 +1,10 @@
 name: Release Windows
 
-# A windows-vX.Y.Z tag publishes the Windows release: the x64 and Arm64 MSIX in one signed
-# .msixbundle on GitHub Releases, then, once a reviewer approves, the winget manifest as a pull
-# request to microsoft/winget-pkgs. Run by dispatch, it builds, checks, installs and starts the
-# packages as a tag does and publishes nothing. windows/RELEASING.md has the steps.
+# A windows-vX.Y.Z or windows-vX.Y.Z-beta.N tag publishes the Windows release: the x64 and Arm64 MSIX
+# in one signed .msixbundle with its App Installer file on GitHub Releases, then that file as its
+# channel's on updates.tablepro.app and, for a release, once a reviewer approves, the winget manifest
+# as a pull request to microsoft/winget-pkgs. Run by dispatch, it builds, checks, installs, updates
+# and starts the packages as a tag does and publishes nothing. windows/RELEASING.md has the steps.
 #
 # Signing uses Azure Artifact Signing through OpenID Connect, in the windows-release environment.
 # It runs once these repository variables are set, and the packages stay unsigned without them:
@@ -14,6 +15,7 @@ name: Release Windows
 # AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID:
 # an app registration with the Artifact Signing Certificate Profile Signer role and a federated
 # credential for that environment.
+# The github-pages environment deploys from windows-v* tags as well as v* ones, for the channel files.
 # The windows-winget environment, deploying from windows-v* tags with a required reviewer, holds
 # WINGET_TOKEN: a classic token with the public_repo scope, from an account outside TableProApp whose
 # only use is its fork of winget-pkgs.
@@ -24,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: The version to build, such as 0.1.0
+        description: The version to build, such as 0.1.0 or 0.2.0-beta.1
         required: true
         type: string
       sign:
@@ -51,6 +53,9 @@ jobs:
     timeout-minutes: 5
     outputs:
       version: ${{ steps.check.outputs.version }}
+      package: ${{ steps.check.outputs.package }}
+      channel: ${{ steps.check.outputs.channel }}
+      appinstaller: ${{ steps.check.outputs.appinstaller }}
       sign: ${{ steps.check.outputs.sign }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,17 +83,12 @@ jobs:
           else
             version="$INPUT_VERSION"
           fi
-          # An MSIX version is four numbers of at most 65535; the fourth stays 0 (windows/RELEASING.md, Versions).
-          if ! [[ "$version" =~ ^(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})$ ]]; then
-            echo "::error::'$version' is not X.Y.Z"
+          # The package version, X.Y.Z.N for beta.N and X.Y.Z.99 for the release, and its channel (windows/RELEASING.md, Versions).
+          if ! found="$(python3 -I windows/ci/appinstaller.py version "$version")"; then
+            echo "::error::'$version' is not X.Y.Z or X.Y.Z-beta.N with numbers MSIX can hold"
             exit 1
           fi
-          for part in ${version//./ }; do
-            if [ "$part" -gt 65535 ]; then
-              echo "::error::$version has a number above 65535"
-              exit 1
-            fi
-          done
+          echo "$found" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
           missing=()
@@ -133,6 +133,7 @@ jobs:
       # aws-lc-sys assembles x64 with NASM, which the Windows runner lacks; its prebuilt objects stand in.
       AWS_LC_SYS_PREBUILT_NASM: "1"
       VERSION: ${{ needs.version.outputs.version }}
+      PACKAGE: ${{ needs.version.outputs.package }}
       ARCHITECTURE: ${{ matrix.architecture }}
     defaults:
       run:
@@ -156,7 +157,7 @@ jobs:
         run: |
           $path = Resolve-Path windows/src/TablePro.App/Package.appxmanifest
           [xml]$manifest = Get-Content -Raw $path
-          $manifest.Package.Identity.Version = "$env:VERSION.0"
+          $manifest.Package.Identity.Version = $env:PACKAGE
           if ($env:PUBLISHER) { $manifest.Package.Identity.Publisher = $env:PUBLISHER }
           $manifest.Save($path)
       - name: Build the MSIX
@@ -176,7 +177,7 @@ jobs:
           $identity = $manifest.Package.Identity
           "$($msix[0].Name): $('{0:N1}' -f ($msix[0].Length / 1MB)) MB, $($identity.Name) $($identity.Version) $($identity.ProcessorArchitecture), $($identity.Publisher)" |
             Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
-          if ($identity.Version -ne "$env:VERSION.0") { throw "Version $($identity.Version), not $env:VERSION.0" }
+          if ($identity.Version -ne $env:PACKAGE) { throw "Version $($identity.Version), not $env:PACKAGE" }
           if ($identity.ProcessorArchitecture -ne $env:ARCHITECTURE) { throw "Architecture $($identity.ProcessorArchitecture)" }
           foreach ($family in $manifest.Package.Dependencies.TargetDeviceFamily) {
             "$($family.Name): $($family.MinVersion) to $($family.MaxVersionTested)" | Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
@@ -216,10 +217,14 @@ jobs:
       id-token: write
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      PACKAGE: ${{ needs.version.outputs.package }}
     defaults:
       run:
         shell: pwsh
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: windows-msix-*
@@ -229,7 +234,7 @@ jobs:
         run: |
           $sdk = "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.26100.0\x64"
           New-Item -ItemType Directory release | Out-Null
-          & "$sdk\makeappx.exe" bundle /d packages /p "release\TablePro_$($env:VERSION).0_x64_arm64.msixbundle" /bv "$env:VERSION.0" /o
+          & "$sdk\makeappx.exe" bundle /d packages /p "release\TablePro_$($env:PACKAGE)_x64_arm64.msixbundle" /bv $env:PACKAGE /o
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Sign in to Azure
         if: needs.version.outputs.sign == 'true'
@@ -268,10 +273,24 @@ jobs:
           $sdk = "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.26100.0\x64"
           & "$sdk\signtool.exe" verify /pa /v (Get-ChildItem release\*.msixbundle).FullName
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # Next to the bundle on the release; its Uri is the channel's file, so an install from it follows the channel.
+      - name: Write the App Installer file
+        shell: bash
+        env:
+          APPINSTALLER: ${{ needs.version.outputs.appinstaller }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          bundle="$(basename release/*.msixbundle)"
+          python -I windows/ci/appinstaller.py write --version "$VERSION" --bundle "release/$bundle" \
+            --bundle-uri "https://github.com/$REPOSITORY/releases/download/windows-v$VERSION/$bundle" \
+            --out "release/$APPINSTALLER"
+          { echo '```xml'; cat "release/$APPINSTALLER"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-bundle
-          path: release/*.msixbundle
+          path: |
+            release/*.msixbundle
+            release/*.appinstaller
           if-no-files-found: error
 
   # Windows Server 2022 (build 20348) is the oldest Windows a hosted runner has; the app's floor is 1809 (17763).
@@ -362,9 +381,11 @@ jobs:
           path: screenshots
           if-no-files-found: ignore
 
+  # winget lists releases only (docs/decisions/0005-distribution.md); a beta reaches testers through its App Installer file.
   winget:
     name: winget manifest
     needs: [version, bundle, install]
+    if: needs.version.outputs.channel == 'stable'
     runs-on: windows-2025
     timeout-minutes: 20
     env:
@@ -425,13 +446,50 @@ jobs:
           path: winget
           if-no-files-found: error
 
+  # The channel files a tag moves on updates.tablepro.app (windows/ci/appinstaller.py channels), tried on a copy of
+  # gh-pages with no credential, so a dry run shows the change; the GitHub release job moves them under its lock.
+  channels:
+    name: Channel files
+    needs: [version, bundle, install]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      APPINSTALLER: ${{ needs.version.outputs.appinstaller }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: gh-pages
+          path: build/gh-pages
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-bundle
+          path: release
+      - name: Move the channel files
+        run: |
+          set -euo pipefail
+          python3 -I windows/ci/appinstaller.py channels --release "release/$APPINSTALLER" --site build/gh-pages/windows
+          git -C build/gh-pages add windows
+          git -C build/gh-pages diff --cached --stat
+          git -C build/gh-pages diff --cached
+
   github-release:
     name: GitHub release
-    needs: [version, bundle, install, winget]
-    if: github.event_name == 'push' && needs.version.outputs.sign == 'true'
+    needs: [version, bundle, install, winget, channels]
+    # A beta skips the winget job, which would skip this one too without the explicit results.
+    if: >-
+      !cancelled() && github.event_name == 'push' && needs.version.outputs.sign == 'true'
+      && needs.bundle.result == 'success' && needs.install.result == 'success' && needs.channels.result == 'success'
+      && (needs.winget.result == 'success' || (needs.winget.result == 'skipped' && needs.version.outputs.channel == 'beta'))
     runs-on: ubuntu-24.04
     environment: windows-release
     timeout-minutes: 15
+    concurrency:
+      group: gh-pages
+      queue: max
     permissions:
       contents: write
     steps:
@@ -444,20 +502,77 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           VERSION: ${{ needs.version.outputs.version }}
+          CHANNEL: ${{ needs.version.outputs.channel }}
+          APPINSTALLER: ${{ needs.version.outputs.appinstaller }}
         run: |
           (cd release && sha256sum -- * > SHA256SUMS)
-          cat > notes.md <<EOF
+          flags=()
+          if [ "$CHANNEL" = beta ]; then
+            flags+=(--prerelease)
+            cat > notes.md <<EOF
+          TablePro for Windows $VERSION, a beta, for Windows 10 1809 and later and Windows 11, on x64 and Arm64.
+
+          Open $APPINSTALLER to install it and get each later beta and release. Settings > Software update switches back to Stable.
+          EOF
+          else
+            cat > notes.md <<EOF
           TablePro for Windows $VERSION, for Windows 10 1809 and later and Windows 11, on x64 and Arm64.
 
-          Open the .msixbundle to install it, or run \`winget install TablePro.TablePro\` once winget lists this version.
+          Open $APPINSTALLER to install it and get later releases as they ship, or run \`winget install TablePro.TablePro\` once winget lists this version.
           EOF
-          # The repository's latest release stays the macOS one.
-          gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
-            --title "TablePro for Windows $VERSION" --notes-file notes.md
+          fi
+          # A rerun of the failed jobs after the channel push failed finds its own files published; a rerun of the
+          # whole run rebuilt them, and winget would get hashes of files the release does not have.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir published
+            if ! cmp -s published/SHA256SUMS release/SHA256SUMS; then
+              echo "::error::$TAG is published with other files; rerun only the failed jobs (windows/RELEASING.md)"
+              exit 1
+            fi
+          else
+            # The repository's latest release stays the macOS one.
+            gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false "${flags[@]}" \
+              --title "TablePro for Windows $VERSION" --notes-file notes.md
+          fi
+      # The tag's own code, which the version job found on main; only a tag push reaches this job.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          persist-credentials: false
+      # Keeps its credential: the job pushes gh-pages with it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: gh-pages # zizmor: ignore[artipacked]
+          path: build/gh-pages
+      # Against the gh-pages this lock holds, so a release published meanwhile never moves back.
+      - name: Push the channel files
+        env:
+          TAG: ${{ github.ref_name }}
+          APPINSTALLER: ${{ needs.version.outputs.appinstaller }}
+        run: |
+          set -euo pipefail
+          python3 -I source/windows/ci/appinstaller.py channels --release "release/$APPINSTALLER" --site build/gh-pages/windows
+          cd build/gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add windows
+          git diff --cached --quiet || { git commit -m "release: $TAG" && git push origin HEAD:gh-pages; }
+
+  pages:
+    name: Pages
+    needs: github-release
+    # A beta's skipped winget job would skip this one too without the explicit status.
+    if: ${{ !cancelled() && needs.github-release.result == 'success' }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
 
   winget-submit:
     name: Submit to winget
     needs: [version, winget, github-release]
+    if: needs.version.outputs.channel == 'stable'
     runs-on: windows-2025
     environment: windows-winget
     timeout-minutes: 15
