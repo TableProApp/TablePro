@@ -147,7 +147,7 @@ extension DataGridViewController {
             toggleForeignKeyPreview()
             return true
         }
-        return false
+        return handleValueEditorKey(event)
     }
 
     // MARK: - Checkboxes

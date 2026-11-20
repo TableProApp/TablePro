@@ -171,10 +171,11 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     }
 
     func fetchTableDDL(table: String, databaseName: String) async throws -> String {
+        let schema = exportSchema(for: databaseName)
         guard let pluginDriver else {
-            return try await driver.fetchTableDDL(table: table)
+            return try await driver.fetchTableDDL(table: table, schema: schema)
         }
-        return try await pluginDriver.fetchTableDDL(table: table, schema: exportSchema(for: databaseName))
+        return try await pluginDriver.fetchTableDDL(table: table, schema: schema)
     }
 
     // At Read-Only each read runs in a read-only transaction of its own, which an open one refuses, so a format's
@@ -196,37 +197,31 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     }
 
     func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? {
+        let schema = exportSchema(for: databaseName)
         guard let pluginDriver else {
-            return try await driver.fetchApproximateRowCount(table: table)
+            return try await driver.fetchApproximateRowCount(table: table, schema: schema)
         }
-        return try await pluginDriver.fetchApproximateRowCount(
-            table: table,
-            schema: exportSchema(for: databaseName)
-        )
+        return try await pluginDriver.fetchApproximateRowCount(table: table, schema: schema)
     }
 
     func fetchDependentSequences(table: String, databaseName: String) async throws -> [PluginSequenceInfo] {
+        let schema = exportSchema(for: databaseName)
         let sequences: [(name: String, ddl: String)]
         if let pluginDriver {
-            sequences = try await pluginDriver.fetchDependentSequences(
-                table: table,
-                schema: exportSchema(for: databaseName)
-            )
+            sequences = try await pluginDriver.fetchDependentSequences(table: table, schema: schema)
         } else {
-            sequences = try await driver.fetchDependentSequences(forTable: table)
+            sequences = try await driver.fetchDependentSequences(forTable: table, schema: schema)
         }
         return sequences.map { PluginSequenceInfo(name: $0.name, ddl: $0.ddl) }
     }
 
     func fetchDependentTypes(table: String, databaseName: String) async throws -> [PluginEnumTypeInfo] {
+        let schema = exportSchema(for: databaseName)
         let types: [(name: String, labels: [String])]
         if let pluginDriver {
-            types = try await pluginDriver.fetchDependentTypes(
-                table: table,
-                schema: exportSchema(for: databaseName)
-            )
+            types = try await pluginDriver.fetchDependentTypes(table: table, schema: schema)
         } else {
-            types = try await driver.fetchDependentTypes(forTable: table)
+            types = try await driver.fetchDependentTypes(forTable: table, schema: schema)
         }
         return types.map { PluginEnumTypeInfo(name: $0.name, labels: $0.labels) }
     }
@@ -315,10 +310,10 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     // A driver addresses a routine, trigger or type through the info object it handed out, whose identity the export
     // item cannot rebuild, so the list is read once per database and the item matched back onto it.
     func fetchObjectDDL(_ object: PluginExportTable) async throws -> String {
-        guard let pluginDriver else {
-            return try await driver.fetchTableDDL(table: object.name)
-        }
         let schema = exportSchema(for: object.databaseName)
+        guard let pluginDriver else {
+            return try await driver.fetchTableDDL(table: object.name, schema: schema)
+        }
         switch object.kind {
         case .table, .foreignTable:
             return try await pluginDriver.fetchTableDDL(table: object.name, schema: schema)

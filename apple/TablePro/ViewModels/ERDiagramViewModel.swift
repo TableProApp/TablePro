@@ -257,16 +257,17 @@ final class ERDiagramViewModel: ObservableObject {
     private func fetchGraph(
         in scope: DatabaseScope
     ) async throws -> (ERDiagramGraph, [CatalogName: TableInfo.TableType]?) {
+        let schema = scope.schema
         let (columns, foreignKeys, indexes, tables) = try await services.databaseManager.withMetadataDriver(
             scope: scope, workload: .bulk
         ) { driver in
-            let cols = try await driver.fetchAllColumns()
-            let fks = try await driver.fetchAllForeignKeys()
-            let idx = try await driver.fetchIndexes(forTables: fks.keys.map(\.text))
+            let cols = try await driver.fetchAllColumns(schema: schema)
+            let fks = try await driver.fetchAllForeignKeys(schema: schema)
+            let idx = try await driver.fetchIndexes(forTables: fks.keys.map(\.text), schema: schema)
             // Nil keeps the kinds already known, so a failed read never turns a view into a table.
             let tables: [TableInfo]?
             do {
-                tables = try await driver.fetchTables()
+                tables = try await driver.fetchTables(schema: schema)
             } catch {
                 Self.logger.error("ER diagram could not read object kinds: \(error.localizedDescription)")
                 tables = nil

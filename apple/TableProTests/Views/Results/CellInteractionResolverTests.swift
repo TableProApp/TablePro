@@ -476,6 +476,82 @@ struct CellInteractionResolverImageTests {
     }
 }
 
+struct CellInteractionResolverPhpTests {
+    private let resolver = CellInteractionResolver()
+    private let serialized = #"a:1:{i:0;s:3:"foo";}"#
+
+    // A read-only cell has no editor to steal, so a complete serialized value there opens the viewer.
+    @Test("a detected serialized value in a read-only cell opens the PHP viewer")
+    func detectedPhpReadOnlyOpensViewer() {
+        let readOnly = ContextFactory.make(
+            value: serialized, columnType: .text(rawType: "TEXT"), isTableEditable: false,
+            detectedContent: .phpSerialized
+        )
+        #expect(resolver.resolve(readOnly) == .viewPhpSerialized)
+        let immutable = ContextFactory.make(
+            value: serialized, columnType: .text(rawType: "TEXT"), isTableEditable: true,
+            isImmutableColumn: true, detectedContent: .phpSerialized
+        )
+        #expect(resolver.resolve(immutable) == .viewPhpSerialized)
+    }
+
+    // An editable cell keeps its text editor: detection never steals it, since a serialized value and
+    // text that only looks like one cannot always be told apart.
+    @Test("a detected serialized value in an editable cell keeps the text editor")
+    func detectedPhpEditableStillEdits() {
+        let context = ContextFactory.make(
+            value: serialized, columnType: .text(rawType: "TEXT"), isTableEditable: true,
+            detectedContent: .phpSerialized
+        )
+        #expect(resolver.resolve(context) == .editInline(value: serialized))
+    }
+
+    // Display As PHP Serialized is the explicit opt-in that opens the viewer on an editable cell too.
+    @Test("an explicit PHP Serialized override opens the viewer when editable")
+    func phpOverrideOpensViewerWhenEditable() {
+        let context = ContextFactory.make(
+            value: serialized, columnType: .text(rawType: "TEXT"), isTableEditable: true,
+            displayFormatOverride: .phpSerialized, detectedContent: .phpSerialized
+        )
+        #expect(resolver.resolve(context) == .viewPhpSerialized)
+    }
+
+    // Raw Value opts a column out of detection.
+    @Test("Display As Raw Value suppresses the detected PHP viewer")
+    func rawOverrideSuppressesDetectedPhp() {
+        let context = ContextFactory.make(
+            value: serialized, columnType: .text(rawType: "TEXT"), isTableEditable: false,
+            displayFormatOverride: .raw, detectedContent: .phpSerialized
+        )
+        #expect(resolver.resolve(context) == .viewText(value: serialized))
+    }
+
+    @Test("a deleted row opens nothing, serialized or not")
+    func deletedRowStaysBlocked() {
+        let context = ContextFactory.make(
+            value: serialized, columnType: .text(rawType: "TEXT"), isTableEditable: true,
+            isRowDeleted: true, detectedContent: .phpSerialized
+        )
+        #expect(resolver.resolve(context) == .blocked)
+    }
+
+    // An explicit format choice wins over content detection, as it does in the inspector, so the two
+    // never disagree on one cell.
+    @Test("an explicit JSON override wins over detected PHP")
+    func jsonOverrideBeatsDetectedPhp() {
+        let readOnly = ContextFactory.make(
+            value: serialized, columnType: .text(rawType: "TEXT"), isTableEditable: false,
+            displayFormatOverride: .json, detectedContent: .phpSerialized
+        )
+        #expect(resolver.resolve(readOnly) == .viewJson)
+        let editable = ContextFactory.make(
+            value: serialized, columnType: .text(rawType: "TEXT"), isTableEditable: true,
+            displayFormatOverride: .json, detectedContent: .phpSerialized
+        )
+        #expect(resolver.resolve(editable) == .editJson)
+    }
+}
+
 struct CellInteractionResolverVectorTests {
     private let resolver = CellInteractionResolver()
     private let vector = ColumnType.vector(rawType: "vector(3)")

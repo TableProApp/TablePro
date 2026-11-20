@@ -90,19 +90,36 @@ internal struct CellInteractionResolver {
             return isReadOnly ? .viewVector : .editVector
         }
 
-        if case .image(.svg) = context.detectedContent, context.displayFormatOverride != .raw {
-            return isReadOnly ? .viewSvg : .editSvg
-        }
-
+        // An explicit structured format wins over content detection, as it does in the row inspector
+        // (FieldEditorResolver); Raw opts out of detection entirely.
         switch context.displayFormatOverride {
         case .json:
             return isReadOnly ? .viewJson : .editJson
         case .phpSerialized:
             return .viewPhpSerialized
-        case .raw, .text, .uuid, .uuidSwappedTime, .unixTimestamp, .unixTimestampMillis, .messagePack, .protobuf,
-             .igbinary, .avro, .protobufSchema, .schemaRegistry, .none:
+        case .raw:
             return plainText(for: context, isReadOnly: isReadOnly)
+        case .text, .uuid, .uuidSwappedTime, .unixTimestamp, .unixTimestampMillis, .messagePack, .protobuf,
+             .igbinary, .avro, .protobufSchema, .schemaRegistry, .none:
+            break
         }
+
+        // Content detected in the cell opens its viewer, the way the row inspector does. The PHP viewer
+        // is read-only, and no detector can perfectly tell a serialized value from text that merely
+        // looks like one, so auto-detection opens it only where the cell is already read-only: an
+        // editable cell keeps its text editor and loses nothing, and a false positive on a read-only
+        // cell is harmless (the viewer says it could not parse). Display As > PHP Serialized still opts
+        // an editable column in. JSON keeps its column type's inline edit and chevron viewer.
+        switch context.detectedContent {
+        case .image(.svg):
+            return isReadOnly ? .viewSvg : .editSvg
+        case .phpSerialized where isReadOnly:
+            return .viewPhpSerialized
+        case .phpSerialized, .json, .image, .plain:
+            break
+        }
+
+        return plainText(for: context, isReadOnly: isReadOnly)
     }
 
     // Last, so a foreign key holding a blob or JSON keeps the editor its content needs.

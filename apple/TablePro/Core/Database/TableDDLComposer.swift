@@ -59,21 +59,15 @@ internal enum TableDDLComposer {
             .map { $0.hasSuffix(";") ? $0 : "\($0);" }
     }
 
-    /// One object's whole definition, read on a driver already pinned to its scope. The Structure
-    /// tab's DDL, Show DDL and Copy DDL all come through here, so the three can never disagree about
-    /// the same object. A view comes through here too: `fetchTableDDL` answers it with its own
-    /// definition. `includesDependencies` adds the sequences and enum types the table's columns
-    /// use, which the Structure tab writes first so its text runs on its own.
-    /// `schema` names the container the caller means, for the callers that know it. All three reads
-    /// take it together: a DDL composed from one container's CREATE TABLE and another's indexes and
-    /// comments describes a table that does not exist.
+    // The Structure tab, Show DDL and Copy DDL all read here, so they never disagree about one object.
+    // Every piece takes the same schema: one container's CREATE TABLE with another's indexes is no real table.
     internal static func fetchDDL(
         for table: String,
         using driver: DatabaseDriver,
         includesDependencies: Bool,
-        schema: String? = nil
+        schema: String?
     ) async throws -> String {
-        let preamble = includesDependencies ? try await dependencyPreamble(for: table, using: driver) : ""
+        let preamble = includesDependencies ? try await dependencyPreamble(for: table, schema: schema, using: driver) : ""
         let baseDDL = try await driver.fetchTableDDL(table: table, schema: schema)
         let indexDDL = (try? await driver.fetchIndexDDL(table: table, schema: schema)) ?? []
         let commentDDL = (try? await driver.fetchCommentDDL(table: table, schema: schema)) ?? []
@@ -86,9 +80,13 @@ internal enum TableDDLComposer {
         )
     }
 
-    private static func dependencyPreamble(for table: String, using driver: DatabaseDriver) async throws -> String {
-        let sequences = try await driver.fetchDependentSequences(forTable: table)
-        let enumTypes = try await driver.fetchDependentTypes(forTable: table)
+    private static func dependencyPreamble(
+        for table: String,
+        schema: String?,
+        using driver: DatabaseDriver
+    ) async throws -> String {
+        let sequences = try await driver.fetchDependentSequences(forTable: table, schema: schema)
+        let enumTypes = try await driver.fetchDependentTypes(forTable: table, schema: schema)
         var preamble = ""
         for sequence in sequences {
             preamble += sequence.ddl + "\n\n"

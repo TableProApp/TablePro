@@ -24,42 +24,55 @@ extension DataGridViewController {
         }
         let target = cell.target
         guard loadsUnloadedValue(of: cell, then: { $0.openChevronEditor(for: target) }) else { return }
+        guard let editor = chevronEditor(for: cell) else { return }
+        present(editor, for: cell)
+    }
 
+    // What the chevron opens on a cell the grid can write; nil where the column has no typed editor.
+    func chevronEditor(for cell: DataGridEditCell) -> DataGridChevronEditor? {
         let configuration = model.configuration
         let dataIndex = cell.column.dataIndex
         if configuration.dropdownColumns?.contains(dataIndex) == true {
-            showDropdownMenu(for: cell)
-            return
+            return dropdownOptions(for: cell) == nil ? nil : .dropdown
         }
-        if configuration.typePickerColumns?.contains(dataIndex) == true {
-            showTypePicker(for: cell)
-            return
-        }
-        guard let columnType = cell.column.type else { return }
+        if configuration.typePickerColumns?.contains(dataIndex) == true { return .typePicker }
+        guard let columnType = cell.column.type else { return nil }
         let allowedValues = model.rows.columnEnumValues[cell.column.name] ?? []
-        if columnType.isBooleanType {
+        if columnType.isBooleanType { return .boolean }
+        if columnType.supportsElementEditing { return listsArrayElements(cell, columnType: columnType) ? .array : .inlineText }
+        if columnType.isVectorType {
+            return cell.value.asText.map(VectorLiteral.isVectorText) == true ? .vector : .inlineText
+        }
+        if !allowedValues.isEmpty { return columnType.isSetType ? .set : .enumeration }
+        if columnType.isJsonType { return .json }
+        if columnType.isBlobType { return .blob }
+        if columnType.isDateType { return opensDatePicker(cell.value.asText) ? .datePicker : .inlineText }
+        if columnType.isEnumOrSetType { return .inlineText }
+        return nil
+    }
+
+    func present(_ editor: DataGridChevronEditor, for cell: DataGridEditCell) {
+        switch editor {
+        case .dropdown, .boolean:
             showDropdownMenu(for: cell)
-        } else if columnType.supportsElementEditing {
+        case .typePicker:
+            showTypePicker(for: cell)
+        case .array:
             showArrayEditor(for: cell)
-        } else if columnType.isVectorType {
+        case .vector:
             showVectorPopover(for: cell, isEditable: textEditableValue(of: cell) != nil)
-        } else if !allowedValues.isEmpty {
-            if columnType.isSetType {
-                showSetMenu(for: cell, allowedValues: allowedValues)
-            } else {
-                showEnumMenu(for: cell, allowedValues: allowedValues)
-            }
-        } else if columnType.isJsonType {
+        case .set:
+            showSetMenu(for: cell, allowedValues: model.rows.columnEnumValues[cell.column.name] ?? [])
+        case .enumeration:
+            showEnumMenu(for: cell, allowedValues: model.rows.columnEnumValues[cell.column.name] ?? [])
+        case .json:
             showJSONEditor(for: cell)
-        } else if columnType.isBlobType {
+        case .blob:
             showBlobPopover(for: cell, isEditable: true)
-        } else if columnType.isDateType {
-            if opensDatePicker(cell.value.asText) {
-                showDateTimePicker(for: cell, columnType: columnType)
-            } else {
-                beginTextEditing(cell)
-            }
-        } else if columnType.isEnumOrSetType {
+        case .datePicker:
+            guard let columnType = cell.column.type else { return }
+            showDateTimePicker(for: cell, columnType: columnType)
+        case .inlineText:
             beginTextEditing(cell)
         }
     }
@@ -85,23 +98,24 @@ extension DataGridViewController {
 
     // MARK: - Menus
 
+    // nil on a dropdown column whose owner has no list for this row.
+    func dropdownOptions(for cell: DataGridEditCell) -> (options: [GridMenuOption], isOwnerList: Bool)? {
+        let configuration = model.configuration
+        let dataIndex = cell.column.dataIndex
+        // A list that depends on the row cannot live in a dictionary keyed by column.
+        if let custom = model.dataSource?.gridMenuOptions(for: cell.row.id, column: cell.column)
+            ?? configuration.customDropdownOptions?[dataIndex] {
+            return (custom, true)
+        }
+        if configuration.dropdownColumns?.contains(dataIndex) == true { return nil }
+        return (GridMenuOption.values(configuration.traits.usesTrueFalseBooleans ? ["true", "false"] : ["1", "0"]), false)
+    }
+
     func showDropdownMenu(for cell: DataGridEditCell) {
         reveal(row: cell.coord.row, displayColumn: cell.coord.displayColumn)
         guard let frame = cellFrame(of: cell.coord) else { return }
-        let configuration = model.configuration
-        let dataIndex = cell.column.dataIndex
         let current = cell.value.asText
-        // A list that depends on the row cannot live in a dictionary keyed by column.
-        let custom = model.dataSource?.gridMenuOptions(for: cell.row.id, column: cell.column)
-            ?? configuration.customDropdownOptions?[dataIndex]
-        let options: [GridMenuOption]
-        if let custom {
-            options = custom
-        } else if configuration.dropdownColumns?.contains(dataIndex) == true {
-            return
-        } else {
-            options = GridMenuOption.values(configuration.traits.usesTrueFalseBooleans ? ["true", "false"] : ["1", "0"])
-        }
+        guard let (options, isOwnerList) = dropdownOptions(for: cell) else { return }
 
         let commit = enteredTextCommit(for: cell)
         let target = cell.target
@@ -122,7 +136,7 @@ extension DataGridViewController {
             }
         }
         let isNullable = model.rows.columnNullable[cell.column.name] ?? true
-        if isNullable, custom == nil {
+        if isNullable, !isOwnerList {
             menu.addItem(.separator())
             menu.addItem(DataGridMenuAction.item(String(localized: "Set NULL"), state: current == nil ? .on : .off) { commit(nil) })
         }
@@ -224,6 +238,11 @@ extension DataGridViewController {
                 onDismiss: dismiss
             )
         }
+    }
+
+    func listsArrayElements(_ cell: DataGridEditCell, columnType: ColumnType) -> Bool {
+        guard !cell.value.isNull else { return true }
+        return PostgresArrayLiteralCodec.parse(cell.value.asText ?? "", delimiter: PostgresArrayDelimiter.forColumn(columnType)) != nil
     }
 
     func showArrayEditor(for cell: DataGridEditCell) {

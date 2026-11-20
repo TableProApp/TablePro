@@ -813,7 +813,7 @@ final class SchemaService: ObservableObject {
             connectionId: connectionId,
             label: "routines",
             dedup: routinesDedup,
-            fetch: { try await driver.fetchRoutines(schema: nil) }
+            fetch: { try await driver.fetchRoutines(schema: scope?.schema) }
         )
         updateKeptSideObjects(key) { $0.routines = $0.routines.settled(by: outcome, discardingValue: false) }
         bumpGeneration(connectionId)
@@ -830,7 +830,7 @@ final class SchemaService: ObservableObject {
             connectionId: connectionId,
             label: "triggers",
             dedup: triggersDedup,
-            fetch: { try await driver.fetchAllTriggers(schema: nil) }
+            fetch: { try await driver.fetchAllTriggers(schema: scope?.schema) }
         )
         updateKeptSideObjects(key) { $0.triggers = $0.triggers.settled(by: outcome, discardingValue: false) }
         bumpGeneration(connectionId)
@@ -847,7 +847,7 @@ final class SchemaService: ObservableObject {
             connectionId: connectionId,
             label: "types",
             dedup: typesDedup,
-            fetch: { try await driver.fetchUserDefinedTypes(schema: nil) }
+            fetch: { try await driver.fetchUserDefinedTypes(schema: scope?.schema) }
         )
         updateKeptSideObjects(key) {
             $0.userDefinedTypes = $0.userDefinedTypes.settled(by: outcome, discardingValue: false)
@@ -1010,14 +1010,14 @@ final class SchemaService: ObservableObject {
         }
 
         async let tablesTask: [TableInfo] = loadDedup.execute(key: loadKey) {
-            try await driver.fetchTables()
+            try await driver.fetchTables(schema: scope?.schema)
         }
         async let routinesTask: MetadataFetchOutcome<[RoutineInfo]> = Self.fetchObjectsSafely(
             key: loadKey,
             connectionId: connectionId,
             label: "routines",
             dedup: routinesDedup,
-            fetch: { try await driver.fetchRoutines(schema: nil) }
+            fetch: { try await driver.fetchRoutines(schema: scope?.schema) }
         )
         async let triggersTask: MetadataFetchOutcome<[TriggerInfo]>? = kinds.triggers
             ? Self.fetchObjectsSafely(
@@ -1025,7 +1025,7 @@ final class SchemaService: ObservableObject {
                 connectionId: connectionId,
                 label: "triggers",
                 dedup: triggersDedup,
-                fetch: { try await driver.fetchAllTriggers(schema: nil) }
+                fetch: { try await driver.fetchAllTriggers(schema: scope?.schema) }
             )
             : nil
         async let typesTask: MetadataFetchOutcome<[UserDefinedTypeInfo]>? = kinds.types
@@ -1034,7 +1034,7 @@ final class SchemaService: ObservableObject {
                 connectionId: connectionId,
                 label: "types",
                 dedup: typesDedup,
-                fetch: { try await driver.fetchUserDefinedTypes(schema: nil) }
+                fetch: { try await driver.fetchUserDefinedTypes(schema: scope?.schema) }
             )
             : nil
         async let serverObjectsTask = fetchServerObjectsSafely(
@@ -1044,7 +1044,7 @@ final class SchemaService: ObservableObject {
             }),
             connectionId: connectionId,
             dedup: serverObjectsDedup,
-            schema: nil,
+            schema: scope?.schema,
             driver: driver
         )
         async let schemasTask: [String]? = supportsSchemas || listsAttached

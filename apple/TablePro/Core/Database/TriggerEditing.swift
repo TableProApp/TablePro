@@ -131,6 +131,7 @@ enum TriggerEditing {
         gate: any ExecutionGate = ExecutionGateProvider.shared,
         holdConfirmation: SchemaChangeHoldConfirmation = DatabaseManager.confirmSchemaChangeBesideHold
     ) async throws {
+        let schema = scope.schema
         let plan = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
             TriggerApplyPlan(
                 strategy: TriggerApplyStrategy.resolve(
@@ -138,7 +139,7 @@ enum TriggerEditing {
                     usesReplace: driver.triggerEditUsesReplace,
                     transactionalDDL: driver.supportsTransactionalDDL
                 ),
-                dropSQL: originalName.flatMap { driver.generateDropTriggerSQL(name: $0, table: tableName) }
+                dropSQL: originalName.flatMap { driver.generateDropTriggerSQL(name: $0, table: tableName, schema: schema) }
             )
         }
         let restore = try restoreDefinition(
@@ -236,8 +237,9 @@ enum TriggerEditing {
         gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         // Built in the scope that runs it: the session driver may qualify the DDL with another database.
+        let schema = scope.schema
         let generated = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            driver.generateDropTriggerSQL(name: name, table: tableName)
+            driver.generateDropTriggerSQL(name: name, table: tableName, schema: schema)
         }
         guard let dropSQL = generated else {
             throw TriggerEditingError.dropUnavailable

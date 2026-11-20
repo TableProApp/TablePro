@@ -36,12 +36,13 @@ extension AIChatViewModel {
         guard let connection else { return }
         let connId = connection.id
         let scope = schemaCacheScope
+        let schema = browsedSchema(connId)
         let task: Task<Void, Never> = Task { [weak self] in
             var columns: [ColumnInfo]?
             if needsColumns {
                 do {
                     columns = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId) { driver in
-                        try await driver.fetchColumns(table: tableName)
+                        try await driver.fetchColumns(table: tableName, schema: schema)
                     }
                 } catch {
                     Self.logger.warning("Column fetch failed for \(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
@@ -51,7 +52,7 @@ extension AIChatViewModel {
             let fkMap: [CatalogName: [ForeignKeyInfo]]?
             do {
                 fkMap = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId) { driver in
-                    try await driver.fetchForeignKeys(forTables: [tableName])
+                    try await driver.fetchForeignKeys(forTables: [tableName], schema: schema)
                 }
             } catch {
                 Self.logger.warning("Foreign key fetch failed for \(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
@@ -118,6 +119,7 @@ extension AIChatViewModel {
         guard let connection else { return }
         let connId = connection.id
         let scope = schemaCacheScope
+        let schema = browsedSchema(connId)
         let settings = services.appSettings.ai
         let tablesToFetch = Array(orderedTables().prefix(settings.maxSchemaTables))
         guard !tablesToFetch.isEmpty else { return }
@@ -128,7 +130,7 @@ extension AIChatViewModel {
                 group.addTask {
                     do {
                         let cols = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId, workload: .bulk) { driver in
-                            try await driver.fetchColumns(table: name)
+                            try await driver.fetchColumns(table: name, schema: schema)
                         }
                         return (name, cols)
                     } catch {
@@ -148,7 +150,7 @@ extension AIChatViewModel {
         guard needsFKFetch else { return }
         do {
             let fkMap = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connId, workload: .bulk) { driver in
-                try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name))
+                try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name), schema: schema)
             }
             guard schemaCacheScope == scope else { return }
             for table in tablesToFetch {
@@ -261,6 +263,7 @@ extension AIChatViewModel {
         else { return }
         bulkColumnReadTableCount = tableCount
         let scope = schemaCacheScope
+        let schema = browsedSchema(connection.id)
         let allColumns: [CatalogName: [ColumnInfo]]?
         do {
             allColumns = try await DatabaseManager.shared.withBrowseMetadataDriver(
@@ -269,7 +272,7 @@ extension AIChatViewModel {
             ) { driver in
                 // A driver without a bulk read would fall back to one query per table.
                 guard driver.providesBulkColumnFetch else { return nil }
-                return try await driver.fetchAllColumns()
+                return try await driver.fetchAllColumns(schema: schema)
             }
         } catch {
             Self.logger.warning("Bulk column fetch failed: \(error.publicLogShape, privacy: .public)")
@@ -325,6 +328,11 @@ extension AIChatViewModel {
         let relevant = relevantTableNames.compactMap { byName[CatalogName($0)] }
         let picked = Set(relevant.map { CatalogName($0.name) })
         return relevant + all.filter { !picked.contains(CatalogName($0.name)) }
+    }
+
+    // `tables` lists the browsed schema, and every read here runs on a driver pinned to it.
+    private func browsedSchema(_ connectionId: UUID) -> String? {
+        services.databaseManager.browseScope(for: connectionId)?.schema
     }
 
     private func defaultSchema(for connection: DatabaseConnection) -> String? {

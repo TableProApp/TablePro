@@ -221,7 +221,7 @@ public sealed partial class MainWindow
             case LinkTarget.Table table:
                 var place = LinkedTable.Place(
                     open.View.Layout ?? DatabaseLayout.OneDatabase,
-                    open.Database ?? open.View.SessionDatabase,
+                    open.Database ?? open.View.OwnDatabase,
                     table.Database,
                     table.Schema);
                 if (place.Database is { } database)

@@ -45,15 +45,14 @@ private final class ExternalSchemaMockDriver: DatabaseDriver, @unchecked Sendabl
         return externalSchemasToReturn
     }
 
-    func fetchTables() async throws -> [TableInfo] { [] }
-    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
-    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
-    func fetchTableDDL(table: String) async throws -> String { "" }
-    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
 
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         TableMetadata(
             tableName: tableName, dataSize: nil, indexSize: nil, totalSize: nil,
             avgRowLength: nil, rowCount: nil, comment: nil, engine: nil,

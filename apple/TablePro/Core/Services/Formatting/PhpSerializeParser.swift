@@ -82,15 +82,32 @@ internal enum PhpSerializeParser {
     static func looksLikePhpSerialized(_ value: String) -> Bool {
         guard !value.isEmpty else { return false }
         guard (value as NSString).length <= sizeCapBytes else { return false }
-        guard let first = value.unicodeScalars.first else { return false }
-        let validFirst: Set<Unicode.Scalar> = ["N", "b", "i", "d", "s", "S", "a", "O", "C", "o", "r", "R"]
-        guard validFirst.contains(first) else { return false }
         let bytes = Array(value.utf8)
         guard bytes.count >= 2 else { return false }
-        if bytes[0] == UInt8(ascii: "N") {
+        let token = bytes[0]
+        if token == UInt8(ascii: "N") {
             return bytes[1] == UInt8(ascii: ";")
         }
-        return bytes.count >= 3 && bytes[1] == UInt8(ascii: ":")
+        // `token:payload`: the byte after the colon starts a length, count, id or scalar, so
+        // serialize() always puts a digit there (0/1 for a bool, a digit or sign for a number).
+        // Requiring it keeps ordinary text such as a Windows path `C:\…` out.
+        guard bytes.count >= 3, bytes[1] == UInt8(ascii: ":") else { return false }
+        let next = bytes[2]
+        let isDigit = next >= UInt8(ascii: "0") && next <= UInt8(ascii: "9")
+        switch token {
+        case UInt8(ascii: "b"):
+            return next == UInt8(ascii: "0") || next == UInt8(ascii: "1")
+        case UInt8(ascii: "i"):
+            return isDigit || next == UInt8(ascii: "-") || next == UInt8(ascii: "+")
+        case UInt8(ascii: "d"):
+            return isDigit || next == UInt8(ascii: "-") || next == UInt8(ascii: "+")
+                || next == UInt8(ascii: ".") || next == UInt8(ascii: "I") || next == UInt8(ascii: "N")
+        case UInt8(ascii: "s"), UInt8(ascii: "S"), UInt8(ascii: "a"), UInt8(ascii: "O"),
+             UInt8(ascii: "C"), UInt8(ascii: "o"), UInt8(ascii: "r"), UInt8(ascii: "R"):
+            return isDigit
+        default:
+            return false
+        }
     }
 
     static func parse(_ value: String) -> PhpValue? {

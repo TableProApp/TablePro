@@ -15,6 +15,7 @@ use crate::endpoint::RedisEndpoint;
 use crate::errors::{invalid_arguments, is_unblocked};
 use crate::link::{Link, command};
 use crate::reply_rows::{ReplyShape, emit, reply_shape};
+use crate::session_database::SessionDatabase;
 
 /// Why a run stopped before its command did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +49,7 @@ pub(crate) struct EditorRun {
     pub(crate) statement_timeout: Option<Duration>,
     pub(crate) shutdown: CancellationToken,
     pub(crate) transaction: Arc<Mutex<TransactionState>>,
+    pub(crate) database: Arc<Mutex<SessionDatabase>>,
 }
 
 impl EditorRun {
@@ -232,6 +234,10 @@ impl EditorRun {
             .unwrap_or_default();
         let mut state = self.transaction.lock().unwrap_or_else(PoisonError::into_inner);
         *state = next_transaction_state(&name, reply, *state);
+        self.database
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .observe(arguments, reply);
     }
 
     fn forget_transaction(&self) {

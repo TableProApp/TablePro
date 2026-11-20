@@ -63,6 +63,18 @@ struct FieldEditorResolverTests {
         #expect(kind == .phpSerialized)
     }
 
+    @Test("text that only starts like a token, such as a Windows path, is not PHP")
+    func tokenPrefixedTextIsNotPhp() {
+        for value in [#"C:\Users\me\file.txt"#, "a:b", "i:love"] {
+            let kind = FieldEditorResolver.resolve(
+                for: .text(rawType: "TEXT"),
+                isLongText: false,
+                originalValue: value
+            )
+            #expect(kind == .singleLine, "\(value)")
+        }
+    }
+
     @Test("A binary decoder format on a binary column opens the decoded viewer")
     func binaryDecoderFormat() {
         let schemaID = String(repeating: "b", count: 32)

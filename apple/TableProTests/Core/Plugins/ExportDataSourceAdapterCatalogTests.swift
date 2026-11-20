@@ -143,7 +143,7 @@ struct ExportDataSourceAdapterCatalogTests {
         let source = ExportDataSourceAdapter(driver: driver, databaseType: .duckdb)
 
         #expect(try await source.fetchObjectComment(object("orders", kind: .table)) == "from the catalog")
-        #expect(try await driver.fetchObjectComment(tableName: "orders") == "from the catalog")
+        #expect(try await driver.fetchObjectComment(tableName: "orders", schema: nil) == "from the catalog")
         #expect(stub.metadataReads == 0)
     }
 

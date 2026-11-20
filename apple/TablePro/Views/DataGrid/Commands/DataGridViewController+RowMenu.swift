@@ -123,6 +123,9 @@ extension DataGridViewController {
 
     private func resultItems(context: DataGridMenuContext, cell: DataGridCommandCell?) -> [NSMenuItem] {
         var items: [NSMenuItem] = []
+        if cell != nil, let focus = context.scope(in: model).focus, let editor = valueEditor(at: focus) {
+            items.append(menuItem(Self.valueEditorTitle(editor), #selector(openValueEditorFromMenu(_:)), context))
+        }
         if gridCommands.offers(.showRowsAsJSON) {
             items.append(menuItem(String(localized: "Show Row as JSON"), #selector(showRowsAsJSONFromMenu(_:)), context))
         }
@@ -234,6 +237,7 @@ extension DataGridViewController {
     private static let rowMenuActions: Set<Selector> = [
         #selector(DataGridViewController.undoDeleteFromMenu(_:)),
         #selector(DataGridViewController.showRowsAsJSONFromMenu(_:)),
+        #selector(DataGridViewController.openValueEditorFromMenu(_:)),
         #selector(DataGridViewController.chooseForeignKeyRowFromMenu(_:)),
         #selector(DataGridViewController.previewForeignKeyFromMenu(_:)),
         #selector(DataGridViewController.openForeignKeyFromMenu(_:)),

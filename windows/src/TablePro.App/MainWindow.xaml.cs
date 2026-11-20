@@ -685,7 +685,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         var own = _open.FirstOrDefault(item => item.Matches(id, null) && item.Database is null);
-        if (own?.Session?.Database == database)
+        if (own is not null && own.View.OwnDatabase == database)
         {
             Select(own);
             return own;

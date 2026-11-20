@@ -131910,6 +131910,9 @@
     "Open transaction in “%@”" : {
 
     },
+    "Open Value Editor" : {
+
+    },
     "Open Zed and click the Agent Panel icon in the right side of the title bar" : {
       "localizations" : {
         "fr" : {
@@ -219900,6 +219903,9 @@
           }
         }
       }
+    },
+    "View Value" : {
+
     },
     "View Vector…" : {
 
