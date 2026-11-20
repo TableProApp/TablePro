@@ -188,8 +188,8 @@ extension MainSplitViewController: NSMenuItemValidation {
              #selector(showERDiagram(_:)):
             return context.isConnected
 
-        // The focused data grid answers and validates this itself; reaching the window means no grid has focus.
-        case #selector(previewFKReference(_:)):
+        // The focused data grid answers and validates these itself; reaching the window means no grid has focus.
+        case #selector(previewFKReference(_:)), #selector(openValueEditor(_:)):
             return false
 
         // Agent mode hides the tab strip; on `isConnected` alone these switched tabs behind the conversation or did nothing.
