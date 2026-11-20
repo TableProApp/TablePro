@@ -8,7 +8,10 @@ namespace TablePro.App.Services;
 internal static class AccountSetup
 {
     public static readonly Uri ProductionPortal = new("https://account.tablepro.app");
-    public static readonly Uri PricingUri = new("https://tablepro.app/#pricing");
+    public static readonly Uri LicensingGuide = new("https://docs.tablepro.app/features/licensing");
+
+    // The referrer goes before the fragment, as the macOS app sends it; inside #pricing nothing reads it.
+    public static Uri Pricing(string referrer) => new($"https://tablepro.app/?ref={Uri.EscapeDataString(referrer)}#pricing");
 
     public static AccountConfiguration Configuration(string folder)
     {

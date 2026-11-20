@@ -218,6 +218,20 @@ public sealed class WorkspaceTabsTests
     }
 
     [Fact]
+    public void AQueryRunningOrAPageLoadingKeepsTheWorkspaceBusy()
+    {
+        var idle = new FakeTab("Query 1");
+        var loading = new FakeTab("Artist", TabKind.Table);
+        _strip.Tabs.AddRange([idle, loading]);
+
+        Assert.False(_tabs.AnyRunning);
+
+        loading.IsRunning = true;
+
+        Assert.True(_tabs.AnyRunning);
+    }
+
+    [Fact]
     public async Task AClosedWindowsTabsReopenInTheirOrderAndOnlyADisconnectForgetsThem()
     {
         _tabs.KeepClosed([new SessionTab { Title = "Query 1" }, new SessionTab { Title = "Query 2" }]);

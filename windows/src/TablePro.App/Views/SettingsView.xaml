@@ -43,6 +43,14 @@
                 <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE7F4;" /></toolkit:SettingsExpander.HeaderIcon>
                 <ProgressRing x:Name="DevicesProgress" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
             </toolkit:SettingsExpander>
+            <!-- Only the features this app has, each included or not by the plan (docs/decisions/0023-license-ask-and-paid-feature-gate.md). -->
+            <toolkit:SettingsExpander x:Uid="PlanFeaturesExpander" x:Name="PlanFeaturesExpander" AutomationProperties.AutomationId="PlanFeaturesExpander" IsExpanded="True">
+                <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE8D7;" /></toolkit:SettingsExpander.HeaderIcon>
+            </toolkit:SettingsExpander>
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <HyperlinkButton x:Uid="BuyLicenseLink" x:Name="BuyLicenseLink" AutomationProperties.AutomationId="BuyLicenseLink" Visibility="Collapsed" />
+                <HyperlinkButton x:Uid="LicensingGuideLink" x:Name="LicensingGuideLink" AutomationProperties.AutomationId="LicensingGuideLink" />
+            </StackPanel>
 
             <TextBlock x:Uid="AppearanceHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsCard x:Uid="ThemeCard" x:Name="ThemeCard">
