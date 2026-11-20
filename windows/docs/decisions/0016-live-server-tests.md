@@ -12,7 +12,7 @@ The interop tests reached a server only for PostgreSQL (`NoticeTests` and the SS
 ### Tests
 
 - `tests/TablePro.Interop.Tests/Live` holds one class per engine, through the public interop API only. A SQL engine's class (`SqlEngineTests`) lists a new table in the catalog, pages it, counts it and reads its structure; writes each corpus column into a table of its own and reads every value back through `ReadTablePageAsync`, as a table tab does, and a plain `SELECT` in a `QueryEditor`, as a query tab does, comparing `GetCellText` with the text the corpus names, every wrong value in one failure; and saves an update, an insert and a delete through `TableEditor` and reads the rows back.
-- MongoDB's class does the same with a collection and the document of every BSON type the driver's own tests read, where a table tab shows a binary field and a field of nulls as the extended JSON it edits them as. Redis's writes a key of each type from the editor, lists them there, reads each through `KeyReader` as a key tab does, and changes and deletes keys, with a key's expiry.
+- MongoDB's class does the same with a collection and the document of every BSON type the driver's own tests read, where a table tab shows a binary field and a field of nulls as the extended JSON it edits them as. Redis's writes a key of each type from the editor, lists them there, reads each through `KeyReader` as a key tab does, and changes and deletes keys, with a key's expiry; it also lists the numbered databases and moves an editor between them (core ADR 0038).
 - The corpus is one home for both sides: `core/crates/test-support/corpus/<engine>.json`, which the Rust conformance cases read through `ValueCorpus` and the test project copies beside its assembly. A column marked `only` belongs to one flavour of a file two engines share (MySQL and MariaDB).
 - A class whose server is not there skips. `ci/live-servers.ps1` names each server in `TABLEPRO_TEST_LIVE_<ENGINE>_PORT`, `_USER` and `_PASSWORD`.
 
@@ -31,6 +31,7 @@ Each one is set up the way that measured fastest and held on `windows-2025`:
 | DuckDB | In process: no server, so it runs in every Windows job and on macOS | none |
 
 - The `live` job in `windows.yml` runs them on `windows-2025` beside the x64 test job, one step per server, then `dotnet test --filter-namespace TablePro.Interop.Tests.Live --fail-skips on`, so a server that did not start fails its tests rather than skipping them. It reads the x64 job's Cargo cache and saves none. `ci.yml` calls `windows.yml` only when the `windows` suite changed.
+- The x64 test job also starts Redis, after its interop tests, for the UI test of Redis's database switcher: it starts in under a second, and the Live tests still run only in the `live` job.
 - Arm64 runs DuckDB only. Its image has no PostgreSQL, MongoDB or SQL Server, SQL Server installs on x64 alone, and every driver is the same Rust code on both.
 
 ## What the runner showed

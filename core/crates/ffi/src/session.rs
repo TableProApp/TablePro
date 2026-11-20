@@ -93,11 +93,11 @@ impl std::fmt::Debug for PageResume {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum DatabaseLayoutTag {
-    // One database a connection reaches: a file, or numbered databases of keys.
+    // One database a connection reaches, such as a file.
     Single,
     // The server's databases are the schemas the catalog lists.
     AsSchemas,
-    // Each database holds schemas of its own, and a connection's catalog describes the one it opened.
+    // Each database holds schemas, or Redis's keys, of its own, and a connection's catalog describes the one it opened.
     WithSchemas,
 }
 
