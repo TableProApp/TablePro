@@ -552,7 +552,7 @@
     },
     {
       "crate": "libsqlite3-sys",
-      "version": "0.37.0",
+      "version": "0.40.0",
       "paragraphs": [
         {
           "files": [
@@ -561,21 +561,6 @@
           "license": "public-domain",
           "copyright": [
             "D. Richard Hipp and the other SQLite authors"
-          ],
-          "text": [
-            "The author disclaims copyright to this source code. In place of a legal notice, here is a blessing:\n\nMay you do good and not evil.\nMay you find forgiveness for yourself and forgive others.\nMay you share freely, never taking more than you give.\n"
-          ]
-        },
-        {
-          "files": [
-            "sqlcipher/*"
-          ],
-          "license": "BSD-3-Clause AND public-domain",
-          "copyright": [
-            "D. Richard Hipp and the other SQLite authors"
-          ],
-          "texts": [
-            "sqlcipher/LICENSE"
           ],
           "text": [
             "The author disclaims copyright to this source code. In place of a legal notice, here is a blessing:\n\nMay you do good and not evil.\nMay you find forgiveness for yourself and forgive others.\nMay you share freely, never taking more than you give.\n"
