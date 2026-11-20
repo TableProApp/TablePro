@@ -46,6 +46,8 @@ public sealed partial class MainWindow
         Closed += (_, _) => timer.Stop();
     }
 
+    // As the macOS app quits for Sparkle: Exit's questions and shutdown first, so a stopped run or a discarded edit
+    // stays that way, then Windows installs and Restart Manager starts the new version.
     public async Task InstallUpdateAsync()
     {
         if (!IsPrimary)
@@ -73,27 +75,32 @@ public sealed partial class MainWindow
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
         };
-        if (await WindowDialogs.ShowAsync(dialog, Root) != ContentDialogResult.Primary)
+        if (await WindowDialogs.ShowAsync(dialog, Root) == ContentDialogResult.Primary)
         {
-            return;
+            await RequestCloseAsync(askAboutRunning: true, afterShutDown: InstallAfterShutDownAsync);
         }
+    }
 
-        _checkingClose = true;
-        RefreshTabTransfers();
-        try
-        {
-            if (!await ConfirmEndingAsync(AllWindows.ToList(), askAboutRunning: true))
-            {
-                return;
-            }
-        }
-        finally
-        {
-            _checkingClose = false;
-            RefreshTabTransfers();
-        }
-
+    // A deployment that returns has failed or left the new version for the next start; either way the app starts again.
+    private async Task InstallAfterShutDownAsync()
+    {
         await _workbench.Updates.InstallAsync();
+        if (_workbench.Updates.State is UpdateState.Failed failed)
+        {
+            AppWindow.Show();
+            var dialog = new ContentDialog
+            {
+                XamlRoot = Root.XamlRoot,
+                RequestedTheme = Root.ActualTheme,
+                Title = Strings.Get("UpdateInstallFailedTitle"),
+                Content = new TextBlock { Text = failed.Reason, TextWrapping = TextWrapping.Wrap },
+                CloseButtonText = Strings.Get("UpdateRestartButton"),
+            };
+            await WindowDialogs.ShowAsync(dialog, Root);
+        }
+
+        var refused = Microsoft.Windows.AppLifecycle.AppInstance.Restart(string.Empty);
+        CrashLog.Write(new InvalidOperationException($"The app did not restart after an update: {refused}."));
     }
 
     private void WatchUpdates()

@@ -137,8 +137,8 @@ public sealed record AppSettings
 
     public int McpServerPort { get; set; } = DefaultMcpServerPort;
 
-    // Which App Installer file Settings checks; Windows itself follows the file the app was installed from.
-    public UpdateChannel UpdateChannel { get; set; } = UpdateChannel.Stable;
+    // The channel Settings chose; null follows the App Installer file the app was installed from.
+    public UpdateChannel? UpdateChannel { get; set; }
 
     // The package version that last started, so the first start of a newer one says it was updated.
     public string? LastLaunchedVersion { get; set; }
@@ -194,7 +194,7 @@ public sealed record AppSettings
             ? DefaultCompatibleAddress
             : CompatibleAddress.Trim(),
         McpServerPort = Math.Clamp(McpServerPort, LowestMcpServerPort, ushort.MaxValue),
-        UpdateChannel = Enum.IsDefined(UpdateChannel) ? UpdateChannel : UpdateChannel.Stable,
+        UpdateChannel = UpdateChannel is { } channel && Enum.IsDefined(channel) ? channel : null,
         LastLaunchedVersion = ReleaseVersions.TryParse(LastLaunchedVersion, out var launched) ? launched.ToString() : null,
     };
 }

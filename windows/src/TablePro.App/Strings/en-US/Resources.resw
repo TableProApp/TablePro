@@ -5458,7 +5458,7 @@ New fingerprint: {2}</value>
     <value>Install TablePro {0}?</value>
   </data>
   <data name="UpdateInstallMessage" xml:space="preserve">
-    <value>TablePro restarts to install it.</value>
+    <value>TablePro closes, installs it and starts again.</value>
   </data>
   <data name="UpdateRestartButton" xml:space="preserve">
     <value>Restart</value>
@@ -5505,9 +5505,6 @@ New fingerprint: {2}</value>
   <data name="UpdateCheckFailedReason" xml:space="preserve">
     <value>Couldn't check for updates: {0}</value>
   </data>
-  <data name="UpdateInstallFailedReason" xml:space="preserve">
-    <value>Couldn't install the update: {0}</value>
-  </data>
   <data name="UpdateFileUnreadable" xml:space="preserve">
     <value>Couldn't check for updates: the update file is not an App Installer file.</value>
   </data>
@@ -5531,5 +5528,8 @@ New fingerprint: {2}</value>
   </data>
   <data name="WhatsNewLink.Content" xml:space="preserve">
     <value>What's new in this version</value>
+  </data>
+  <data name="UpdateInstallFailedTitle" xml:space="preserve">
+    <value>Couldn't install the update</value>
   </data>
 </root>

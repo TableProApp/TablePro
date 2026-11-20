@@ -35,6 +35,10 @@ public sealed class AppUpdatesTests
         Assert.Null(UpdateOffer.Parse(File("0.3.0.65536")));
         Assert.Null(UpdateOffer.Parse(File("0.3.0.-1")));
         Assert.Null(UpdateOffer.Parse("""<AppInstaller Version="1.0.0.0" Uri="https://example.invalid/a" />"""));
+        Assert.Null(UpdateOffer.Parse("""
+            <!DOCTYPE AppInstaller [<!ENTITY name "TablePro">]>
+            <AppInstaller><MainBundle Name="&name;" Publisher="CN=A" Version="1.0.0.99" /></AppInstaller>
+            """));
     }
 
     [Fact]
@@ -52,6 +56,13 @@ public sealed class AppUpdatesTests
     {
         var local = new Uri("file:///C:/Users/runner/TablePro.appinstaller");
 
+        Assert.Equal(UpdateFeeds.Beta, UpdateFeeds.ToCheck(UpdateFeeds.Beta, null));
+        Assert.Equal(UpdateFeeds.Stable, UpdateFeeds.ToCheck(null, null));
+        Assert.Equal(local, UpdateFeeds.ToCheck(local, null));
+        Assert.Equal(UpdateChannel.Beta, UpdateFeeds.Effective(UpdateFeeds.Beta, null));
+        Assert.Equal(UpdateChannel.Stable, UpdateFeeds.Effective(UpdateFeeds.Beta, UpdateChannel.Stable));
+        Assert.Equal(UpdateChannel.Stable, UpdateFeeds.Effective(local, null));
+        Assert.Equal(UpdateChannel.Beta, UpdateFeeds.Effective(null, UpdateChannel.Beta));
         Assert.Equal(UpdateFeeds.Stable, UpdateFeeds.ToCheck(null, UpdateChannel.Stable));
         Assert.Equal(UpdateFeeds.Beta, UpdateFeeds.ToCheck(null, UpdateChannel.Beta));
         Assert.Equal(UpdateFeeds.Stable, UpdateFeeds.ToCheck(UpdateFeeds.Stable, UpdateChannel.Stable));
@@ -84,12 +95,12 @@ public sealed class AppUpdatesTests
     [Fact]
     public void TheChannelAndLastVersionComeBackAsSavedAndOthersReadAsNone()
     {
-        Assert.Equal(UpdateChannel.Stable, new AppSettings().UpdateChannel);
+        Assert.Null(new AppSettings().UpdateChannel);
         var saved = new AppSettings { UpdateChannel = UpdateChannel.Beta, LastLaunchedVersion = "0.3.0.1" }.Normalized();
         Assert.Equal(UpdateChannel.Beta, saved.UpdateChannel);
         Assert.Equal("0.3.0.1", saved.LastLaunchedVersion);
         var odd = new AppSettings { UpdateChannel = (UpdateChannel)7, LastLaunchedVersion = "0.3" }.Normalized();
-        Assert.Equal(UpdateChannel.Stable, odd.UpdateChannel);
+        Assert.Null(odd.UpdateChannel);
         Assert.Null(odd.LastLaunchedVersion);
     }
 }

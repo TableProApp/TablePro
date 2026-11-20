@@ -13,7 +13,7 @@ public sealed partial class SettingsView
     // Called while _loading is set, so nothing here writes the settings back.
     private void LoadUpdates()
     {
-        UpdateChannelBox.SelectedIndex = _workbench.Settings.UpdateChannel == UpdateChannel.Beta ? 1 : 0;
+        UpdateChannelBox.SelectedIndex = Updater.ChannelFor(_workbench.Settings.UpdateChannel) == UpdateChannel.Beta ? 1 : 0;
         ShowUpdateState();
     }
 

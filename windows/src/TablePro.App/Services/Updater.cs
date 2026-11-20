@@ -40,6 +40,29 @@ internal sealed class Updater
     // Raised on the UI thread after State changed.
     public event EventHandler? Changed;
 
+    // The channel Settings shows: its own choice, else the channel of the file this install came from.
+    public static UpdateChannel ChannelFor(UpdateChannel? chosen)
+    {
+        if (chosen is not null || !AppStorage.IsPackaged)
+        {
+            return chosen ?? UpdateChannel.Stable;
+        }
+
+        try
+        {
+            return UpdateFeeds.Effective(InstalledPackage().GetAppInstallerInfo()?.Uri, null);
+        }
+        catch (Exception exception)
+        {
+            CrashLog.Write(exception);
+            return UpdateChannel.Stable;
+        }
+    }
+
+    // On Package.Current itself the check fails with access denied (Package.CheckUpdateAvailabilityAsync, Remarks).
+    private static Package InstalledPackage() =>
+        new PackageManager().FindPackageForUser(string.Empty, Package.Current.Id.FullName);
+
     public static Uri ReleaseNotes(string version) =>
         new($"https://github.com/TableProApp/TablePro/releases/tag/windows-v{version}");
 
@@ -50,7 +73,7 @@ internal sealed class Updater
     }
 
     // A check started while another runs replaces it, so a channel changed mid-check reads the new channel's file.
-    public async Task CheckAsync(UpdateChannel channel)
+    public async Task CheckAsync(UpdateChannel? channel)
     {
         if (State is UpdateState.Unsupported or UpdateState.Installing or UpdateState.ReadyToRestart)
         {
@@ -122,17 +145,14 @@ internal sealed class Updater
         catch (Exception exception)
         {
             CrashLog.Write(exception);
-            var reason = Strings.Format("UpdateInstallFailedReason", exception.Message);
-            Set(new UpdateState.Failed(reason, DateTimeOffset.Now));
+            Set(new UpdateState.Failed(exception.Message, DateTimeOffset.Now));
         }
     }
 
     // Off the UI thread, so a problem comes back as its resource key and CheckAsync words it.
-    private static async Task<Finding> FindAsync(UpdateChannel channel)
+    private static async Task<Finding> FindAsync(UpdateChannel? channel)
     {
-        var manager = new PackageManager();
-        // On Package.Current itself the check fails with access denied (Package.CheckUpdateAvailabilityAsync, Remarks).
-        var package = manager.FindPackageForUser(string.Empty, Package.Current.Id.FullName);
+        var package = InstalledPackage();
         var installedFrom = package.GetAppInstallerInfo()?.Uri;
         var file = UpdateFeeds.ToCheck(installedFrom, channel);
         var offer = UpdateOffer.Parse(await ReadAsync(file).ConfigureAwait(false));

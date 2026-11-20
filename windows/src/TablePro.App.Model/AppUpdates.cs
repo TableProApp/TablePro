@@ -25,11 +25,17 @@ public static class UpdateFeeds
         : Same(file, Beta) ? UpdateChannel.Beta
         : null;
 
-    // The file Windows installed from decides, unless it is the other channel's: then the chosen channel's does.
-    public static Uri ToCheck(Uri? installedFrom, UpdateChannel chosen) =>
-        installedFrom is null || (ChannelOf(installedFrom) is { } channel && channel != chosen)
-            ? For(chosen)
-            : installedFrom;
+    // What Settings shows: the choice made there, else the channel of the file the app was installed from.
+    public static UpdateChannel Effective(Uri? installedFrom, UpdateChannel? chosen) =>
+        chosen ?? ChannelOf(installedFrom) ?? UpdateChannel.Stable;
+
+    // The file Windows installed from decides, unless Settings chose the other channel: then that channel's does.
+    public static Uri ToCheck(Uri? installedFrom, UpdateChannel? chosen) => installedFrom switch
+    {
+        null => For(Effective(null, chosen)),
+        _ when chosen is { } wanted && ChannelOf(installedFrom) is { } channel && channel != wanted => For(wanted),
+        _ => installedFrom,
+    };
 
     private static bool Same(Uri a, Uri b) => Uri.Compare(
         a, b, UriComponents.AbsoluteUri, UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) == 0;
@@ -43,7 +49,11 @@ public sealed record UpdateOffer(string Name, string Publisher, Version Version)
         XDocument document;
         try
         {
-            document = XDocument.Parse(xml);
+            // The file comes from the network, and an App Installer file has no DTD.
+            using var reader = XmlReader.Create(
+                new StringReader(xml),
+                new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
+            document = XDocument.Load(reader);
         }
         catch (XmlException)
         {
