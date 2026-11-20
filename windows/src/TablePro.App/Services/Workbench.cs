@@ -14,6 +14,7 @@ internal sealed partial class Workbench : IDisposable
     // Set once the account has read its file and the keyring: until then its status is the core's first SignedOut.
     private TableProAccount? _readAccount;
     private CancellationTokenSource? _signingIn;
+    private readonly ScopeWatch _scope = new();
 
     public Workbench(TableProCore core, string folder)
     {
@@ -31,6 +32,16 @@ internal sealed partial class Workbench : IDisposable
 
     // Raised after this app changed the saved connections, so every list rebuilds from a new snapshot.
     public event EventHandler? LibraryChanged;
+
+    // Raised after the project list changed, so every switcher lists it again. Never the signal for scope.
+    public event EventHandler? ProjectChanged;
+
+    // The one signal for scope: the active project or the connections in it changed, by a switch, a move, a delete
+    // or an import. Every list narrowed to the project reads again on it.
+    public event EventHandler? ScopeChanged;
+
+    // Raised when the scope could not be read, after the setting is back on the project the lists show.
+    public event EventHandler<ScopeReadFailedEventArgs>? ScopeReadFailed;
 
     // Raised after Settings cleared the query history, so an open history pane reads it again.
     public event EventHandler? HistoryCleared;
@@ -58,6 +69,19 @@ internal sealed partial class Workbench : IDisposable
     public ColumnLayoutMemory ColumnLayouts { get; }
 
     public AppSettings Settings { get; private set; }
+
+    // The project the Connections page shows, kept in settings.json; null is all connections.
+    public Guid? ActiveProject => Settings.ActiveProjectId;
+
+    // The project and the connections in scope as the last read found them.
+    public ScopedSet Scope => _scope.Current;
+
+    // As the last scope read listed them.
+    public IReadOnlyList<ConnectionProject> Projects { get; private set; } = [];
+
+    // Null for all connections, and until the first snapshot is read.
+    public ConnectionProject? ActiveProjectRecord =>
+        ActiveProject is { } id ? Projects.FirstOrDefault(project => project.Id == id) : null;
 
     // The one update check, which every window's Help menu, the primary's bar and Settings show.
     public Updater Updates { get; } = new();
@@ -173,7 +197,90 @@ internal sealed partial class Workbench : IDisposable
         }
     }
 
-    public void NotifyLibraryChanged() => LibraryChanged?.Invoke(this, EventArgs.Empty);
+    public void NotifyLibraryChanged()
+    {
+        LibraryChanged?.Invoke(this, EventArgs.Empty);
+        _ = ReadScopeAsync();
+    }
+
+    // App-wide: open connections stay open, and links, restored sessions and MCP calls by id are not narrowed.
+    public void SetActiveProject(Guid? projectId)
+    {
+        if (projectId == ActiveProject)
+        {
+            return;
+        }
+
+        UpdateSettings(settings => settings with { ActiveProjectId = projectId });
+        TellMcpTheProject();
+        _ = ReadScopeAsync();
+    }
+
+    // On the UI thread, after anything that can change what is in scope. The core narrows, so the scope is its
+    // snapshot's; a read a later one overtook is dropped.
+    public async Task ReadScopeAsync()
+    {
+        var read = _scope.Start();
+        var asked = ActiveProject;
+        LibrarySnapshot snapshot;
+        try
+        {
+            snapshot = await Library.GetSnapshotAsync(asked).ConfigureAwait(true);
+        }
+        catch (TableProException exception)
+        {
+            CrashLog.Write(exception);
+            ShowFailedScopeRead(_scope.Fail(read, asked), exception.Error);
+            return;
+        }
+
+        if (!_scope.IsLatest(read))
+        {
+            return;
+        }
+
+        // A project deleted while active: the setting follows, and the snapshot is all connections already.
+        if (ActiveProject is not null && snapshot.Scope is null)
+        {
+            UpdateSettings(settings => settings with { ActiveProjectId = null });
+            TellMcpTheProject();
+        }
+
+        ShowProjects(snapshot.Projects);
+        if (_scope.Show(read, snapshot))
+        {
+            ScopeChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    // A switch whose lists never loaded is undone, so the switchers and the MCP server name the project shown.
+    private void ShowFailedScopeRead(FailedScopeRead failure, CoreError error)
+    {
+        if (failure == FailedScopeRead.Overtaken)
+        {
+            return;
+        }
+
+        var reverted = failure == FailedScopeRead.Reverted;
+        if (reverted)
+        {
+            UpdateSettings(settings => settings with { ActiveProjectId = _scope.Current.Project });
+            TellMcpTheProject();
+        }
+
+        ScopeReadFailed?.Invoke(this, new ScopeReadFailedEventArgs(error, reverted));
+    }
+
+    private void ShowProjects(IReadOnlyList<ConnectionProject> projects)
+    {
+        if (Projects.SequenceEqual(projects))
+        {
+            return;
+        }
+
+        Projects = projects;
+        ProjectChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public void NotifySavedQueriesChanged() => SavedQueriesChanged?.Invoke(this, EventArgs.Empty);
 
@@ -329,12 +436,21 @@ internal sealed partial class Workbench : IDisposable
         }
     }
 
-    // A deleted connection's saved queries, folders and favourites go with it, as on Linux; none are kept without a store.
-    public async Task ForgetSavedQueriesAsync(Guid connectionId)
+    // A deleted connection's saved queries, folders and favourites go with it, and its runs when the user asked, as
+    // on Linux. A store that did not open is counted in the cleanup, so the page says what stayed.
+    public async Task PurgeDeletedAsync(Guid connectionId, bool deleteHistory, DeletedConnectionCleanup cleanup)
     {
-        if (await GetSavedQueriesAsync().ConfigureAwait(true) is { } savedQueries)
+        ArgumentNullException.ThrowIfNull(cleanup);
+        var savedQueries = await GetSavedQueriesAsync().ConfigureAwait(true);
+        var history = deleteHistory ? await GetHistoryAsync().ConfigureAwait(true) : null;
+        await cleanup.PurgeAsync(
+            connectionId,
+            deleteHistory,
+            savedQueries is null ? null : id => savedQueries.DeleteForConnectionAsync(id),
+            history is null ? null : id => history.DeleteForConnectionAsync(id)).ConfigureAwait(true);
+        if (deleteHistory && history is not null)
         {
-            await savedQueries.DeleteForConnectionAsync(connectionId).ConfigureAwait(true);
+            HistoryCleared?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -387,4 +503,12 @@ internal sealed partial class Workbench : IDisposable
         _lifetime.Dispose();
         Core.Dispose();
     }
+}
+
+internal sealed class ScopeReadFailedEventArgs(CoreError error, bool reverted) : EventArgs
+{
+    public CoreError Error { get; } = error;
+
+    // The active project went back to the one the lists show.
+    public bool Reverted { get; } = reverted;
 }

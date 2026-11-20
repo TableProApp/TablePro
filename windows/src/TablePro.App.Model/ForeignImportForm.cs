@@ -34,7 +34,8 @@ public interface IForeignReview : IDisposable
 
     void SetIncluded(string reference, bool included);
 
-    Task<ForeignImportOutcome> ApplyAsync();
+    // A new connection lands in the project; one that replaces a saved connection keeps its own.
+    Task<ForeignImportOutcome> ApplyAsync(Guid? projectId);
 }
 
 public sealed class CoreForeignImporter(TableProCore core, ForeignAppDirs dirs) : IForeignImporter
@@ -67,7 +68,7 @@ public sealed class CoreForeignImporter(TableProCore core, ForeignAppDirs dirs) 
 
         public void SetIncluded(string reference, bool included) => review.SetIncluded(reference, included);
 
-        public Task<ForeignImportOutcome> ApplyAsync() => review.ApplyAsync();
+        public Task<ForeignImportOutcome> ApplyAsync(Guid? projectId) => review.ApplyAsync(projectId);
 
         public void Dispose() => review.Dispose();
     }
@@ -252,11 +253,15 @@ public sealed class ForeignImportForm : IDisposable
     // A read the user left for another is dropped when it lands.
     private int _read;
 
-    public ForeignImportForm(IForeignImporter importer)
+    public ForeignImportForm(IForeignImporter importer, Guid? projectId = null)
     {
         ArgumentNullException.ThrowIfNull(importer);
         _importer = importer;
+        ProjectId = projectId;
     }
+
+    // The project the app showed when the dialog opened, where the new connections land.
+    public Guid? ProjectId { get; }
 
     public ForeignImportStep Step { get; private set; }
 
@@ -460,7 +465,7 @@ public sealed class ForeignImportForm : IDisposable
         Step = ForeignImportStep.Importing;
         try
         {
-            return ForeignImportEnding.From(await review.ApplyAsync().ConfigureAwait(true));
+            return ForeignImportEnding.From(await review.ApplyAsync(ProjectId).ConfigureAwait(true));
         }
         catch (TableProException exception)
         {

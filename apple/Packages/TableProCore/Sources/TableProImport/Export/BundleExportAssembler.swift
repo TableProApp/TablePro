@@ -36,6 +36,7 @@ public struct BundleExportInput: Sendable {
         public let tagIds: [UUID]
         public let credentialProfileId: UUID?
         public let credentials: ExportableCredentials?
+        public let projectId: UUID?
 
         public init(
             id: UUID,
@@ -43,8 +44,10 @@ public struct BundleExportInput: Sendable {
             groupId: UUID? = nil,
             tagIds: [UUID] = [],
             credentialProfileId: UUID? = nil,
-            credentials: ExportableCredentials? = nil
+            credentials: ExportableCredentials? = nil,
+            projectId: UUID? = nil
         ) {
+            self.projectId = projectId
             self.id = id
             self.settings = settings
             self.groupId = groupId
@@ -60,13 +63,36 @@ public struct BundleExportInput: Sendable {
         public let color: String?
         public let iconName: String?
         public let parentId: UUID?
+        public let projectId: UUID?
 
-        public init(id: UUID, name: String, color: String? = nil, iconName: String? = nil, parentId: UUID? = nil) {
+        public init(
+            id: UUID,
+            name: String,
+            color: String? = nil,
+            iconName: String? = nil,
+            parentId: UUID? = nil,
+            projectId: UUID? = nil
+        ) {
+            self.projectId = projectId
             self.id = id
             self.name = name
             self.color = color
             self.iconName = iconName
             self.parentId = parentId
+        }
+    }
+
+    public struct Project: Sendable {
+        public let id: UUID
+        public let name: String
+        public let color: String?
+        public let iconName: String?
+
+        public init(id: UUID, name: String, color: String? = nil, iconName: String? = nil) {
+            self.id = id
+            self.name = name
+            self.color = color
+            self.iconName = iconName
         }
     }
 
@@ -143,6 +169,7 @@ public struct BundleExportInput: Sendable {
     public var credentialProfiles: [CredentialProfile]
     public var queryFolders: [QueryFolder]
     public var savedQueries: [SavedQuery]
+    public var projects: [Project]
 
     public init(
         connections: [Connection],
@@ -150,8 +177,10 @@ public struct BundleExportInput: Sendable {
         tags: [Tag] = [],
         credentialProfiles: [CredentialProfile] = [],
         queryFolders: [QueryFolder] = [],
-        savedQueries: [SavedQuery] = []
+        savedQueries: [SavedQuery] = [],
+        projects: [Project] = []
     ) {
+        self.projects = projects
         self.connections = connections
         self.groups = groups
         self.tags = tags
@@ -173,14 +202,19 @@ public enum BundleExportAssembler {
         let tags = Dictionary(input.tags.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let profiles = Dictionary(input.credentialProfiles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
+        let projects = Dictionary(input.projects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
         var refs: [UUID: BundleRef] = [:]
         for connection in input.connections where refs[connection.id] == nil {
             let ref = BundleRef("c\(refs.count + 1)")
             refs[connection.id] = ref
+            let groupChain = chain(from: connection.groupId, in: groups, parent: \.parentId)
+            // An id no listed project holds is left out, as the scope reads it as no project.
+            let project = (groupChain.first.map(\.projectId) ?? connection.projectId).flatMap { projects[$0] }
             builder.addConnection(
                 connection.settings,
                 ref: ref,
-                groupPath: chain(from: connection.groupId, in: groups, parent: \.parentId).map {
+                groupPath: groupChain.map {
                     ConnectionBundleBuilder.GroupComponent(name: $0.name, color: $0.color, iconName: $0.iconName)
                 },
                 tags: connection.tagIds.compactMap { tags[$0] }.map { BundleTag(name: $0.name, color: $0.color) },
@@ -192,7 +226,10 @@ public enum BundleExportAssembler {
                         secureFieldIds: $0.secureFieldIds
                     )
                 },
-                credentials: options.includesCredentials ? connection.credentials : nil
+                credentials: options.includesCredentials ? connection.credentials : nil,
+                project: project.map {
+                    ConnectionBundleBuilder.ProjectSpec(id: $0.id, name: $0.name, color: $0.color, iconName: $0.iconName)
+                }
             )
         }
 

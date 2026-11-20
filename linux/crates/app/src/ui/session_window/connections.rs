@@ -12,8 +12,8 @@ use tablepro_core::connection_url::ConnectionUrl;
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::{ConnectSource, PendingSave, RequestTarget, SessionKey};
 use tablepro_storage::{
-    ConnectionColor, ConnectionGroupName, ConnectionListState, ConnectionTag, ConnectionTagName, CredentialDemand,
-    SavedConnection,
+    ConnectionColor, ConnectionGroupName, ConnectionListState, ConnectionProjectName, ConnectionTag, ConnectionTagName,
+    CredentialDemand, SavedConnection,
 };
 use uuid::Uuid;
 
@@ -21,7 +21,7 @@ use super::{LibraryEdit, SessionWindow, SessionWindowInput};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::connection_deletion::DeletionOptions;
 use crate::services::deletion_error::DeletionError;
-use crate::services::library_outline::LibraryMove;
+use crate::services::library_outline::{LibraryItem, LibraryMove};
 use crate::services::saved_connection_editor::GroupChoice;
 use crate::services::saved_connection_error::SavedConnectionError;
 use crate::services::secret_save_report::SecretSaveOutcome;
@@ -127,6 +127,11 @@ impl SessionWindow {
             interaction: context.attended(),
             tasks: state.services.tasks.clone(),
             saved_connections: state.services.saved_connections.connections(),
+            new_project: state
+                .services
+                .saved_connections
+                .active_project()
+                .map(|project| project.id),
             tags: state.services.saved_connections.tags(),
             remembered_driver: state.services.settings.connect_dialog_driver(),
             ai_assistant: state.services.settings.ai_provider().is_some(),
@@ -421,6 +426,11 @@ impl SessionWindow {
             LibraryEdit::DeleteGroup(id) => self.on_delete_group(id),
             LibraryEdit::Change(change) => self.on_change_library(change),
             LibraryEdit::SetFavourite(id, favourite) => self.on_set_favourite(id, favourite),
+            LibraryEdit::CreateProject { name, switch } => self.on_create_project(name, switch),
+            LibraryEdit::RenameProject(id, name) => self.on_rename_project(id, name),
+            LibraryEdit::DeleteProject(id) => self.on_delete_project(id),
+            LibraryEdit::MoveProject { id, before } => self.on_move_project(id, before),
+            LibraryEdit::MoveToProject { item, project } => self.on_move_to_project(item, project),
         }
     }
 
@@ -439,8 +449,14 @@ impl SessionWindow {
             return;
         };
         let editor = state.services.saved_connection_editor.clone();
+        let list = &state.services.saved_connections;
+        // A connection takes its group along, so the group is made where the connection already is.
+        let project = match with {
+            Some(id) => list.project_of(id),
+            None => list.active_project().map(|project| project.id),
+        };
         self.change_connection(
-            async move { editor.create_group(parent, name, with).await.map(drop) },
+            async move { editor.create_group(parent, project, name, with).await.map(drop) },
             |reason| crate::i18n::gettext_f("The group could not be created. {reason}", &[("reason", reason)]),
         );
     }
@@ -463,6 +479,138 @@ impl SessionWindow {
         self.change_connection(async move { editor.delete_group(id).await }, |reason| {
             crate::i18n::gettext_f("The group could not be deleted. {reason}", &[("reason", reason)])
         });
+    }
+
+    // The switch waits for the write: the setting must not name a project the list lacks.
+    pub(super) fn on_create_project(&self, name: ConnectionProjectName, switch: bool) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        let hold = state.services.hold().acquire();
+        let window = self.downgrade();
+        crate::runtime::spawn_and_deliver(
+            &state.services.tasks,
+            async move { editor.create_project(name).await },
+            move |outcome| {
+                drop(hold);
+                let Some(window) = window.upgrade() else {
+                    return;
+                };
+                match flatten(outcome) {
+                    Ok(project) if switch => window.switch_project(Some(project.id)),
+                    Ok(_) => {}
+                    Err(error) => window.show_saved_connection_error(
+                        |reason| {
+                            crate::i18n::gettext_f("The project could not be created. {reason}", &[("reason", reason)])
+                        },
+                        &error,
+                    ),
+                }
+            },
+        );
+    }
+
+    pub(super) fn on_rename_project(&self, id: Uuid, name: ConnectionProjectName) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.rename_project(id, name).await }, |reason| {
+            crate::i18n::gettext_f("The project could not be renamed. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_delete_project(&self, id: Uuid) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.delete_project(id).await }, |reason| {
+            crate::i18n::gettext_f("The project could not be deleted. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_move_project(&self, id: Uuid, before: Option<Uuid>) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.move_project(id, before).await }, |reason| {
+            crate::i18n::gettext_f("The change could not be saved. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_move_to_project(&self, item: LibraryItem, project: Option<Uuid>) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.move_to_project(item, project).await }, |reason| {
+            crate::i18n::gettext_f("The project could not be changed. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn show_active_project(&self) {
+        let (Some(state), Some(picker)) = (self.state(), self.imp().picker.get()) else {
+            return;
+        };
+        let active = state.services.saved_connections.active_project();
+        picker.show_project(active.as_ref().map(|project| project.name.as_str()));
+        super::window_actions::show_project(self.upcast_ref(), active.map(|project| project.id));
+    }
+
+    // Every window follows the setting, so the write is all a switch is.
+    pub(super) fn switch_project(&self, project: Option<Uuid>) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        if let Err(error) = state.services.settings.set_active_project(project) {
+            tracing::warn!(%error, "the active project was not saved");
+            self.show_toast(&crate::i18n::gettext("The project could not be switched."));
+        }
+    }
+
+    pub(super) fn on_new_project(&self) {
+        let (Some(state), Some(input)) = (self.state(), self.input()) else {
+            return;
+        };
+        let taken = state
+            .services
+            .saved_connections
+            .projects()
+            .into_iter()
+            .map(|project| project.name)
+            .collect();
+        let parent = self.clone().upcast::<gtk::Widget>();
+        glib::spawn_future_local(async move {
+            if let Some(name) = crate::ui::projects::ask_new_project(&parent, taken).await {
+                input.deliver(SessionWindowInput::Library(LibraryEdit::CreateProject {
+                    name,
+                    switch: true,
+                }));
+            }
+        });
+    }
+
+    // One Manage Projects per window: a second ask brings the open one back.
+    pub(super) fn on_manage_projects(&self) {
+        let (Some(state), Some(input)) = (self.state(), self.input()) else {
+            return;
+        };
+        if let Some(open) = self.imp().manage_projects.borrow().as_ref() {
+            open.dialog.present(Some(self));
+            return;
+        }
+        let manage = crate::ui::projects::ManageProjectsDialog::new(state.services.saved_connections.clone(), input);
+        let window = self.downgrade();
+        manage.dialog.connect_closed(move |_| {
+            if let Some(window) = window.upgrade() {
+                window.imp().manage_projects.take();
+            }
+        });
+        manage.dialog.present(Some(self));
+        self.imp().manage_projects.replace(Some(manage));
     }
 
     pub(super) fn on_change_library(&self, change: LibraryMove) {
@@ -762,10 +910,16 @@ impl SessionWindow {
             return;
         };
         let connections = state.services.storage.connections().clone();
+        // What the picker lists: the active project's part, or the whole library in All Connections.
+        let project = state
+            .services
+            .saved_connections
+            .active_project()
+            .map(|project| project.id);
         let reading = state
             .services
             .tasks
-            .spawn_blocking_task(move || connections.export_blocking());
+            .spawn_blocking_task(move || connections.export_scoped_blocking(project));
         let window = self.downgrade();
         glib::spawn_future_local(async move {
             let error = match reading.await {
@@ -816,9 +970,15 @@ impl SessionWindow {
         let connections = state.services.storage.connections().clone();
         let tasks = state.services.tasks.clone();
         let file = path.clone();
+        // What the file files under no project lands in the active one; a project the file names wins.
+        let project = state
+            .services
+            .saved_connections
+            .active_project()
+            .map(|project| project.id);
         crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
             let previewed = tasks
-                .spawn_blocking_task(move || connections.preview_import_blocking(&path, &bytes))
+                .spawn_blocking_task(move || connections.preview_import_into_blocking(&path, &bytes, project))
                 .await;
             let message = match previewed {
                 Ok(Ok(preview)) if preview.entries().is_empty() => {

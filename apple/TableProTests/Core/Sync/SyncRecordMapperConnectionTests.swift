@@ -21,6 +21,7 @@ struct SyncRecordMapperConnectionTests {
         "color",
         "iconName",
         "tagIds",
+        "projectId",
         "groupId",
         "sshProfileId",
         "preferredSafeModeLevel",

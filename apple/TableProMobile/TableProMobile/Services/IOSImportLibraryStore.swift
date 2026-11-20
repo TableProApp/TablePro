@@ -38,8 +38,15 @@ struct IOSImportLibraryStore: ImportLibraryStore {
 
     func ensureGroupPaths(_ paths: [[PathComponent]]) throws -> [UUID?] {
         guard appState.isLibraryWritable else { throw ImportStoreError.unreadable }
-        let existing = appState.groups.map {
-            PathNode(id: $0.id, name: $0.name, parentId: $0.parentId, scope: nil)
+        // A top-level group is matched inside its project, so the same name in another project is another group.
+        let scope = appState.projectScope
+        let existing = appState.groups.map { group in
+            PathNode(
+                id: group.id,
+                name: group.name,
+                parentId: group.parentId,
+                scope: scope.graph.parentId(of: group.id) == nil ? scope.effectiveProjectId(ofGroupId: group.id) : nil
+            )
         }
         let resolved = PathTreeResolver.resolve(paths, existing: existing)
 
@@ -57,7 +64,8 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                 name: node.name,
                 color: node.color.map { ConnectionColor(storedValue: $0) } ?? .none,
                 iconName: LibrarySymbolCatalog.normalizedName(node.iconName),
-                parentId: parentId
+                parentId: parentId,
+                projectId: parentId == nil ? node.scope : nil
             )
             let outcome = appState.addGroup(group)
             if outcome == .refused {
@@ -71,7 +79,42 @@ struct IOSImportLibraryStore: ImportLibraryStore {
         return resolved.leaves.map(placedId)
     }
 
-    func ensureTags(_ tags: [PlannedTag]) throws -> [String: UUID] {
+    func ensureProjects(_ projects: [PlannedProject]) throws -> [BundleRef: UUID] {
+        guard appState.isLibraryWritable else { throw ImportStoreError.unreadable }
+        // With the projects file unreadable nothing resolves, and every connection takes the caller's target.
+        guard appState.areProjectsWritable else { return [:] }
+        let resolved = ImportProjectResolver.resolve(
+            projects,
+            existing: appState.projects,
+            takenIds: appState.unreadableCopies.projects
+        )
+        var ids = resolved.ids
+        for created in resolved.created {
+            let project = ConnectionProject(
+                id: created.id,
+                name: created.name,
+                sortOrder: created.sortOrder,
+                color: created.color.map { ConnectionColor(storedValue: $0) } ?? .none,
+                iconName: created.iconName
+            )
+            if !appState.addImportedProject(project) {
+                Self.logger.error("Import could not add a project, so its connections go to the active one")
+                ids = ids.filter { $0.value != created.id }
+            }
+        }
+        return ids
+    }
+
+    func projectIds(ofSavedConnections ids: Set<UUID>) -> [UUID: UUID?] {
+        let scope = appState.projectScope
+        var projectIds: [UUID: UUID?] = [:]
+        for connection in appState.connections where ids.contains(connection.id) {
+            projectIds[connection.id] = scope.effectiveProjectId(of: connection)
+        }
+        return projectIds
+    }
+
+        func ensureTags(_ tags: [PlannedTag]) throws -> [String: UUID] {
         var ids: [String: UUID] = [:]
         for tag in appState.tags {
             let key = tag.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -103,12 +146,13 @@ struct IOSImportLibraryStore: ImportLibraryStore {
         var added: [UUID] = []
         var replaced: [UUID] = []
         for resolved in connections {
-            let connection = DatabaseConnection(
+            var connection = DatabaseConnection(
                 importedSettings: resolved.planned.settings,
                 id: resolved.planned.id,
                 groupId: resolved.groupId,
                 tagIds: resolved.tagIds
             )
+            connection.projectId = resolved.projectId
             switch resolved.planned.write {
             case .add:
                 if appState.addConnection(connection) {

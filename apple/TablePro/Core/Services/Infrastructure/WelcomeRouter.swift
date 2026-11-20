@@ -33,6 +33,8 @@ internal enum WelcomeRequest {
     case importFromURL
     case openProjectFolder
     case showWelcomeSheet
+    case newProject
+    case manageProjects
 }
 
 @MainActor

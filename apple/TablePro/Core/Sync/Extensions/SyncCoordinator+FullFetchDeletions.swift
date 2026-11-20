@@ -78,8 +78,15 @@ extension SyncCoordinator {
                 .connection,
                 (connections.loadConnections().filter(\.participatesInSync).map(\.id) + unreadableSynced).map(\.uuidString)
             ),
-            (.group, services.groupStorage.loadGroups().map { $0.id.uuidString }),
-            (.tag, services.tagStorage.loadTags().map { $0.id.uuidString }),
+            (
+                .group,
+                (services.groupStorage.loadGroups().map(\.id) + services.groupStorage.unreadableGroupIds).map(\.uuidString)
+            ),
+            (.tag, (services.tagStorage.loadTags().map(\.id) + services.tagStorage.unreadableTagIds).map(\.uuidString)),
+            (
+                .project,
+                (services.projectStorage.loadProjects().map(\.id) + services.projectStorage.unreadableProjectIds).map(\.uuidString)
+            ),
             (.tableFavorite, services.favoriteTablesStorage.loadFavorites().map { FavoriteTablesStorage.syncId(for: $0) }),
             (.favoriteDatabase, services.favoriteDatabasesStorage.loadFavorites().map { FavoriteDatabasesStorage.syncId(for: $0) }),
             (.tableFolder, tableFolderIds.folders),

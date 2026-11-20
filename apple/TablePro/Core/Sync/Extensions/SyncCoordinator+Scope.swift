@@ -2,6 +2,11 @@ import Foundation
 import TableProSyncTransport
 
 extension SyncCoordinator {
+    // False until the project type and both membership fields are writable.
+    func isProjectSyncWritable() -> Bool {
+        schema.writesProjects
+    }
+
     func syncBoundary(settings: SyncSettings) -> SyncBoundary {
         let storage = services.connectionStorage
         let connections = storage.loadConnections()
@@ -10,7 +15,8 @@ extension SyncCoordinator {
         return SyncBoundary(
             settings: settings,
             connections: storage.lastLoadFailed ? nil : connections,
-            ownersKeptOffSync: changeTracker.ownersKeptOffSync.union(unreadableNotSynced)
+            ownersKeptOffSync: changeTracker.ownersKeptOffSync.union(unreadableNotSynced),
+            writableTypes: schema.writableTypes
         )
     }
 

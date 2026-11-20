@@ -106,6 +106,9 @@ public sealed class ConnectionDraft
 
     public Guid? GroupId { get; set; }
 
+    // Where a new connection with no group lands; null on an edit keeps the project it is in.
+    public Guid? ProjectId { get; set; }
+
     public DateTimeOffset? LastOpened { get; set; }
 
     public bool IsNew => Id is null;
@@ -311,6 +314,7 @@ public sealed class ConnectionDraft
             {
                 AiPolicy = ChosenAiPolicy(),
                 ExternalAccess = ChosenExternalAccess(),
+                ProjectId = ProjectId,
             };
         }
 
@@ -350,6 +354,7 @@ public sealed class ConnectionDraft
         {
             AiPolicy = ChosenAiPolicy(),
             ExternalAccess = ChosenExternalAccess(),
+            ProjectId = ProjectId,
         };
     }
 

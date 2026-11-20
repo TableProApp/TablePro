@@ -130,6 +130,7 @@ fn record(name: &str) -> ConnectionRecord {
         tags: Vec::new(),
         ai_policy: None,
         external_access: None,
+        project_id: None,
     }
 }
 
@@ -146,7 +147,7 @@ async fn a_copy_lands_after_its_original_with_a_new_id_and_every_secret() {
     let dir = tempfile::tempdir().unwrap();
     let vault = MemorySecrets::default();
     let library = core(dir.path(), vault.clone()).library().unwrap();
-    let group = library.create_group("Work".to_owned(), None).await.unwrap();
+    let group = library.create_group("Work".to_owned(), None, None).await.unwrap();
     let mut shop = record("Shop");
     shop.group_id = Some(group.id.clone());
     let shop = library.save(shop, secrets()).await.unwrap();
@@ -224,13 +225,16 @@ async fn an_exported_file_holds_every_connection_and_no_secret_and_imports_back(
         .unwrap();
     let file = dir.path().join("connections.json");
 
-    let count = library.export_file(file.display().to_string()).await.unwrap();
+    let count = library.export_file(file.display().to_string(), None).await.unwrap();
     let text = std::fs::read_to_string(&file).unwrap();
     let elsewhere = core(&dir.path().join("two"), MemorySecrets::default())
         .library()
         .unwrap();
-    let imported = elsewhere.import_file(file.display().to_string()).await.unwrap();
-    let relative = library.export_file("connections.json".to_owned()).await.unwrap_err();
+    let imported = elsewhere.import_file(file.display().to_string(), None).await.unwrap();
+    let relative = library
+        .export_file("connections.json".to_owned(), None)
+        .await
+        .unwrap_err();
 
     assert_eq!(count, 2);
     assert!(text.contains("db.example.com") && text.contains("Warehouse"), "{text}");

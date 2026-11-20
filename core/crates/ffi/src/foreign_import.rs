@@ -15,7 +15,7 @@ use tablepro_storage::english_secret_label;
 use crate::cancel_token::{CancelToken, token};
 use crate::core_handle::Core;
 use crate::error::CoreError;
-use crate::library::{ConnectionRecord, TlsModeTag, parse_id};
+use crate::library::{ConnectionRecord, TlsModeTag, optional_id, parse_id};
 use crate::runtime::on_runtime;
 
 // The cap the core library puts on one saved query's text, which the review also holds a larger one to.
@@ -490,8 +490,10 @@ impl ForeignImportReview {
     }
 
     // Writes the checked rows once: the connections, their passwords into the secret store, then their saved queries.
-    // A library that changed since the read refuses with storage.import_outdated and writes nothing.
-    pub async fn apply(&self) -> Result<ForeignImportOutcome, CoreError> {
+    // A library that changed since the read refuses with storage.import_outdated and writes nothing. A new
+    // connection lands in `project_id`; one that replaces a saved connection keeps its project.
+    pub async fn apply(&self, project_id: Option<String>) -> Result<ForeignImportOutcome, CoreError> {
+        let project = optional_id(project_id.as_deref())?;
         if self.applied.swap(true, Ordering::AcqRel) {
             return Err(CoreError::failed("foreign_import.applied", "this import already ran"));
         }
@@ -499,7 +501,7 @@ impl ForeignImportReview {
         let core = self.core.clone();
         let review = self.review.clone();
         let tasks = core.tasks.clone();
-        let written = on_runtime(&tasks, async move { write(&core, review, planned).await }).await;
+        let written = on_runtime(&tasks, async move { write(&core, review, planned, project).await }).await;
         // Refused before anything was written, so the user can read the other app again and import.
         if written.is_err() {
             self.applied.store(false, Ordering::Release);
@@ -521,6 +523,7 @@ async fn write(
     core: &Core,
     review: ImportReview,
     planned: tablepro_foreign_import::review::ImportPlan,
+    project: Option<uuid::Uuid>,
 ) -> Result<ForeignImportOutcome, CoreError> {
     let store = core.connection_store()?;
     let vault = core.secret_vault();
@@ -529,7 +532,7 @@ async fn write(
     let reader = store.clone();
     let applied = core
         .tasks
-        .spawn_blocking_task(move || apply_blocking(&review, &planned, &reader))
+        .spawn_blocking_task(move || apply_blocking(&review, &planned, &reader, project))
         .await
         .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))??;
     let mut passwords_not_kept = 0_u32;

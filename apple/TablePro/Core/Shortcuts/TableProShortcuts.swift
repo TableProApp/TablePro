@@ -46,7 +46,8 @@ internal struct TableProShortcuts: AppShortcutsProvider {
     }
 }
 
-// Siri's "Open <connection>" phrases read the connection names, so they follow every change to the list.
+// Siri's "Open <connection>" phrases read the active project's connection names, so they follow every
+// change to the list and to the scope.
 @available(macOS 14.0, *)
 @MainActor
 internal final class ShortcutsParameterRefresher {
@@ -54,11 +55,17 @@ internal final class ShortcutsParameterRefresher {
 
     private var cancellable: AnyCancellable?
 
-    internal func start(appEvents: AppEvents = .shared) {
+    internal func start(
+        appEvents: AppEvents = .shared,
+        scopeChanged: AnyPublisher<Void, Never> = ConnectionScope.shared.scopedSetChanged,
+        debounce: RunLoop.SchedulerTimeType.Stride = .seconds(1),
+        update: @escaping @MainActor () -> Void = { TableProShortcuts.updateAppShortcutParameters() }
+    ) {
         guard cancellable == nil else { return }
-        TableProShortcuts.updateAppShortcutParameters()
-        cancellable = appEvents.connectionUpdated
-            .debounce(for: .seconds(1), scheduler: RunLoop.main)
-            .sink { _ in TableProShortcuts.updateAppShortcutParameters() }
+        update()
+        cancellable = appEvents.connectionUpdated.map { _ in () }
+            .merge(with: scopeChanged)
+            .debounce(for: debounce, scheduler: RunLoop.main)
+            .sink { _ in update() }
     }
 }

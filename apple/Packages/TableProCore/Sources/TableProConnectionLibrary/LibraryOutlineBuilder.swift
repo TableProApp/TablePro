@@ -51,7 +51,7 @@ public enum LibraryOutlineBuilder {
         _ request: LibraryOutlineRequest<Connection, Group, Tag>
     ) -> LibraryOutline {
         let graph = LibraryGroupGraph(groups: request.groups)
-        let matcher = LibraryQueryMatcher(query: request.query, tags: request.tags)
+        let matcher = LibraryQueryMatcher(query: request.query, tags: request.tags, groups: graph)
         var context = TreeContext(request: request, graph: graph, matcher: matcher)
 
         var sections: [LibrarySection] = []
@@ -181,7 +181,7 @@ private struct TreeContext<Connection: LibraryConnectionRepresentable, Group: Li
             let children = level(parentId: id, visited: visited, textRelaxed: false)
             return .group(id: id, children: children, connectionCount: count(children))
         }
-        let nameMatches = !textRelaxed && matcher.matchesText(groupName: graph.entries[id]?.name ?? "")
+        let nameMatches = !textRelaxed && matcher.matchesText(groupId: id)
         let childRelaxed = textRelaxed || nameMatches || !query.hasTextTerm
         let children = level(parentId: id, visited: visited, textRelaxed: childRelaxed)
         let keepsEmpty = (nameMatches || textRelaxed) && query.tagIds.isEmpty

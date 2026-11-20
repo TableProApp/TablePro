@@ -231,7 +231,7 @@ internal static class ImportFromAppDialog
         {
             _owner = owner;
             _workbench = workbench;
-            _form = new ForeignImportForm(importer);
+            _form = new ForeignImportForm(importer, workbench.ActiveProject);
             LayOutChoose();
             LayOutReading();
             LayOutReview();

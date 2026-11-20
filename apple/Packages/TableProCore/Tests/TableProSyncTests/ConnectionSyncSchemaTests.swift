@@ -67,11 +67,14 @@ struct ConnectionSyncSchemaTests {
         #expect(Set(record.allKeys()).isSubset(of: ConnectionSyncField.declaredKeys))
     }
 
-    @Test("every declared field is deployed, so nothing is silently dropped")
-    func everyDeclaredFieldIsWritable() {
-        let gated = ConnectionSyncField.allCases.filter { !$0.isWritable }
+    // `projectId` waits for the Production deploy. Empty this set in the commit that verifies it.
+    private static let pendingProductionDeploy: Set<ConnectionSyncField> = [.projectId]
 
-        #expect(gated.isEmpty, "Gated Connection fields: \(gated.map(\.key).sorted())")
+    @Test("every declared field is deployed, or is explicitly awaiting deployment")
+    func everyDeclaredFieldIsWritable() {
+        let gated = Set(ConnectionSyncField.allCases.filter { !$0.isWritable })
+
+        #expect(gated == Self.pendingProductionDeploy, "Gated Connection fields: \(gated.map(\.key).sorted())")
     }
 
     @Test("a colour is written to the field macOS also reads")

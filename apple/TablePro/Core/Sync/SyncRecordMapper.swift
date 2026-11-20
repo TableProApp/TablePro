@@ -95,11 +95,12 @@ struct SyncRecordMapper {
     static func toCKRecord(
         _ connection: DatabaseConnection,
         in zone: CKRecordZone.ID,
-        base: CKRecord? = nil
+        base: CKRecord? = nil,
+        schema: SyncWritableSchema = .production
     ) -> CKRecord {
         let record = record(type: .connection, id: connection.id.uuidString, in: zone, base: base)
 
-        let fields = record.fields(ConnectionSyncField.self, absentValues: record === base ? .leave : .clear)
+        let fields = record.fields(ConnectionSyncField.self, absentValues: record === base ? .leave : .clear, schema: schema)
         fields[.connectionId] = connection.id.uuidString
         fields[.name] = connection.name
         fields[.host] = connection.host
@@ -123,6 +124,7 @@ struct SyncRecordMapper {
         // Cleared with `tagIds`, because a record with no `tagIds` is read through this one.
         fields[.tagId] = tagIdStrings.first
         fields[.groupId] = connection.groupId?.uuidString
+        fields[.projectId] = connection.projectId?.uuidString
         fields[.aiPolicy] = connection.aiPolicy?.rawValue ?? unrecognizedAIPolicy(in: fields)
         fields[.aiRules] = connection.aiRules.flatMap { $0.isEmpty ? nil : $0 }
         fields[.aiAlwaysAllowedTools] = connection.aiAlwaysAllowedTools.isEmpty
@@ -175,7 +177,11 @@ struct SyncRecordMapper {
         return record
     }
 
-    static func toConnection(_ record: CKRecord) throws -> DatabaseConnection {
+    // While project sync is off no record carries a project, so reading one would only clear this Mac's own.
+    static func toConnection(
+        _ record: CKRecord,
+        readsProject: Bool = SyncSchemaGate.isProjectSyncWritable
+    ) throws -> DatabaseConnection {
         let fields = record.fields(ConnectionSyncField.self)
         guard let connectionIdString = fields[.connectionId] as? String,
               let connectionId = UUID(uuidString: connectionIdString)
@@ -287,6 +293,9 @@ struct SyncRecordMapper {
             connection.queryTimeoutSeconds = queryTimeoutSeconds
         }
         connection.sshRoute = sshRoute(in: fields)
+        if readsProject {
+            connection.projectId = (fields[.projectId] as? String).flatMap { UUID(uuidString: $0) }
+        }
         return connection
     }
 
@@ -316,12 +325,20 @@ struct SyncRecordMapper {
         _ connection: DatabaseConnection,
         in zone: CKRecordZone.ID,
         base: CKRecord?,
-        publisher: UUID
+        publisher: UUID,
+        schema: SyncWritableSchema = .production
     ) -> SyncRecordEdit {
         let kept = keepingForeignRoute(of: connection, in: base, publisher: publisher)
-        let record = toCKRecord(kept, in: zone, base: base?.copy() as? CKRecord)
-        let baseAsWritten = base.flatMap { try? toConnection($0) }.map { toCKRecord($0, in: zone) }
-        return SyncRecordEdit(ConnectionSyncField.self, record: record, base: base, baseAsWritten: baseAsWritten) { merged, server in
+        let record = toCKRecord(kept, in: zone, base: base?.copy() as? CKRecord, schema: schema)
+        let baseAsWritten = base.flatMap { try? toConnection($0, readsProject: schema.writesProjects) }
+            .map { toCKRecord($0, in: zone, schema: schema) }
+        return SyncRecordEdit(
+            ConnectionSyncField.self,
+            record: record,
+            base: base,
+            baseAsWritten: baseAsWritten,
+            schema: schema
+        ) { merged, server in
             settleRoute(in: merged, server: server, publisher: publisher)
             removeUnsyncableFields(from: merged)
         }
@@ -384,15 +401,21 @@ struct SyncRecordMapper {
     // MARK: - Connection Group
 
     // `parentId` and `iconName` are written even when empty, or a group moved to the top level keeps its old parent.
-    static func toCKRecord(_ group: ConnectionGroup, in zone: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
+    static func toCKRecord(
+        _ group: ConnectionGroup,
+        in zone: CKRecordZone.ID,
+        base: CKRecord? = nil,
+        schema: SyncWritableSchema = .production
+    ) -> CKRecord {
         let record = record(type: .group, id: group.id.uuidString, in: zone, base: base)
 
-        let fields = record.fields(ConnectionGroupSyncField.self, absentValues: record === base ? .leave : .clear)
+        let fields = record.fields(ConnectionGroupSyncField.self, absentValues: record === base ? .leave : .clear, schema: schema)
         fields[.groupId] = group.id.uuidString
         fields[.name] = group.name
         fields[.color] = group.color.rawValue
         fields[.iconName] = LibrarySymbolCatalog.normalizedName(group.iconName)
         fields[.parentId] = group.parentId?.uuidString
+        fields[.projectId] = group.projectId?.uuidString
         fields[.sortOrder] = Int64(group.sortOrder)
         fields[.modifiedAtLocal] = Date()
         fields[.schemaVersion] = schemaVersion
@@ -400,7 +423,10 @@ struct SyncRecordMapper {
         return record
     }
 
-    static func toGroup(_ record: CKRecord) -> ConnectionGroup? {
+    static func toGroup(
+        _ record: CKRecord,
+        readsProject: Bool = SyncSchemaGate.isProjectSyncWritable
+    ) -> ConnectionGroup? {
         let fields = record.fields(ConnectionGroupSyncField.self)
         guard let groupIdString = fields[.groupId] as? String,
               let groupId = UUID(uuidString: groupIdString),
@@ -413,6 +439,7 @@ struct SyncRecordMapper {
         let colorRaw = fields[.color] as? String ?? ConnectionColor.none.rawValue
         let parentId = (fields[.parentId] as? String).flatMap { UUID(uuidString: $0) }
         let sortOrder = (fields[.sortOrder] as? Int64).map { Int($0) } ?? 0
+        let projectId = readsProject ? (fields[.projectId] as? String).flatMap { UUID(uuidString: $0) } : nil
 
         return ConnectionGroup(
             id: groupId,
@@ -420,6 +447,51 @@ struct SyncRecordMapper {
             color: ConnectionColor(rawValue: colorRaw) ?? .none,
             iconName: LibrarySymbolCatalog.normalizedName(fields[.iconName] as? String),
             parentId: parentId,
+            sortOrder: sortOrder,
+            projectId: projectId
+        )
+    }
+
+    // MARK: - Connection Project
+
+    static func toCKRecord(
+        _ project: ConnectionProject,
+        in zone: CKRecordZone.ID,
+        base: CKRecord? = nil,
+        schema: SyncWritableSchema = .production
+    ) -> CKRecord {
+        let record = record(type: .project, id: project.id.uuidString, in: zone, base: base)
+
+        let fields = record.fields(ConnectionProjectSyncField.self, absentValues: record === base ? .leave : .clear, schema: schema)
+        fields[.projectId] = project.id.uuidString
+        fields[.name] = project.name
+        fields[.color] = project.color.rawValue
+        fields[.iconName] = LibrarySymbolCatalog.normalizedName(project.iconName)
+        fields[.sortOrder] = Int64(project.sortOrder)
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+
+        return record
+    }
+
+    static func toProject(_ record: CKRecord) -> ConnectionProject? {
+        let fields = record.fields(ConnectionProjectSyncField.self)
+        guard let projectIdString = fields[.projectId] as? String,
+              let projectId = UUID(uuidString: projectIdString),
+              let name = fields[.name] as? String
+        else {
+            logger.warning("Failed to decode project from CKRecord: missing required fields")
+            return nil
+        }
+
+        let colorRaw = fields[.color] as? String ?? ConnectionColor.none.rawValue
+        let sortOrder = (fields[.sortOrder] as? Int64).map { Int($0) } ?? 0
+
+        return ConnectionProject(
+            id: projectId,
+            name: name,
+            color: ConnectionColor(rawValue: colorRaw) ?? .none,
+            iconName: LibrarySymbolCatalog.normalizedName(fields[.iconName] as? String),
             sortOrder: sortOrder
         )
     }

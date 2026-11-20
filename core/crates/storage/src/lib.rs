@@ -3,6 +3,8 @@ mod connection_color;
 mod connection_group;
 mod connection_group_name;
 mod connection_icon;
+mod connection_project;
+mod connection_project_name;
 mod connection_tag;
 mod connection_tag_name;
 mod connections;
@@ -18,6 +20,7 @@ mod group_name_error;
 mod group_tree;
 mod name_rules;
 mod paths;
+mod project_name_error;
 pub mod query_history;
 pub mod saved_queries;
 mod tag_name_error;
@@ -28,11 +31,14 @@ pub use connection_color::ConnectionColor;
 pub use connection_group::ConnectionGroup;
 pub use connection_group_name::ConnectionGroupName;
 pub use connection_icon::ConnectionIcon;
+pub use connection_project::ConnectionProject;
+pub use connection_project_name::ConnectionProjectName;
 pub use connection_tag::ConnectionTag;
 pub use connection_tag_name::ConnectionTagName;
 pub use connections::{
     ConnectionList, ConnectionListSnapshot, ConnectionListState, ConnectionStore, ImportChange, ImportEntry,
-    ImportPreview, ImportReport, ImportedConnection, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig,
+    ImportPreview, ImportReport, ImportedConnection, ProjectMembership, RemoveOutcome, SavedConnection, SavedSshAuth,
+    SavedSshConfig,
 };
 pub use credentials::{
     CredentialDemand, CredentialError, KeyringCredentials, KeyringError, ResolvedSecret, SecretItemLabeler,
@@ -46,6 +52,7 @@ pub use group_icon::{GroupIcon, SymbolName};
 pub use group_name_error::GroupNameError;
 pub use group_tree::GroupTree;
 pub use paths::StoragePaths;
+pub use project_name_error::ProjectNameError;
 pub use query_history::QueryHistory;
 pub use saved_queries::{SavedQueries, SavedQueriesSnapshot, SavedQueryFolder, SavedQueryFolders};
 pub use tag_name_error::TagNameError;

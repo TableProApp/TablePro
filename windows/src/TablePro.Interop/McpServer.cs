@@ -84,6 +84,13 @@ public sealed class McpServer : IAsyncDisposable
     // Runs the server on port while enabled; again after a failure tries again. Returns at once, Status says Starting.
     public void Apply(bool enabled, int port) => _service.Apply(enabled, checked((ushort)port));
 
+    // The project the app shows, which the tools list and reach from the next call on; null is all connections.
+    public void SetActiveProject(Guid? projectId) => CoreCall.Run(() =>
+    {
+        _service.SetActiveProject(projectId?.ToString());
+        return true;
+    });
+
     // Status and Clients changed since the last one, on the caller's context.
     public async IAsyncEnumerable<McpServerStatus> ReadChangesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)

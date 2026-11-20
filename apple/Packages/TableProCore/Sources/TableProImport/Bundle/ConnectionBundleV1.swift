@@ -130,8 +130,8 @@ enum ConnectionBundleV1 {
 
 extension ConnectionBundleV1.Envelope {
     /// Nil unless the envelope reads back as the same bundle, connection `i` as ref "i". Saved queries, query
-    /// folders, a group inside a group, and names that differ only in case fail that, and so does any field
-    /// format 2 gains later, so format 1 never drops what format 2 keeps.
+    /// folders, projects, a group inside a group, and names that differ only in case fail that, and so does any
+    /// field format 2 gains later, so format 1 never drops what format 2 keeps.
     init?(_ bundle: ConnectionBundle) {
         var credentials: [String: ExportableCredentials] = [:]
         for (index, connection) in bundle.connections.enumerated() {
@@ -176,7 +176,8 @@ extension ConnectionBundleV1.Envelope {
             credentialProfiles: bundle.credentialProfiles,
             credentials: Dictionary(uniqueKeysWithValues: credentials.map { (BundleRef($0.key), $0.value) }),
             queryFolders: bundle.queryFolders,
-            savedQueries: bundle.savedQueries
+            savedQueries: bundle.savedQueries,
+            projects: bundle.projects
         )
         guard (try? envelope.upgraded()) == renumbered else { return nil }
         self = envelope

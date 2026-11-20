@@ -69,6 +69,7 @@ impl WorkspaceModel {
             history: self.history.clone(),
             connections: self.storage.connections().clone(),
             preferred_connection: self.context.active.metadata().map(|metadata| metadata.id),
+            saved: self.saved_connections.clone(),
             revealer: self.file_revealer.clone(),
             tasks: self.tasks.clone(),
         });
@@ -90,6 +91,7 @@ impl WorkspaceModel {
         let dialog = SavedQueriesDialog::new(SavedQueriesDialogInit {
             store: self.history.store().map(|history| history.saved_queries()),
             active_connection: self.context.active.metadata().map(|metadata| metadata.id),
+            saved: self.saved_connections.clone(),
             tasks: self.tasks.clone(),
             hold: self.context.hold.clone(),
         });

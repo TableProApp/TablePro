@@ -16,12 +16,13 @@ public actor MCPConnectionBridge {
     public init() {}
 
     func listConnections(principal: MCPPrincipal, purpose: MCPConnectionListPurpose = .agent) async -> JsonValue {
-        await listConnections(access: principal.connectionAccess, purpose: purpose)
-    }
-
-    private func listConnections(access: ConnectionAccess, purpose: MCPConnectionListPurpose) async -> JsonValue {
-        let listings = await MainActor.run { ExternalConnectionDirectory.listings() }
-        return MCPConnectionListEncoder.encode(listings, access: access, purpose: purpose)
+        let followsActiveProject = principal.followsActiveProject
+        let listings = await MainActor.run {
+            followsActiveProject
+                ? ExternalConnectionDirectory.listingsInActiveProject()
+                : ExternalConnectionDirectory.listings()
+        }
+        return MCPConnectionListEncoder.encode(listings, access: principal.connectionAccess, purpose: purpose)
     }
 
     func connect(connectionId: UUID) async throws -> JsonValue {

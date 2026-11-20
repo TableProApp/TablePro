@@ -284,10 +284,11 @@ public sealed class ForeignImportReview : IDisposable
         });
     }
 
-    // Once; storage.import_outdated when the library changed since the read, with nothing written.
-    public async Task<ForeignImportOutcome> ApplyAsync()
+    // Once; storage.import_outdated when the library changed since the read, with nothing written. A new connection
+    // lands in projectId; one that replaces a saved connection keeps its project.
+    public async Task<ForeignImportOutcome> ApplyAsync(Guid? projectId = null)
     {
-        var outcome = await CoreCall.RunAsync(() => _review.Apply()).ConfigureAwait(false);
+        var outcome = await CoreCall.RunAsync(() => _review.Apply(projectId?.ToString())).ConfigureAwait(false);
         return new ForeignImportOutcome(
             checked((int)outcome.Connections),
             checked((int)outcome.Replaced),

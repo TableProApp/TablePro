@@ -139,9 +139,9 @@ public sealed class SavedQueryTests : IDisposable
         var file = Path.Combine(_directory, "history.sql");
 
         await history.SetPinnedAsync(old!.Value, pinned: true);
-        var pinned = await history.SearchAsync(string.Empty, null, null, 50, cancellationToken);
+        var pinned = await history.SearchAsync(string.Empty, null, null, null, 50, cancellationToken);
         await history.SetPinnedAsync(old.Value, pinned: false);
-        var unpinned = await history.SearchAsync(string.Empty, null, null, 50, cancellationToken);
+        var unpinned = await history.SearchAsync(string.Empty, null, null, null, 50, cancellationToken);
         await history.ExportAsync([old.Value], HistoryExportFormat.Sql, file);
 
         Assert.Equal([(old, true), (recent, false)], pinned.Entries.Select(entry => ((long?)entry.Id, entry.Pinned)));

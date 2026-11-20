@@ -5,6 +5,7 @@ public enum ImportPlanner {
     public static func plan(
         _ preview: ImportPreview,
         selection: ImportSelection,
+        targetProjectId: UUID? = nil,
         makeId: () -> UUID = UUID.init
     ) -> ImportPlan {
         let connections = planConnections(preview, selection: selection, makeId: makeId)
@@ -15,7 +16,9 @@ public enum ImportPlanner {
             tags: connections.tags,
             credentialProfiles: connections.profiles,
             queries: savedQueries.planned,
-            queryStatuses: savedQueries.statuses
+            queryStatuses: savedQueries.statuses,
+            projects: connections.projects,
+            targetProjectId: targetProjectId
         )
     }
 }
@@ -27,6 +30,7 @@ extension ImportPlanner {
         var tags: [PlannedTag] = []
         var profiles: [PlannedCredentialProfile] = []
         var targets: [BundleRef: UUID] = [:]
+        var projects: [PlannedProject] = []
     }
 
     static func planConnections(
@@ -47,6 +51,7 @@ extension ImportPlanner {
         var replacedTargets: Set<UUID> = []
         var tagKeys: Set<String> = []
         var profileRefs: Set<BundleRef> = []
+        var plannedProjectRefs: Set<BundleRef> = []
         var plan = ConnectionPlan()
 
         for row in preview.connections {
@@ -102,6 +107,23 @@ extension ImportPlanner {
                 }
             }
 
+            var projectRef: BundleRef?
+            if let project = bundle.project(of: connection) {
+                let projectName = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !projectName.isEmpty {
+                    projectRef = project.ref
+                    if plannedProjectRefs.insert(project.ref).inserted {
+                        plan.projects.append(PlannedProject(
+                            ref: project.ref,
+                            id: project.id,
+                            name: projectName,
+                            color: project.color,
+                            iconName: project.iconName
+                        ))
+                    }
+                }
+            }
+
             plan.planned.append(PlannedConnection(
                 ref: row.ref,
                 id: id,
@@ -110,7 +132,8 @@ extension ImportPlanner {
                 groupPath: groupPath(for: connection, in: bundle, maximumDepth: rules.maximumGroupDepth),
                 tagNames: tagNames,
                 credentialProfileRef: profileRef,
-                credentials: bundle.credentials[row.ref]
+                credentials: bundle.credentials[row.ref],
+                projectRef: projectRef
             ))
         }
         return plan

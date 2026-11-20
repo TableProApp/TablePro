@@ -13,6 +13,7 @@ enum FileMenuBuilder {
     private static let agentSessionDelegate = AgentSessionMenuDelegate()
     private static let conversationHistoryDelegate = ConversationHistoryMenuDelegate()
     private static let revertToDelegate = QueryTabRevertMenuDelegate()
+    private static let projectDelegate = ProjectMenuDelegate()
 
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         let file = MenuItemFactory.menu(String(localized: "File"), items: [
@@ -39,6 +40,7 @@ enum FileMenuBuilder {
                 shortcut: .manageConnections,
                 keyboard: keyboard
             ),
+            projectSubmenu(),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Open File…"),
@@ -195,6 +197,14 @@ enum FileMenuBuilder {
                 action: #selector(MainSplitViewController.clearAIConversations(_:))
             )
         ])
+    }
+
+    // The scope the connection lists show. It sits with the connection commands, away from Import > Open
+    // Project Folder…, which scans a source folder.
+    private static func projectSubmenu() -> NSMenuItem {
+        let container = MenuItemFactory.submenu(String(localized: "Project"), items: [])
+        container.submenu?.delegate = projectDelegate
+        return container
     }
 
     // Filled when it opens; a list built with the menu bar would be frozen at launch.

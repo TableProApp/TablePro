@@ -22,6 +22,7 @@ use uuid::Uuid;
 
 use crate::i18n::{gettext, gettext_f};
 use crate::runtime::{spawn_and_deliver, spawn_held};
+use crate::services::saved_connection_list::SavedConnectionList;
 use crate::ui::history_dialog::QueryDestination;
 use saved_query_listing::{Listing, matches};
 use saved_query_object::SavedQueryObject;
@@ -37,6 +38,8 @@ pub(crate) struct SavedQueriesDialogInit {
     pub store: Option<SavedQueries>,
     // Its connection's queries are listed first.
     pub active_connection: Option<Uuid>,
+    // Its scope narrows the list, and its scope signal reads it again.
+    pub saved: Rc<SavedConnectionList>,
     pub tasks: Tasks,
     pub hold: Rc<dyn ProcessHold>,
 }
@@ -47,6 +50,7 @@ type Matched = Rc<RefCell<Option<HashSet<i64>>>>;
 struct DialogParts {
     store: Option<SavedQueries>,
     active_connection: Option<Uuid>,
+    saved: Rc<SavedConnectionList>,
     tasks: Tasks,
     hold: Rc<dyn ProcessHold>,
     selection: gtk::SingleSelection,
@@ -87,9 +91,20 @@ impl SavedQueriesDialog {
             .can_unselect(true)
             .build();
         let changes = init.store.as_ref().map(SavedQueries::changes);
+        let weak = dialog.downgrade();
+        // The load starts a new generation, so a list of the old scope on its way is dropped.
+        let observer = init.saved.connect_scope_changed(move || {
+            if let Some(dialog) = weak.upgrade() {
+                dialog.load();
+            }
+        });
+        dialog.imp().scope_observer.set(Some(observer));
+        // The workspace keeps a closed dialog until the next one opens.
+        dialog.connect_closed(|dialog| dialog.imp().unfollow_scope());
         let _ = dialog.imp().parts.set(DialogParts {
             store: init.store,
             active_connection: init.active_connection,
+            saved: init.saved,
             tasks: init.tasks,
             hold: init.hold,
             selection,
@@ -399,10 +414,17 @@ impl SavedQueriesDialog {
         let generation = imp.load_generation.get().wrapping_add(1);
         imp.load_generation.set(generation);
         let active = parts.active_connection;
+        let scope = parts.saved.scope().map(|scope| scope.with(active));
         let dialog = self.downgrade();
         drop(spawn_and_deliver(
             &parts.tasks,
-            async move { store.list(None).await.map(|queries| Listing::new(queries, active)) },
+            async move {
+                let queries = match scope {
+                    Some(scope) => store.list_for(&scope.connections).await,
+                    None => store.list(None).await,
+                };
+                queries.map(|queries| Listing::new(queries, active))
+            },
             move |listed| {
                 if let Some(dialog) = dialog.upgrade() {
                     dialog.list_arrived(generation, listed);

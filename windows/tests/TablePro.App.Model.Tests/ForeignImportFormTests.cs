@@ -311,6 +311,20 @@ public sealed class ForeignImportFormTests
         Assert.False(ending?.Outdated);
     }
 
+    [Fact]
+    public async Task TheImportLandsInTheProjectTheFormWasOpenedIn()
+    {
+        var project = Guid.NewGuid();
+        var review = Review();
+        var form = new ForeignImportForm(new FakeImporter(Sources()) { Review = review }, project);
+        await form.LoadAsync();
+        Assert.True(await form.ReadAsync(null, TestContext.Current.CancellationToken));
+
+        await form.ImportAsync();
+
+        Assert.Equal(project, review.AppliedTo);
+    }
+
     private static async Task<ForeignImportForm> Loaded(FakeImporter importer)
     {
         var form = new ForeignImportForm(importer);
@@ -525,9 +539,12 @@ internal sealed class FakeReview : IForeignReview
         }
     }
 
-    public Task<ForeignImportOutcome> ApplyAsync()
+    public Guid? AppliedTo { get; private set; }
+
+    public Task<ForeignImportOutcome> ApplyAsync(Guid? projectId)
     {
         Applies++;
+        AppliedTo = projectId;
         return Refusal is { } refusal
             ? Task.FromException<ForeignImportOutcome>(new TableProException(refusal))
             : Task.FromResult(Outcome);

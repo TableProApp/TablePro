@@ -9,8 +9,20 @@ impl ConnectionsDocument {
     // Every read and write passes here, so a hand-edited or crafted file
     // cannot bring a cycle, a stray id or two items in one place.
     pub(super) fn tidy_library(&mut self) {
+        let mut projects = HashSet::with_capacity(self.projects.len());
+        self.projects.retain(|project| projects.insert(project.id));
+        renumber(
+            &mut self.projects,
+            |project| (None, project.order),
+            |project, order| project.order = order,
+        );
         let mut seen = HashSet::with_capacity(self.groups.len());
         self.groups.retain(|group| seen.insert(group.id));
+        for group in &mut self.groups {
+            if group.project_id.is_some_and(|id| !projects.contains(&id)) {
+                group.project_id = None;
+            }
+        }
         for group in &mut self.groups {
             if group
                 .parent_id
@@ -36,6 +48,9 @@ impl ConnectionsDocument {
         for connection in &mut self.connections {
             if connection.group_id.is_some_and(|id| !seen.contains(&id)) {
                 connection.group_id = None;
+            }
+            if connection.project_id.is_some_and(|id| !projects.contains(&id)) {
+                connection.project_id = None;
             }
         }
         renumber(

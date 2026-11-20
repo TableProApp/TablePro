@@ -1,11 +1,14 @@
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
+use std::rc::Rc;
+use std::sync::{Arc, LazyLock, Mutex};
 
 use tablepro_storage::{
-    ConnectionGroup, ConnectionGroupName, ConnectionList, ConnectionStore, ConnectionTag, SavedConnection,
-    StorageError, StoragePaths,
+    ConnectionGroup, ConnectionGroupName, ConnectionList, ConnectionListState, ConnectionProject,
+    ConnectionProjectName, ConnectionStore, ConnectionTag, SavedConnection, StorageError, StoragePaths,
 };
 use uuid::Uuid;
+
+use crate::services::saved_connection_list::SavedConnectionList;
 
 // A connection names its group by id, so a test that files one by name
 // needs the name back to build the group.
@@ -88,11 +91,50 @@ pub(crate) fn saved_connection(name: &str) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group_id: None,
+        project_id: None,
         order: 0,
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
     }
+}
+
+// A list over a store nothing writes to, so the library a test applies stands.
+pub(crate) fn detached_list(root: &std::path::Path) -> Rc<SavedConnectionList> {
+    let paths = StoragePaths::under(&root.join("detached"), "tablepro", crate::config::APP_ID);
+    SavedConnectionList::follow(
+        &ConnectionStore::new(&paths),
+        Arc::new(tablepro_core::DriverRegistry::new()),
+    )
+}
+
+pub(crate) fn project_named(name: &str) -> ConnectionProject {
+    ConnectionProject::new(ConnectionProjectName::new(name).expect("a project name"))
+}
+
+// The library a store would publish with each project holding the connections of these ids.
+pub(crate) fn show_projects(list: &SavedConnectionList, projects: &[(&ConnectionProject, &[Uuid])]) {
+    let connections: Vec<SavedConnection> = projects
+        .iter()
+        .flat_map(|(project, ids)| {
+            ids.iter().map(|id| SavedConnection {
+                id: *id,
+                project_id: Some(project.id),
+                ..saved_connection(&id.to_string())
+            })
+        })
+        .collect();
+    let projects: Vec<ConnectionProject> = projects
+        .iter()
+        .zip(0..)
+        .map(|((project, _), order)| ConnectionProject {
+            order,
+            ..(*project).clone()
+        })
+        .collect();
+    list.apply(ConnectionListState::Ready(
+        ConnectionList::new(connections, Vec::new()).with_projects(projects),
+    ));
 }
 
 // Groups nested at any depth and favourites, each item last in its place as it is added.

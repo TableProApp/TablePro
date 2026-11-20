@@ -12,9 +12,17 @@ public sealed class ConnectionLibrary : IDisposable
         _library = library;
     }
 
+    // The whole library, which a reader by id uses whatever project the app shows.
     public async Task<LibrarySnapshot> GetSnapshotAsync()
     {
         var snapshot = await CoreCall.RunAsync(() => _library.Snapshot()).ConfigureAwait(false);
+        return Mapping.Snapshot(snapshot);
+    }
+
+    // What one project shows, with its own Recent. Null, and an id no project holds, give the whole library.
+    public async Task<LibrarySnapshot> GetSnapshotAsync(Guid? projectId)
+    {
+        var snapshot = await CoreCall.RunAsync(() => _library.SnapshotIn(projectId?.ToString())).ConfigureAwait(false);
         return Mapping.Snapshot(snapshot);
     }
 
@@ -76,12 +84,57 @@ public sealed class ConnectionLibrary : IDisposable
         return CoreCall.RunAsync(() => _library.TagConnections(names, tag.ToString(), tagged));
     }
 
-    public async Task<ConnectionGroup> CreateGroupAsync(string name, Guid? parentId)
+    // A top-level group is made in the project; a subgroup follows its top-level group.
+    public async Task<ConnectionGroup> CreateGroupAsync(string name, Guid? parentId, Guid? projectId = null)
     {
         ArgumentNullException.ThrowIfNull(name);
-        var group = await CoreCall.RunAsync(() => _library.CreateGroup(name, parentId?.ToString()))
+        var group = await CoreCall
+            .RunAsync(() => _library.CreateGroup(name, parentId?.ToString(), projectId?.ToString()))
             .ConfigureAwait(false);
         return Mapping.Group(group);
+    }
+
+    // Last in the list. A name another project holds in any case throws storage.project_name_taken.
+    public async Task<ConnectionProject> CreateProjectAsync(string name, string? color = null)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        var project = await CoreCall.RunAsync(() => _library.CreateProject(name, color)).ConfigureAwait(false);
+        return Mapping.Project(project);
+    }
+
+    public Task RenameProjectAsync(Guid id, string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return CoreCall.RunAsync(() => _library.RenameProject(id.ToString(), name));
+    }
+
+    // A colour ConnectionColor names, such as "red"; null takes it off.
+    public Task SetProjectColorAsync(Guid id, string? color) =>
+        CoreCall.RunAsync(() => _library.SetProjectColor(id.ToString(), color));
+
+    // Its groups and connections stay, in no project.
+    public Task DeleteProjectAsync(Guid id) => CoreCall.RunAsync(() => _library.DeleteProject(id.ToString()));
+
+    // Before the project named, or at the end.
+    public Task MoveProjectsAsync(IReadOnlyList<Guid> ids, Guid? before = null)
+    {
+        var names = Names(ids);
+        return CoreCall.RunAsync(() => _library.MoveProjects(names, before?.ToString()));
+    }
+
+    // Connections with no group, into the project or out of every one when it is null. A grouped one refuses the
+    // whole move with storage.connection_grouped.
+    public Task MoveToProjectAsync(IReadOnlyList<Guid> ids, Guid? projectId)
+    {
+        var names = Names(ids);
+        return CoreCall.RunAsync(() => _library.MoveToProject(names, projectId?.ToString()));
+    }
+
+    // Top-level groups with everything in them; a subgroup refuses with storage.group_not_top_level.
+    public Task MoveGroupsToProjectAsync(IReadOnlyList<Guid> ids, Guid? projectId)
+    {
+        var names = Names(ids);
+        return CoreCall.RunAsync(() => _library.MoveGroupsToProject(names, projectId?.ToString()));
     }
 
     public Task RenameGroupAsync(Guid id, string name)
@@ -111,11 +164,13 @@ public sealed class ConnectionLibrary : IDisposable
         return CoreCall.RunAsync(() => _library.MoveGroups(names, parentId?.ToString(), before?.ToString()));
     }
 
-    // A TablePro connections file. It carries no passwords.
-    public async Task<ImportSummary> ImportAsync(string path)
+    // A TablePro connections file. It carries no passwords. A project the file names wins; a new entry it files
+    // under none lands in projectId.
+    public async Task<ImportSummary> ImportAsync(string path, Guid? projectId = null)
     {
         ArgumentNullException.ThrowIfNull(path);
-        var summary = await CoreCall.RunAsync(() => _library.ImportFile(path)).ConfigureAwait(false);
+        var summary = await CoreCall.RunAsync(() => _library.ImportFile(path, projectId?.ToString()))
+            .ConfigureAwait(false);
         return new ImportSummary(checked((int)summary.Added), checked((int)summary.Updated));
     }
 
@@ -127,11 +182,13 @@ public sealed class ConnectionLibrary : IDisposable
         return Mapping.Connection(copy);
     }
 
-    // Every connection, group and tag, and no password, in a file that appears at path only once whole.
-    public async Task<int> ExportAsync(string path)
+    // Every connection, group, tag and project, or what one project shows, and no password, in a file that appears
+    // at path only once whole.
+    public async Task<int> ExportAsync(string path, Guid? projectId = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
-        var count = await CoreCall.RunAsync(() => _library.ExportFile(path)).ConfigureAwait(false);
+        var count = await CoreCall.RunAsync(() => _library.ExportFile(path, projectId?.ToString()))
+            .ConfigureAwait(false);
         return checked((int)count);
     }
 

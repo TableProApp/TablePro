@@ -160,6 +160,7 @@ fn connection(name: &str, group: Option<&str>) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group_id: group.map(crate::test_support::group_id),
+        project_id: None,
         order: 0,
         tags: Vec::new(),
         icon: None,
@@ -978,6 +979,104 @@ fn a_search_finds_connections_by_tag_host_and_group() {
     assert_eq!(shown.headings(), ["Connections"]);
     shown.search("nothing like it");
     assert!(shown.says_nothing_found());
+}
+
+// Acme holds the group Clients with Gamma and the loose Alpha; Beta is in no project.
+fn in_a_project(shown: &Shown) -> (Uuid, [SavedConnection; 3]) {
+    let acme = shown
+        .change(
+            |store| {
+                store.create_project_blocking(tablepro_storage::ConnectionProject::new(
+                    tablepro_storage::ConnectionProjectName::new("Acme").expect("a project name"),
+                ))
+            },
+            |_| true,
+        )
+        .id;
+    let clients = shown
+        .change(
+            |store| {
+                store.create_group_blocking(ConnectionGroup {
+                    project_id: Some(acme),
+                    ..ConnectionGroup::new(group_name("Clients"), None)
+                })
+            },
+            |outline| outline.groups().iter().any(|(_, label, _)| label == "Clients"),
+        )
+        .id;
+    let alpha = SavedConnection {
+        project_id: Some(acme),
+        ..connection("Alpha", None)
+    };
+    let gamma = SavedConnection {
+        group_id: Some(clients),
+        ..connection("Gamma", None)
+    };
+    let beta = connection("Beta", None);
+    for saved in [&alpha, &gamma, &beta] {
+        shown.store.upsert_blocking(saved.clone()).expect("the save");
+    }
+    wait_until(WAIT, || {
+        [&alpha, &gamma, &beta]
+            .iter()
+            .all(|saved| shown.list.get(saved.id).is_some())
+    })
+    .expect("the list to publish them");
+    drain_main_context();
+    (acme, [alpha, gamma, beta])
+}
+
+#[gtk4::test]
+fn the_tree_and_its_search_list_only_the_active_project() {
+    let shown = Shown::new(&[]);
+    let (acme, _) = in_a_project(&shown);
+    assert_eq!(shown.rows(), ["Clients", "Alpha", "Beta"]);
+
+    shown.list.set_active_project(Some(acme));
+
+    assert_eq!(shown.rows(), ["Clients", "Alpha"]);
+    shown.activate("Clients");
+    assert_eq!(shown.rows(), ["Clients", "Gamma", "Alpha"]);
+    shown.search("a");
+    assert_eq!(
+        shown.rows(),
+        ["Gamma", "Alpha"],
+        "the search found another project's connection"
+    );
+    shown.search("beta");
+    assert!(shown.says_nothing_found());
+    shown.search("");
+
+    shown.list.set_active_project(None);
+    assert_eq!(shown.rows(), ["Clients", "Gamma", "Alpha", "Beta"]);
+}
+
+#[gtk4::test]
+fn a_connection_the_window_holds_keeps_its_row_in_another_project() {
+    let shown = Shown::new(&[]);
+    let (acme, [_, _, beta]) = in_a_project(&shown);
+    let (view, _) = session(&[object("public", "orders")], every_affordance());
+    let key = shown.open(&beta, &view);
+    shown.row("public").set_expanded(true);
+    let open = shown.rows();
+    assert!(open.contains(&"orders".to_owned()), "{open:?}");
+
+    shown.list.set_active_project(Some(acme));
+
+    assert_eq!(
+        shown.rows(),
+        ["Clients", "Alpha", "Beta", "public", "orders"],
+        "a switch closed or dropped an open connection's row"
+    );
+    shown.search("beta");
+    assert_eq!(shown.rows(), ["Beta"], "an open connection is not found by name");
+    shown.search("");
+    shown.tree.remove_session(&key);
+    assert_eq!(
+        shown.rows(),
+        ["Clients", "Alpha"],
+        "a closed connection of another project stayed"
+    );
 }
 
 #[gtk4::test]

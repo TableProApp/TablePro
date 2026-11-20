@@ -27,6 +27,7 @@ internal struct ConnectionBundleExporter {
     private let connections: ConnectionStorage
     private let groups: GroupStorage
     private let tags: TagStorage
+    private let projects: ProjectStorage
     private let profiles: CredentialProfileStorage
     private let sshProfiles: SSHProfileStorage
     private let favorites: SQLFavoriteManager
@@ -41,8 +42,10 @@ internal struct ConnectionBundleExporter {
         sshProfiles: SSHProfileStorage = .shared,
         favorites: SQLFavoriteManager = .shared,
         registry: PluginMetadataRegistry = .shared,
-        appVersion: String = ConnectionBundleExporter.bundledAppVersion
+        appVersion: String = ConnectionBundleExporter.bundledAppVersion,
+        projects: ProjectStorage = .shared
     ) {
+        self.projects = projects
         self.connections = connections
         self.groups = groups
         self.tags = tags
@@ -220,7 +223,8 @@ internal struct ConnectionBundleExporter {
                     groupId: connection.groupId,
                     tagIds: connection.tagIds,
                     credentialProfileId: connection.credentialMode.profileId,
-                    credentials: includesCredentials ? credentials(for: connection) : nil
+                    credentials: includesCredentials ? credentials(for: connection) : nil,
+                    projectId: connection.projectId
                 )
             },
             groups: groups.loadGroups().map { group in
@@ -229,7 +233,8 @@ internal struct ConnectionBundleExporter {
                     name: group.name,
                     color: group.color.isDefault ? nil : group.color.rawValue,
                     iconName: group.iconName,
-                    parentId: group.parentId
+                    parentId: group.parentId,
+                    projectId: group.projectId
                 )
             },
             tags: tags.loadTags().map { tag in
@@ -260,6 +265,14 @@ internal struct ConnectionBundleExporter {
                     keyword: favorite.keyword,
                     folderId: favorite.folderId,
                     connectionId: favorite.connectionId
+                )
+            },
+            projects: projects.loadProjects().map { project in
+                BundleExportInput.Project(
+                    id: project.id,
+                    name: project.name,
+                    color: project.color.isDefault ? nil : project.color.rawValue,
+                    iconName: project.iconName
                 )
             }
         )

@@ -27,7 +27,10 @@ struct AppearancePaneView: View {
                     ConnectionTagEditor(tagIds: $coordinator.customization.tagIds)
                 }
                 LabeledContent(String(localized: "Group")) {
-                    ConnectionGroupPicker(selectedGroupId: $coordinator.customization.groupId)
+                    ConnectionGroupPicker(
+                        selectedGroupId: $coordinator.customization.groupId,
+                        connectionId: coordinator.connectionId
+                    )
                 }
             } footer: {
                 Text(String(localized: "The icon and color mark this connection in the connection list and its window."))

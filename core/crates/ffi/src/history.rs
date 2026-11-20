@@ -8,13 +8,13 @@ use tablepro_session::runtime::Tasks;
 use tablepro_storage::query_history::{
     Entry, HistoryCursor, HistoryPageRequest, HistoryQuery, MAX_PAGE_SIZE, MAX_QUERY_BYTES, NewEntry, Outcome,
 };
-use tablepro_storage::{QueryHistory, StoragePaths};
+use tablepro_storage::{ConnectionStore, QueryHistory, StoragePaths};
 use uuid::Uuid;
 
 use crate::error::CoreError;
 use crate::export::write_whole_file;
 use crate::favourites::FavouriteStore;
-use crate::library::parse_id;
+use crate::library::{optional_id, parse_id};
 use crate::runtime::on_runtime;
 use crate::saved_queries::SavedQueryStore;
 use crate::session::DatabaseSession;
@@ -23,6 +23,8 @@ use crate::session::DatabaseSession;
 pub struct QueryHistoryStore {
     history: QueryHistory,
     tasks: Tasks,
+    // Read to turn a project into its connections; None for a core with no library.
+    connections: Option<ConnectionStore>,
 }
 
 // A run as the editor saw it end. Times are milliseconds from the Unix epoch; the store keeps whole seconds.
@@ -84,7 +86,11 @@ impl QueryHistoryStore {
         self.history.saved_queries()
     }
 
-    pub(crate) async fn open(paths: StoragePaths, tasks: Tasks) -> Result<Arc<Self>, CoreError> {
+    pub(crate) async fn open(
+        paths: StoragePaths,
+        tasks: Tasks,
+        connections: Option<ConnectionStore>,
+    ) -> Result<Arc<Self>, CoreError> {
         let history = QueryHistory::open(&paths).await?;
         match history.prune(0).await {
             Ok(report) if report.removed_anything() => {
@@ -93,7 +99,11 @@ impl QueryHistoryStore {
             Ok(_) => {}
             Err(error) => tracing::warn!(%error, "could not prune the query history"),
         }
-        Ok(Arc::new(Self { history, tasks }))
+        Ok(Arc::new(Self {
+            history,
+            tasks,
+            connections,
+        }))
     }
 }
 
@@ -124,14 +134,18 @@ impl QueryHistoryStore {
         .await
     }
 
-    // Every word of `text` appears in the entry, in any case. Pinned entries first, then newest.
+    // Every word of `text` appears in the entry, in any case. Pinned entries first, then newest. `project_id`
+    // keeps the runs of the connections that project holds now, so a run whose connection was deleted shows only
+    // without one; None, and an id no project holds, keep every run.
     pub async fn search(
         &self,
         text: String,
         connection_id: Option<String>,
+        project_id: Option<String>,
         after: Option<HistoryCursorArg>,
         limit: u32,
     ) -> Result<HistoryPageInfo, CoreError> {
+        let project = optional_id(project_id.as_deref())?;
         let mut query = HistoryQuery::from_input(&text);
         query.connection = connection_id
             .as_deref()
@@ -143,7 +157,15 @@ impl QueryHistoryStore {
             limit: usize::try_from(limit).unwrap_or(MAX_PAGE_SIZE).min(MAX_PAGE_SIZE),
         };
         let history = self.history.clone();
+        let connections = self.connections.clone();
+        let tasks = self.tasks.clone();
         on_runtime(&self.tasks, async move {
+            if let (Some(project), Some(store)) = (project, connections) {
+                query.connections = tasks
+                    .spawn_blocking_task(move || members(&store, project))
+                    .await
+                    .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))??;
+            }
             let page = history.search_page(&query, request).await?;
             let next = page.next.and(page.entries.last()).map(HistoryCursorArg::after);
             Ok(HistoryPageInfo {
@@ -159,6 +181,16 @@ impl QueryHistoryStore {
         on_runtime(&self.tasks, async move {
             history.delete_returning(&ids).await?;
             Ok(())
+        })
+        .await
+    }
+
+    // Every run of one connection, pinned ones too, for a connection deleted with its history. Gives how many went.
+    pub async fn delete_for_connection(&self, connection_id: String) -> Result<u64, CoreError> {
+        let connection = parse_id(&connection_id)?;
+        let history = self.history.clone();
+        on_runtime(&self.tasks, async move {
+            Ok(history.delete_for_connection(connection).await?)
         })
         .await
     }
@@ -221,6 +253,18 @@ impl QueryHistoryStore {
     pub fn favourites(&self) -> Arc<FavouriteStore> {
         FavouriteStore::new(self.history.favourites(), self.tasks.clone())
     }
+}
+
+// None when no project holds the id, which is every connection.
+fn members(store: &ConnectionStore, project: Uuid) -> Result<Option<Vec<Uuid>>, CoreError> {
+    let list = store.list_blocking()?;
+    Ok(list.resolved_scope(Some(project)).map(|project| {
+        list.scoped(Some(project))
+            .connections
+            .iter()
+            .map(|connection| connection.id)
+            .collect()
+    }))
 }
 
 // Without a dialect nobody can say which statements hold a secret, so nothing is kept.

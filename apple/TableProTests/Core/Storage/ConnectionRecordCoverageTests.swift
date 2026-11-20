@@ -84,6 +84,7 @@ enum ConnectionCoverageFixture {
             target: PublishedSSHRoute.Target(alias: "bastion", host: "10.0.0.3", port: 2_222, username: "deploy")
         )
         connection.origin = .imported
+        connection.projectId = UUID()
         return connection
     }
 }

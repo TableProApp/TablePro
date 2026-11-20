@@ -95,7 +95,8 @@ pub use import::{
 pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
 pub use library::{
     AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, ExternalAccessTag, GroupRecord, ImportSummary,
-    LibrarySnapshot, SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings, check_jump_hosts,
+    LibrarySnapshot, ProjectRecord, SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings,
+    check_jump_hosts,
 };
 pub use masking::{
     MaskReason, MaskStyleTag, MaskSuggestionInfo, PersonalDataHitInfo, SensitiveKindTag, ShareColumnChoice,

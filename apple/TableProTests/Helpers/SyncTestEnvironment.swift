@@ -22,6 +22,7 @@ final class SyncTestEnvironment {
     let connections: ConnectionStorage
     let groups: GroupStorage
     let tags: TagStorage
+    let projects: ProjectStorage
     let favoriteTables: FavoriteTablesStorage
     let favoriteDatabases: FavoriteDatabasesStorage
     let columnLayouts: FileColumnLayoutPersister
@@ -54,13 +55,21 @@ final class SyncTestEnvironment {
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
         )
         connections = connectionStore
-        groups = GroupStorage(
+        let groupStore = GroupStorage(
             userDefaults: defaults,
             syncTracker: tracker,
             connectionStorage: connectionStore,
             appEvents: AppEvents()
         )
+        groups = groupStore
         tags = TagStorage(userDefaults: defaults, syncTracker: tracker, appEvents: AppEvents())
+        projects = ProjectStorage(
+            userDefaults: defaults,
+            syncTracker: tracker,
+            connectionStorage: connectionStore,
+            groupStorage: groupStore,
+            appEvents: AppEvents()
+        )
         favoriteTables = FavoriteTablesStorage(userDefaults: defaults, syncTracker: tracker)
         favoriteDatabases = FavoriteDatabasesStorage(defaults: defaults, syncTracker: tracker)
         columnLayouts = FileColumnLayoutPersister(
@@ -85,7 +94,8 @@ final class SyncTestEnvironment {
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { nil },
         licenseGate: @escaping @MainActor () -> DisableReason? = { nil },
         activationClock: any Clock<Duration> = ContinuousClock(),
-        pushRegistrar: SyncPushRegistrar = .inert
+        pushRegistrar: SyncPushRegistrar = .inert,
+        projectSyncWritable: Bool = false
     ) -> SyncCoordinator {
         let live = AppServices.live
         let services = AppServices(
@@ -131,7 +141,8 @@ final class SyncTestEnvironment {
             mcpServerManager: live.mcpServerManager,
             syncTracker: tracker,
             welcomeRouter: live.welcomeRouter,
-            telemetry: live.telemetry
+            telemetry: live.telemetry,
+            projectStorage: projects
         )
         return SyncCoordinator(
             services: services,
@@ -141,7 +152,8 @@ final class SyncTestEnvironment {
             columnLayouts: self.columnLayouts,
             licenseGate: licenseGate,
             activationClock: activationClock,
-            pushRegistrar: pushRegistrar
+            pushRegistrar: pushRegistrar,
+            schema: .projects(deployed: projectSyncWritable)
         )
     }
 }
@@ -365,5 +377,19 @@ actor ScriptedSyncTransport: SyncTransport {
             throw pullError
         }
         return pulled(pushedRecords, pushedDeletions)
+    }
+}
+
+extension SyncWritableSchema {
+    // Production's schema with the project type and both membership fields deployed, or held back.
+    static func projects(deployed: Bool) -> SyncWritableSchema {
+        SyncWritableSchema(
+            field: { field in
+                let isProjectField = field is ConnectionProjectSyncField
+                    || field.key == ConnectionSyncField.projectId.key
+                return isProjectField ? deployed : field.isWritable
+            },
+            type: { $0 == .project ? deployed : $0.isWritable }
+        )
     }
 }

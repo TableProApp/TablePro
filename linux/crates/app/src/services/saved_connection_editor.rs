@@ -8,13 +8,13 @@ use tablepro_foreign_import::review::{
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::saved_queries::SavedQueries;
 use tablepro_storage::{
-    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionStore, ConnectionTag,
-    ConnectionTagName, SavedConnection, StorageError,
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionProject, ConnectionProjectName,
+    ConnectionStore, ConnectionTag, ConnectionTagName, SavedConnection, StorageError,
 };
 use uuid::Uuid;
 
 use super::duplicate_name::duplicate_name;
-use super::library_outline::LibraryMove;
+use super::library_outline::{LibraryItem, LibraryMove};
 use super::saved_connection_error::SavedConnectionError;
 use super::secret_change::SecretChange;
 use super::secret_changes::SecretChanges;
@@ -69,9 +69,9 @@ impl SavedConnectionEditor {
     /// Save `connection` over the entry with its id, applying `changes`
     /// to its secrets. The id stays, so a rename or a new host keeps
     /// every secret the edit does not change. Its tags and icon are the
-    /// dialog's. Colour, group and the last-opened time are taken from
-    /// the list as it is at the write, since the connect dialog shows
-    /// none of them.
+    /// dialog's. Colour, group, project and the last-opened time are
+    /// taken from the list as it is at the write, since the connect
+    /// dialog shows none of them.
     pub async fn update(
         &self,
         connection: SavedConnection,
@@ -98,6 +98,7 @@ impl SavedConnectionEditor {
                     last_opened_at: entry.last_opened_at,
                     color: entry.color,
                     group_id: entry.group_id,
+                    project_id: entry.project_id,
                     order: entry.order,
                     ..connection
                 };
@@ -223,12 +224,13 @@ impl SavedConnectionEditor {
         &self,
         review: ImportReview,
         plan: ImportPlan,
+        project: Option<Uuid>,
     ) -> Result<ImportedFromApp, SavedConnectionError> {
         let _turn = self.turn.lock().await;
         let store = self.store.clone();
         let applied = self
             .tasks
-            .spawn_blocking_task(move || apply_blocking(&review, &plan, &store))
+            .spawn_blocking_task(move || apply_blocking(&review, &plan, &store, project))
             .await??;
         let mut secrets_not_kept = 0;
         for imported in &applied.connections {
@@ -322,20 +324,26 @@ impl SavedConnectionEditor {
     }
 
     // `with` is filed in the new group, so New Group from a connection's menu takes the same path as New Group.
+    // `project` is where a top-level group lands; a subgroup follows its parent.
     pub async fn create_group(
         &self,
         parent: Option<Uuid>,
+        project: Option<Uuid>,
         name: ConnectionGroupName,
         with: Option<Uuid>,
     ) -> Result<ConnectionGroup, SavedConnectionError> {
+        let project = project.filter(|_| parent.is_none());
         let store = self.store.clone();
         let created = self
             .tasks
             .spawn_blocking_task(move || {
                 // One write, so a connection deleted meanwhile leaves no empty group behind.
                 match with {
-                    Some(id) => store.move_connections_to_group_named_blocking(&[id], parent, name),
-                    None => store.create_group_blocking(ConnectionGroup::new(name, parent)),
+                    Some(id) => store.move_connections_to_group_named_blocking(&[id], parent, project, name),
+                    None => store.create_group_blocking(ConnectionGroup {
+                        project_id: project,
+                        ..ConnectionGroup::new(name, parent)
+                    }),
                 }
             })
             .await?;
@@ -371,6 +379,59 @@ impl SavedConnectionEditor {
             .spawn_blocking_task(move || store.delete_group_blocking(id))
             .await??;
         Ok(())
+    }
+
+    pub async fn create_project(&self, name: ConnectionProjectName) -> Result<ConnectionProject, SavedConnectionError> {
+        let store = self.store.clone();
+        Ok(self
+            .tasks
+            .spawn_blocking_task(move || store.create_project_blocking(ConnectionProject::new(name)))
+            .await??)
+    }
+
+    pub async fn rename_project(&self, id: Uuid, name: ConnectionProjectName) -> Result<(), SavedConnectionError> {
+        let store = self.store.clone();
+        self.tasks
+            .spawn_blocking_task(move || store.rename_project_blocking(id, name))
+            .await??;
+        Ok(())
+    }
+
+    // A project already gone is what the user asked for.
+    pub async fn delete_project(&self, id: Uuid) -> Result<(), SavedConnectionError> {
+        let store = self.store.clone();
+        self.tasks
+            .spawn_blocking_task(move || store.delete_project_blocking(id))
+            .await??;
+        Ok(())
+    }
+
+    pub async fn move_project(&self, id: Uuid, before: Option<Uuid>) -> Result<(), SavedConnectionError> {
+        let store = self.store.clone();
+        self.tasks
+            .spawn_blocking_task(move || store.move_projects_blocking(&[id], before))
+            .await??;
+        Ok(())
+    }
+
+    // `None` takes the item out of its project. The core refuses a grouped connection and a subgroup.
+    pub(crate) async fn move_to_project(
+        &self,
+        item: LibraryItem,
+        project: Option<Uuid>,
+    ) -> Result<(), SavedConnectionError> {
+        let store = self.store.clone();
+        let moved = self
+            .tasks
+            .spawn_blocking_task(move || match item {
+                LibraryItem::Connection(id) => store.move_connections_to_project_blocking(&[id], project),
+                LibraryItem::Group(id) => store.move_groups_to_project_blocking(&[id], project),
+            })
+            .await?;
+        match moved {
+            Err(StorageError::ConnectionNotFound { id }) => Err(SavedConnectionError::NotFound(id)),
+            moved => Ok(moved?),
+        }
     }
 
     pub(crate) async fn change_library(&self, change: LibraryMove) -> Result<(), SavedConnectionError> {
@@ -574,6 +635,7 @@ mod tests {
             last_opened_at: Some(chrono::Utc::now()),
             color: Some(ConnectionColor::Red),
             group_id: Some(crate::test_support::group_id("Work")),
+            project_id: None,
             order: 0,
             tags: Vec::new(),
             icon: None,
@@ -1190,12 +1252,12 @@ mod tests {
 
         let staging = fixture
             .editor
-            .create_group(Some(work), group_name("Staging"), None)
+            .create_group(Some(work), None, group_name("Staging"), None)
             .await
             .expect("the subgroup");
         let archive = fixture
             .editor
-            .create_group(None, group_name("Archive"), Some(fixture.saved.id))
+            .create_group(None, None, group_name("Archive"), Some(fixture.saved.id))
             .await
             .expect("the group");
 
@@ -1208,7 +1270,10 @@ mod tests {
             Some(archive.id),
             "the connection was left out"
         );
-        let taken = fixture.editor.create_group(None, group_name("archive"), None).await;
+        let taken = fixture
+            .editor
+            .create_group(None, None, group_name("archive"), None)
+            .await;
         assert!(
             matches!(
                 taken,
@@ -1218,10 +1283,13 @@ mod tests {
         );
         let eu = fixture
             .editor
-            .create_group(Some(staging.id), group_name("EU"), None)
+            .create_group(Some(staging.id), None, group_name("EU"), None)
             .await
             .expect("a third level");
-        let deep = fixture.editor.create_group(Some(eu.id), group_name("Zone"), None).await;
+        let deep = fixture
+            .editor
+            .create_group(Some(eu.id), None, group_name("Zone"), None)
+            .await;
         assert!(
             matches!(
                 deep,
@@ -1230,7 +1298,10 @@ mod tests {
             "{deep:?}"
         );
         let gone = Uuid::new_v4();
-        let missing = fixture.editor.create_group(None, group_name("Spare"), Some(gone)).await;
+        let missing = fixture
+            .editor
+            .create_group(None, None, group_name("Spare"), Some(gone))
+            .await;
         assert!(
             matches!(missing, Err(SavedConnectionError::NotFound(id)) if id == gone),
             "{missing:?}"
@@ -1244,13 +1315,179 @@ mod tests {
         );
     }
 
+    fn project_name(name: &str) -> ConnectionProjectName {
+        ConnectionProjectName::new(name).expect("a project name")
+    }
+
+    #[tokio::test]
+    async fn a_project_is_made_renamed_reordered_and_deleted_and_its_connections_stay() {
+        let fixture = fixture().await;
+        let acme = fixture
+            .editor
+            .create_project(project_name("Acme"))
+            .await
+            .expect("the project");
+        let side = fixture
+            .editor
+            .create_project(project_name("Side"))
+            .await
+            .expect("the second project");
+        let order = |store: &ConnectionStore| -> Vec<String> {
+            library(store)
+                .projects_in_order()
+                .iter()
+                .map(|project| project.name.as_str().to_owned())
+                .collect()
+        };
+        assert_eq!(order(&fixture.store), ["Acme", "Side"]);
+
+        let taken = fixture.editor.create_project(project_name("ACME")).await;
+        assert!(matches!(
+            taken,
+            Err(SavedConnectionError::Storage(StorageError::ProjectNameTaken { .. }))
+        ));
+        fixture
+            .editor
+            .rename_project(acme.id, project_name("Acme EU"))
+            .await
+            .expect("the rename");
+        fixture
+            .editor
+            .move_project(side.id, Some(acme.id))
+            .await
+            .expect("the move");
+        assert_eq!(order(&fixture.store), ["Side", "Acme EU"]);
+
+        let loose = SavedConnection {
+            group_id: None,
+            ..another("Loose")
+        };
+        fixture.store.upsert_blocking(loose.clone()).expect("the save");
+        fixture
+            .editor
+            .move_to_project(LibraryItem::Connection(loose.id), Some(acme.id))
+            .await
+            .expect("the connection's move");
+        let work = crate::test_support::group_id("Work");
+        fixture
+            .editor
+            .move_to_project(LibraryItem::Group(work), Some(acme.id))
+            .await
+            .expect("the group's move");
+        let scoped = library(&fixture.store).scoped(Some(acme.id));
+        assert_eq!(scoped.connections.len(), 2, "the group's connection did not follow it");
+
+        let grouped = fixture
+            .editor
+            .move_to_project(LibraryItem::Connection(fixture.saved.id), Some(side.id))
+            .await;
+        assert!(matches!(
+            grouped,
+            Err(SavedConnectionError::Storage(StorageError::ConnectionGrouped { .. }))
+        ));
+        let missing = fixture
+            .editor
+            .move_to_project(LibraryItem::Connection(Uuid::new_v4()), None)
+            .await;
+        assert!(matches!(missing, Err(SavedConnectionError::NotFound(_))));
+
+        fixture.editor.delete_project(acme.id).await.expect("the delete");
+        fixture.editor.delete_project(acme.id).await.expect("a repeat");
+        let after = library(&fixture.store);
+        assert_eq!(order(&fixture.store), ["Side"]);
+        assert_eq!(after.connections.len(), 2, "a deleted project took its connections");
+        assert!(
+            after
+                .connections
+                .iter()
+                .all(|saved| after.effective_project(saved).is_none())
+        );
+    }
+
+    #[tokio::test]
+    async fn a_new_top_level_group_lands_in_the_project_asked_for_and_a_subgroup_follows_its_parent() {
+        let fixture = fixture().await;
+        let acme = fixture
+            .editor
+            .create_project(project_name("Acme"))
+            .await
+            .expect("the project");
+        let loose = SavedConnection {
+            group_id: None,
+            ..another("Loose")
+        };
+        fixture.store.upsert_blocking(loose.clone()).expect("the save");
+
+        let home = fixture
+            .editor
+            .create_group(None, Some(acme.id), group_name("Home"), None)
+            .await
+            .expect("the group");
+        let nested = fixture
+            .editor
+            .create_group(Some(home.id), Some(acme.id), group_name("Nested"), None)
+            .await
+            .expect("the subgroup");
+        let spare = fixture
+            .editor
+            .create_group(None, Some(acme.id), group_name("Spare"), Some(loose.id))
+            .await
+            .expect("the group with a connection");
+
+        let after = library(&fixture.store);
+        assert_eq!(home.project_id, Some(acme.id));
+        assert_eq!(nested.project_id, None, "a subgroup stores a project of its own");
+        assert_eq!(after.effective_group_project(nested.id), Some(acme.id));
+        assert_eq!(after.effective_group_project(spare.id), Some(acme.id));
+        let filed = after
+            .connections
+            .iter()
+            .find(|saved| saved.id == loose.id)
+            .expect("the connection");
+        assert_eq!(after.effective_project(filed), Some(acme.id));
+    }
+
+    #[tokio::test]
+    async fn an_edit_keeps_the_project_the_list_has_at_the_write() {
+        let fixture = fixture().await;
+        let acme = fixture
+            .editor
+            .create_project(project_name("Acme"))
+            .await
+            .expect("the project");
+        let loose = SavedConnection {
+            group_id: None,
+            ..another("Loose")
+        };
+        fixture.store.upsert_blocking(loose.clone()).expect("the save");
+        fixture
+            .editor
+            .move_to_project(LibraryItem::Connection(loose.id), Some(acme.id))
+            .await
+            .expect("the move");
+
+        // The dialog was opened before the move, so its copy names no project.
+        let edited = SavedConnection {
+            host: "db2.example.com".to_owned(),
+            ..loose.clone()
+        };
+        let saved = fixture
+            .editor
+            .update(edited, SecretChanges::default())
+            .await
+            .expect("the edit");
+
+        assert_eq!(saved.project_id, Some(acme.id));
+        assert_eq!(saved.host, "db2.example.com");
+    }
+
     #[tokio::test]
     async fn a_rename_takes_a_new_name_or_case_and_refuses_a_siblings_name() {
         let fixture = fixture().await;
         let work = fixture.saved.group_id.expect("the fixture's group");
         let home = fixture
             .editor
-            .create_group(None, group_name("Home"), None)
+            .create_group(None, None, group_name("Home"), None)
             .await
             .expect("a sibling");
 
@@ -1323,7 +1560,7 @@ mod tests {
         let work = fixture.saved.group_id.expect("the fixture's group");
         fixture
             .editor
-            .create_group(Some(work), group_name("Staging"), None)
+            .create_group(Some(work), None, group_name("Staging"), None)
             .await
             .expect("a subgroup");
 
@@ -1347,7 +1584,7 @@ mod tests {
         crate::test_support::save_filed(&fixture.store, stage.clone());
         let home = fixture
             .editor
-            .create_group(None, group_name("Home"), None)
+            .create_group(None, None, group_name("Home"), None)
             .await
             .expect("a group");
         let apply = |change: LibraryMove| fixture.editor.change_library(change);
