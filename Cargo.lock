@@ -7148,8 +7148,7 @@ dependencies = [
 [[package]]
 name = "sqlx-core"
 version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c08f9787cc5aff062567dea2205f8ae37a617b04342633ab4f74944858ea6072"
+source = "git+https://github.com/TableProApp/sqlx?rev=642b5cec1deb0f3d801c27b4221ad9e40a4f6712#642b5cec1deb0f3d801c27b4221ad9e40a4f6712"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -7225,8 +7224,7 @@ dependencies = [
 [[package]]
 name = "sqlx-mysql"
 version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19eeb93b96eb10a3a59dfb436f3daf87d2fc41168ed9e9dc153ec8257dd6a761"
+source = "git+https://github.com/TableProApp/sqlx?rev=642b5cec1deb0f3d801c27b4221ad9e40a4f6712#642b5cec1deb0f3d801c27b4221ad9e40a4f6712"
 dependencies = [
  "bitflags 2.13.2",
  "byteorder",

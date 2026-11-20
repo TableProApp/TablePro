@@ -4207,9 +4207,9 @@ DEALINGS IN THE SOFTWARE.
 Used by:
 
 - sqlx-core 0.9.1
+- sqlx-mysql 0.9.1
 - sqlx-macros-core 0.9.1
 - sqlx-macros 0.9.1
-- sqlx-mysql 0.9.1
 - sqlx-sqlite 0.9.1
 - sqlx 0.9.1
 

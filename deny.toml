@@ -67,5 +67,6 @@ deny = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-# tokio-postgres with the copy_in fix, until a release has it (Cargo.toml, patch.crates-io).
-allow-git = ["https://github.com/TableProApp/rust-postgres"]
+# tokio-postgres with the copy_in fix, and sqlx-mysql reading more than 4096 columns, until a
+# release has each (Cargo.toml, patch.crates-io).
+allow-git = ["https://github.com/TableProApp/rust-postgres", "https://github.com/TableProApp/sqlx"]

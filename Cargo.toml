@@ -220,6 +220,12 @@ oo7 = { version = "0.6", default-features = false, features = ["tokio", "native_
 tokio-postgres = { git = "https://github.com/TableProApp/rust-postgres", rev = "f8bdf78d12df410a1c1b485445a9d0683361a173" }
 postgres-types = { git = "https://github.com/TableProApp/rust-postgres", rev = "f8bdf78d12df410a1c1b485445a9d0683361a173" }
 postgres-protocol = { git = "https://github.com/TableProApp/rust-postgres", rev = "f8bdf78d12df410a1c1b485445a9d0683361a173" }
+# TablePro's fork of sqlx, pinned by revision: the v0.9.1 tag plus a sqlx-mysql fix that reads a
+# result set wider than 4096 columns, which 0.9.1 refuses though MySQL returns one. sqlx-core
+# comes from the fork too, unchanged, since sqlx-mysql takes it from its own repository and every
+# sqlx crate must build on one sqlx-core. Remove this once a sqlx release has the fix (core ADR 0042).
+sqlx-core = { git = "https://github.com/TableProApp/sqlx", rev = "642b5cec1deb0f3d801c27b4221ad9e40a4f6712" }
+sqlx-mysql = { git = "https://github.com/TableProApp/sqlx", rev = "642b5cec1deb0f3d801c27b4221ad9e40a4f6712" }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
