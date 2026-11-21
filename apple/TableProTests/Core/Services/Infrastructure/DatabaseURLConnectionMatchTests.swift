@@ -8,6 +8,7 @@ import TableProPluginKit
 import Testing
 
 @testable import TablePro
+@testable import TableProSSHConfig
 
 @MainActor
 struct DatabaseURLConnectionMatchTests {
@@ -79,5 +80,52 @@ struct DatabaseURLConnectionMatchTests {
         #expect(DatabaseURLConnectionMatch.matches(saved: connection, parsed: try parsed("mysql://root@db.example.com/local")))
         #expect(!DatabaseURLConnectionMatch.matches(saved: connection, parsed: try parsed("mysql://root@db.example.com:3308/local")))
         #expect(!DatabaseURLConnectionMatch.matches(saved: connection, parsed: try parsed("mysql://root@other.example.com/local")))
+    }
+
+    // The form saves a file connection with the default host and port, which a file URL never carries.
+    @Test("A file link opens the saved connection to that file, whatever host the form stored")
+    func fileLinkMatchesByPath() throws {
+        let connection = DatabaseConnection(name: "Shop", database: "/path/to/shop.sqlite", type: .sqlite)
+        #expect(connection.host == "localhost")
+
+        #expect(DatabaseURLConnectionMatch.matches(
+            saved: connection, parsed: try parsed("sqlite:///path/to/shop.sqlite?name=Elsewhere")
+        ))
+        #expect(!DatabaseURLConnectionMatch.matches(saved: connection, parsed: try parsed("sqlite:///path/to/other.sqlite")))
+        #expect(!DatabaseURLConnectionMatch.matches(saved: connection, parsed: try parsed("duckdb:///path/to/shop.sqlite")))
+    }
+
+    // The local Database File of a Remote Database File row is a placeholder the form makes the user type.
+    @Test("A file link never opens a saved connection that reads its file over SSH", arguments: [
+        RemoteFileAccess.readOnlyCopy, .onServer
+    ])
+    func fileLinkSkipsRemoteFileRows(access: RemoteFileAccess) throws {
+        var ssh = SSHConfiguration()
+        ssh.enabled = true
+        ssh.host = "prod-1"
+        ssh.remoteFilePath = "/srv/app.db"
+        ssh.remoteFileAccess = access
+        let remote = DatabaseConnection(
+            name: "Remote", database: "/path/to/shop.sqlite", type: .sqlite, sshTunnelMode: .inline(ssh)
+        )
+        #expect(!DatabaseURLConnectionMatch.matches(saved: remote, parsed: try parsed("sqlite:///path/to/shop.sqlite")))
+    }
+
+    @Test("A DuckDB file link matches the path in the DuckDB file field, and never a row in Remote mode")
+    func duckDBFileLinkReadsItsField() throws {
+        let link = try parsed("duckdb:///path/to/analytics.duckdb")
+        let local = DatabaseConnection(
+            name: "Local", database: "", type: .duckdb,
+            additionalFields: ["duckdbMode": "local", "duckdbFilePath": "/path/to/analytics.duckdb"]
+        )
+        let legacy = DatabaseConnection(name: "Legacy", database: "/path/to/analytics.duckdb", type: .duckdb)
+        let remote = DatabaseConnection(
+            name: "Remote", database: "", type: .duckdb,
+            additionalFields: ["duckdbMode": "remote", "duckdbHost": "quack.internal", "duckdbFilePath": "/path/to/analytics.duckdb"]
+        )
+
+        #expect(DatabaseURLConnectionMatch.matches(saved: local, parsed: link))
+        #expect(DatabaseURLConnectionMatch.matches(saved: legacy, parsed: link))
+        #expect(!DatabaseURLConnectionMatch.matches(saved: remote, parsed: link))
     }
 }

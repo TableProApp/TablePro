@@ -64,6 +64,11 @@ internal enum TransientConnectionFactory {
         )
 
         connection.origin = .link
+        // A Finder open of the same file finds this session by the field the driver reads. `database` keeps the
+        // path too, for the consent alert.
+        if parsed.namesDatabaseFile, let field = PluginManager.shared.localFilePathField(for: parsed.type) {
+            connection = connection.substitutingLocalFilePath(parsed.database, in: field)
+        }
         // A link is a definition from outside: only keys the catalog knows, and selectors stay for the consent prompt.
         let linkFields = ConnectionFieldCatalog.portable(parsed.additionalFields, keepingLocalCredentials: true)
         connection.additionalFields.merge(linkFields) { _, imported in imported }

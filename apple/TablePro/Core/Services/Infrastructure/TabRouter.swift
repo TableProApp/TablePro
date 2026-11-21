@@ -382,7 +382,8 @@ internal final class TabRouter {
                 try await openTable(
                     connectionId: connection.id,
                     transientConnection: isTransient ? connection : nil,
-                    database: parsed.database.isEmpty ? nil : parsed.database,
+                    // A file URL's path is the connection, never a database to switch to.
+                    database: parsed.namesDatabaseFile || parsed.database.isEmpty ? nil : parsed.database,
                     schema: parsed.schema,
                     table: table,
                     isView: parsed.isView,

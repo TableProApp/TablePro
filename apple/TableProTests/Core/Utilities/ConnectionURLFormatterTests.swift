@@ -166,6 +166,31 @@ struct ConnectionURLFormatterTests {
         #expect(url == "sqlite://data.db")
     }
 
+    @Test("A file name with a space, a ? or a % copies encoded and opens the same file")
+    func testSQLitePathRoundTrips() throws {
+        let conn = DatabaseConnection(
+            name: "", host: "", port: 0, database: "/Users/me/My Shop?%.db",
+            username: "", type: .sqlite
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == "sqlite:///Users/me/My%20Shop%3F%25.db")
+        #expect(try ConnectionURLParser.parse(url).get().database == "/Users/me/My Shop?%.db")
+    }
+
+    @Test("A file connection's name and color copy with it, as on every other scheme", arguments: [
+        (DatabaseType.sqlite, "/Users/me/shop.sqlite", "sqlite:///Users/me/shop.sqlite?name=Shop+DB&statusColor=FF3B30"),
+        (DatabaseType.beancount, "/Users/me/ledger.beancount",
+         "beancount:///Users/me/ledger.beancount?name=Shop+DB&statusColor=FF3B30")
+    ])
+    func testFileConnectionCarriesItsName(type: DatabaseType, path: String, expected: String) throws {
+        let conn = DatabaseConnection(name: "Shop DB", database: path, type: type, color: .red)
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == expected)
+        let parsed = try ConnectionURLParser.parse(url).get()
+        #expect(parsed.database == path)
+        #expect(parsed.connectionName == "Shop DB")
+    }
+
     // MARK: - SSH Tunnel
 
     @Test("SSH tunnel URL")

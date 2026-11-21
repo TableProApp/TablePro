@@ -119,6 +119,67 @@ struct ConnectionURLParserTests {
         #expect(parsed.database == "data.db")
     }
 
+    @Test("A file URL's query names the connection and stays out of the path", arguments: [
+        ("sqlite:///path/to/shop.sqlite?name=Shop+DB", DatabaseType.sqlite, "/path/to/shop.sqlite"),
+        ("duckdb:///path/to/analytics.duckdb?name=Shop+DB", DatabaseType.duckdb, "/path/to/analytics.duckdb"),
+        ("beancount:///path/to/ledger.beancount?name=Shop+DB", DatabaseType.beancount, "/path/to/ledger.beancount")
+    ])
+    func testFileURLQueryNamesTheConnection(url: String, type: DatabaseType, path: String) throws {
+        let parsed = try ConnectionURLParser.parse(url).get()
+        #expect(parsed.type == type)
+        #expect(parsed.database == path)
+        #expect(parsed.connectionName == "Shop DB")
+        #expect(parsed.suggestedName == "Shop DB")
+    }
+
+    @Test("A file URL with no name is named after its file, never its type and path", arguments: [
+        ("sqlite:///path/to/shop.sqlite", "shop"),
+        ("sqlite://data.db", "data"),
+        ("duckdb:///path/to/analytics.duckdb", "analytics")
+    ])
+    func testFileURLSuggestedNameIsTheFileName(url: String, name: String) throws {
+        #expect(try ConnectionURLParser.parse(url).get().suggestedName == name)
+    }
+
+    @Test("A file URL's path is percent-decoded, so a link to a file with a space or a ? opens that file")
+    func testFileURLPathIsDecoded() throws {
+        let parsed = try ConnectionURLParser.parse("sqlite:///path/to/My%20Shop%3F%25.sqlite?name=Shop").get()
+        #expect(parsed.database == "/path/to/My Shop?%.sqlite")
+        #expect(parsed.connectionName == "Shop")
+    }
+
+    @Test("A raw percent sign that is no escape stays in the path")
+    func testFileURLRawPercentSurvives() throws {
+        #expect(try ConnectionURLParser.parse("sqlite:///path/100%/shop.sqlite").get().database == "/path/100%/shop.sqlite")
+    }
+
+    @Test("A file URL takes the parameters a server URL does")
+    func testFileURLTakesTheSharedParameters() throws {
+        let parsed = try ConnectionURLParser.parse(
+            "sqlite:///path/to/shop.sqlite?table=orders&statusColor=FF3B30&safeModeLevel=2&column=status&value=paid"
+        ).get()
+        #expect(parsed.database == "/path/to/shop.sqlite")
+        #expect(parsed.tableName == "orders")
+        #expect(parsed.statusColor == "FF3B30")
+        #expect(parsed.safeModeLevel == 2)
+        #expect(parsed.filterColumn == "status")
+        #expect(parsed.filterValue == "paid")
+    }
+
+    @Test("A quack URL names a server, not a file")
+    func testQuackURLNamesNoFile() throws {
+        let parsed = try ConnectionURLParser.parse("quack://myhost:9495/remotedb").get()
+        #expect(!parsed.namesDatabaseFile)
+        #expect(parsed.suggestedName == "DuckDB myhost/remotedb")
+    }
+
+    @Test("A bare = in a multi-host MongoDB query is skipped, and the parameters after it still apply")
+    func testMultiHostMongoBareEquals() throws {
+        let parsed = try ConnectionURLParser.parse("mongodb://h1:27017,h2:27017/app?=&replicaSet=rs0").get()
+        #expect(parsed.multiHost == "h1:27017,h2:27017")
+        #expect(parsed.mongoQueryParams["replicaSet"] == "rs0")
+    }
+
     // MARK: - SSL Mode
 
     @Test("SSL mode query parameter")

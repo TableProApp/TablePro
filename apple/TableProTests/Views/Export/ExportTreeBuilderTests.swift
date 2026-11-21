@@ -550,6 +550,22 @@ struct ExportTreeBuilderTests {
         #expect(items.first?.isExpanded == true)
     }
 
+    @Test("A file database's row shows its file name and keeps its path as the container")
+    func fileDatabaseRowShowsItsFileName() async throws {
+        let builder = Self.builder(
+            typeId: DatabaseType.sqlite.rawValue,
+            preselection: .tables(names: ["orders"], scope: nil),
+            reader: FakeReader(flatTables: [Self.makeTable("orders")]),
+            database: "/path/to/shop.sqlite"
+        )
+
+        let items = try await builder.build(priorRows: [:])
+
+        #expect(items.map(\.name) == ["/path/to/shop.sqlite"])
+        #expect(items.map(\.title) == ["shop.sqlite"])
+        #expect(items.first?.objects.first?.isSelected == true)
+    }
+
     /// The catalog read is one query for every database, and no engine has to answer it: it throws on
     /// Kafka and Cassandra, and a MySQL proxy answers it from its own backend rather than from the
     /// databases it publishes, so a database it did not describe is read from the driver instead.
