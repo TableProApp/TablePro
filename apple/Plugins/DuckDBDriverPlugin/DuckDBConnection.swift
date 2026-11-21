@@ -396,8 +396,8 @@ actor DuckDBConnectionActor {
 
     // MARK: - Read handed out a batch at a time
 
-    // A transfer connection's read: one batch per call, so the session sharing this executor runs between batches.
-    // Any other statement on the connection ends it first, and the next call then throws CancellationError.
+    // A read handed out one batch per call, so other work on this executor runs between batches. Any other statement on
+    // the connection ends it first, and the next call then throws CancellationError.
     private nonisolated struct PulledRead {
         var opened: OpenedResult
         var projection: duckdb_prepared_statement?
@@ -471,8 +471,8 @@ actor DuckDBConnectionActor {
         return nil
     }
 
-    func endPulledRead(_ generation: UInt64) {
-        guard pulledRead?.generation == generation else { return }
+    func endPulledRead(_ generation: UInt64? = nil) {
+        guard generation == nil || pulledRead?.generation == generation else { return }
         closePulledRead()
     }
 

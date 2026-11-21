@@ -80,6 +80,50 @@ nonisolated final class DuckDBBackedDriver: PluginBackedDriver, DedicatedTransfe
         try duck.cancelQuery()
     }
 
+    // A read takes each batch as the plugin hands it out and cuts it for display before the next, so a long text or
+    // BLOB column is never held whole for every row of the result.
+    override func stream(
+        query: String,
+        options: StreamOptions,
+        bindsToSession: Bool
+    ) -> AsyncThrowingStream<StreamElement, Error> {
+        guard !SQLWriteClassifier.isWriteQuery(query, databaseType: .duckdb) else {
+            return super.stream(query: query, options: options, bindsToSession: bindsToSession)
+        }
+        let duck = duck
+        let context = statementContext(query)
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    try await self.exclusively {
+                        var rows = PluginRowEmitter(options: options)
+                        read: for try await element in duck.pulledRows(query: query, context: context) {
+                            switch element {
+                            case .header(let header):
+                                rows.begin(columns: header.columns, typeNames: header.columnTypeNames, into: continuation)
+                            case .rows(let batch):
+                                for row in batch {
+                                    guard rows.emit(row, locator: nil, into: continuation) else { break read }
+                                }
+                            }
+                        }
+                        await duck.endPulledRows()
+                    }
+                    continuation.finish()
+                } catch {
+                    // A Stop interrupts the query, so its error is the Stop itself.
+                    if error is CancellationError || Task.isCancelled {
+                        continuation.yield(.truncated(reason: .cancelled))
+                        continuation.finish()
+                    } else {
+                        continuation.finish(throwing: error)
+                    }
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     func openTransferDriver() async throws -> any DatabaseDriver {
         guard source != nil else { return self }
         return DuckDBBackedDriver(duck: try await duck.openTransferDriver(), source: nil, openMode: .existingOnly)

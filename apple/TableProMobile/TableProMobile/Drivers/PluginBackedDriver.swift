@@ -193,46 +193,17 @@ nonisolated class PluginBackedDriver: DatabaseDriver, CatalogQuerying, ExportRow
         options: StreamOptions,
         into continuation: AsyncThrowingStream<StreamElement, Error>.Continuation
     ) {
-        let columns = zip(result.columns, result.columnTypeNames).enumerated().map { index, pair in
-            ColumnInfo(name: pair.0, typeName: pair.1, ordinalPosition: index)
-        }
-        continuation.yield(.columns(columns))
-        let keyIndices = options.lazyContext.map { context in
-            context.primaryKeyColumns.map { key in result.columns.firstIndex(of: key) }
-        }
+        var rows = PluginRowEmitter(options: options)
+        rows.begin(columns: result.columns, typeNames: result.columnTypeNames, into: continuation)
         let locators = result.rowLocators.flatMap { $0.count == result.rows.count ? $0 : nil } ?? []
 
-        var emitted = 0
         for (rowIndex, row) in result.rows.enumerated() {
             if Task.isCancelled {
                 continuation.yield(.truncated(reason: .cancelled))
                 return
             }
-            if emitted >= options.maxRows {
-                continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
-                return
-            }
             let locator = locators.indices.contains(rowIndex) ? locators[rowIndex] : nil
-            let cells = row.enumerated().map { index, value -> Cell in
-                let ref = cellRef(
-                    column: index < result.columns.count ? result.columns[index] : "",
-                    row: row,
-                    locator: locator,
-                    keyIndices: keyIndices,
-                    options: options
-                )
-                switch value {
-                case .null:
-                    return .null
-                // Bytes stay binary: shown as hex text they would read as an editable value and match no row.
-                case .bytes(let data):
-                    return .binary(byteCount: data.count, ref: ref)
-                case .text(let text):
-                    return Cell.from(text: text, options: options, ref: ref)
-                }
-            }
-            continuation.yield(.row(Row(cells: cells, locator: locator)))
-            emitted += 1
+            guard rows.emit(row, locator: locator, into: continuation) else { return }
         }
 
         if let message = result.statusMessage {
@@ -243,27 +214,11 @@ nonisolated class PluginBackedDriver: DatabaseDriver, CatalogQuerying, ExportRow
         }
         // A plugin that capped the read itself returns exactly the cap and says it stopped there.
         if result.isTruncated {
-            let reason: TruncationReason = emitted >= options.maxRows
+            let reason: TruncationReason = rows.emitted >= options.maxRows
                 ? .rowCap(options.maxRows)
                 : .driverLimit("driver returned isTruncated=true")
             continuation.yield(.truncated(reason: reason))
         }
-    }
-
-    private static func cellRef(
-        column: String,
-        row: [PluginCellValue],
-        locator: String?,
-        keyIndices: [Int?]?,
-        options: StreamOptions
-    ) -> CellRef? {
-        guard let context = options.lazyContext, let keyIndices, !keyIndices.isEmpty else { return nil }
-        var components: [PrimaryKeyComponent] = []
-        for (key, index) in zip(context.primaryKeyColumns, keyIndices) {
-            guard let index, index < row.count, case .text(let value) = row[index] else { return nil }
-            components.append(PrimaryKeyComponent(column: key, value: value))
-        }
-        return CellRef(table: context.table, column: column, primaryKey: components, locator: locator)
     }
 
     // MARK: - Catalog
@@ -396,5 +351,68 @@ nonisolated class PluginBackedDriver: DatabaseDriver, CatalogQuerying, ExportRow
         case .unknown: return .unknown
         @unknown default: return .unknown
         }
+    }
+}
+
+// A plugin's rows as stream elements, one at a time: each cut for display as it comes, up to the cap.
+nonisolated struct PluginRowEmitter {
+    let options: StreamOptions
+    private var columns: [String] = []
+    private var keyIndices: [Int?]?
+    private(set) var emitted = 0
+
+    init(options: StreamOptions) {
+        self.options = options
+    }
+
+    mutating func begin(
+        columns: [String],
+        typeNames: [String],
+        into continuation: AsyncThrowingStream<StreamElement, Error>.Continuation
+    ) {
+        self.columns = columns
+        continuation.yield(.columns(zip(columns, typeNames).enumerated().map { index, pair in
+            ColumnInfo(name: pair.0, typeName: pair.1, ordinalPosition: index)
+        }))
+        keyIndices = options.lazyContext.map { context in
+            context.primaryKeyColumns.map { key in columns.firstIndex(of: key) }
+        }
+    }
+
+    // False once a row past the cap arrived, after saying the read stopped there.
+    mutating func emit(
+        _ row: [PluginCellValue],
+        locator: String?,
+        into continuation: AsyncThrowingStream<StreamElement, Error>.Continuation
+    ) -> Bool {
+        guard emitted < options.maxRows else {
+            continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
+            return false
+        }
+        let cells = row.enumerated().map { index, value -> Cell in
+            let ref = cellRef(column: index < columns.count ? columns[index] : "", row: row, locator: locator)
+            switch value {
+            case .null:
+                return .null
+            // Bytes stay binary: shown as hex text they would read as an editable value and match no row.
+            case .bytes(let data):
+                return .binary(byteCount: data.count, ref: ref)
+            case .text(let text):
+                return Cell.from(text: text, options: options, ref: ref)
+            }
+        }
+        continuation.yield(.row(Row(cells: cells, locator: locator)))
+        emitted += 1
+        return true
+    }
+
+    private func cellRef(column: String, row: [PluginCellValue], locator: String?) -> CellRef? {
+        guard let context = options.lazyContext, let keyIndices, !keyIndices.isEmpty else { return nil }
+        var components: [PrimaryKeyComponent] = []
+        for (key, index) in zip(context.primaryKeyColumns, keyIndices) {
+            guard let index, index < row.count, case .text(let value) = row[index] else { return nil }
+            components.append(PrimaryKeyComponent(column: key, value: value))
+        }
+        return CellRef(table: context.table, column: column, primaryKey: components, locator: locator)
     }
 }

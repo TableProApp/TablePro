@@ -835,7 +835,7 @@ nonisolated final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sen
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard !pullsReads else { return pulledRows(query: query, reason: nil) }
+        guard !pullsReads else { return pulledRows(query: query, context: PluginStatementContext()) }
         let actor = connectionActor
 
         return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(DuckDBBoundedStream.bufferedBatches)) { continuation in
@@ -850,9 +850,7 @@ nonisolated final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sen
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        guard !pullsReads else {
-            return pulledRows(query: query, reason: DuckDBReadOnlyStatement.reason(for: context))
-        }
+        guard !pullsReads else { return pulledRows(query: query, context: context) }
         guard let reason = DuckDBReadOnlyStatement.reason(for: context) else { return streamRows(query: query) }
         let actor = connectionActor
         return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(DuckDBBoundedStream.bufferedBatches)) { continuation in
@@ -866,12 +864,21 @@ nonisolated final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sen
         }
     }
 
-    private func pulledRows(
-        query: String,
-        reason: DuckDBReadOnlyStatement.Reason?
-    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        let cursor = DuckDBPulledRows(actor: connectionActor, query: query, reason: reason, live: liveConnection)
+    // The rows a batch per pull, so a consumer that converts each as it comes holds one batch at a time and the
+    // connection's executor runs other work between batches. Any other statement on the connection ends the read.
+    func pulledRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let cursor = DuckDBPulledRows(
+            actor: connectionActor,
+            query: query,
+            reason: DuckDBReadOnlyStatement.reason(for: context),
+            live: liveConnection
+        )
         return AsyncThrowingStream(unfolding: { try await cursor.next() })
+    }
+
+    // Gives up the read `pulledRows` handed out, for a consumer that stopped before its end.
+    func endPulledRows() async {
+        await connectionActor.endPulledRead()
     }
 
     // MARK: - Schema Operations
@@ -1295,9 +1302,7 @@ nonisolated private final class DuckDBPulledRows: @unchecked Sendable {
     }
 
     deinit {
-        lock.lock()
-        let open = ended ? nil : generation
-        lock.unlock()
+        let open = lock.withLock { ended ? nil : generation }
         guard let open else { return }
         let actor = actor
         Task { await actor.endPulledRead(open) }
@@ -1308,10 +1313,7 @@ nonisolated private final class DuckDBPulledRows: @unchecked Sendable {
         let live = live
         do {
             return try await withTaskCancellationHandler {
-                lock.lock()
-                let current = generation
-                lock.unlock()
-                if let current {
+                if let current = lock.withLock({ generation }) {
                     guard let rows = try await actor.nextPulledBatch(current) else {
                         markEnded()
                         return nil
@@ -1319,9 +1321,7 @@ nonisolated private final class DuckDBPulledRows: @unchecked Sendable {
                     return .rows(rows)
                 }
                 let begun = try await actor.beginPulledRead(query, reason: reason)
-                lock.lock()
-                generation = begun.generation
-                lock.unlock()
+                lock.withLock { generation = begun.generation }
                 return .header(begun.header)
             } onCancel: {
                 live.interrupt()
@@ -1333,8 +1333,6 @@ nonisolated private final class DuckDBPulledRows: @unchecked Sendable {
     }
 
     private func markEnded() {
-        lock.lock()
-        ended = true
-        lock.unlock()
+        lock.withLock { ended = true }
     }
 }
