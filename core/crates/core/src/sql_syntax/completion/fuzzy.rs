@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn matched_runs_join_adjacent_characters() {
-        assert_eq!(matched_runs("users", &casefold("US")), [0..2]);
+        assert_eq!(matched_runs("users", &casefold("US")), [Range { start: 0, end: 2 }]);
         assert_eq!(matched_runs("users", ""), Vec::<Range<usize>>::new());
         assert_eq!(matched_runs("orders", &casefold("us")), Vec::<Range<usize>>::new());
     }
@@ -145,7 +145,7 @@ mod tests {
     fn a_dotted_i_keeps_one_source_character() {
         assert_eq!(casefold("İ"), "İ");
         assert!(matches_word("İstanbul", "İ"));
-        assert_eq!(matched_runs("İstanbul", &casefold("İst")), [0..4]);
+        assert_eq!(matched_runs("İstanbul", &casefold("İst")), [Range { start: 0, end: 4 }]);
     }
 
     #[test]

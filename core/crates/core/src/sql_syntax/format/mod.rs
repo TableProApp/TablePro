@@ -5,7 +5,7 @@ mod significant_tokens;
 use std::ops::Range;
 
 use crate::sql_syntax::SqlGrammar;
-use crate::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
+use crate::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken, ScriptTokenKind, copies_from_stdin};
 
 use self::significant_tokens::significant_tokens;
 
@@ -15,6 +15,7 @@ use self::significant_tokens::significant_tokens;
 // different is written out as typed.
 pub fn format_script(text: &str, grammar: SqlGrammar, settings: LexicalSettings) -> String {
     let plan = ScriptPlan::build(text, grammar, settings);
+    let psql = psql_lines(text, &plan, grammar);
     let mut out = String::with_capacity(text.len());
     let mut cursor = 0usize;
     for statement in plan.statements() {
@@ -25,7 +26,11 @@ pub fn format_script(text: &str, grammar: SqlGrammar, settings: LexicalSettings)
         // Terminators, GO and DELIMITER lines and the blank lines around them are the user's.
         out.push_str(text.get(cursor..range.start).unwrap_or_default());
         let source = text.get(range.clone()).unwrap_or_default();
-        out.push_str(&format_statement(source, grammar, settings));
+        if overlaps(&psql, &range) {
+            out.push_str(source);
+        } else {
+            out.push_str(&format_statement(source, grammar, settings));
+        }
         cursor = range.end;
     }
     out.push_str(text.get(cursor..).unwrap_or_default());
@@ -46,6 +51,10 @@ pub fn format_selection(text: &str, grammar: SqlGrammar, settings: LexicalSettin
     let Some(source) = text.get(range.clone()) else {
         return String::new();
     };
+    let plan = ScriptPlan::build(text, grammar, settings);
+    if overlaps(&psql_lines(text, &plan, grammar), &range) {
+        return source.to_owned();
+    }
     let formatted = format_script(source, grammar, settings);
     let mut replaced = text.to_owned();
     replaced.replace_range(range, &formatted);
@@ -54,6 +63,50 @@ pub fn format_selection(text: &str, grammar: SqlGrammar, settings: LexicalSettin
     } else {
         source.to_owned()
     }
+}
+
+// What psql reads as no SQL on PostgreSQL: a `COPY ... FROM stdin`'s rows up to its `\.` line, where a tab or a line
+// break is data, and backslash command lines such as pg_dump's `\restrict`. The script lexer reads both as statements.
+fn psql_lines(text: &str, plan: &ScriptPlan, grammar: SqlGrammar) -> Vec<Range<usize>> {
+    if grammar != SqlGrammar::PostgreSql {
+        return Vec::new();
+    }
+    let mut lines = Vec::new();
+    let mut line_start = 0;
+    for line in text.split_inclusive('\n') {
+        if line.trim_start_matches([' ', '\t']).starts_with('\\') {
+            lines.push(line_start..line_start + line.len());
+        }
+        line_start += line.len();
+    }
+    for statement in plan.statements() {
+        let tokens: Vec<ScriptToken> = plan.tokens(statement.range.clone()).collect();
+        if copies_from_stdin(text, &tokens) {
+            lines.push(statement.range.end..copy_rows_end(text, statement.range.end));
+        }
+    }
+    lines
+}
+
+// psql reads the rows from the line after the COPY's, up to a `\.` line or the end of the text.
+fn copy_rows_end(text: &str, copy_end: usize) -> usize {
+    let Some(newline) = text.get(copy_end..).and_then(|rest| rest.find('\n')) else {
+        return text.len();
+    };
+    let mut at = copy_end + newline + 1;
+    for line in text.get(at..).unwrap_or_default().split_inclusive('\n') {
+        at += line.len();
+        if line.trim_end_matches(['\n', '\r']) == "\\." {
+            return at;
+        }
+    }
+    text.len()
+}
+
+fn overlaps(lines: &[Range<usize>], range: &Range<usize>) -> bool {
+    lines
+        .iter()
+        .any(|line| line.start < range.end && range.start < line.end)
 }
 
 fn format_statement(source: &str, grammar: SqlGrammar, settings: LexicalSettings) -> String {
@@ -284,6 +337,35 @@ mod tests {
 
             assert!(out.contains('\n'), "the statement was not reflowed: {out}");
         }
+    }
+
+    #[test]
+    fn copy_rows_and_backslash_lines_stay_as_psql_reads_them() {
+        let rows = "1\tAda;x\n2\tGrace  Hopper\n\\.\n";
+        let source = format!("copy t (a, b) from stdin;\n{rows}select a,b from t;\n\\restrict key\nselect 1;\n");
+
+        let out = format(&source, SqlGrammar::PostgreSql);
+
+        assert!(out.contains(&format!(";\n{rows}")), "the rows changed: {out}");
+        assert!(
+            out.contains("\n\\restrict key\nselect 1;"),
+            "the backslash line changed: {out}"
+        );
+    }
+
+    #[test]
+    fn copy_rows_with_no_end_marker_run_to_the_end() {
+        let out = format("copy t from stdin;\nselect  1,2\n", SqlGrammar::PostgreSql);
+
+        assert!(out.ends_with(";\nselect  1,2\n"), "rows were formatted as SQL: {out}");
+    }
+
+    #[test]
+    fn a_selection_in_copy_rows_is_kept_as_it_is() {
+        let rows = "1\tAda  Lovelace\n2\tGrace";
+        let source = format!("copy t from stdin;\n{rows}\n\\.\n");
+
+        assert_eq!(select(&source, rows), rows);
     }
 
     #[test]

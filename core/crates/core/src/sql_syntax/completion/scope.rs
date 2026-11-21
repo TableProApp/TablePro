@@ -104,7 +104,7 @@ fn after_dot(rest: &[Lexeme<'_>], tables: &TableMap) -> Option<CompletionScope> 
             tables: vec![TableRef::new(Some(schema), name)],
         },
         Some((qualifier, _)) => CompletionScope::Qualified { qualifier, name },
-        None => match tables.lookup(&name) {
+        None => match tables.lookup(&name, &open_groups(rest)) {
             Some(table) => CompletionScope::Columns {
                 tables: vec![table.clone()],
             },
@@ -159,6 +159,21 @@ fn enclosing_group(lexemes: &[Lexeme<'_>], index: usize) -> Option<usize> {
     None
 }
 
+// The `(` still open at the end of `lexemes`, outermost first.
+fn open_groups(lexemes: &[Lexeme<'_>]) -> Vec<usize> {
+    let mut open = Vec::new();
+    for (at, lexeme) in lexemes.iter().enumerate() {
+        match lexeme.kind {
+            ScriptTokenKind::OpenParen => open.push(at),
+            ScriptTokenKind::CloseParen => {
+                open.pop();
+            }
+            _ => {}
+        }
+    }
+    open
+}
+
 // Whether a comma continues the table list of a FROM clause.
 fn in_from_list(rest: &[Lexeme<'_>], grammar: SqlGrammar) -> bool {
     for (index, lexeme) in rest.iter().enumerate().rev() {
@@ -198,7 +213,15 @@ pub fn tables_named(text: &str, grammar: SqlGrammar, settings: LexicalSettings) 
 // The tables a statement names, under their aliases and their own names.
 #[derive(Debug, Default)]
 struct TableMap {
-    entries: Vec<(String, TableRef)>,
+    entries: Vec<TableEntry>,
+}
+
+// `group` is the `(` the reference sits in, None at the statement's top, so a subquery's alias shadows an outer one.
+#[derive(Debug)]
+struct TableEntry {
+    key: String,
+    table: TableRef,
+    group: Option<usize>,
 }
 
 impl TableMap {
@@ -234,7 +257,7 @@ impl TableMap {
                 let (alias, next) = alias_at(lexemes, at, grammar);
                 at = next;
                 if let Some(table) = table {
-                    map.insert(table, alias);
+                    map.insert(table, alias, enclosing_group(lexemes, index));
                 }
                 if keyword == "FROM" && lexemes.get(at).is_some_and(|next| next.is_punct(",")) {
                     at += 1;
@@ -246,21 +269,51 @@ impl TableMap {
         map
     }
 
-    fn insert(&mut self, table: TableRef, alias: Option<String>) {
+    fn insert(&mut self, table: TableRef, alias: Option<String>, group: Option<usize>) {
         if let Some(alias) = alias {
-            self.entries.push((alias, table.clone()));
+            self.entries.push(TableEntry {
+                key: alias,
+                table: table.clone(),
+                group,
+            });
         }
-        self.entries.push((table.name.clone(), table));
+        self.entries.push(TableEntry {
+            key: table.name.clone(),
+            table,
+            group,
+        });
     }
 
-    // As written first, then ignoring case, the way an unquoted name is read.
-    fn lookup(&self, name: &str) -> Option<&TableRef> {
+    // As written first, then ignoring case, the way an unquoted name is read, from the innermost query around the
+    // caret that names it. `open` holds the `(` around the caret, outermost first.
+    fn lookup(&self, name: &str, open: &[usize]) -> Option<&TableRef> {
         let folded = name.to_lowercase();
-        self.entries
-            .iter()
-            .find(|(key, _)| key == name)
-            .or_else(|| self.entries.iter().find(|(key, _)| key.to_lowercase() == folded))
-            .map(|(_, table)| table)
+        self.nearest(open, |key| key == name)
+            .or_else(|| self.nearest(open, |key| key.to_lowercase() == folded))
+            // A reference from a query the caret is not in, as in text still being written.
+            .or_else(|| {
+                self.entries
+                    .iter()
+                    .find(|entry| entry.key.to_lowercase() == folded)
+                    .map(|entry| &entry.table)
+            })
+    }
+
+    fn nearest(&self, open: &[usize], named: impl Fn(&str) -> bool) -> Option<&TableRef> {
+        let mut found: Option<(usize, &TableRef)> = None;
+        for entry in self.entries.iter().filter(|entry| named(&entry.key)) {
+            let depth = match entry.group {
+                None => 0,
+                Some(group) => match open.iter().position(|&at| at == group) {
+                    Some(at) => at + 1,
+                    None => continue,
+                },
+            };
+            if found.is_none_or(|(best, _)| depth > best) {
+                found = Some((depth, &entry.table));
+            }
+        }
+        found.map(|(_, table)| table)
     }
 
     fn general(&self) -> CompletionScope {
@@ -271,9 +324,9 @@ impl TableMap {
 
     fn in_order(&self) -> Vec<TableRef> {
         let mut tables: Vec<TableRef> = Vec::new();
-        for (_, table) in &self.entries {
-            if !tables.contains(table) {
-                tables.push(table.clone());
+        for entry in &self.entries {
+            if !tables.contains(&entry.table) {
+                tables.push(entry.table.clone());
             }
         }
         tables
@@ -286,7 +339,8 @@ fn table_ref_at(lexemes: &[Lexeme<'_>], index: usize, grammar: SqlGrammar) -> Op
     let mut at = index;
     loop {
         let lexeme = lexemes.get(at)?;
-        if lexeme.is_keyword(grammar) {
+        // A table may take a word the grammar lists for completion, such as `count`, but not a reserved one.
+        if lexeme.is_reserved(grammar) {
             break;
         }
         parts.push(lexeme.identifier()?);
@@ -408,6 +462,11 @@ impl<'a> Lexeme<'a> {
         self.kind == ScriptTokenKind::Word
             && (grammar.keywords().any(|keyword| self.is_word(keyword))
                 || CLAUSE_WORDS.iter().any(|keyword| self.is_word(keyword)))
+    }
+
+    fn is_reserved(&self, grammar: SqlGrammar) -> bool {
+        self.kind == ScriptTokenKind::Word
+            && (grammar.is_reserved(self.text) || CLAUSE_WORDS.iter().any(|keyword| self.is_word(keyword)))
     }
 
     fn identifier(&self) -> Option<String> {
@@ -586,6 +645,32 @@ mod tests {
             scope("SELECT * FROM users U WHERE u.|"),
             columns(vec![table(None, "users")]),
             "an unquoted alias is matched without case"
+        );
+    }
+
+    #[test]
+    fn a_subquerys_alias_shadows_the_outer_one_and_the_outer_stays_visible() {
+        assert_eq!(
+            scope("SELECT * FROM users u WHERE EXISTS (SELECT 1 FROM orders u WHERE u.|)"),
+            columns(vec![table(None, "orders")])
+        );
+        assert_eq!(
+            scope("SELECT * FROM users u WHERE EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.|)"),
+            columns(vec![table(None, "users")])
+        );
+        assert_eq!(
+            scope("SELECT u.| FROM users u WHERE EXISTS (SELECT 1 FROM orders u)"),
+            columns(vec![table(None, "users")])
+        );
+    }
+
+    #[test]
+    fn a_table_may_take_a_word_that_is_not_reserved() {
+        assert_eq!(scope("SELECT c.| FROM count c"), columns(vec![table(None, "count")]));
+        assert_eq!(
+            scope("SELECT * FROM where |"),
+            general(Vec::new()),
+            "a reserved word was taken for a table"
         );
     }
 
