@@ -89,6 +89,12 @@ class StyledRangeContainer {
         providerStores[id] = (store: RangeStore<StyleElement>(documentLength: documentLength), priority: priority)
     }
 
+    func reset(documentLength: Int) {
+        for id in providerStores.keys {
+            providerStores[id]?.store = RangeStore<StyleElement>(documentLength: documentLength)
+        }
+    }
+
     func setPriority(providerId: ProviderID, priority: Int) {
         providerStores[providerId]?.priority = priority
     }
