@@ -5778,6 +5778,55 @@ New fingerprint: {2}</value>
     <value>Ctrl+/</value>
     <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
   </data>
+  <data name="EditorMenuFormat" xml:space="preserve">
+    <value>Format Query</value>
+  </data>
+  <data name="EditorMenuFormatKeys" xml:space="preserve">
+    <value>Ctrl+Shift+F</value>
+    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
+  </data>
+  <data name="MenuFormatQuery.Text" xml:space="preserve">
+    <value>Format query</value>
+  </data>
+  <data name="MenuFormatQuery.KeyboardAcceleratorTextOverride" xml:space="preserve">
+    <value>Ctrl+Shift+F</value>
+    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
+  </data>
+  <data name="MenuFormatQuery.AccessKey" xml:space="preserve">
+    <value>M</value>
+  </data>
+  <data name="CompletionListName" xml:space="preserve">
+    <value>Completions</value>
+  </data>
+  <data name="CompletionKeyword" xml:space="preserve">
+    <value>Keyword</value>
+  </data>
+  <data name="CompletionSchema" xml:space="preserve">
+    <value>Schema</value>
+  </data>
+  <data name="CompletionTable" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="CompletionView" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="CompletionMaterializedView" xml:space="preserve">
+    <value>Materialized view</value>
+  </data>
+  <data name="CompletionColumn" xml:space="preserve">
+    <value>Column</value>
+  </data>
+  <data name="CompletionFunction" xml:space="preserve">
+    <value>Function</value>
+  </data>
+  <data name="CompletionRowName" xml:space="preserve">
+    <value>{0}, {1}</value>
+    <comment>{0} is the name a completion writes, {1} what it is: Table, View, Keyword, or a column's type.</comment>
+  </data>
+  <data name="CompletionAnnouncement" xml:space="preserve">
+    <value>{0}, {1:N0} of {2:N0}</value>
+    <comment>What Narrator reads for the selected completion. {0} is its name and kind, {1} its place in the list, {2} how many the list holds.</comment>
+  </data>
   <data name="EditorMenuFold" xml:space="preserve">
     <value>Fold</value>
   </data>

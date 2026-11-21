@@ -406,6 +406,7 @@ public sealed partial class SqlEditor
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("EditorMenuSelectAll", () => _model.SelectAll());
         Add("EditorMenuToggleComment", () => Edit(_model.ToggleLineComment));
+        var format = Add("EditorMenuFormat", () => _ = FormatAsync());
         var foldSeparator = new MenuFlyoutSeparator();
         menu.Items.Add(foldSeparator);
         var fold = Add("EditorMenuFold", () => FoldAtCaret());
@@ -419,6 +420,7 @@ public sealed partial class SqlEditor
             {
                 menu.Items.RemoveAt(menu.Items.Count - 1);
             }
+            format.Visibility = CanFormat ? Visibility.Visible : Visibility.Collapsed;
             // Fold reads the caret's line, as Ctrl+Shift+[ does; Unfold opens the fold on it.
             var regions = RegionsNow();
             var folding = _foldingEnabled && regions.Count > 0;

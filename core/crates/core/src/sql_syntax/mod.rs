@@ -1,8 +1,10 @@
 mod builtin_snippet;
 mod catalog_change;
+pub mod completion;
 mod created_object;
 mod credential_rules;
 mod errors;
+pub mod format;
 mod grammar;
 mod highlight;
 mod history_recording;

@@ -47,7 +47,6 @@ Each one works as the macOS app's does, with its words in Windows sentence case,
 
 ## Consequences
 
-- No completion in the SQL editor yet: the caret analysis lives in the Linux app and moves to the core first, then the editor needs its popup.
 - MongoDB's typed filter document is not offered; its rules are.
 - No CSV options and no history retention setting yet: the core's CSV defaults and the store's cap apply.
 - The history keeps no database, so a run reopened from it runs where the connection is.

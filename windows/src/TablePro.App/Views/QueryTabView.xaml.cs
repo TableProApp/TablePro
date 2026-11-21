@@ -82,6 +82,7 @@ public sealed partial class QueryTabView
             customTitle: customTitle,
             wrapText: wrapText);
         Results.WrapsText = _model.WrapsText;
+        SqlText.CompletionSource = new SessionCompletion(share.Session, () => _model.Database);
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", _model.Title));
         ShowDatabase();
         _model.StateChanged += (_, _) => OnModelStateChanged();
