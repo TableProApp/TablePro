@@ -270,7 +270,8 @@ struct ConnectionURLParser {
         let encodedPath = queryStart.map { String(afterScheme[..<$0]) } ?? afterScheme
         let path = encodedPath.removingPercentEncoding ?? encodedPath
         // The drivers open a C string, so a decoded NUL would open the path before it, not the one the alert shows.
-        guard !path.utf8.contains(0) else { return .failure(.invalidURL) }
+        // SQLite reads a `file:` name as a URI of its own and decodes it again, which reaches the same truncation.
+        guard !path.utf8.contains(0), !path.lowercased().hasPrefix("file:") else { return .failure(.invalidURL) }
         let ext = parseQueryItems(
             queryStart.map { queryItems(String(afterScheme[afterScheme.index(after: $0)...])) },
             dbType: type

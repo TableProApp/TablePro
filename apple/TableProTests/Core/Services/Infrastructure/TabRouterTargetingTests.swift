@@ -11,14 +11,14 @@ import Testing
 struct TabRouterTargetingTests {
     // MARK: - Opening a table from a database URL
 
-    @Test("A file link's table opens in the database the connection opened on, not the one it browses now")
+    @Test("A file link's table opens in the database the connection opened on, unbound until it has connected")
     func fileLinkTableUsesTheOpenedDatabase() throws {
         let duckdb = try ConnectionURLParser.parse("duckdb:///path/to/shop.duckdb?table=orders").get()
         let sqlite = try ConnectionURLParser.parse("sqlite:///path/to/shop.sqlite?table=orders").get()
 
         #expect(TabRouter.linkedTableDatabase(duckdb, openedDatabase: "shop") == "shop")
-        #expect(TabRouter.linkedTableDatabase(duckdb, openedDatabase: nil) == nil)
-        #expect(TabRouter.linkedTableDatabase(sqlite, openedDatabase: nil) == nil)
+        #expect(TabRouter.linkedTableDatabase(duckdb, openedDatabase: nil) == "")
+        #expect(TabRouter.linkedTableDatabase(sqlite, openedDatabase: nil) == "")
     }
 
     @Test("A server link's table opens in the database its path names")

@@ -416,9 +416,10 @@ internal final class TabRouter {
     }
 
     // A file link's path is the connection, never a database to switch to. Its table is in the database the
-    // connection opened on, which a session browsing a DuckDB catalog attached since has moved away from.
+    // connection opened on, which a session browsing a DuckDB catalog attached since has moved away from. Before
+    // the connect reports it the tab stays unbound, since the browse cursor still holds the path.
     internal static func linkedTableDatabase(_ parsed: ParsedConnectionURL, openedDatabase: String?) -> String? {
-        guard !parsed.namesDatabaseFile else { return openedDatabase }
+        guard !parsed.namesDatabaseFile else { return openedDatabase ?? "" }
         return parsed.database.isEmpty ? nil : parsed.database
     }
 

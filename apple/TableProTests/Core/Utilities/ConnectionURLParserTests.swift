@@ -148,10 +148,13 @@ struct ConnectionURLParserTests {
         #expect(parsed.connectionName == "Shop")
     }
 
-    @Test("A file URL whose path decodes to a NUL is refused", arguments: [
+    @Test("A file URL whose path decodes to a NUL or to a SQLite URI is refused", arguments: [
         "sqlite:///tmp/prod.db%00/preview.sqlite",
         "sqlite:///tmp/prod.db%00",
-        "duckdb:///tmp/prod.duckdb%00.duckdb?name=Preview"
+        "duckdb:///tmp/prod.duckdb%00.duckdb?name=Preview",
+        "sqlite://file:/tmp/prod.db%2500/preview.sqlite",
+        "sqlite://file%3A/tmp/prod.db",
+        "sqlite://FILE:/tmp/prod.db"
     ])
     func testFileURLWithNULIsRefused(url: String) {
         guard case .failure(let error) = ConnectionURLParser.parse(url) else {
