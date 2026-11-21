@@ -331,12 +331,11 @@ struct GeneralPaneView: View {
     @ViewBuilder
     private var kerberosCaption: some View {
         if usesWindowsAuthentication || KerberosAuthFields.isSelected(in: coordinator.auth.additionalFieldValues) {
-            Label(
+            NoticeLabel(
                 String(localized: "Leave the principal and password blank to use your existing Kerberos ticket. Run kinit user@REALM.COM in Terminal first if you don't have one."),
-                systemImage: "info.circle"
+                severity: .info
             )
             .font(.caption)
-            .foregroundStyle(.secondary)
             // MariaDB's server names its own principal, so only these two take it from the host.
             if hostIsIPAddress, usesWindowsAuthentication || type.pluginTypeId == "PostgreSQL" {
                 NoticeLabel(kerberosHostWarning)

@@ -9,11 +9,13 @@ internal enum NoticeSeverity: Equatable, Sendable {
     case warning
     case error
     case success
+    case info
 
     internal var symbolName: String {
         switch self {
         case .warning, .error: "exclamationmark.triangle.fill"
         case .success: "checkmark.circle.fill"
+        case .info: "info.circle"
         }
     }
 
@@ -22,6 +24,7 @@ internal enum NoticeSeverity: Equatable, Sendable {
         case .warning: .orange
         case .error: .red
         case .success: .green
+        case .info: .secondary
         }
     }
 }
