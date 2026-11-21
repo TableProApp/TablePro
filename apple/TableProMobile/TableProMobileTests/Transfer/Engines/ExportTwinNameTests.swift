@@ -21,12 +21,14 @@ struct ExportTwinNameTests {
             .appendingPathComponent("sqlite-twins-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let driver = SQLiteDriver(source: .file(directory.appendingPathComponent("twins.db")), openMode: .createNew)
+        let driver = SQLiteBackedDriver(source: .file(directory.appendingPathComponent("twins.db")), openMode: .createNew)
         try await driver.connect()
         _ = try await driver.execute(query: "CREATE TABLE p (id INTEGER PRIMARY KEY)")
         _ = try await driver.execute(query: "CREATE TABLE \"\(composed)\" (id INTEGER PRIMARY KEY, r INTEGER REFERENCES p (id))")
         _ = try await driver.execute(query: "CREATE TABLE \"\(decomposed)\" (id INTEGER PRIMARY KEY, s INTEGER REFERENCES p (id))")
-        let catalog = SQLiteTransferCatalog(driver: driver)
+        let catalog = try await driver.makeExportCatalog(
+            context: MobileTransferContext(databaseType: .sqlite, database: nil, schema: nil)
+        )
 
         await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllColumns(databaseName: "")

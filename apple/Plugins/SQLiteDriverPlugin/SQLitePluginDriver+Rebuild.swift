@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-extension SQLitePluginDriver {
+nonisolated extension SQLitePluginDriver {
     // No ALTER TABLE adds or drops a foreign key (3.54), and the save's column edits ride along so one transaction holds both.
     func generateTableRebuildPlan(
         table: String,

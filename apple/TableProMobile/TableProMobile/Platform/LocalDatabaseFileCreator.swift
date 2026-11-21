@@ -42,7 +42,7 @@ nonisolated struct DriverDatabaseFileCreator: LocalDatabaseFileCreating {
     private static func makeDriver(at url: URL, type: DatabaseType) throws -> any DatabaseDriver {
         switch type {
         case .sqlite:
-            return SQLiteDriver(source: .file(url), openMode: .createNew)
+            return SQLiteBackedDriver(source: .file(url), openMode: .createNew)
         case .duckdb:
             return DuckDBBackedDriver(source: .file(url), openMode: .createNew)
         default:

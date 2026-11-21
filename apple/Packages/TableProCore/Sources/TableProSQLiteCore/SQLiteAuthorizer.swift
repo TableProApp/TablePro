@@ -1,4 +1,8 @@
+#if os(iOS)
+import SQLite3
+#else
 import CSQLite
+#endif
 import Foundation
 
 // `fts3_tokenizer` dereferences a pointer from a bound blob (measured: SIGSEGV) and `load_extension` loads a library,

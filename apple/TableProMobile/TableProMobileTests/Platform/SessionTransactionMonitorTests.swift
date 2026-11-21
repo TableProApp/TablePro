@@ -442,7 +442,7 @@ struct SessionTransactionMonitorTests {
 
     @Test("A real SQLite session shows BEGIN as open and Commit clears it")
     func sqliteBeginThenCommit() async throws {
-        let driver = SQLiteDriver(source: .inMemory)
+        let driver = SQLiteBackedDriver(source: .inMemory)
         try await driver.connect()
         live.drivers[id] = driver
 

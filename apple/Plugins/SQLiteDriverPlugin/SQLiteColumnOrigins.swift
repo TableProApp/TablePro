@@ -3,7 +3,11 @@
 //  SQLiteDriverPlugin
 //
 
+#if os(iOS)
+import SQLite3
+#else
 import CSQLite
+#endif
 import Foundation
 import TableProPluginKit
 
@@ -11,7 +15,7 @@ import TableProPluginKit
 // none for an expression. A compound SELECT, a multi-row VALUES among them, reports one arm's column for the values of
 // every arm, and a table-valued function such as json_each reports its own columns for whatever it was handed.
 // Measured on SQLite 3.53.4.
-enum SQLiteColumnOrigins {
+nonisolated enum SQLiteColumnOrigins {
     // Read after the first step, which may prepare the statement again, and only after one that did not fail:
     // `sqlite3_table_column_metadata` replaces the connection's error message.
     static func origins(of statement: OpaquePointer?, on db: OpaquePointer, text: String) -> [PluginColumnOrigin?]? {

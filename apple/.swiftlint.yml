@@ -592,8 +592,9 @@ custom_rules:
   vendored_sqlite_import:
     name: "Vendored SQLite Import"
     included: ['.*/(Plugins/(SQLiteDriverPlugin|LibSQLDriverPlugin)|Packages/TableProCore/Sources/TableProSQLiteCore)/']
-    regex: '(?-s)^[ \t]*(?:@\w+[ \t]+)*import[ \t]+SQLite3\b'
-    message: "A target on the vendored SQLite imports CSQLite, not the SDK's SQLite3."
+    # iOS has no vendored build, so the line after `#if os(iOS)` may import the SDK's.
+    regex: '(?-s)(?<!#if os\(iOS\)\n)^[ \t]*(?:@\w+[ \t]+)*import[ \t]+SQLite3\b'
+    message: "A target on the vendored SQLite imports CSQLite, not the SDK's SQLite3, except under #if os(iOS)."
     severity: error
   column_classification_declared_type:
     name: "Classify By Classification Name"

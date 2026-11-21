@@ -77,8 +77,8 @@ struct ImportRunTests {
         directory = try TransferTestFolders.make("import-run")
     }
 
-    private func database() async throws -> SQLiteDriver {
-        let driver = SQLiteDriver(source: .file(directory.appendingPathComponent("run.db")), openMode: .createNew)
+    private func database() async throws -> SQLiteBackedDriver {
+        let driver = SQLiteBackedDriver(source: .file(directory.appendingPathComponent("run.db")), openMode: .createNew)
         try await driver.connect()
         return driver
     }

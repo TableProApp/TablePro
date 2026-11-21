@@ -100,6 +100,14 @@ targets:
         excludes:
           - Info.plist
           - CDuckDB/**
+      # The SQLite plugin driver runs whole behind PluginBackedDriver on the SDK's SQLite. The agent that runs SQLite on an
+      # SSH server stays on the Mac.
+      - path: ../Plugins/SQLiteDriverPlugin
+        excludes:
+          - Info.plist
+          - SQLiteAgentBackend.swift
+          - SQLiteAgentProtocol.swift
+      - ../Plugins/SharedSpill/PluginRowSpill.swift
       # The MongoDB plugin driver runs behind PluginBackedDriver too; the iOS CLibMongoc bridge stands in for the
       # plugin's own, and the principal class stays on the Mac.
       - path: ../Plugins/MongoDBDriverPlugin
@@ -182,11 +190,6 @@ targets:
       - ../Plugins/MySQLDriverPlugin/MySQLPrivilegeCatalog.swift
       - ../Plugins/MySQLDriverPlugin/MySQLCreateTableSQL.swift
       - ../Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
-      - ../Plugins/SQLiteDriverPlugin/SQLiteCatalogReads.swift
-      - ../Plugins/SQLiteDriverPlugin/SQLiteCreateTableDDL.swift
-      - ../Plugins/SQLiteDriverPlugin/SQLiteTemporarySchema.swift
-      - ../Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift
-      - ../Plugins/SQLiteDriverPlugin/SQLiteDefaultValue.swift
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogExport.swift
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCreateTableSQL.swift
       - ../Plugins/PostgreSQLDriverPlugin/RedshiftCatalogExport.swift
@@ -277,6 +280,7 @@ targets:
           - TableProRedisCore
           - TableProSQLFile
           - TableProSQLGrammar
+          - TableProSQLiteCore
           - TableProSQLQuoting
           - TableProSQLVocabulary
           - TableProSSHTransport
@@ -284,6 +288,7 @@ targets:
           - TableProSyncTransport
           - TableProTabularIO
           - TableProTLSClientIdentity
+          - TableProWireIO
       - package: TableProOracle
         product: TableProOracleCore
       - package: PostHog

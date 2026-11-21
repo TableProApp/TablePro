@@ -15,7 +15,7 @@
 import Foundation
 import TableProPluginKit
 
-extension SQLitePluginDriver {
+nonisolated extension SQLitePluginDriver {
     var providesBulkIndexFetch: Bool { true }
 
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
