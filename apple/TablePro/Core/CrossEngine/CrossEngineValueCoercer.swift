@@ -66,15 +66,26 @@ internal struct CrossEngineValueCoercer: Sendable {
     // MARK: - One value
 
     private func coerce(_ value: PluginCellValue, pair: ColumnPair) -> PluginCellValue {
-        if Self.carriesBoolean(pair) { return boolean(value) }
-        if Self.respellsBits(pair, from: sourceFamily, to: targetFamily) {
-            return Self.respelledBits(value, pair: pair, from: sourceFamily)
+        Self.coerce(value, pair: pair, from: sourceFamily, to: targetFamily)
+    }
+
+    // Shared by the row coercer here and by callers that reshape a value on its own: Table Transfer's
+    // stream and Data Sync's literals, so the three never drift.
+    internal static func coerce(
+        _ value: PluginCellValue,
+        pair: ColumnPair,
+        from sourceFamily: SQLTypeFamily,
+        to targetFamily: SQLTypeFamily?
+    ) -> PluginCellValue {
+        if carriesBoolean(pair) { return boolean(value) }
+        if respellsBits(pair, from: sourceFamily, to: targetFamily) {
+            return respelledBits(value, pair: pair, from: sourceFamily)
         }
         switch pair.target {
         case .date, .time, .timestamp:
-            return temporal(value, kind: pair.target)
+            return temporal(value, kind: pair.target, from: sourceFamily, to: targetFamily)
         case .json:
-            return json(value, source: pair.source)
+            return json(value, source: pair.source, from: sourceFamily)
         default:
             return value
         }
@@ -96,7 +107,7 @@ internal struct CrossEngineValueCoercer: Sendable {
     /// Every engine here reads `1` and `0` in a boolean column, and none of them reads all of
     /// `t`, `true`, `yes` and `on`. A value that is none of those is left alone rather than
     /// guessed at, so a column the source did not really use as a boolean fails visibly.
-    private func boolean(_ value: PluginCellValue) -> PluginCellValue {
+    private static func boolean(_ value: PluginCellValue) -> PluginCellValue {
         switch value {
         case .null:
             return value
@@ -154,11 +165,16 @@ internal struct CrossEngineValueCoercer: Sendable {
         return length
     }
 
-    private func temporal(_ value: PluginCellValue, kind: CanonicalTypeKind?) -> PluginCellValue {
+    private static func temporal(
+        _ value: PluginCellValue, kind: CanonicalTypeKind?, from sourceFamily: SQLTypeFamily, to targetFamily: SQLTypeFamily?
+    ) -> PluginCellValue {
+        // SQLite stores the text as given and reads its offset back, so nulling a zero-date or stripping a
+        // zone would change the value rather than make it acceptable.
+        guard targetFamily?.preservesTemporalText != true else { return value }
         guard case .text(let text) = value else { return value }
-        if sourceFamily == .mysql, Self.isZeroDate(text) { return .null }
+        if sourceFamily == .mysql, isZeroDate(text) { return .null }
         guard !hasTimeZone(kind) else { return value }
-        guard let stripped = Self.strippingTimeZoneOffset(text) else { return value }
+        guard let stripped = strippingTimeZoneOffset(text) else { return value }
         return .text(stripped)
     }
 
@@ -169,7 +185,9 @@ internal struct CrossEngineValueCoercer: Sendable {
     /// keying on the brackets alone rewrote a `jsonb` `{}` as `[]`. A non-empty object survived
     /// only by accident, because its `:` makes the array parse fail, so the bug was invisible
     /// until a row held an empty one and `jsonb_typeof` came back `array`.
-    private func json(_ value: PluginCellValue, source: CanonicalTypeKind?) -> PluginCellValue {
+    private static func json(
+        _ value: PluginCellValue, source: CanonicalTypeKind?, from sourceFamily: SQLTypeFamily
+    ) -> PluginCellValue {
         guard sourceFamily == .postgres, case .array(let elementKind) = source,
               case .text(let text) = value else { return value }
         guard text.hasPrefix("{"), text.hasSuffix("}") else { return value }
@@ -191,7 +209,7 @@ internal struct CrossEngineValueCoercer: Sendable {
         return .text("[\(items.joined(separator: ","))]")
     }
 
-    private func hasTimeZone(_ kind: CanonicalTypeKind?) -> Bool {
+    private static func hasTimeZone(_ kind: CanonicalTypeKind?) -> Bool {
         switch kind {
         case .time(_, let hasTimeZone), .timestamp(_, let hasTimeZone): return hasTimeZone
         default: return false
@@ -200,7 +218,7 @@ internal struct CrossEngineValueCoercer: Sendable {
 
     // MARK: - Shapes
 
-    private static func needsCoercion(_ pair: ColumnPair, from source: SQLTypeFamily, to target: SQLTypeFamily?) -> Bool {
+    internal static func needsCoercion(_ pair: ColumnPair, from source: SQLTypeFamily, to target: SQLTypeFamily?) -> Bool {
         if carriesBoolean(pair) || respellsBits(pair, from: source, to: target) { return true }
         switch pair.target {
         case .date, .time, .timestamp, .json: return true

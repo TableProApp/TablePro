@@ -944,3 +944,87 @@ struct DataSyncBitRespellingTests {
         #expect(statements.first?.sql == "DELETE FROM `users` WHERE `flags` = 5")
     }
 }
+
+// A cross-engine Data Sync reshapes a value to what the target reads, the same coercion Object Copy and
+// Table Transfer apply. Within one engine nothing is reshaped.
+struct DataSyncCrossEngineCoercionTests {
+    private func insert(_ values: [String: PluginCellValue], columns: [CompareColumn], to databaseType: DatabaseType) -> String? {
+        PlanSyncFixture.build(
+            [PlanSyncFixture.insertEntry(values)],
+            plan: PlanSyncFixture.makePlan(columns: columns),
+            databaseType: databaseType
+        ).first?.sql
+    }
+
+    @Test("A PostgreSQL boolean written into a MySQL TINYINT becomes 1, not 't'")
+    func postgresBooleanBecomesNumber() throws {
+        let sql = try #require(insert(
+            ["id": .text("1"), "active": .text("t")],
+            columns: [
+                CompareColumn(name: "id", sourceType: "integer", targetType: "int", sourceFamily: .postgres, targetFamily: .mysql),
+                CompareColumn(name: "active", sourceType: "boolean", targetType: "tinyint(1)", sourceFamily: .postgres, targetFamily: .mysql)
+            ],
+            to: .mysql
+        ))
+        // MySQL reads both 1 and '1' as 1; the point is the PostgreSQL `t` spelling is gone.
+        #expect(!sql.contains("'t'"))
+        #expect(sql.contains("(1, 1)") || sql.contains("(1, '1')"))
+    }
+
+    @Test("A MySQL zero-date written into PostgreSQL becomes NULL, which PostgreSQL accepts")
+    func mysqlZeroDateBecomesNull() {
+        let sql = insert(
+            ["id": .text("1"), "created": .text("0000-00-00")],
+            columns: [
+                CompareColumn(name: "id", sourceType: "int", targetType: "integer", sourceFamily: .mysql, targetFamily: .postgres),
+                CompareColumn(name: "created", sourceType: "date", targetType: "date", sourceFamily: .mysql, targetFamily: .postgres)
+            ],
+            to: .postgresql
+        )
+        #expect(sql?.contains("NULL") == true)
+        #expect(sql?.contains("0000-00-00") == false)
+    }
+
+    @Test("A PostgreSQL timestamptz written into a MySQL DATETIME loses the zone the target cannot hold")
+    func postgresZonedTimestampLosesZone() {
+        let sql = insert(
+            ["id": .text("1"), "ts": .text("2024-01-01 10:00:00+07")],
+            columns: [
+                CompareColumn(name: "id", sourceType: "integer", targetType: "int", sourceFamily: .postgres, targetFamily: .mysql),
+                CompareColumn(name: "ts", sourceType: "timestamptz", targetType: "datetime", sourceFamily: .postgres, targetFamily: .mysql)
+            ],
+            to: .mysql
+        )
+        #expect(sql?.contains("2024-01-01 10:00:00") == true)
+        #expect(sql?.contains("+07") == false)
+    }
+
+    @Test("A PostgreSQL array written into a MySQL JSON column becomes a JSON array")
+    func postgresArrayBecomesJSON() {
+        let sql = insert(
+            ["id": .text("1"), "tags": .text("{1,2,3}")],
+            columns: [
+                CompareColumn(name: "id", sourceType: "integer", targetType: "int", sourceFamily: .postgres, targetFamily: .mysql),
+                CompareColumn(name: "tags", sourceType: "integer[]", targetType: "json", sourceFamily: .postgres, targetFamily: .mysql)
+            ],
+            to: .mysql
+        )
+        #expect(sql?.contains("[1,2,3]") == true)
+        #expect(sql?.contains("{1,2,3}") == false)
+    }
+
+    // The gate that keeps a same-engine sync from reshaping a value it already reads correctly.
+    @Test("A same-engine MySQL zero-date is written as it came, never turned into NULL")
+    func sameEngineZeroDateIsNotCoerced() {
+        let sql = insert(
+            ["id": .text("1"), "created": .text("0000-00-00")],
+            columns: [
+                CompareColumn(name: "id", sourceType: "int", targetType: "int", sourceFamily: .mysql, targetFamily: .mysql),
+                CompareColumn(name: "created", sourceType: "date", targetType: "date", sourceFamily: .mysql, targetFamily: .mysql)
+            ],
+            to: .mysql
+        )
+        #expect(sql?.contains("0000-00-00") == true)
+        #expect(sql?.contains("NULL") == false)
+    }
+}
