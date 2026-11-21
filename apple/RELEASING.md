@@ -129,6 +129,7 @@ Nothing reaches users before the `github-release` job of `release.yml`.
 - An infrastructure failure (runner, network, notary service) is the same re-run, before or after publishing: each step skips what is done. A code failure is fixed on `main`, picked, and ships as the next number.
 - A stable that never published: the next release PR runs `git revert <its release commit>` before `assemble`, and its forward-port takes the revert to `main` and the newer line with the new section. `gh release delete vX.Y.Z --yes` removes a leftover draft.
 - A stable builds only on a GA Xcode (`setup-xcode` `require-release`). With none on the runner image, `app` and `plugins` fail, and a PR points `.github/actions/setup-xcode` at an image that has one. Betas still ship.
+- Only `pages` failed: `gh workflow run pages.yml --ref <tag>`, then check that `https://updates.tablepro.app/appcast.xml` lists the version. A re-run leaves the first attempt's `github-pages` artifact on the run, and `deploy-pages` refuses two.
 - `feed` fails with "no signature vouches for the published plugins/v3.json" on the first release that signs the manifest, or after a release line without signing published it. Check `plugins/v3.json` on `gh-pages`, run `gh variable set PLUGIN_MANIFEST_RESIGN --body true`, then `gh run rerun <release run> --failed`, then `gh variable delete PLUGIN_MANIFEST_RESIGN`.
 
 ## Withdrawing a release
