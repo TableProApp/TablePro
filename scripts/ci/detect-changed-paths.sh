@@ -45,7 +45,10 @@ case "$SUITE" in
             'apple/TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$'
             'apple/scripts/(generate-project|download-libs|create-openssl-dylibs|build-dameng|build-hana)\.sh$'
             'apple/scripts/lib/' 'apple/scripts/ci/verify-plugin-loads\.sh$' 'apple/scripts/check-pluginkit-abi\.sh$'
-            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|macos-tests)\.yml$') ;;
+            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|macos-tests)\.yml$'
+            # The Unit plan compares every built plugin with the app's curated entries.
+            'apple/TablePro/Core/Plugins/PluginMetadataRegistry[^/]*\.swift$'
+            'apple/TableProTests/Core/Plugins/PluginMetadataCuratedParityTests\.swift$') ;;
     ios)
         # The package's TableProPluginKit target is a symlink, so git reports its changes here.
         PATTERNS=('apple/TableProMobile/' 'apple/Libs/' 'apple/Plugins/TableProPluginKit/'

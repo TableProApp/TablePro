@@ -7,6 +7,11 @@ import Foundation
 import TableProSQLGrammar
 
 extension QueryClassifier {
+    // By the language the engine's plugin declares, so every graph engine that speaks Cypher is read as Cypher.
+    static func speaksCypher(_ databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editorLanguage == .custom("cypher")
+    }
+
     static func cypherClassification(_ text: String) -> QueryClassification {
         cypherReadings(of: text).reduce(.safe) { worst, code in
             worst.escalated(with: cypherClassification(code: code))

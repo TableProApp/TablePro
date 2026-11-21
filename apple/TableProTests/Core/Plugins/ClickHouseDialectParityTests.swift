@@ -2,10 +2,9 @@
 //  ClickHouseDialectParityTests.swift
 //  TableProTests
 //
-//  The ClickHouse dialect is declared twice: once on the plugin, and once in the app's curated
-//  pre-load table, which is what a completion service gets before the lazy driver bundle activates.
-//  Nothing at runtime makes the two agree, and both shipped the same 18 uppercase function names
-//  that the server rejects with UNKNOWN_FUNCTION.
+//  The app's curated pre-load table is what a completion service gets before the lazy driver bundle
+//  activates. It shipped 18 uppercase function names the server rejects with UNKNOWN_FUNCTION.
+//  PluginMetadataCuratedParityTests keeps it equal to the plugin's dialect.
 //
 
 import Foundation
@@ -40,25 +39,6 @@ struct ClickHouseDialectParityTests {
     @Test("The curated pre-load dialect declares ClickHouse function names case-sensitive")
     func preloadDialectDeclaresCaseSensitivity() throws {
         #expect(try #require(curatedClickHouseDialect()).functionNamesAreCaseInsensitive == false)
-    }
-
-    @Test("The plugin and the curated table declare the same function vocabulary")
-    func pluginAndCuratedTableAgree() throws {
-        let curatedDialect = try #require(curatedClickHouseDialect())
-        let pluginDialect = try #require(try BundledPlugin.driver("ClickHouseDriver").sqlDialect)
-        let curated = curatedDialect.functions
-        let declared = pluginDialect.functions
-
-        #expect(!declared.isEmpty, "The ClickHouse plugin declares a function list")
-        #expect(pluginDialect.functionNamesAreCaseInsensitive == curatedDialect.functionNamesAreCaseInsensitive)
-        #expect(
-            declared == curated,
-            """
-            ClickHousePlugin.swift and PluginMetadataRegistry+RegistryIngredients.swift declare \
-            different function vocabularies. Only in plugin: \(declared.subtracting(curated).sorted()). \
-            Only in the curated table: \(curated.subtracting(declared).sorted()).
-            """
-        )
     }
 
     private func curatedClickHouseDialect() -> SQLDialectDescriptor? {
