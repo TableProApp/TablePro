@@ -33,7 +33,10 @@ final class RemoteFilePaneViewModel: ObservableObject {
         guard ssh.enabled else { return [] }
 
         var issues: [String] = []
-        if resolvedHost(for: coordinator).isEmpty {
+        // The SSH pane reports an empty inline host, so an inline config is its to validate and this
+        // pane stays quiet to avoid the duplicate. But the SSH pane returns nothing once a profile is
+        // selected, and a profile this Mac cannot resolve leaves an empty host, so cover that here.
+        if ssh.profileId != nil, resolvedHost(for: coordinator).isEmpty {
             issues.append(String(localized: "SSH host is required"))
         }
         if ssh.remoteFilePath.trimmingCharacters(in: .whitespaces).isEmpty {
