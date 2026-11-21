@@ -109,7 +109,7 @@ struct CredentialProfileEditorSheet: View {
             Divider()
             bottomBar
         }
-        .frame(minWidth: 480, idealHeight: 460)
+        .frame(minWidth: 480, minHeight: 420, idealHeight: 460)
         .onAppear(perform: load)
     }
 
