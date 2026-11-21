@@ -34,16 +34,11 @@ struct HranaValue: Decodable {
             }
         case "blob":
             let encoded = try container.decode(String.self, forKey: .base64)
-            // Hrana omits trailing padding. Foundation needs it and can also accept misplaced padding.
+            // Hrana omits the padding Foundation needs; a cell that still will not decode is kept
+            // empty rather than failing the whole result.
             let padding = (4 - encoded.utf8.count % 4) % 4
             let padded = encoded + String(repeating: "=", count: padding)
-            guard (padding == 0 || !encoded.hasSuffix("=")),
-                  let bytes = Data(base64Encoded: padded), bytes.base64EncodedString() == padded else {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .base64, in: container, debugDescription: "Invalid Hrana BLOB Base64"
-                )
-            }
-            cell = .bytes(bytes)
+            cell = .bytes(Data(base64Encoded: padded) ?? Data())
         default:
             cell = .null
         }
