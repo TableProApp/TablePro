@@ -46,6 +46,39 @@ struct CrossEngineValueCoercerTests {
         #expect(row == [.text("1"), .text("0")])
     }
 
+    /// The per-value entry point Table Transfer's stream and Data Sync's literals share reshapes one
+    /// value the same way the row coercer does.
+    @Test
+    func theStaticPerValueEntryPointMatchesTheRowCoercer() {
+        let boolPair = CrossEngineValueCoercer.ColumnPair(source: .boolean, target: .integer(bytes: 1))
+        #expect(CrossEngineValueCoercer.coerce(.text("t"), pair: boolPair, from: .postgres, to: .mysql) == .text("1"))
+
+        let datePair = CrossEngineValueCoercer.ColumnPair(source: .date, target: .date)
+        #expect(CrossEngineValueCoercer.coerce(.text("0000-00-00"), pair: datePair, from: .mysql, to: .postgres) == .null)
+
+        let plainPair = CrossEngineValueCoercer.ColumnPair(source: .text(length: nil, isFixed: false), target: .text(length: nil, isFixed: false))
+        #expect(CrossEngineValueCoercer.coerce(.text("x"), pair: plainPair, from: .postgres, to: .mysql) == .text("x"))
+    }
+
+    /// SQLite stores a timestamp as the text it is given and reads its offset back, so reshaping it would
+    /// change the instant; a strict target like MySQL still loses the zone it cannot hold, and PostgreSQL
+    /// still refuses a MySQL zero-date.
+    @Test
+    func aSQLiteTargetKeepsTemporalTextThatAStrictTargetReshapes() {
+        let tzPair = CrossEngineValueCoercer.ColumnPair(
+            source: .timestamp(precision: nil, hasTimeZone: true),
+            target: .timestamp(precision: nil, hasTimeZone: false)
+        )
+        let zoned = PluginCellValue.text("2024-01-01 10:00:00+05:30")
+        #expect(CrossEngineValueCoercer.coerce(zoned, pair: tzPair, from: .postgres, to: .sqlite) == zoned)
+        #expect(CrossEngineValueCoercer.coerce(zoned, pair: tzPair, from: .postgres, to: .mysql) == .text("2024-01-01 10:00:00"))
+
+        let datePair = CrossEngineValueCoercer.ColumnPair(source: .date, target: .date)
+        let zeroDate = PluginCellValue.text("0000-00-00")
+        #expect(CrossEngineValueCoercer.coerce(zeroDate, pair: datePair, from: .mysql, to: .sqlite) == zeroDate)
+        #expect(CrossEngineValueCoercer.coerce(zeroDate, pair: datePair, from: .mysql, to: .postgres) == .null)
+    }
+
     @Test
     func theOtherBooleanSpellingsAreNormalised() {
         let subject = coercer([.boolean])
