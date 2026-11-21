@@ -25,11 +25,14 @@ public extension SQLLexicalReadings {
     // quote opens `'''`, has no such form and takes the execution reading.
     static func stringEscapes(
         databaseTypeId: String,
+        queryLanguage: String? = nil,
         declared: SQLLexicalGrammar?,
         session: SQLSessionLexicalFacts?
     ) -> SQLStringEscapes {
         if databaseTypeId == "SQL Server" { return .sqlServer }
-        let readings = resolve(databaseTypeId: databaseTypeId, declared: declared, session: session)
+        let readings = resolve(
+            databaseTypeId: databaseTypeId, queryLanguage: queryLanguage, declared: declared, session: session
+        )
         if let session, session.determined.contains(.backslashEscapesInSingleQuotes) {
             return readings.execution.stringEscapes
         }

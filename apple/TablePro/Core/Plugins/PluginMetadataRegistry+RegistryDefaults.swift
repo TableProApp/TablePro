@@ -67,6 +67,7 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
+                    supportsRenameTable: true,
                     supportsDocumentEditing: true,
                     supportsFieldRemoval: true,
                     supportsAddColumn: false,
@@ -113,13 +114,6 @@ extension PluginMetadataRegistry {
                             id: "mongoAuthSource", label: "Auth Database", placeholder: "admin"
                         ),
                         ConnectionField(
-                            id: "mongoAWSSessionToken",
-                            label: "AWS Session Token",
-                            fieldType: .secure,
-                            section: .authentication,
-                            visibleWhen: FieldVisibilityRule(fieldId: "mongoAuthMechanism", values: ["MONGODB-AWS"])
-                        ),
-                        ConnectionField(
                             id: "mongoReadPreference",
                             label: "Read Preference",
                             fieldType: .dropdown(options: [
@@ -141,6 +135,37 @@ extension PluginMetadataRegistry {
                                 .init(value: "2", label: "2"),
                                 .init(value: "3", label: "3")
                             ])
+                        ),
+                        ConnectionField(
+                            id: "mongoUseSrv",
+                            label: "Use SRV Record",
+                            defaultValue: "false",
+                            fieldType: .toggle,
+                            section: .advanced
+                        ),
+                        ConnectionField(
+                            id: "mongoAuthMechanism",
+                            label: "Auth Mechanism",
+                            fieldType: .dropdown(options: [
+                                .init(value: "", label: "Default"),
+                                .init(value: "SCRAM-SHA-1", label: "SCRAM-SHA-1"),
+                                .init(value: "SCRAM-SHA-256", label: "SCRAM-SHA-256"),
+                                .init(value: "MONGODB-X509", label: "X.509"),
+                                .init(value: "MONGODB-AWS", label: "AWS IAM")
+                            ]),
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "mongoAWSSessionToken",
+                            label: "AWS Session Token",
+                            fieldType: .secure,
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "mongoAuthMechanism", values: ["MONGODB-AWS"])
+                        ),
+                        ConnectionField(
+                            id: "mongoReplicaSet",
+                            label: "Replica Set",
+                            section: .advanced
                         ),
                         ConnectionField(
                             id: "mongoUuidRepresentation",
@@ -188,10 +213,10 @@ extension PluginMetadataRegistry {
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "db0",
-                    tableEntityName: "Keys",
+                    tableEntityName: "Databases",
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: "Key",
-                    immutableColumns: ["Length"],
+                    immutableColumns: [],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: [],
@@ -303,8 +328,16 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
+                    supportsRenameTable: true,
+                    supportsRenameView: true,
                     supportsDropSchema: true,
-                    supportsRenameColumn: true,
+                    supportsTriggers: true,
+                    supportsTriggerEditing: true,
+                    supportsCheckConstraints: true,
+                    supportsCheckConstraintEditing: true,
+                    supportsRoutines: true,
+                    supportsDatabaseTriggerBrowse: true,
+                    supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .preferred,
                     supportsPerConnectionCertificatePaths: false,
                     supportsPrincipalConnectionLimit: false,
@@ -374,7 +407,7 @@ extension PluginMetadataRegistry {
                 explainVariants: [ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .plainText)],
                 pathFieldRole: .database,
                 supportsHealthMonitor: false, urlSchemes: ["teradata"],
-                postConnectActions: [.selectDatabaseFromLastSession],
+                postConnectActions: [],
                 brandColorHex: "#F37440",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
@@ -390,42 +423,61 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
+                    supportsRenameTable: true,
+                    supportsRenameView: true,
                     supportsRenameColumn: false,
+                    supportsRoutines: true,
+                    supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .disabled
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "",
+                    defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["DBC", "Sys", "SysAdmin", "SystemFe", "SYSLIB", "SYSUDTLIB", "TDStats", "PUBLIC", "All", "Default"],
+                    systemDatabaseNames: [
+                        "DBC", "Sys", "SysAdmin", "SystemFe", "SYSLIB", "SYSUDTLIB", "SYSSPATIAL",
+                        "TD_SYSFNLIB", "TD_SERVER_DB", "TDStats", "TDMaps", "TDQCD", "SQLJ",
+                        "Sys_Calendar", "dbcmngr", "tdwm", "viewpoint", "console", "PUBLIC", "All", "Default",
+                    ],
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue],
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment],
                     systemDatabaseNamesIgnoreCase: true
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: SQLDialectDescriptor(
                         identifierQuote: "\"",
                         keywords: [
-                            "SELECT", "FROM", "WHERE", "GROUP", "BY", "HAVING", "ORDER", "TOP", "QUALIFY",
-                            "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "OUTER", "ON", "AND", "OR", "NOT",
-                            "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "TABLE", "VIEW",
-                            "DATABASE", "USER", "MACRO", "VOLATILE", "MULTISET", "SET", "AS", "SAMPLE",
-                            "HELP", "SHOW", "EXPLAIN", "COLLECT", "STATISTICS", "LOCKING", "FOR", "ACCESS",
+                            "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "CROSS", "FULL",
+                            "ON", "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "AS", "SAMPLE",
+                            "ORDER", "BY", "GROUP", "HAVING", "TOP", "QUALIFY", "WITH", "RECURSIVE",
+                            "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
+                            "CREATE", "ALTER", "DROP", "TABLE", "INDEX", "VIEW", "DATABASE", "USER", "MACRO",
+                            "PROCEDURE", "PRIMARY", "KEY", "UNIQUE", "INDEX", "PARTITION", "BY", "HASH", "RANGE_N",
+                            "CASE_N", "NULL", "IS", "ASC", "DESC", "DISTINCT", "ALL", "ANY",
+                            "CASE", "WHEN", "THEN", "ELSE", "END", "COALESCE", "NULLIF",
+                            "UNION", "INTERSECT", "EXCEPT", "MINUS",
+                            "OVER", "ROW_NUMBER", "RANK", "DENSE_RANK", "HELP", "SHOW", "EXPLAIN", "COLLECT",
+                            "STATISTICS", "VOLATILE", "MULTISET", "SET", "GLOBAL", "TEMPORARY", "AS", "LOCKING",
+                            "FOR", "ACCESS",
                         ],
                         functions: [
-                            "COUNT", "SUM", "AVG", "MIN", "MAX", "CAST", "TRIM", "SUBSTRING",
-                            "COALESCE", "NULLIFZERO", "ZEROIFNULL", "OREPLACE", "OTRANSLATE",
-                            "CURRENT_DATE", "CURRENT_TIMESTAMP", "EXTRACT", "ADD_MONTHS",
+                            "COUNT", "SUM", "AVG", "MIN", "MAX", "CAST", "TRIM", "SUBSTRING", "SUBSTR",
+                            "CHARACTER_LENGTH", "CHAR_LENGTH", "COALESCE", "NULLIFZERO", "ZEROIFNULL",
+                            "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP", "EXTRACT", "ADD_MONTHS",
+                            "UPPER", "LOWER", "OREPLACE", "OTRANSLATE", "INDEX", "POSITION", "SOUNDEX",
                         ],
                         dataTypes: [
-                            "BYTEINT", "SMALLINT", "INTEGER", "BIGINT", "DECIMAL", "NUMBER", "FLOAT",
-                            "CHAR", "VARCHAR", "CLOB", "BYTE", "VARBYTE", "BLOB",
-                            "DATE", "TIME", "TIMESTAMP", "INTERVAL", "PERIOD", "JSON", "XML",
+                            "BYTEINT", "SMALLINT", "INTEGER", "BIGINT", "DECIMAL", "NUMERIC", "NUMBER",
+                            "FLOAT", "REAL", "DOUBLE PRECISION",
+                            "CHAR", "VARCHAR", "LONG VARCHAR", "CLOB",
+                            "BYTE", "VARBYTE", "BLOB",
+                            "DATE", "TIME", "TIMESTAMP", "INTERVAL", "PERIOD",
+                            "JSON", "XML", "ST_GEOMETRY",
                         ],
                         autoLimitStyle: .top,
                         caseSensitivityStyle: .unsupported,
@@ -436,10 +488,15 @@ extension PluginMetadataRegistry {
                     statementCompletions: [],
                     columnTypesByCategory: [
                         "Integer": ["BYTEINT", "SMALLINT", "INTEGER", "BIGINT"],
-                        "Float": ["FLOAT", "DECIMAL", "NUMBER"],
-                        "String": ["CHAR", "VARCHAR", "CLOB"],
-                        "Date": ["DATE", "TIME", "TIMESTAMP"],
+                        "Float": ["FLOAT", "REAL", "DOUBLE PRECISION", "DECIMAL", "NUMERIC", "NUMBER"],
+                        "String": ["CHAR", "VARCHAR", "LONG VARCHAR", "CLOB"],
+                        "Date": ["DATE", "TIME", "TIMESTAMP", "TIME WITH TIME ZONE", "TIMESTAMP WITH TIME ZONE"],
                         "Binary": ["BYTE", "VARBYTE", "BLOB"],
+                        "Interval": [
+                            "INTERVAL YEAR", "INTERVAL MONTH", "INTERVAL DAY", "INTERVAL HOUR", "INTERVAL MINUTE",
+                            "INTERVAL SECOND",
+                        ],
+                        "Other": ["JSON", "XML", "PERIOD(DATE)", "PERIOD(TIMESTAMP)", "UDT"],
                     ]
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
@@ -476,7 +533,12 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsRenameColumn: true,
+                    supportsRenameTable: true,
+                    supportsRenameView: true,
+                    supportsTriggers: true,
+                    supportsTriggerEditing: true,
+                    supportsRoutines: true,
+                    supportsDatabaseTriggerBrowse: true,
                     supportsOpportunisticTLS: false,
                     supportsPrincipalConnectionLimit: false,
                     supportsRoleLogin: false
@@ -502,11 +564,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: oracleColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [
-                        ConnectionField(
-                            id: "oracleServiceName", label: "Service Name", placeholder: "ORCL"
-                        )
-                    ],
+                    additionalConnectionFields: Self.oracleConnectionFields,
                     category: .relational,
                     tagline: String(localized: "Enterprise SQL with PL/SQL")
                 )
@@ -537,8 +595,12 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
+                    supportsRenameTable: true,
+                    supportsRenameView: true,
                     supportsDropSchema: true,
                     supportsRenameColumn: true,
+                    supportsRoutines: true,
+                    supportsDatabaseTriggerBrowse: true,
                     supportsOpportunisticTLS: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -600,7 +662,10 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: true,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
-                    supportsModifyPrimaryKey: false,
+                    supportsRenameTable: true,
+                    supportsRenameView: true,
+                    supportsRenameDatabase: true,
+                    supportsRoutines: true,
                     supportsOpportunisticTLS: false,
                     tlsImpliedPorts: [8_443, 443],
                     verifiesServerWithSystemTrust: true,
@@ -652,13 +717,7 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsAddColumn: false,
-                    supportsModifyColumn: false,
-                    supportsDropColumn: false,
                     supportsRenameColumn: false,
-                    supportsAddIndex: false,
-                    supportsDropIndex: false,
-                    supportsModifyPrimaryKey: false,
                     isEngineReadOnly: true,
                     localFilePathField: .database
                 ),
@@ -671,13 +730,14 @@ extension PluginMetadataRegistry {
                     immutableColumns: [
                         "id", "transaction_id", "date", "flag", "payee", "narration",
                         "account", "amount", "commodity", "cost_number", "cost_currency",
+                        "cost_date", "cost_label", "price_number", "price_currency",
                         "currency", "currencies", "name", "open_date", "path"
                     ],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: ["beancount"],
                     databaseGroupingStrategy: .flat,
-                    structureColumnFields: [.name, .type, .nullable, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: SQLDialectDescriptor(
@@ -686,12 +746,16 @@ extension PluginMetadataRegistry {
                             "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER",
                             "ON", "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "AS",
                             "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET",
-                            "WITH", "UNION", "INTERSECT", "EXCEPT",
+                            "WITH", "RECURSIVE", "UNION", "INTERSECT", "EXCEPT",
                             "CASE", "WHEN", "THEN", "ELSE", "END", "NULL", "IS",
                             "ASC", "DESC", "DISTINCT"
                         ],
-                        functions: ["COUNT", "SUM", "AVG", "MAX", "MIN", "ROUND", "DATE", "STRFTIME"],
-                        dataTypes: ["INTEGER", "TEXT", "DATE", "DECIMAL"],
+                        functions: [
+                            "COUNT", "SUM", "AVG", "MAX", "MIN",
+                            "COALESCE", "NULLIF", "ROUND", "ABS",
+                            "DATE", "STRFTIME", "SUBSTR", "LOWER", "UPPER"
+                        ],
+                        dataTypes: ["INTEGER", "TEXT", "DATE"],
                         regexSyntax: .unsupported,
                         booleanLiteralStyle: .numeric,
                         likeEscapeStyle: .explicit,
@@ -702,8 +766,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: [
                         "Integer": ["INTEGER"],
                         "String": ["TEXT"],
-                        "Date": ["DATE"],
-                        "Decimal": ["DECIMAL"]
+                        "Date": ["DATE"]
                     ]
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
@@ -740,8 +803,8 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [
-                        "system", "system_schema", "system_auth", "system_distributed", "system_distributed_everywhere",
-                        "system_traces", "system_views", "system_virtual_schema", "system_replicated_keys"
+                        "system", "system_schema", "system_auth", "system_distributed", "system_traces",
+                        "system_virtual_schema", "system_distributed_everywhere", "system_views", "system_replicated_keys"
                     ],
                     systemSchemaNames: [],
                     fileExtensions: [],
@@ -754,14 +817,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: cassandraColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: AWSAuthFields.standard() + [
-                        ConnectionField(
-                            id: "sslCaCertPath",
-                            label: "CA Certificate",
-                            placeholder: "/path/to/ca-cert.pem",
-                            section: .advanced
-                        )
-                    ] + cassandraConsistencyFields(),
+                    additionalConnectionFields: AWSAuthFields.standard() + cassandraConsistencyFields(),
                     category: .wideColumn,
                     tagline: String(localized: "Distributed wide-column store")
                 )
@@ -844,7 +900,7 @@ extension PluginMetadataRegistry {
                     tableEntityName: "Keys",
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: "Key",
-                    immutableColumns: ["Version", "ModRevision", "CreateRevision"],
+                    immutableColumns: [],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: [],
@@ -902,7 +958,7 @@ extension PluginMetadataRegistry {
             )),
             ("Cloudflare D1", PluginMetadataSnapshot(
                 displayName: "Cloudflare D1", iconName: "cloudflare-d1-icon", defaultPort: 0,
-                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: false,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
                 isDownloadable: true, primaryUrlScheme: "d1", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
                     ExplainVariant(
@@ -927,10 +983,14 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
+                    supportsRenameTable: true,
+                    supportsTriggers: true,
+                    supportsTriggerEditing: true,
+                    supportsDatabaseTriggerBrowse: true,
                     exactRowCountIsFullScan: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "main",
+                    defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
                     containerEntityName: "Database",
@@ -988,13 +1048,15 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsModifyColumn: false,
-                    supportsRenameColumn: true,
+                    supportsRenameTable: true,
+                    supportsTriggers: true,
+                    supportsTriggerEditing: true,
+                    supportsDatabaseTriggerBrowse: true,
                     localFilePathField: .additionalField("libsqlFilePath"),
                     newDatabaseFileExtensions: Self.sqliteFileExtensions
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "main",
+                    defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
                     containerEntityName: "Database",

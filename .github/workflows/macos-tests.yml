@@ -84,6 +84,7 @@ jobs:
           scripts/build-dameng.sh arm64
           scripts/build-hana.sh arm64
 
+      # Before the Unit plan, whose PluginMetadataCuratedParityTests loads the plugins built here.
       - name: Compile every plugin
         if: ${{ !cancelled() && steps.bridges.outcome == 'success' }}
         run: |
