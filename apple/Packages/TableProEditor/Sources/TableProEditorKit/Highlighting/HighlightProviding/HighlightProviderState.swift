@@ -69,22 +69,15 @@ class HighlightProviderState {
         IndexSet(integersIn: visibleRangeProvider?.documentRange ?? .zero)
     }
 
-    /// Creates a new highlight provider state object.
-    /// Sends the `setUp` message to the highlight provider object.
-    /// - Parameters:
-    ///   - id: The ID of the provider
-    ///   - delegate: The delegate for this provider. Is passed information about ranges to highlight.
-    ///   - highlightProvider: The object to query for highlight information.
-    ///   - textView: The text view to highlight, used by the highlight provider.
-    ///   - visibleRangeProvider: A visible range provider for determining which ranges to query.
-    ///   - language: The language to set up the provider with.
+    // `setsUpProvider` is false for a document over the size limit, so its text is never parsed.
     init(
         id: Int,
         delegate: HighlightProviderStateDelegate,
         highlightProvider: HighlightProviding,
         textView: TextView,
         visibleRangeProvider: VisibleRangeProvider,
-        language: CodeLanguage
+        language: CodeLanguage,
+        setsUpProvider: Bool = true
     ) {
         self.id = id
         self.delegate = delegate
@@ -92,7 +85,9 @@ class HighlightProviderState {
         self.textView = textView
         self.visibleRangeProvider = visibleRangeProvider
 
-        highlightProvider.setUp(textView: textView, codeLanguage: language)
+        if setsUpProvider {
+            highlightProvider.setUp(textView: textView, codeLanguage: language)
+        }
     }
 
     func setLanguage(language: CodeLanguage) {
