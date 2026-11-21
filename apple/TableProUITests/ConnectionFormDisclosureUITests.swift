@@ -29,9 +29,11 @@ final class ConnectionFormDisclosureUITests: UITestCase {
         let disclosure = form.descendants(matching: .any)["connection-form-advanced-disclosure"]
         XCTAssertTrue(waitUntilHittable(disclosure, timeout: 10), "The form shows an Advanced Options disclosure")
         disclosure.click()
+        // The options render at the end of the scrolling form, below the fold, where XCUITest cannot
+        // query an off-screen control; assert the disclosure state that gates that section instead.
         XCTAssertTrue(
-            waitForPredicate(timeout: 10) { connectTimeout.exists },
-            "Disclosing Advanced Options reveals the option controls"
+            waitForPredicate(timeout: 10) { (disclosure.value as? String) == "Expanded" },
+            "Disclosing Advanced Options expands the section"
         )
     }
 }
