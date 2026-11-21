@@ -44,6 +44,7 @@ internal final class EditorTabItemView: NSView {
     private let statusView = NSImageView()
     private let spinner = NSProgressIndicator()
     private var pressLocation: NSPoint?
+    private var dragAwaitsRelease = false
     private var middlePressed = false
 
     internal init(item: EditorTabItem) {
@@ -331,6 +332,7 @@ internal final class EditorTabItemView: NSView {
 
     override internal func mouseDown(with event: NSEvent) {
         pressLocation = convert(event.locationInWindow, from: nil)
+        dragAwaitsRelease = false
         strip?.activate(item.id, click: EditorTabClick(event: event))
     }
 
@@ -339,10 +341,23 @@ internal final class EditorTabItemView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         guard hypot(point.x - start.x, point.y - start.y) >= EditorTabStripLayout.dragThreshold else { return }
         pressLocation = nil
-        strip?.beginDrag(of: self, with: event)
+        guard let strip else { return }
+        // Handled after the button already went up: a session would never see the release, so the queued release settles the drag.
+        guard strip.isPrimaryButtonDown() else {
+            dragAwaitsRelease = true
+            strip.beginDeferredDrag()
+            return
+        }
+        strip.beginDrag(of: self, with: event)
     }
 
     override internal func mouseUp(with event: NSEvent) {
+        if dragAwaitsRelease {
+            dragAwaitsRelease = false
+            guard let window else { return }
+            strip?.drop(self, releasedAt: window.convertPoint(toScreen: event.locationInWindow))
+            return
+        }
         // A drag clears the press, so only a release that stayed put reaches the strip.
         guard pressLocation != nil else { return }
         pressLocation = nil
