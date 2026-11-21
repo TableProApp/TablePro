@@ -7,7 +7,7 @@ extension PluginMetadataRegistry {
             ("Weaviate", PluginMetadataSnapshot(
                 displayName: "Weaviate", iconName: "weaviate-icon", defaultPort: 8_080,
                 requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "weaviate", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: [], postConnectActions: [],
                 brandColorHex: "#01B0D3",
@@ -37,7 +37,7 @@ extension PluginMetadataRegistry {
                     dataCommands: weaviateDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "",
+                    defaultSchemaName: "public",
                     defaultGroupName: "default",
                     tableEntityName: "Collections",
                     containerEntityName: "Cluster",

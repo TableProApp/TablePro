@@ -135,10 +135,6 @@ jobs:
       - name: Check every plugin Info.plist declares the ids its class provides
         run: python3 apple/scripts/ci/check-plugin-provides.py
 
-      # The curated entry answers until the plugin loads, then the plugin's static replaces it (#2700).
-      - name: Check curated driver capabilities match their plugins
-        run: python3 apple/scripts/ci/check-capability-parity.py
-
       # Import, export and sync drop a field the trust catalog does not classify.
       - name: Check every connection field has a trust class
         run: python3 apple/scripts/ci/check-connection-field-trust.py
@@ -183,6 +179,10 @@ jobs:
 
       - name: Check the statement classifiers read words through the grammar's tokens
         run: python3 apple/scripts/ci/check-classifier-text-matching.py
+
+      # A new engine belongs in a plugin (apple/AGENTS.md, Scope); a view reads services through injection.
+      - name: Check engine-name comparisons and view singleton reads do not grow
+        run: python3 apple/scripts/ci/check-source-ratchets.py
 
       # The corpora run by hand against servers (scripts/probes/check-column-type-corpus.sh), so a type a driver
       # starts listing is caught here.

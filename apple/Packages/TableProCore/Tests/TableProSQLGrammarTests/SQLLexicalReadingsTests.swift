@@ -45,6 +45,31 @@ struct SQLLexicalReadingsTests {
         #expect(readings.all == [declared])
     }
 
+    @Test("An engine TablePro does not know lexes as the query language its plugin names")
+    func queryLanguageServesUnknownEngines() {
+        let neo4j = SQLLexicalReadings.resolve(databaseTypeId: "Neo4j", declared: nil, session: nil)
+        let graph = SQLLexicalReadings.resolve(
+            databaseTypeId: "Nonesuch", queryLanguage: "cypher", declared: [.hashLineComments], session: nil
+        )
+        #expect(graph == neo4j)
+        let text = "MATCH (a)-- (b) RETURN a; MATCH (n) RETURN n"
+        for grammar in graph.distinct(for: text) {
+            #expect(SQLStatementScanner.executableStatements(in: text, grammar: grammar).count == 2)
+        }
+    }
+
+    @Test("A curated engine keeps its own grammar whatever language its plugin names")
+    func curatedEngineWinsOverQueryLanguage() {
+        #expect(
+            SQLLexicalReadings.resolve(databaseTypeId: "PostgreSQL", queryLanguage: "cypher", declared: nil, session: nil)
+                == SQLLexicalReadings.resolve(databaseTypeId: "PostgreSQL", declared: nil, session: nil)
+        )
+        #expect(
+            SQLLexicalReadings.resolve(databaseTypeId: "Nonesuch", queryLanguage: "kafkaql", declared: nil, session: nil)
+                == SQLLexicalReadings.resolve(databaseTypeId: "Nonesuch", declared: nil, session: nil)
+        )
+    }
+
     @Test("An engine nobody declared is split as standard SQL and read under every grammar TablePro knows")
     func undeclaredUnknownEngineReadsEverything() {
         let readings = SQLLexicalReadings.resolve(databaseTypeId: "Nonesuch", declared: nil, session: nil)

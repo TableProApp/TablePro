@@ -471,6 +471,8 @@ class DetectChangedPathsTests(unittest.TestCase):
             ".github/actions/setup-xcodegen/action.yml",
             ".github/actions/prepare-build/action.yml",
             ".github/workflows/macos-tests.yml",
+            "apple/TablePro/Core/Plugins/PluginMetadataRegistry+Neo4jDefaults.swift",
+            "apple/TableProTests/Core/Plugins/PluginMetadataCuratedParityTests.swift",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("plugins", path), "true")

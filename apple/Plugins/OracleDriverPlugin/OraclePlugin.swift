@@ -104,6 +104,7 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     // MARK: - UI/Capability Metadata
 
     static let isDownloadable = true
+    static let urlSchemes: [String] = ["oracle"]
     static let supportsTriggers = true
     static let supportsRoutines = true
     static let supportsDatabaseTriggerBrowse = true

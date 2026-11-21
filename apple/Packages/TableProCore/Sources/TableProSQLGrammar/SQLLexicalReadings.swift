@@ -49,15 +49,17 @@ public struct SQLLexicalReadings: Sendable, Hashable {
         all.count > 1
     }
 
-    /// Resolves the readings for a connection: the curated profile when TablePro knows the engine, which wins over
-    /// anything a plugin declares because a registry plugin may be built against an older kit; otherwise what the
-    /// plugin declared; otherwise every grammar TablePro knows, split for execution as standard SQL.
+    /// Resolves the readings for a connection: the curated profile when TablePro knows the engine or the query language
+    /// its plugin names, which wins over anything a plugin declares because a registry plugin may be built against an
+    /// older kit; otherwise what the plugin declared; otherwise every grammar TablePro knows, split for execution as
+    /// standard SQL.
     public static func resolve(
         databaseTypeId: String,
+        queryLanguage: String? = nil,
         declared: SQLLexicalGrammar?,
         session: SQLSessionLexicalFacts?
     ) -> SQLLexicalReadings {
-        let base = baseReadings(databaseTypeId: databaseTypeId, declared: declared)
+        let base = baseReadings(databaseTypeId: databaseTypeId, queryLanguage: queryLanguage, declared: declared)
         guard let session else { return base }
         let execution = session.applied(to: base.execution)
         return SQLLexicalReadings(execution: execution, all: base.all)
@@ -96,8 +98,13 @@ public struct SQLLexicalReadings: Sendable, Hashable {
         })
     }
 
-    private static func baseReadings(databaseTypeId: String, declared: SQLLexicalGrammar?) -> SQLLexicalReadings {
-        if let profile = SQLLexicalProfile.curated(forDatabaseTypeId: databaseTypeId) {
+    private static func baseReadings(
+        databaseTypeId: String,
+        queryLanguage: String?,
+        declared: SQLLexicalGrammar?
+    ) -> SQLLexicalReadings {
+        if let profile = SQLLexicalProfile.curated(forDatabaseTypeId: databaseTypeId)
+            ?? queryLanguage.flatMap({ SQLLexicalProfile.curated(forQueryLanguage: $0) }) {
             return SQLLexicalReadings(execution: profile.grammar, all: profile.readings)
         }
         if let declared {

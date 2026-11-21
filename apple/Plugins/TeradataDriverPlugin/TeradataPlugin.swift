@@ -54,6 +54,7 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
     ]
 
     static let brandColorHex = "#F37440"
+    static let urlSchemes: [String] = ["teradata"]
     static let queryLanguageName = "SQL"
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = false
