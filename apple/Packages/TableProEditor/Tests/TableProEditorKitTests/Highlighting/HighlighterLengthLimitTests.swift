@@ -94,14 +94,22 @@ struct HighlighterLengthLimitTests {
         #expect(provider.queryCount == 0)
     }
 
-    @Test("A document that opens over the limit is never queried")
-    func documentOverTheLimitIsNotQueried() {
+    @Test("A document that opens over the limit is set up only once it comes under it")
+    func documentOverTheLimitIsNotSetUp() {
         let provider = keywordProvider()
-        let (textView, highlighter) = makeHighlighter("SELECT 1", limit: 4, provider: provider)
+        let (textView, highlighter) = makeHighlighter("SELECT 1", limit: 6, provider: provider)
 
         highlighter.invalidate()
 
+        #expect(provider.setUpCount == 0)
         #expect(provider.queryCount == 0)
         #expect(color(at: 0, in: textView) != .systemRed)
+
+        withExtendedLifetime(highlighter) {
+            textView.replaceCharacters(in: NSRange(location: 6, length: 2), with: "")
+        }
+
+        #expect(provider.setUpCount == 1)
+        #expect(color(at: 0, in: textView) == .systemRed)
     }
 }

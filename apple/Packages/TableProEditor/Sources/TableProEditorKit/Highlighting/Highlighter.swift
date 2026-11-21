@@ -88,7 +88,7 @@ class Highlighter: NSObject {
 
     let maxHighlightableLength: Int
 
-    // The providers hear of no edit while the document is over the limit, so coming back under sets them up again.
+    // Over the limit the providers are not set up and hear of no edit, so coming back under sets them up again.
     private var isWithinLimit: Bool
 
     // MARK: - Init
@@ -124,7 +124,8 @@ class Highlighter: NSObject {
                 highlightProvider: provider,
                 textView: textView,
                 visibleRangeProvider: visibleRangeProvider,
-                language: language
+                language: language,
+                setsUpProvider: isWithinLimit
             )
         }
     }
@@ -224,13 +225,14 @@ class Highlighter: NSObject {
                 }
                 // Set up a new provider and insert it with a unique ID
                 providerIdCounter += 1
-                let state = HighlightProviderState( // This will call setup on the highlight provider
+                let state = HighlightProviderState(
                     id: providerIdCounter,
                     delegate: styleContainer,
                     highlightProvider: newProvider,
                     textView: textView,
                     visibleRangeProvider: visibleRangeProvider,
-                    language: language
+                    language: language,
+                    setsUpProvider: isWithinLimit
                 )
                 highlightProviders.insert(state, at: offset)
                 styleContainer.addProvider(providerIdCounter, priority: offset, documentLength: textView.length)
