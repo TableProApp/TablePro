@@ -21895,6 +21895,9 @@
         }
       }
     },
+    "Advanced Options" : {
+
+    },
     "After" : {
 
     },
@@ -43745,6 +43748,9 @@
         }
       }
     },
+    "cloudflared sign-in did not complete. Check the hostname and your Cloudflare Access app, then try again." : {
+
+    },
     "cloudflared was not found. Install it with “brew install cloudflared”, or set its path in the connection's Cloudflare Tunnel settings." : {
       "localizations" : {
         "fr" : {
@@ -44273,6 +44279,9 @@
           }
         }
       }
+    },
+    "Collapsed" : {
+
     },
     "Collation" : {
       "extractionState" : "manual",
@@ -49744,6 +49753,9 @@
           }
         }
       }
+    },
+    "Connection Not Found" : {
+
     },
     "Connection Options" : {
       "extractionState" : "manual",
@@ -77956,6 +77968,9 @@
           }
         }
       }
+    },
+    "Expanded" : {
+
     },
     "Expected '.method()' after the collection reference" : {
       "extractionState" : "manual",
@@ -177868,6 +177883,9 @@
         }
       }
     },
+    "Staging" : {
+
+    },
     "Stale Statistics" : {
 
     },
@@ -180395,6 +180413,9 @@
           }
         }
       }
+    },
+    "Store in Keychain" : {
+
     },
     "Stored in the macOS Keychain and written to a temporary file only while the proxy runs." : {
       "localizations" : {
@@ -202233,6 +202254,9 @@
 
     },
     "This connection uses SSL Mode %2$@, which the %1$@ driver does not support. It supports %3$@." : {
+
+    },
+    "This connection was deleted on another device or window." : {
 
     },
     "This connection was deleted on another device or window. Your changes were not saved." : {

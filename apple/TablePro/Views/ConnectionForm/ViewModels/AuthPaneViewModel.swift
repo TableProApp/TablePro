@@ -63,21 +63,20 @@ final class AuthPaneViewModel: ObservableObject {
             .connection.hidesBuiltInPassword ?? false
     }
 
+    // Read against the merged values, not this pane's slice: a password-hiding auth field gated by a
+    // field in another section (Redis Sentinel) resolves its controller only in the merged dict.
     var hidesPassword: Bool {
-        if hidesBuiltInPassword { return true }
-        guard let type = coordinator?.value?.network.type else {
-            return authFields.hidesPassword(forValues: additionalFieldValues)
+        guard let coordinator = coordinator?.value else {
+            return hidesBuiltInPassword || authFields.hidesPassword(forValues: additionalFieldValues)
         }
-        return PluginManager.shared.additionalConnectionFields(for: type)
-            .hidesPassword(forValues: additionalFieldValues)
+        return coordinator.presentation.hidesPassword
     }
 
     var hidesUsername: Bool {
-        guard let type = coordinator?.value?.network.type else {
+        guard let coordinator = coordinator?.value else {
             return authFields.hidesUsername(forValues: additionalFieldValues)
         }
-        return PluginManager.shared.additionalConnectionFields(for: type)
-            .hidesUsername(forValues: additionalFieldValues)
+        return coordinator.presentation.hidesUsername
     }
 
     var effectivePromptForPassword: Bool {
@@ -164,22 +163,12 @@ final class AuthPaneViewModel: ObservableObject {
         additionalFieldValues["usePgpass"] == "true"
     }
 
+    /// A linked profile hides its own fields and supplies them at connect, so requiring the
+    /// connection's empty copy would leave Save disabled with nothing on screen to fix.
     var validationIssues: [String] {
-        var issues: [String] = []
-
+        guard let coordinator = coordinator?.value else { return [] }
         let profileFieldIds = Set(selectedCredentialProfile?.secureFieldIds ?? [])
-        for field in authFields where field.isRequired && isFieldVisible(field) {
-            /// A linked profile hides its own fields and supplies them at connect, so requiring the
-            /// connection's empty copy leaves Save disabled with nothing on screen to fix.
-            if profileFieldIds.contains(field.id) { continue }
-            let value = additionalFieldValues[field.id] ?? field.defaultValue ?? ""
-            if value.trimmingCharacters(in: .whitespaces).isEmpty {
-                issues.append(String(format: String(localized: "%@ is required"), field.label))
-            }
-        }
-        issues += authFields.filter(isFieldVisible).compactMap { $0.rangeIssue(in: additionalFieldValues[$0.id] ?? "") }
-
-        return issues
+        return coordinator.presentation.validationIssues(in: .authentication, excludingRequired: profileFieldIds)
     }
 
     func isFieldVisible(_ field: ConnectionField) -> Bool {

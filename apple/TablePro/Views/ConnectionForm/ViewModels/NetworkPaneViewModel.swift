@@ -131,13 +131,7 @@ final class NetworkPaneViewModel: ObservableObject {
                 : String(localized: "Database name is required")
             issues.append(label)
         }
-        for field in connectionFields where field.isRequired && isFieldVisible(field) {
-            let value = additionalFieldValues[field.id] ?? field.defaultValue ?? ""
-            if value.trimmingCharacters(in: .whitespaces).isEmpty {
-                issues.append(String(format: String(localized: "%@ is required"), field.label))
-            }
-        }
-        issues += connectionFields.filter(isFieldVisible).compactMap { $0.rangeIssue(in: additionalFieldValues[$0.id] ?? "") }
+        issues += coordinator?.value?.presentation.validationIssues(in: .connection) ?? []
         issues += endpointHostListIssues
         issues += localSocketIssues
         return issues

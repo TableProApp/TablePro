@@ -20,6 +20,7 @@ final class CustomizationPaneViewModel: ObservableObject {
     @Published var binaryInlineLimitKilobytes: Int?
     @Published var completionIdentifierCase: SQLIdentifierCase = .default
     @Published var commitMode: ConnectionCommitMode = .automatic
+    @Published var environment: ConnectionEnvironment = .none
 
     @Published var coordinator: WeakCoordinatorRef?
 
@@ -54,5 +55,7 @@ final class CustomizationPaneViewModel: ObservableObject {
         binaryInlineLimitKilobytes = connection.binaryInlineLimitKilobytes
         completionIdentifierCase = connection.completionIdentifierCase
         commitMode = connection.commitMode
+        environment = connection.additionalFields[ConnectionEnvironment.fieldKey]
+            .flatMap(ConnectionEnvironment.init(rawValue:)) ?? .none
     }
 }

@@ -109,6 +109,21 @@ final class CloudflareTunnelPaneViewModel: ObservableObject {
             signInError = error.localizedDescription
             return
         }
+        // Reap the child and surface a failed login: a non-zero exit left no feedback before, and the
+        // finished process was held until the next sign-in.
+        process.terminationHandler = { [weak self] finished in
+            let status = finished.terminationStatus
+            Task { @MainActor in
+                guard let self else { return }
+                self.loginProcess = nil
+                if status != 0 {
+                    self.signInError = String(
+                        localized: "cloudflared sign-in did not complete. Check the hostname and your Cloudflare Access app, then try again."
+                    )
+                    Self.logger.error("cloudflared access login exited \(status, privacy: .public)")
+                }
+            }
+        }
         do {
             try process.run()
             loginProcess = process
