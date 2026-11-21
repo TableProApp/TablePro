@@ -35,6 +35,8 @@ struct ConnectionSession: Identifiable {
     // What the sidebar lists and where a new tab opens, never where an open tab queries: a tab carries its own.
     var browseSchema: String?
     var browseDatabase: String?
+    // Where the driver reported it opened, before any switch: a DuckDB file's own catalog, not one attached later.
+    var openedDatabase: String?
 
     @MainActor
     var tables: [TableInfo] {
