@@ -41,6 +41,16 @@ nonisolated final class DuckDBOpenDatabase: @unchecked Sendable {
     var database: duckdb_database?
     var taskThreads: DuckDBTaskThreads?
     var transferConnections: [ObjectIdentifier: DuckDBConnectionHandles] = [:]
+    // Keyed as `transferConnections`, so a close can end each one's read before its connection.
+    var transferActors: [ObjectIdentifier: DuckDBTransferReference] = [:]
+}
+
+nonisolated final class DuckDBTransferReference: @unchecked Sendable {
+    weak var actor: DuckDBConnectionActor?
+
+    init(_ actor: DuckDBConnectionActor) {
+        self.actor = actor
+    }
 }
 
 // A connection, with the second one that renders the rows of a result the first is still producing.
@@ -180,18 +190,25 @@ actor DuckDBConnectionActor {
         guard let database else { throw DuckDBPluginError.notConnected }
         let transfer = DuckDBConnectionHandles(live: liveConnection)
         try Self.connect(transfer, to: database)
+        let actor = DuckDBConnectionActor(transferOn: executor, of: openDatabase, handles: transfer)
         openDatabase.transferConnections[ObjectIdentifier(transfer)] = transfer
+        openDatabase.transferActors[ObjectIdentifier(transfer)] = DuckDBTransferReference(actor)
         lastActivity = ContinuousClock.now
-        return DuckDBConnectionActor(transferOn: executor, of: openDatabase, handles: transfer)
+        return actor
     }
 
-    func close() {
+    func close() async {
         closePulledRead()
         guard ownsDatabase else {
             openDatabase.transferConnections[ObjectIdentifier(handles)] = nil
+            openDatabase.transferActors[ObjectIdentifier(handles)] = nil
             handles.close()
             hasOpenTransaction = false
             return
+        }
+        // Each transfer connection ends the read it holds, which keeps the database open, before it closes.
+        for transfer in openDatabase.transferActors.values.compactMap(\.actor) {
+            await transfer.close()
         }
         closeHandle()
         openSpec = nil
@@ -393,6 +410,8 @@ actor DuckDBConnectionActor {
         _ query: String,
         reason: DuckDBReadOnlyStatement.Reason?
     ) throws -> (header: PluginStreamHeader, generation: UInt64) {
+        // A Stop that came while this waited for the executor interrupted nothing, and DuckDB clears it at the start.
+        try Task.checkCancellation()
         let conn: duckdb_connection
         if let reason {
             conn = try readOnlyConnection()
@@ -598,6 +617,7 @@ actor DuckDBConnectionActor {
             transfer.close()
         }
         openDatabase.transferConnections = [:]
+        openDatabase.transferActors = [:]
         handles.close()
         taskThreads?.close()
         taskThreads = nil
