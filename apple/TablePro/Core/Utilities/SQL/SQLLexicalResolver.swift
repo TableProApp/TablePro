@@ -95,8 +95,9 @@ enum SQLLexicalResolver {
     }
 
     private static func queryLanguage(for databaseType: DatabaseType) -> String? {
-        guard case .custom(let language)? = PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editorLanguage
-        else { return nil }
+        guard case .custom(let language)? = PluginMetadataRegistry.shared.queryLanguage(for: databaseType) else {
+            return nil
+        }
         return language
     }
 

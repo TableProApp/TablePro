@@ -659,6 +659,12 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         return defaultSnapshots[databaseType.rawValue]
     }
 
+    // The language a type's statements are read in. A curated entry's wins, so a loaded plugin cannot move an engine the
+    // app ships onto another language's looser classifier.
+    func queryLanguage(for databaseType: DatabaseType) -> EditorLanguage? {
+        (curatedSnapshot(for: databaseType) ?? snapshot(for: databaseType))?.editorLanguage
+    }
+
     func snapshot(for databaseType: DatabaseType) -> PluginMetadataSnapshot? {
         lock.lock()
         defer { lock.unlock() }

@@ -12,7 +12,7 @@ extension PluginMetadataRegistry {
             ("Cloudflare R2 SQL", PluginMetadataSnapshot(
                 displayName: "Cloudflare R2 SQL", iconName: "cloudflare-r2-sql-icon", defaultPort: 0,
                 requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: false,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "cloudflare r2 sql", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: r2SQLExplainVariants,
                 pathFieldRole: .database,
                 supportsHealthMonitor: false, urlSchemes: [],

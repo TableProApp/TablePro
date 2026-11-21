@@ -13,7 +13,7 @@ extension PluginMetadataRegistry {
             ("DynamoDB", PluginMetadataSnapshot(
                 displayName: "Amazon DynamoDB", iconName: "dynamodb-icon", defaultPort: 0,
                 requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: true,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "dynamodb", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [],
                 pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: [], postConnectActions: [],
@@ -43,7 +43,7 @@ extension PluginMetadataRegistry {
                     supportsRawFilter: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "",
+                    defaultSchemaName: "public",
                     defaultGroupName: "main",
                     tableEntityName: "Tables",
                     containerEntityName: "Database",
@@ -70,7 +70,7 @@ extension PluginMetadataRegistry {
             ("BigQuery", PluginMetadataSnapshot(
                 displayName: "Google BigQuery", iconName: "bigquery-icon", defaultPort: 0,
                 requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: false,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "bigquery", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
                     ExplainVariant(id: "dryrun", label: "Dry Run (Cost)", sqlPrefix: "EXPLAIN")
                 ],
@@ -91,7 +91,10 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    supportsRenameTable: true,
+                    supportsRenameView: true,
+                    supportsRoutines: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -272,7 +275,7 @@ extension PluginMetadataRegistry {
             ("Spanner", PluginMetadataSnapshot(
                 displayName: "Google Cloud Spanner", iconName: "spanner-icon", defaultPort: 0,
                 requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: false,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "spanner", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
                     ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .indentedText)
                 ],
@@ -464,7 +467,7 @@ extension PluginMetadataRegistry {
             ("Snowflake", PluginMetadataSnapshot(
                 displayName: "Snowflake", iconName: "snowflake-icon", defaultPort: 443,
                 requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "snowflake", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [
                     ExplainVariant(id: "text", label: "Explain (Text)", sqlPrefix: "EXPLAIN USING TEXT")
                 ],
@@ -486,6 +489,13 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: true,
+                    supportsRenameTable: true,
+                    supportsRenameView: true,
+                    supportsRenameSchema: true,
+                    supportsRenameColumn: true,
+                    supportsAddIndex: false,
+                    supportsDropIndex: false,
+                    supportsRoutines: true,
                     pooledDriversShareOneSession: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -660,7 +670,8 @@ extension PluginMetadataRegistry {
                         CompletionEntry(label: "ZEROIFNULL", insertText: "ZEROIFNULL"),
                         CompletionEntry(label: "IFF", insertText: "IFF"),
                         CompletionEntry(label: "NVL", insertText: "NVL"),
-                        CompletionEntry(label: "DECODE", insertText: "DECODE")
+                        CompletionEntry(label: "DECODE", insertText: "DECODE"),
+                        CompletionEntry(label: "CREATE TABLE", insertText: "CREATE TABLE")
                     ],
                     columnTypesByCategory: [
                         "Number": ["NUMBER", "DECIMAL", "INT", "INTEGER", "BIGINT", "SMALLINT", "FLOAT", "DOUBLE", "REAL"],

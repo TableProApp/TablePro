@@ -26,6 +26,7 @@ nonisolated final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin
     // MARK: - UI/Capability Metadata
 
     static let isDownloadable = true
+    static let urlSchemes: [String] = ["clickhouse", "ch"]
     static let explainVariants: [ExplainVariant] = [
         ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .indentedText),
         ExplainVariant(id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE", format: .indentedText),

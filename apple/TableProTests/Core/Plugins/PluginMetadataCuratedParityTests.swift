@@ -55,7 +55,10 @@ struct PluginMetadataCuratedParityTests {
                 registryDefault: entry,
                 typeId: typeId
             )
-            for difference in SnapshotDifferences.between(curated: entry, registered: registered) {
+            // A curated explain list is only the fallback for a plugin that declares none, and Oracle and SQL Server keep
+            // it empty so a plugin without its own plans offers no Explain.
+            let checked = entry.explainVariants.isEmpty ? registered.withExplainVariants([]) : registered
+            for difference in SnapshotDifferences.between(curated: entry, registered: checked) {
                 Issue.record("\(typeId) \(difference)")
             }
         }

@@ -8,9 +8,9 @@ import TableProPluginKit
 import TableProSQLGrammar
 
 extension QueryClassifier {
-    // By the language the engine's plugin declares, so every graph engine that speaks Cypher is read as Cypher.
+    // By the language the engine declares, so every graph engine that speaks Cypher is read as Cypher.
     static func speaksCypher(_ databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editorLanguage == .custom("cypher")
+        PluginMetadataRegistry.shared.queryLanguage(for: databaseType) == .custom("cypher")
     }
 
     static func cypherClassification(_ text: String) -> QueryClassification {

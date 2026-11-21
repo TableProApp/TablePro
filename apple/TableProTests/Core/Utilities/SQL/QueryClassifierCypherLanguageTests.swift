@@ -13,7 +13,12 @@ import Testing
 struct QueryClassifierCypherLanguageTests {
     private func registerEngine(language: EditorLanguage) -> DatabaseType {
         let typeId = "CypherLanguageFake-\(UUID().uuidString)"
-        let snapshot = PluginMetadataSnapshot(
+        PluginMetadataRegistry.shared.register(snapshot: snapshot(typeId: typeId, language: language), forTypeId: typeId)
+        return DatabaseType(rawValue: typeId)
+    }
+
+    private func snapshot(typeId: String, language: EditorLanguage) -> PluginMetadataSnapshot {
+        PluginMetadataSnapshot(
             displayName: typeId, iconName: "cylinder", defaultPort: 7_687,
             requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: false,
             isDownloadable: true, primaryUrlScheme: "cypherlanguagefake", parameterStyle: .dollar,
@@ -23,8 +28,6 @@ struct QueryClassifierCypherLanguageTests {
             connectionMode: .network, supportsDatabaseSwitching: true,
             capabilities: .defaults, schema: .defaults, editor: .defaults, connection: .defaults
         )
-        PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: typeId)
-        return DatabaseType(rawValue: typeId)
     }
 
     private func unregister(_ type: DatabaseType) {
@@ -80,6 +83,22 @@ struct QueryClassifierCypherLanguageTests {
         #expect(type.lexicalReadings == DatabaseType.neo4j.lexicalReadings)
         let script = "MATCH (a)--(b) RETURN a; MATCH (c) RETURN c"
         #expect(QueryClassifier.statements(of: script, grammar: type.lexicalGrammar).count == 2)
+    }
+
+    @Test("A plugin that declares Cypher for an engine the app curates as SQL keeps the SQL gates")
+    func curatedLanguageWins() {
+        let queries = ["TRUNCATE orders", "DELETE FROM orders", "MATCH (n) RETURN n"]
+        let before = queries.map { QueryClassifier.classifyTier($0, databaseType: .postgresql) }
+        let readings = DatabaseType.postgresql.lexicalReadings
+        PluginMetadataRegistry.shared.register(
+            snapshot: snapshot(typeId: DatabaseType.postgresql.rawValue, language: .custom("cypher")),
+            forTypeId: DatabaseType.postgresql.rawValue
+        )
+        defer { unregister(.postgresql) }
+
+        #expect(queries.map { QueryClassifier.classifyTier($0, databaseType: .postgresql) } == before)
+        #expect(QueryClassifier.isDangerousQuery("DELETE FROM orders", databaseType: .postgresql))
+        #expect(DatabaseType.postgresql.lexicalReadings == readings)
     }
 
     @Test("The same text on an engine that declares SQL takes the SQL reading")

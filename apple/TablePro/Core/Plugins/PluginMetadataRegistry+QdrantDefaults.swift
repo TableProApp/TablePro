@@ -7,7 +7,7 @@ extension PluginMetadataRegistry {
             ("Qdrant", PluginMetadataSnapshot(
                 displayName: "Qdrant", iconName: "qdrant-icon", defaultPort: 6_333,
                 requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: false,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "qdrant", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: [], postConnectActions: [],
                 brandColorHex: "#DC244C",
@@ -39,7 +39,7 @@ extension PluginMetadataRegistry {
                     dataCommands: qdrantDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "",
+                    defaultSchemaName: "public",
                     defaultGroupName: "default",
                     tableEntityName: "Collections",
                     containerEntityName: "Cluster",

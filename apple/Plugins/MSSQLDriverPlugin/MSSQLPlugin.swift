@@ -187,6 +187,7 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     // MARK: - UI/Capability Metadata
 
     static let supportsSchemaSwitching = true
+    static let urlSchemes: [String] = ["sqlserver", "mssql"]
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession, .selectSchemaFromLastSession]
     static let brandColorHex = "#E34517"
     static let systemDatabaseNames: [String] = ["master", "tempdb", "model", "msdb"]
