@@ -10,7 +10,7 @@ import Testing
 
 @MainActor
 struct WelcomeMenuSpecTests {
-    private func context(
+    func context(
         rows: [LibraryRowID],
         connections: [DatabaseConnection] = [],
         groups: [ConnectionGroup] = [],
@@ -18,6 +18,7 @@ struct WelcomeMenuSpecTests {
         reconnectable: Set<UUID> = [],
         linkedFolders: Set<UUID> = [],
         isSyncEnabled: Bool = false,
+        isCompareSyncEnabled: Bool = false,
         teamLibraryTeams: [TeamLibraryTeam] = [],
         hasTeamLibraryConflicts: Bool = false
     ) -> WelcomeMenuContext {
@@ -48,6 +49,7 @@ struct WelcomeMenuSpecTests {
             disconnectableConnectionIds: disconnectable,
             reconnectableConnectionIds: reconnectable,
             isSyncEnabled: isSyncEnabled,
+            isCompareSyncEnabled: isCompareSyncEnabled,
             canPublishToTeamCatalog: false,
             teamLibraryTeams: teamLibraryTeams,
             hasTeamLibraryConflicts: hasTeamLibraryConflicts

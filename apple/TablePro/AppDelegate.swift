@@ -20,12 +20,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         LaunchTracer.shared.mark(.willFinishLaunchingBegan)
+        // First: the migration below writes the flag that tells an existing install from a new one.
+        AppModule.recordDefaults(
+            in: AppStorageEnvironment.shared.defaults,
+            isExistingInstall: AppSettingsStorage.shared.hasLaunchedBefore()
+        )
         AppSettingsStorage.shared.migrateStartupBehaviorToReopenLastIfNeeded()
         AppSettingsStorage.shared.removeRetiredFieldHeightKeys()
         AIProviderRegistration.registerAll()
 
-        /// Installed before any window exists, so the bar is correct from the first frame.
-        /// Nothing else owns it now that the app no longer runs a SwiftUI `App`.
+        // Before any window exists, so the bar is right from the first frame.
         MainMenuBuilder.install(keyboard: AppSettingsManager.shared.keyboard)
         MainMenuBuilder.syncKeyEquivalentsOnKeyWindowChange()
         LaunchTracer.shared.mark(.menuInstalled)
@@ -81,7 +85,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowOpener.shared.setConnectionFormPresenter { ConnectionFormWindowController.present($0) }
         WindowOpener.shared.setIntegrationsActivityPresenter { IntegrationsActivityWindowController.present() }
         WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present(pane: $0) }
-        WindowOpener.shared.setCompareSyncPresenter { CompareSyncWindowController.present(prefillSource: $0) }
         KeyRepeatFilter.shared.install()
         TableClickFocus.shared.install()
         RecentTabSwitcherController.installEditorKeyClaim()

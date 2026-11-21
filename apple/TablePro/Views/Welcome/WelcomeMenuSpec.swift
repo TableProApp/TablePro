@@ -69,6 +69,7 @@ internal struct WelcomeMenuContext {
     internal let disconnectableConnectionIds: Set<UUID>
     internal let reconnectableConnectionIds: Set<UUID>
     internal let isSyncEnabled: Bool
+    internal let isCompareSyncEnabled: Bool
     internal let canPublishToTeamCatalog: Bool
     internal let teamLibraryTeams: [TeamLibraryTeam]
     internal let hasTeamLibraryConflicts: Bool
@@ -151,12 +152,14 @@ internal enum WelcomeMenuSpec {
             primary.append(.command(Titles.disconnect, .disconnect(id)))
         }
 
-        let manage: [WelcomeMenuItem] = [
+        var manage: [WelcomeMenuItem] = [
             .command(Titles.edit, .edit(id)),
             .command(Titles.rename, .rename(.connection(id, section: section))),
             .command(Titles.duplicate, .duplicate(id)),
-            .command(Titles.compareAndSync, .compareAndSync(id)),
         ]
+        if context.isCompareSyncEnabled {
+            manage.append(.command(Titles.compareAndSync, .compareAndSync(id)))
+        }
 
         let currentGroupId = validGroupId(of: connection, groups: context.groups)
         var organize: [WelcomeMenuItem] = [
