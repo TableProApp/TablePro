@@ -175,6 +175,23 @@ struct SQLiteValueReadTests {
         }
     }
 
+    @Test("A read that reached its row limit takes no further step", .timeLimit(.minutes(1)))
+    func limitTakesNoFurtherStep() async throws {
+        try await withDriver { driver, _ in
+            let collected = Collected()
+            try await driver.readValues(
+                query: "SELECT 1 UNION ALL SELECT (WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT count(*) FROM c)",
+                context: PluginStatementContext(),
+                rowLimit: 1,
+                reading: Self.text,
+                header: { collected.take($0) },
+                deliver: { collected.take($0) }
+            )
+
+            #expect(collected.batches.flatMap { $0 } == [["1=1"]])
+        }
+    }
+
     @Test("Rows read before a failing row arrive before the failure")
     func rowsBeforeAFailureArrive() async throws {
         try await withDriver { driver, _ in

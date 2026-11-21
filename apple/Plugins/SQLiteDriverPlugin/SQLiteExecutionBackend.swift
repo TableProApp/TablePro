@@ -760,6 +760,8 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
                     guard deliver(batch) else { return 0 }
                     batch.removeAll(keepingCapacity: true)
                 }
+                // A step past the limit would compute a row nobody reads.
+                guard count < rowLimit else { break }
                 step = sqlite3_step(statement)
             }
             if !batch.isEmpty, !deliver(batch) { return 0 }
