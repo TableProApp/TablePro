@@ -358,23 +358,40 @@ public sealed partial class SqlEditor
     }
 
     // The choice replaces the whole word the caret is in, as one undo step.
-    private void AcceptCompletion()
+    private async void AcceptCompletion()
     {
         if (_completionPopup is not { IsOpen: true } popup || _completion is not { } completion)
         {
             return;
         }
-        var word = WordFrom(_completionStart);
-        var item = popup.Selected;
-        // A key typed since the rows were ranked: the closest match for the word as it is now.
-        if (word is not null && word != popup.Word)
-        {
-            item = completion.Rank(word, 1).Items.FirstOrDefault();
-        }
         var start = _completionStart;
+        if (WordFrom(start) is not { } word)
+        {
+            CloseCompletion();
+            return;
+        }
+        var item = popup.Selected;
+        // A key typed since the rows were ranked: the closest match for the word as it is now, ranked off the UI
+        // thread too, and dropped if the text or the list moved on meanwhile.
+        if (word != popup.Word)
+        {
+            var version = Document.Version;
+            try
+            {
+                item = (await Task.Run(() => completion.Rank(word, 1)).ConfigureAwait(true)).Items.FirstOrDefault();
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+            if (Document.Version != version || !ReferenceEquals(completion, _completion) || WordFrom(start) != word)
+            {
+                return;
+            }
+        }
         var caret = _model.Primary.Active;
         CloseCompletion();
-        if (word is null || item is null)
+        if (item is null)
         {
             return;
         }

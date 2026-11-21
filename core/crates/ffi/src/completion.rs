@@ -223,8 +223,13 @@ impl CompletionRequest {
         }
         let caret = byte_at_unit(text, usize::try_from(caret).ok()?);
         let start = word_start(text, caret);
-        let scope = analyze(text, start, grammar, LexicalSettings::default_for(grammar))?;
+        // A number is no name, and a name a `$` joins is longer than the word a list replaces.
         let word = text.get(start..caret).unwrap_or_default().to_owned();
+        let joined = text.get(..start).and_then(|before| before.chars().next_back());
+        if word.starts_with(|c: char| c.is_ascii_digit()) || joined.is_some_and(|c| joins_a_name(c, grammar)) {
+            return None;
+        }
+        let scope = analyze(text, start, grammar, LexicalSettings::default_for(grammar))?;
         if word.is_empty() && !asked && !scope.names_a_place() {
             return None;
         }
@@ -246,6 +251,15 @@ impl CompletionRequest {
             word_start: self.word_start,
             word: self.word,
         }
+    }
+}
+
+// Characters a bare name holds past its first beside letters, digits and `_`, as `SqlGrammar::is_bare_identifier` reads.
+fn joins_a_name(c: char, grammar: SqlGrammar) -> bool {
+    match c {
+        '$' => !matches!(grammar, SqlGrammar::ClickHouse | SqlGrammar::Cql),
+        '#' | '@' => grammar == SqlGrammar::MsSql,
+        _ => false,
     }
 }
 
@@ -451,6 +465,20 @@ mod tests {
 
         assert_eq!(found.word_start, 14);
         assert_eq!(found.word, "cafe\u{301}");
+    }
+
+    #[test]
+    fn a_number_or_part_of_a_longer_name_completes_nothing() {
+        assert!(
+            request("SELECT 1|", true).is_none(),
+            "a number would be replaced by a name"
+        );
+        assert!(request("SELECT 1.5|", true).is_none());
+        assert!(
+            request("SELECT * FROM foo$ba|", true).is_none(),
+            "the name's head would stay"
+        );
+        assert!(request("SELECT * FROM foo_ba|", true).is_some());
     }
 
     #[test]

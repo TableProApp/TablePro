@@ -58,7 +58,7 @@ pub fn format_selection(text: &str, grammar: SqlGrammar, settings: LexicalSettin
     let formatted = format_script(source, grammar, settings);
     let mut replaced = text.to_owned();
     replaced.replace_range(range, &formatted);
-    if significant_tokens(&replaced, grammar, settings) == significant_tokens(text, grammar, settings) {
+    if reads_the_same(&replaced, text, grammar, settings) {
         formatted
     } else {
         source.to_owned()
@@ -103,6 +103,17 @@ fn copy_rows_end(text: &str, copy_end: usize) -> usize {
     text.len()
 }
 
+// A session's sql_mode or standard_conforming_strings decides whether a backslash escapes in a string, and the editor
+// does not know which the server has, so a format keeps the tokens both ways.
+fn reads_the_same(changed: &str, original: &str, grammar: SqlGrammar, settings: LexicalSettings) -> bool {
+    let other = LexicalSettings {
+        backslash_escapes: !settings.backslash_escapes,
+    };
+    [settings, other].into_iter().all(|settings| {
+        significant_tokens(changed, grammar, settings) == significant_tokens(original, grammar, settings)
+    })
+}
+
 fn overlaps(lines: &[Range<usize>], range: &Range<usize>) -> bool {
     lines
         .iter()
@@ -123,7 +134,7 @@ fn format_statement(source: &str, grammar: SqlGrammar, settings: LexicalSettings
         ..sqlformat::FormatOptions::default()
     };
     let formatted = sqlformat::format(source, &sqlformat::QueryParams::None, &options);
-    if significant_tokens(&formatted, grammar, settings) == significant_tokens(source, grammar, settings) {
+    if reads_the_same(&formatted, source, grammar, settings) {
         formatted
     } else {
         source.to_owned()
@@ -337,6 +348,14 @@ mod tests {
 
             assert!(out.contains('\n'), "the statement was not reflowed: {out}");
         }
+    }
+
+    #[test]
+    fn a_string_keeps_its_spaces_however_the_server_reads_a_backslash() {
+        // Under NO_BACKSLASH_ESCAPES the first string ends at its backslash and `'  foo  '` is a string of its own.
+        let out = format("SELECT 'a\\' AS x, '  foo  '", SqlGrammar::MySql);
+
+        assert!(out.contains("'  foo  '"), "a string's spaces changed: {out}");
     }
 
     #[test]
