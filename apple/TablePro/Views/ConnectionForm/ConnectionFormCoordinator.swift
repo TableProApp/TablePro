@@ -122,6 +122,12 @@ final class ConnectionFormCoordinator: ObservableObject {
         visibleTabs.first { !$0.validationIssues(for: self).isEmpty }
     }
 
+    /// Whether a validation issue lives in the Advanced area, which is hidden behind a disclosure.
+    /// The form reveals that disclosure so Save is never blocked by a control the user cannot reach.
+    var optionsHasIssue: Bool {
+        !ConnectionFormTab.options.validationIssues(for: self).isEmpty
+    }
+
     private let pendingInitialType: DatabaseType?
     private let pendingInitialParsedURL: ParsedConnectionURL?
 

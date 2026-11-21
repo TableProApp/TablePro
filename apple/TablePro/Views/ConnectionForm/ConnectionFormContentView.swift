@@ -75,6 +75,14 @@ struct ConnectionFormContentView: View {
             .task(id: coordinator.auth.pgpassLookup) {
                 coordinator.auth.updatePgpassStatus()
             }
+            // A validation error inside the collapsed Advanced area would disable Save with the
+            // offending control hidden; reveal it so the fix is always reachable.
+            .onAppear {
+                if coordinator.optionsHasIssue { showsAdvanced = true }
+            }
+            .onChange(of: coordinator.optionsHasIssue) { hasIssue in
+                if hasIssue { showsAdvanced = true }
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
