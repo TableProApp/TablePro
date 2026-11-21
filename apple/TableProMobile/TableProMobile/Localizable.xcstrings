@@ -21300,6 +21300,9 @@
     "Semicolon (;)" : {
 
     },
+    "Send one statement at a time." : {
+
+    },
     "Sent to PostHog:" : {
 
     },
@@ -27460,6 +27463,9 @@
     "The statement before it stays applied." : {
 
     },
+    "The statement does not take the values it was given" : {
+
+    },
     "The statement was stopped, and the server rolled back the transaction it ran in. Every change since that transaction began is undone." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -27471,6 +27477,9 @@
     "The string or comment that starts on line %lld is longer than the import reads." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The structure of a table in an attached database cannot be changed here." : {
+
     },
     "The table \"%@\" and all its data will be permanently deleted." : {
       "localizations" : {
