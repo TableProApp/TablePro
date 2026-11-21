@@ -49,6 +49,7 @@ public enum SQLDDLFallbackPolicy {
         "Firebase Realtime Database",
         "Bigtable",
         "Neo4j",
+        "HydraDB",
         "InfluxDB",
     ]
 

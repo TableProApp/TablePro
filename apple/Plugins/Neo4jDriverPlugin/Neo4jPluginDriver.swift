@@ -4,12 +4,43 @@ import os
 import TableProNeo4jCore
 import TableProPluginKit
 
+// Stream callbacks are Sendable; retain only distinct keys across batches.
+private final class EntityExportSchema: @unchecked Sendable {
+    private let lock = NSLock()
+    private var keys: Set<String> = []
+    private var changed = false
+
+    func collect(_ records: [[PackStreamValue]]) {
+        lock.withLock {
+            for record in records {
+                if let entity = record.first.flatMap(Neo4jEntity.init) {
+                    keys.formUnion(entity.properties.keys)
+                }
+            }
+        }
+    }
+
+    var properties: [String] { lock.withLock { keys.sorted() } }
+    var hasChanged: Bool { lock.withLock { changed } }
+
+    func accepts(_ records: [[PackStreamValue]], known: Set<String>) -> Bool {
+        let unseen = records.contains { record in
+            guard let entity = record.first.flatMap(Neo4jEntity.init) else { return false }
+            return !Set(entity.properties.keys).isSubset(of: known)
+        }
+        if unseen { lock.withLock { changed = true } }
+        return !unseen
+    }
+}
+
 final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     static let logger = Logger(subsystem: "com.TablePro", category: "Neo4jPluginDriver")
     static let defaultConnectTimeoutMilliseconds = 15_000
     static let streamBatchSize: Int64 = 1_000
 
     private let config: DriverConnectionConfig
+    private let userAgent: String
+    private let discoversEntityProperties: Bool
     private let lock = NSLock()
     private var connection: Neo4jConnection?
     private var database: String
@@ -19,8 +50,10 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var serverAgent: String?
     private var boltVersion = BoltVersion(major: 0, minor: 0)
 
-    init(config: DriverConnectionConfig) {
+    init(config: DriverConnectionConfig, userAgent: String = "TablePro", discoversEntityProperties: Bool = false) {
         self.config = config
+        self.userAgent = userAgent
+        self.discoversEntityProperties = discoversEntityProperties
         database = config.database.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -67,7 +100,7 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await connection.open(
             ssl: config.ssl,
             credentials: Neo4jCredentials(username: config.username, password: config.password),
-            userAgent: "TablePro/\(Neo4jPlugin.pluginVersion)",
+            userAgent: userAgent,
             timeout: .milliseconds(Int64(milliseconds))
         )
         let agent = await connection.serverAgent
@@ -130,7 +163,7 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Running Cypher
 
-    // Internal reads go out in Bolt's read mode, where the server refuses a write.
+    // Bolt read mode is a routing hint; authorization remains the server's responsibility.
     func run(
         _ query: String,
         parameters: [String: PackStreamValue] = [:],
@@ -158,7 +191,7 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return .run(query: query, parameters: parameters, extra: extra)
     }
 
-    // A grid page never writes, whatever a raw filter in it says.
+    // Browse queries prefer read routing alongside the host's statement context.
     private static func readsOnly(_ query: String, _ context: PluginStatementContext) -> Bool {
         context.readOnly || Neo4jCypher.browseKind(of: query) != nil
     }
@@ -255,17 +288,33 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let connection = try requireConnection()
+        let exportSchema = EntityExportSchema()
         var entityColumns: (kind: Neo4jEntityKind, properties: [String])?
         if let kind = Neo4jCypher.browseKind(of: query), let name = Neo4jCypher.browsedName(in: query) {
-            let keys = try await run(Neo4jCypher.propertyKeysQuery(kind: kind, name: name))
-            entityColumns = (kind, keys.records.compactMap { $0.first?.stringValue })
+            if discoversEntityProperties {
+                let discovery = Neo4jCypher.pattern(for: kind, name: name) + " RETURN n"
+                try await connection.stream(
+                    request(discovery, parameters: [:], readOnly: true),
+                    batchSize: Self.streamBatchSize, interruptible: true
+                ) { _, records, _ in
+                    exportSchema.collect(records)
+                    return true
+                }
+                entityColumns = (kind, exportSchema.properties)
+            } else {
+                let keys = try await run(Neo4jCypher.propertyKeysQuery(kind: kind, name: name))
+                entityColumns = (kind, keys.records.compactMap { $0.first?.stringValue })
+            }
         }
         let spread = entityColumns
+        let knownProperties = Set(entityColumns?.properties ?? [])
+        let checksExportSchema = discoversEntityProperties && entityColumns != nil
         try await connection.stream(
             request(Self.trimmed(query), parameters: [:], readOnly: Self.readsOnly(query, context)),
             batchSize: Self.streamBatchSize,
             interruptible: true
         ) { keys, records, isFirst in
+            if checksExportSchema && !exportSchema.accepts(records, known: knownProperties) { return false }
             let table: Neo4jResultTable
             if let spread, keys.count == 1 {
                 table = .entities(
@@ -279,6 +328,12 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
             guard !table.rows.isEmpty else { return true }
             return await PluginRowStream.deliver(.rows(Self.cells(table.rows)), to: continuation)
+        }
+        if exportSchema.hasChanged {
+            throw Neo4jError.server(
+                code: "TablePro.Export.SchemaChanged",
+                message: String(localized: "Properties changed during export. Retry the export.")
+            )
         }
     }
 
