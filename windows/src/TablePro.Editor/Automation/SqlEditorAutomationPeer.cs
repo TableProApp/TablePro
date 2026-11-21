@@ -57,7 +57,20 @@ internal sealed partial class SqlEditorAutomationPeer(SqlEditor editor) : Framew
         }
     }
 
-    protected override object GetPatternCore(PatternInterface patternInterface) =>
+    // The completion list never takes focus, so the editor speaks for the row it selects.
+    internal void Announce(string text)
+    {
+        if (text.Length > 0)
+        {
+            RaiseNotificationEvent(
+                AutomationNotificationKind.Other,
+                AutomationNotificationProcessing.MostRecent,
+                text,
+                "TableProCompletion");
+        }
+    }
+
+        protected override object GetPatternCore(PatternInterface patternInterface) =>
         patternInterface is PatternInterface.Text or PatternInterface.Text2 ? this : base.GetPatternCore(patternInterface);
 
     protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Edit;

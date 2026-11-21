@@ -6,6 +6,7 @@
 //! adopts these on the GTK thread; nothing here needs an entered
 //! runtime to be created.
 
+pub mod completion;
 pub mod connect;
 #[cfg(any(test, feature = "fakes"))]
 pub mod fakes;

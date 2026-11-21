@@ -11,6 +11,11 @@ pub(super) const COPY_PIECE_BYTES: usize = 256 * 1024;
 /// PostgreSQL 18 reads it as data in CSV.
 const END_MARKER: &str = "\\.";
 
+// The formatter keeps these rows as psql reads them, by the reader's own rule.
+pub(crate) fn copies_from_stdin(text: &str, tokens: &[ScriptToken]) -> bool {
+    CopyRows::starting(text, tokens).is_some()
+}
+
 /// The rows of a `COPY ... FROM stdin` block, passed on as the file holds
 /// them. A piece is cut where the rows reach `COPY_PIECE_BYTES`, not where
 /// a read of the file ended, so a file splits the same however it is read.

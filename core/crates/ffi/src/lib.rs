@@ -8,6 +8,7 @@ mod catalog;
 mod catalog_change;
 mod cloud;
 pub mod command_line;
+mod completion;
 mod connection_url;
 mod core_handle;
 #[cfg(windows)]
@@ -66,6 +67,10 @@ pub use catalog_change::{
     DatabaseChoicesInfo, DatabaseDraftArg, DatabaseFieldsInfo, ReplicationArg,
 };
 pub use cloud::{CloudConnectionFields, CloudGroupFields, CloudLibraryPull, CloudLibraryRecords};
+pub use completion::{
+    CompletionItem, CompletionKindTag, CompletionList, CompletionPage, FormattedSql, MatchedSpan, format_sql,
+    format_sql_selection,
+};
 pub use connection_url::{ParsedConnectionUrl, parse_connection_url};
 pub use core_handle::{Core, FileOpenRequest};
 pub use definition::ObjectSource;
@@ -120,6 +125,7 @@ pub use session::{
 };
 pub use statement_at::StatementSpan;
 pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableStructure};
+pub use syntax::SqlGrammarTag;
 
 use secrecy::{ExposeSecret, SecretString};
 

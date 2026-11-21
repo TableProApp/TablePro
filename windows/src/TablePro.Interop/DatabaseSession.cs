@@ -225,6 +225,25 @@ public sealed partial class DatabaseSession : IAsyncDisposable
             : null;
     }
 
+    // What completes at caret for an editor in database, null for the connection's own. Null where nothing does, and
+    // where nothing is typed yet in a place that takes anything unless asked. The catalog reads are the object tree's.
+    public async Task<SqlCompletion?> CompleteAsync(
+        string text,
+        int caret,
+        bool asked,
+        string? database = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentOutOfRangeException.ThrowIfNegative(caret);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(caret, text.Length);
+        var list = await CoreCall.RunAsync(
+                token => _session.Complete(text, checked((uint)caret), asked, database, token),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return list is null ? null : new SqlCompletion(list);
+    }
+
     // A level saved while the session is open applies to it at once. False when it crosses Read only, which only a
     // new connection can do; the session keeps its level until then.
     public bool SetSafeMode(SafeMode level) => _session.SetSafeMode(Mapping.Level(level));

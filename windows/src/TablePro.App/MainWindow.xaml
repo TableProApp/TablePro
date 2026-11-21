@@ -208,6 +208,8 @@
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutSeparator />
+                <!-- The editor answers Ctrl+Shift+F itself, so the menu only names the keys. -->
+                <MenuFlyoutItem x:Uid="MenuFormatQuery" x:Name="MenuFormatQuery" Click="OnFormatQuery" IsEnabled="False" />
                 <!-- No shortcut: Ctrl+D is the editor's next occurrence. -->
                 <MenuFlyoutItem x:Uid="MenuSaveQuery" x:Name="MenuSaveQuery" Click="OnSaveQuery" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Save" /></MenuFlyoutItem.Icon>

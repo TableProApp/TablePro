@@ -1440,6 +1440,20 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -1882,6 +1896,61 @@ static class _UniFFILib {
     public static extern
 #endif
      RustBuffer uniffi_tablepro_ffi_fn_method_catalogchange_statements(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_clone_completionlist(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     void uniffi_tablepro_ffi_fn_free_completionlist(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_completionlist_rank(ulong @ptr,RustBuffer @word,uint @limit,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_completionlist_word(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     uint uniffi_tablepro_ffi_fn_method_completionlist_word_start(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -3784,6 +3853,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_method_databasesession_complete(ulong @ptr,RustBuffer @text,uint @caret,sbyte @asked,RustBuffer @database,RustBuffer @cancel
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      RustBuffer uniffi_tablepro_ffi_fn_method_databasesession_database(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -4357,6 +4437,28 @@ static class _UniFFILib {
     public static extern
 #endif
      RustBuffer uniffi_tablepro_ffi_fn_func_parse_app_link(RustBuffer @link,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_func_format_sql(RustBuffer @text,RustBuffer @grammar,uint @caret,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_func_format_sql_selection(RustBuffer @text,RustBuffer @grammar,uint @start,uint @end,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -5082,6 +5184,28 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_func_format_sql(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_func_format_sql_selection(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_func_parse_connection_url(
     );
 
@@ -5435,6 +5559,39 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_catalogchange_statements(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_completionlist_rank(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_completionlist_word(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_completionlist_word_start(
     );
 
     #if NET8_0_OR_GREATER
@@ -6930,6 +7087,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_databasesession_complete(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_databasesession_database(
     );
 
@@ -7596,6 +7764,18 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_format_sql();
+            if (checksum != 59571) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_format_sql` checksum `59571`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_format_sql_selection();
+            if (checksum != 33116) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_format_sql_selection` checksum `33116`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_parse_connection_url();
             if (checksum != 48047) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_parse_connection_url` checksum `48047`, library returned `{checksum}`");
@@ -7791,6 +7971,24 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_catalogchange_statements();
             if (checksum != 34813) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_catalogchange_statements` checksum `34813`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_completionlist_rank();
+            if (checksum != 212) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_completionlist_rank` checksum `212`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_completionlist_word();
+            if (checksum != 64307) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_completionlist_word` checksum `64307`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_completionlist_word_start();
+            if (checksum != 50621) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_completionlist_word_start` checksum `50621`, library returned `{checksum}`");
             }
         }
         {
@@ -8601,6 +8799,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_columns();
             if (checksum != 27131) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_columns` checksum `27131`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_complete();
+            if (checksum != 48089) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_complete` checksum `48089`, library returned `{checksum}`");
             }
         }
         {
@@ -10269,6 +10473,154 @@ class FfiConverterTypeCatalogChange: FfiConverter<CatalogChange, ulong> {
 
 
 
+internal interface ICompletionList {
+    CompletionPage Rank(string @word, uint @limit);
+    string Word();
+    uint WordStart();
+}
+internal class CompletionList : ICompletionList, IDisposable {
+    protected ulong pointer;
+    private int _wasDestroyed = 0;
+    private long _callCounter = 1;
+
+    public CompletionList(ulong pointer) {
+        this.pointer = pointer;
+    }
+
+    ~CompletionList() {
+        Destroy();
+    }
+
+    protected void FreeRustArcPtr() {
+        _UniffiHelpers.RustCall((ref UniffiRustCallStatus status) => {
+            _UniFFILib.uniffi_tablepro_ffi_fn_free_completionlist(this.pointer, ref status);
+        });
+    }
+
+    protected ulong CloneRustArcPtr() {
+        return _UniffiHelpers.RustCall((ref UniffiRustCallStatus status) => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_clone_completionlist(this.pointer, ref status);
+        });
+    }
+
+    public void Destroy()
+    {
+        // Only allow a single call to this method.
+        if (Interlocked.CompareExchange(ref _wasDestroyed, 1, 0) == 0)
+        {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (Interlocked.Decrement(ref _callCounter) == 0)
+            {
+                FreeRustArcPtr();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        Destroy();
+        GC.SuppressFinalize(this); // Suppress finalization to avoid unnecessary GC overhead.
+    }
+
+    private void IncrementCallCounter() 
+    {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        long count;
+        do
+        {
+            count = Interlocked.Read(ref _callCounter);
+            if (count == 0L) throw new System.ObjectDisposedException(String.Format("'{0}' object has already been destroyed", this.GetType().Name));
+            if (count == long.MaxValue) throw new System.OverflowException(String.Format("'{0}' call counter would overflow", this.GetType().Name));
+
+        } while (Interlocked.CompareExchange(ref _callCounter, count + 1, count) != count);
+    }
+
+    private void DecrementCallCounter() 
+    {
+        // This decrement always matches the increment we performed above.
+        if (Interlocked.Decrement(ref _callCounter) == 0) {
+            FreeRustArcPtr();
+        }
+    }
+
+    internal void CallWithPointer(Action<ulong> action)
+    {
+        IncrementCallCounter();
+        try {
+            action(CloneRustArcPtr());
+        }
+        finally {
+            DecrementCallCounter();
+        }
+    }
+
+    internal T CallWithPointer<T>(Func<ulong, T> func)
+    {   
+        IncrementCallCounter();
+        try {
+            return func(CloneRustArcPtr());
+        }
+        finally {
+            DecrementCallCounter();
+        }
+    }
+
+    
+    public CompletionPage Rank(string @word, uint @limit) {
+        return CallWithPointer(thisPtr => FfiConverterTypeCompletionPage.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_completionlist_rank(thisPtr, FfiConverterString.INSTANCE.Lower(@word), FfiConverterUInt32.INSTANCE.Lower(@limit), ref _status)
+)));
+    }
+    
+    
+    public string Word() {
+        return CallWithPointer(thisPtr => FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_completionlist_word(thisPtr,  ref _status)
+)));
+    }
+    
+    
+    public uint WordStart() {
+        return CallWithPointer(thisPtr => FfiConverterUInt32.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_completionlist_word_start(thisPtr,  ref _status)
+)));
+    }
+    
+    
+
+    
+}
+class FfiConverterTypeCompletionList: FfiConverter<CompletionList, ulong> {
+    public static FfiConverterTypeCompletionList INSTANCE = new FfiConverterTypeCompletionList();
+
+
+    public override ulong Lower(CompletionList value) {
+        return value.CallWithPointer(thisPtr => thisPtr);
+    }
+
+    public override CompletionList Lift(ulong value) {
+        return new CompletionList(value);
+    }
+
+    public override CompletionList Read(BigEndianStream stream) {
+        return Lift(stream.ReadULong());
+    }
+
+    public override int AllocationSize(CompletionList value) {
+        return 8;
+    }
+
+    public override void Write(CompletionList value, BigEndianStream stream) {
+        stream.WriteULong(Lower(value));
+    }
+}
+
+
+
 internal interface IConnectionLibrary {
     /// <exception cref="CoreException"></exception>
     Task ApplyCloudPull(CloudLibraryPull @pull);
@@ -11454,6 +11806,8 @@ internal interface IDatabaseSession {
     Task Close();
     /// <exception cref="CoreException"></exception>
     Task<ColumnEntry[]> Columns(TableName @table, CancelToken? @cancel);
+    /// <exception cref="CoreException"></exception>
+    Task<CompletionList?> Complete(string @text, uint @caret, bool @asked, string? @database, CancelToken? @cancel);
     string? Database();
     DatabaseLayoutTag DatabaseLayout();
     /// <exception cref="CoreException"></exception>
@@ -11788,6 +12142,28 @@ internal class DatabaseSession : IDatabaseSession, IDisposable {
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
         // Lift
         (result) => FfiConverterSequenceTypeColumnEntry.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<CompletionList?> Complete(string @text, uint @caret, bool @asked, string? @database, CancelToken? @cancel) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_complete(thisPtr, FfiConverterString.INSTANCE.Lower(@text), FfiConverterUInt32.INSTANCE.Lower(@caret), FfiConverterBoolean.INSTANCE.Lower(@asked), FfiConverterOptionalString.INSTANCE.Lower(@database), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterOptionalTypeCompletionList.INSTANCE.Lift(result),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -16276,6 +16652,82 @@ class FfiConverterTypeColumnSort: FfiConverterRustBuffer<ColumnSort> {
 
 
 
+internal record CompletionItem (
+    string Label, 
+    string InsertText, 
+    CompletionKindTag Kind, 
+    string? DataType, 
+    TableName? Table, 
+    MatchedSpan[] Matched
+) {
+}
+
+class FfiConverterTypeCompletionItem: FfiConverterRustBuffer<CompletionItem> {
+    public static FfiConverterTypeCompletionItem INSTANCE = new FfiConverterTypeCompletionItem();
+
+    public override CompletionItem Read(BigEndianStream stream) {
+        return new CompletionItem(
+            Label: FfiConverterString.INSTANCE.Read(stream),
+            InsertText: FfiConverterString.INSTANCE.Read(stream),
+            Kind: FfiConverterTypeCompletionKindTag.INSTANCE.Read(stream),
+            DataType: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Table: FfiConverterOptionalTypeTableName.INSTANCE.Read(stream),
+            Matched: FfiConverterSequenceTypeMatchedSpan.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CompletionItem value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Label)
+            + FfiConverterString.INSTANCE.AllocationSize(value.InsertText)
+            + FfiConverterTypeCompletionKindTag.INSTANCE.AllocationSize(value.Kind)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.DataType)
+            + FfiConverterOptionalTypeTableName.INSTANCE.AllocationSize(value.Table)
+            + FfiConverterSequenceTypeMatchedSpan.INSTANCE.AllocationSize(value.Matched);
+    }
+
+    public override void Write(CompletionItem value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Label, stream);
+            FfiConverterString.INSTANCE.Write(value.InsertText, stream);
+            FfiConverterTypeCompletionKindTag.INSTANCE.Write(value.Kind, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.DataType, stream);
+            FfiConverterOptionalTypeTableName.INSTANCE.Write(value.Table, stream);
+            FfiConverterSequenceTypeMatchedSpan.INSTANCE.Write(value.Matched, stream);
+    }
+}
+
+
+
+internal record CompletionPage (
+    uint Total, 
+    CompletionItem[] Items
+) {
+}
+
+class FfiConverterTypeCompletionPage: FfiConverterRustBuffer<CompletionPage> {
+    public static FfiConverterTypeCompletionPage INSTANCE = new FfiConverterTypeCompletionPage();
+
+    public override CompletionPage Read(BigEndianStream stream) {
+        return new CompletionPage(
+            Total: FfiConverterUInt32.INSTANCE.Read(stream),
+            Items: FfiConverterSequenceTypeCompletionItem.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CompletionPage value) {
+        return 0
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Total)
+            + FfiConverterSequenceTypeCompletionItem.INSTANCE.AllocationSize(value.Items);
+    }
+
+    public override void Write(CompletionPage value, BigEndianStream stream) {
+            FfiConverterUInt32.INSTANCE.Write(value.Total, stream);
+            FfiConverterSequenceTypeCompletionItem.INSTANCE.Write(value.Items, stream);
+    }
+}
+
+
+
 internal record ConnectionRecord (
     string Id, 
     string Name, 
@@ -17656,6 +18108,36 @@ class FfiConverterTypeForeignSourceInfo: FfiConverterRustBuffer<ForeignSourceInf
 
 
 
+internal record FormattedSql (
+    string Text, 
+    uint Caret
+) {
+}
+
+class FfiConverterTypeFormattedSql: FfiConverterRustBuffer<FormattedSql> {
+    public static FfiConverterTypeFormattedSql INSTANCE = new FfiConverterTypeFormattedSql();
+
+    public override FormattedSql Read(BigEndianStream stream) {
+        return new FormattedSql(
+            Text: FfiConverterString.INSTANCE.Read(stream),
+            Caret: FfiConverterUInt32.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(FormattedSql value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Text)
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Caret);
+    }
+
+    public override void Write(FormattedSql value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Text, stream);
+            FfiConverterUInt32.INSTANCE.Write(value.Caret, stream);
+    }
+}
+
+
+
 internal record GroupRecord (
     string Id, 
     string Name, 
@@ -18232,6 +18714,36 @@ class FfiConverterTypeMaskSuggestionInfo: FfiConverterRustBuffer<MaskSuggestionI
     public override void Write(MaskSuggestionInfo value, BigEndianStream stream) {
             FfiConverterTypeMaskStyleTag.INSTANCE.Write(value.Style, stream);
             FfiConverterTypeMaskReason.INSTANCE.Write(value.Reason, stream);
+    }
+}
+
+
+
+internal record MatchedSpan (
+    uint Start, 
+    uint Length
+) {
+}
+
+class FfiConverterTypeMatchedSpan: FfiConverterRustBuffer<MatchedSpan> {
+    public static FfiConverterTypeMatchedSpan INSTANCE = new FfiConverterTypeMatchedSpan();
+
+    public override MatchedSpan Read(BigEndianStream stream) {
+        return new MatchedSpan(
+            Start: FfiConverterUInt32.INSTANCE.Read(stream),
+            Length: FfiConverterUInt32.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(MatchedSpan value) {
+        return 0
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Start)
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Length);
+    }
+
+    public override void Write(MatchedSpan value, BigEndianStream stream) {
+            FfiConverterUInt32.INSTANCE.Write(value.Start, stream);
+            FfiConverterUInt32.INSTANCE.Write(value.Length, stream);
     }
 }
 
@@ -20849,6 +21361,57 @@ class FfiConverterTypeCombinatorTag: FfiConverterRustBuffer<CombinatorTag> {
             case CombinatorTag.And: stream.WriteInt(1); break;
             case CombinatorTag.Or: stream.WriteInt(2); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCombinatorTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal enum CompletionKindTag: int {
+    Keyword,
+    Schema,
+    Table,
+    View,
+    MaterializedView,
+    Column,
+    Function
+}
+
+class FfiConverterTypeCompletionKindTag: FfiConverterRustBuffer<CompletionKindTag> {
+    public static FfiConverterTypeCompletionKindTag INSTANCE = new FfiConverterTypeCompletionKindTag();
+
+    public override CompletionKindTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return CompletionKindTag.Keyword;
+            case 2: return CompletionKindTag.Schema;
+            case 3: return CompletionKindTag.Table;
+            case 4: return CompletionKindTag.View;
+            case 5: return CompletionKindTag.MaterializedView;
+            case 6: return CompletionKindTag.Column;
+            case 7: return CompletionKindTag.Function;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCompletionKindTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(CompletionKindTag value) {
+        return 4;
+    }
+
+    public override void Write(CompletionKindTag value, BigEndianStream stream) {
+        switch (value) {
+            case CompletionKindTag.Keyword: stream.WriteInt(1); break;
+            case CompletionKindTag.Schema: stream.WriteInt(2); break;
+            case CompletionKindTag.Table: stream.WriteInt(3); break;
+            case CompletionKindTag.View: stream.WriteInt(4); break;
+            case CompletionKindTag.MaterializedView: stream.WriteInt(5); break;
+            case CompletionKindTag.Column: stream.WriteInt(6); break;
+            case CompletionKindTag.Function: stream.WriteInt(7); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCompletionKindTag.Write()", value));
         }
     }
 }
@@ -25265,6 +25828,63 @@ class FfiConverterTypeShareRefusal : FfiConverterRustBuffer<ShareRefusal>{
 
 
 
+internal enum SqlGrammarTag: int {
+    PostgreSql,
+    MySql,
+    Sqlite,
+    MsSql,
+    ClickHouse,
+    DuckDb,
+    Cql,
+    Redis,
+    Mongo
+}
+
+class FfiConverterTypeSqlGrammarTag: FfiConverterRustBuffer<SqlGrammarTag> {
+    public static FfiConverterTypeSqlGrammarTag INSTANCE = new FfiConverterTypeSqlGrammarTag();
+
+    public override SqlGrammarTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return SqlGrammarTag.PostgreSql;
+            case 2: return SqlGrammarTag.MySql;
+            case 3: return SqlGrammarTag.Sqlite;
+            case 4: return SqlGrammarTag.MsSql;
+            case 5: return SqlGrammarTag.ClickHouse;
+            case 6: return SqlGrammarTag.DuckDb;
+            case 7: return SqlGrammarTag.Cql;
+            case 8: return SqlGrammarTag.Redis;
+            case 9: return SqlGrammarTag.Mongo;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSqlGrammarTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(SqlGrammarTag value) {
+        return 4;
+    }
+
+    public override void Write(SqlGrammarTag value, BigEndianStream stream) {
+        switch (value) {
+            case SqlGrammarTag.PostgreSql: stream.WriteInt(1); break;
+            case SqlGrammarTag.MySql: stream.WriteInt(2); break;
+            case SqlGrammarTag.Sqlite: stream.WriteInt(3); break;
+            case SqlGrammarTag.MsSql: stream.WriteInt(4); break;
+            case SqlGrammarTag.ClickHouse: stream.WriteInt(5); break;
+            case SqlGrammarTag.DuckDb: stream.WriteInt(6); break;
+            case SqlGrammarTag.Cql: stream.WriteInt(7); break;
+            case SqlGrammarTag.Redis: stream.WriteInt(8); break;
+            case SqlGrammarTag.Mongo: stream.WriteInt(9); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSqlGrammarTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal record SshAuthTag {
     
     public record Agent: SshAuthTag {}
@@ -27151,6 +27771,37 @@ class FfiConverterOptionalTypeCancelToken: FfiConverterRustBuffer<CancelToken?> 
 
 
 
+class FfiConverterOptionalTypeCompletionList: FfiConverterRustBuffer<CompletionList?> {
+    public static FfiConverterOptionalTypeCompletionList INSTANCE = new FfiConverterOptionalTypeCompletionList();
+
+    public override CompletionList? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeCompletionList.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(CompletionList? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeCompletionList.INSTANCE.AllocationSize((CompletionList)value);
+        }
+    }
+
+    public override void Write(CompletionList? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeCompletionList.INSTANCE.Write((CompletionList)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalTypeExportProgress: FfiConverterRustBuffer<ExportProgress?> {
     public static FfiConverterOptionalTypeExportProgress INSTANCE = new FfiConverterOptionalTypeExportProgress();
 
@@ -28789,6 +29440,52 @@ class FfiConverterSequenceTypeColumnEntry: FfiConverterRustBuffer<ColumnEntry[]>
 
 
 
+class FfiConverterSequenceTypeCompletionItem: FfiConverterRustBuffer<CompletionItem[]> {
+    public static FfiConverterSequenceTypeCompletionItem INSTANCE = new FfiConverterSequenceTypeCompletionItem();
+
+    public override CompletionItem[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new CompletionItem[length];
+        var readFn = FfiConverterTypeCompletionItem.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(CompletionItem[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeCompletionItem.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(CompletionItem[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeCompletionItem.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
 class FfiConverterSequenceTypeConnectionRecord: FfiConverterRustBuffer<ConnectionRecord[]> {
     public static FfiConverterSequenceTypeConnectionRecord INSTANCE = new FfiConverterSequenceTypeConnectionRecord();
 
@@ -29610,6 +30307,52 @@ class FfiConverterSequenceTypeLicenseInfo: FfiConverterRustBuffer<LicenseInfo[]>
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeLicenseInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeMatchedSpan: FfiConverterRustBuffer<MatchedSpan[]> {
+    public static FfiConverterSequenceTypeMatchedSpan INSTANCE = new FfiConverterSequenceTypeMatchedSpan();
+
+    public override MatchedSpan[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new MatchedSpan[length];
+        var readFn = FfiConverterTypeMatchedSpan.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(MatchedSpan[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeMatchedSpan.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(MatchedSpan[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeMatchedSpan.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }
@@ -31389,6 +32132,22 @@ internal static class CoreMethods {
         return FfiConverterTypeAppLinkInfo.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_func_parse_app_link(FfiConverterString.INSTANCE.Lower(@link), ref _status)
+));
+    }
+
+
+    public static FormattedSql FormatSql(string @text, SqlGrammarTag @grammar, uint @caret) {
+        return FfiConverterTypeFormattedSql.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_format_sql(FfiConverterString.INSTANCE.Lower(@text), FfiConverterTypeSqlGrammarTag.INSTANCE.Lower(@grammar), FfiConverterUInt32.INSTANCE.Lower(@caret), ref _status)
+));
+    }
+
+
+    public static string FormatSqlSelection(string @text, SqlGrammarTag @grammar, uint @start, uint @end) {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_format_sql_selection(FfiConverterString.INSTANCE.Lower(@text), FfiConverterTypeSqlGrammarTag.INSTANCE.Lower(@grammar), FfiConverterUInt32.INSTANCE.Lower(@start), FfiConverterUInt32.INSTANCE.Lower(@end), ref _status)
 ));
     }
 

@@ -16,6 +16,36 @@ const GRAMMARS: [SqlGrammar; 9] = [
     SqlGrammar::Mongo,
 ];
 
+// How an editor reads its text, for the calls that take no session; in `SqlGrammar`'s declaration order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SqlGrammarTag {
+    PostgreSql,
+    MySql,
+    Sqlite,
+    MsSql,
+    ClickHouse,
+    DuckDb,
+    Cql,
+    Redis,
+    Mongo,
+}
+
+impl From<SqlGrammarTag> for SqlGrammar {
+    fn from(grammar: SqlGrammarTag) -> Self {
+        match grammar {
+            SqlGrammarTag::PostgreSql => Self::PostgreSql,
+            SqlGrammarTag::MySql => Self::MySql,
+            SqlGrammarTag::Sqlite => Self::Sqlite,
+            SqlGrammarTag::MsSql => Self::MsSql,
+            SqlGrammarTag::ClickHouse => Self::ClickHouse,
+            SqlGrammarTag::DuckDb => Self::DuckDb,
+            SqlGrammarTag::Cql => Self::Cql,
+            SqlGrammarTag::Redis => Self::Redis,
+            SqlGrammarTag::Mongo => Self::Mongo,
+        }
+    }
+}
+
 // `None` for an unknown grammar code.
 pub(crate) fn scan(grammar: u32, backslash_escapes: u32, units: &[u16], out: &mut [TpSyntaxToken]) -> Option<usize> {
     let (text, grammar, settings) = decode(grammar, backslash_escapes, units)?;
@@ -82,14 +112,14 @@ fn kind_code(kind: SyntaxKind) -> u32 {
 }
 
 // Byte offsets never go back, so a whole token or statement list maps in one pass over the text.
-struct Utf16Offsets<'a> {
+pub(crate) struct Utf16Offsets<'a> {
     text: &'a str,
     byte: usize,
     units: usize,
 }
 
 impl<'a> Utf16Offsets<'a> {
-    fn new(text: &'a str) -> Self {
+    pub(crate) fn new(text: &'a str) -> Self {
         Self {
             text,
             byte: 0,
@@ -97,7 +127,7 @@ impl<'a> Utf16Offsets<'a> {
         }
     }
 
-    fn at(&mut self, byte: usize) -> usize {
+    pub(crate) fn at(&mut self, byte: usize) -> usize {
         let mut next = self.byte;
         for c in self.text.get(self.byte..).unwrap_or_default().chars() {
             if next >= byte {

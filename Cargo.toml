@@ -65,6 +65,8 @@ regex = "1"
 # Edits a TOML config file and keeps its comments and layout.
 toml_edit = "0.25.15"
 sqlparser = { version = "0.63", default-features = false, features = ["std"] }
+# The core's SQL formatter, checked statement by statement against the script lexer.
+sqlformat = "0.5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "process"] }
 tokio-util = { version = "0.7", default-features = false, features = ["codec", "rt"] }
 secrecy = { version = "0.10", features = ["serde"] }

@@ -31,6 +31,12 @@ public sealed partial class SqlEditor
         var control = Down(VirtualKey.Control);
         var shift = Down(VirtualKey.Shift);
         var alt = Down(VirtualKey.Menu);
+        // An open completion list takes its keys first, Insert mode's Enter and Tab included.
+        if (HandleCompletionKey(e.Key, control, shift, alt))
+        {
+            e.Handled = true;
+            return;
+        }
         // Vim sees a key before the editor's own commands, and the app's accelerators come after both.
         e.Handled = _vim is null ? HandleKey(e.Key, control, shift, alt) : HandleVimKey(e.Key, control, shift, alt);
         if (!e.Handled)
@@ -149,8 +155,15 @@ public sealed partial class SqlEditor
             case VirtualKey.D:
                 Edit(_model.SelectNextOccurrence);
                 return true;
+            // As on Linux. Query > Filter rows has the same keys only in a table tab, which holds no editor.
+            case VirtualKey.F when shift:
+                _ = FormatAsync();
+                return true;
             case VirtualKey.F:
                 OpenFind();
+                return true;
+            case VirtualKey.Space when !shift:
+                ShowCompletion();
                 return true;
             // Ctrl+Shift+H is the app's Show Connections.
             case VirtualKey.H when !shift:
@@ -208,9 +221,14 @@ public sealed partial class SqlEditor
         }
         var text = char.IsLowSurrogate(c) && _pendingHighSurrogate != 0 ? new string([_pendingHighSurrogate, c]) : c.ToString();
         _pendingHighSurrogate = '\0';
+        var version = Document.Version;
         if (!RouteVimText(text, Down(VirtualKey.Shift)))
         {
             TypeText(text);
+        }
+        if (Document.Version != version)
+        {
+            AfterTyped(text);
         }
         e.Handled = true;
     }
