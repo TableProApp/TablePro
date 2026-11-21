@@ -15,6 +15,8 @@ import SwiftUI
 internal final class ConnectionFormWindowController: NSWindowController, NSWindowDelegate {
     private static var controllers: [ConnectionFormRequest: ConnectionFormWindowController] = [:]
 
+    private var formCoordinator: ConnectionFormCoordinator?
+
     internal static func present(_ request: ConnectionFormRequest) {
         let controller = controllers[request] ?? ConnectionFormWindowController(request: request)
         controllers[request] = controller
@@ -27,12 +29,7 @@ internal final class ConnectionFormWindowController: NSWindowController, NSWindo
         controllers[request]?.close()
     }
 
-    /// Held for the window's lifetime: the toolbar keeps only a weak delegate reference.
-    private let toolbarDelegate = ConnectionFormToolbarDelegate()
-
     private convenience init(request: ConnectionFormRequest) {
-        /// Built here rather than inside a SwiftUI `.task`, because the sidebar and the detail
-        /// column are now two separate hosting controllers and both edit the same coordinator.
         /// Read once: `consume` removes the draft, so a second call returns nil and the parsed URL
         /// would be silently dropped.
         let draft = Self.draft(for: request)
@@ -46,38 +43,23 @@ internal final class ConnectionFormWindowController: NSWindowController, NSWindo
         coordinator.dismissAction = { ConnectionFormWindowController.close(request) }
         coordinator.start()
 
-        let split = ConnectionFormSplitViewController(coordinator: coordinator)
-
-        /// The split controller IS the content view controller, with nothing wrapped around it.
-        /// That is what puts `toggleSidebar(_:)` on the responder chain for the View menu and lets
-        /// AppKit supply `.sidebarTrackingSeparator`; a container in between takes both away.
-        /// No `window.title` here: `NSWindow(contentViewController:)` binds the title to the
-        /// controller's own, which tracks the connection's type, so writing it once would pin the
-        /// generic string and the type would never reach the titlebar.
-        let window = NSWindow(contentViewController: split)
+        /// One scrolling form, no sidebar: a connection is a single object. No `window.title` here,
+        /// since `NSWindow(contentViewController:)` binds the title to the controller's own, which
+        /// tracks the connection's type.
+        let content = ConnectionFormContentViewController(coordinator: coordinator)
+        let window = NSWindow(contentViewController: content)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.connectionForm)
         window.keepsKeyViewLoopCurrent()
-        /// `.fullSizeContentView` with a transparent titlebar is what lets the sidebar run the
-        /// window's full height and carry the traffic lights, the way System Settings and this
-        /// app's own main window do. Without it the titlebar is an opaque band across the top and
-        /// the sidebar starts underneath it, which is the part that reads as a custom control.
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        window.titlebarAppearsTransparent = true
-        window.toolbarStyle = .unified
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isRestorable = false
-        window.contentMinSize = NSSize(width: 720, height: 560)
-        window.setContentSize(NSSize(width: 820, height: 620))
+        window.contentMinSize = NSSize(width: 480, height: 480)
+        window.setContentSize(NSSize(width: 560, height: 640))
         if let autosaveName = SplitViewAutosaveName.current(WindowIdentifier.connectionForm) {
             window.setFrameAutosaveName(autosaveName)
         }
 
         self.init(window: window)
-
-        let toolbar = NSToolbar(identifier: ConnectionFormToolbarDelegate.identifier)
-        toolbar.delegate = toolbarDelegate
-        toolbar.displayMode = .iconOnly
-        toolbar.allowsUserCustomization = false
-        window.toolbar = toolbar
+        self.formCoordinator = coordinator
         window.delegate = self
     }
 
@@ -87,6 +69,7 @@ internal final class ConnectionFormWindowController: NSWindowController, NSWindo
     }
 
     internal func windowWillClose(_ notification: Notification) {
+        formCoordinator?.teardownOnClose()
         Self.controllers = Self.controllers.filter { $0.value !== self }
     }
 }

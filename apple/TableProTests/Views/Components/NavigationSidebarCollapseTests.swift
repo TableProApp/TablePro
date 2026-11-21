@@ -14,15 +14,6 @@ import Testing
 
 @MainActor
 struct NavigationSidebarCollapseTests {
-    @Test("The connection form's sidebar survives a drag to the window edge")
-    func connectionFormSidebarRefusesDrag() throws {
-        let split = ConnectionFormSplitViewController(coordinator: ConnectionFormCoordinator(connectionId: nil))
-        let window = host(split)
-        defer { window.close() }
-
-        try expectSidebarStaysOpen(in: split)
-    }
-
     @Test("A sidebar window's sidebar survives a drag to the window edge")
     func sidebarSplitRefusesDrag() throws {
         let split = SidebarSplitViewController(

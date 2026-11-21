@@ -47,14 +47,7 @@ final class AdvancedPaneViewModel: ObservableObject {
     }
 
     var validationIssues: [String] {
-        var issues: [String] = []
-        for field in advancedFields where field.isRequired && isFieldVisible(field) {
-            let value = additionalFieldValues[field.id] ?? field.defaultValue ?? ""
-            if value.trimmingCharacters(in: .whitespaces).isEmpty {
-                issues.append(String(format: String(localized: "%@ is required"), field.label))
-            }
-        }
-        issues += advancedFields.filter(isFieldVisible).compactMap { $0.rangeIssue(in: additionalFieldValues[$0.id] ?? "") }
+        var issues: [String] = coordinator?.value?.presentation.validationIssues(in: .advanced) ?? []
         if let extensionIssue {
             issues.append(extensionIssue)
         }
