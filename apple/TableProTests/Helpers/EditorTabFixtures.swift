@@ -17,6 +17,8 @@ internal final class EditorTabCommandRecorder {
     var renameRequests: [UUID] = []
     var renamed: [(UUID, String)] = []
     var tornOff: [(UUID, NSPoint?)] = []
+    var moved: [(UUID, Int)] = []
+    var received: [(UUID, Int)] = []
     var newTabCount = 0
 }
 
@@ -55,12 +57,15 @@ extension EditorTabCommands {
             canCloseOthers: { _ in canCloseOthers },
             closeAll: {},
             canCloseAll: { canCloseAll },
-            moveTab: { _, _ in },
+            moveTab: { recorder.moved.append(($0, $1)) },
             canMove: { _, _ in true },
             moveBy: { _, _ in },
             tearOff: { recorder.tornOff.append(($0, $1)) },
             canTearOff: { _ in canTearOff },
-            receiveTab: { _, _ in true },
+            receiveTab: { id, index in
+                recorder.received.append((id, index))
+                return true
+            },
             isOverTabStrip: { _ in false },
             moveToConnection: { recorder.movedToConnection.append($0) },
             offersMoveToConnection: { _ in offersMoveToConnection },
