@@ -24,7 +24,6 @@ DEFAULT_PATHS = [
     APPLE / "Plugins/OracleDriverPlugin",
     APPLE / "Plugins/DamengDriverPlugin",
     APPLE / "TablePro/Core/ServerDashboard/Providers/OracleDashboardProvider.swift",
-    APPLE / "TableProMobile/TableProMobile/Drivers/OracleDriver.swift",
 ]
 
 OWNER_FILE = "OracleDictionary.swift"
