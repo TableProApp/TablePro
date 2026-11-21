@@ -148,6 +148,18 @@ struct ConnectionURLParserTests {
         #expect(parsed.connectionName == "Shop")
     }
 
+    @Test("A file URL whose path decodes to a NUL is refused", arguments: [
+        "sqlite:///tmp/prod.db%00/preview.sqlite",
+        "sqlite:///tmp/prod.db%00",
+        "duckdb:///tmp/prod.duckdb%00.duckdb?name=Preview"
+    ])
+    func testFileURLWithNULIsRefused(url: String) {
+        guard case .failure(let error) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) parsed"); return
+        }
+        #expect(error == .invalidURL)
+    }
+
     @Test("A raw percent sign that is no escape stays in the path")
     func testFileURLRawPercentSurvives() throws {
         #expect(try ConnectionURLParser.parse("sqlite:///path/100%/shop.sqlite").get().database == "/path/100%/shop.sqlite")

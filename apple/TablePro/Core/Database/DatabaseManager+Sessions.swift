@@ -144,6 +144,7 @@ extension DatabaseManager {
             if let reportingDriver = driver as? DatabaseReporting,
                let openedDatabase = reportingDriver.currentDatabase, !openedDatabase.isEmpty {
                 activeSessions[connection.id]?.browseDatabase = openedDatabase
+                activeSessions[connection.id]?.openedDatabase = openedDatabase
             }
 
             await executePostConnectActions(

@@ -382,8 +382,9 @@ internal final class TabRouter {
                 try await openTable(
                     connectionId: connection.id,
                     transientConnection: isTransient ? connection : nil,
-                    // A file URL's path is the connection, never a database to switch to.
-                    database: parsed.namesDatabaseFile || parsed.database.isEmpty ? nil : parsed.database,
+                    database: Self.linkedTableDatabase(
+                        parsed, openedDatabase: DatabaseManager.shared.session(for: connection.id)?.openedDatabase
+                    ),
                     schema: parsed.schema,
                     table: table,
                     isView: parsed.isView,
@@ -412,6 +413,13 @@ internal final class TabRouter {
         await applyContainerSwitch(
             connectionId: connection.id, database: nil, schema: parsed.schema
         )
+    }
+
+    // A file link's path is the connection, never a database to switch to. Its table is in the database the
+    // connection opened on, which a session browsing a DuckDB catalog attached since has moved away from.
+    internal static func linkedTableDatabase(_ parsed: ParsedConnectionURL, openedDatabase: String?) -> String? {
+        guard !parsed.namesDatabaseFile else { return openedDatabase }
+        return parsed.database.isEmpty ? nil : parsed.database
     }
 
     private func failuresShownInWindow(

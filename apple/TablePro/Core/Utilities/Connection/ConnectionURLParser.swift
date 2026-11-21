@@ -140,7 +140,7 @@ struct ConnectionURLParser {
         let isSrv = scheme == "mongodb+srv"
 
         if opensDatabaseFile(dbType), dbType != .duckdb || scheme == "duckdb" {
-            return .success(parseFileURL(String(trimmed[schemeEnd.upperBound...]), type: dbType))
+            return parseFileURL(String(trimmed[schemeEnd.upperBound...]), type: dbType)
         }
 
         if isSSH {
@@ -262,18 +262,24 @@ struct ConnectionURLParser {
     }
 
     // The path ends at the first `?` as on any other scheme, so a file name's own `?` arrives as `%3F`.
-    private static func parseFileURL(_ afterScheme: String, type: DatabaseType) -> ParsedConnectionURL {
+    private static func parseFileURL(
+        _ afterScheme: String,
+        type: DatabaseType
+    ) -> Result<ParsedConnectionURL, ConnectionURLParseError> {
         let queryStart = afterScheme.firstIndex(of: "?")
         let encodedPath = queryStart.map { String(afterScheme[..<$0]) } ?? afterScheme
+        let path = encodedPath.removingPercentEncoding ?? encodedPath
+        // The drivers open a C string, so a decoded NUL would open the path before it, not the one the alert shows.
+        guard !path.utf8.contains(0) else { return .failure(.invalidURL) }
         let ext = parseQueryItems(
             queryStart.map { queryItems(String(afterScheme[afterScheme.index(after: $0)...])) },
             dbType: type
         )
-        return ParsedConnectionURL(
+        return .success(ParsedConnectionURL(
             type: type,
             host: "",
             port: nil,
-            database: encodedPath.removingPercentEncoding ?? encodedPath,
+            database: path,
             username: "",
             password: "",
             sslMode: nil,
@@ -304,7 +310,7 @@ struct ConnectionURLParser {
             mongoQueryParams: [:],
             multiHost: nil,
             additionalFields: [:]
-        )
+        ))
     }
 
     // Trino and Presto read the path as /catalog/schema, as their JDBC drivers do. An SSH URL's
