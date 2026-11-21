@@ -13,9 +13,9 @@ use std::time::{Duration, Instant};
 use secrecy::SecretString;
 use tablepro_ffi::window_abi::{TpCursor, TpWindow, tablepro_cursor_fetch, tablepro_cursor_free};
 use tablepro_ffi::{
-    ColumnSort, Core, CoreError, DatabaseSession, EndpointInfo, FileOpenRequest, HostConfig, HostSecretError,
-    HostSecrets, ObjectKindTag, ObjectScopeArg, QueryEditor, RunEvent, RunListener, RunOutcome, RunSettings,
-    SecretItemTag, SecretKindTag, SessionHealthTag, TableName, TransactionStateTag, ValueKind,
+    ColumnSort, CompletionKindTag, Core, CoreError, DatabaseSession, EndpointInfo, FileOpenRequest, HostConfig,
+    HostSecretError, HostSecrets, ObjectKindTag, ObjectScopeArg, QueryEditor, RunEvent, RunListener, RunOutcome,
+    RunSettings, SecretItemTag, SecretKindTag, SessionHealthTag, TableName, TransactionStateTag, ValueKind,
 };
 
 struct NoSecrets;
@@ -598,4 +598,126 @@ async fn an_open_file_is_online_and_a_cancel_ends_the_wait_for_a_change() {
 
     assert_eq!(health, SessionHealthTag::Online);
     assert!(matches!(ended, Ok(Err(CoreError::Cancelled))), "{ended:?}");
+}
+
+fn units(text: &str) -> u32 {
+    u32::try_from(text.encode_utf16().count()).unwrap()
+}
+
+#[tokio::test]
+async fn completion_offers_the_files_tables_and_the_columns_of_an_alias() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session, editor) = fixture(dir.path()).await;
+    let (outcome, _, _) = run(
+        &editor,
+        "CREATE TABLE \"Order Items\" (id INTEGER, quantity INTEGER)",
+        RunSettings::default(),
+    )
+    .await;
+    assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
+    // The catalog was read when the file opened, before the tables were made.
+    session
+        .refresh_objects(ObjectScopeArg::DefaultSchema, None)
+        .await
+        .unwrap();
+
+    let text = "SELECT * FROM pe";
+    let tables = session
+        .complete(text.to_owned(), units(text), false, None, None)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!((tables.word_start(), tables.word()), (14, "pe".to_owned()));
+    let page = tables.rank("pe".to_owned(), 10);
+    let first = page.items.first().unwrap();
+    assert_eq!((first.label.as_str(), first.kind), ("people", CompletionKindTag::Table));
+    assert_eq!(
+        first.matched.first().map(|span| (span.start, span.length)),
+        Some((0, 2))
+    );
+    let quoted = tables.rank("ord".to_owned(), 10);
+    let item = quoted.items.iter().find(|item| item.label == "Order Items").unwrap();
+    assert_eq!(
+        item.insert_text, "\"Order Items\"",
+        "a name with a space goes in quoted"
+    );
+
+    let columns = session
+        .complete("SELECT p. FROM people p".to_owned(), 9, false, None, None)
+        .await
+        .unwrap()
+        .unwrap();
+    let page = columns.rank(String::new(), 50);
+    let names: Vec<&str> = page.items.iter().map(|item| item.label.as_str()).collect();
+    assert_eq!(names, ["id", "name", "note"], "the columns in the table's order");
+    let id = page.items.first().unwrap();
+    assert_eq!(id.kind, CompletionKindTag::Column);
+    assert!(id.data_type.is_some());
+    assert_eq!(id.table.as_ref().map(|table| table.name.as_str()), Some("people"));
+    session.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn completion_waits_for_a_letter_where_anything_goes_and_never_opens_in_a_string() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session, _editor) = fixture(dir.path()).await;
+    session
+        .refresh_objects(ObjectScopeArg::DefaultSchema, None)
+        .await
+        .unwrap();
+
+    let text = "SELECT ";
+    let unasked = session
+        .complete(text.to_owned(), units(text), false, None, None)
+        .await
+        .unwrap();
+    let asked = session
+        .complete(text.to_owned(), units(text), true, None, None)
+        .await
+        .unwrap()
+        .unwrap();
+    let text = "SELECT 'pe";
+    let in_string = session
+        .complete(text.to_owned(), units(text), true, None, None)
+        .await
+        .unwrap();
+
+    assert!(unasked.is_none());
+    assert!(in_string.is_none());
+    let page = asked.rank(String::new(), 1000);
+    assert!(
+        page.items
+            .iter()
+            .any(|item| item.label == "SELECT" && item.kind == CompletionKindTag::Keyword)
+    );
+    assert!(page.items.iter().any(|item| item.label == "people"));
+    assert_eq!(
+        asked
+            .rank("sel".to_owned(), 1)
+            .items
+            .first()
+            .map(|item| item.insert_text.clone()),
+        Some("select".to_owned())
+    );
+    session.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn completion_in_a_database_the_catalog_does_not_describe_offers_none_of_its_tables() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session, _editor) = fixture(dir.path()).await;
+
+    let text = "SELECT * FROM pe";
+    let elsewhere = session
+        .complete(text.to_owned(), units(text), true, Some("other".to_owned()), None)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        elsewhere.rank(String::new(), 100).total,
+        0,
+        "a table from another database was offered"
+    );
+    session.close().await.unwrap();
 }

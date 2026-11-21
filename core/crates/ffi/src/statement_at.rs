@@ -20,7 +20,7 @@ pub(crate) fn statement_at(sql: &str, caret: u32, grammar: SqlGrammar) -> Option
 }
 
 // A unit inside a surrogate pair belongs to the character the pair makes.
-fn byte_at_unit(text: &str, unit: usize) -> usize {
+pub(crate) fn byte_at_unit(text: &str, unit: usize) -> usize {
     let mut units = 0;
     for (byte, c) in text.char_indices() {
         units += c.len_utf16();

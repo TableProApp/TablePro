@@ -261,6 +261,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         {
             return;
         }
+        CloseCompletion();
         _disposed = true;
         Unhook();
         _highlighter?.Dispose();

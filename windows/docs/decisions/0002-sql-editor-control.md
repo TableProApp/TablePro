@@ -63,6 +63,8 @@
 | Ctrl+/, Tab, Shift+Tab, Ctrl+], Ctrl+[ | Line comment, indent, outdent |
 | Ctrl+F, F3, Shift+F3 | Find, next, previous |
 | Ctrl+Shift+[, Ctrl+Shift+] | Fold the innermost region at the caret, unfold the one on its line |
+| Ctrl+Space | Completion, wherever a name or a keyword can go |
+| Ctrl+Shift+F | Format the selection, or the whole text without one, as on Linux; Query > Filter rows has the same keys only in a table tab, which holds no editor |
 
 - Typing closes brackets and quotes and steps over a closer already there; Enter keeps indentation and opens a bracket pair onto its own lines; Backspace in indentation goes back one tab stop.
 - Mouse: click, Shift+click, double-click word, triple-click line, drag to select with auto-scroll, drag and drop of text (a move inside the editor is one undo step), and a context menu.
@@ -81,6 +83,14 @@
 - `DocumentStructure` reads the statements and the fold regions of one version of the text: statements over more than one line, multi-line block comments, brackets (to the line before the closer, as VS Code folds them) and `BEGIN` or `CASE` to `END`. A text up to 64 KB is read before the frame that needs it; a longer one off the UI thread once typing pauses for 200 ms, mapped through each edit in between. Over 2,000,000 characters there are none, the limit the macOS editor stops at.
 - The band behind the statement the caret is in is the host's to turn on, as the macOS editor's is. It is the statement Run Statement sends: the one the primary caret is in, or the last one before it, and it steps aside for a selection.
 - The bracket beside the caret, before it first as the macOS editor reads it, and its pair get a box, as VS Code and Visual Studio mark them on Windows. Only a bracket the lexer gives as punctuation or an operator pairs, so one inside a string, a comment or a quoted name never does. A text the lexer gives no tokens for, such as a MongoDB query, pairs plain characters.
+
+### Completion and format
+
+- The core decides what completes and how it is written (`DatabaseSession.CompleteAsync`, over `tablepro_core::sql_syntax::completion` and `tablepro_session::completion`, the code the Linux editor runs): the scope at the caret, the catalog reads the object tree shares, keyword case, quoting and ranking. A tab in another of the server's databases reads that database where the catalog lists it as a schema (MySQL), and offers only keywords where it does not. The editor shows the list and inserts the choice.
+- As in the macOS editor, the list opens 50 ms after a letter, and after a space, comma, dot or parenthesis where the place alone takes a name (after FROM, after an alias's dot); Ctrl+Space opens it anywhere. Typing narrows it without reading the catalog again, ranked off the UI thread, and it closes when nothing matches, when the caret leaves the word, on focus loss or on Escape.
+- A WinUI `Popup` over the editor holds a `ListView` whose rows are made once and filled again for each word. It never takes focus, so the editor keeps the keys, the caret and the IME, whose composition closes it. Up and Down stop at the ends, Page Up and Page Down move a page, Enter and Tab accept, and so does a double click; with Vim on, these keys reach the list before Vim, and Escape closes it and leaves Insert mode too. The choice replaces the whole word the caret is in, as on Linux, as one undo step.
+- Each row has the object tree's symbol for its kind, the matched characters in semibold, and the kind or a column's type. The list is in the editor's `ControlledPeers`, and the editor raises a UIA notification for the selected row ("Track, Table, 1 of 3").
+- Format query (the Query menu, the editor's menu, Ctrl+Shift+F) runs the core's formatter off the UI thread (`SqlFormatter`, over `tablepro_core::sql_syntax::format`). A statement whose tokens the formatter would change is kept as typed; a selection is formatted only where the whole text keeps its tokens, so one inside a comment or a string stays as it is. Only the part that changed is replaced, as one undo step; the caret keeps the characters around it, or goes after a formatted selection, as the macOS editor leaves it. Text typed while the format runs wins.
 
 ### Color schemes
 
@@ -107,7 +117,7 @@
 - Text input, hit testing and accessibility are ours to keep right; RichEditBox's own behaviors no longer come for free.
 - A transitory TSF context gives up reconversion and IME features that read the text around the caret.
 - The composition is drawn at the primary caret only, and committed text goes to every caret.
-- Seams for the later slices: the lexer is an `ISyntaxLexer`; the model's commands and `SqlEditor.HandleKey` are public; `FramePresented` reports every frame. Completion, hover, diagnostics and formatting are not built; Vim mode is [0017](0017-vim-mode.md).
+- Seams for the later slices: the lexer is an `ISyntaxLexer`; the model's commands and `SqlEditor.HandleKey` are public; `FramePresented` reports every frame. Hover and diagnostics are not built; Vim mode is [0017](0017-vim-mode.md). Completion offers no snippets and no saved query keywords yet.
 - A new width lays out every line again for word wrap, which on a 5 MB script costs a pass over its text per column the width gains or loses.
 - The fold chevrons have no UIA element of their own; the keys and the menu reach every fold.
 
