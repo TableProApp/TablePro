@@ -377,7 +377,8 @@ public sealed partial class SqlEditor
             var version = Document.Version;
             try
             {
-                item = (await Task.Run(() => completion.Rank(word, 1)).ConfigureAwait(true)).Items.FirstOrDefault();
+                var closest = await Task.Run(() => completion.Rank(word, 1)).ConfigureAwait(true);
+                item = closest.Items.Count > 0 ? closest.Items[0] : null;
             }
             catch (ObjectDisposedException)
             {
@@ -442,7 +443,7 @@ public sealed partial class SqlEditor
     {
         if (_completionPopup is { IsOpen: true } popup)
         {
-            _peer?.Announce(popup.Announcement());
+            _peer?.Announce(popup.Announcement);
         }
     }
 }

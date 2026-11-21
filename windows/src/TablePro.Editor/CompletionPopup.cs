@@ -168,7 +168,7 @@ internal sealed class CompletionPopup
     }
 
     // What Narrator reads for the selected row: its name, its kind and its place in the list.
-    public string Announcement() => Selected is { } item
+    public string Announcement => Selected is { } item
         ? HostStrings.Format("CompletionAnnouncement", Name(item), _list.SelectedIndex + 1, _total)
         : string.Empty;
 
