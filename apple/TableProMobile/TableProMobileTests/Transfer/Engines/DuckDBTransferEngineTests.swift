@@ -125,10 +125,14 @@ struct DuckDBTransferEngineTests {
         await #expect(throws: (any Error).self) { _ = try await transfer.ping() }
     }
 
-    @Test("A grid statement on the session does not end a read the session streams for an export")
+    // Past the 64 batches a stream buffers, so a read that held the session's executor would never let the grid run.
+    @Test(
+        "A grid statement on the session does not end a read the session streams for an export",
+        .timeLimit(.minutes(1))
+    )
     func sessionExportSurvivesGridStatements() async throws {
         let driver = try await session()
-        _ = try await driver.execute(query: "CREATE TABLE t AS SELECT i FROM range(0, 10000) AS r(i)")
+        _ = try await driver.execute(query: "CREATE TABLE t AS SELECT i FROM range(0, 400000) AS r(i)")
 
         var iterator = driver.exportRows(query: "SELECT i FROM t ORDER BY i", readOnly: false).makeAsyncIterator()
         _ = try await iterator.next()
@@ -139,7 +143,7 @@ struct DuckDBTransferEngineTests {
         }
         try await driver.disconnect()
 
-        #expect(count == 10_000)
+        #expect(count == 400_000)
     }
 
     @Test(

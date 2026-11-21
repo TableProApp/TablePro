@@ -387,6 +387,95 @@ struct DuckDBDriverCatalogTests {
     }
 }
 
+struct DuckDBGridDecodeTests {
+    private static func read(
+        _ text: String,
+        column: String = "body",
+        options: StreamOptions = StreamOptions()
+    ) -> DuckDBGridValue {
+        let reader = DuckDBBackedDriver.gridReader(options: options)
+        var bytes = Array(text.utf8)
+        return bytes.withUnsafeMutableBytes { reader(column, .text(UnsafeRawBufferPointer($0))) }
+    }
+
+    @Test("Long text is cut while it is decoded, keeping its length")
+    func longTextIsCutAtDecode() {
+        guard case .cut(let prefix, let totalBytes) = Self.read(String(repeating: "x", count: 1 << 20)) else {
+            Issue.record("a 1 MiB value must be cut as it is decoded")
+            return
+        }
+        #expect(prefix.utf8.count == Cell.previewByteLimit)
+        #expect(totalBytes == 1 << 20)
+    }
+
+    @Test("A cut ends on a whole character, short text and a key column stay whole")
+    func cutsKeepCharactersWhole() {
+        let limit = Cell.previewByteLimit
+        let straddling = String(repeating: "a", count: limit - 1) + "e\u{301}" + String(repeating: "b", count: 100)
+        guard case .cut(let prefix, _) = Self.read(straddling) else {
+            Issue.record("text past the limit must be cut")
+            return
+        }
+        let keyed = StreamOptions(lazyContext: LazyContext(table: "t", primaryKeyColumns: ["id"]))
+        let longKey = String(repeating: "k", count: limit * 2)
+
+        #expect(prefix == String(repeating: "a", count: limit - 1))
+        #expect(Self.read("short") == .text("short"))
+        #expect(Self.read(longKey, column: "id", options: keyed) == .text(longKey))
+    }
+
+    @Test("Long text the budget admits stays whole, once the budget is spent it is cut")
+    func budgetAdmitsLongText() {
+        var options = StreamOptions()
+        options.textBudget = TextBudget(bytes: 10_000)
+        let long = String(repeating: "y", count: 6_000)
+
+        #expect(Self.read(long, options: options) == .admitted(long))
+        guard case .cut = Self.read(long, options: options) else {
+            Issue.record("a value past the spent budget must be cut")
+            return
+        }
+    }
+
+    @Test("Bytes are counted, never copied")
+    func bytesAreCounted() {
+        let reader = DuckDBBackedDriver.gridReader(options: StreamOptions())
+        var bytes = [UInt8](repeating: 7, count: 1 << 20)
+        let value = bytes.withUnsafeMutableBytes { reader("payload", .bytes(UnsafeRawBufferPointer($0))) }
+
+        #expect(value == .bytes(count: 1 << 20))
+    }
+
+    @Test("The plugin hands the grid each large value already cut, and a BLOB as its length")
+    func pluginReadCutsAtDecode() async throws {
+        let config = DriverConnectionConfig(
+            host: "", port: 0, username: "", password: "", database: ":memory:",
+            additionalFields: ["duckdbMode": "local", "duckdbFilePath": ":memory:"]
+        )
+        let duck = DuckDBPluginDriver(config: config)
+        try await duck.connect()
+        let options = StreamOptions()
+        var values: [DuckDBGridValue] = []
+        for try await element in duck.pulledValues(
+            query: "SELECT repeat('x', 32768 + i % 2) AS body, repeat('z', 32768)::BLOB AS payload FROM range(2100) t(i)",
+            context: PluginStatementContext(),
+            reading: DuckDBBackedDriver.gridReader(options: options)
+        ) {
+            if case .rows(let batch) = element { values += batch.flatMap { $0 } }
+        }
+        await duck.close()
+
+        #expect(values.count == 4_200)
+        #expect(values.allSatisfy { value in
+            switch value {
+            case .cut(let prefix, let totalBytes): prefix.utf8.count <= Cell.previewByteLimit && totalBytes >= 32_768
+            case .bytes(let count): count == 32_768
+            default: false
+            }
+        })
+    }
+}
+
 struct DuckDBBlobStreamingTests {
     @Test("A streamed BLOB is a binary cell of its byte count, with the ref every other column gets")
     func blobStreamsAsBinary() async throws {

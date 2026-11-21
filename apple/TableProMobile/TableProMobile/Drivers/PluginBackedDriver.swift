@@ -389,8 +389,12 @@ nonisolated struct PluginRowEmitter {
             continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
             return false
         }
+        let keyText: (Int) -> String? = { index in
+            guard index < row.count, case .text(let value) = row[index] else { return nil }
+            return value
+        }
         let cells = row.enumerated().map { index, value -> Cell in
-            let ref = cellRef(column: index < columns.count ? columns[index] : "", row: row, locator: locator)
+            let ref = ref(column: index < columns.count ? columns[index] : "", keyText: keyText, locator: locator)
             switch value {
             case .null:
                 return .null
@@ -401,16 +405,34 @@ nonisolated struct PluginRowEmitter {
                 return Cell.from(text: text, options: options, ref: ref)
             }
         }
+        return emit(cells: cells, locator: locator, into: continuation)
+    }
+
+    // A row whose cells the caller made, under the same cap.
+    mutating func emit(
+        cells: [Cell],
+        locator: String?,
+        into continuation: AsyncThrowingStream<StreamElement, Error>.Continuation
+    ) -> Bool {
+        guard emitted < options.maxRows else {
+            continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
+            return false
+        }
         continuation.yield(.row(Row(cells: cells, locator: locator)))
         emitted += 1
         return true
     }
 
-    private func cellRef(column: String, row: [PluginCellValue], locator: String?) -> CellRef? {
+    func column(at index: Int) -> String {
+        index < columns.count ? columns[index] : ""
+    }
+
+    // The key a long value is read back by, from the row's key columns as text.
+    func ref(column: String, keyText: (Int) -> String?, locator: String?) -> CellRef? {
         guard let context = options.lazyContext, let keyIndices, !keyIndices.isEmpty else { return nil }
         var components: [PrimaryKeyComponent] = []
         for (key, index) in zip(context.primaryKeyColumns, keyIndices) {
-            guard let index, index < row.count, case .text(let value) = row[index] else { return nil }
+            guard let index, let value = keyText(index) else { return nil }
             components.append(PrimaryKeyComponent(column: key, value: value))
         }
         return CellRef(table: context.table, column: column, primaryKey: components, locator: locator)

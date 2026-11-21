@@ -81,6 +81,32 @@ nonisolated final class DuckDBConnectionHandles: @unchecked Sendable {
     }
 }
 
+// One value of a fetched chunk, read in place: text and bytes point into the chunk and live only for the call, so a
+// reader that cuts a value for display copies only what it keeps.
+nonisolated enum DuckDBChunkValue {
+    case null
+    case text(UnsafeRawBufferPointer)
+    case bytes(UnsafeRawBufferPointer)
+    case spelled(String)
+
+    var pluginValue: PluginCellValue {
+        switch self {
+        case .null: .null
+        case .text(let utf8): .text(String(decoding: utf8, as: UTF8.self))
+        case .bytes(let bytes): .bytes(Data(bytes))
+        case .spelled(let text): .text(text)
+        }
+    }
+}
+
+// What a read hands out for a value of the named column.
+typealias DuckDBValueReader<Value> = @Sendable (_ column: String, _ value: DuckDBChunkValue) -> Value
+
+nonisolated enum DuckDBPulledElement<Value: Sendable>: Sendable {
+    case header(PluginStreamHeader)
+    case rows([[Value]])
+}
+
 actor DuckDBConnectionActor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DuckDBConnectionActor")
 
@@ -446,28 +472,31 @@ actor DuckDBConnectionActor {
     }
 
     // Nil once the read has ended, which ends what it opened.
-    func nextPulledBatch(_ generation: UInt64) throws -> [[PluginCellValue]]? {
-        guard var read = pulledRead, read.generation == generation, let conn = connection else {
+    func nextPulledBatch<Value: Sendable>(
+        _ generation: UInt64,
+        reading read: DuckDBValueReader<Value>
+    ) throws -> [[Value]]? {
+        guard var pulled = pulledRead, pulled.generation == generation, let conn = connection else {
             throw CancellationError()
         }
-        let batch: [[PluginCellValue]]?
+        let batch: [[Value]]?
         do {
-            batch = try nextBatch(of: read.opened, projection: &read.projection)
+            batch = try nextBatch(of: pulled.opened, projection: &pulled.projection, reading: read)
         } catch {
-            pulledRead = read
+            pulledRead = pulled
             closePulledRead()
             throw error
         }
         if let batch {
-            pulledRead = read
+            pulledRead = pulled
             return batch
         }
         pulledRead = nil
-        duckdb_destroy_prepare(&read.projection)
+        duckdb_destroy_prepare(&pulled.projection)
         defer {
-            if read.endsReadOnlyTransaction { DuckDBReadOnlyStatement.end(on: conn) }
+            if pulled.endsReadOnlyTransaction { DuckDBReadOnlyStatement.end(on: conn) }
         }
-        try finish(&read.opened, on: conn)
+        try finish(&pulled.opened, on: conn)
         return nil
     }
 
@@ -1115,17 +1144,18 @@ actor DuckDBConnectionActor {
     private func readRows(of opened: OpenedResult, body: ([[PluginCellValue]]) -> Bool) throws -> Bool {
         var projection: duckdb_prepared_statement?
         defer { duckdb_destroy_prepare(&projection) }
-        while let batch = try nextBatch(of: opened, projection: &projection) {
+        while let batch = try nextBatch(of: opened, projection: &projection, reading: { _, value in value.pluginValue }) {
             guard body(batch) else { return false }
         }
         return true
     }
 
     // The next chunk that holds rows, nil at the end of the result. `projection` renders it, prepared on first use.
-    private func nextBatch(
+    private func nextBatch<Value>(
         of opened: OpenedResult,
-        projection: inout duckdb_prepared_statement?
-    ) throws -> [[PluginCellValue]]? {
+        projection: inout duckdb_prepared_statement?,
+        reading read: DuckDBValueReader<Value>
+    ) throws -> [[Value]]? {
         var source = opened.result
         while true {
             // A statement that ran whole has already taken effect, so its rows are still handed back.
@@ -1141,7 +1171,7 @@ actor DuckDBConnectionActor {
             guard duckdb_data_chunk_get_size(fetched) > 0 else { continue }
 
             guard DuckDBLogicalType.requiresTextProjection(anyOf: opened.schema.logicalTypes) else {
-                return Self.rows(of: fetched, types: Self.storageTypes(of: &source))
+                return Self.rows(of: fetched, types: Self.storageTypes(of: &source), names: opened.schema.names, reading: read)
             }
             guard let resultReader else { throw DuckDBPluginError.notConnected }
             if projection == nil {
@@ -1150,7 +1180,7 @@ actor DuckDBConnectionActor {
             guard let projection else { throw DuckDBPluginError.notConnected }
             var rendered = try resultReader.render(fetched, of: source, with: projection)
             defer { duckdb_destroy_result(&rendered) }
-            return try Self.renderedRows(of: &rendered)
+            return try Self.renderedRows(of: &rendered, names: opened.schema.names, reading: read)
         }
     }
 
@@ -1176,9 +1206,13 @@ actor DuckDBConnectionActor {
         }
     }
 
-    private static func renderedRows(of rendered: inout duckdb_result) throws -> [[PluginCellValue]] {
+    private static func renderedRows<Value>(
+        of rendered: inout duckdb_result,
+        names: [String],
+        reading read: DuckDBValueReader<Value>
+    ) throws -> [[Value]] {
         let types = storageTypes(of: &rendered)
-        var batch: [[PluginCellValue]] = []
+        var batch: [[Value]] = []
         while true {
             var chunk = duckdb_fetch_chunk(rendered)
             guard let fetched = chunk else {
@@ -1188,7 +1222,7 @@ actor DuckDBConnectionActor {
                 return batch
             }
             defer { duckdb_destroy_data_chunk(&chunk) }
-            batch.append(contentsOf: rows(of: fetched, types: types))
+            batch.append(contentsOf: rows(of: fetched, types: types, names: names, reading: read))
         }
     }
 
@@ -1196,18 +1230,25 @@ actor DuckDBConnectionActor {
         (0..<duckdb_column_count(&result)).map { duckdb_column_type(&result, $0) }
     }
 
-    private static func rows(of chunk: duckdb_data_chunk, types: [duckdb_type]) -> [[PluginCellValue]] {
+    private static func rows<Value>(
+        of chunk: duckdb_data_chunk,
+        types: [duckdb_type],
+        names: [String],
+        reading read: DuckDBValueReader<Value>
+    ) -> [[Value]] {
         let size = duckdb_data_chunk_get_size(chunk)
         let vectors = types.indices.map { duckdb_data_chunk_get_vector(chunk, idx_t($0)) }
-        var batch: [[PluginCellValue]] = []
+        var batch: [[Value]] = []
         batch.reserveCapacity(Int(size))
         for row in 0..<size {
-            batch.append(zip(vectors, types).map { chunkCell($0, type: $1, row: row) })
+            batch.append(types.indices.map { column in
+                read(column < names.count ? names[column] : "", chunkValue(vectors[column], type: types[column], row: row))
+            })
         }
         return batch
     }
 
-    private static func chunkCell(_ vector: duckdb_vector?, type: duckdb_type, row: idx_t) -> PluginCellValue {
+    private static func chunkValue(_ vector: duckdb_vector?, type: duckdb_type, row: idx_t) -> DuckDBChunkValue {
         guard let vector, let data = duckdb_vector_get_data(vector) else { return .null }
         if let validity = duckdb_vector_get_validity(vector), !duckdb_validity_row_is_valid(validity, row) {
             return .null
@@ -1219,25 +1260,25 @@ actor DuckDBConnectionActor {
             let bytes = UnsafeRawBufferPointer(
                 start: duckdb_string_t_data(element), count: Int(duckdb_string_t_length(element.pointee))
             )
-            return type == DUCKDB_TYPE_BLOB ? .bytes(Data(bytes)) : .text(String(decoding: bytes, as: UTF8.self))
+            return type == DUCKDB_TYPE_BLOB ? .bytes(bytes) : .text(bytes)
         case DUCKDB_TYPE_BOOLEAN:
-            return .text(data.assumingMemoryBound(to: UInt8.self)[index] != 0 ? "true" : "false")
+            return .spelled(data.assumingMemoryBound(to: UInt8.self)[index] != 0 ? "true" : "false")
         case DUCKDB_TYPE_TINYINT:
-            return .text(String(data.assumingMemoryBound(to: Int8.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: Int8.self)[index]))
         case DUCKDB_TYPE_SMALLINT:
-            return .text(String(data.assumingMemoryBound(to: Int16.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: Int16.self)[index]))
         case DUCKDB_TYPE_INTEGER:
-            return .text(String(data.assumingMemoryBound(to: Int32.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: Int32.self)[index]))
         case DUCKDB_TYPE_BIGINT:
-            return .text(String(data.assumingMemoryBound(to: Int64.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: Int64.self)[index]))
         case DUCKDB_TYPE_UTINYINT:
-            return .text(String(data.assumingMemoryBound(to: UInt8.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: UInt8.self)[index]))
         case DUCKDB_TYPE_USMALLINT:
-            return .text(String(data.assumingMemoryBound(to: UInt16.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: UInt16.self)[index]))
         case DUCKDB_TYPE_UINTEGER:
-            return .text(String(data.assumingMemoryBound(to: UInt32.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: UInt32.self)[index]))
         case DUCKDB_TYPE_UBIGINT:
-            return .text(String(data.assumingMemoryBound(to: UInt64.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: UInt64.self)[index]))
         default:
             return .null
         }

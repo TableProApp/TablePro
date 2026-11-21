@@ -864,16 +864,42 @@ nonisolated final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sen
         }
     }
 
-    // The rows a batch per pull, so a consumer that converts each as it comes holds one batch at a time and the
-    // connection's executor runs other work between batches. Any other statement on the connection ends the read.
+    // The rows a batch per pull, so the connection's executor runs other work between batches. Any other statement on
+    // the connection ends the read.
     func pulledRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        let cursor = DuckDBPulledRows(
+        let cursor = pulledCursor(query: query, context: context) { _, value in value.pluginValue }
+        return AsyncThrowingStream(unfolding: {
+            switch try await cursor.next() {
+            case .header(let header): return .header(header)
+            case .rows(let rows): return .rows(rows)
+            case nil: return nil
+            }
+        })
+    }
+
+    // The same read with each value made by `read` from the chunk in place, so a host that cuts a value for display
+    // never copies the rest of it.
+    func pulledValues<Value: Sendable>(
+        query: String,
+        context: PluginStatementContext,
+        reading read: @escaping DuckDBValueReader<Value>
+    ) -> AsyncThrowingStream<DuckDBPulledElement<Value>, Error> {
+        let cursor = pulledCursor(query: query, context: context, reading: read)
+        return AsyncThrowingStream(unfolding: { try await cursor.next() })
+    }
+
+    private func pulledCursor<Value: Sendable>(
+        query: String,
+        context: PluginStatementContext,
+        reading read: @escaping DuckDBValueReader<Value>
+    ) -> DuckDBPulledRows<Value> {
+        DuckDBPulledRows(
             actor: connectionActor,
             query: query,
             reason: DuckDBReadOnlyStatement.reason(for: context),
-            live: liveConnection
+            live: liveConnection,
+            read: read
         )
-        return AsyncThrowingStream(unfolding: { try await cursor.next() })
     }
 
     // Gives up the read `pulledRows` handed out, for a consumer that stopped before its end.
@@ -1284,21 +1310,29 @@ nonisolated final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sen
     }
 }
 
-// The pull side of a transfer connection's read. A stream dropped before its end gives the read up.
-nonisolated private final class DuckDBPulledRows: @unchecked Sendable {
+// The pull side of a read handed out a batch at a time. A stream dropped before its end gives the read up.
+nonisolated private final class DuckDBPulledRows<Value: Sendable>: @unchecked Sendable {
     private let actor: DuckDBConnectionActor
     private let query: String
     private let reason: DuckDBReadOnlyStatement.Reason?
     private let live: DuckDBLiveConnectionBox
+    private let read: DuckDBValueReader<Value>
     private let lock = NSLock()
     private var generation: UInt64?
     private var ended = false
 
-    init(actor: DuckDBConnectionActor, query: String, reason: DuckDBReadOnlyStatement.Reason?, live: DuckDBLiveConnectionBox) {
+    init(
+        actor: DuckDBConnectionActor,
+        query: String,
+        reason: DuckDBReadOnlyStatement.Reason?,
+        live: DuckDBLiveConnectionBox,
+        read: @escaping DuckDBValueReader<Value>
+    ) {
         self.actor = actor
         self.query = query
         self.reason = reason
         self.live = live
+        self.read = read
     }
 
     deinit {
@@ -1308,13 +1342,14 @@ nonisolated private final class DuckDBPulledRows: @unchecked Sendable {
         Task { await actor.endPulledRead(open) }
     }
 
-    func next() async throws -> PluginStreamElement? {
+    func next() async throws -> DuckDBPulledElement<Value>? {
         let actor = actor
         let live = live
+        let read = read
         do {
             return try await withTaskCancellationHandler {
                 if let current = lock.withLock({ generation }) {
-                    guard let rows = try await actor.nextPulledBatch(current) else {
+                    guard let rows = try await actor.nextPulledBatch(current, reading: read) else {
                         markEnded()
                         return nil
                     }
