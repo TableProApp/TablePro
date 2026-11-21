@@ -4,14 +4,15 @@ import TableProModels
 import TableProPluginKit
 import TableProSQLGrammar
 
-// ClickHouse, Cloudflare D1 and MongoDB run their Mac plugin whole, so an export asks that plugin what the Mac's
-// `ExportDataSourceAdapter` asks it. MongoDB takes no rows from a file, as on the Mac (D9).
+// ClickHouse, Cloudflare D1, DuckDB and MongoDB run their Mac plugin whole, so an export asks that plugin what the
+// Mac's `ExportDataSourceAdapter` asks it. MongoDB takes no rows from a file, as on the Mac (D9).
 nonisolated extension PluginBackedDriver: MobileTransferEngine {
     func makeExportCatalog(context: MobileTransferContext) async throws -> any MobileExportCatalog {
         PluginTransferCatalog(
             driver: self,
             databaseTypeId: context.databaseType.rawValue,
             groupsByDatabase: context.databaseType == .clickhouse,
+            listsBySchema: context.databaseType == .duckdb,
             switchesDatabase: context.databaseType == .mongodb,
             openedDatabase: context.database?.nilIfEmpty ?? currentDatabase
         )
@@ -28,12 +29,14 @@ nonisolated extension PluginBackedDriver: MobileTransferEngine {
 }
 
 // `groupsByDatabase`: ClickHouse's tree names each database, as the Mac's does; D1 and MongoDB are flat, so an object
-// carries no container. `switchesDatabase`: a MongoDB export reads the collection in its own database, so the
-// transfer's own driver moves there first.
+// carries no container. `listsBySchema`: DuckDB lists a macro of every schema when asked for none, so each listing
+// names the schema the export reads, as the Mac's loader does. `switchesDatabase`: a MongoDB export reads the
+// collection in its own database, so the transfer's own driver moves there first.
 nonisolated struct PluginTransferCatalog: MobileExportCatalog {
     let driver: PluginBackedDriver
     let databaseTypeId: String
     let groupsByDatabase: Bool
+    let listsBySchema: Bool
     let switchesDatabase: Bool
     let openedDatabase: String?
     private let routineLists = ExportCatalogListCache<PluginRoutineInfo>()
@@ -46,12 +49,14 @@ nonisolated struct PluginTransferCatalog: MobileExportCatalog {
         driver: PluginBackedDriver,
         databaseTypeId: String,
         groupsByDatabase: Bool,
+        listsBySchema: Bool = false,
         switchesDatabase: Bool,
         openedDatabase: String?
     ) {
         self.driver = driver
         self.databaseTypeId = databaseTypeId
         self.groupsByDatabase = groupsByDatabase
+        self.listsBySchema = listsBySchema
         self.switchesDatabase = switchesDatabase
         self.openedDatabase = openedDatabase
     }
@@ -249,7 +254,8 @@ nonisolated struct PluginTransferCatalog: MobileExportCatalog {
 
     // What the listing passes as `schema:`: nothing for the database the export opened on, as the Mac's loader reads it.
     private func listSchema(_ container: String) -> String? {
-        groupsByDatabase && container != openedDatabase ? container.nilIfEmpty : nil
+        if listsBySchema { return exportSchema(for: container) }
+        return groupsByDatabase && container != openedDatabase ? container.nilIfEmpty : nil
     }
 
     private func listedRoutines(_ container: String) async throws -> [PluginRoutineInfo] {

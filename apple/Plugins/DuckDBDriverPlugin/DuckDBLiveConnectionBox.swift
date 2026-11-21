@@ -19,7 +19,7 @@ import Foundation
 /// So the actor owns the writes and makes them either side of the C calls: cleared **before**
 /// `duckdb_disconnect`, set **after** `duckdb_connect`. A cancel that lands in the gap reads nil
 /// and does nothing, which is the right answer, because there is no query running to interrupt.
-final class DuckDBLiveConnectionBox: @unchecked Sendable {
+nonisolated final class DuckDBLiveConnectionBox: @unchecked Sendable {
     private let lock = NSLock()
     nonisolated(unsafe) private var handle: duckdb_connection?
 

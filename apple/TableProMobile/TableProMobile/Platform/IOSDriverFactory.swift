@@ -170,7 +170,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         case .sqlite:
             return SQLiteDriver(source: try sqliteSource(for: connection))
         case .duckdb:
-            return DuckDBDriver(source: try duckDBSource(for: connection))
+            return DuckDBBackedDriver(source: try duckDBSource(for: connection))
         case .mysql, .mariadb, .tidb, .oceanbase:
             guard connection.macSocketPath == nil else {
                 throw ConnectionError.localSocketNotSupported

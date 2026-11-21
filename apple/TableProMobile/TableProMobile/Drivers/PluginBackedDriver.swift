@@ -125,6 +125,9 @@ nonisolated class PluginBackedDriver: DatabaseDriver, CatalogQuerying, ExportRow
         plugin.disconnect()
     }
 
+    // Declared here so a driver over a file it holds open can say so.
+    var holdsSuspensionBlockingResource: Bool { false }
+
     func ping() async throws -> Bool {
         try await plugin.ping()
         return true
@@ -387,7 +390,8 @@ nonisolated class PluginBackedDriver: DatabaseDriver, CatalogQuerying, ExportRow
         guard plugin.supportsTransactions else { return .idle }
         switch await plugin.sessionTransactionState() {
         case .idle: return .idle
-        case .inTransaction, .abortedTransaction: return .explicitTransaction
+        case .inTransaction: return .explicitTransaction
+        case .abortedTransaction: return .abortedTransaction
         case .holdsSessionLocks: return .implicitTransaction
         case .unknown: return .unknown
         @unknown default: return .unknown
