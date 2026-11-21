@@ -78,10 +78,6 @@ targets:
       # The socket key a Mac connection stores, so iOS refuses exactly what the Mac driver dials
       # through a socket.
       - ../Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
-      # The expression depth limit and the open's stack both apps open a DuckDB file with.
-      - ../Plugins/DuckDBDriverPlugin/DuckDBExpressionDepth.swift
-      # The transaction both apps prepare a DuckDB statement inside.
-      - ../Plugins/DuckDBDriverPlugin/DuckDBPreparedRun.swift
       - ../Plugins/Shared/PluginQueryTimeout.swift
       # The toolbar glyph rule both apps follow on and before the 26 releases.
       - ../TablePro/Core/Services/Infrastructure/Toolbar/ToolbarSymbols.swift
@@ -99,6 +95,11 @@ targets:
           - Info.plist
       - ../Plugins/Shared/PluginConnectTimeout.swift
       - ../Plugins/Shared/PluginRedirectRefusingDelegate.swift
+      # The DuckDB plugin driver runs whole behind PluginBackedDriver; the iOS CDuckDB bridge stands in for the plugin's own.
+      - path: ../Plugins/DuckDBDriverPlugin
+        excludes:
+          - Info.plist
+          - CDuckDB/**
       # The MongoDB plugin driver runs behind PluginBackedDriver too; the iOS CLibMongoc bridge stands in for the
       # plugin's own, and the principal class stays on the Mac.
       - path: ../Plugins/MongoDBDriverPlugin
@@ -186,11 +187,6 @@ targets:
       - ../Plugins/SQLiteDriverPlugin/SQLiteTemporarySchema.swift
       - ../Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift
       - ../Plugins/SQLiteDriverPlugin/SQLiteDefaultValue.swift
-      - ../Plugins/DuckDBDriverPlugin/DuckDBExportCatalog.swift
-      - ../Plugins/DuckDBDriverPlugin/DuckDBCreateTableSQL.swift
-      - ../Plugins/DuckDBDriverPlugin/DuckDBSchemaQueries.swift
-      - ../Plugins/DuckDBDriverPlugin/DuckDBIndexClauses.swift
-      - ../Plugins/DuckDBDriverPlugin/DuckDBLexicalFeatures.swift
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogExport.swift
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCreateTableSQL.swift
       - ../Plugins/PostgreSQLDriverPlugin/RedshiftCatalogExport.swift
@@ -389,7 +385,6 @@ targets:
     platform: iOS
     sources:
       - TableProMobileTests
-      - ../Plugins/DuckDBDriverPlugin/DuckDBReadOnlyStatement.swift
     dependencies:
       - target: TableProMobile
       - package: TableProCore

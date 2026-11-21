@@ -8,7 +8,7 @@ import Foundation
 
 // DuckDB's settings for running untrusted SQL ("Securing DuckDB" in its operations manual), on an instance of its own,
 // since `enable_external_access` cannot be turned back on once a session turns it off.
-enum DuckDBIsolatedImport {
+nonisolated enum DuckDBIsolatedImport {
     static let openOptions: [(name: String, value: String)] = [
         ("autoinstall_known_extensions", "false"),
         ("autoload_known_extensions", "false"),
@@ -39,6 +39,7 @@ enum DuckDBIsolatedImport {
     }
 
     private static func importFolder(_ folder: String, into file: String, live: DuckDBLiveConnectionBox) throws {
+        DuckDBExtensionPolicy.registerLinkedExtensions()
         var config: duckdb_config?
         guard duckdb_create_config(&config) != DuckDBError else {
             throw DuckDBPluginError.connectionFailed("DuckDB could not allocate a configuration")

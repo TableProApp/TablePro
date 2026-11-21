@@ -7,7 +7,7 @@ import Foundation
 import TableProDuckDBCore
 import TableProPluginKit
 
-extension DuckDBPluginDriver {
+nonisolated extension DuckDBPluginDriver {
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
         try await DuckDBExportCatalog.routines(catalog: try requireCatalog(), schema: schema, run: catalogRun)
     }

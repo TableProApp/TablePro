@@ -12,7 +12,7 @@ import TableProSQLGrammar
 import TableProSQLQuoting
 import TableProSQLVocabulary
 
-final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
+nonisolated final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "DuckDB Driver"
     static let pluginVersion = "1.1.0"
     static let pluginDescription = "DuckDB analytical database support"
@@ -215,7 +215,7 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
-private extension SQLOperatorDescriptor {
+nonisolated private extension SQLOperatorDescriptor {
     init?(vocabulary entry: SQLEngineVocabulary.Operator) {
         guard let category = Category(rawValue: entry.category),
               let placement = Placement(rawValue: entry.placement) else { return nil }
@@ -231,10 +231,12 @@ private extension SQLOperatorDescriptor {
 
 // MARK: - DuckDB Plugin Driver
 
-final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+nonisolated final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
-    private let liveConnection = DuckDBLiveConnectionBox()
+    private let liveConnection: DuckDBLiveConnectionBox
     private let connectionActor: DuckDBConnectionActor
+    // A transfer connection's reads are handed out a batch per pull, so the session sharing its executor runs between.
+    private let pullsReads: Bool
     private let idleReleaseTimer = DuckDBIdleReleaseTimer()
     private let trustBundleFile = DuckDBTrustBundleFile()
     private let stateLock = NSLock()
@@ -283,7 +285,44 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
+        let liveConnection = DuckDBLiveConnectionBox()
+        self.liveConnection = liveConnection
         self.connectionActor = DuckDBConnectionActor(liveConnection: liveConnection)
+        pullsReads = false
+    }
+
+    private init(
+        config: DriverConnectionConfig,
+        transferOn connectionActor: DuckDBConnectionActor,
+        liveConnection: DuckDBLiveConnectionBox,
+        database: String?,
+        schema: String
+    ) {
+        self.config = config
+        self.liveConnection = liveConnection
+        self.connectionActor = connectionActor
+        pullsReads = true
+        _currentDatabase = database
+        _currentSchema = schema
+    }
+
+    // A driver on a connection of its own to this session's database, for a transfer: open already, on the session's
+    // catalog and schema, and its disconnect ends only that connection.
+    func openTransferDriver() async throws -> DuckDBPluginDriver {
+        let live = DuckDBLiveConnectionBox()
+        let transfer = try await connectionActor.openTransferConnection(liveConnection: live)
+        let (database, schema) = stateLock.withLock { (_currentDatabase, _currentSchema) }
+        if let database, !database.isEmpty {
+            do {
+                _ = try await transfer.executeQuery(DuckDBSchemaQueries.useSchema(schema, in: database))
+            } catch {
+                await transfer.close()
+                throw error
+            }
+        }
+        return DuckDBPluginDriver(
+            config: config, transferOn: transfer, liveConnection: live, database: database, schema: schema
+        )
     }
 
     /// The timer's task holds the connection actor, not the driver, so a driver dropped without
@@ -551,15 +590,16 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func enableExtensionAutoloading() async {
         do {
-            try await connectionActor.executeQuery("SET autoinstall_known_extensions=1")
-            try await connectionActor.executeQuery("SET autoload_known_extensions=1")
+            for statement in DuckDBExtensionPolicy.sessionStatements {
+                try await connectionActor.executeQuery(statement)
+            }
         } catch {
             Self.logger.warning("Failed to enable DuckDB extension autoloading: \(error.localizedDescription)")
         }
     }
 
     private func enableExtensionAutoloading(during attempt: DuckDBConnectAttempt) async throws {
-        for statement in ["SET autoinstall_known_extensions=1", "SET autoload_known_extensions=1"] {
+        for statement in DuckDBExtensionPolicy.sessionStatements {
             do {
                 try await executeRemoteConnectStatement(statement, during: attempt)
             } catch {
@@ -609,7 +649,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The statements that put a reopened session back where it was. Recomputed rather than
     /// appended to, so a session that has switched database a dozen times replays one `USE`.
     private func refreshSessionSetup() async {
-        var statements = ["SET autoinstall_known_extensions=1", "SET autoload_known_extensions=1"]
+        var statements = DuckDBExtensionPolicy.sessionStatements
         let (database, schema, attachSetup) = stateLock.withLock { (_currentDatabase, _currentSchema, _attachSetup) }
         statements += attachSetup
         if let database, !database.isEmpty {
@@ -663,12 +703,22 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func disconnect() {
+        let closing = beginClose()
+        Task { await closing() }
+    }
+
+    // The disconnect that returns once the file is closed, for a caller that hands the file on next.
+    func close() async {
+        await beginClose()()
+    }
+
+    private func beginClose() -> @Sendable () async -> Void {
         liveConnection.interrupt()
         resetCurrentPosition()
         let actor = connectionActor
         let timer = idleReleaseTimer
         let trustBundle = trustBundleFile.take()
-        Task {
+        return {
             await timer.stop()
             await actor.close()
             // Only once the instance is closed, so no request of it reads a bundle that is gone.
@@ -682,7 +732,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// prove that would take the lock straight back off whatever the release handed it to.
     func ping() async throws {
         guard !(await connectionActor.hasReleasedFile) else { return }
-        _ = try await connectionActor.pingQuery()
+        try await connectionActor.pingQuery()
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
@@ -785,6 +835,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard !pullsReads else { return pulledRows(query: query, context: PluginStatementContext()) }
         let actor = connectionActor
 
         return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(DuckDBBoundedStream.bufferedBatches)) { continuation in
@@ -799,6 +850,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard !pullsReads else { return pulledRows(query: query, context: context) }
         guard let reason = DuckDBReadOnlyStatement.reason(for: context) else { return streamRows(query: query) }
         let actor = connectionActor
         return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(DuckDBBoundedStream.bufferedBatches)) { continuation in
@@ -810,6 +862,49 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 }
             }
         }
+    }
+
+    // The rows a batch per pull, so the connection's executor runs other work between batches. Any other statement on
+    // the connection ends the read.
+    func pulledRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let cursor = pulledCursor(query: query, context: context) { _, value in value.pluginValue }
+        return AsyncThrowingStream(unfolding: {
+            switch try await cursor.next() {
+            case .header(let header): return .header(header)
+            case .rows(let rows): return .rows(rows)
+            case nil: return nil
+            }
+        })
+    }
+
+    // The same read with each value made by `read` from the chunk in place, so a host that cuts a value for display
+    // never copies the rest of it.
+    func pulledValues<Value: Sendable>(
+        query: String,
+        context: PluginStatementContext,
+        reading read: @escaping DuckDBValueReader<Value>
+    ) -> AsyncThrowingStream<DuckDBPulledElement<Value>, Error> {
+        let cursor = pulledCursor(query: query, context: context, reading: read)
+        return AsyncThrowingStream(unfolding: { try await cursor.next() })
+    }
+
+    private func pulledCursor<Value: Sendable>(
+        query: String,
+        context: PluginStatementContext,
+        reading read: @escaping DuckDBValueReader<Value>
+    ) -> DuckDBPulledRows<Value> {
+        DuckDBPulledRows(
+            actor: connectionActor,
+            query: query,
+            reason: DuckDBReadOnlyStatement.reason(for: context),
+            live: liveConnection,
+            read: read
+        )
+    }
+
+    // Gives up the read `pulledRows` handed out, for a consumer that stopped before its end.
+    func endPulledRows() async {
+        await connectionActor.endPulledRead()
     }
 
     // MARK: - Schema Operations
@@ -980,8 +1075,11 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         DuckDBSchemaQueries.quoteIdentifier(name)
     }
 
+    // DuckDB reads statement text as a C string, which ends at a NUL, so each one is joined in with chr(0).
     func escapeStringLiteral(_ value: String) -> String {
-        SQLQuoting.stringLiteralBody(value)
+        value.unicodeScalars.split(separator: "\0", omittingEmptySubsequences: false)
+            .map { SQLQuoting.stringLiteralBody(String(Substring($0))) }
+            .joined(separator: "'||chr(0)||'")
     }
 
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
@@ -1209,5 +1307,67 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             stmts.append("ALTER TABLE \(qt) ADD PRIMARY KEY (\(cols))")
         }
         return stmts.isEmpty ? nil : stmts
+    }
+}
+
+// The pull side of a read handed out a batch at a time. A stream dropped before its end gives the read up.
+nonisolated private final class DuckDBPulledRows<Value: Sendable>: @unchecked Sendable {
+    private let actor: DuckDBConnectionActor
+    private let query: String
+    private let reason: DuckDBReadOnlyStatement.Reason?
+    private let live: DuckDBLiveConnectionBox
+    private let read: DuckDBValueReader<Value>
+    private let lock = NSLock()
+    private var generation: UInt64?
+    private var ended = false
+
+    init(
+        actor: DuckDBConnectionActor,
+        query: String,
+        reason: DuckDBReadOnlyStatement.Reason?,
+        live: DuckDBLiveConnectionBox,
+        read: @escaping DuckDBValueReader<Value>
+    ) {
+        self.actor = actor
+        self.query = query
+        self.reason = reason
+        self.live = live
+        self.read = read
+    }
+
+    deinit {
+        let open = lock.withLock { ended ? nil : generation }
+        guard let open else { return }
+        let actor = actor
+        Task { await actor.endPulledRead(open) }
+    }
+
+    func next() async throws -> DuckDBPulledElement<Value>? {
+        let actor = actor
+        let live = live
+        let read = read
+        do {
+            return try await withTaskCancellationHandler {
+                if let current = lock.withLock({ generation }) {
+                    guard let rows = try await actor.nextPulledBatch(current, reading: read) else {
+                        markEnded()
+                        return nil
+                    }
+                    return .rows(rows)
+                }
+                let begun = try await actor.beginPulledRead(query, reason: reason)
+                lock.withLock { generation = begun.generation }
+                return .header(begun.header)
+            } onCancel: {
+                live.interrupt()
+            }
+        } catch {
+            markEnded()
+            throw error
+        }
+    }
+
+    private func markEnded() {
+        lock.withLock { ended = true }
     }
 }

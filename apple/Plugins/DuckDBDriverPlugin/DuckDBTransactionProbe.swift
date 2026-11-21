@@ -24,7 +24,7 @@ import TableProPluginKit
 /// non-DuckDB transaction` and **took the transaction with it**, so the row the user had inserted
 /// was gone after their own `COMMIT` reported success. `duckdb_databases()` is safe in the same
 /// place, measured: it answered `sqlite`, and the transaction went on to commit both rows.
-enum DuckDBTransactionProbe {
+nonisolated enum DuckDBTransactionProbe {
     /// One answer read back from the connection.
     enum Reading: Equatable {
         case value(String)

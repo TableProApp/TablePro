@@ -41,7 +41,7 @@ struct ExportTwinNameTests {
 
     @Test("DuckDB: the export reads throw on two tables named alike in different Unicode forms")
     func duckDBThrowsOnTwins() async throws {
-        let driver = DuckDBDriver(source: .inMemory)
+        let driver = DuckDBBackedDriver(source: .inMemory)
         try await driver.connect()
         _ = try await driver.execute(query: "CREATE TABLE p (id INTEGER PRIMARY KEY)")
         _ = try await driver.execute(query: "CREATE TABLE \"\(composed)\" (id INTEGER PRIMARY KEY, r INTEGER REFERENCES p (id))")
@@ -63,7 +63,7 @@ struct ExportTwinNameTests {
 
     @Test("DuckDB: only the key column is a key when another column is named alike in another Unicode form")
     func duckDBTwinColumnIsNotAKey() async throws {
-        let driver = DuckDBDriver(source: .inMemory)
+        let driver = DuckDBBackedDriver(source: .inMemory)
         try await driver.connect()
         _ = try await driver.execute(query: "CREATE TABLE t (\"\u{E9}\" INTEGER PRIMARY KEY, \"e\u{301}\" INTEGER, v INTEGER)")
         let catalog = try await driver.makeExportCatalog(

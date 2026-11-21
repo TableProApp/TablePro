@@ -7,7 +7,6 @@ import CDuckDB
 import Foundation
 import TableProPluginKit
 
-// Depends on nothing else in the plugin, so TableProMobileTests compiles it against a DuckDB connection of its own.
 nonisolated enum DuckDBReadOnlyStatement {
     // Who asked for the read-only mode, which is what a refusal names.
     nonisolated enum Reason: Sendable, Equatable {
@@ -51,15 +50,23 @@ nonisolated enum DuckDBReadOnlyStatement {
         reason: Reason = .externalClients,
         _ statement: () throws -> T
     ) throws -> T {
+        try begin(on: connection, session: session, reason: reason)
+        defer { end(on: connection) }
+        return try statement()
+    }
+
+    static func begin(on connection: duckdb_connection, session: PluginSessionTransactionState, reason: Reason) throws {
         guard session == .idle else {
             throw reason == .safeMode ? Refusal.safeModeTransactionOpen : Refusal.transactionOpen
         }
         if let failure = send("BEGIN TRANSACTION READ ONLY", on: connection) {
             throw Refusal.beginFailed(failure)
         }
-        // Fails without harm when the statement itself ended the transaction.
-        defer { _ = send("ROLLBACK", on: connection) }
-        return try statement()
+    }
+
+    // Fails without harm when the statement itself ended the transaction.
+    static func end(on connection: duckdb_connection) {
+        _ = send("ROLLBACK", on: connection)
     }
 
     private static func send(_ sql: String, on connection: duckdb_connection) -> String? {
