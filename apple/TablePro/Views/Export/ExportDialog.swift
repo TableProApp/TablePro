@@ -746,6 +746,7 @@ struct ExportDialog: View {
         }
         let item = ExportDatabaseItem(
             name: dbName.isEmpty ? "Tables" : dbName,
+            title: dbName.isEmpty ? nil : DatabaseEndpoint.label(for: dbName, type: connection.type),
             objects: objectItems,
             isExpanded: true
         )
@@ -845,12 +846,8 @@ struct ExportDialog: View {
     }
 
     private func applyDefaultFileName(for connection: DatabaseConnection) {
-        if let singleTable = preselection.singleTableName {
-            config.fileName = singleTable
-        } else if preselection.containerNames.count == 1, let container = preselection.containerNames.first {
-            config.fileName = container
-        } else if !connection.database.isEmpty {
-            config.fileName = connection.database
+        if let name = preselection.defaultFileName(database: connection.database, type: connection.type) {
+            config.fileName = name
         }
     }
 
