@@ -377,49 +377,52 @@ internal final class TabRouter {
         let passwordOverride = parsed.password.isEmpty ? nil : parsed.password
         let sshPasswordOverride = parsed.sshPassword.flatMap { $0.isEmpty ? nil : $0 }
 
-        if let table = parsed.tableName {
+        // A file link's table is in the database the connection opens on, which only the connect reports, so the
+        // connection comes up before the tab is made.
+        if parsed.tableName == nil || parsed.namesDatabaseFile {
+            try await confirmConnectConsent(connection)
+            let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
+            DatabaseManager.shared.registerPendingSession(connection)
+            WindowManager.shared.openTab(payload: payload)
+            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+            WindowOpener.shared.closeWelcome()
             try await failuresShownInWindow(of: connection.id) {
-                try await openTable(
-                    connectionId: connection.id,
-                    transientConnection: isTransient ? connection : nil,
-                    database: Self.linkedTableDatabase(
-                        parsed, openedDatabase: DatabaseManager.shared.session(for: connection.id)?.openedDatabase
-                    ),
-                    schema: parsed.schema,
-                    table: table,
-                    isView: parsed.isView,
-                    initialFilterState: filter?.filterState,
+                try await DatabaseManager.shared.ensureConnected(
+                    connection,
                     passwordOverride: passwordOverride,
                     sshPasswordOverride: sshPasswordOverride
                 )
             }
-            return
         }
 
-        try await confirmConnectConsent(connection)
-        let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
-        DatabaseManager.shared.registerPendingSession(connection)
-        WindowManager.shared.openTab(payload: payload)
-        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-        WindowOpener.shared.closeWelcome()
+        guard let table = parsed.tableName else {
+            await applyContainerSwitch(
+                connectionId: connection.id, database: nil, schema: parsed.schema
+            )
+            return
+        }
         try await failuresShownInWindow(of: connection.id) {
-            try await DatabaseManager.shared.ensureConnected(
-                connection,
+            try await openTable(
+                connectionId: connection.id,
+                transientConnection: isTransient ? connection : nil,
+                database: Self.linkedTableDatabase(
+                    parsed, openedDatabase: DatabaseManager.shared.session(for: connection.id)?.openedDatabase
+                ),
+                schema: parsed.schema,
+                table: table,
+                isView: parsed.isView,
+                initialFilterState: filter?.filterState,
                 passwordOverride: passwordOverride,
                 sshPasswordOverride: sshPasswordOverride
             )
         }
-
-        await applyContainerSwitch(
-            connectionId: connection.id, database: nil, schema: parsed.schema
-        )
     }
 
     // A file link's path is the connection, never a database to switch to. Its table is in the database the
-    // connection opened on, which a session browsing a DuckDB catalog attached since has moved away from. Before
-    // the connect reports it the tab stays unbound, since the browse cursor still holds the path.
+    // connection opened on, which a session browsing a DuckDB catalog attached since has moved away from. With
+    // none reported, as on SQLite, the connected session's browse database is the file's own.
     internal static func linkedTableDatabase(_ parsed: ParsedConnectionURL, openedDatabase: String?) -> String? {
-        guard !parsed.namesDatabaseFile else { return openedDatabase ?? "" }
+        guard !parsed.namesDatabaseFile else { return openedDatabase }
         return parsed.database.isEmpty ? nil : parsed.database
     }
 
