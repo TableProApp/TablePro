@@ -140,7 +140,18 @@ public sealed partial class SqlEditor
             case VirtualKey.PageDown:
                 popup.Move(popup.PageRows);
                 return true;
-            case VirtualKey.Enter or VirtualKey.Tab when !shift:
+            // As VS Code's smart Enter: a row that changes the word as typed, else the line break, so `FROM Track` then
+            // Enter starts a new line.
+            case VirtualKey.Enter when !shift:
+                var typed = WordFrom(_completionStart);
+                if (typed is null || typed != popup.Word || popup.Selected?.InsertText == typed)
+                {
+                    CloseCompletion();
+                    return false;
+                }
+                AcceptCompletion();
+                return true;
+            case VirtualKey.Tab when !shift:
                 AcceptCompletion();
                 return true;
             case VirtualKey.Escape:
