@@ -47,10 +47,11 @@ struct GeneralPaneView: View {
 
             LabeledContent(String(localized: "Type")) {
                 HStack(spacing: 8) {
-                    type.iconImage
-                        .renderingMode(.template)
-                        .foregroundStyle(type.themeColor)
-                        .frame(width: 16, height: 16)
+                    ConnectionTile(
+                        type: type,
+                        identityColor: coordinator.customization.color.isDefault ? nil : coordinator.customization.color,
+                        size: 22
+                    )
                     Text(type.rawValue)
                     Spacer(minLength: 8)
                     Button(String(localized: "Change…")) {
