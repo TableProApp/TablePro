@@ -1,4 +1,3 @@
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Automation;
 using TablePro.Editor.Model;
 using TablePro.Editor.Model.Vim;
@@ -24,7 +23,7 @@ public sealed partial class SqlEditor
     private CompletionPopup? _completionPopup;
     private SqlCompletion? _completion;
     private CancellationTokenSource? _completionRequest;
-    private DispatcherQueueTimer? _completionTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _completionTimer;
     private int _completionStart = -1;
     private (int Start, string Word)? _unmatched;
     private int _rankGeneration;
