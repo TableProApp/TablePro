@@ -1,7 +1,6 @@
 import Foundation
 import TableProModels
 import TableProMSSQLCore
-import TableProOracleCore
 import TableProPluginKit
 
 nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
@@ -107,26 +106,6 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
         case .disable: return .disabled
         case .require: return isPreferred ? .preferred : .required
         case .verifyCa: return .verifyCa
-        case .verifyFull: return .verifyIdentity
-        }
-    }
-
-    var oracleTLSDescription: OracleTLSDescription {
-        OracleTLSDescription(
-            mode: oracleMode,
-            caCertificatePath: caCertificatePath,
-            clientCertificatePath: clientCertificatePath,
-            clientKeyPath: clientKeyPath,
-            serverName: serverName
-        )
-    }
-
-    // OracleNIO has no TLS-or-plaintext mode, so Preferred dials plain TCP as on the Mac.
-    private var oracleMode: OracleTLSDescription.Mode {
-        switch mode {
-        case .disable: return .disabled
-        case .require: return isPreferred ? .disabled : .required
-        case .verifyCa: return .verifyCA
         case .verifyFull: return .verifyIdentity
         }
     }

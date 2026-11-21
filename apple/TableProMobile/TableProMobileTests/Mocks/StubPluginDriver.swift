@@ -116,6 +116,10 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var supportsTransactions: Bool { hasTransactions }
 
+    var transactionState: PluginSessionTransactionState = .unknown
+
+    func sessionTransactionState() async -> PluginSessionTransactionState { transactionState }
+
     func escapeStringLiteral(_ value: String) -> String {
         "escaped:\(value)"
     }

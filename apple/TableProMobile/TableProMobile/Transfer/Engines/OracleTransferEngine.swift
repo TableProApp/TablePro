@@ -6,36 +6,6 @@ import TableProOracleCore
 import TableProPluginKit
 import TableProSQLQuoting
 
-nonisolated extension OracleDriver: CatalogQuerying, ExportRowStreaming, MobileTransferEngine {
-    func catalogQuery(_ sql: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        try await catalogCells(sql, binds: parameters)
-    }
-
-    func makeExportCatalog(context: MobileTransferContext) async throws -> any MobileExportCatalog {
-        guard let release else { throw ConnectionError.notConnected }
-        return OracleMobileExportCatalog(
-            catalog: OracleExportCatalog(
-                run: { [self] statement in try await catalogResult(statement) },
-                currentSchema: currentSchema,
-                fallbackSchema: fallbackSchema,
-                release: release,
-                principalState: principalState,
-                coreError: { $0 as? OracleCoreError }
-            ),
-            script: ExportCatalogScript(databaseTypeId: DatabaseType.oracle.rawValue, session: settledLexicalFacts)
-        )
-    }
-
-    // An unknown release writes the identity, as on the Mac.
-    func makeWriteDialect(context: MobileTransferContext) async throws -> any MobileWriteDialect {
-        OracleMobileWriteDialect(
-            databaseTypeId: DatabaseType.oracle.rawValue,
-            createTableSchema: currentSchema ?? fallbackSchema,
-            supportsIdentity: release?.hasIdentityColumns ?? true
-        )
-    }
-}
-
 // The Mac's Oracle export answers, triggers listed (D14). A schema is what the connection lists as a database, so
 // `databaseName` is the owner the export groups an object under; empty is the session's own.
 nonisolated struct OracleMobileExportCatalog: MobileExportCatalog {

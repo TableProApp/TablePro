@@ -115,6 +115,15 @@ targets:
           - Info.plist
           - MongoDBPlugin.swift
           - CLibMongoc/**
+      # The Oracle plugin driver runs whole behind PluginBackedDriver. The routine debugger and the connection diagnostics
+      # are Mac UI, so they stay on the Mac.
+      - path: ../Plugins/OracleDriverPlugin
+        excludes:
+          - Info.plist
+          - OraclePlugin+Diagnostics.swift
+          - OraclePluginDriver+Debugging.swift
+          - OracleRoutineDebugSession.swift
+          - OracleDebugText.swift
       # The column default reading both apps show and the version floor that says which catalog
       # quotes its defaults.
       - ../Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift
@@ -216,18 +225,6 @@ targets:
       - ../Plugins/MSSQLDriverPlugin/MSSQLExportCatalog.swift
       - ../Plugins/MSSQLDriverPlugin/MSSQLObjectQueries.swift
       - ../Plugins/MSSQLDriverPlugin/MSSQLTableDefinitionSQL.swift
-      - ../Plugins/OracleDriverPlugin/OracleExportCatalog.swift
-      - ../Plugins/OracleDriverPlugin/OracleStatementError.swift
-      - ../Plugins/OracleDriverPlugin/OraclePluginValues.swift
-      - ../Plugins/OracleDriverPlugin/OracleCreateTableSQL.swift
-      - ../Plugins/OracleDriverPlugin/OracleObjectQueries.swift
-      - ../Plugins/OracleDriverPlugin/OracleIndexStatements.swift
-      - ../Plugins/OracleDriverPlugin/OracleTableDDL.swift
-      - ../Plugins/OracleDriverPlugin/OracleTypeCatalog.swift
-      - ../Plugins/OracleDriverPlugin/OracleBindPlaceholders.swift
-      - ../Plugins/OracleDriverPlugin/OracleRowWriter.swift
-      - ../Plugins/OracleDriverPlugin/OracleNationalText.swift
-      - ../Plugins/OracleDriverPlugin/OracleColumnStatements.swift
       # The libssh2 half of the SSH transport, shared with the macOS app by file reference.
       # The C-free half is the TableProSSHTransport package target; these touch libssh2
       # and cannot be, because a manifest cannot express the slice-dependent header path the

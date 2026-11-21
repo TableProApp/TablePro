@@ -7,7 +7,7 @@ import Foundation
 import TableProOracleCore
 import TableProPluginKit
 
-extension OraclePlugin {
+extension OraclePlugin: PluginDiagnosticProvider {
     func diagnose(error: Error) -> PluginDiagnostic? {
         guard let oracleError = (error as? OraclePluginError)?.core else { return nil }
         let message = oracleError.errorDescription ?? ""

@@ -186,6 +186,29 @@ struct PluginBackedDriverTests {
         #expect(driver.supportsTransactions == false)
     }
 
+    // Oracle commits nothing on its own, so a row edit outside the user's transaction gets one the app commits.
+    @Test("A session with nothing open is idle, so a row edit gets a transaction the app commits")
+    func idleSessionOpensItsOwnTransaction() async {
+        let plugin = StubPluginDriver()
+        plugin.hasTransactions = true
+        plugin.transactionState = .idle
+        let state = await makeDriver(plugin).sessionTransactionState()
+
+        #expect(state == .idle)
+        #expect(WriteTransactionPolicy.opensTransaction(supportsTransactions: true, state: state, statementCount: 1))
+    }
+
+    @Test("An open transaction is reported, so a row edit joins it and leaves the commit to its owner")
+    func openTransactionIsJoined() async {
+        let plugin = StubPluginDriver()
+        plugin.hasTransactions = true
+        plugin.transactionState = .inTransaction
+        let state = await makeDriver(plugin).sessionTransactionState()
+
+        #expect(state == .explicitTransaction)
+        #expect(!WriteTransactionPolicy.opensTransaction(supportsTransactions: true, state: state, statementCount: 1))
+    }
+
     @Test("String literals are escaped by the plugin, not the ANSI default")
     func escapingComesFromThePlugin() {
         let driver = makeDriver(StubPluginDriver())

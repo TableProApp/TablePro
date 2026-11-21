@@ -7,14 +7,13 @@ import TableProPluginKit
 import Testing
 
 struct OracleTransferEngineTests {
+    // What the plugin's `executeParameterized` sends for an import's row.
     @Test("Untyped values stay literals where a literal carries them; bytes and long text bind as :n")
     func boundStatementSubstitutes() throws {
         let long = String(repeating: "a", count: OracleBindPlaceholders.maxLiteralBytes + 1)
-        let statement = try OracleDriver.boundStatement(
+        let statement = try OracleBindPlaceholders.substituting(
             "INSERT INTO \"APP\".\"T\" (\"A\", \"B\", \"C\", \"D\") VALUES (?, ?, ?, ?)",
-            parameters: [.text("00123"), .bytes(Data([0x01])), .null, .text(long)],
-            typeNames: nil,
-            writesBooleans: false
+            parameters: [.text("00123"), .bytes(Data([0x01])), .null, .text(long)]
         )
 
         #expect(statement.sql == "INSERT INTO \"APP\".\"T\" (\"A\", \"B\", \"C\", \"D\") VALUES ('00123', :1, NULL, :2)")
@@ -23,11 +22,9 @@ struct OracleTransferEngineTests {
 
     @Test("A ? inside a literal, a quoted name or a comment is text, not a placeholder")
     func placeholdersInTextStay() throws {
-        let statement = try OracleDriver.boundStatement(
+        let statement = try OracleBindPlaceholders.substituting(
             "SELECT '?' AS \"Paid?\" FROM DUAL WHERE A = ? -- ?",
-            parameters: [.text("x")],
-            typeNames: nil,
-            writesBooleans: false
+            parameters: [.text("x")]
         )
 
         #expect(statement.sql == "SELECT '?' AS \"Paid?\" FROM DUAL WHERE A = 'x' -- ?")
