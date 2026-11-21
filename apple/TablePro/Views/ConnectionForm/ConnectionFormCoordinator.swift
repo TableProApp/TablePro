@@ -47,6 +47,11 @@ final class ConnectionFormCoordinator: ObservableObject {
     @Published var selectedTab: ConnectionFormTab = .general
     @Published var hasLoadedData: Bool = false
 
+    /// An edit was asked for a connection that is not in the library: deleted in another window or
+    /// on another device, or a record this build cannot decode. The form shows this instead of a
+    /// blank editable copy that only errors once the user clicks Save.
+    @Published private(set) var isRecordMissing: Bool = false
+
     @Published var isTesting: Bool = false
     /// The last Test Connection that reached the server, with the warning the login brought back. A new test, a
     /// type change and a transport change clear it.
@@ -98,6 +103,10 @@ final class ConnectionFormCoordinator: ObservableObject {
             return availableTransports.count > 1 || supportsSSL
         }
     }
+
+    /// Whether the transport and encryption section are worth showing: more than Direct is on offer,
+    /// or the engine can do TLS. A plain file-based connection shows neither.
+    var showsNetworkFacet: Bool { isVisible(.network) }
 
     /// Every issue the form knows about, tab by tab, in tab order.
     ///
@@ -250,11 +259,26 @@ final class ConnectionFormCoordinator: ObservableObject {
             loadedSecrets = reads.loaded
             normalizeTransport()
         }
+        if connectionId != nil, originalConnection == nil, !storage.isLibraryUnreadable {
+            isRecordMissing = true
+        }
         hasLoadedData = true
     }
 
     func cancel() {
         dismissAction?()
+    }
+
+    /// Closing the window mid-test must reap the test's staged Keychain secrets: `test()` writes
+    /// them under a throwaway id and only its own completion deletes them, so a close that
+    /// deallocates the coordinator while the task is in flight would orphan them forever.
+    func teardownOnClose() {
+        testTask?.cancel()
+        testTask = nil
+        isTesting = false
+        for id in Array(temporaryTestIds) {
+            cleanupTestSecrets(for: id)
+        }
     }
 
     func deleteCurrent() {
@@ -346,6 +370,11 @@ final class ConnectionFormCoordinator: ObservableObject {
             fields[DatabaseConnection.scriptTimeoutSecondsKey] = String(timeout)
         } else {
             fields.removeValue(forKey: DatabaseConnection.scriptTimeoutSecondsKey)
+        }
+        if customization.environment == .none {
+            fields.removeValue(forKey: ConnectionEnvironment.fieldKey)
+        } else {
+            fields[ConnectionEnvironment.fieldKey] = customization.environment.rawValue
         }
 
         return ConnectionFormEdits(
@@ -768,6 +797,15 @@ final class ConnectionFormCoordinator: ObservableObject {
                         )
                     }
                 }
+            } catch is CancellationError {
+                // Closing the form cancels the test: clean up its staged secrets and show nothing,
+                // never an error sheet on the window that is going away.
+                await MainActor.run {
+                    self?.cleanupTestSecrets(for: testConn.id)
+                    self?.isTesting = false
+                    self?.testTask = nil
+                }
+                return
             } catch {
                 let fields = self?.auth.additionalFieldValues ?? [:]
                 if let provider = ConnectionSignInRegistry.provider(for: error, fields: fields) {
@@ -916,6 +954,18 @@ final class ConnectionFormCoordinator: ObservableObject {
         auth.additionalFieldValues
             .merging(network.additionalFieldValues) { _, network in network }
             .merging(advanced.additionalFieldValues) { _, advanced in advanced }
+    }
+
+    /// One engine over the current type's fields and the merged values, for field visibility,
+    /// built-in password hiding and required/range validation. The three pane view models read it
+    /// instead of each re-deriving the same answers from their own value slice.
+    var presentation: ConnectionPresentation {
+        ConnectionPresentation(
+            fields: services.pluginManager.additionalConnectionFields(for: network.type),
+            values: allAdditionalFieldValues,
+            hidesBuiltInPassword: PluginMetadataRegistry.shared.snapshot(for: network.type)?
+                .connection.hidesBuiltInPassword ?? false
+        )
     }
 
     private func targetValues(for section: FieldSection) -> [String: String] {
