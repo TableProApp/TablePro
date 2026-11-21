@@ -34,7 +34,9 @@ struct DatabaseTypeChooserSheet: View {
             Divider()
             footer
         }
-        .frame(width: 560, height: 460)
+        // Pinned width, flexible height: the HIG allows a resizable sheet when people may want to
+        // expand the list, while keeping the sensible default size.
+        .frame(minWidth: 560, maxWidth: 560, minHeight: 440, idealHeight: 520, maxHeight: 860)
         .onAppear {
             model.preselect(initialType)
         }
@@ -158,12 +160,7 @@ internal struct DatabaseTypeChooserRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            /// Hidden here because `Image(decorative:)` cannot cover the SF Symbol `iconImage` may return.
-            type.iconImage
-                .renderingMode(.template)
-                .selectionAwareTint(type.themeColor)
-                .frame(width: 26, height: 26)
-                .accessibilityHidden(true)
+            ConnectionTile(type: type, identityColor: nil, size: 28)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(type.rawValue)
