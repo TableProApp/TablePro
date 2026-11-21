@@ -8,6 +8,12 @@ import TableProSQLGrammar
 
 extension QueryClassifier {
     static func etcdClassification(_ trimmed: String) -> QueryClassification {
+        // Grid browse (ETCD_RANGE), exact count (ETCD_COUNT) and the driver's own refusal marker
+        // (ETCD_REFUSAL, surfaced as a real error at execution) only read.
+        if trimmed.hasPrefix("ETCD_RANGE:") || trimmed.hasPrefix("ETCD_COUNT:")
+            || trimmed.hasPrefix("ETCD_REFUSAL:") {
+            return .safe
+        }
         guard let operation = try? EtcdCommandParser.parse(trimmed) else {
             return etcdUnparsedClassification(command: EtcdCommandParser.commandName(trimmed) ?? "")
         }
