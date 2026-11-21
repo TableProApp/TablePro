@@ -98,26 +98,35 @@ struct EditorTabLateDragTests {
         let view = try #require(strip.itemView(for: strip.items[2].id))
         let press = windowCentre(of: view)
         let release = NSPoint(x: press.x, y: -20_000)
-        let escape = String(UnicodeScalar(UInt8(27)))
-        let escapeEvent = try #require(NSEvent.keyEvent(
-            with: .keyDown,
-            location: .zero,
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: window.windowNumber,
-            context: nil,
-            characters: escape,
-            charactersIgnoringModifiers: escape,
-            isARepeat: false,
-            keyCode: KeyCode.escape.rawValue
-        ))
 
         view.mouseDown(with: try mouseEvent(.leftMouseDown, at: press, in: window))
         view.mouseDragged(with: try mouseEvent(.leftMouseDragged, at: release, in: window))
-        NSApp.sendEvent(escapeEvent)
+        #expect(strip.isWatchingForDragCancel)
+        strip.noteKeyDuringDrag(KeyCode.escape.rawValue)
         view.mouseUp(with: try mouseEvent(.leftMouseUp, at: release, in: window))
 
         #expect(recorder.tornOff.isEmpty)
+        #expect(!strip.isWatchingForDragCancel)
+    }
+
+    @Test("A late drag after a cancelled one is not cancelled")
+    func lateDragAfterACancelledOneTearsOff() throws {
+        let recorder = EditorTabCommandRecorder()
+        let (strip, window) = makeStrip(recorder: recorder)
+        defer { window.orderOut(nil) }
+        let view = try #require(strip.itemView(for: strip.items[2].id))
+        let press = windowCentre(of: view)
+        let release = NSPoint(x: press.x, y: -20_000)
+
+        view.mouseDown(with: try mouseEvent(.leftMouseDown, at: press, in: window))
+        view.mouseDragged(with: try mouseEvent(.leftMouseDragged, at: release, in: window))
+        strip.noteKeyDuringDrag(KeyCode.escape.rawValue)
+        view.mouseUp(with: try mouseEvent(.leftMouseUp, at: release, in: window))
+        view.mouseDown(with: try mouseEvent(.leftMouseDown, at: press, in: window))
+        view.mouseDragged(with: try mouseEvent(.leftMouseDragged, at: release, in: window))
+        view.mouseUp(with: try mouseEvent(.leftMouseUp, at: release, in: window))
+
+        #expect(recorder.tornOff.map(\.0) == [view.item.id])
     }
 
     @Test("A late drop on another slot of its own strip moves the tab there")

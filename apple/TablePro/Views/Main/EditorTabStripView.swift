@@ -539,12 +539,16 @@ internal final class EditorTabStripView: NSView {
         stopWatchingForDragCancel()
         dragWasCancelled = false
         dragCancelMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            let isEscape = event.keyCode == KeyCode.escape.rawValue
-            MainActor.assumeIsolated {
-                if isEscape { self?.dragWasCancelled = true }
-            }
+            let keyCode = event.keyCode
+            MainActor.assumeIsolated { self?.noteKeyDuringDrag(keyCode) }
             return event
         }
+    }
+
+    internal var isWatchingForDragCancel: Bool { dragCancelMonitor != nil }
+
+    internal func noteKeyDuringDrag(_ keyCode: UInt16) {
+        if keyCode == KeyCode.escape.rawValue { dragWasCancelled = true }
     }
 
     private func stopWatchingForDragCancel() {
