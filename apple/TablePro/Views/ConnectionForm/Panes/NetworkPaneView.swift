@@ -5,6 +5,7 @@
 
 import SwiftUI
 import TableProPluginKit
+import TableProSSHConfig
 
 /// How the connection reaches its database: one transport, then how it is encrypted.
 ///
@@ -16,7 +17,7 @@ struct NetworkPaneView: View {
     @ObservedObject var coordinator: ConnectionFormCoordinator
 
     var body: some View {
-        Form {
+        Group {
             transportPicker
             transportSections
             if coordinator.showsSSL {
@@ -31,7 +32,6 @@ struct NetworkPaneView: View {
                 )
             }
         }
-        .formStyle(.grouped)
     }
 
     private var sslModeBinding: Binding<SSLMode> {
@@ -51,10 +51,21 @@ struct NetworkPaneView: View {
             }
             .accessibilityIdentifier("connection-form-transport")
         } footer: {
-            Text(coordinator.transport?.summary ?? directSummary)
+            Text(footerSummary)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// "On the Server" runs statements on the host rather than fetching a copy, so the footer says
+    /// so instead of the copy's summary, which the `.remoteFile` getter would otherwise always show.
+    private var footerSummary: String {
+        if coordinator.transport == .remoteFile,
+           coordinator.supportsRemoteDatabaseSession,
+           coordinator.ssh.state.remoteFileAccess == .onServer {
+            return ConnectionTunnelKind.remoteDatabaseSession.summary
+        }
+        return coordinator.transport?.summary ?? directSummary
     }
 
     private var directSummary: String {

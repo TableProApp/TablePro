@@ -25,7 +25,7 @@ struct OptionsPaneView: View {
     }
 
     var body: some View {
-        Form {
+        Group {
             driverSection
             attachedDatabasesSection
             extensionsSection
@@ -44,7 +44,6 @@ struct OptionsPaneView: View {
                 syncSection
             }
         }
-        .formStyle(.grouped)
     }
 
     // MARK: - Timeouts

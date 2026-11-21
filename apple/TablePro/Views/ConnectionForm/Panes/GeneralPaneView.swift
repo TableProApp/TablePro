@@ -14,7 +14,7 @@ import UniformTypeIdentifiers
 /// needs no tunnel and no TLS never sees a control about either.
 struct GeneralPaneView: View {
     @ObservedObject var coordinator: ConnectionFormCoordinator
-    @FocusState private var nameFocused: Bool
+    let nameFocused: FocusState<Bool>.Binding
 
     private var type: DatabaseType { coordinator.network.type }
     private var connectionMode: ConnectionMode {
@@ -26,15 +26,10 @@ struct GeneralPaneView: View {
     }
 
     var body: some View {
-        Form {
+        Group {
             identitySection
             connectionSection
             authenticationSection
-        }
-        .formStyle(.grouped)
-        .defaultFocus($nameFocused, true)
-        .task(id: coordinator.auth.pgpassLookup) {
-            coordinator.auth.updatePgpassStatus()
         }
     }
 
@@ -47,7 +42,7 @@ struct GeneralPaneView: View {
                 text: $coordinator.network.name,
                 prompt: Text(String(localized: "Connection name"))
             )
-            .focused($nameFocused)
+            .focused(nameFocused)
             .accessibilityIdentifier("connection-form-name")
 
             LabeledContent(String(localized: "Type")) {
@@ -65,6 +60,22 @@ struct GeneralPaneView: View {
                     .accessibilityIdentifier("connection-form-change-type")
                 }
             }
+
+            Picker(String(localized: "Environment"), selection: $coordinator.customization.environment) {
+                ForEach(ConnectionEnvironment.allCases) { environment in
+                    environmentLabel(environment).tag(environment)
+                }
+            }
+            .accessibilityIdentifier("connection-form-environment")
+        }
+    }
+
+    @ViewBuilder
+    private func environmentLabel(_ environment: ConnectionEnvironment) -> some View {
+        if let symbol = environment.symbolName {
+            Label(environment.displayName, systemImage: symbol)
+        } else {
+            Text(environment.displayName)
         }
     }
 

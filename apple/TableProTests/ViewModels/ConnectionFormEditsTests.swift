@@ -286,6 +286,25 @@ struct ConnectionFormEditsTests {
                 .contains(DatabaseConnection.sshForwardUnixSocketPathKey)
         )
         #expect(ConnectionFormEdits.appManagedAdditionalFieldIDs.contains(MySQLLocalSocket.fieldKey))
+        #expect(ConnectionFormEdits.appManagedAdditionalFieldIDs.contains(ConnectionEnvironment.fieldKey))
+    }
+
+    @Test("The environment loads, round-trips through additionalFields, and clears on None")
+    @MainActor
+    func environmentRoundTrips() {
+        var stored = populatedConnection()
+        stored.additionalFields[ConnectionEnvironment.fieldKey] = "production"
+        let coordinator = ConnectionFormCoordinator(connectionId: nil)
+        coordinator.customization.load(from: stored)
+        #expect(coordinator.customization.environment == .production)
+
+        coordinator.customization.environment = .staging
+        let saved = coordinator.buildEdits().applied(to: stored)
+        #expect(saved.additionalFields[ConnectionEnvironment.fieldKey] == "staging")
+
+        coordinator.customization.environment = .none
+        let cleared = coordinator.buildEdits().applied(to: saved)
+        #expect(cleared.additionalFields[ConnectionEnvironment.fieldKey] == nil)
     }
 
     @Test("Switching a socket connection back to Host and Port removes the socket")

@@ -56,7 +56,8 @@ struct ConnectionFormEdits: Equatable {
         DatabaseConnection.commitModeKey,
         DatabaseConnection.maskingRulesKey,
         DatabaseConnection.sshForwardUnixSocketPathKey,
-        MySQLLocalSocket.fieldKey
+        MySQLLocalSocket.fieldKey,
+        ConnectionEnvironment.fieldKey
     ]
 
     func applied(to base: DatabaseConnection) -> DatabaseConnection {
