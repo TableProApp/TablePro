@@ -1,4 +1,8 @@
+#if os(iOS)
+import SQLite3
+#else
 import CSQLite
+#endif
 import Foundation
 
 /// What `sqlite3_prepare_v2` leaves unread after the statement it compiled.

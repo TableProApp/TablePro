@@ -15,8 +15,8 @@ struct SQLiteTransferEngineTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
-    private func driver(_ name: String) async throws -> SQLiteDriver {
-        let driver = SQLiteDriver(source: .file(directory.appendingPathComponent(name)), openMode: .createNew)
+    private func driver(_ name: String) async throws -> SQLiteBackedDriver {
+        let driver = SQLiteBackedDriver(source: .file(directory.appendingPathComponent(name)), openMode: .createNew)
         try await driver.connect()
         return driver
     }
@@ -51,7 +51,9 @@ struct SQLiteTransferEngineTests {
     @Test("A NUL inside text reaches the SQL dump as char(0), so the value restores whole")
     func dumpLiteralKeepsNul() async throws {
         let driver = try await driver("nul.db")
-        let body = SQLiteTransferCatalog(driver: driver).escapeStringLiteral("a\0b'c")
+        let body = try await driver.makeExportCatalog(
+            context: MobileTransferContext(databaseType: .sqlite, database: nil, schema: nil)
+        ).escapeStringLiteral("a\0b'c")
 
         let restored = try await driver.execute(query: "SELECT hex('\(body)')").rows.first?.first
         try await driver.disconnect()
@@ -74,6 +76,33 @@ struct SQLiteTransferEngineTests {
         try await driver.disconnect()
     }
 
+    @Test("An export reading the session lets other statements run between its batches and reads every row")
+    func sessionExportInterleaves() async throws {
+        let driver = try await driver("interleave.db")
+        _ = try await driver.execute(query: "CREATE TABLE t (id INTEGER)")
+        _ = try await driver.execute(query: """
+            WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 1500) INSERT INTO t SELECT x FROM n
+            """)
+        try await driver.beginTransaction()
+        let transfer = try await driver.openTransferDriver()
+        #expect(transfer === driver)
+
+        var iterator = driver.exportRows(query: "SELECT id FROM t ORDER BY id", readOnly: false).makeAsyncIterator()
+        var rows = 0
+        var besideIt: [[String?]] = []
+        while let element = try await iterator.next() {
+            guard case .rows(let batch) = element else { continue }
+            rows += batch.count
+            besideIt += try await driver.execute(query: "SELECT count(*) FROM t").rows
+        }
+        try await driver.rollbackTransaction()
+        try await driver.disconnect()
+
+        #expect(rows == 1_500)
+        #expect(besideIt.count >= 3)
+        #expect(besideIt.allSatisfy { $0 == ["1500"] })
+    }
+
     private func readTwoElements(of stream: AsyncThrowingStream<PluginStreamElement, Error>) async throws {
         var iterator = stream.makeAsyncIterator()
         _ = try await iterator.next()
@@ -85,7 +114,7 @@ struct SQLiteTransferEngineTests {
         let driver = try await driver("binds.db")
         _ = try await driver.execute(query: "CREATE TABLE t (a TEXT, b TEXT)")
 
-        await #expect(throws: SQLiteError.self) {
+        await #expect(throws: SQLitePluginError.self) {
             _ = try await driver.executeParameterized(
                 query: "INSERT INTO t VALUES (?, ?)", parameters: [.text("only one")], typeNames: nil
             )
@@ -152,7 +181,7 @@ struct SQLiteTransferEngineTests {
 
     @Test("Foreign key checks turn off and back on with PRAGMA foreign_keys")
     func foreignKeyStatements() async throws {
-        let driver = SQLiteDriver(source: .inMemory)
+        let driver = SQLiteBackedDriver(source: .inMemory)
         #expect(driver.foreignKeyCheckStatements(enabled: false) == ["PRAGMA foreign_keys = OFF"])
         #expect(driver.foreignKeyCheckStatements(enabled: true) == ["PRAGMA foreign_keys = ON"])
     }
@@ -166,7 +195,7 @@ struct SQLiteTransferEngineTests {
 
         let reader = try await driver.openTransferDriver()
         let count = try await reader.execute(query: "SELECT count(*) FROM t").rows.first?.first ?? nil
-        await #expect(throws: SQLiteError.self) { _ = try await reader.execute(query: "INSERT INTO t VALUES (2)") }
+        await #expect(throws: SQLitePluginError.self) { _ = try await reader.execute(query: "INSERT INTO t VALUES (2)") }
         try await reader.disconnect()
         try await driver.disconnect()
 
@@ -183,9 +212,9 @@ struct SQLiteTransferEngineTests {
         let snapshot = try await driver.openTransferDriver()
         _ = try await driver.execute(query: "INSERT INTO t VALUES (2)")
         let count = try await snapshot.execute(query: "SELECT count(*) FROM t").rows.first?.first ?? nil
-        let leftBefore = try FileManager.default.contentsOfDirectory(atPath: SQLiteDriver.snapshotDirectory.path)
+        let leftBefore = try FileManager.default.contentsOfDirectory(atPath: SQLiteBackedDriver.snapshotDirectory.path)
         try await snapshot.disconnect()
-        let leftAfter = (try? FileManager.default.contentsOfDirectory(atPath: SQLiteDriver.snapshotDirectory.path)) ?? []
+        let leftAfter = (try? FileManager.default.contentsOfDirectory(atPath: SQLiteBackedDriver.snapshotDirectory.path)) ?? []
         try await driver.disconnect()
 
         #expect(snapshot !== driver)
@@ -208,7 +237,7 @@ struct SQLiteTransferEngineTests {
 
     @Test("An in-memory database is read on its session")
     func inMemoryReadsTheSession() async throws {
-        let driver = SQLiteDriver(source: .inMemory)
+        let driver = SQLiteBackedDriver(source: .inMemory)
         try await driver.connect()
 
         let transfer = try await driver.openTransferDriver()

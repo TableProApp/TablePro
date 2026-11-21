@@ -22,7 +22,7 @@ struct TableProMobileApp: App {
         ConnectionListTips.configure()
         // Nothing transfers at launch, so whatever tmp/Exports and tmp/Imports hold was left by a kill.
         TransferFiles.sweep()
-        SQLiteDriver.removeLeftoverSnapshots()
+        SQLiteBackedDriver.removeLeftoverSnapshots()
         let appState = AppState()
         _appState = State(initialValue: appState)
         TableProAppDelegate.appState = appState

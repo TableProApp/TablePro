@@ -18,7 +18,7 @@ struct ShortcutsAppLockTests {
             .appendingPathComponent("shortcuts-app-lock-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let file = directory.appendingPathComponent("ledger.db")
-        let creator = SQLiteDriver(source: .file(file), openMode: .createNew)
+        let creator = SQLiteBackedDriver(source: .file(file), openMode: .createNew)
         try await creator.connect()
         _ = try await creator.execute(query: "CREATE TABLE payouts (iban TEXT, amount TEXT)")
         try await creator.disconnect()
@@ -30,7 +30,7 @@ struct ShortcutsAppLockTests {
     }
 
     private func payoutCount() async throws -> Int? {
-        let reader = SQLiteDriver(source: .file(file))
+        let reader = SQLiteBackedDriver(source: .file(file))
         try await reader.connect()
         let result = try await reader.execute(query: "SELECT count(*) FROM payouts")
         try await reader.disconnect()

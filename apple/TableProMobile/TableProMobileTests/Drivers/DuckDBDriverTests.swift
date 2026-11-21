@@ -392,7 +392,7 @@ struct DuckDBGridDecodeTests {
         _ text: String,
         column: String = "body",
         options: StreamOptions = StreamOptions()
-    ) -> DuckDBGridValue {
+    ) -> PluginGridValue {
         let reader = DuckDBBackedDriver.gridReader(options: options)
         var bytes = Array(text.utf8)
         return bytes.withUnsafeMutableBytes { reader(column, .text(UnsafeRawBufferPointer($0))) }
@@ -455,7 +455,7 @@ struct DuckDBGridDecodeTests {
         let duck = DuckDBPluginDriver(config: config)
         try await duck.connect()
         let options = StreamOptions()
-        var values: [DuckDBGridValue] = []
+        var values: [PluginGridValue] = []
         for try await element in duck.pulledValues(
             query: "SELECT repeat('x', 32768 + i % 2) AS body, repeat('z', 32768)::BLOB AS payload FROM range(2100) t(i)",
             context: PluginStatementContext(),

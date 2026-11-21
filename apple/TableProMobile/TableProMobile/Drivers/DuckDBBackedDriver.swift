@@ -80,8 +80,7 @@ nonisolated final class DuckDBBackedDriver: PluginBackedDriver, DedicatedTransfe
         try duck.cancelQuery()
     }
 
-    // A read takes each batch as the plugin hands it out and cuts each value while it is decoded: long text is copied
-    // only up to its preview and a BLOB only counted, so no value is held whole that the grid shows cut.
+    // A read takes each batch as the plugin hands it out and cuts each value while it is decoded (`PluginGridCut`).
     override func stream(
         query: String,
         options: StreamOptions,
@@ -97,16 +96,13 @@ nonisolated final class DuckDBBackedDriver: PluginBackedDriver, DedicatedTransfe
             let task = Task {
                 do {
                     try await self.exclusively {
-                        var rows = PluginRowEmitter(options: options)
+                        let sink = PluginGridSink(options: options, continuation: continuation)
                         batches: for try await element in duck.pulledValues(query: query, context: context, reading: read) {
                             switch element {
                             case .header(let header):
-                                rows.begin(columns: header.columns, typeNames: header.columnTypeNames, into: continuation)
+                                sink.begin(columns: header.columns, typeNames: header.columnTypeNames)
                             case .rows(let batch):
-                                for row in batch {
-                                    let cells = Self.cells(of: row, rows: rows)
-                                    guard rows.emit(cells: cells, locator: nil, into: continuation) else { break batches }
-                                }
+                                guard sink.emit(batch) else { break batches }
                             }
                         }
                         await duck.endPulledRows()
@@ -126,55 +122,14 @@ nonisolated final class DuckDBBackedDriver: PluginBackedDriver, DedicatedTransfe
         }
     }
 
-    // A key column stays whole, since a long value is read back by it. Without a key a long value the budget admits
-    // stays whole too, as `Cell.from(text:options:ref:)` keeps it.
-    static func gridReader(options: StreamOptions) -> DuckDBValueReader<DuckDBGridValue> {
-        let keys = Set(options.lazyContext?.primaryKeyColumns ?? [])
-        let limit = options.textTruncationBytes
-        let budget = options.lazyContext == nil ? options.textBudget : nil
+    static func gridReader(options: StreamOptions) -> DuckDBValueReader<PluginGridValue> {
+        let cut = PluginGridCut(options: options)
         return { column, value in
             switch value {
-            case .null:
-                return .null
-            case .spelled(let text):
-                return .text(text)
-            case .bytes(let bytes):
-                return .bytes(count: bytes.count)
-            case .text(let utf8):
-                guard utf8.count > limit, !keys.contains(column) else { return .text(String(decoding: utf8, as: UTF8.self)) }
-                if let budget, budget.admit(utf8.count) { return .admitted(String(decoding: utf8, as: UTF8.self)) }
-                return .cut(prefix: preview(of: utf8, maxBytes: limit), totalBytes: utf8.count)
-            }
-        }
-    }
-
-    // Decodes a little past the limit, at a scalar boundary, so the last Character the preview keeps is whole.
-    static func preview(of utf8: UnsafeRawBufferPointer, maxBytes: Int) -> String {
-        var end = min(utf8.count, maxBytes + 64)
-        while end > 0, end < utf8.count, utf8[end] & 0xC0 == 0x80 {
-            end -= 1
-        }
-        return Cell.preview(of: String(decoding: UnsafeRawBufferPointer(rebasing: utf8[..<end]), as: UTF8.self), maxBytes: maxBytes)
-    }
-
-    private static func cells(of row: [DuckDBGridValue], rows: PluginRowEmitter) -> [Cell] {
-        let keyText: (Int) -> String? = { index in
-            guard index < row.count, case .text(let value) = row[index] else { return nil }
-            return value
-        }
-        return row.enumerated().map { index, value -> Cell in
-            let ref = rows.ref(column: rows.column(at: index), keyText: keyText, locator: nil)
-            switch value {
-            case .null:
-                return .null
-            case .text(let text):
-                return Cell.from(text: text, options: rows.options, ref: ref)
-            case .admitted(let text):
-                return .text(text)
-            case .cut(let prefix, let totalBytes):
-                return .truncatedText(prefix: prefix, totalBytes: totalBytes, ref: ref)
-            case .bytes(let count):
-                return .binary(byteCount: count, ref: ref)
+            case .null: .null
+            case .spelled(let text): .text(text)
+            case .bytes(let bytes): .bytes(count: bytes.count)
+            case .text(let utf8): cut.text(utf8, column: column)
             }
         }
     }
@@ -194,16 +149,6 @@ nonisolated final class DuckDBBackedDriver: PluginBackedDriver, DedicatedTransfe
         guard source != nil else { return self }
         return DuckDBBackedDriver(duck: try await duck.openTransferDriver(), source: nil, openMode: .existingOnly)
     }
-}
-
-// A DuckDB value as the grid reads it.
-nonisolated enum DuckDBGridValue: Sendable, Equatable {
-    case null
-    case text(String)
-    // Long text the text budget took whole.
-    case admitted(String)
-    case cut(prefix: String, totalBytes: Int)
-    case bytes(count: Int)
 }
 
 // The pull side of a session export: a transfer connection opened on the first pull and closed at the read's end, or

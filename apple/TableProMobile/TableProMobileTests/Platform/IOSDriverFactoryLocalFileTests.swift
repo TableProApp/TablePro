@@ -2,6 +2,7 @@ import Foundation
 import TableProDatabase
 @testable import TableProMobile
 import TableProModels
+import TableProPluginKit
 import Testing
 
 @Suite("Driver factory with local database files")
@@ -39,7 +40,7 @@ struct IOSDriverFactoryLocalFileTests {
     }
 
     private func createSQLiteFile(_ fileName: String) async throws {
-        let creator = SQLiteDriver(
+        let creator = SQLiteBackedDriver(
             source: .file(documentsDirectory.appendingPathComponent(fileName)),
             openMode: .createNew
         )
@@ -101,6 +102,27 @@ struct IOSDriverFactoryLocalFileTests {
         #expect(throws: LocalDatabaseFileError.unavailable(fileName: "warehouse.duckdb", reason: .notOnThisDevice)) {
             try factory.createDriver(for: connection, password: nil)
         }
+    }
+
+    @Test("A Mac connection's attached databases and extensions are not opened on iOS")
+    func macOnlyFieldsAreNotOpened() async throws {
+        try await createSQLiteFile("main.db")
+        let connection = DatabaseConnection(
+            type: .sqlite,
+            port: 0,
+            database: documentsDirectory.appendingPathComponent("main.db").path,
+            additionalFields: [
+                AttachedDatabaseList.fieldId: #"[{"name":"side","path":"/Users/mac/side.db"}]"#,
+                LoadableExtensionList.fieldId: #"[{"path":"/opt/homebrew/lib/vec0.dylib"}]"#,
+            ]
+        )
+
+        let driver = try factory.createDriver(for: connection, password: nil)
+        try await driver.connect()
+        let databases = try await driver.execute(query: "SELECT name FROM pragma_database_list ORDER BY seq").rows
+        try await driver.disconnect()
+
+        #expect(databases == [["main"]])
     }
 
     @Test("A bookmark left over from an earlier pick is ignored for a DuckDB file in Documents")

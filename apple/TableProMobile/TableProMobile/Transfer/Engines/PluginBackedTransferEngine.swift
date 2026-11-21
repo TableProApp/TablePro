@@ -4,8 +4,8 @@ import TableProModels
 import TableProPluginKit
 import TableProSQLGrammar
 
-// ClickHouse, Cloudflare D1, DuckDB and MongoDB run their Mac plugin whole, so an export asks that plugin what the
-// Mac's `ExportDataSourceAdapter` asks it. MongoDB takes no rows from a file, as on the Mac (D9).
+// ClickHouse, Cloudflare D1, DuckDB, MongoDB and SQLite run their Mac plugin whole, so an export asks that plugin what
+// the Mac's `ExportDataSourceAdapter` asks it. MongoDB takes no rows from a file, as on the Mac (D9).
 nonisolated extension PluginBackedDriver: MobileTransferEngine {
     func makeExportCatalog(context: MobileTransferContext) async throws -> any MobileExportCatalog {
         PluginTransferCatalog(

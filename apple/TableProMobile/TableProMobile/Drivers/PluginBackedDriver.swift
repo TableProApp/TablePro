@@ -145,7 +145,13 @@ nonisolated class PluginBackedDriver: DatabaseDriver, CatalogQuerying, ExportRow
 
     func execute(query: String) async throws -> QueryResult {
         let context = statementContext(query)
-        return QueryResult(from: try await exclusively { try await plugin.execute(query: query, context: context) })
+        return legacyResult(try await exclusively { try await plugin.execute(query: query, context: context) })
+    }
+
+    // The rows as text, for `execute`'s callers. Declared here so an engine whose columns can lack a type says what
+    // its values were.
+    func legacyResult(_ result: PluginQueryResult) -> QueryResult {
+        QueryResult(from: result)
     }
 
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
@@ -315,7 +321,7 @@ nonisolated class PluginBackedDriver: DatabaseDriver, CatalogQuerying, ExportRow
         var typedContext = statementContext(query)
         typedContext.parameterTypeNames = typeNames
         let context = typedContext
-        return QueryResult(from: try await inSessionDatabase {
+        return legacyResult(try await inSessionDatabase {
             try await plugin.executeParameterized(query: query, parameters: parameters, context: context)
         })
     }
