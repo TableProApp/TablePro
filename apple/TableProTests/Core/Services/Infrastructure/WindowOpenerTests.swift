@@ -10,14 +10,12 @@ import XCTest
 final class WindowOpenerTests: XCTestCase {
     private var openedRequests: [ConnectionFormRequest] = []
     private var openedSettingsPanes: [SettingsPane?] = []
-    private var openedCompareSources: [UUID?] = []
 
     override func setUp() async throws {
         try await super.setUp()
         _ = WelcomeRouter.shared.consumePendingRequest()
         openedRequests = []
         openedSettingsPanes = []
-        openedCompareSources = []
         WindowOpener.shared.setWelcomePresenter {}
         WindowOpener.shared.setConnectionFormPresenter { [weak self] request in
             self?.openedRequests.append(request)
@@ -25,9 +23,6 @@ final class WindowOpenerTests: XCTestCase {
         WindowOpener.shared.setIntegrationsActivityPresenter {}
         WindowOpener.shared.setSettingsPresenter { [weak self] pane in
             self?.openedSettingsPanes.append(pane)
-        }
-        WindowOpener.shared.setCompareSyncPresenter { [weak self] connectionId in
-            self?.openedCompareSources.append(connectionId)
         }
     }
 
@@ -200,33 +195,6 @@ final class WindowOpenerTests: XCTestCase {
         await LaunchIntentRouter.shared.route(.openSettings(nil))
 
         XCTAssertEqual(openedSettingsPanes, [SettingsPane?.none])
-    }
-
-    func testCompareSyncCarriesThePrefilledSourceToThePresenter() {
-        let connectionId = UUID()
-
-        WindowOpener.shared.openCompareSync(prefillSource: connectionId)
-
-        XCTAssertEqual(openedCompareSources, [connectionId])
-    }
-
-    func testCompareSyncOpenedFromTheMenuCarriesNoSource() {
-        WindowOpener.shared.openCompareSync()
-
-        XCTAssertEqual(openedCompareSources, [UUID?.none])
-    }
-
-    func testACompareSyncCallQueuedBeforeItsPresenterKeepsItsSource() {
-        let opener = WindowOpener()
-        var opened: [UUID?] = []
-        let connectionId = UUID()
-
-        opener.openCompareSync(prefillSource: connectionId)
-        XCTAssertTrue(opened.isEmpty, "No presenter yet, so the call has to wait")
-
-        opener.setCompareSyncPresenter { opened.append($0) }
-
-        XCTAssertEqual(opened, [connectionId])
     }
 
     func testEditingTheSameConnectionTwiceRequestsTheSameWindow() {

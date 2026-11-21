@@ -23,7 +23,7 @@ enum AppModuleActivation {
 
     static func resetToDefaults(settings: AppModuleSettings = .shared) {
         for module in AppModule.allCases {
-            setEnabled(module.defaultEnabled, for: module, settings: settings)
+            setEnabled(settings.defaultEnabled(module), for: module, settings: settings)
         }
     }
 
@@ -33,6 +33,8 @@ enum AppModuleActivation {
             Task { await RoutineDebugSessions.shared.stopAll() }
         case .liveMessages:
             LiveMessageSessions.shared.endAll(closingTabs: true)
+        case .compareSync:
+            CompareSyncRunRegistry.shared.endAll()
         }
     }
 }
