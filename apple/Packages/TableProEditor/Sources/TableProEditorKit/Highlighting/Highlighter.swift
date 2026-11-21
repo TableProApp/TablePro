@@ -132,7 +132,13 @@ class Highlighter: NSObject {
     // MARK: - Public
 
     func invalidate() {
-        guard isWithinLimit else { return }
+        guard isWithinLimit else {
+            // A font or letter spacing change still has to reach the plain text.
+            if let textView {
+                removeStyles(from: textView)
+            }
+            return
+        }
         highlightProviders.forEach { $0.invalidate() }
     }
 

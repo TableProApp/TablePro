@@ -6,8 +6,10 @@ import Testing
 @MainActor
 struct HighlighterLengthLimitTests {
     private final class KeywordAttributes: ThemeAttributesProviding {
+        var font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+
         func attributesFor(_ capture: CaptureName?) -> [NSAttributedString.Key: Any] {
-            [.foregroundColor: capture == .keyword ? NSColor.systemRed : NSColor.textColor]
+            [.foregroundColor: capture == .keyword ? NSColor.systemRed : NSColor.textColor, .font: font]
         }
     }
 
@@ -78,6 +80,18 @@ struct HighlighterLengthLimitTests {
         #expect(provider.editCount == 0)
         #expect(provider.setUpCount == setUps + 1)
         #expect(color(at: 0, in: textView) == .systemRed)
+    }
+
+    @Test("A font change reaches a document over the limit without a query")
+    func fontChangeOverTheLimitRestylesThePlainText() {
+        let provider = keywordProvider()
+        let (textView, highlighter) = makeHighlighter("SELECT 1", limit: 4, provider: provider)
+
+        attributes.font = .monospacedSystemFont(ofSize: 20, weight: .regular)
+        highlighter.invalidate()
+
+        #expect(textView.textStorage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont == attributes.font)
+        #expect(provider.queryCount == 0)
     }
 
     @Test("A document that opens over the limit is never queried")
