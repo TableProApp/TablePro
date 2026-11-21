@@ -13,7 +13,7 @@ import TableProDuckDBCore
 /// its HTTP client setting changes, which the editor can do, and then reads the file again. It goes in the
 /// temporary directory because it holds certificates only, never a key: a copy a crash leaves behind
 /// exposes nothing, and the system clears it.
-final class DuckDBTrustBundleFile: @unchecked Sendable {
+nonisolated final class DuckDBTrustBundleFile: @unchecked Sendable {
     private let lock = NSLock()
     private var url: URL?
 

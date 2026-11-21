@@ -44,7 +44,7 @@ nonisolated struct DriverDatabaseFileCreator: LocalDatabaseFileCreating {
         case .sqlite:
             return SQLiteDriver(source: .file(url), openMode: .createNew)
         case .duckdb:
-            return DuckDBDriver(source: .file(url), openMode: .createNew)
+            return DuckDBBackedDriver(source: .file(url), openMode: .createNew)
         default:
             throw ConnectionError.driverNotFound(type.rawValue)
         }

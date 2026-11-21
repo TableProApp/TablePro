@@ -106,7 +106,7 @@ struct IOSDriverFactoryLocalFileTests {
     @Test("A bookmark left over from an earlier pick is ignored for a DuckDB file in Documents")
     func lingeringBookmarkIsIgnored() async throws {
         let file = documentsDirectory.appendingPathComponent("cube.duckdb")
-        let creator = DuckDBDriver(source: .file(file), openMode: .createNew)
+        let creator = DuckDBBackedDriver(source: .file(file), openMode: .createNew)
         try await creator.connect()
         try await creator.disconnect()
         let connection = DatabaseConnection(type: .duckdb, port: 0, database: file.path)

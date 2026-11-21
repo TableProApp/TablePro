@@ -5,11 +5,11 @@
 
 import Foundation
 
-internal enum DuckDBConnectAttemptError: Error, Equatable, Sendable {
+nonisolated internal enum DuckDBConnectAttemptError: Error, Equatable, Sendable {
     case timedOut
 }
 
-internal final class DuckDBConnectAttempt: @unchecked Sendable {
+nonisolated internal final class DuckDBConnectAttempt: @unchecked Sendable {
     internal static let defaultTimeoutMilliseconds = 30_000
 
     private enum State: Equatable {
