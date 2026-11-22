@@ -5,6 +5,7 @@ The macOS app, its registry plugins, the static libraries and the manual iOS flo
 ## Channels
 
 - One EdDSA-signed appcast, `https://updates.tablepro.app/appcast.xml`, carries stable and beta items. The app takes betas only while Settings > General > Get beta updates is on.
+- Each version ships per arch: `TablePro-<ver>-arm64.tar.xz` and `-x86_64.tar.xz` (DMGs and dSYM zips the same). The feed carries two items per version, the arm64 one gated by `sparkle:hardwareRequirements`, the x86_64 one ungated as the Intel fallback; `generate_appcast` emits the pair from the two archives. `build.sh`/`package.sh` take an arch (none builds both) and `release.yml`'s App job is an `arm64`/`x86_64` matrix.
 - A stable rolls out in phases of 21600 s. A beta is not phased and is a GitHub prerelease.
 - Critical means a security fix or data loss, nothing else: ` [CRITICAL]` on the version's `CHANGELOG.md` heading, never on a beta. Later stables carry it forward.
 - The legacy `appcast.xml` on `main`, the feed of apps up to 0.81, ends at 0.82.0. No release writes it.

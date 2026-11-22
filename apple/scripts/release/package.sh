@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: package.sh app|plugins [--unsigned]
-# Turns what scripts/release/build.sh wrote to build/release into the release assets in dist/, named by VERSION.
+# Usage: package.sh app [arm64|x86_64]|plugins [--unsigned]
+# Turns what scripts/release/build.sh wrote to build/release into the release assets in dist/, named
+# by VERSION. The app is packaged per arch (arm64 and x86_64, or the one named) into per-arch DMG,
+# .tar.xz update and dSYMs assets.
 
 usage() {
-    echo "Usage: package.sh app|plugins [--unsigned]" >&2
+    echo "Usage: package.sh app [arm64|x86_64]|plugins [--unsigned]" >&2
     exit 2
 }
 
@@ -15,15 +17,18 @@ die() {
 }
 
 KIND=""
+ARCH=""
 SIGNED=true
 for arg in "$@"; do
     case "$arg" in
         app | plugins) [ -z "$KIND" ] || usage; KIND="$arg" ;;
+        arm64 | x86_64) [ -z "$ARCH" ] || usage; ARCH="$arg" ;;
         --unsigned) SIGNED=false ;;
         *) usage ;;
     esac
 done
 [ -n "$KIND" ] || usage
+[ "$KIND" = app ] || [ -z "$ARCH" ] || die "an arch applies only to the app package"
 case "${VERSION:-}" in
     '' | *[!0-9A-Za-z.-]*) echo "package.sh: set VERSION, got '${VERSION:-}'" >&2; exit 2 ;;
 esac
@@ -36,11 +41,13 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 package_app() {
-    local app="$OUT/TablePro.app" dsyms="$OUT/TablePro.xcarchive/dSYMs"
-    local dmg="$DIST/TablePro-$VERSION.dmg" update="$DIST/TablePro-$VERSION.tar.xz"
-    local symbols="$DIST/TablePro-$VERSION-dSYMs.zip" extracted="$WORK/extracted"
-    [ -d "$app" ] || die "no $app; run scripts/release/build.sh app first"
-    [ -d "$dsyms" ] || die "no $dsyms; run scripts/release/build.sh app first"
+    local arch="$1"
+    local out="$OUT/$arch"
+    local app="$out/TablePro.app" dsyms="$out/TablePro.xcarchive/dSYMs"
+    local dmg="$DIST/TablePro-$VERSION-$arch.dmg" update="$DIST/TablePro-$VERSION-$arch.tar.xz"
+    local symbols="$DIST/TablePro-$VERSION-$arch-dSYMs.zip" extracted="$WORK/extracted-$arch"
+    [ -d "$app" ] || die "no $app; run scripts/release/build.sh app $arch first"
+    [ -d "$dsyms" ] || die "no $dsyms; run scripts/release/build.sh app $arch first"
     mkdir -p "$DIST"
     rm -f "$dmg" "$update" "$symbols"
 
@@ -49,8 +56,9 @@ package_app() {
     [ "$SIGNED" = false ] || codesign --sign "Developer ID Application" --timestamp --identifier com.TablePro.dmg "$dmg"
 
     # tar keeps the framework symlinks codesign seals; a signed bundle needs no extended attributes.
+    # -C the arch dir so the archive holds TablePro.app at its root, as Sparkle unpacks it.
     /usr/bin/tar --no-mac-metadata --no-xattrs --uid 0 --gid 0 \
-        --options xz:compression-level=9 -cJf "$update" -C "$OUT" TablePro.app
+        --options xz:compression-level=9 -cJf "$update" -C "$out" TablePro.app
 
     # Sparkle's SUPipedUnarchiver pipes a .tar.xz into this same command.
     mkdir "$extracted"
@@ -89,4 +97,10 @@ package_plugins() {
     ls -lh "$symbols"
 }
 
-"package_$KIND"
+if [ "$KIND" = plugins ]; then
+    package_plugins
+elif [ -n "$ARCH" ]; then
+    package_app "$ARCH"
+else
+    for ARCH in arm64 x86_64; do package_app "$ARCH"; done
+fi

@@ -87,28 +87,39 @@ if os.environ.get("FAKE_PRUNE"):
     appcast.write_text(signed(text, key))
     print("Wrote 0 new updates")
     sys.exit(0)
-archive = next(stage.glob("*.tar.xz"))
-short = archive.name[len("TablePro-"):-len(".tar.xz")]
-lines = ["<item>", "<title>" + short + "</title>"]
-if option("--channel"):
-    lines.append("<sparkle:channel>" + option("--channel") + "</sparkle:channel>")
-if option("--phased-rollout-interval"):
-    interval = option("--phased-rollout-interval")
-    lines.append("<sparkle:phasedRolloutInterval>" + interval + "</sparkle:phasedRolloutInterval>")
-if option("--critical-update-version") is not None:
-    lines.append('<sparkle:criticalUpdate sparkle:version="' + option("--critical-update-version") + '"/>')
-lines.append("<sparkle:version>" + option("--versions") + "</sparkle:version>")
-lines.append("<sparkle:shortVersionString>" + short + "</sparkle:shortVersionString>")
-notes = (stage / ("TablePro-" + short + ".md")).read_text()
-lines.append('<description sparkle:format="markdown"><![CDATA[' + notes + ']]></description>')
-signature = "" if os.environ.get("FAKE_UNSIGNED_ENCLOSURE") else ' sparkle:edSignature="c2ln"'
-lines.append('<enclosure url="' + option("--download-url-prefix") + archive.name + '" length="'
-             + str(archive.stat().st_size) + '" type="application/octet-stream"' + signature + "/>")
-lines.append("</item>")
+# One item per staged archive, arch read from the name, gated when the slice is arm64-only.
+blocks = []
+for archive in sorted(stage.glob("*.tar.xz")):
+    base = archive.name[:-len(".tar.xz")]
+    rest = base[len("TablePro-"):]
+    arch, short = None, rest
+    for candidate in ("arm64", "x86_64"):
+        if rest.endswith("-" + candidate):
+            arch, short = candidate, rest[:-(len(candidate) + 1)]
+            break
+    lines = ["<item>", "<title>" + short + "</title>"]
+    if option("--channel"):
+        lines.append("<sparkle:channel>" + option("--channel") + "</sparkle:channel>")
+    if option("--phased-rollout-interval"):
+        interval = option("--phased-rollout-interval")
+        lines.append("<sparkle:phasedRolloutInterval>" + interval + "</sparkle:phasedRolloutInterval>")
+    if option("--critical-update-version") is not None:
+        lines.append('<sparkle:criticalUpdate sparkle:version="' + option("--critical-update-version") + '"/>')
+    lines.append("<sparkle:version>" + option("--versions") + "</sparkle:version>")
+    lines.append("<sparkle:shortVersionString>" + short + "</sparkle:shortVersionString>")
+    if arch == "arm64":
+        lines.append("<sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>")
+    notes = (stage / (base + ".md")).read_text()
+    lines.append('<description sparkle:format="markdown"><![CDATA[' + notes + ']]></description>')
+    signature = "" if os.environ.get("FAKE_UNSIGNED_ENCLOSURE") else ' sparkle:edSignature="c2ln"'
+    lines.append('<enclosure url="' + option("--download-url-prefix") + archive.name + '" length="'
+                 + str(archive.stat().st_size) + '" type="application/octet-stream"' + signature + "/>")
+    lines.append("</item>")
+    blocks.append("\n".join(lines))
 index = text.index("<item>") if "<item>" in text else text.index("</channel>")
-text = text[:index] + "\n".join(lines) + "\n" + text[index:]
+text = text[:index] + "\n".join(blocks) + "\n" + text[index:]
 appcast.write_text(text if os.environ.get("FAKE_UNSIGNED_FEED") else signed(text, key))
-print("Wrote 1 new update")
+print("Wrote " + str(len(blocks)) + " new updates")
 '''
 
 FAKE_SIGN_UPDATE = SIGNATURE + r'''
@@ -175,7 +186,7 @@ REFUSED_UNSIGNED = (r"no signature vouches for the published plugins/v3.json\. C
                     r"for one run, then unset it\)")
 
 
-def item(build, short, channel=None, critical=None, signature="c2ln", url=None):
+def item(build, short, channel=None, critical=None, signature="c2ln", url=None, hardware=None):
     lines = ["<item>"]
     if channel is not None:
         lines.append(f"<sparkle:channel>{channel}</sparkle:channel>")
@@ -184,6 +195,8 @@ def item(build, short, channel=None, critical=None, signature="c2ln", url=None):
                      "<sparkle:criticalUpdate/>")
     lines += [f"<sparkle:version>{build}</sparkle:version>",
               f"<sparkle:shortVersionString>{short}</sparkle:shortVersionString>"]
+    if hardware is not None:
+        lines.append(f"<sparkle:hardwareRequirements>{hardware}</sparkle:hardwareRequirements>")
     signed = f' sparkle:edSignature="{signature}"' if signature else ""
     url = url or f"https://example.com/TablePro-{short}.tar.xz"
     lines += [f'<enclosure url="{url}" length="10"{signed}/>', "</item>"]
@@ -210,24 +223,38 @@ def fake_detached(data, key=MANIFEST_KEY):
 class FeedRulesTests(unittest.TestCase):
     def test_the_new_item_must_be_there_once(self):
         release = version.parse_tag("v0.82.0-beta.1")
-        url = "https://example.com/TablePro-0.82.0-beta.1.tar.xz"
-        present = feed.parse_items(appcast(item(820001, "0.82.0-beta.1", "beta"), item(140, "0.81.0")))
-        self.assertEqual(feed.new_item_problems(present, release, url), [])
-        cases = [
-            appcast(item(820001, "0.82.0-beta.1")),
-            appcast(item(820001, "0.82.0-beta.1", "beta", url="https://example.com/other.tar.xz")),
-            appcast(item(820001, "0.82.0-beta.1", "beta"), item(820001, "0.82.0-beta.1", "beta")),
-        ]
-        for data, count in zip(cases, (0, 0, 2)):
-            with self.subTest(data=data):
-                self.assertEqual(feed.new_item_problems(feed.parse_items(data), release, url),
-                                 [f"appcast.xml has {count} beta items for 0.82.0-beta.1 (820001) at {url}, not one"])
+        base = "https://example.com/"
+        arm = base + feed.archive_name(release, "arm64")
+        intel = base + feed.archive_name(release, "x86_64")
+        present = feed.parse_items(appcast(
+            item(820001, "0.82.0-beta.1", "beta", url=arm, hardware="arm64"),
+            item(820001, "0.82.0-beta.1", "beta", url=intel),
+            item(140, "0.81.0")))
+        self.assertEqual(feed.new_item_problems(present, release, base), [])
+        ungated = feed.parse_items(appcast(
+            item(820001, "0.82.0-beta.1", "beta", url=arm),
+            item(820001, "0.82.0-beta.1", "beta", url=intel)))
+        self.assertEqual(feed.new_item_problems(ungated, release, base), [
+            "0.82.0-beta.1's arm64 item has sparkle:hardwareRequirements None, not 'arm64'"])
+        only_arm = feed.parse_items(appcast(item(820001, "0.82.0-beta.1", "beta", url=arm, hardware="arm64")))
+        self.assertEqual(feed.new_item_problems(only_arm, release, base), [
+            f"appcast.xml has 0 beta items for 0.82.0-beta.1 (820001) at {intel}, not one"])
+        stray = base + "TablePro-0.82.0-beta.1-ppc.tar.xz"
+        extra = feed.parse_items(appcast(
+            item(820001, "0.82.0-beta.1", "beta", url=arm, hardware="arm64"),
+            item(820001, "0.82.0-beta.1", "beta", url=intel),
+            item(820001, "0.82.0-beta.1", "beta", url=stray)))
+        self.assertEqual(feed.new_item_problems(extra, release, base), [
+            f"appcast.xml has an unexpected beta enclosure for 0.82.0-beta.1 (820001) at {stray}"])
 
     def test_a_new_item_with_no_signature_names_the_key(self):
         release = version.parse_tag("v0.82.0")
-        items = feed.parse_items(appcast(item(820099, "0.82.0", signature="")))
-        self.assertEqual(feed.new_item_problems(items, release, "https://example.com/TablePro-0.82.0.tar.xz"), [
-            "0.82.0's enclosure has no sparkle:edSignature; "
+        base = "https://example.com/"
+        items = feed.parse_items(appcast(
+            item(820099, "0.82.0", url=base + feed.archive_name(release, "arm64"), hardware="arm64", signature=""),
+            item(820099, "0.82.0", url=base + feed.archive_name(release, "x86_64"))))
+        self.assertEqual(feed.new_item_problems(items, release, base), [
+            "0.82.0's arm64 enclosure has no sparkle:edSignature; "
             "SPARKLE_PRIVATE_KEY does not match the archive's SUPublicEDKey"])
 
     def test_the_critical_build_carries_forward(self):
@@ -334,7 +361,8 @@ class FeedSiteTests(unittest.TestCase):
         release = version.parse_tag(tag)
         folder = self.releases / tag
         folder.mkdir(parents=True)
-        app_archive(folder / f"TablePro-{release}.tar.xz", *(archive or (str(release), release.build)))
+        for arch in feed.ARCHES:
+            app_archive(folder / feed.archive_name(release, arch), *(archive or (str(release), release.build)))
         plugin_zip(folder / f"OracleDriver-{release}.zip", "OracleDriver", str(release), release.build, kit,
                    TableProProvidesDatabaseTypeIds=["Oracle"])
         plugin_zip(folder / f"ParquetExport-{release}.zip", "ParquetExport", str(release), release.build, kit,
@@ -399,14 +427,19 @@ class FeedSiteTests(unittest.TestCase):
         self.assertNotIn("--phased-rollout-interval", generate)
         verified = [call[3] for call in self.calls("gh") if call[:2] == ["release", "verify-asset"]]
         self.assertEqual([Path(path).name for path in verified], [
-            "TablePro-0.82.0-beta.1.tar.xz", "OracleDriver-0.82.0-beta.1.zip", "ParquetExport-0.82.0-beta.1.zip"])
+            "TablePro-0.82.0-beta.1-arm64.tar.xz", "TablePro-0.82.0-beta.1-x86_64.tar.xz",
+            "OracleDriver-0.82.0-beta.1.zip", "ParquetExport-0.82.0-beta.1.zip"])
         self.assertIn("Verification succeeded! OracleDriver-0.82.0-beta.1.zip is present in release v0.82.0-beta.1",
                       messages)
         published = self.published("appcast.xml")
         self.assertEqual(fake_signed(published), published)
         items = feed.parse_items(published.encode())
         self.assertEqual([(each.short_version, each.channel) for each in items],
-                         [("0.82.0-beta.1", "beta"), ("0.81.0", None), ("0.80.0", None)])
+                         [("0.82.0-beta.1", "beta"), ("0.82.0-beta.1", "beta"), ("0.81.0", None), ("0.80.0", None)])
+        betas = [each for each in items if each.short_version == "0.82.0-beta.1"]
+        self.assertEqual({Path(each.url).name: each.hardware_requirements for each in betas}, {
+            "TablePro-0.82.0-beta.1-arm64.tar.xz": "arm64",
+            "TablePro-0.82.0-beta.1-x86_64.tar.xz": None})
         manifest = json.loads(self.published("plugins/v3.json"))
         self.assertGreaterEqual(manifest["serial"], started)
         self.assertEqual([plugin["id"] for plugin in manifest["plugins"]],
@@ -469,7 +502,7 @@ class FeedSiteTests(unittest.TestCase):
         self.publish("v0.82.0-beta.1")
         written = self.files()
         with mock.patch.dict(os.environ, {"FAKE_UNSIGNED_ENCLOSURE": "1"}):
-            with self.assertRaisesRegex(feed.FeedError, "0.82.0-beta.1's enclosure has no sparkle:edSignature"):
+            with self.assertRaisesRegex(feed.FeedError, "0.82.0-beta.1's arm64 enclosure has no sparkle:edSignature"):
                 self.add("v0.82.0-beta.1")
         self.assertEqual(self.files(), written)
 
@@ -494,7 +527,7 @@ class FeedSiteTests(unittest.TestCase):
 
     def test_a_wrong_digest_is_refused(self):
         self.publish("v0.82.0-beta.1")
-        with mock.patch.dict(os.environ, {"FAKE_BAD_DIGEST": "TablePro-0.82.0-beta.1.tar.xz"}):
+        with mock.patch.dict(os.environ, {"FAKE_BAD_DIGEST": "TablePro-0.82.0-beta.1-arm64.tar.xz"}):
             with self.assertRaisesRegex(feed.FeedError, "attestation for v0.82.0-beta.1 does not contain subject"):
                 self.add("v0.82.0-beta.1")
         self.assertEqual(self.calls("generate_appcast"), [])
@@ -528,7 +561,7 @@ class FeedSiteTests(unittest.TestCase):
         self.assertTrue(self.withdraw("0.82.0"))
         published = self.published("appcast.xml")
         self.assertEqual([each.short_version for each in feed.parse_items(published.encode())],
-                         ["0.82.0-beta.1", "0.81.0", "0.80.0"])
+                         ["0.82.0-beta.1", "0.82.0-beta.1", "0.81.0", "0.80.0"])
         self.assertEqual(fake_signed(published), published)
         self.assertEqual(len(self.signings()), signed_before + 2)
         manifest = json.loads(self.published("plugins/v3.json"))

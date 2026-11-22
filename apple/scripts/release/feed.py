@@ -35,6 +35,16 @@ PUBLIC_KEY_SCRIPT = Path(__file__).resolve().with_name("ed25519-public-key.swift
 CHANGELOG_URL = "https://docs.tablepro.app/changelog"
 PHASED_ROLLOUT_SECONDS = 21600
 INTEGER = re.compile(r"[0-9]+")
+# arm64 first; its item is gated by sparkle:hardwareRequirements, the x86_64 item is the Intel fallback.
+ARCHES = ("arm64", "x86_64")
+
+
+def archive_name(release: version.Version, arch: str) -> str:
+    return f"TablePro-{release}-{arch}.tar.xz"
+
+
+def release_notes_name(release: version.Version, arch: str) -> str:
+    return f"TablePro-{release}-{arch}.md"
 
 
 class FeedError(Exception):
@@ -50,6 +60,7 @@ class Item:
     critical_version: Optional[str]
     url: Optional[str]
     signature: Optional[str]
+    hardware_requirements: Optional[str]
 
     @property
     def label(self) -> str:
@@ -81,6 +92,7 @@ def parse_items(data: bytes) -> List[Item]:
             critical_version=critical.get(SPARKLE + "version") if critical is not None else None,
             url=enclosure.get("url") if enclosure is not None else None,
             signature=enclosure.get(SPARKLE + "edSignature") if enclosure is not None else None,
+            hardware_requirements=_sparkle_value(element, "hardwareRequirements"),
         ))
     return items
 
@@ -109,16 +121,29 @@ def highest_stable(items: List[Item]) -> Optional[version.Version]:
     return max(stables, key=lambda candidate: candidate.build) if stables else None
 
 
-def new_item_problems(items: List[Item], release: version.Version, url: str) -> List[str]:
+def new_item_problems(items: List[Item], release: version.Version, url_base: str) -> List[str]:
     channel = "beta" if release.is_beta else None
     found = [item for item in items if item.build == str(release.build) and item.short_version == str(release)
-             and item.channel == channel and item.url == url]
-    if len(found) != 1:
-        return [f"{APPCAST} has {len(found)} {release.channel} items for {release} ({release.build}) at {url}, not one"]
-    if not found[0].signature:
-        return [f"{release}'s enclosure has no sparkle:edSignature; "
-                "SPARKLE_PRIVATE_KEY does not match the archive's SUPublicEDKey"]
-    return []
+             and item.channel == channel]
+    expected = {url_base + archive_name(release, arch): arch for arch in ARCHES}
+    problems = [f"{APPCAST} has an unexpected {release.channel} enclosure for {release} ({release.build}) "
+                f"at {item.url}" for item in found if item.url not in expected]
+    for url, arch in expected.items():
+        matches = [item for item in found if item.url == url]
+        if len(matches) != 1:
+            problems.append(f"{APPCAST} has {len(matches)} {release.channel} items for "
+                            f"{release} ({release.build}) at {url}, not one")
+            continue
+        item = matches[0]
+        # arm64-only binary gets gated; the x86_64 build is ungated so it runs on Intel and on arm64.
+        requirement = arch if arch == "arm64" else None
+        if item.hardware_requirements != requirement:
+            problems.append(f"{release}'s {arch} item has sparkle:hardwareRequirements "
+                            f"{item.hardware_requirements!r}, not {requirement!r}")
+        if not item.signature:
+            problems.append(f"{release}'s {arch} enclosure has no sparkle:edSignature; "
+                            "SPARKLE_PRIVATE_KEY does not match the archive's SUPublicEDKey")
+    return problems
 
 
 def _text(element: minidom.Element) -> str:
@@ -319,7 +344,7 @@ def add(root: Path, site: Path, tag: str, notes: Path, critical: bool, tools: Pa
     metadata = registry.load_metadata(root / METADATA)
     plugins = [f"{target}-{release}.zip" for target in registry.publish_set(metadata)]
     kit = registry.pluginkit_version(root)
-    archive = f"TablePro-{release}.tar.xz"
+    archives = [archive_name(release, arch) for arch in ARCHES]
     url_base = f"https://github.com/{repository}/releases/download/{tag}/"
     items = parse_items(appcast.read_bytes())
     has_item = appcast_has(items, release)
@@ -327,7 +352,7 @@ def add(root: Path, site: Path, tag: str, notes: Path, critical: bool, tools: Pa
     with tempfile.TemporaryDirectory(prefix="feed-") as scratch:
         downloads = Path(scratch) / "downloads"
         downloads.mkdir()
-        names = plugins if has_item else [archive, *plugins]
+        names = plugins if has_item else [*archives, *plugins]
         releases.download(tag, names, downloads)
         for name in names:
             log(releases.verify(tag, downloads / name))
@@ -339,9 +364,13 @@ def add(root: Path, site: Path, tag: str, notes: Path, critical: bool, tools: Pa
         if has_item:
             log(f"{APPCAST} already has {release} ({release.build})")
         else:
-            check_archive(downloads / archive, release)
-            (downloads / archive).rename(stage / archive)
-            shutil.copy2(notes, stage / f"TablePro-{release}.md")
+            for arch in ARCHES:
+                archive = archive_name(release, arch)
+                check_archive(downloads / archive, release)
+                (downloads / archive).rename(stage / archive)
+                # generate_appcast matches release notes by the archive's base name, so each per-arch
+                # item embeds the same notes.
+                shutil.copy2(notes, stage / release_notes_name(release, arch))
             shutil.copy2(appcast, stage / APPCAST)
             critical_build = release.build if critical else None
             if critical_build is None and not release.is_beta:
@@ -350,7 +379,7 @@ def add(root: Path, site: Path, tag: str, notes: Path, critical: bool, tools: Pa
             log(_tool(tools, "generate_appcast", key, *arguments, run=run))
             staged = parse_items((stage / APPCAST).read_bytes())
             if appcast_has(staged, release):
-                _refuse(new_item_problems(staged, release, url_base + archive)
+                _refuse(new_item_problems(staged, release, url_base)
                         + verify_signature(stage / APPCAST, key, tools, run))
                 new_appcast = True
             else:
