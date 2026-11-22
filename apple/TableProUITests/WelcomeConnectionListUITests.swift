@@ -44,6 +44,48 @@ final class WelcomeConnectionListUITests: UITestCase {
         )
     }
 
+    // AppKit publishes a toolbar item by its label, not its item identifier, so the items are found by name.
+    func testTheToolbarSearchesTheListAndOffersItsCommandsByName() throws {
+        try seedSQLiteSession(seededNames.map { ConnectionSeed(name: $0, tabs: [], isOpen: false) })
+        let app = try launchApp()
+        let welcome = welcomeWindow(in: app)
+        XCTAssertTrue(welcome.waitToExist(timeout: 15))
+        let list = welcomeConnectionList(in: welcome)
+        XCTAssertTrue(welcomeConnectionRow(named: "alpha-staging", in: list).waitToExist(timeout: 15))
+
+        let toolbar = welcome.toolbars.firstMatch
+        XCTAssertTrue(toolbar.buttons["New Connection"].waitToExist(timeout: 5), "The toolbar must offer New Connection")
+        XCTAssertTrue(toolbar.buttons["New Group"].exists, "The toolbar must offer New Group")
+        let viewOptions = toolbar.descendants(matching: .any).matching(identifier: "View Options").firstMatch
+        XCTAssertTrue(viewOptions.exists, "The toolbar must offer View Options")
+
+        app.typeShortcut(.find)
+        let search = welcome.searchFields["welcome-toolbar-search"]
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { self.holdsKeyboardFocus(search) },
+            "Find must put the keyboard in the toolbar's search field"
+        )
+        app.typeText("charlie")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { !self.welcomeConnectionRow(named: "alpha-staging", in: list).exists },
+            "Typing must narrow the list"
+        )
+        let match = welcomeConnectionRow(named: "charlie-prod", in: list)
+        XCTAssertTrue(match.exists)
+
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { self.holdsKeyboardFocus(list) && match.isSelected },
+            "Return must hand the list the keyboard with the first match selected"
+        )
+
+        XCTAssertTrue(waitUntilHittable(viewOptions, timeout: 5))
+        viewOptions.click()
+        let sortItem = contextMenuItem("Database Type", in: app)
+        XCTAssertTrue(sortItem.waitToExist(timeout: 5), "View Options must list the sort orders")
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
     func testReturnOnASelectedConnectionOpensIt() throws {
         try seedSQLiteSession([ConnectionSeed(name: "alpha-staging", tabs: [], isOpen: false)])
         let app = try launchApp()

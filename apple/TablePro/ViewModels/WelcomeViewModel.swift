@@ -16,10 +16,14 @@ internal struct WelcomeNewGroupRequest: Hashable {
     internal let movingConnectionIds: [UUID]
 }
 
-internal struct WelcomeTagToken: Identifiable, Hashable {
-    internal let id: UUID
-    internal let name: String
-    internal let color: ConnectionColor
+internal struct WelcomeTagFilter: Equatable {
+    // In the order they were turned on; a tag missing from storage still filters but has nothing to show.
+    internal var tags: [ConnectionTag] = []
+    internal var tagCount = 0
+    internal var match: LibraryTagMatch = .any
+
+    internal var isActive: Bool { tagCount > 0 }
+    internal var offersMatch: Bool { tagCount > 1 }
 }
 
 enum WelcomeActiveSheet: Identifiable {
@@ -95,12 +99,13 @@ final class WelcomeViewModel: ObservableObject {
     // MARK: - Query
 
     @Published var searchText = "" { didSet { scheduleRebuild(previous: oldValue) } }
-    @Published var searchTokens: [WelcomeTagToken] = [] {
-        didSet { if searchTokens != oldValue { rebuildOutline() } }
+    @Published var tagFilterIds: [UUID] = [] {
+        didSet { if tagFilterIds != oldValue { rebuildOutline() } }
     }
     @Published var tagMatch: LibraryTagMatch = .any {
         didSet { if tagMatch != oldValue { rebuildOutline() } }
     }
+    @Published private(set) var tagFilter = WelcomeTagFilter()
 
     // MARK: - Outline
 
@@ -206,17 +211,34 @@ final class WelcomeViewModel: ObservableObject {
         return tags.filter { usedIds.contains($0.id) }
     }
 
-    var suggestedTokens: [WelcomeTagToken] {
-        let chosen = Set(searchTokens.map(\.id))
-        return availableTags.filter { !chosen.contains($0.id) }.map(Self.token(for:))
+    func tagSuggestions(matching text: String) -> [ConnectionTag] {
+        let term = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return [] }
+        let active = Set(tagFilterIds)
+        return availableTags.filter { !active.contains($0.id) && $0.name.localizedCaseInsensitiveContains(term) }
     }
 
-    static func token(for tag: ConnectionTag) -> WelcomeTagToken {
-        WelcomeTagToken(id: tag.id, name: tag.name, color: tag.color)
+    func setTagFilter(_ tagId: UUID, isOn: Bool) {
+        if isOn {
+            guard !tagFilterIds.contains(tagId) else { return }
+            tagFilterIds.append(tagId)
+        } else {
+            tagFilterIds.removeAll { $0 == tagId }
+        }
+    }
+
+    // The typed text only led to the tag, so it goes once the tag filters instead.
+    func applyTagSuggestion(_ tagId: UUID) {
+        searchText = ""
+        setTagFilter(tagId, isOn: true)
+    }
+
+    func clearTagFilters() {
+        tagFilterIds.removeAll()
     }
 
     var query: LibraryQuery {
-        LibraryQuery(text: searchText, tagIds: Set(searchTokens.map(\.id)), tagMatch: tagMatch)
+        LibraryQuery(text: searchText, tagIds: Set(tagFilterIds), tagMatch: tagMatch)
     }
 
     var isFiltering: Bool {
@@ -257,7 +279,7 @@ final class WelcomeViewModel: ObservableObject {
             hasAnyConnection: hasAnyConnection,
             hasVisibleContent: !outline.isEmpty,
             searchText: query.trimmedText,
-            isTagFiltered: !searchTokens.isEmpty
+            isTagFiltered: !tagFilterIds.isEmpty
         ))
     }
 
@@ -286,6 +308,14 @@ final class WelcomeViewModel: ObservableObject {
         groupConnectionCounts = Self.groupCounts(in: outline)
         let visible = visibleRowIds()
         selection = selection.filter { visible.contains($0) }
+        let filter = WelcomeTagFilter(
+            tags: tagFilterIds.compactMap { tagsById[$0] },
+            tagCount: tagFilterIds.count,
+            match: tagMatch
+        )
+        if filter != tagFilter {
+            tagFilter = filter
+        }
         outlineRevision += 1
     }
 
@@ -350,9 +380,9 @@ final class WelcomeViewModel: ObservableObject {
             return false
         }
         let usedTagIds = Set(connections.flatMap(\.tagIds))
-        let keptTokens = searchTokens.filter { usedTagIds.contains($0.id) }
-        guard keptTokens.count == searchTokens.count else {
-            searchTokens = keptTokens
+        let keptTagIds = tagFilterIds.filter { usedTagIds.contains($0) }
+        guard keptTagIds.count == tagFilterIds.count else {
+            tagFilterIds = keptTagIds
             return false
         }
         return true
