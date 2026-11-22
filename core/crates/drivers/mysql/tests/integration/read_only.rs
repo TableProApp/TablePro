@@ -2,16 +2,26 @@
 //! and no function a read calls makes a later statement writable.
 
 use tablepro_core::{DriverError, ReadOnlyRefusal, RunEnd, Value};
+use tablepro_test_fixtures::{MysqlFixture, MysqlFlavour};
 
 use crate::support::{FLAVOURS, connect, run, run_ok, scalar, session, setup, start, text};
 
-const FUNCTIONS: [&str; 3] = [
-    "CREATE TABLE t (id int PRIMARY KEY)",
-    "CREATE FUNCTION flip() RETURNS int NOT DETERMINISTIC MODIFIES SQL DATA \
-     BEGIN SET SESSION transaction_read_only = 0; RETURN 1; END",
-    "CREATE FUNCTION wr() RETURNS int NOT DETERMINISTIC MODIFIES SQL DATA \
-     BEGIN INSERT INTO t VALUES (9); RETURN 1; END",
-];
+// MariaDB took the name `transaction_read_only` in 11.1; before that only `tx_read_only` exists, which MySQL 8.0
+// dropped. A function body naming an unknown variable fails at CREATE.
+fn flip_function(fixture: &MysqlFixture) -> String {
+    let variable = if fixture.flavour() == MysqlFlavour::Mariadb && fixture.server_version() < (11, 1) {
+        "tx_read_only"
+    } else {
+        "transaction_read_only"
+    };
+    format!(
+        "CREATE FUNCTION flip() RETURNS int NOT DETERMINISTIC MODIFIES SQL DATA \
+         BEGIN SET SESSION {variable} = 0; RETURN 1; END"
+    )
+}
+
+const WRITE_FUNCTION: &str = "CREATE FUNCTION wr() RETURNS int NOT DETERMINISTIC MODIFIES SQL DATA \
+                              BEGIN INSERT INTO t VALUES (9); RETURN 1; END";
 
 fn refused_by_server(end: &RunEnd) -> bool {
     matches!(
@@ -72,7 +82,12 @@ async fn a_function_a_read_calls_does_not_turn_the_session_read_write() {
     for flavour in FLAVOURS {
         let fixture = start(flavour).await;
         let owner = connect(&fixture, false).await;
-        setup(owner.as_ref(), &FUNCTIONS).await;
+        let flip = flip_function(&fixture);
+        setup(
+            owner.as_ref(),
+            &["CREATE TABLE t (id int PRIMARY KEY)", &flip, WRITE_FUNCTION],
+        )
+        .await;
         let reader = connect(&fixture, true).await;
         let editor = session(reader.as_ref()).await;
 
