@@ -8,7 +8,6 @@ import SwiftUI
 struct DataResultsSettingsView: View {
     @Binding var dataGrid: DataGridSettings
     @Binding var valueColors: ValueColorSettings
-    @Binding var history: HistorySettings
     @Binding var editor: EditorSettings
     @Binding var typography: TypographySettings
 
@@ -25,9 +24,14 @@ struct DataResultsSettingsView: View {
                 }
             }
 
-            HistorySection(settings: $history)
-
-            DataRewindSection(settings: $history)
+            Section {
+                NavigationLink(value: SettingsSubpage.queryHistory) {
+                    Label("Query History", systemImage: "clock.arrow.circlepath")
+                }
+                NavigationLink(value: SettingsSubpage.dataRewind) {
+                    Label("Data Rewind", systemImage: "arrow.uturn.backward")
+                }
+            }
         }
         .formStyle(.grouped)
     }
@@ -37,7 +41,6 @@ struct DataResultsSettingsView: View {
     DataResultsSettingsView(
         dataGrid: .constant(.default),
         valueColors: .constant(.default),
-        history: .constant(.default),
         editor: .constant(.default),
         typography: .constant(.default)
     )

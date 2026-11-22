@@ -11,10 +11,19 @@ import Foundation
 enum SettingsSubpage: String, Hashable, CaseIterable {
     case softwareUpdate
     case commandLine
+    case manageThemes
+    case sqlFormatting
+    case queryHistory
+    case dataRewind
+    case whatSyncs
 
     var parent: SettingsPane {
         switch self {
         case .softwareUpdate, .commandLine: .general
+        case .manageThemes: .appearance
+        case .sqlFormatting: .editor
+        case .queryHistory, .dataRewind: .data
+        case .whatSyncs: .sync
         }
     }
 
@@ -22,6 +31,11 @@ enum SettingsSubpage: String, Hashable, CaseIterable {
         switch self {
         case .softwareUpdate: String(localized: "Software Update")
         case .commandLine: String(localized: "Command Line Tool")
+        case .manageThemes: String(localized: "Manage Themes")
+        case .sqlFormatting: String(localized: "SQL Formatting")
+        case .queryHistory: String(localized: "Query History")
+        case .dataRewind: String(localized: "Data Rewind")
+        case .whatSyncs: String(localized: "What Syncs")
         }
     }
 }

@@ -39,6 +39,9 @@ internal final class SettingsWindowController: NSWindowController {
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.settings)
         window.keepsKeyViewLoopCurrent()
         window.styleMask = [.titled, .closable, .resizable]
+        // The detail's NavigationStack renders its back button and title into the window toolbar.
+        window.toolbar = NSToolbar()
+        window.toolbarStyle = .unified
         window.isRestorable = false
         window.contentMinSize = SettingsSplitViewController.minimumContentSize
         window.setContentSize(SettingsSplitViewController.minimumContentSize)
@@ -104,6 +107,10 @@ internal final class SettingsSplitViewController: NSSplitViewController {
         let detail = NSHostingController(rootView: SettingsDetailView(model: model, registryClient: registryClient))
         // A split item's hosting controller fixes its fitting size as a required minimum unless this is cleared.
         detail.sizingOptions = []
+        // Bridge the detail's NavigationStack toolbar (back button, title) into the window toolbar.
+        if #available(macOS 14.0, *) {
+            detail.sceneBridgingOptions = [.toolbars]
+        }
         let detailItem = NSSplitViewItem(viewController: detail)
         detailItem.minimumThickness = Self.detailMinWidth
         detailItem.holdingPriority = NSLayoutConstraint.Priority(260) // below dragThatCannotResizeWindow (490)
@@ -184,14 +191,16 @@ private struct SettingsSidebarView: View {
 
 private struct SettingsDetailView: View {
     @ObservedObject fileprivate var model: SettingsNavigationModel
+    @ObservedObject fileprivate var settingsManager = AppSettingsManager.shared
     fileprivate let registryClient: RegistryClient
 
     fileprivate var body: some View {
         NavigationStack {
             SettingsPaneContent(pane: model.selection, registryClient: registryClient)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle(model.selection.title)
                 .navigationDestination(for: SettingsSubpage.self) { subpage in
-                    SettingsSubpageView(subpage: subpage)
+                    SettingsSubpageView(settingsManager: settingsManager, subpage: subpage)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
         }
@@ -203,19 +212,65 @@ private struct SettingsDetailView: View {
 
 // A pushed drill-in page. Back button and title come from the NavigationStack.
 private struct SettingsSubpageView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject fileprivate var settingsManager: AppSettingsManager
     fileprivate let subpage: SettingsSubpage
 
     fileprivate var body: some View {
-        Form {
-            switch subpage {
-            case .softwareUpdate:
-                SoftwareUpdateSection(updater: SoftwareUpdater.shared, updates: .shared)
-            case .commandLine:
-                CommandLineToolSection()
+        content
+            .navigationTitle(subpage.title)
+            .toolbar {
+                ToolbarItem(placement: .navigation) { backButton }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                // macOS 13 does not bridge the NavigationStack back button to the window toolbar.
+                if #unavailable(macOS 14.0) {
+                    HStack {
+                        backButton
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.bar)
+                }
+            }
+    }
+
+    private var backButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            Image(systemName: "chevron.backward")
         }
-        .formStyle(.grouped)
-        .navigationTitle(subpage.title)
+        .help(String(localized: "Back"))
+        .accessibilityLabel(String(localized: "Back"))
+    }
+
+    @ViewBuilder private var content: some View {
+        switch subpage {
+        case .softwareUpdate:
+            Form { SoftwareUpdateSection(updater: SoftwareUpdater.shared, updates: .shared) }
+                .formStyle(.grouped)
+        case .commandLine:
+            Form { CommandLineToolSection() }
+                .formStyle(.grouped)
+        case .manageThemes:
+            // Not wrapped in a Form: a List inside a grouped Form does not scroll on macOS.
+            ThemeLibrarySection()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .sqlFormatting:
+            Form { FormatterSection(settings: $settingsManager.formatter, editor: settingsManager.editor) }
+                .formStyle(.grouped)
+        case .queryHistory:
+            Form { HistorySection(settings: $settingsManager.history) }
+                .formStyle(.grouped)
+        case .dataRewind:
+            Form { DataRewindSection(settings: $settingsManager.history) }
+                .formStyle(.grouped)
+        case .whatSyncs:
+            Form { SyncCategoriesSection() }
+                .formStyle(.grouped)
+        }
     }
 }
 
@@ -249,14 +304,12 @@ private struct SettingsPaneContent: View {
         case .editor:
             EditorSettingsView(
                 settings: $settingsManager.editor,
-                formatter: $settingsManager.formatter,
                 typography: $settingsManager.typography
             )
         case .data:
             DataResultsSettingsView(
                 dataGrid: $settingsManager.dataGrid,
                 valueColors: $settingsManager.valueColors,
-                history: $settingsManager.history,
                 editor: $settingsManager.editor,
                 typography: $settingsManager.typography
             )

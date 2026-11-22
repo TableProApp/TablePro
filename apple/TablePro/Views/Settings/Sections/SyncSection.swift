@@ -30,7 +30,11 @@ struct SyncSection: View {
 
         if settingsManager.sync.enabled && isProAvailable {
             statusSection
-            categoriesSection
+            Section {
+                NavigationLink(value: SettingsSubpage.whatSyncs) {
+                    Label("What Syncs", systemImage: "checklist")
+                }
+            }
         }
     }
 
@@ -76,9 +80,13 @@ struct SyncSection: View {
         }
     }
 
-    // MARK: - Categories
+}
 
-    private var categoriesSection: some View {
+// The sync-category toggles, shown on the What Syncs drill-in.
+struct SyncCategoriesSection: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+
+    var body: some View {
         Section("Sync Categories") {
             Toggle("Connections", isOn: $settingsManager.sync.syncConnections)
                 .onChange(of: settingsManager.sync.syncConnections) { newValue in

@@ -8,7 +8,6 @@ import TableProAutocomplete
 
 struct EditorSettingsView: View {
     @Binding var settings: EditorSettings
-    @Binding var formatter: SQLFormatterSettings
     @Binding var typography: TypographySettings
 
     var body: some View {
@@ -50,13 +49,17 @@ struct EditorSettingsView: View {
                 .accessibilityIdentifier("key-bindings-picker")
             }
 
-            FormatterSection(settings: $formatter, editor: settings)
+            Section {
+                NavigationLink(value: SettingsSubpage.sqlFormatting) {
+                    Label("SQL Formatting", systemImage: "text.alignleft")
+                }
+            }
         }
         .formStyle(.grouped)
     }
 }
 
 #Preview {
-    EditorSettingsView(settings: .constant(.default), formatter: .constant(.default), typography: .constant(.default))
+    EditorSettingsView(settings: .constant(.default), typography: .constant(.default))
         .frame(width: 450, height: 500)
 }

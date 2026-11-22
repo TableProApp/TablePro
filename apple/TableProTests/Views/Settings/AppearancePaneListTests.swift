@@ -4,8 +4,8 @@ import ApplicationServices
 import SwiftUI
 import Testing
 
-/// A List inside the pane's scrolling grouped Form had its scrolling turned off by SwiftUI, so the
-/// themes below the first few rows could never be reached.
+/// The Themes list lives in the Manage Themes drill-in, free of the grouped Form that used to
+/// disable its scrolling. It must scroll on its own and hold still while accessibility reads it.
 @MainActor
 struct AppearancePaneListTests {
     private struct HostedPane {
@@ -54,7 +54,7 @@ struct AppearancePaneListTests {
         window.isReleasedWhenClosed = false
         window.title = windowTitle
         // As the Settings window hosts a pane: the window keeps its size whatever the content asks.
-        let hosting = NSHostingController(rootView: AppearanceSettingsView(settings: .constant(.default)))
+        let hosting = NSHostingController(rootView: ThemeLibrarySection())
         hosting.sizingOptions = []
         window.contentViewController = hosting
         window.setContentSize(paneSize)
