@@ -33,9 +33,8 @@ struct SSHTransportSections: View {
                 prompt: Text(verbatim: coordinator.network.socketPathPrompt)
             )
             if let caption = coordinator.network.tunnelHostListCaption {
-                Label(caption, systemImage: "exclamationmark.triangle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                NoticeLabel(caption, severity: .warning)
+                    .font(.caption)
             }
         } header: {
             Text(String(localized: "Forward To"))
@@ -48,47 +47,36 @@ struct SSHTransportSections: View {
     private var forwardTargetFooter: some View {
         switch coordinator.network.socketPathIssue {
         case .notAbsolute:
-            caption(
+            NoticeLabel(
                 String(localized: "Enter an absolute path, as it appears on the SSH server."),
-                systemImage: "exclamationmark.triangle",
-                tint: .orange
+                severity: .warning
             )
+            .font(.caption)
         case .looksLikeDirectory:
-            caption(
+            NoticeLabel(
                 String(localized: "Point at the socket file itself, not the directory holding it."),
-                systemImage: "exclamationmark.triangle",
-                tint: .orange
+                severity: .warning
             )
+            .font(.caption)
         case .none:
             if coordinator.network.forwardsToUnixSocket {
-                caption(
+                NoticeLabel(
                     String(localized: """
                     The SSH server connects to this socket instead of Host and Port. \
                     A database on a socket cannot negotiate TLS, so TablePro turns it off; \
                     the SSH tunnel still encrypts the whole path.
                     """),
-                    systemImage: "info.circle",
-                    tint: .secondary
+                    severity: .info
                 )
+                .font(.caption)
             } else {
-                caption(
+                NoticeLabel(
                     String(localized: "Optional. Set this to reach a database that only listens on a Unix socket."),
-                    systemImage: "info.circle",
-                    tint: .secondary
+                    severity: .info
                 )
+                .font(.caption)
             }
         }
-    }
-
-    private func caption(_ message: String, systemImage: String, tint: Color) -> some View {
-        Label {
-            Text(message)
-                .foregroundStyle(.secondary)
-        } icon: {
-            Image(systemName: systemImage)
-                .foregroundStyle(tint)
-        }
-        .font(.caption)
     }
 }
 

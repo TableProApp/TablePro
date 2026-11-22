@@ -10,7 +10,7 @@ import TableProWireIO
 
 // The disk every spill in this plugin draws from: half of what the volume has for important data, counting what the
 // spools already hold, so concurrent runs leave room for the file an export writes. Read again at most every 10 s.
-final class SpoolBudget: @unchecked Sendable {
+nonisolated final class SpoolBudget: @unchecked Sendable {
     static let shared = SpoolBudget(limit: nil)
 
     private let fixedLimit: Int?
@@ -54,7 +54,7 @@ final class SpoolBudget: @unchecked Sendable {
 // Takes a statement's rows without waiting for the reader, so the read, and its lock on a SQLite file, ends at the
 // speed SQLite reads. What the stream's buffer refuses goes to a spool file and follows in order. Past the budget, or
 // without a spool, the producer waits for the reader. One producer per spill.
-final class PluginRowSpill: @unchecked Sendable {
+nonisolated final class PluginRowSpill: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "PluginRowSpill")
 
     private let continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation

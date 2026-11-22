@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-extension SQLitePluginDriver {
+nonisolated extension SQLitePluginDriver {
     var providesBulkTriggerFetch: Bool { true }
 
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {

@@ -320,11 +320,9 @@ struct SSHServerSections: View {
                                     let idToRemove = jumpHost.id
                                     withMotion { sshState.jumpHosts.removeAll { $0.id == idToRemove } }
                                 } label: {
-                                    Image(systemName: "minus.circle.fill")
-                                        .frame(width: 24, height: 24)
-                                        .foregroundStyle(.red)
+                                    Image(systemName: "minus.circle")
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.borderless)
                                 .accessibilityLabel(String(localized: "Remove jump host"))
                             }
                         }

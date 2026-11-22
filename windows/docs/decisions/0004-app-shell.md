@@ -79,6 +79,7 @@ On 2026-11-14 the roadmap's Phase 2 added a production cue (W-08), a database sw
 | Ctrl+B, Ctrl+P | Show or hide the object tree, filter objects |
 | Ctrl+K | The database menu of the object pane (Database, Switch database) |
 | Ctrl+F, Ctrl+H, F3 | Find, Find and Replace, next match (Edit menu, the editor's own keys) |
+| Ctrl+Shift+F, Ctrl+Space | Format query (Query menu) and completion, the editor's own keys ([0002](0002-sql-editor-control.md)); in a table tab Ctrl+Shift+F is Filter rows |
 | Ctrl+Shift+H | The Connections page |
 | F1 | Documentation |
 | Enter, F2, Delete on the Connections page | Connect; rename the row in place; delete, confirmed (every checked connection in selection mode) |

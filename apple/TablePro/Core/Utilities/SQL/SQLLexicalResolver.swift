@@ -13,6 +13,7 @@ enum SQLLexicalResolver {
     ) -> SQLLexicalReadings {
         SQLLexicalReadings.resolve(
             databaseTypeId: databaseType.rawValue,
+            queryLanguage: queryLanguage(for: databaseType),
             declared: declaredGrammar(for: databaseType),
             session: session.map(SQLSessionLexicalFacts.init(pluginState:))
         )
@@ -39,14 +40,17 @@ enum SQLLexicalResolver {
         session: PluginSessionLexicalState? = nil
     ) -> SQLStringEscapes {
         let declared = declaredGrammar(for: databaseType)
+        let language = queryLanguage(for: databaseType)
         // An engine nobody described answers from its dialect's own backslash flag, not from an ANSI guess.
-        if declared == nil, SQLLexicalProfile.curated(forDatabaseTypeId: databaseType.rawValue) == nil {
+        if declared == nil, SQLLexicalProfile.curated(forDatabaseTypeId: databaseType.rawValue) == nil,
+           language.flatMap({ SQLLexicalProfile.curated(forQueryLanguage: $0) }) == nil {
             let backslash = PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editor.sqlDialect?
                 .requiresBackslashEscaping ?? false
             return SQLStringEscapes(backslashEscapes: backslash)
         }
         let escapes = SQLLexicalReadings.stringEscapes(
             databaseTypeId: databaseType.rawValue,
+            queryLanguage: language,
             declared: declared,
             session: session.map(SQLSessionLexicalFacts.init(pluginState:))
         )
@@ -88,6 +92,13 @@ enum SQLLexicalResolver {
     @MainActor
     static func sessionState(for connectionId: UUID) -> PluginSessionLexicalState? {
         DatabaseManager.shared.driver(for: connectionId)?.sessionLexicalState
+    }
+
+    private static func queryLanguage(for databaseType: DatabaseType) -> String? {
+        guard case .custom(let language)? = PluginMetadataRegistry.shared.queryLanguage(for: databaseType) else {
+            return nil
+        }
+        return language
     }
 
     private static func declaredGrammar(for databaseType: DatabaseType) -> SQLLexicalGrammar? {

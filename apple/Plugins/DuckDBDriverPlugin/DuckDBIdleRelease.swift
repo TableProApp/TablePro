@@ -16,7 +16,7 @@ import Foundation
 /// rolled back with nothing raised. The driver refuses to release while it holds any of those,
 /// so the feature is safe once it is on, but a connection that never releases is what a user
 /// who has not asked for this should get.
-enum DuckDBIdleRelease {
+nonisolated enum DuckDBIdleRelease {
     static let fieldId = "duckdbIdleReleaseMinutes"
 
     /// Four hours. Past this the setting is indistinguishable from never, and a stepper with a

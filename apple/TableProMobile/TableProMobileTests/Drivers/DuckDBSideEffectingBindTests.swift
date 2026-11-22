@@ -8,14 +8,15 @@ import Testing
 // DuckDB 2.0 invalidates the database when a prepare's own transaction commits what its binding wrote
 // (core/docs/decisions/0040-duckdb-prepares-inside-a-transaction-it-runs-in.md).
 struct DuckDBSideEffectingBindTests {
-    private func connectedDriver() async throws -> DuckDBDriver {
-        let driver = DuckDBDriver(source: .inMemory)
+    private func connectedDriver() async throws -> DuckDBBackedDriver {
+        let driver = DuckDBBackedDriver(source: .inMemory)
         try await driver.connect()
-        _ = try await driver.execute(query: "CREATE SEQUENCE seq START 20; CREATE TABLE t AS SELECT 1 AS a")
+        _ = try await driver.execute(query: "CREATE SEQUENCE seq START 20")
+        _ = try await driver.execute(query: "CREATE TABLE t AS SELECT 1 AS a")
         return driver
     }
 
-    private func streamedRowCount(_ driver: DuckDBDriver, _ query: String) async throws -> Int {
+    private func streamedRowCount(_ driver: DuckDBBackedDriver, _ query: String) async throws -> Int {
         var count = 0
         for try await element in driver.executeStreaming(query: query, options: .default) {
             if case .row = element { count += 1 }

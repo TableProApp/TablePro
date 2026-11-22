@@ -42,7 +42,9 @@ extension PluginMetadataRegistry {
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
-                    supportsRenameColumn: true,
+                    supportsRenameTable: true,
+                    supportsRenameView: true,
+                    supportsRoutines: true,
                     // httpfs checks a server against the system CA bundle when no CA is given, so a URL asking
                     // for TLS with no mode means a verified connection, never Required's unchecked one.
                     verifiesServerWithSystemTrust: true,

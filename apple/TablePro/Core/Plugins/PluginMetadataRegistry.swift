@@ -584,21 +584,31 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             resolved = resolved.withBranding(from: existing)
         }
         if let registryDefault = defaultSnapshots[typeId] {
-            resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)
-            Self.adoptCuratedCaseSensitivity(&resolved, registryDefault: registryDefault)
-            Self.adoptCuratedSystemNames(&resolved, registryDefault: registryDefault)
-            Self.adoptCuratedExplainVariants(&resolved, registryDefault: registryDefault)
-            if Self.declaresLegacySchemaOnlyRouting(resolved, registryDefault: registryDefault) {
-                Logger(subsystem: "com.TablePro", category: "PluginMetadataRegistry").notice(
-                    "Plugin '\(typeId, privacy: .public)' declares legacy two-tier switching for a schema-only engine; applying the app's switch routing"
-                )
-                resolved = resolved.withSwitchRouting(from: registryDefault)
-            }
+            resolved = Self.adoptingCuratedEntry(resolved, registryDefault: registryDefault, typeId: typeId)
         }
         snapshots[typeId] = resolved
         for scheme in resolved.urlSchemes {
             schemeIndex[scheme.lowercased()] = typeId
         }
+    }
+
+    // What registration keeps from the type's curated entry over what a plugin declares.
+    static func adoptingCuratedEntry(
+        _ snapshot: PluginMetadataSnapshot,
+        registryDefault: PluginMetadataSnapshot,
+        typeId: String
+    ) -> PluginMetadataSnapshot {
+        var resolved = snapshot.withIsDownloadable(registryDefault.isDownloadable)
+        adoptCuratedCaseSensitivity(&resolved, registryDefault: registryDefault)
+        adoptCuratedSystemNames(&resolved, registryDefault: registryDefault)
+        adoptCuratedExplainVariants(&resolved, registryDefault: registryDefault)
+        if declaresLegacySchemaOnlyRouting(resolved, registryDefault: registryDefault) {
+            Logger(subsystem: "com.TablePro", category: "PluginMetadataRegistry").notice(
+                "Plugin '\(typeId, privacy: .public)' declares legacy two-tier switching for a schema-only engine; applying the app's switch routing"
+            )
+            resolved = resolved.withSwitchRouting(from: registryDefault)
+        }
+        return resolved
     }
 
     func unregister(typeId: String) {
@@ -647,6 +657,12 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return defaultSnapshots[databaseType.rawValue]
+    }
+
+    // The language a type's statements are read in. A curated entry's wins, so a loaded plugin cannot move an engine the
+    // app ships onto another language's looser classifier.
+    func queryLanguage(for databaseType: DatabaseType) -> EditorLanguage? {
+        (curatedSnapshot(for: databaseType) ?? snapshot(for: databaseType))?.editorLanguage
     }
 
     func snapshot(for databaseType: DatabaseType) -> PluginMetadataSnapshot? {
@@ -714,6 +730,21 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         from driverType: any DriverPlugin.Type,
         isDownloadable: Bool = false
     ) -> PluginMetadataSnapshot {
+        Self.metadataSnapshot(
+            from: driverType,
+            isDownloadable: isDownloadable,
+            existing: snapshot(forRegisteredTypeId: driverType.databaseTypeId)
+        )
+    }
+
+    // A capability with no DriverPlugin static is curated per type, so `existing`, the snapshot registered for the type
+    // before this plugin, carries it over, or registration resets it to the struct default. The plugin cannot be asked:
+    // a stale one without the property crashes with EXC_BAD_INSTRUCTION (missing witness table entry).
+    static func metadataSnapshot(
+        from driverType: any DriverPlugin.Type,
+        isDownloadable: Bool,
+        existing existingSnapshot: PluginMetadataSnapshot?
+    ) -> PluginMetadataSnapshot {
         let parameterStyle = driverType.parameterStyle
         let schemes = driverType.urlSchemes
         let primaryScheme = schemes.first ?? driverType.databaseTypeId.lowercased()
@@ -723,12 +754,6 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             // snapshot, so retire the field here too while its saved value migrates in the model.
             driverType.databaseTypeId != "Kafka" || $0.id != "kafkaConnectTimeout"
         }
-
-        // A capability with no DriverPlugin static is curated per type, so it has to be carried
-        // over from the built-in snapshot or plugin registration silently resets it to the
-        // struct default. Cannot read these from driverType directly: stale plugins without
-        // the property crash with EXC_BAD_INSTRUCTION (missing witness table entry).
-        let existingSnapshot = snapshot(forRegisteredTypeId: driverType.databaseTypeId)
 
         // The app reads the Schema Registry fields itself, so an older bundle keeps the curated ones.
         let declared = Set(pluginFields.map(\.id))

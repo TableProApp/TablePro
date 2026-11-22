@@ -671,6 +671,16 @@
         }
       }
     },
+    "%@ is using %@. Only one app can open a DuckDB file for writing." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ is using %2$@. Only one app can open a DuckDB file for writing."
+          }
+        }
+      }
+    },
     "%@ no longer exists" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -3071,6 +3081,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "An auto-increment column takes its values from a sequence, so it cannot also have a default." : {
+
+    },
     "An earlier import made a table named %@ with other columns. Choose another name." : {
 
     },
@@ -3205,6 +3218,9 @@
           }
         }
       }
+    },
+    "Another app is using %@. Only one app can open a DuckDB file for writing." : {
+
     },
     "Another connection closes this one and opens that one with the file." : {
 
@@ -3813,6 +3829,9 @@
           }
         }
       }
+    },
+    "Automatic" : {
+
     },
     "Automatic (%@)" : {
 
@@ -4550,6 +4569,9 @@
           }
         }
       }
+    },
+    "Certificate Fingerprint" : {
+
     },
     "Certificate Name Mismatch" : {
 
@@ -6045,6 +6067,9 @@
         }
       }
     },
+    "Connecting to the remote DuckDB database timed out." : {
+
+    },
     "Connecting…" : {
       "localizations" : {
         "ko" : {
@@ -6386,6 +6411,9 @@
           }
         }
       }
+    },
+    "Connection Type" : {
+
     },
     "Connections" : {
       "localizations" : {
@@ -7683,6 +7711,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Database Alias" : {
+
+    },
     "Database File" : {
       "localizations" : {
         "ko" : {
@@ -8811,6 +8842,9 @@
         }
       }
     },
+    "DuckDB could not allocate a configuration to open the file" : {
+
+    },
     "DuckDB could not install its %@ extension. It downloads the extension from extensions.duckdb.org the first time it connects to a remote database." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -8823,9 +8857,21 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "DuckDB could not say whether this session holds a transaction, so the statement did not run." : {
+
+    },
     "DuckDB could not verify the server's certificate. Either no CA it trusts signed it, or it was not issued for this host name. DuckDB checks certificates against /etc/ssl/cert.pem and the CA Certificate, and does not read the macOS keychain, so a CA added in Keychain Access is not trusted." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "DuckDB opened %d catalogs and none of them is current" : {
+
+    },
+    "DuckDB opened the file but reported no catalog to browse" : {
+
+    },
+    "DuckDB reads %lld statements in this text. Run them one at a time." : {
+
     },
     "DuckDB reported: %@" : {
       "extractionState" : "manual",
@@ -13945,6 +13991,9 @@
         }
       }
     },
+    "Local File" : {
+
+    },
     "Local Network access is required. Open Settings > Privacy & Security > Local Network and turn TablePro on." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -15505,6 +15554,9 @@
     "No fields found in the file." : {
 
     },
+    "No file at %@" : {
+
+    },
     "No Foreign Keys" : {
       "localizations" : {
         "ko" : {
@@ -16918,6 +16970,9 @@
     "Open Table" : {
 
     },
+    "Open the File Read-Only" : {
+
+    },
     "Open this connection in TablePro and connect from there to answer the question." : {
 
     },
@@ -17045,6 +17100,9 @@
         }
       }
     },
+    "Operation not supported" : {
+
+    },
     "Operator" : {
       "localizations" : {
         "ko" : {
@@ -17072,6 +17130,9 @@
           }
         }
       }
+    },
+    "Optional" : {
+
     },
     "Optional, for a single-tenant directory" : {
       "extractionState" : "manual",
@@ -18990,6 +19051,12 @@
         }
       }
     },
+    "Quit or disconnect the other app, or turn on Open the File Read-Only to join it as a reader." : {
+
+    },
+    "Quit or disconnect the other app, then try again." : {
+
+    },
     "Quote" : {
 
     },
@@ -19516,6 +19583,12 @@
         }
       }
     },
+    "Release File Lock" : {
+
+    },
+    "Release the File Lock After (minutes, 0 to keep it)" : {
+
+    },
     "Reload" : {
       "localizations" : {
         "ko" : {
@@ -19545,6 +19618,9 @@
       }
     },
     "Reload the table to see the row as it is now." : {
+
+    },
+    "Remote (Quack, experimental)" : {
 
     },
     "Remove" : {
@@ -19913,6 +19989,9 @@
           }
         }
       }
+    },
+    "Required (skip verify)" : {
+
     },
     "Reset" : {
       "localizations" : {
@@ -21219,6 +21298,9 @@
 
     },
     "Semicolon (;)" : {
+
+    },
+    "Send one statement at a time." : {
 
     },
     "Sent to PostHog:" : {
@@ -23972,6 +24054,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro could not read what this connection is holding, so it kept the file." : {
+
+    },
     "TablePro could not read your connection library, so nothing was imported." : {
       "localizations" : {
         "ko" : {
@@ -25165,6 +25250,9 @@
         }
       }
     },
+    "The connection has no current DuckDB catalog to read metadata from" : {
+
+    },
     "The connection moved to another database or schema. Choose the row again." : {
 
     },
@@ -25498,6 +25586,12 @@
           }
         }
       }
+    },
+    "the database file" : {
+
+    },
+    "The database file is no longer at %@." : {
+
     },
     "The database had already ended the import's transaction, so none of its rows were kept." : {
 
@@ -27369,6 +27463,9 @@
     "The statement before it stays applied." : {
 
     },
+    "The statement does not take the values it was given" : {
+
+    },
     "The statement was stopped, and the server rolled back the transaction it ran in. Every change since that transaction began is undone." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -27380,6 +27477,9 @@
     "The string or comment that starts on line %lld is longer than the import reads." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The structure of a table in an attached database cannot be changed here." : {
+
     },
     "The table \"%@\" and all its data will be permanently deleted." : {
       "localizations" : {
@@ -27666,6 +27766,21 @@
         }
       }
     },
+    "This build of DuckDB does not accept a limit on how deep an expression nests" : {
+
+    },
+    "This build of DuckDB does not accept a read-only access mode" : {
+
+    },
+    "This build of DuckDB does not accept running its tasks on threads TablePro starts" : {
+
+    },
+    "This build of DuckDB does not accept the storage version that keeps files readable by DuckDB 1.x" : {
+
+    },
+    "This build of DuckDB does not accept turning off persistent secrets" : {
+
+    },
     "This certificate file needs a password. Certificate files exported without one cannot be read on iOS." : {
       "localizations" : {
         "ko" : {
@@ -27862,16 +27977,25 @@
     "This connection has an open transaction. Commit or roll it back first." : {
 
     },
+    "This connection has another database attached, which closing the file would detach." : {
+
+    },
     "This connection has open HANDLER cursors, which reconnecting would close." : {
 
     },
     "This connection has prepared statements, which reconnecting would discard." : {
 
     },
+    "This connection has session objects, such as a temporary table, a macro or a prepared statement, which closing the file would delete." : {
+
+    },
     "This connection has session settings changed, which reconnecting would reset." : {
 
     },
     "This connection has session variables set, which reconnecting would clear." : {
+
+    },
+    "This connection has settings that closing the file would reset." : {
 
     },
     "This connection has temporary tables, which reconnecting would delete." : {
@@ -30510,6 +30634,9 @@
       "generatesSymbol" : false
     },
     "Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
+
+    },
+    "Verify Fingerprint" : {
 
     },
     "Verify Fingerprint needs the server's Certificate Fingerprint. Run quack_server_list() on the server to read it." : {

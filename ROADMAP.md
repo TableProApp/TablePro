@@ -31,14 +31,14 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 |---|---|---|
 | Phase 0: Release blockers | 16 | 6 |
 | Phase 1: Core enablers | 23 | 9 |
-| Phase 2: Windows daily use | 62 | 44 |
+| Phase 2: Windows daily use | 62 | 46 |
 | Phase 3: Standard features both apps lack | 118 | 0 |
 | Phase 4: Advanced tier | 57 | 0 |
 | Phase 5: Engines | 27 | 0 |
 | Phase 6: Quality bars | 8 | 0 |
 | Phase 7: Sync and teams | 15 | 0 |
 | Phase 8: Beyond the market | 40 | 0 |
-| Total | 366 | 59 |
+| Total | 366 | 61 |
 
 ## Where each app stands
 
@@ -100,8 +100,8 @@ Each item ends in an FFI surface Windows needs. Linux paths are under `linux/cra
 - [ ] **C-04** SQL dump and SQL file import through the FFI: `core::dump`, `SqlFileReader`, with the orchestration in `ui/export/dump_job.rs` and `services/import_file.rs` moved down
 - [ ] **C-05** Structure through the FFI: the table definition (columns, indexes, keys, comments), CREATE statements, `core::ddl` drafts, `diff_table`, plans and catalog operations (core ADR 0013); the logic in `services/pending_structure.rs` moves down · partly #4213: `core::ddl` drafts, `diff_table`, plans, catalog operations and the move of `services/pending_structure.rs` are left
 - [x] **C-06** Storage through the FFI: `QueryHistory` (FTS5, retention, export), `SavedQueries` with folders and keywords, `Favourites`, `DraftStore` (deferred by core ADR 0017): #4213, #4288. `DraftStore` stays off the FFI, since Windows keeps tab text in its session file ([core ADR 0030](core/docs/decisions/0030-storage-import-and-library-through-the-ffi.md))
-- [ ] **C-07** SQL formatter into core: `ui/editor/format_plan.rs` and `significant_tokens.rs`
-- [ ] **C-08** Completion context into core: `completion/completion_scope.rs`, `catalog_read.rs` and the fuzzy ranking; proposal objects stay per app
+- [ ] **C-07** SQL formatter into core: `ui/editor/format_plan.rs` and `significant_tokens.rs` · partly #4401: the Linux app still uses its own copy; it moves onto the core one after its 0.1.0 tag
+- [ ] **C-08** Completion context into core: `completion/completion_scope.rs`, `catalog_read.rs` and the fuzzy ranking; proposal objects stay per app · partly #4401: the Linux app still uses its own copy; it moves onto the core one after its 0.1.0 tag
 - [ ] **C-09** Script runner into core: `script_runner.rs` and `run_log.rs` with `BatchErrorPolicy` (the FFI's `QueryEditor::run` takes one statement or one `GO` batch)
 - [ ] **C-10** Pending row edits keyed by primary key into core: `services/change_tracker.rs` and `undo_op.rs`, so edits survive sort, filter and paging and undo is shared; replaces the position-keyed FFI `TableEditor` and Windows `UndoHistory.cs`
 - [ ] **C-11** Copy and display text into core: `ui/clipboard/copy_renderer.rs`, `services/grid/display_text.rs`, `date_display.rs`, `hex_dump.rs`, `ui/format/thousands.rs`
@@ -166,8 +166,8 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 ### SQL editor
 
-- [ ] **W-31** Completion: tables, columns, aliases, schemas, functions, keywords · CORE · needs C-08 (#4275)
-- [ ] **W-32** Formatter · CORE · needs C-07
+- [x] **W-31** Completion: tables, columns, aliases, schemas, functions, keywords · CORE · needs C-08 (#4275): #4401
+- [x] **W-32** Formatter · CORE · needs C-07: #4401
 - [x] **W-33** Replace, and regular expressions in Find · CORE: #4285
 - [x] **W-34** Open and save .sql files, drop a file on the editor, recent files · CORE: #4285
 - [x] **W-35** Query history with search, pins and retention · CORE · needs C-06: #4213, #4285, #4288

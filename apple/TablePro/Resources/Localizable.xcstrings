@@ -198917,6 +198917,10 @@
     "The statement did not finish within %d seconds and is still running. It may have been applied; check before running it again." : {
 
     },
+    "The statement does not take the values it was given" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The statement failed with %@. Its message is withheld because this connection has masking rules, and the message can repeat a masked value." : {
 
     },

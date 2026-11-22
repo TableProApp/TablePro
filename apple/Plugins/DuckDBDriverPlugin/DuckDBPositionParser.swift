@@ -8,7 +8,7 @@
 
 import Foundation
 
-enum DuckDBPositionParser {
+nonisolated enum DuckDBPositionParser {
     struct Position: Equatable {
         let catalog: String?
         let schema: String?
@@ -39,6 +39,6 @@ enum DuckDBPositionParser {
     }
 }
 
-private extension String {
+nonisolated private extension String {
     var nilIfEmptyPosition: String? { isEmpty ? nil : self }
 }

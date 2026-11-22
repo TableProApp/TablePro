@@ -106,7 +106,7 @@ enum QueryClassifier {
         if classification.tier == .destructive { return true }
         // A MongoDB statement is JavaScript, where `delete d.x` removes a field from a local object.
         guard databaseType != .redis, databaseType != .mongodb else { return false }
-        if databaseType == .neo4j { return cypherDeletesUnfiltered(sql) }
+        if speaksCypher(databaseType) { return cypherDeletesUnfiltered(sql) }
         // A request engine's own reading already tiers each delete of more than one item as destructive.
         guard documentStoreClassification(sql, databaseType: databaseType, readings: readings) == nil else {
             return false
@@ -288,6 +288,7 @@ extension QueryClassifier {
                 worst.escalated(with: classification(request))
             }
         }
+        if speaksCypher(databaseType) { return cypherClassification(sql) }
         switch databaseType {
         case .mongodb:
             return mongoClassification(sql)
@@ -313,8 +314,6 @@ extension QueryClassifier {
             // to SQLStatementClassifier. Tags mirror the driver query builders and
             // ExternalStatementGate.driverRequestMarkers.
             return sqlBrowseSentinel(sql) ? .safe : nil
-        case .neo4j:
-            return cypherClassification(sql)
         default:
             return nil
         }

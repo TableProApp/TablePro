@@ -54,7 +54,7 @@ extension PluginMetadataRegistry {
                     structureColumnFields: [.name, .type, .nullable]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
-                    sqlDialect: nil,
+                    sqlDialect: surrealDBDialect,
                     statementCompletions: surrealDBCompletions,
                     columnTypesByCategory: surrealDBColumnTypes
                 ),
@@ -89,6 +89,46 @@ private let surrealDBCompletions: [CompletionEntry] = [
     CompletionEntry(label: "REMOVE TABLE", insertText: "REMOVE TABLE table"),
     CompletionEntry(label: "count", insertText: "SELECT count() AS total FROM table GROUP ALL"),
 ]
+
+private let surrealDBDialect = SQLDialectDescriptor(
+    identifierQuote: "`",
+    keywords: [
+        "SELECT", "FROM", "WHERE", "ORDER", "BY", "GROUP", "ALL", "LIMIT", "START", "FETCH",
+        "SPLIT", "OMIT", "ONLY", "PARALLEL", "TIMEOUT", "EXPLAIN", "WITH", "INDEX",
+        "CREATE", "UPDATE", "UPSERT", "DELETE", "INSERT", "RELATE", "CONTENT", "MERGE",
+        "PATCH", "SET", "RETURN", "BEFORE", "AFTER", "DIFF", "NONE", "NULL", "TRUE", "FALSE",
+        "DEFINE", "REMOVE", "ALTER", "TABLE", "FIELD", "EVENT", "PARAM", "FUNCTION",
+        "NAMESPACE", "DATABASE", "USER", "ACCESS", "ANALYZER", "SCOPE", "TOKEN",
+        "SCHEMAFULL", "SCHEMALESS", "PERMISSIONS", "TYPE", "ASSERT", "DEFAULT", "VALUE",
+        "READONLY", "FLEXIBLE", "UNIQUE", "SEARCH", "MTREE", "HNSW", "COUNT",
+        "USE", "NS", "DB", "LET", "IF", "ELSE", "THEN", "END", "FOR", "IN", "CONTINUE", "BREAK",
+        "BEGIN", "COMMIT", "CANCEL", "TRANSACTION", "INFO", "LIVE", "KILL",
+        "AND", "OR", "NOT", "IS", "CONTAINS", "CONTAINSNOT", "INSIDE", "NOTINSIDE",
+        "OUTSIDE", "INTERSECTS", "ASC", "DESC", "AS", "ON", "IF NOT EXISTS",
+    ],
+    functions: [
+        "count", "math::sum", "math::mean", "math::min", "math::max", "math::abs",
+        "string::concat", "string::contains", "string::starts_with", "string::ends_with",
+        "string::len", "string::lowercase", "string::uppercase", "string::trim",
+        "string::split", "string::join", "string::replace", "string::slice",
+        "time::now", "time::floor", "time::group", "time::unix", "time::format",
+        "array::len", "array::distinct", "array::flatten", "array::group", "array::sort",
+        "array::append", "array::concat", "array::union", "array::first", "array::last",
+        "type::is_number", "type::is_string", "type::table", "type::field", "type::thing",
+        "rand::uuid", "rand::int", "rand::float", "object::keys", "object::values",
+        "meta::id", "meta::tb", "record::id", "record::table",
+    ],
+    dataTypes: [
+        "any", "array", "bool", "bytes", "datetime", "decimal", "duration", "float",
+        "geometry", "int", "number", "object", "option", "record", "set", "string", "uuid",
+    ],
+    regexSyntax: .unsupported,
+    booleanLiteralStyle: .truefalse,
+    likeEscapeStyle: .explicit,
+    paginationStyle: .limit,
+    autoLimitStyle: .limit,
+    caseSensitivityStyle: .unsupported
+)
 
 private let surrealDBColumnTypes: [String: [String]] = [
     "Integer": ["int"],

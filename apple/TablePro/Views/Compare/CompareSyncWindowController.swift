@@ -72,7 +72,9 @@ internal final class CompareSyncWindowController: NSWindowController,
         windowBackdrop = ThemeWindowBackdrop(window: window)
         super.init(window: window)
 
-        CompareSyncRunRegistry.shared.track(session, windowId: windowId)
+        CompareSyncRunRegistry.shared.track(session, windowId: windowId) { [weak self] in
+            self?.closeWithoutAsking()
+        }
         applyPrefill(connectionId)
         window.contentViewController = makeContentController()
         window.delegate = self
@@ -747,6 +749,19 @@ internal final class CompareSyncWindowController: NSWindowController,
             sender?.performClose(nil)
         }
         return false
+    }
+
+    // Sheets first: a window closed under one leaves the sheet on screen with nothing behind it.
+    private func closeWithoutAsking() {
+        isCloseApproved = true
+        guard let window else { return }
+        for presented in window.contentViewController?.presentedViewControllers ?? [] {
+            window.contentViewController?.dismiss(presented)
+        }
+        if let sheet = window.attachedSheet {
+            window.endSheet(sheet)
+        }
+        window.close()
     }
 
     internal func windowWillClose(_ notification: Notification) {

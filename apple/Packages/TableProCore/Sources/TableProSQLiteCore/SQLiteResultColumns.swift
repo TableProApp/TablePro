@@ -1,17 +1,13 @@
+#if os(iOS)
+import SQLite3
+#else
 import CSQLite
+#endif
 
-/// The columns a statement returns, read once its first step has run.
-///
-/// `sqlite3_prepare_v2` compiles against the schema this connection last read and does not look at
-/// the file. The first `sqlite3_step` compares the schema cookie and, when another connection has
-/// changed the table since, prepares the statement again with the new columns. Read before that
-/// step, a `SELECT *` on the session connection right after an `ALTER TABLE` run on a pooled one
-/// named the old columns and dropped the new column's values from every row. The structure editor
-/// alters on a pooled connection, so that was the first reload after every structure save.
-///
-/// Both plugins that link their own SQLite share this, so it compiles against that library's header
-/// and never against the SDK's `SQLite3` module, whose `link "sqlite3"` would ask the linker for
-/// macOS's build too.
+// Column names read after the first step: prepare compiles against the schema this connection last read, and the
+// first step re-prepares when another connection altered the table, as the structure editor's pooled one does.
+// macOS compiles this against the vendored SQLite's header, since the SDK module's `link "sqlite3"` would pull in
+// macOS's build too; iOS has no vendored build and uses the SDK's.
 public enum SQLiteResultColumns {
     public struct FirstStep: Sendable {
         public let result: Int32

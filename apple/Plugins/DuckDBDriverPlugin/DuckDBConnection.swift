@@ -12,7 +12,7 @@ import TableProPluginKit
 /// Everything a reopen needs to put the connection back where it was. Held from the first open,
 /// because a released handle has to be re-acquired from inside the actor with nothing handed down
 /// to it.
-struct DuckDBOpenSpec: Sendable, Equatable {
+nonisolated struct DuckDBOpenSpec: Sendable, Equatable {
     let path: String
     let accessMode: DuckDBAccessMode
     /// False for Remote mode, whose token and trust come from the connection form alone. Loaded, a secret
@@ -23,7 +23,7 @@ struct DuckDBOpenSpec: Sendable, Equatable {
 
 /// Why a release did not happen, for the log line that tells a user whose lock never comes back
 /// whether the timer is broken or the session is holding something.
-enum DuckDBReleaseOutcome: Equatable {
+nonisolated enum DuckDBReleaseOutcome: Equatable {
     case released
     case alreadyReleased
     case notOpen
@@ -35,19 +35,112 @@ enum DuckDBReleaseOutcome: Equatable {
     case stateUnreadable
 }
 
+// The open database and the task threads its connections share, with the transfer connections opened on it. Used only
+// on the executor of the session that opened it, which those connections run on too.
+nonisolated final class DuckDBOpenDatabase: @unchecked Sendable {
+    var database: duckdb_database?
+    var taskThreads: DuckDBTaskThreads?
+    var transferConnections: [ObjectIdentifier: DuckDBConnectionHandles] = [:]
+    // Keyed as `transferConnections`, so a close can end each one's read before its connection.
+    var transferActors: [ObjectIdentifier: DuckDBTransferReference] = [:]
+}
+
+nonisolated final class DuckDBTransferReference: @unchecked Sendable {
+    weak var actor: DuckDBConnectionActor?
+
+    init(_ actor: DuckDBConnectionActor) {
+        self.actor = actor
+    }
+}
+
+// A connection, with the second one that renders the rows of a result the first is still producing.
+nonisolated final class DuckDBConnectionHandles: @unchecked Sendable {
+    let live: DuckDBLiveConnectionBox
+    var connection: duckdb_connection?
+    var renderConnection: duckdb_connection?
+    var renderSettings: [String: String] = [:]
+    var resultReader: DuckDBResultReader?
+
+    init(live: DuckDBLiveConnectionBox) {
+        self.live = live
+    }
+
+    // The box is cleared before the disconnect, so a cancel never reaches a freed connection.
+    func close() {
+        live.set(nil)
+        resultReader = nil
+        if renderConnection != nil {
+            duckdb_disconnect(&renderConnection)
+            renderConnection = nil
+        }
+        if connection != nil {
+            duckdb_disconnect(&connection)
+            connection = nil
+        }
+        renderSettings = [:]
+    }
+}
+
+// One value of a fetched chunk, read in place: text and bytes point into the chunk and live only for the call, so a
+// reader that cuts a value for display copies only what it keeps.
+nonisolated enum DuckDBChunkValue {
+    case null
+    case text(UnsafeRawBufferPointer)
+    case bytes(UnsafeRawBufferPointer)
+    case spelled(String)
+
+    var pluginValue: PluginCellValue {
+        switch self {
+        case .null: .null
+        case .text(let utf8): .text(String(decoding: utf8, as: UTF8.self))
+        case .bytes(let bytes): .bytes(Data(bytes))
+        case .spelled(let text): .text(text)
+        }
+    }
+}
+
+// What a read hands out for a value of the named column.
+typealias DuckDBValueReader<Value> = @Sendable (_ column: String, _ value: DuckDBChunkValue) -> Value
+
+nonisolated enum DuckDBPulledElement<Value: Sendable>: Sendable {
+    case header(PluginStreamHeader)
+    case rows([[Value]])
+}
+
 actor DuckDBConnectionActor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DuckDBConnectionActor")
 
-    private let executor = DuckDBStackExecutor(name: "com.TablePro.duckdb")
+    private let executor: DuckDBStackExecutor
     nonisolated var unownedExecutor: UnownedSerialExecutor { executor.asUnownedSerialExecutor() }
 
-    private var database: duckdb_database?
-    private var taskThreads: DuckDBTaskThreads?
-    private var connection: duckdb_connection?
-    // Renders the rows of a result the session's own connection is still producing.
-    private var renderConnection: duckdb_connection?
-    private var renderSettings: [String: String] = [:]
-    private var resultReader: DuckDBResultReader?
+    private let openDatabase: DuckDBOpenDatabase
+    private let handles: DuckDBConnectionHandles
+    // False for a transfer connection, which reads the database its session opened and closes.
+    private let ownsDatabase: Bool
+
+    private var database: duckdb_database? {
+        get { openDatabase.database }
+        set { openDatabase.database = newValue }
+    }
+
+    private var taskThreads: DuckDBTaskThreads? {
+        get { openDatabase.taskThreads }
+        set { openDatabase.taskThreads = newValue }
+    }
+
+    private var connection: duckdb_connection? {
+        get { handles.connection }
+        set { handles.connection = newValue }
+    }
+
+    private var renderSettings: [String: String] {
+        get { handles.renderSettings }
+        set { handles.renderSettings = newValue }
+    }
+
+    private var resultReader: DuckDBResultReader? { handles.resultReader }
+
+    private var liveConnection: DuckDBLiveConnectionBox { handles.live }
 
     private var openSpec: DuckDBOpenSpec?
 
@@ -69,16 +162,28 @@ actor DuckDBConnectionActor {
     private var lastActivity = ContinuousClock.now
     private var isReleased = false
 
-    private let liveConnection: DuckDBLiveConnectionBox
+    private var pulledRead: PulledRead?
+    private var lastPulledRead: UInt64 = 0
 
     init(liveConnection: DuckDBLiveConnectionBox) {
-        self.liveConnection = liveConnection
+        executor = DuckDBStackExecutor(name: "com.TablePro.duckdb")
+        openDatabase = DuckDBOpenDatabase()
+        handles = DuckDBConnectionHandles(live: liveConnection)
+        ownsDatabase = true
+    }
+
+    private init(transferOn executor: DuckDBStackExecutor, of openDatabase: DuckDBOpenDatabase, handles: DuckDBConnectionHandles) {
+        self.executor = executor
+        self.openDatabase = openDatabase
+        self.handles = handles
+        ownsDatabase = false
     }
 
     /// True while the handle is closed but the connection is still live and will reopen on demand.
     var hasReleasedFile: Bool { isReleased }
 
     func open(spec: DuckDBOpenSpec) throws {
+        guard ownsDatabase else { throw DuckDBPluginError.unsupportedOperation }
         try openHandle(spec: spec)
         openSpec = spec
         isReleased = false
@@ -103,7 +208,34 @@ actor DuckDBConnectionActor {
         baselineSettings = (try? readSettings()) ?? [:]
     }
 
-    func close() {
+    // A connection on this database for a transfer. DuckDB gives it a transaction of its own, so it reads one snapshot
+    // while the session writes. It runs on this executor, and every close of the database closes it first.
+    func openTransferConnection(liveConnection: DuckDBLiveConnectionBox) throws -> DuckDBConnectionActor {
+        guard ownsDatabase else { throw DuckDBPluginError.unsupportedOperation }
+        try ensureOpen()
+        guard let database else { throw DuckDBPluginError.notConnected }
+        let transfer = DuckDBConnectionHandles(live: liveConnection)
+        try Self.connect(transfer, to: database)
+        let actor = DuckDBConnectionActor(transferOn: executor, of: openDatabase, handles: transfer)
+        openDatabase.transferConnections[ObjectIdentifier(transfer)] = transfer
+        openDatabase.transferActors[ObjectIdentifier(transfer)] = DuckDBTransferReference(actor)
+        lastActivity = ContinuousClock.now
+        return actor
+    }
+
+    func close() async {
+        closePulledRead()
+        guard ownsDatabase else {
+            openDatabase.transferConnections[ObjectIdentifier(handles)] = nil
+            openDatabase.transferActors[ObjectIdentifier(handles)] = nil
+            handles.close()
+            hasOpenTransaction = false
+            return
+        }
+        // Each transfer connection ends the read it holds, which keeps the database open, before it closes.
+        for transfer in openDatabase.transferActors.values.compactMap(\.actor) {
+            await transfer.close()
+        }
         closeHandle()
         openSpec = nil
         sessionSetup = []
@@ -126,6 +258,8 @@ actor DuckDBConnectionActor {
         guard !isReleased else { return .alreadyReleased }
         guard connection != nil, let spec = openSpec else { return .notOpen }
         if let minimumIdle, ContinuousClock.now - lastActivity < minimumIdle { return .notIdleYet }
+        // A transfer connection reading the file is use of it.
+        guard openDatabase.transferConnections.isEmpty else { return .notIdleYet }
 
         if let blocked = heldSessionState() { return blocked }
 
@@ -175,10 +309,17 @@ actor DuckDBConnectionActor {
 
     /// Checks the handle without counting as use. `executeQuery` would refresh `lastActivity`, and
     /// a health check every thirty seconds would then hold the idle clock at zero forever.
-    @discardableResult
-    func pingQuery() throws -> DuckDBRawResult {
+    func pingQuery() throws {
         try ensureOpen()
-        return try runInternalQuery("SELECT 1")
+        guard let conn = connection else { throw DuckDBPluginError.notConnected }
+        // A statement would end the read being handed out, which is itself a live session.
+        guard pulledRead == nil else { return }
+        var result = duckdb_result()
+        defer { duckdb_destroy_result(&result) }
+        guard duckdb_query(conn, "SELECT 1", &result) == DuckDBError else { return }
+        // An aborted transaction refuses every statement until its ROLLBACK, on a session that is still alive.
+        guard duckdb_result_error_type(&result) != DUCKDB_ERROR_TRANSACTION else { return }
+        throw DuckDBPluginError.queryFailed(Self.errorMessage(from: &result))
     }
 
     func executeQuery(_ query: String) throws -> DuckDBRawResult {
@@ -200,6 +341,7 @@ actor DuckDBConnectionActor {
         guard let conn = connection else {
             throw DuckDBPluginError.notConnected
         }
+        closePulledRead()
 
         let startTime = Date()
         noteActivity(query)
@@ -218,6 +360,7 @@ actor DuckDBConnectionActor {
         guard let conn = connection else {
             throw DuckDBPluginError.notConnected
         }
+        closePulledRead()
 
         noteActivity(query)
         var opened = try openResult(query: query, parameters: [], connection: conn, unread: .abandonWhenIdle)
@@ -272,13 +415,114 @@ actor DuckDBConnectionActor {
     private func readOnlyConnection() throws -> duckdb_connection {
         try ensureOpen()
         guard let conn = connection else { throw DuckDBPluginError.notConnected }
+        closePulledRead()
         lastActivity = ContinuousClock.now
         return conn
+    }
+
+    // MARK: - Read handed out a batch at a time
+
+    // A read handed out one batch per call, so other work on this executor runs between batches. Any other statement on
+    // the connection ends it first, and the next call then throws CancellationError.
+    private nonisolated struct PulledRead {
+        var opened: OpenedResult
+        var projection: duckdb_prepared_statement?
+        let generation: UInt64
+        // The read-only transaction DuckDBReadOnlyStatement opened for it, rolled back when it ends.
+        let endsReadOnlyTransaction: Bool
+    }
+
+    func beginPulledRead(
+        _ query: String,
+        reason: DuckDBReadOnlyStatement.Reason?
+    ) throws -> (header: PluginStreamHeader, generation: UInt64) {
+        // A Stop that came while this waited for the executor interrupted nothing, and DuckDB clears it at the start.
+        try Task.checkCancellation()
+        let conn: duckdb_connection
+        if let reason {
+            conn = try readOnlyConnection()
+            try DuckDBReadOnlyStatement.begin(on: conn, session: sessionTransactionState(), reason: reason)
+        } else {
+            try ensureOpen()
+            guard let open = connection else { throw DuckDBPluginError.notConnected }
+            closePulledRead()
+            noteActivity(query)
+            conn = open
+        }
+        let opened: OpenedResult
+        do {
+            opened = try openResult(
+                query: query, parameters: [], connection: conn,
+                unread: reason == nil ? .abandonWhenIdle : .abandon, session: reason == nil ? nil : .inTransaction
+            )
+        } catch {
+            if reason != nil { DuckDBReadOnlyStatement.end(on: conn) }
+            throw error
+        }
+        lastPulledRead &+= 1
+        pulledRead = PulledRead(
+            opened: opened, projection: nil, generation: lastPulledRead, endsReadOnlyTransaction: reason != nil
+        )
+        let header = PluginStreamHeader(
+            columns: opened.schema.names,
+            columnTypeNames: opened.schema.typeNames,
+            estimatedRowCount: opened.rowCount.map { Int($0) }
+        )
+        return (header, lastPulledRead)
+    }
+
+    // Nil once the read has ended, which ends what it opened.
+    func nextPulledBatch<Value: Sendable>(
+        _ generation: UInt64,
+        reading read: DuckDBValueReader<Value>
+    ) throws -> [[Value]]? {
+        guard var pulled = pulledRead, pulled.generation == generation, let conn = connection else {
+            throw CancellationError()
+        }
+        let batch: [[Value]]?
+        do {
+            batch = try nextBatch(of: pulled.opened, projection: &pulled.projection, reading: read)
+        } catch {
+            pulledRead = pulled
+            closePulledRead()
+            throw error
+        }
+        if let batch {
+            pulledRead = pulled
+            return batch
+        }
+        pulledRead = nil
+        duckdb_destroy_prepare(&pulled.projection)
+        defer {
+            if pulled.endsReadOnlyTransaction { DuckDBReadOnlyStatement.end(on: conn) }
+        }
+        try finish(&pulled.opened, on: conn)
+        return nil
+    }
+
+    func endPulledRead(_ generation: UInt64? = nil) {
+        guard generation == nil || pulledRead?.generation == generation else { return }
+        closePulledRead()
+    }
+
+    // What a read given up leaves: its rows unread, and any transaction it opened rolled back.
+    private func closePulledRead() {
+        guard var read = pulledRead else { return }
+        pulledRead = nil
+        duckdb_destroy_prepare(&read.projection)
+        guard let conn = connection else {
+            duckdb_destroy_result(&read.opened.result)
+            return
+        }
+        try? finishUnreadRows(of: read.opened)
+        close(&read.opened, on: conn)
+        if read.endsReadOnlyTransaction { DuckDBReadOnlyStatement.end(on: conn) }
     }
 
     // MARK: - Handle lifecycle
 
     private func openHandle(spec: DuckDBOpenSpec) throws {
+        DuckDBExtensionPolicy.registerLinkedExtensions()
         var config: duckdb_config?
         guard duckdb_create_config(&config) != DuckDBError else {
             throw DuckDBPluginError.connectionFailed(
@@ -309,6 +553,10 @@ actor DuckDBConnectionActor {
             throw DuckDBPluginError.connectionFailed(
                 String(localized: "This build of DuckDB does not accept running its tasks on threads TablePro starts")
             )
+        }
+        for option in DuckDBExtensionPolicy.openOptions
+            where duckdb_set_config(config, option.name, option.value) == DuckDBError {
+            throw DuckDBPluginError.connectionFailed("DuckDB rejected \(option.name) = \(option.value)")
         }
         if !spec.allowsPersistentSecrets {
             guard duckdb_set_config(config, "allow_persistent_secrets", "false") != DuckDBError else {
@@ -358,50 +606,48 @@ actor DuckDBConnectionActor {
             )
         }
 
-        var conn: duckdb_connection?
-        let connState = duckdb_connect(openedDB, &conn)
-
-        if connState == DuckDBError {
-            duckdb_close(&db)
-            throw DuckDBPluginError.connectionFailed("Failed to create DuckDB connection")
-        }
-
-        guard let conn else {
-            duckdb_close(&db)
-            throw DuckDBPluginError.connectionFailed("Failed to create DuckDB connection")
-        }
-        var renderConn: duckdb_connection?
         do {
-            guard duckdb_connect(openedDB, &renderConn) != DuckDBError, let renderConn else {
-                throw DuckDBPluginError.connectionFailed("Failed to create DuckDB connection")
-            }
-            resultReader = try DuckDBResultReader(renderConnection: renderConn)
+            try Self.connect(handles, to: openedDB)
         } catch {
-            if renderConn != nil { duckdb_disconnect(&renderConn) }
-            var failedConnection: duckdb_connection? = conn
-            duckdb_disconnect(&failedConnection)
             duckdb_close(&db)
             throw error
         }
         database = db
         taskThreads = DuckDBTaskThreads(database: openedDB)
-        connection = conn
-        renderConnection = renderConn
-        renderSettings = [:]
-        liveConnection.set(conn)
     }
 
+    // Both connections of `handles`, or neither.
+    private static func connect(_ handles: DuckDBConnectionHandles, to database: duckdb_database) throws {
+        var conn: duckdb_connection?
+        guard duckdb_connect(database, &conn) != DuckDBError, let conn else {
+            throw DuckDBPluginError.connectionFailed("Failed to create DuckDB connection")
+        }
+        var renderConn: duckdb_connection?
+        do {
+            guard duckdb_connect(database, &renderConn) != DuckDBError, let renderConn else {
+                throw DuckDBPluginError.connectionFailed("Failed to create DuckDB connection")
+            }
+            handles.resultReader = try DuckDBResultReader(renderConnection: renderConn)
+        } catch {
+            if renderConn != nil { duckdb_disconnect(&renderConn) }
+            var failedConnection: duckdb_connection? = conn
+            duckdb_disconnect(&failedConnection)
+            throw error
+        }
+        handles.connection = conn
+        handles.renderConnection = renderConn
+        handles.renderSettings = [:]
+        handles.live.set(conn)
+    }
+
+    // A transfer connection left open would keep the file after the close.
     private func closeHandle() {
-        liveConnection.set(nil)
-        resultReader = nil
-        if renderConnection != nil {
-            duckdb_disconnect(&renderConnection)
-            renderConnection = nil
+        for transfer in openDatabase.transferConnections.values {
+            transfer.close()
         }
-        if connection != nil {
-            duckdb_disconnect(&connection)
-            connection = nil
-        }
+        openDatabase.transferConnections = [:]
+        openDatabase.transferActors = [:]
+        handles.close()
         taskThreads?.close()
         taskThreads = nil
         if database != nil {
@@ -438,6 +684,8 @@ actor DuckDBConnectionActor {
     func sessionTransactionState() -> PluginSessionTransactionState {
         guard !isReleased else { return .idle }
         guard connection != nil else { return .unknown }
+        // A probe statement would end the read being handed out.
+        guard pulledRead == nil else { return .unknown }
         if let decided = DuckDBTransactionProbe.state(
             catalogType: probeReading(DuckDBTransactionProbe.catalogTypeQuery),
             tracksOpenTransaction: hasOpenTransaction
@@ -532,7 +780,7 @@ actor DuckDBConnectionActor {
 
     // MARK: - Execution
 
-    private struct OpenedResult {
+    private nonisolated struct OpenedResult {
         var result: duckdb_result
         let schema: ColumnSchema
         let rowsChanged: idx_t
@@ -746,11 +994,10 @@ actor DuckDBConnectionActor {
             case .text(let value):
                 state = duckdb_bind_varchar_length(stmt, position, value, idx_t(value.utf8.count))
             case .bytes(let data):
-                state = data.withUnsafeBytes { buffer -> duckdb_state in
-                    guard let baseAddress = buffer.baseAddress else {
-                        return duckdb_bind_null(stmt, position)
-                    }
-                    return duckdb_bind_blob(stmt, position, baseAddress, idx_t(data.count))
+                // An empty Data has no base address, and a null pointer binds NULL rather than an empty blob.
+                let bytes = data.isEmpty ? Data([0]) : data
+                state = bytes.withUnsafeBytes { buffer in
+                    duckdb_bind_blob(stmt, position, buffer.baseAddress, idx_t(data.count))
                 }
             }
             if state == DuckDBError {
@@ -766,7 +1013,7 @@ actor DuckDBConnectionActor {
 
     // MARK: - Extraction
 
-    private struct ColumnSchema {
+    private nonisolated struct ColumnSchema {
         let names: [String]
         let logicalTypes: [DuckDBLogicalType?]
 
@@ -895,12 +1142,21 @@ actor DuckDBConnectionActor {
     // Returns false when `body` stopped the read before the result ended.
     @discardableResult
     private func readRows(of opened: OpenedResult, body: ([[PluginCellValue]]) -> Bool) throws -> Bool {
-        var source = opened.result
-        let types = Self.storageTypes(of: &source)
-        let needsText = DuckDBLogicalType.requiresTextProjection(anyOf: opened.schema.logicalTypes)
         var projection: duckdb_prepared_statement?
         defer { duckdb_destroy_prepare(&projection) }
+        while let batch = try nextBatch(of: opened, projection: &projection, reading: { _, value in value.pluginValue }) {
+            guard body(batch) else { return false }
+        }
+        return true
+    }
 
+    // The next chunk that holds rows, nil at the end of the result. `projection` renders it, prepared on first use.
+    private func nextBatch<Value>(
+        of opened: OpenedResult,
+        projection: inout duckdb_prepared_statement?,
+        reading read: DuckDBValueReader<Value>
+    ) throws -> [[Value]]? {
+        var source = opened.result
         while true {
             // A statement that ran whole has already taken effect, so its rows are still handed back.
             if opened.isStreaming { try Task.checkCancellation() }
@@ -909,25 +1165,22 @@ actor DuckDBConnectionActor {
                 if let message = duckdb_result_error(&source) {
                     throw DuckDBPluginError.queryFailed(String(cString: message))
                 }
-                return true
+                return nil
             }
             defer { duckdb_destroy_data_chunk(&chunk) }
             guard duckdb_data_chunk_get_size(fetched) > 0 else { continue }
 
-            let batch: [[PluginCellValue]]
-            if needsText {
-                guard let resultReader else { throw DuckDBPluginError.notConnected }
-                if projection == nil {
-                    projection = try resultReader.prepareProjection(of: source, columns: opened.schema.projectionColumns)
-                }
-                guard let projection else { throw DuckDBPluginError.notConnected }
-                var rendered = try resultReader.render(fetched, of: source, with: projection)
-                defer { duckdb_destroy_result(&rendered) }
-                batch = try Self.renderedRows(of: &rendered)
-            } else {
-                batch = Self.rows(of: fetched, types: types)
+            guard DuckDBLogicalType.requiresTextProjection(anyOf: opened.schema.logicalTypes) else {
+                return Self.rows(of: fetched, types: Self.storageTypes(of: &source), names: opened.schema.names, reading: read)
             }
-            guard body(batch) else { return false }
+            guard let resultReader else { throw DuckDBPluginError.notConnected }
+            if projection == nil {
+                projection = try resultReader.prepareProjection(of: source, columns: opened.schema.projectionColumns)
+            }
+            guard let projection else { throw DuckDBPluginError.notConnected }
+            var rendered = try resultReader.render(fetched, of: source, with: projection)
+            defer { duckdb_destroy_result(&rendered) }
+            return try Self.renderedRows(of: &rendered, names: opened.schema.names, reading: read)
         }
     }
 
@@ -953,9 +1206,13 @@ actor DuckDBConnectionActor {
         }
     }
 
-    private static func renderedRows(of rendered: inout duckdb_result) throws -> [[PluginCellValue]] {
+    private static func renderedRows<Value>(
+        of rendered: inout duckdb_result,
+        names: [String],
+        reading read: DuckDBValueReader<Value>
+    ) throws -> [[Value]] {
         let types = storageTypes(of: &rendered)
-        var batch: [[PluginCellValue]] = []
+        var batch: [[Value]] = []
         while true {
             var chunk = duckdb_fetch_chunk(rendered)
             guard let fetched = chunk else {
@@ -965,7 +1222,7 @@ actor DuckDBConnectionActor {
                 return batch
             }
             defer { duckdb_destroy_data_chunk(&chunk) }
-            batch.append(contentsOf: rows(of: fetched, types: types))
+            batch.append(contentsOf: rows(of: fetched, types: types, names: names, reading: read))
         }
     }
 
@@ -973,18 +1230,25 @@ actor DuckDBConnectionActor {
         (0..<duckdb_column_count(&result)).map { duckdb_column_type(&result, $0) }
     }
 
-    private static func rows(of chunk: duckdb_data_chunk, types: [duckdb_type]) -> [[PluginCellValue]] {
+    private static func rows<Value>(
+        of chunk: duckdb_data_chunk,
+        types: [duckdb_type],
+        names: [String],
+        reading read: DuckDBValueReader<Value>
+    ) -> [[Value]] {
         let size = duckdb_data_chunk_get_size(chunk)
         let vectors = types.indices.map { duckdb_data_chunk_get_vector(chunk, idx_t($0)) }
-        var batch: [[PluginCellValue]] = []
+        var batch: [[Value]] = []
         batch.reserveCapacity(Int(size))
         for row in 0..<size {
-            batch.append(zip(vectors, types).map { chunkCell($0, type: $1, row: row) })
+            batch.append(types.indices.map { column in
+                read(column < names.count ? names[column] : "", chunkValue(vectors[column], type: types[column], row: row))
+            })
         }
         return batch
     }
 
-    private static func chunkCell(_ vector: duckdb_vector?, type: duckdb_type, row: idx_t) -> PluginCellValue {
+    private static func chunkValue(_ vector: duckdb_vector?, type: duckdb_type, row: idx_t) -> DuckDBChunkValue {
         guard let vector, let data = duckdb_vector_get_data(vector) else { return .null }
         if let validity = duckdb_vector_get_validity(vector), !duckdb_validity_row_is_valid(validity, row) {
             return .null
@@ -996,25 +1260,25 @@ actor DuckDBConnectionActor {
             let bytes = UnsafeRawBufferPointer(
                 start: duckdb_string_t_data(element), count: Int(duckdb_string_t_length(element.pointee))
             )
-            return type == DUCKDB_TYPE_BLOB ? .bytes(Data(bytes)) : .text(String(decoding: bytes, as: UTF8.self))
+            return type == DUCKDB_TYPE_BLOB ? .bytes(bytes) : .text(bytes)
         case DUCKDB_TYPE_BOOLEAN:
-            return .text(data.assumingMemoryBound(to: UInt8.self)[index] != 0 ? "true" : "false")
+            return .spelled(data.assumingMemoryBound(to: UInt8.self)[index] != 0 ? "true" : "false")
         case DUCKDB_TYPE_TINYINT:
-            return .text(String(data.assumingMemoryBound(to: Int8.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: Int8.self)[index]))
         case DUCKDB_TYPE_SMALLINT:
-            return .text(String(data.assumingMemoryBound(to: Int16.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: Int16.self)[index]))
         case DUCKDB_TYPE_INTEGER:
-            return .text(String(data.assumingMemoryBound(to: Int32.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: Int32.self)[index]))
         case DUCKDB_TYPE_BIGINT:
-            return .text(String(data.assumingMemoryBound(to: Int64.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: Int64.self)[index]))
         case DUCKDB_TYPE_UTINYINT:
-            return .text(String(data.assumingMemoryBound(to: UInt8.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: UInt8.self)[index]))
         case DUCKDB_TYPE_USMALLINT:
-            return .text(String(data.assumingMemoryBound(to: UInt16.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: UInt16.self)[index]))
         case DUCKDB_TYPE_UINTEGER:
-            return .text(String(data.assumingMemoryBound(to: UInt32.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: UInt32.self)[index]))
         case DUCKDB_TYPE_UBIGINT:
-            return .text(String(data.assumingMemoryBound(to: UInt64.self)[index]))
+            return .spelled(String(data.assumingMemoryBound(to: UInt64.self)[index]))
         default:
             return .null
         }
@@ -1063,7 +1327,7 @@ actor DuckDBConnectionActor {
     }
 }
 
-struct DuckDBRawResult: @unchecked Sendable {
+nonisolated struct DuckDBRawResult: @unchecked Sendable {
     let columns: [String]
     let columnTypeNames: [String]
     var rows: [[PluginCellValue]]

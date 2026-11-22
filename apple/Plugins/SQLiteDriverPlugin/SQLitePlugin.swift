@@ -3,7 +3,11 @@
 //  TablePro
 //
 
+#if os(iOS)
+import SQLite3
+#else
 import CSQLite
+#endif
 import Foundation
 import os
 import TableProPluginKit
@@ -11,7 +15,7 @@ import TableProSQLGrammar
 import TableProSQLiteCore
 import TableProSQLVocabulary
 
-final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
+nonisolated final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "SQLite Driver"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "SQLite file-based database support"
@@ -105,7 +109,7 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
-private extension SQLOperatorDescriptor {
+nonisolated private extension SQLOperatorDescriptor {
     init?(vocabulary entry: SQLEngineVocabulary.Operator) {
         guard let category = Category(rawValue: entry.category),
               let placement = Placement(rawValue: entry.placement) else { return nil }
@@ -121,7 +125,7 @@ private extension SQLOperatorDescriptor {
 
 // MARK: - SQLite Plugin Driver
 
-final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+nonisolated final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private let backend: any SQLiteExecutionBackend
     private let attachmentWarning = OSAllocatedUnfairLock<String?>(initialState: nil)
@@ -173,10 +177,13 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         self.backend = backend
     }
 
-    /// A file-backed connection runs on the app's own SQLite; one whose transport marks it a remote
-    /// session runs on the server's SQLite through the agent. The mark and the token are set by the
-    /// app's transport when it rewrites the effective connection, never by the user.
+    // A file-backed connection runs on the app's own SQLite; one whose transport marks it a remote session runs on the
+    // server's SQLite through the agent. The mark and the token are set by the Mac's transport when it rewrites the
+    // effective connection, never by the user. iOS has no SSH transport for SQLite, so it builds no agent.
     private static func makeBackend(config: DriverConnectionConfig) -> any SQLiteExecutionBackend {
+        #if os(iOS)
+        return SQLiteLocalBackend(path: config.database)
+        #else
         guard let helloBudget = SQLiteAgentHelloBudget.forAgent(
             additionalFields: config.additionalFields
         ) else {
@@ -189,6 +196,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             token: config.additionalFields[SQLiteAgentProtocol.tokenFieldKey] ?? "",
             helloBudget: helloBudget
         )
+        #endif
     }
 
     // MARK: - Connection
@@ -197,7 +205,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let extensions = try LoadableExtensionList.decode(config.additionalFields[LoadableExtensionList.fieldId])
         let attachments = try AttachedDatabaseList.decode(config.additionalFields[AttachedDatabaseList.fieldId])
         // The paths name files on this Mac; the agent would open whatever sits at them on the server.
-        if !attachments.isEmpty, backend is SQLiteAgentBackend {
+        if !attachments.isEmpty, !(backend is SQLiteLocalBackend) {
             throw AttachedDatabaseError.remoteSession
         }
         try await withTaskCancellationHandler {
@@ -218,6 +226,11 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func disconnect() {
         let backend = self.backend
         Task { await backend.close() }
+    }
+
+    // Returns once SQLite has closed the file, for a host that ends its access to the file after.
+    func close() async {
+        await backend.close()
     }
 
     func ping() async throws {
@@ -287,6 +300,11 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// remote backend forwards the same intent to the agent as a cancel frame.
     func cancelQuery() throws {
         backend.canceller.cancel()
+    }
+
+    // Stop for a connection that runs one transfer, so a pulled read's step is the thing to end.
+    func cancelEverything() {
+        (backend as? SQLiteLocalBackend)?.localCanceller.cancelEverything()
     }
 
     // MARK: - EXPLAIN
@@ -609,6 +627,37 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    // MARK: - Reads that cut values
+
+    // Each value made by `read` from SQLite's own buffer while the row is read, for a host that keeps only a preview of
+    // a long value, a batch at a time to `deliver` until `rowLimit` rows or `deliver` declines. One request holds the
+    // statement, so nothing stays open on the connection after it. Returns the rows a statement with no columns changed;
+    // a caller cancelled before the connection takes it runs nothing.
+    @discardableResult
+    func readValues<Value: Sendable>(
+        query: String,
+        context: PluginStatementContext,
+        rowLimit: Int,
+        reading read: @escaping SQLiteValueReader<Value>,
+        header: @escaping @Sendable (PluginStreamHeader) -> Void,
+        deliver: @escaping @Sendable ([[Value]]) -> Bool
+    ) async throws -> Int {
+        guard let local = backend as? SQLiteLocalBackend else { throw SQLitePluginError.unsupportedOperation }
+        return try await local.readValues(
+            query, rules: SQLiteStatementRules(context), rowLimit: rowLimit, reading: read, header: header, deliver: deliver
+        )
+    }
+
+    // A batch per pull, the statement held between pulls, so the session runs other statements in between. A Stop
+    // interrupts only while this read steps, and a reader that lets go early finalizes the statement.
+    func pulledRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard let local = backend as? SQLiteLocalBackend else {
+            return AsyncThrowingStream { $0.finish(throwing: SQLitePluginError.unsupportedOperation) }
+        }
+        let cursor = SQLitePulledRows(backend: local, query: query, rules: SQLiteStatementRules(context))
+        return AsyncThrowingStream(unfolding: { try await cursor.next() })
+    }
+
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
@@ -753,7 +802,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
 // MARK: - Errors
 
-enum SQLitePluginError: Error {
+nonisolated enum SQLitePluginError: Error {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)
@@ -763,7 +812,7 @@ enum SQLitePluginError: Error {
     case safeModeReadOnlyStatement
 }
 
-extension SQLitePluginError: PluginDriverError {
+nonisolated extension SQLitePluginError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {
         case .connectionFailed(let msg): return msg

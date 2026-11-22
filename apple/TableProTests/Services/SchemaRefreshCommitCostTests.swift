@@ -254,8 +254,8 @@ struct SchemaRefreshCommitCostTests {
 
         await refreshService.refreshAfterWrite(connection: connection)
 
-        #expect(Set(driver.perSchemaReads) == ["tables:S0", "routines:S0"])
-        #expect(driver.perSchemaReads.count == 2)
+        #expect(Set(driver.perSchemaReads) == ["tables:S0", "routines:S0", "triggers:S0"])
+        #expect(driver.perSchemaReads.count == 3)
         #expect(schemaService.tables(for: connectionId, schema: "S199").map(\.name) == ["S199_ORDERS"])
     }
 }

@@ -3,7 +3,7 @@ import Foundation
 
 // DuckDB spells a value as text only through a query. A streaming result keeps its own connection busy until it ends
 // (DUCKDB_ERROR_RESOURCE_IN_USE), so a second connection renders each fetched chunk through a table function.
-final class DuckDBResultReader: @unchecked Sendable {
+nonisolated final class DuckDBResultReader: @unchecked Sendable {
     private let name = "_tablepro_result_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
     private let connection: duckdb_connection
     private let connectionID: idx_t

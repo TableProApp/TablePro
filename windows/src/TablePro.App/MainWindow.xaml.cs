@@ -1635,6 +1635,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         // A definition tab reads its text with Reload, not Run, and has nothing to stop.
         MenuRun.IsEnabled = tab is QueryTabView { IsRunning: false } or TableTabView { IsRunning: false };
         MenuRunStatement.IsEnabled = tab is QueryTabView { IsRunning: false };
+        MenuFormatQuery.IsEnabled = tab?.Editor is { CanFormat: true };
         MenuStop.IsEnabled = tab is QueryTabView { IsRunning: true } or TableTabView { IsRunning: true }
             or KeyTabView { IsRunning: true };
         var editor = tab?.Editor is not null;
@@ -1892,6 +1893,15 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private void OnRunStatement(object sender, RoutedEventArgs e) => (Workspace?.ActiveTab as QueryTabView)?.RunStatement();
 
     private void OnStop(object sender, RoutedEventArgs e) => Workspace?.ActiveTab?.Stop();
+
+    private async void OnFormatQuery(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab?.Editor is { } editor)
+        {
+            editor.Focus(FocusState.Programmatic);
+            await editor.FormatAsync().ConfigureAwait(true);
+        }
+    }
 
     // A table tab saves its pending changes, a query tab its .sql file, through Save As when it has none.
     private async void OnSaveChanges(object sender, RoutedEventArgs e)

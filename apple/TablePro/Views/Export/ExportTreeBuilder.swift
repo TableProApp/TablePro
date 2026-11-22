@@ -397,7 +397,12 @@ struct ExportTreeBuilder {
             )
         }
         guard !objectItems.isEmpty else { return nil }
-        return ExportDatabaseItem(name: name, objects: objectItems, isExpanded: true)
+        return ExportDatabaseItem(
+            name: name,
+            title: DatabaseEndpoint.label(for: name, type: connection.type),
+            objects: objectItems,
+            isExpanded: true
+        )
     }
 
     /// Reads one container's objects for the kinds the chosen format can write. Principals are

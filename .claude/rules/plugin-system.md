@@ -54,6 +54,7 @@ TableProPluginKit is built with Library Evolution, so an already-built plugin ke
 
 - The `TablePro` scheme builds only the bundled plugins, and a registry plugin's compile error still ends in `BUILD SUCCEEDED`. Run `verify.sh plugins` (the `AllPlugins` aggregate) after any change under `apple/Plugins/`.
 - `apple/scripts/ci/verify-plugin-loads.sh <dir>...` dlopens every built `.tableplugin` and names any that will not load. It does not instantiate the principal class.
+- The curated entry in `PluginMetadataRegistry` answers for a type until its plugin's code loads, so it declares what the plugin declares. `PluginMetadataCuratedParityTests` (Unit plan) loads every driver plugin built beside the test host, builds its snapshot as registration does and fails on each field that differs from the curated entry. CI builds `AllPlugins` before the Unit plan when the `plugins` suite runs, so the registry plugins are compared then; locally, run `verify.sh plugins` first. A variant keeps its own curated entry and is not compared.
 
 ## Column type corpus
 

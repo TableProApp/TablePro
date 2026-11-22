@@ -31,8 +31,15 @@ extension PluginMetadataRegistry {
             capabilities: postgreSQL.capabilities, schema: postgreSQL.schema, editor: postgreSQL.editor,
             connection: PluginMetadataSnapshot.ConnectionConfig(
                 additionalConnectionFields: postgreSQL.connection.additionalConnectionFields.filter {
-                    ["usePgpass", "connectionOptions"].contains($0.id)
-                },
+                    $0.id == "usePgpass"
+                } + [
+                    ConnectionField(
+                        id: "connectionOptions",
+                        label: String(localized: "Connection Options"),
+                        fieldType: .text,
+                        section: .advanced
+                    )
+                ],
                 category: .relational,
                 tagline: String(localized: "PostgreSQL and Oracle compatible SQL")
             )

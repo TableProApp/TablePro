@@ -16,7 +16,6 @@ internal final class WindowOpener: ObservableObject {
     private var openWelcomeAction: (() -> Void)?
     private var openConnectionFormAction: ((ConnectionFormRequest) -> Void)?
     private var openIntegrationsActivityAction: (() -> Void)?
-    private var openCompareSyncAction: ((UUID?) -> Void)?
     private var openSettingsAction: ((SettingsPane?) -> Void)?
     private var stagedDraftId: UUID?
     private var pendingCalls: [() -> Void] = []
@@ -101,14 +100,6 @@ internal final class WindowOpener: ObservableObject {
         }
     }
 
-    internal func openCompareSync(prefillSource connectionId: UUID? = nil) {
-        perform { opener in
-            guard let present = opener.openCompareSyncAction else { return false }
-            present(connectionId)
-            return true
-        }
-    }
-
     internal func setWelcomePresenter(_ present: @escaping () -> Void) {
         openWelcomeAction = present
         drainPendingCalls()
@@ -126,11 +117,6 @@ internal final class WindowOpener: ObservableObject {
 
     internal func setSettingsPresenter(_ present: @escaping (SettingsPane?) -> Void) {
         openSettingsAction = present
-        drainPendingCalls()
-    }
-
-    internal func setCompareSyncPresenter(_ present: @escaping (UUID?) -> Void) {
-        openCompareSyncAction = present
         drainPendingCalls()
     }
 

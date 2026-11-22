@@ -81,6 +81,7 @@ paths:
   - "apple/TablePro/Core/RoutineDebugging/RoutineDebugOptionStore.swift"
   - "apple/TablePro/Core/RowGeneration/RowGenerationModel.swift"
   - "apple/TablePro/Core/SSH/HostKeyStore.swift"
+  - "apple/TableProMobile/TableProMobile/SSH/HostKeyStore.swift"
   - "apple/TablePro/Core/Transfer/Shared/ImportColumnMatcher.swift"
   - "apple/TablePro/Core/Services/Formatting/ValueDisplayFormat.swift"
   - "apple/TablePro/Core/Services/TeamLibrary/TeamLibraryState.swift"
@@ -123,6 +124,7 @@ paths:
   - "apple/Packages/TableProMacCore/Sources/TableProUtilities/File/FileTextEncoding.swift"
   - "apple/Packages/TableProMacCore/Sources/TableProUtilities/UI/QuickSwitcherFrecencyStore.swift"
   - "apple/Packages/TableProMacCore/Sources/TableProMCP/Outside/MCPServerConfiguration.swift"
+  - "apple/Packages/TableProCore/Sources/TableProSSHTransport/HostKeyStore.swift"
   - "apple/Packages/TableProCore/Sources/TableProSSHTransport/PublishedSSHRoute.swift"
   - "apple/Packages/TableProCore/Sources/TableProSSHTransport/TOTPConfiguration.swift"
   - "apple/Packages/TableProCore/Sources/TableProConnectionLibrary/RecentConnectionsLedger.swift"
@@ -177,6 +179,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Server Dashboard tiles, per connection | UserDefaults, device-local | `ServerDashboardTileStorage` |
 | Table Health history, per connection and database: when each finding was first and last seen, resolved findings, ignored findings | JSON, one file per connection under `TableHealth/`, device-local, never synced | `TableHealthHistoryStorage` |
 | Module on/off (Settings > Extensions) | UserDefaults, device-local, never synced | `AppModuleSettings` |
+| A module's default on this Mac, for one that was core before: on when an earlier build ran here, written once at the first launch that knows the module, restored by Reset All Settings | UserDefaults `com.TablePro.modules.<id>.default`, device-local, never synced | `AppModule.recordDefaults`, called first in `applicationWillFinishLaunching` |
 | Routine debugger start options, per connection and field | UserDefaults, device-local | `RoutineDebugOptionStore` |
 | Whether the toolbar arrangement already carries the debug items | UserDefaults, device-local | `MainWindowToolbar` |
 | Trusted external links (loopback only) | UserDefaults | `ExternalConnectionTrustStore` |

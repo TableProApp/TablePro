@@ -116,7 +116,7 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pathFieldRole: PathFieldRole = .databaseIndex
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromConnectionField(fieldId: "redisDatabase")]
     static let requiresAuthentication = false
-    static let urlSchemes: [String] = ["redis"]
+    static let urlSchemes: [String] = ["redis", "rediss"]
     static let brandColorHex = "#DC382D"
     static let queryLanguageName = "Redis CLI"
     static let editorLanguage: EditorLanguage = .bash

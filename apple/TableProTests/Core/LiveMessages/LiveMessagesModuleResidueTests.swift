@@ -33,8 +33,10 @@ struct LiveMessagesModuleResidueTests {
         #expect(liveItems(in: built.bar).count == 1)
     }
 
-    @Test("The module is off by default")
-    func offByDefault() {
-        #expect(!AppModule.liveMessages.defaultEnabled)
+    @Test("The module is off by default, on a Mac that ran an earlier build too")
+    func offByDefault() throws {
+        let suite = try EphemeralDefaults()
+        AppModule.recordDefaults(in: suite.defaults, isExistingInstall: true)
+        #expect(!AppModule.liveMessages.defaultEnabled(in: suite.defaults))
     }
 }

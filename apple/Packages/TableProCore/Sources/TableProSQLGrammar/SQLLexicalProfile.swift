@@ -56,6 +56,12 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         profiles[typeId]
     }
 
+    /// A query language several engines share, named as a plugin's `EditorLanguage.custom` names it, so an engine
+    /// TablePro does not curate still lexes as its language does.
+    public static func curated(forQueryLanguage language: String) -> SQLLexicalProfile? {
+        language == "cypher" ? cypherProfile : nil
+    }
+
     /// The database type ids the curated table covers.
     public static var curatedDatabaseTypeIds: Set<String> {
         Set(profiles.keys)
@@ -221,6 +227,8 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         .withoutDashComments,
     ]
 
+    private static let cypherProfile = SQLLexicalProfile(grammar: cypher, undetermined: [.carriageReturnEndsLineComments])
+
     /// DynamoDB, from the driver's statement forms: a request is `<Action> {JSON}`, and a backslash escapes inside a
     /// JSON string. PartiQL, the other form, documents only a doubled quote, so plain ANSI is kept as an alternative
     /// and a gate reads both. Not measured.
@@ -350,7 +358,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                     .backslashEscapesInBackticks, .backslashEscapesInAngleQuotes, .carriageReturnEndsLineComments,
                 ]
             ),
-            "Neo4j": SQLLexicalProfile(grammar: cypher, undetermined: [.carriageReturnEndsLineComments]),
+            "Neo4j": cypherProfile,
             "InfluxDB": SQLLexicalProfile(
                 grammar: influxDB,
                 alternatives: [.ansi],

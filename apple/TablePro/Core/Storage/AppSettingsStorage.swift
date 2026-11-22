@@ -62,6 +62,11 @@ final class AppSettingsStorage: Sendable {
         save(settings, key: Keys.general)
     }
 
+    // Every launch since 0.51.0 sets the startup migration flag, with no user action; read it before this launch does.
+    func hasLaunchedBefore() -> Bool {
+        defaults.object(forKey: Keys.startupReopenMigration) != nil || defaults.bool(forKey: Keys.hasSeenWelcomeSheet)
+    }
+
     func migrateStartupBehaviorToReopenLastIfNeeded() {
         guard !defaults.bool(forKey: Keys.startupReopenMigration) else { return }
         defaults.set(true, forKey: Keys.startupReopenMigration)

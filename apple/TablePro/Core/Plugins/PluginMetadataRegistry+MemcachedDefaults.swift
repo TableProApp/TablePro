@@ -32,12 +32,12 @@ extension PluginMetadataRegistry {
                     dataCommands: memcachedDataCommands
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "",
+                    defaultSchemaName: "public",
                     defaultGroupName: "default",
                     tableEntityName: "Keys",
                     containerEntityName: "Server",
                     defaultPrimaryKeyColumn: "Key",
-                    immutableColumns: ["Key"],
+                    immutableColumns: [],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: [],

@@ -19,12 +19,12 @@ struct ConnectionURLFormatter {
         let schemeType = urlSchemeType(for: connection.type)
         let scheme = urlScheme(for: schemeType)
 
-        if connection.type == .sqlite {
-            return formatSQLite(connection.database)
-        }
-
         if connection.type == .duckdb {
             return formatDuckDB(connection, sshPassword: sshPassword)
+        }
+
+        if ConnectionURLParser.opensDatabaseFile(connection.type) {
+            return formatFile(connection.database, scheme: scheme, connection: connection)
         }
 
         let ssh = connection.resolvedSSHConfig
@@ -55,11 +55,11 @@ struct ConnectionURLFormatter {
         return urlScheme(for: driverType).isEmpty ? type : driverType
     }
 
-    private static func formatSQLite(_ database: String) -> String {
-        if database.hasPrefix("/") {
-            return "sqlite:///\(database.dropFirst())"
-        }
-        return "sqlite://\(database)"
+    // Encoded, a `?`, `#` or `%` in a file name stays in the path the parser reads back.
+    private static func formatFile(_ path: String, scheme: String, connection: DatabaseConnection) -> String {
+        let url = "\(scheme)://\(path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path)"
+        let params = [nameParameter(connection), colorParameter(connection), envParameter(connection)].compactMap { $0 }
+        return params.isEmpty ? url : "\(url)?\(params.joined(separator: "&"))"
     }
 
     private static func formatDuckDB(_ connection: DatabaseConnection, sshPassword: String?) -> String {
@@ -68,10 +68,7 @@ struct ConnectionURLFormatter {
         }
         let database = connection.additionalFields["duckdbFilePath"].flatMap { $0.isEmpty ? nil : $0 }
             ?? connection.database
-        if database.hasPrefix("/") {
-            return "duckdb:///\(database.dropFirst())"
-        }
-        return "duckdb://\(database)"
+        return formatFile(database, scheme: "duckdb", connection: connection)
     }
 
     private static func formatDuckDBRemote(_ connection: DatabaseConnection, sshPassword: String?) -> String {
@@ -290,8 +287,8 @@ struct ConnectionURLFormatter {
         let ssh = sshConfig ?? connection.sshConfig
         var params: [String] = []
 
-        if !connection.name.isEmpty {
-            params.append("name=\(formEncode(connection.name))")
+        if let name = nameParameter(connection) {
+            params.append(name)
         }
 
         if ssh.enabled && ssh.authMethod == .privateKey {
@@ -320,18 +317,30 @@ struct ConnectionURLFormatter {
             params.append(fingerprintParam)
         }
 
-        if let hex = colorHex(connection.color) {
-            params.append("statusColor=\(hex)")
+        if let color = colorParameter(connection) {
+            params.append(color)
         }
 
-        if let tagId = connection.tagIds.first,
-           let tag = TagStorage.shared.tag(for: tagId) {
-            params.append("env=\(formEncode(tag.name))")
+        if let env = envParameter(connection) {
+            params.append(env)
         }
 
         params.append(contentsOf: mongoParameters(connection))
 
         return params.joined(separator: "&")
+    }
+
+    private static func nameParameter(_ connection: DatabaseConnection) -> String? {
+        connection.name.isEmpty ? nil : "name=\(formEncode(connection.name))"
+    }
+
+    private static func colorParameter(_ connection: DatabaseConnection) -> String? {
+        colorHex(connection.color).map { "statusColor=\($0)" }
+    }
+
+    private static func envParameter(_ connection: DatabaseConnection) -> String? {
+        guard let tagId = connection.tagIds.first, let tag = TagStorage.shared.tag(for: tagId) else { return nil }
+        return "env=\(formEncode(tag.name))"
     }
 
     // The standard option names, so the URL opens in other MongoDB tools as well as here: the fields, then the typed

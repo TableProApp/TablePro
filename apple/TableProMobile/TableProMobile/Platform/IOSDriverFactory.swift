@@ -166,11 +166,16 @@ nonisolated final class IOSDriverFactory: DriverFactory {
     ) throws -> any DatabaseDriver {
         switch connection.type {
         case .sqlite where connection.isSample:
-            return SQLiteDriver(source: .file(try SampleDatabaseInstaller.live.installIfNeeded()))
+            return SQLiteBackedDriver(
+                source: .file(try SampleDatabaseInstaller.live.installIfNeeded()),
+                busyTimeoutSeconds: connection.queryTimeoutSeconds
+            )
         case .sqlite:
-            return SQLiteDriver(source: try sqliteSource(for: connection))
+            return SQLiteBackedDriver(
+                source: try sqliteSource(for: connection), busyTimeoutSeconds: connection.queryTimeoutSeconds
+            )
         case .duckdb:
-            return DuckDBDriver(source: try duckDBSource(for: connection))
+            return DuckDBBackedDriver(source: try duckDBSource(for: connection))
         case .mysql, .mariadb, .tidb, .oceanbase:
             guard connection.macSocketPath == nil else {
                 throw ConnectionError.localSocketNotSupported

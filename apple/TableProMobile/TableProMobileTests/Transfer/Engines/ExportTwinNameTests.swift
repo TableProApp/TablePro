@@ -21,12 +21,14 @@ struct ExportTwinNameTests {
             .appendingPathComponent("sqlite-twins-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let driver = SQLiteDriver(source: .file(directory.appendingPathComponent("twins.db")), openMode: .createNew)
+        let driver = SQLiteBackedDriver(source: .file(directory.appendingPathComponent("twins.db")), openMode: .createNew)
         try await driver.connect()
         _ = try await driver.execute(query: "CREATE TABLE p (id INTEGER PRIMARY KEY)")
         _ = try await driver.execute(query: "CREATE TABLE \"\(composed)\" (id INTEGER PRIMARY KEY, r INTEGER REFERENCES p (id))")
         _ = try await driver.execute(query: "CREATE TABLE \"\(decomposed)\" (id INTEGER PRIMARY KEY, s INTEGER REFERENCES p (id))")
-        let catalog = SQLiteTransferCatalog(driver: driver)
+        let catalog = try await driver.makeExportCatalog(
+            context: MobileTransferContext(databaseType: .sqlite, database: nil, schema: nil)
+        )
 
         await #expect(throws: PluginCatalogNameCollision.self) {
             try await catalog.fetchAllColumns(databaseName: "")
@@ -41,7 +43,7 @@ struct ExportTwinNameTests {
 
     @Test("DuckDB: the export reads throw on two tables named alike in different Unicode forms")
     func duckDBThrowsOnTwins() async throws {
-        let driver = DuckDBDriver(source: .inMemory)
+        let driver = DuckDBBackedDriver(source: .inMemory)
         try await driver.connect()
         _ = try await driver.execute(query: "CREATE TABLE p (id INTEGER PRIMARY KEY)")
         _ = try await driver.execute(query: "CREATE TABLE \"\(composed)\" (id INTEGER PRIMARY KEY, r INTEGER REFERENCES p (id))")
@@ -63,7 +65,7 @@ struct ExportTwinNameTests {
 
     @Test("DuckDB: only the key column is a key when another column is named alike in another Unicode form")
     func duckDBTwinColumnIsNotAKey() async throws {
-        let driver = DuckDBDriver(source: .inMemory)
+        let driver = DuckDBBackedDriver(source: .inMemory)
         try await driver.connect()
         _ = try await driver.execute(query: "CREATE TABLE t (\"\u{E9}\" INTEGER PRIMARY KEY, \"e\u{301}\" INTEGER, v INTEGER)")
         let catalog = try await driver.makeExportCatalog(

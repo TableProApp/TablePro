@@ -33,6 +33,8 @@ public struct SQLEngineVocabulary: Sendable, Hashable {
     public let dataTypes: Set<String>
     public let tableOptions: [String]
     public let operators: [Operator]
+    // Empty for an engine whose plugin still lists its own.
+    public let keywords: Set<String>
 
     public init(
         functions: Set<String>,
@@ -40,7 +42,8 @@ public struct SQLEngineVocabulary: Sendable, Hashable {
         functionNamesAreCaseInsensitive: Bool = true,
         dataTypes: Set<String>,
         tableOptions: [String] = [],
-        operators: [Operator] = []
+        operators: [Operator] = [],
+        keywords: Set<String> = []
     ) {
         self.functions = functions
         self.bareFunctions = bareFunctions
@@ -48,6 +51,7 @@ public struct SQLEngineVocabulary: Sendable, Hashable {
         self.dataTypes = dataTypes
         self.tableOptions = tableOptions
         self.operators = operators
+        self.keywords = keywords
     }
 
     public static func curated(forDatabaseTypeId typeId: String) -> SQLEngineVocabulary? {
