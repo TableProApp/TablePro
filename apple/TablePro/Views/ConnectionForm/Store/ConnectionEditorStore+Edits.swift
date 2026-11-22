@@ -189,8 +189,13 @@ extension ConnectionEditorStore {
         )
     }
 
+    func presentSaveCredentialsAsProfile() {
+        guard !draft.credentials.usesProfile, hasPromotableCredentials else { return }
+        credentialProfileToSave = credentialProfileFromCurrentCredentials()
+    }
+
     func didSaveCredentialProfile(_ profile: CredentialProfile) {
-        isSavingCredentialsAsProfile = false
+        credentialProfileToSave = nil
         refreshContext()
         setCredentialMode(.profile(id: profile.id))
     }

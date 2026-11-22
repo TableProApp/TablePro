@@ -1,8 +1,3 @@
-//
-//  TeamLibrarySync.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
 import os
@@ -89,6 +84,11 @@ internal final class TeamLibrarySync: ObservableObject {
 
     var canPublish: Bool {
         !writableTeams.isEmpty
+    }
+
+    // What a sign-out drops with the rest of the library: edits not pushed yet and conflicts not resolved.
+    var hasUnsentChanges: Bool {
+        teams.values.contains { !$0.pending.isEmpty || !$0.conflicts.isEmpty }
     }
 
     func start() {
@@ -208,8 +208,6 @@ internal final class TeamLibrarySync: ObservableObject {
         status = .idle
         publishContent()
     }
-
-    // MARK: - Sync
 
     private func performSync() async -> TeamLibrarySyncOutcome {
         guard account.session.isSignedIn else { return .skipped }
@@ -501,8 +499,6 @@ internal final class TeamLibrarySync: ObservableObject {
         commit(state)
     }
 
-    // MARK: - Publish
-
     // `owns` tells this Mac's own items from someone else's that a publish only moves.
     private func publish(
         to teamID: String,
@@ -571,8 +567,6 @@ internal final class TeamLibrarySync: ObservableObject {
         let conflicted = teams[teamID]?.conflicts.filter { keys.contains($0.key) }.count ?? 0
         return .success(conflicted > 0 ? .conflicts(conflicted) : .published(edits.count))
     }
-
-    // MARK: - Helpers
 
     private func serially<Value: Sendable>(_ work: @escaping @MainActor () async -> Value) -> Task<Value, Never> {
         let previous = tail

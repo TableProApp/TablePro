@@ -1,16 +1,9 @@
-//
-//  QueryEditorPaneController.swift
-//  TablePro
-//
-
 import AppKit
 import Combine
 import SwiftUI
 import TableProEditorKit
 
-/// What the query tab's editor pane shows: the header above the editor, and the editor's input.
 struct QueryEditorPaneInput {
-    /// The banner, the command bar and the parameter panel, given the Vim mode to show or nil.
     var header: (VimMode?) -> AnyView
     var editor: SQLEditorInput
 }
@@ -21,17 +14,16 @@ final class QueryEditorPaneModel: ObservableObject {
 }
 
 struct QueryEditorHeader: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var editorSettings = AppSettingsManager.shared.editorSlice
     @ObservedObject var model: QueryEditorPaneModel
     let content: (VimMode?) -> AnyView
 
     var body: some View {
-        content(settingsManager.editor.keyBindings == .vim ? model.vimMode : nil)
+        content(editorSettings.value.keyBindings == .vim ? model.vimMode : nil)
     }
 }
 
-/// The SQL editor under its command bar. The editor takes whatever height the header leaves, with no minimum of its
-/// own: the pane bottoms out at the query split's top minimum, and an editor that also insisted on one overflowed it.
+// No editor minimum: the pane bottoms out at the query split's top minimum, and a second one overflowed it.
 @MainActor
 final class QueryEditorPaneController: NSViewController {
     let editor: SQLEditorController

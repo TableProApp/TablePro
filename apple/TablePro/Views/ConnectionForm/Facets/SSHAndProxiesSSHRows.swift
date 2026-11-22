@@ -49,7 +49,14 @@ struct SSHAndProxiesSSHRow: View {
                 }
             }
         case .sshPassword:
-            EditorSecureRow(String(localized: "Password"), text: store.binding(\.ssh.password), row: editorRow, store: store)
+            EditorRevealableSecureRow(
+                String(localized: "Password"),
+                text: store.binding(\.ssh.password),
+                kind: .password,
+                requiresAuthentication: store.draft.ssh.savedSecrets.contains(.password),
+                row: editorRow,
+                store: store
+            )
         case .sshAgentSocket:
             agentSocketRows
         case .sshIdentityFile:
@@ -73,9 +80,11 @@ struct SSHAndProxiesSSHRow: View {
                 await TransportFilePanel.chooseSSHKey(message: String(localized: "Choose a private key file"), store: store)
             }
         case .sshKeyPassphrase:
-            EditorSecureRow(
+            EditorRevealableSecureRow(
                 String(localized: "Passphrase"),
                 text: store.binding(\.ssh.keyPassphrase),
+                kind: .passphrase,
+                requiresAuthentication: store.draft.ssh.savedSecrets.contains(.keyPassphrase),
                 prompt: String(localized: "Required only for an encrypted key"),
                 row: editorRow,
                 store: store
@@ -93,8 +102,15 @@ struct SSHAndProxiesSSHRow: View {
                 }
             }
         case .sshTOTPSecret:
-            EditorSecureRow(String(localized: "TOTP Secret"), text: store.binding(\.ssh.totpSecret), row: editorRow, store: store)
-                .help(String(localized: "Base32-encoded secret from your authenticator setup"))
+            EditorRevealableSecureRow(
+                String(localized: "TOTP Secret"),
+                text: store.binding(\.ssh.totpSecret),
+                kind: .secret,
+                requiresAuthentication: store.draft.ssh.savedSecrets.contains(.totpSecret),
+                subtitle: String(localized: "Base32-encoded secret from your authenticator setup"),
+                row: editorRow,
+                store: store
+            )
         case .sshTOTPAlgorithm:
             SSHAndProxiesPicker(String(localized: "Algorithm"), selection: store.binding(\.ssh.totpAlgorithm), row: editorRow, store: store) {
                 ForEach(TOTPAlgorithm.allCases) { algorithm in
@@ -103,13 +119,15 @@ struct SSHAndProxiesSSHRow: View {
             }
         case .sshTOTPDigits:
             SSHAndProxiesPicker(String(localized: "Digits"), selection: store.binding(\.ssh.totpDigits), row: editorRow, store: store) {
-                Text(verbatim: "6").tag(6)
-                Text(verbatim: "8").tag(8)
+                SettingsChoiceItems([6, 8], including: store.draft.ssh.totpDigits) { digits in
+                    Text(verbatim: SettingsFormat.identifier(digits))
+                }
             }
         case .sshTOTPPeriod:
             SSHAndProxiesPicker(String(localized: "Period"), selection: store.binding(\.ssh.totpPeriod), row: editorRow, store: store) {
-                Text(String(localized: "30 seconds")).tag(30)
-                Text(String(localized: "60 seconds")).tag(60)
+                SettingsChoiceItems([30, 60], including: store.draft.ssh.totpPeriod) { seconds in
+                    Text(verbatim: SettingsFormat.duration(seconds: seconds))
+                }
             }
         default:
             EmptyView()
@@ -204,7 +222,7 @@ struct SSHAndProxiesProfileRows: View {
             if !store.context.sshProfiles.isEmpty {
                 Divider()
                 ForEach(store.context.sshProfiles) { profile in
-                    Text(verbatim: Self.menuTitle(for: profile)).tag(Choice.profile(profile.id))
+                    Text(verbatim: "\(profile.name) (\(profile.address))").tag(Choice.profile(profile.id))
                 }
             }
             Divider()
@@ -272,12 +290,6 @@ struct SSHAndProxiesProfileRows: View {
                 }
             }
         )
-    }
-
-    private static func menuTitle(for profile: SSHProfile) -> String {
-        let user = profile.username.trimmingCharacters(in: .whitespaces)
-        let target = user.isEmpty ? profile.host : "\(user)@\(profile.host)"
-        return "\(profile.name) (\(target))"
     }
 
     private static func endpoint(of profile: SSHProfile) -> String {

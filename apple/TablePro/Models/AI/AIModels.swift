@@ -1,11 +1,4 @@
-//
-//  AIModels.swift
-//  TablePro
-//
-
 import Foundation
-
-// MARK: - AI Provider Type
 
 enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     case copilot
@@ -84,8 +77,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// How the configured endpoint is turned into a request URL. Providers that reach a fixed
-    /// host ignore it, so they answer with `AIProviderFactory`'s own fallback transport.
+    // A provider that reaches a fixed host ignores it and answers with AIProviderFactory's fallback transport.
     var endpointStyle: AIEndpointStyle {
         switch self {
         case .claude:
@@ -101,7 +93,6 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// The types `OpenAICompatibleProvider` serves, which share one registration.
     static let openAICompatibleFamily: [AIProviderType] = [.openRouter, .openCode, .ollama, .llamaCpp, .mlx, .custom]
 
     var icon: BrandIcon {
@@ -123,15 +114,11 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
-// MARK: - AI Provider Configuration
-
 struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     var name: String
     var type: AIProviderType
-    /// Set on a `.custom` provider added from an `AIProviderPreset`. An id this build does not
-    /// know is kept as it stands, so a preset from a newer build survives a round trip through
-    /// this one and reads as a plain custom provider in the meantime.
+    // An id this build does not know is kept, so a newer build's preset survives a round trip through this one.
     var presetID: String?
     var model: String
     var endpoint: String
@@ -161,14 +148,12 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         self.reasoningEffort = reasoningEffort
     }
 
-    /// The name is stored rather than derived, so a build without this preset still lists the
-    /// provider under the vendor's name.
+    // The name is stored, so a build without this preset still lists the provider under the vendor's name.
     init(preset: AIProviderPreset) {
         self.init(name: preset.displayName, type: .custom, presetID: preset.id)
     }
 
-    /// `id` and `type` are what make a row usable, so a row missing either one fails as a whole and
-    /// `AISettings` drops it. Every other field falls back on its own.
+    // A row missing its id or type fails as a whole and AISettings drops it; every other field falls back.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -188,7 +173,6 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         return AIProviderPreset.preset(withID: presetID)
     }
 
-    /// What kind of provider this is, as opposed to what the user named it.
     var kindName: String { preset?.displayName ?? type.displayName }
 
     var displayName: String {
@@ -209,8 +193,6 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-// MARK: - AI Connection Policy
-
 enum AIConnectionPolicy: String, Codable, CaseIterable, Identifiable, Sendable {
     case alwaysAllow
     case askEachTime
@@ -226,8 +208,6 @@ enum AIConnectionPolicy: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 }
-
-// MARK: - AI Chat Mode
 
 enum AIChatMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case ask
@@ -285,8 +265,6 @@ enum AIChatMode: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
-// MARK: - AI Settings
-
 struct AISettings: Codable, Equatable, Sendable {
     var enabled: Bool
     var providers: [AIProviderConfig]
@@ -302,14 +280,14 @@ struct AISettings: Codable, Equatable, Sendable {
     var maxToolRoundtripsEnabled: Bool
     var defaultConnectionPolicy: AIConnectionPolicy
     var chatMode: AIChatMode
-    /// Set from the composer's own context menu rather than the Settings window, because the only
-    /// place the highlight is worth thinking about is the field it wraps.
+    // Set from the composer's own context menu, not from Settings.
     var composerHighlightEnabled: Bool
 
     static let defaultInlineSuggestionDebounceMs: Int = 500
     static let inlineSuggestionDebounceRange: ClosedRange<Int> = 100...3_000
     static let defaultMaxToolRoundtrips: Int = 25
     static let maxToolRoundtripsRange: ClosedRange<Int> = 5...200
+    static let maxSchemaTablesRange: ClosedRange<Int> = 1...100
 
     static let `default` = AISettings(
         enabled: true,
@@ -413,12 +391,58 @@ struct AISettings: Codable, Equatable, Sendable {
         )
     }
 
-    var effectiveMaxToolRoundtrips: Int? {
-        guard maxToolRoundtripsEnabled else { return nil }
-        return min(
+    var clampedMaxToolRoundtrips: Int {
+        min(
             max(maxToolRoundtrips, AISettings.maxToolRoundtripsRange.lowerBound),
             AISettings.maxToolRoundtripsRange.upperBound
         )
+    }
+
+    var effectiveMaxToolRoundtrips: Int? {
+        guard maxToolRoundtripsEnabled else { return nil }
+        return clampedMaxToolRoundtrips
+    }
+
+    // A synced or hand-edited value can be negative, and prefix(_:) traps on one.
+    var clampedMaxSchemaTables: Int {
+        min(
+            max(maxSchemaTables, AISettings.maxSchemaTablesRange.lowerBound),
+            AISettings.maxSchemaTablesRange.upperBound
+        )
+    }
+
+    func provider(withID id: UUID) -> AIProviderConfig? {
+        providers.first { $0.id == id }
+    }
+
+    func upserting(_ provider: AIProviderConfig, makeActiveIfNone: Bool) -> AISettings {
+        var next = self
+        if let index = next.providers.firstIndex(where: { $0.id == provider.id }) {
+            next.providers[index] = provider
+        } else {
+            next.providers.append(provider)
+        }
+        if makeActiveIfNone, next.activeProvider == nil {
+            next.activeProviderID = provider.id
+        }
+        return next
+    }
+
+    func removingProvider(_ id: UUID) -> AISettings {
+        var next = self
+        next.providers.removeAll { $0.id == id }
+        if next.activeProviderID == id {
+            next.activeProviderID = nil
+        }
+        return next
+    }
+
+    // A provider another Mac removed stays removed: replacing never adds one back.
+    func replacingProvider(_ provider: AIProviderConfig) -> AISettings {
+        guard let index = providers.firstIndex(where: { $0.id == provider.id }) else { return self }
+        var next = self
+        next.providers[index] = provider
+        return next
     }
 }
 

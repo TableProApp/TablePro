@@ -1,231 +1,215 @@
-//
-//  KeyboardSettingsView.swift
-//  TablePro
-//
-//  Settings view for customizing keyboard shortcuts.
-//
-
 import AppKit
 import SwiftUI
 
-/// Settings view for keyboard shortcut customization
+// A List, not a grouped Form: a Form builds all 126 rows on first show, a List only the visible ones.
 struct KeyboardSettingsView: View {
-    @Binding var settings: KeyboardSettings
-
+    @ObservedObject private var keyboard: SettingsSlice<KeyboardSettings>
+    @ObservedObject private var filter: SettingsPaneFilter
     @ObservedObject private var modules = AppModuleSettings.shared
-    @State private var searchText = ""
-    @State private var conflictAlert: ConflictAlertState?
-    @State private var systemReservedAlert: ShortcutAction?
-    @State private var reservedAlert: ReservedAlertState?
-    @State private var needsModifierAlert: ShortcutAction?
-    @State private var confirmsReset = false
+    @StateObject private var session: ShortcutRecordingSession
+    @State private var selection: ShortcutAction?
+    @State private var confirmsRestore = false
 
-    private var content: some View {
-        VStack(spacing: 0) {
-            NativeSearchField(
-                text: $searchText,
-                placeholder: String(localized: "Search shortcuts…")
-            )
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 8)
-
-            Form {
-                ForEach(ShortcutCategory.allCases) { category in
-                    let actions = filteredActions(for: category)
-                    if !actions.isEmpty {
-                        Section(category.displayName) {
-                            ForEach(actions) { action in
-                                shortcutRow(for: action)
-                            }
-                        }
-                    }
-                }
-
-                Section {
-                    HStack {
-                        Spacer()
-                        Button(String(localized: "Reset to Defaults")) {
-                            confirmsReset = true
-                        }
-                        .disabled(settings.shortcuts.isEmpty)
-                    }
-                }
-            }
-            .formStyle(.grouped)
-        }
+    init(keyboard: SettingsSlice<KeyboardSettings>, filter: SettingsPaneFilter) {
+        _keyboard = ObservedObject(wrappedValue: keyboard)
+        _filter = ObservedObject(wrappedValue: filter)
+        _session = StateObject(wrappedValue: ShortcutRecordingSession(keyboard: keyboard))
     }
 
     var body: some View {
-        content
-        .alert(String(localized: "Reset All Shortcuts?"), isPresented: $confirmsReset) {
-            Button(String(localized: "Reset"), role: .destructive) {
-                settings = .default
+        let settings = keyboard.value
+        let sections = ShortcutAction.settingsSections(
+            matching: filter.query,
+            in: settings,
+            enabledModules: modules.enabledModules
+        )
+        SettingsFullPageList {
+            List(selection: $selection) {
+                ForEach(sections) { section in
+                    Section(section.category.displayName) {
+                        ForEach(section.actions, id: \.self) { action in
+                            row(for: action, in: settings)
+                        }
+                    }
+                }
+            }
+            .contextMenu(forSelectionType: ShortcutAction.self) { actions in
+                if let action = actions.first {
+                    rowMenu(for: action, in: settings)
+                }
+            } primaryAction: { actions in
+                if let action = actions.first {
+                    session.begin(action)
+                }
+            }
+        } emptyState: {
+            if sections.isEmpty {
+                UnavailableStateView.search(text: filter.query)
+            }
+        } bar: {
+            SettingsListBar {
+                Text(Self.summary(customized: settings.customizedCount))
+                    .foregroundStyle(.secondary)
+            } trailing: {
+                Button(String(localized: "Restore Defaults…")) {
+                    confirmsRestore = true
+                }
+                .disabled(settings.shortcuts.isEmpty)
+                .accessibilityIdentifier("shortcut-restore-defaults")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-pane-keyboard")
+        .alert(
+            session.reassignment?.title ?? "",
+            isPresented: Binding(
+                get: { session.reassignment != nil },
+                set: { if !$0 { session.dismissReassignment() } }
+            ),
+            presenting: session.reassignment
+        ) { request in
+            Button(String(localized: "Reassign")) {
+                session.confirm(request)
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: { request in
+            Text(request.message)
+        }
+        .alert(String(localized: "Restore Default Shortcuts?"), isPresented: $confirmsRestore) {
+            Button(String(localized: "Restore Defaults"), role: .destructive) {
+                keyboard.value = .default
             }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
-            Text(String(localized: "Every custom shortcut goes back to its default."))
+            Text(String(localized: "Every shortcut you changed goes back to its default."))
         }
-        .alert(
-            String(localized: "Shortcut Conflict"),
-            isPresented: Binding(
-                get: { conflictAlert != nil },
-                set: { if !$0 { conflictAlert = nil } }
-            )
-        ) {
-            Button(String(localized: "Cancel"), role: .cancel) {
-                conflictAlert = nil
-            }
-            Button(String(localized: "Reassign")) {
-                if let state = conflictAlert {
-                    if settings.isCustomized(state.conflictingAction) {
-                        settings.clearShortcut(for: state.conflictingAction)
-                    }
-                    settings.setShortcut(state.combo, for: state.action)
-                }
-                conflictAlert = nil
-            }
-        } message: {
-            if let state = conflictAlert {
-                Text(
-                    String(
-                        format: String(localized: "%@ is already used by \"%@\" in %@. Reassigning removes it from that action."),
-                        state.combo.displayString,
-                        state.conflictingAction.displayName,
-                        state.conflictingAction.category.displayName
-                    )
-                )
-            }
-        }
-        .alert(
-            String(localized: "System Reserved Shortcut"),
-            isPresented: Binding(
-                get: { systemReservedAlert != nil },
-                set: { if !$0 { systemReservedAlert = nil } }
-            )
-        ) {
-            Button(String(localized: "OK"), role: .cancel) {
-                systemReservedAlert = nil
-            }
-        } message: {
-            Text(String(localized: "This shortcut is reserved by macOS and cannot be assigned."))
-        }
-        .alert(
-            String(localized: "Reserved Shortcut"),
-            isPresented: Binding(
-                get: { reservedAlert != nil },
-                set: { if !$0 { reservedAlert = nil } }
-            )
-        ) {
-            Button(String(localized: "OK"), role: .cancel) {
-                reservedAlert = nil
-            }
-        } message: {
-            if let state = reservedAlert {
-                Text(
-                    String(
-                        format: String(localized: "This shortcut is reserved for \"%@\" and cannot be assigned."),
-                        state.name
-                    )
-                )
-            }
-        }
-        .alert(
-            String(localized: "Modifier Key Required"),
-            isPresented: Binding(
-                get: { needsModifierAlert != nil },
-                set: { if !$0 { needsModifierAlert = nil } }
-            )
-        ) {
-            Button(String(localized: "OK"), role: .cancel) {
-                needsModifierAlert = nil
-            }
-        } message: {
-            Text(String(localized: "This action needs ⌘ or ⌃. Option and Shift can join them, but cannot hold a shortcut on their own."))
-        }
-        .onAppear {
-            SystemHotkeyChecker.shared.reload()
+        .onDisappear {
+            session.reset()
         }
     }
 
-    // MARK: - Shortcut Row
+    private func row(for action: ShortcutAction, in settings: KeyboardSettings) -> some View {
+        let isArmed = session.recording == action
+        return ShortcutRow(
+            action: action,
+            key: settings.boundKey(for: action),
+            isCustomized: settings.isCustomized(action),
+            claimant: settings.defaultClaimant(for: action),
+            refusal: session.feedback?.action == action ? session.feedback?.message : nil,
+            isArmed: isArmed,
+            heldModifiers: isArmed ? session.heldModifiers : [],
+            keyboard: keyboard,
+            session: session
+        )
+    }
 
     @ViewBuilder
-    private func shortcutRow(for action: ShortcutAction) -> some View {
-        HStack(spacing: 8) {
-            Text(action.displayName)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private func rowMenu(for action: ShortcutAction, in settings: KeyboardSettings) -> some View {
+        Button(String(localized: "Record Shortcut")) {
+            session.begin(action)
+        }
+        Button(String(localized: "Remove Shortcut")) {
+            keyboard.value = keyboard.value.clearing(action)
+        }
+        .disabled(settings.boundKey(for: action) == nil)
+        Button(String(localized: "Reset to Default")) {
+            keyboard.value = keyboard.value.resetting(action)
+        }
+        .disabled(!settings.isCustomized(action))
+    }
 
-            if settings.isCustomized(action) {
-                Button {
-                    settings.resetToDefault(for: action)
-                } label: {
-                    Image(systemName: "arrow.uturn.backward")
-                }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-                .help(String(localized: "Reset to default"))
-                .accessibilityLabel(String(localized: "Reset to default"))
+    static func summary(customized count: Int) -> String {
+        count == 0
+            ? String(localized: "No custom shortcuts")
+            : String(format: String(localized: "%lld customized"), count)
+    }
+}
+
+// Plain values only, so arming or a refusal re-renders just the rows it touches.
+private struct ShortcutRow: View {
+    let action: ShortcutAction
+    let key: BoundKey?
+    let isCustomized: Bool
+    let claimant: ShortcutAction?
+    let refusal: String?
+    let isArmed: Bool
+    let heldModifiers: NSEvent.ModifierFlags
+    let keyboard: SettingsSlice<KeyboardSettings>
+    let session: ShortcutRecordingSession
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(action.displayName)
+                note
             }
-
-            ShortcutRecorderView(
-                combo: Binding(
-                    get: { settings.shortcut(for: action) },
-                    set: { _ in }
-                ),
-                onRecord: { newCombo in
-                    handleRecord(newCombo, for: action)
-                },
-                onClear: {
-                    settings.clearShortcut(for: action)
-                },
-                onUnusableModifiers: {
-                    needsModifierAlert = action
-                }
+            Spacer(minLength: 12)
+            if isCustomized {
+                resetButton
+            }
+            ShortcutRecorderField(
+                action: action,
+                key: key,
+                isArmed: isArmed,
+                heldModifiers: heldModifiers,
+                session: session
             )
-            .frame(width: 160, height: 24)
+            .fixedSize()
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityActions {
+            Button(String(localized: "Record Shortcut")) {
+                session.begin(action)
+            }
+            if key != nil {
+                Button(String(localized: "Remove Shortcut")) {
+                    keyboard.value = keyboard.value.clearing(action)
+                }
+            }
+            if isCustomized {
+                Button(String(localized: "Reset to Default")) {
+                    keyboard.value = keyboard.value.resetting(action)
+                }
+            }
         }
     }
 
-    // MARK: - Helpers
-
-    private func filteredActions(for category: ShortcutCategory) -> [ShortcutAction] {
-        let categoryActions = ShortcutAction.settingsRows(in: category, enabledModules: modules.enabledModules)
-        if searchText.isEmpty {
-            return categoryActions
-        }
-        let query = searchText.lowercased()
-        return categoryActions.filter { $0.displayName.lowercased().contains(query) }
-    }
-
-    private func handleRecord(_ key: BoundKey, for action: ShortcutAction) {
-        if !key.hasModifier, !action.allowsBareKey, !key.isFunctionKey {
-            needsModifierAlert = action
-            return
-        }
-
-        switch ShortcutConflictResolver.resolve(key, for: action, in: settings) {
-        case .none:
-            settings.setShortcut(key, for: action)
-        case .systemReserved:
-            systemReservedAlert = action
-        case .reserved(let name):
-            reservedAlert = ReservedAlertState(action: action, name: name)
-        case .otherAction(let other):
-            conflictAlert = ConflictAlertState(action: action, conflictingAction: other, combo: key)
+    @ViewBuilder private var note: some View {
+        if let refusal {
+            // One Text, not a NoticeLabel: a Label moves the row separator to its title, past the glyph.
+            (Text(Image(systemName: NoticeSeverity.warning.symbolName)).foregroundColor(NoticeSeverity.warning.tint)
+                + Text(verbatim: " " + refusal))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        } else if let claimant, let fallback = KeyboardSettings.defaultShortcuts[action] {
+            Text(String(
+                format: String(localized: "Default %@ is used by “%@”."),
+                fallback.displayString,
+                claimant.displayName
+            ))
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
         }
     }
-}
 
-// MARK: - Alert State
+    private var resetButton: some View {
+        Button {
+            keyboard.value = keyboard.value.resetting(action)
+        } label: {
+            Image(systemName: "arrow.uturn.backward")
+                .frame(minWidth: 20, minHeight: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(resetHelp)
+        .accessibilityLabel(String(format: String(localized: "Reset %@ to default"), action.displayName))
+        .accessibilityIdentifier("shortcut-reset-\(action.rawValue)")
+    }
 
-private struct ConflictAlertState {
-    let action: ShortcutAction
-    let conflictingAction: ShortcutAction
-    let combo: BoundKey
-}
-
-private struct ReservedAlertState {
-    let action: ShortcutAction
-    let name: String
+    private var resetHelp: String {
+        guard let fallback = KeyboardSettings.defaultShortcuts[action] else {
+            return String(localized: "Reset to None")
+        }
+        return String(format: String(localized: "Reset to %@"), fallback.displayString)
+    }
 }

@@ -1,8 +1,4 @@
-//
-//  ExternalConnectionTrustStore.swift
-//  TablePro
-//
-
+import Combine
 import Foundation
 import os
 
@@ -29,9 +25,15 @@ internal final class ExternalConnectionTrustStore: ExternalConnectionTrustChecki
     )
 
     private let defaults: UserDefaults
+    private let changeSubject = PassthroughSubject<Void, Never>()
 
     internal init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = defaults
+    }
+
+    // Sent after the write, so a subscriber that reads entries() sees the change.
+    internal var changes: AnyPublisher<Void, Never> {
+        changeSubject.eraseToAnyPublisher()
     }
 
     internal func isTrusted(_ key: ExternalConnectionTrustKey) -> Bool {
@@ -48,14 +50,17 @@ internal final class ExternalConnectionTrustStore: ExternalConnectionTrustChecki
         updated.append(TrustedExternalConnection(key: key, trustedAt: Date()))
         save(updated)
         Self.logger.info("Trusted external connection \(key.displayDescription, privacy: .private(mask: .hash))")
+        changeSubject.send(())
     }
 
     internal func revoke(_ key: ExternalConnectionTrustKey) {
         save(entries().filter { $0.key != key })
+        changeSubject.send(())
     }
 
     internal func revokeAll() {
         defaults.removeValue(for: Self.storageKey)
+        changeSubject.send(())
     }
 
     internal func entries() -> [TrustedExternalConnection] {

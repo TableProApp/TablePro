@@ -1,14 +1,7 @@
 import Foundation
 
-/// How the MCP server asks before a client may reach a saved connection.
-///
-/// This is MCP's own decision and is deliberately not `AIConnectionPolicy`. That policy answers a
-/// different question, whether a connection's schema may be sent to a model provider, and the
-/// connection form describes it as governing in-app AI agents. Both of its controls disappear when
-/// AI features are off, which left the MCP prompt with no control at all.
-///
-/// `alwaysApprove` is the permissive end. `AIConnectionPolicy.never` is the restrictive end of the
-/// other policy and still denies here, so the two spellings of "never" never meet.
+// MCP's own gate. AIConnectionPolicy answers whether a schema may reach a model provider, and its
+// controls hide when AI is off, so it cannot be this one. Its "never" still denies here.
 enum MCPConnectionApproval: String, Codable, CaseIterable, Identifiable, Sendable {
     case everyTime
     case oncePerConnection
@@ -29,7 +22,7 @@ enum MCPConnectionApproval: String, Codable, CaseIterable, Identifiable, Sendabl
         case .everyTime:
             return String(localized: "Every call that reaches a connection asks first.")
         case .oncePerConnection:
-            return String(localized: "The first call asks. The answer is remembered for that client until you revoke it.")
+            return String(localized: "The first call asks. The answer is remembered for that client until you forget it.")
         case .alwaysApprove:
             return String(localized: "Connections are reached without asking.")
         }

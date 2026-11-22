@@ -63,6 +63,24 @@ struct ConnectionEditorStoreAuthTests {
         #expect(store.credentialProfileFromCurrentCredentials().passwordMode == .source(source))
     }
 
+    @Test("The profile being saved keeps one id while its sheet is up, so a retried Save finds what it wrote")
+    func promotedProfileKeepsItsId() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = editing(connection(source: nil), in: fixture)
+
+        store.presentSaveCredentialsAsProfile()
+        let presented = try #require(store.credentialProfileToSave)
+        #expect(presented.username == "app")
+        #expect(fixture.credentialProfiles.addProfile(presented))
+        #expect(store.credentialProfileToSave?.id == presented.id)
+
+        store.didSaveCredentialProfile(presented)
+        #expect(store.credentialProfileToSave == nil)
+        #expect(store.draft.credentials.mode == .profile(id: presented.id))
+        store.presentSaveCredentialsAsProfile()
+        #expect(store.credentialProfileToSave == nil)
+    }
+
     @Test("A source from a connections file something else changed becomes a prompt, never a profile source")
     func promotionDropsAnUntrustedSource() throws {
         let fixture = try ConnectionEditorStoreFixture()

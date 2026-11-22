@@ -11,8 +11,12 @@ import TableProSSHConfig
 
 extension ConnectionDraft {
     // Every section's plugin defaults are seeded here, once, for a new connection.
-    static func new(type: DatabaseType, traits: ConnectionTypeTraits) -> ConnectionDraft {
-        var draft = ConnectionDraft(type: type)
+    static func new(
+        type: DatabaseType,
+        traits: ConnectionTypeTraits,
+        environment: ConnectionEnvironment = .none
+    ) -> ConnectionDraft {
+        var draft = ConnectionDraft(type: type, environment: environment)
         draft.host = traits.defaultHost ?? ""
         draft.portText = traits.defaultPortText
         draft.fieldValues = traits.defaultValues()
@@ -30,10 +34,12 @@ extension ConnectionDraft {
         traits: ConnectionTypeTraits,
         sshConfigEntries: [SSHConfigEntry] = []
     ) -> ConnectionDraft {
-        var draft = ConnectionDraft(type: connection.type)
         let fields = connection.additionalFields
+        var draft = ConnectionDraft(
+            type: connection.type,
+            environment: fields[ConnectionEnvironment.fieldKey].flatMap(ConnectionEnvironment.init(rawValue:)) ?? .none
+        )
         draft.name = connection.name
-        draft.environment = fields[ConnectionEnvironment.fieldKey].flatMap(ConnectionEnvironment.init(rawValue:)) ?? .none
         draft.host = connection.host
         draft.portText = connection.port > 0 ? String(connection.port) : ""
         draft.database = connection.database
@@ -147,9 +153,11 @@ extension ConnectionDraft {
             ssh.remoteFilePath = connection.sshConfig.remoteFilePath
             ssh.remoteFileAccess = connection.sshConfig.remoteFileAccess
         }
-        ssh.password = secrets.sshPassword ?? ""
-        ssh.keyPassphrase = secrets.sshKeyPassphrase ?? ""
-        ssh.totpSecret = secrets.totpSecret ?? ""
+        ssh.adoptKeychainSecrets(
+            password: secrets.sshPassword,
+            keyPassphrase: secrets.sshKeyPassphrase,
+            totpSecret: secrets.totpSecret
+        )
         ssh.storedPasswordState = secrets.sshPasswordState
         ssh.storedKeyPassphraseState = secrets.sshKeyPassphraseState
 

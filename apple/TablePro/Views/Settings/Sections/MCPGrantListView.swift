@@ -1,47 +1,91 @@
-//
-//  MCPGrantListView.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProMCP
 
-/// The approvals the user has already given, so a remembered answer stays visible and revocable.
+// The Approved Connections page: a remembered answer stays visible here and can be forgotten.
 struct MCPGrantListView: View {
-    @ObservedObject private var mcpServerManager = MCPServerManager.shared
-    @State private var grants: [MCPConnectionGrant] = []
-    @State private var connectionNames: [UUID: String] = [:]
-    @State private var tokenNames: [UUID: String] = [:]
+    @ObservedObject var model: MCPSettingsModel
+    let approval: MCPConnectionApproval
+
+    @State private var isConfirmingForgetAll = false
 
     var body: some View {
-        Group {
-            if grants.isEmpty {
-                Text("No connections are approved yet.")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(grants) { grant in
-                    LabeledContent {
-                        Button(String(localized: "Forget")) {
-                            forget(grant)
-                        }
-                    } label: {
-                        Text(name(for: grant))
-                        if let client = Self.clientName(forSubject: grant.subject, tokenNames: tokenNames) {
-                            Text(client)
-                        }
+        Form {
+            if approval != .oncePerConnection {
+                Section {
+                    SettingsHelpRow(String(
+                        format: String(localized: "Approval is set to “%@”, so these approvals are not used now. They apply again if you choose Ask Once for Each Connection."),
+                        approval.displayName
+                    ))
+                }
+            }
+
+            Section {
+                if model.grants.isEmpty {
+                    if model.hasLoadedGrants {
+                        Text("No approved connections. A connection a client may reach without asking again appears here.")
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    ForEach(model.grants) { grant in
+                        row(grant)
                     }
                 }
-
-                Button(String(localized: "Forget All"), role: .destructive) {
-                    forgetAll()
+            } footer: {
+                if !model.grants.isEmpty {
+                    SettingsSectionActions {
+                        Button(String(localized: "Forget All…"), role: .destructive) {
+                            isConfirmingForgetAll = true
+                        }
+                        .accessibilityIdentifier("mcp-grants-forget-all")
+                    }
                 }
             }
         }
-        .task { await refresh() }
+        .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(SettingsPage.mcpApprovals.pageIdentifier)
+        .alert(String(localized: "Forget All Approvals?"), isPresented: $isConfirmingForgetAll) {
+            Button(String(localized: "Forget All"), role: .destructive) {
+                Task { await model.forgetEveryGrant() }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text("Clients ask again the next time they reach a connection.")
+        }
     }
 
-    private func name(for grant: MCPConnectionGrant) -> String {
-        connectionNames[grant.connectionId] ?? String(localized: "Deleted connection")
+    private func row(_ grant: MCPConnectionGrant) -> some View {
+        let connection = model.connectionNames[grant.connectionId] ?? String(localized: "Deleted connection")
+        let client = Self.clientName(forSubject: grant.subject, tokenNames: model.tokenNames)
+        let forgetLabel = client.map {
+            String(format: String(localized: "Forget %1$@ for %2$@"), connection, $0)
+        } ?? String(format: String(localized: "Forget %@"), connection)
+        return LabeledContent {
+            Button(String(localized: "Forget")) {
+                forget(grant)
+            }
+            .accessibilityLabel(forgetLabel)
+        } label: {
+            Text(verbatim: connection)
+            Text(verbatim: Self.detail(client: client, grantedAt: grant.grantedAt))
+        }
+        .contextMenu {
+            Button(String(localized: "Forget")) {
+                forget(grant)
+            }
+        }
+    }
+
+    private func forget(_ grant: MCPConnectionGrant) {
+        Task { await model.forgetGrant(grant) }
+    }
+
+    private static func detail(client: String?, grantedAt: Date) -> String {
+        let date = grantedAt.formatted(date: .abbreviated, time: .omitted)
+        guard let client else {
+            return String(format: String(localized: "Approved %@"), date)
+        }
+        return String(format: String(localized: "%1$@, approved %2$@"), client, date)
     }
 
     // Two clients approved for one connection would otherwise show as two identical rows.
@@ -54,30 +98,5 @@ struct MCPGrantListView: View {
         default:
             return UUID(uuidString: subject).flatMap { tokenNames[$0] }.map(IntegrationsFormatting.displayTokenName)
         }
-    }
-
-    private func forget(_ grant: MCPConnectionGrant) {
-        Task {
-            await MCPServerManager.shared.forgetGrant(subject: grant.subject, connectionId: grant.connectionId)
-            await refresh()
-        }
-    }
-
-    private func forgetAll() {
-        Task {
-            await MCPServerManager.shared.forgetEveryGrant()
-            await refresh()
-        }
-    }
-
-    private func refresh() async {
-        grants = await mcpServerManager.connectionGrants()
-            .sorted { $0.grantedAt > $1.grantedAt }
-        connectionNames = Dictionary(
-            ConnectionStorage.shared.loadConnections().map { ($0.id, $0.name) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        let tokens = await mcpServerManager.tokenStore?.list() ?? []
-        tokenNames = Dictionary(tokens.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
     }
 }

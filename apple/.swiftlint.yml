@@ -634,3 +634,22 @@ custom_rules:
     excluded_match_kinds: [comment, doccomment]
     message: "Every top-level @Suite expansion walks every other one, so compile time grows with their square. Keep @Suite only to carry a trait such as .serialized."
     severity: error
+
+  # Settings
+  # A line that introduces a CopyableCodeBlock keeps its colon.
+  settings_label_trailing_colon:
+    name: "Settings Label Colon"
+    included: ['.*/TablePro/Views/Settings/']
+    regex: '\b(?:Text|Label|LabeledContent|Toggle|Picker|TextField|SecureField|Stepper|DatePicker|ColorPicker|Section|SettingsNumberField|SettingsTextField|SettingsDrillRow)\((?:\s*route:[^,\n]*,)?\s*(?:title:\s*)?(?:String\(\s*localized:\s*)?("(?!e\.g\.|i\.e\.)(?:\p{Lu}|\p{Ll}[^"\\\s]*[ \t])[^"\\\n]*?\p{L}[:：][ \t]?")(?!(?:[^\n]*\n){0,3}[^\n]*\bCopyableCodeBlock\()'
+    capture_group: 1
+    excluded_match_kinds: [comment, doccomment]
+    message: "A grouped Form draws the label column, so a label takes no trailing colon."
+    severity: error
+  # An SF Symbol sized by a text style is not text, so its chain is left alone.
+  settings_caption_font:
+    name: "Settings Caption Font"
+    included: ['.*/TablePro/Views/Settings/']
+    regex: '(?<!\bImage\(systemName:[^\n]{1,120})(?<!\bImage\(systemName:[^\n]{1,120}\n[ \t]{0,40})(?<!\bImage\(systemName:[^\n]{1,120}\n[ \t]{0,40}\.[^\n]{0,160}\n[ \t]{0,40})\.font\(\s*(?:[^()\n]*?[?:]\s*)?(?:Font)?\.(?:system\(\s*\.)?caption2?\b'
+    excluded_match_kinds: [comment, doccomment]
+    message: ".caption is 10pt on macOS. Put help in the label's second Text, or use .subheadline with .secondary."
+    severity: error

@@ -22,6 +22,13 @@ extension ConnectionEditorStore {
 }
 
 enum QueryTimeoutInheritance {
+    // The field is narrow, so words go in the subtitle and the prompt stays short.
+    static func prompt(globalSeconds: Int) -> String {
+        let seconds = inheritedSeconds(globalSeconds: globalSeconds)
+        guard seconds > 0 else { return String(localized: "No limit") }
+        return String(format: String(localized: "Global (%d)"), seconds)
+    }
+
     static func subtitle(globalSeconds: Int, locale: Locale = .autoupdatingCurrent) -> String {
         let seconds = inheritedSeconds(globalSeconds: globalSeconds)
         guard seconds > 0 else {

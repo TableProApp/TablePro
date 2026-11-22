@@ -161,7 +161,9 @@ private struct SSHAndProxiesSectionView: View {
         case .privateKey:
             guard ssh.privateKeyPath.isEmpty else { return nil }
             return String(localized: "Auto-detects from ~/.ssh/config and default key locations.")
-        case .password, .keyboardInteractive, .none:
+        case .keyboardInteractive:
+            return String(localized: "Password is sent via keyboard-interactive challenge-response.")
+        case .password, .none:
             return nil
         }
     }

@@ -1,172 +1,227 @@
-//
-//  LinkedFoldersSection.swift
-//  TablePro
-//
-//  Settings section for managing linked folders.
-//  Linked folders are watched for .tablepro connection files.
-//
-
 import AppKit
+import Combine
 import SwiftUI
 import TableProImport
+import UniformTypeIdentifiers
 
-struct LinkedFoldersSection: View {
-    static var title: String { String(localized: "Linked Folders") }
+@MainActor
+internal final class LinkedFoldersModel: ObservableObject {
+    @Published internal private(set) var folders: [LinkedFolder]
 
+    private let storage: LinkedFolderStorage
+    private let reloadWatcher: @MainActor () -> Void
+    private var updates: AnyCancellable?
+
+    internal init(
+        storage: LinkedFolderStorage = .shared,
+        updates: AnyPublisher<Void, Never> = AppEvents.shared.linkedFoldersDidUpdate.eraseToAnyPublisher(),
+        reloadWatcher: @escaping @MainActor () -> Void = { LinkedFolderWatcher.shared.reload() }
+    ) {
+        self.storage = storage
+        self.reloadWatcher = reloadWatcher
+        folders = storage.loadFolders()
+        // A folder added or removed anywhere else would otherwise leave the list as it was at load.
+        self.updates = updates.sink { [weak self] _ in
+            self?.reload()
+        }
+    }
+
+    internal func reload() {
+        apply(storage.loadFolders())
+    }
+
+    internal func add(_ url: URL) {
+        let path = PathPortability.contractHome(url.path)
+        let current = storage.loadFolders()
+        guard !current.contains(where: { $0.path == path }) else {
+            apply(current)
+            return
+        }
+        storage.addFolder(LinkedFolder(path: path))
+        apply(storage.loadFolders())
+        reloadWatcher()
+    }
+
+    internal func remove(_ folder: LinkedFolder) {
+        storage.removeFolder(folder)
+        apply(storage.loadFolders())
+        reloadWatcher()
+    }
+
+    internal func setEnabled(_ isEnabled: Bool, for folder: LinkedFolder) {
+        var current = storage.loadFolders()
+        guard let index = current.firstIndex(where: { $0.id == folder.id }),
+              current[index].isEnabled != isEnabled else { return }
+        current[index].isEnabled = isEnabled
+        storage.saveFolders(current)
+        apply(current)
+        reloadWatcher()
+    }
+
+    private func apply(_ loaded: [LinkedFolder]) {
+        guard loaded != folders else { return }
+        folders = loaded
+    }
+}
+
+internal struct LinkedFoldersPage: View {
+    @EnvironmentObject private var model: LinkedFoldersModel
     @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var watcher = LinkedFolderWatcher.shared
-    @State private var folders: [LinkedFolder] = LinkedFolderStorage.shared.loadFolders()
+    @State private var isAddingFolder = false
 
     private var isLicensed: Bool {
         featureAccess.isAvailable(.linkedFolders)
     }
 
-    var body: some View {
-        Section {
-            if !isLicensed {
-                LicenseGateRow(feature: .linkedFolders)
-            }
+    internal var body: some View {
+        Form {
+            Section {
+                if !isLicensed {
+                    LicenseGateRow(feature: .linkedFolders)
+                }
 
-            if folders.isEmpty {
-                Text("No linked folders. Add a folder to watch for shared connection files.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(folders) { folder in
-                    folderRow(folder)
+                if model.folders.isEmpty {
+                    Text("No linked folders")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.folders) { folder in
+                        LinkedFolderRow(
+                            folder: folder,
+                            status: folder.isEnabled ? watcher.folderStatuses[folder.id] : nil,
+                            canTurnOn: isLicensed,
+                            model: model
+                        )
+                    }
+                }
+
+                SettingsHelpRow(
+                    "TablePro reads .tablepro files saved without a passphrase from these folders. Their connections appear read only in the sidebar."
+                )
+            } footer: {
+                SettingsSectionActions {
+                    Button(String(localized: "Add Folder…")) {
+                        isAddingFolder = true
+                    }
+                    .disabled(!isLicensed)
+                    .accessibilityIdentifier("linked-folders-add-button")
                 }
             }
-
-            Button {
-                addFolder()
-            } label: {
-                Label("Add Folder…", systemImage: "plus")
+        }
+        .formStyle(.grouped)
+        .fileImporter(isPresented: $isAddingFolder, allowedContentTypes: [.folder]) { result in
+            if case .success(let url) = result {
+                model.add(url)
             }
-            .disabled(!isLicensed)
-        } header: {
-            Text(Self.title)
-        } footer: {
-            Text("Watched folders are scanned for .tablepro files without a passphrase. Connections appear read only in the sidebar.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
-        /// The list is seeded once at init, so without this a folder added or removed anywhere else
-        /// leaves this pane showing the set as it stood when the window was first built.
-        .onReceive(AppEvents.shared.linkedFoldersDidUpdate) { _ in
-            folders = LinkedFolderStorage.shared.loadFolders()
-        }
+        .modifier(LinkedFolderDialogMessage())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(SettingsPage.linkedFolders.pageIdentifier)
     }
+}
 
-    // MARK: - Folder Row
+private struct LinkedFolderRow: View {
+    let folder: LinkedFolder
+    let status: LinkedFolderStatus?
+    let canTurnOn: Bool
+    let model: LinkedFoldersModel
 
-    private func folderRow(_ folder: LinkedFolder) -> some View {
-        HStack(spacing: 8) {
-            Toggle(isOn: Binding(
-                get: { folder.isEnabled },
-                set: { newValue in
-                    guard let index = folders.firstIndex(where: { $0.id == folder.id }) else { return }
-                    folders[index].isEnabled = newValue
-                    LinkedFolderStorage.shared.saveFolders(folders)
-                    LinkedFolderWatcher.shared.reload()
+    var body: some View {
+        LabeledContent {
+            HStack(spacing: 8) {
+                Toggle(isOn: Binding(get: { folder.isEnabled }, set: { model.setEnabled($0, for: folder) })) {
+                    Text(verbatim: folder.name)
                 }
-            )) {
-                EmptyView()
+                .toggleStyle(.switch)
+                .labelsHidden()
+                // A folder already on can always be turned off, licensed or not.
+                .disabled(!canTurnOn && !folder.isEnabled)
+                .accessibilityLabel(String(format: String(localized: "Watch %@"), folder.name))
+
+                Menu {
+                    actions
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.button)
+                .buttonStyle(.borderless)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help(String(localized: "Actions"))
+                .accessibilityLabel(String(format: String(localized: "Actions for %@"), folder.name))
             }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-            .labelsHidden()
-            .accessibilityLabel(folder.name)
-
+        } label: {
             VStack(alignment: .leading, spacing: 1) {
-                Text(folder.name)
-                    .font(.body)
+                Text(verbatim: folder.name)
                     .lineLimit(1)
-
-                Text(folder.path)
-                    .font(.caption)
+                Text(verbatim: folder.path)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-
-                if folder.isEnabled, let status = watcher.folderStatuses[folder.id] {
-                    statusLines(status)
+                    .help(folder.path)
+                if let status {
+                    LinkedFolderStatusLines(status: status)
+                        .font(.subheadline)
                 }
             }
             .accessibilityElement(children: .combine)
-
-            Spacer()
-
-            Button(role: .destructive) {
-                removeFolder(folder)
-            } label: {
-                Image(systemName: "trash")
-                    .frame(width: 24, height: 24)
-                    .foregroundStyle(.secondary)
+            .accessibilityActions {
+                Button(String(localized: "Show in Finder"), action: showInFinder)
+                Button(String(localized: "Remove"), action: remove)
             }
-            .buttonStyle(.plain)
-            .help(String(localized: "Remove Folder"))
-            .accessibilityLabel(String(localized: "Remove folder"))
         }
+        .contextMenu {
+            actions
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("linked-folder-row-\(folder.id.uuidString)")
     }
 
-    @ViewBuilder
-    private func statusLines(_ status: LinkedFolderStatus) -> some View {
+    @ViewBuilder private var actions: some View {
+        Button(String(localized: "Show in Finder"), action: showInFinder)
+        Divider()
+        Button(String(localized: "Remove"), role: .destructive, action: remove)
+    }
+
+    private func remove() {
+        model.remove(folder)
+    }
+
+    private func showInFinder() {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: folder.expandedPath)])
+    }
+}
+
+private struct LinkedFolderStatusLines: View {
+    let status: LinkedFolderStatus
+
+    var body: some View {
         switch status.contents {
         case .missing:
-            warning(String(localized: "Folder not found"))
+            NoticeLabel(String(localized: "Folder not found"))
         case .unreadable:
-            warning(String(localized: "Can't read this folder"))
+            NoticeLabel(String(localized: "Can't read this folder"))
         case .connections(let count, let unreadableFiles):
-            Text(LinkedFolderStatusCopy.connections(count))
-                .font(.caption)
+            Text(verbatim: LinkedFolderStatusCopy.connections(count))
                 .foregroundStyle(.secondary)
             if unreadableFiles > 0 {
-                warning(LinkedFolderStatusCopy.unreadableFiles(unreadableFiles))
+                NoticeLabel(LinkedFolderStatusCopy.unreadableFiles(unreadableFiles))
             }
             if !status.isWatched {
-                warning(String(localized: "Not watching this folder for changes"))
+                NoticeLabel(String(localized: "Not watching this folder for changes"))
             }
         }
     }
+}
 
-    private func warning(_ message: String) -> some View {
-        Label {
-            Text(message)
-                .foregroundStyle(.secondary)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+private struct LinkedFolderDialogMessage: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.fileDialogMessage(Text("Choose a folder to watch for .tablepro connection files"))
+        } else {
+            content
         }
-        .font(.caption)
-    }
-
-    // MARK: - Actions
-
-    private func addFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.message = String(localized: "Choose a folder to watch for .tablepro connection files")
-
-        guard let window = NSApp.keyWindow else { return }
-        panel.beginSheetModal(for: window) { response in
-            guard response == .OK, let url = panel.url else { return }
-            let path = PathPortability.contractHome(url.path)
-
-            guard !self.folders.contains(where: { $0.path == path }) else { return }
-
-            let folder = LinkedFolder(path: path)
-            LinkedFolderStorage.shared.addFolder(folder)
-            self.folders = LinkedFolderStorage.shared.loadFolders()
-            LinkedFolderWatcher.shared.reload()
-        }
-    }
-
-    private func removeFolder(_ folder: LinkedFolder) {
-        LinkedFolderStorage.shared.removeFolder(folder)
-        folders = LinkedFolderStorage.shared.loadFolders()
-        LinkedFolderWatcher.shared.reload()
     }
 }
 

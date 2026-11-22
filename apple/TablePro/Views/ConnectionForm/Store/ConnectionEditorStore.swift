@@ -73,7 +73,8 @@ final class ConnectionEditorStore: ObservableObject {
     @Published var isChoosingType = false
     @Published var pendingRetype: RetypeProposal?
     @Published var sshProfileSheet: SSHProfileSheet?
-    @Published var isSavingCredentialsAsProfile = false
+    // Made once per presentation: the sheet saves, retries and leases Test Source's user under this id.
+    @Published var credentialProfileToSave: CredentialProfile?
     @Published var saveError: ConnectionEditorSaveError?
     @Published var deleteError: ConnectionEditorDeleteError?
 

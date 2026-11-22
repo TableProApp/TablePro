@@ -13,6 +13,7 @@ struct ConnectionEditorStoreOptionsTests {
             QueryTimeoutInheritance.subtitle(globalSeconds: 0, locale: english)
                 == "Leave blank to use Settings > Connections: no limit."
         )
+        #expect(QueryTimeoutInheritance.prompt(globalSeconds: 0) == "No limit")
     }
 
     @Test("A global limit reads as a duration in words", arguments: [
@@ -29,8 +30,18 @@ struct ConnectionEditorStoreOptionsTests {
         )
     }
 
+    @Test("The prompt inside the seconds field keeps the number")
+    func promptKeepsSeconds() {
+        #expect(QueryTimeoutInheritance.prompt(globalSeconds: 60) == "Global (60)")
+    }
+
     @Test("An out-of-range global value shows what a connection actually gets")
     func outOfRangeGlobalIsClamped() {
+        #expect(QueryTimeoutInheritance.prompt(globalSeconds: -5) == "No limit")
+        #expect(
+            QueryTimeoutInheritance.prompt(globalSeconds: 9_999_999)
+                == "Global (\(DatabaseConnection.queryTimeoutSecondsRange.upperBound))"
+        )
         #expect(QueryTimeoutInheritance.inheritedSeconds(globalSeconds: -5) == 0)
         #expect(
             QueryTimeoutInheritance.inheritedSeconds(globalSeconds: 9_999_999)

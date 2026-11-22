@@ -22,9 +22,9 @@ struct ConnectionEditorPresentations: ViewModifier {
             .sheet(item: $store.sshProfileSheet) { sheet in
                 sshProfileEditor(sheet)
             }
-            .sheet(isPresented: $store.isSavingCredentialsAsProfile) {
+            .sheet(item: $store.credentialProfileToSave) { profile in
                 CredentialProfileEditorSheet(
-                    existingProfile: store.credentialProfileFromCurrentCredentials(),
+                    existingProfile: profile,
                     initialPassword: store.draft.credentials.password,
                     initialDatabaseType: store.draft.type,
                     onSave: { store.didSaveCredentialProfile($0) }

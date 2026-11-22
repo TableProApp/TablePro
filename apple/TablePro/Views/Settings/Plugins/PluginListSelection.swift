@@ -1,8 +1,3 @@
-//
-//  PluginListSelection.swift
-//  TablePro
-//
-
 import Foundation
 
 // A rejected bundle can carry the id of a loaded plugin, so rejected rows are told apart by URL.
@@ -26,6 +21,13 @@ internal enum PluginListSelection: Hashable {
         }
         let first = rejected.first(where: \.isOutdated) ?? rejected.first
         return first.map { .rejected($0.url) }
+    }
+
+    internal var route: SettingsRoute {
+        switch self {
+        case .plugin(let id): .plugin(id: id)
+        case .rejected(let url): .rejectedPlugin(url)
+        }
     }
 }
 

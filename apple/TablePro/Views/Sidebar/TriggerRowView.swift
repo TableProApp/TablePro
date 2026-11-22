@@ -1,8 +1,3 @@
-//
-//  TriggerRowView.swift
-//  TablePro
-//
-
 import SwiftUI
 
 enum TriggerRowLogic {
@@ -12,8 +7,7 @@ enum TriggerRowLogic {
         return String(format: String(localized: "%1$@ on %2$@"), base, table)
     }
 
-    /// The row shows the name; the table it fires for, its timing and its event go here, because
-    /// those are what tell two same-named triggers apart in a database-wide list.
+    // The table, timing and event are what tell two same-named triggers apart in a database-wide list.
     static func tooltip(for trigger: TriggerInfo) -> String {
         var lines: [String] = [trigger.qualifiedName]
         let firing = [trigger.timing, trigger.event, trigger.orientation]
@@ -29,8 +23,8 @@ enum TriggerRowLogic {
 }
 
 struct TriggerRowView: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let trigger: TriggerInfo
+    let showsIcon: Bool
 
     var body: some View {
         Label {
@@ -51,7 +45,7 @@ struct TriggerRowView: View {
                 .selectionAwareTint(Color.accentColor)
                 .frame(width: 16)
         }
-        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+        .sidebarRowIcon(visible: showsIcon)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(TriggerRowLogic.accessibilityLabel(for: trigger))
         .help(TriggerRowLogic.tooltip(for: trigger))

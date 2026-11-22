@@ -1,13 +1,8 @@
-//
-//  MultiLineEditorView.swift
-//  TablePro
-//
-
 import SwiftUI
 
 internal struct MultiLineEditorView: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var dataGridSettings = AppSettingsManager.shared.dataGridSlice
     let context: FieldEditorContext
     var onPopOut: ((String) -> Void)?
     var isExpanded = false
@@ -29,7 +24,7 @@ internal struct MultiLineEditorView: View {
                     font: themeEngine.valueFont,
                     movesFocusOnTab: true,
                     style: .code,
-                    marksInvisibleCharacters: settingsManager.dataGrid.showInvisibleCharacters,
+                    marksInvisibleCharacters: dataGridSettings.value.showInvisibleCharacters,
                     documentID: context.documentID.map { AnyHashable($0) }
                 )
                 .valueWell(clipsContent: true)

@@ -1,48 +1,147 @@
 import SwiftUI
 
-struct MCPTokenCreateFailure: Equatable, Sendable {
+struct MCPTokenCreateFailure: Error, Equatable, Sendable {
     let message: String
     // Nothing in this sheet can fix a server that is not running, so the alert closes it.
     let endsSheet: Bool
 }
 
+struct MCPTokenRequest: Equatable, Sendable {
+    let name: String
+    let permissions: TokenPermissions
+    let connectionIds: Set<UUID>?
+    let expiresAt: Date?
+}
+
+struct MCPTokenReveal: Sendable {
+    let plaintext: String
+    let setup: MCPHTTPClientSetup
+    let port: Int
+    let configuredPort: Int
+}
+
+// One sheet, the form and then the token, so the plaintext lives only in this sheet's state and goes with it.
 struct MCPTokenCreateSheet: View {
     private enum Field: Hashable {
         case name
     }
 
-    @Environment(\.dismiss) private var dismiss
-    let onGenerate: (String, TokenPermissions, Set<UUID>?, Date?) async -> MCPTokenCreateFailure?
+    private enum Access: Hashable {
+        case all
+        case selected
+    }
 
-    @State private var tokenName = ""
+    @Environment(\.dismiss) private var dismiss
+    let onGenerate: (MCPTokenRequest) async -> Result<MCPTokenReveal, MCPTokenCreateFailure>
+
+    @State private var name = ""
     @State private var permissions: TokenPermissions = .readOnly
-    @State private var connectionAccess: ConnectionAccessMode = .all
+    @State private var access: Access = .all
     @State private var selectedConnectionIds: Set<UUID> = []
-    @State private var expirationOption: ExpirationOption = .never
-    @State private var customExpirationDate = Calendar.current.date(byAdding: .day, value: 30, to: .now) ?? .now
+    @State private var expiry: TokenExpiry = .never
+    @State private var customExpiry = TokenExpiry.defaultCustomDate()
     @State private var connections: [DatabaseConnection] = []
     @State private var isGenerating = false
     @State private var failure: MCPTokenCreateFailure?
+    @State private var reveal: MCPTokenReveal?
     @FocusState private var focused: Field?
 
     var body: some View {
+        Group {
+            if let reveal {
+                MCPTokenRevealSheet(reveal: reveal) {
+                    dismiss()
+                }
+            } else {
+                createForm
+            }
+        }
+        .frame(minWidth: 540, minHeight: 520)
+    }
+
+    private var createForm: some View {
         VStack(spacing: 0) {
             Form {
-                nameSection
-                permissionsSection
-                connectionAccessSection
-                expirationSection
+                Section {
+                    TextField(text: $name, prompt: Text("Cursor on my Mac")) {
+                        Text("Name")
+                    }
+                    .focused($focused, equals: .name)
+                    .accessibilityIdentifier("mcp-token-name-field")
+
+                    Picker(selection: $permissions) {
+                        ForEach(TokenPermissions.allCases) { permission in
+                            Text(permission.displayName).tag(permission)
+                        }
+                    } label: {
+                        Text("Permissions")
+                        Text(permissions.summary)
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("mcp-token-permissions-picker")
+                }
+
+                Section {
+                    Picker(selection: $access) {
+                        Text("All").tag(Access.all)
+                        Text("Selected").tag(Access.selected)
+                    } label: {
+                        Text("Connections")
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("mcp-token-connections-picker")
+
+                    if access == .selected {
+                        ConnectionAllowlistSection(
+                            selection: $selectedConnectionIds,
+                            connections: connections,
+                            showsSelectAll: true
+                        )
+                    }
+                }
+
+                Section {
+                    Picker(selection: $expiry) {
+                        ForEach(TokenExpiry.allCases) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    } label: {
+                        Text("Expires")
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("mcp-token-expiry-picker")
+
+                    if expiry == .custom {
+                        DatePicker(
+                            String(localized: "Expiration date"),
+                            selection: $customExpiry,
+                            in: Date.now...,
+                            displayedComponents: .date
+                        )
+                    }
+                }
             }
             .formStyle(.grouped)
+            .defaultFocus($focused, .name)
 
             Divider()
 
-            actionBar
-                .padding()
+            DialogFooter {
+                Button(String(localized: "Cancel"), role: .cancel) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button(String(localized: "Generate"), action: generate)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canGenerate)
+                    .accessibilityIdentifier("mcp-token-generate")
+            }
+            .padding()
         }
-        .frame(minWidth: 480, minHeight: 520)
         .task {
             connections = ConnectionStorage.shared.loadConnections()
+                .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         }
         .alert(
             String(localized: "Couldn't Create the Token"),
@@ -60,6 +159,14 @@ struct MCPTokenCreateSheet: View {
         }
     }
 
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canGenerate: Bool {
+        !isGenerating && !trimmedName.isEmpty && !(access == .selected && selectedConnectionIds.isEmpty)
+    }
+
     private var failureBinding: Binding<Bool> {
         Binding(
             get: { failure != nil },
@@ -71,148 +178,24 @@ struct MCPTokenCreateSheet: View {
         )
     }
 
-    private var nameSection: some View {
-        Section(String(localized: "Token Name")) {
-            TextField(String(localized: "e.g., Cursor on my Mac"), text: $tokenName)
-                .focused($focused, equals: .name)
-        }
-    }
-
-    private var permissionsSection: some View {
-        Section(String(localized: "Permission Level")) {
-            Picker(String(localized: "Permission"), selection: $permissions) {
-                ForEach(TokenPermissions.allCases) { permission in
-                    Text(permission.displayName).tag(permission)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-        }
-    }
-
-    private var connectionAccessSection: some View {
-        Section(String(localized: "Connection Access")) {
-            Picker(String(localized: "Access"), selection: $connectionAccess) {
-                Text(String(localized: "All Connections")).tag(ConnectionAccessMode.all)
-                Text(String(localized: "Select Connections")).tag(ConnectionAccessMode.selected)
-            }
-            .labelsHidden()
-
-            if connectionAccess == .selected {
-                connectionList
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var connectionList: some View {
-        if connections.isEmpty {
-            Text(String(localized: "No saved connections"))
-                .foregroundStyle(.secondary)
-        } else {
-            ForEach(connections) { connection in
-                Toggle(isOn: connectionBinding(for: connection.id)) {
-                    HStack(spacing: 6) {
-                        Text(connection.name)
-                        Text(connection.type.displayName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.checkbox)
-            }
-        }
-    }
-
-    private var expirationSection: some View {
-        Section(String(localized: "Expiration")) {
-            Picker(String(localized: "Expires"), selection: $expirationOption) {
-                ForEach(ExpirationOption.allCases) { option in
-                    Text(option.displayName).tag(option)
-                }
-            }
-            .labelsHidden()
-
-            if expirationOption == .custom {
-                DatePicker(
-                    String(localized: "Expiration date"),
-                    selection: $customExpirationDate,
-                    in: Date.now...,
-                    displayedComponents: .date
-                )
-            }
-        }
-    }
-
-    private var actionBar: some View {
-        DialogFooter {
-            Button(String(localized: "Cancel"), role: .cancel) {
-                dismiss()
-            }
-            .keyboardShortcut(.cancelAction)
-
-            Button(String(localized: "Generate")) {
-                let connectionIds: Set<UUID>? = connectionAccess == .selected ? selectedConnectionIds : nil
-                isGenerating = true
-                Task {
-                    failure = await onGenerate(tokenName, permissions, connectionIds, resolvedExpirationDate)
-                    isGenerating = false
-                }
-            }
-            .keyboardShortcut(.defaultAction)
-            .disabled(isGenerating
-                || tokenName.trimmingCharacters(in: .whitespaces).isEmpty
-                || (connectionAccess == .selected && selectedConnectionIds.isEmpty))
-        }
-    }
-
-    private func connectionBinding(for id: UUID) -> Binding<Bool> {
-        Binding(
-            get: { selectedConnectionIds.contains(id) },
-            set: { isSelected in
-                if isSelected {
-                    selectedConnectionIds.insert(id)
-                } else {
-                    selectedConnectionIds.remove(id)
-                }
-            }
+    private func generate() {
+        guard canGenerate else { return }
+        let request = MCPTokenRequest(
+            name: trimmedName,
+            permissions: permissions,
+            connectionIds: access == .selected ? selectedConnectionIds : nil,
+            expiresAt: expiry.resolvedDate(custom: customExpiry)
         )
-    }
-
-    private var resolvedExpirationDate: Date? {
-        switch expirationOption {
-        case .never: nil
-        case .thirtyDays: Calendar.current.date(byAdding: .day, value: 30, to: .now)
-        case .sixtyDays: Calendar.current.date(byAdding: .day, value: 60, to: .now)
-        case .ninetyDays: Calendar.current.date(byAdding: .day, value: 90, to: .now)
-        case .custom: customExpirationDate
-        }
-    }
-}
-
-private enum ConnectionAccessMode: String, Identifiable {
-    case all
-    case selected
-
-    var id: String { rawValue }
-}
-
-private enum ExpirationOption: String, CaseIterable, Identifiable {
-    case never
-    case thirtyDays
-    case sixtyDays
-    case ninetyDays
-    case custom
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .never: String(localized: "Never")
-        case .thirtyDays: String(localized: "30 days")
-        case .sixtyDays: String(localized: "60 days")
-        case .ninetyDays: String(localized: "90 days")
-        case .custom: String(localized: "Custom")
+        isGenerating = true
+        Task {
+            let result = await onGenerate(request)
+            isGenerating = false
+            switch result {
+            case .success(let issued):
+                reveal = issued
+            case .failure(let failed):
+                failure = failed
+            }
         }
     }
 }

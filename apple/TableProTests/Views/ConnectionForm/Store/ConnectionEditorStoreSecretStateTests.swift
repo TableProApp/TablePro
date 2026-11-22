@@ -157,6 +157,66 @@ struct ConnectionEditorStoreSecretStateTests {
         #expect(!plan.deletesAfterRecord.contains(.sshPassword))
         #expect(!plan.deletesAfterRecord.contains(.sshKeyPassphrase))
     }
+
+    @Test("Showing an inline SSH secret the Keychain returned asks for authentication first")
+    func savedInlineSSHSecretsNeedAuthenticationToShow() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = store(fixture, keychain: .found("secret"), connection: sshConnection())
+
+        #expect(store.draft.ssh.savedSecrets == [.password, .keyPassphrase, .totpSecret])
+        store.update { $0.ssh.password = "typed over the saved one" }
+        #expect(store.draft.ssh.savedSecrets.contains(.password))
+    }
+
+    @Test("A connection with no inline SSH secrets has nothing to guard")
+    func absentInlineSSHSecretsNeedNoAuthentication() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = store(fixture, keychain: .notFound, connection: sshConnection())
+
+        #expect(store.draft.ssh.savedSecrets.isEmpty)
+    }
+
+    @Test("A linked profile's secrets stay after a switch to inline, still guarded, and Save writes them to the connection")
+    func profileSecretsStayAfterSwitchingToInline() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let profile = SSHProfile(name: "Bastion", host: "bastion.example.com", username: "ops", authMethod: .password)
+        #expect(fixture.sshProfiles.addProfile(profile))
+        #expect(fixture.sshProfiles.saveSSHPassword("profile-secret", for: profile.id))
+        var connection = TestFixtures.makeConnection()
+        connection.sshProfileId = profile.id
+        connection.sshTunnelMode = .profile(id: profile.id, snapshot: profile.toSSHConfiguration())
+        #expect(fixture.seed([connection]))
+
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        store.switchSSHProfileToInline()
+
+        #expect(store.draft.ssh.host == "bastion.example.com")
+        #expect(store.draft.ssh.password == "profile-secret")
+        #expect(store.draft.ssh.savedSecrets == [.password])
+
+        _ = try store.save().get()
+        #expect(fixture.storage.loadSSHPassword(for: connection.id) == "profile-secret")
+        #expect(fixture.sshProfiles.loadSSHPassword(for: profile.id) == "profile-secret")
+    }
+
+    @Test("A profile deleted while the editor is open hands its secrets over guarded")
+    func deletedProfileSecretsAreGuarded() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let profile = SSHProfile(name: "Bastion", host: "bastion.example.com", username: "ops", authMethod: .privateKey)
+        #expect(fixture.sshProfiles.addProfile(profile))
+        var connection = TestFixtures.makeConnection()
+        connection.sshProfileId = profile.id
+        connection.sshTunnelMode = .profile(id: profile.id, snapshot: profile.toSSHConfiguration())
+        #expect(fixture.seed([connection]))
+
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        #expect(store.draft.ssh.savedSecrets.isEmpty)
+        #expect(fixture.sshProfiles.saveKeyPassphrase("phrase", for: profile.id))
+        #expect(fixture.sshProfiles.deleteProfile(profile))
+
+        #expect(store.draft.ssh.keyPassphrase == "phrase")
+        #expect(store.draft.ssh.savedSecrets == [.keyPassphrase])
+    }
 }
 
 @MainActor

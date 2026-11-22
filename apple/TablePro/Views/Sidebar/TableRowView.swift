@@ -1,8 +1,3 @@
-//
-//  TableRowView.swift
-//  TablePro
-//
-
 import SwiftUI
 
 enum TableRowLogic {
@@ -72,15 +67,14 @@ enum TableRowLogic {
 }
 
 struct TableRow: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let table: TableInfo
+    let showsIcon: Bool
+    let showsComment: Bool
     let isPendingTruncate: Bool
     let isPendingDelete: Bool
     var isFavorite: Bool = false
     var showsPartitionCount: Bool = false
-    /// Set when the row stands for a partition that is a relation of its own. It draws beside the
-    /// name like a comment does, and it is not the comment: the comment is what the server stores
-    /// against the object, and it is hidden behind its own setting.
+    // A partition that is a relation: drawn beside the name like a comment, and never hidden by the comment setting.
     var partitionBound: String?
     var accessibilityKind: String?
     var onToggleFavorite: (() -> Void)?
@@ -93,19 +87,15 @@ struct TableRow: View {
     }
 
     private var visibleComment: String? {
-        guard settingsManager.general.showObjectComments,
+        guard showsComment,
               let comment = table.comment, !comment.isEmpty
         else { return nil }
         return comment
     }
 
-    private var showsObjectIcon: Bool {
-        settingsManager.general.showObjectIcons
-    }
-
     private var showsLeadingIcon: Bool {
         TableRowLogic.showsLeadingIcon(
-            showObjectIcons: showsObjectIcon,
+            showObjectIcons: showsIcon,
             isPendingTruncate: isPendingTruncate,
             isPendingDelete: isPendingDelete
         )
@@ -155,7 +145,7 @@ struct TableRow: View {
                     }
                 }
             } icon: {
-                if showsObjectIcon {
+                if showsIcon {
                     Image(systemName: TableRowLogic.iconName(for: table.type))
                         .selectionAwareTint(Color.accentColor)
                         .frame(width: 16)

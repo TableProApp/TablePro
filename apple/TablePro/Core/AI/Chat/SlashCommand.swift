@@ -46,24 +46,23 @@ enum SlashCommand: String, CaseIterable, Identifiable, Sendable {
         SlashCommand(rawValue: name.trimmingCharacters(in: .whitespaces).lowercased()) != nil
     }
 
-    /// Parses a typed input. Returns the command and any body text after it,
-    /// or nil if the text doesn't start with a known slash command.
-    /// Examples:
-    ///   "/explain"               -> (.explain, "")
-    ///   "/explain SELECT 1"      -> (.explain, "SELECT 1")
-    ///   "/Notacommand"           -> nil
-    ///   "hello"                  -> nil
     static func parse(_ text: String) -> (command: SlashCommand, body: String)? {
+        guard let invocation = invocation(in: text),
+              let command = SlashCommand(rawValue: invocation.name.lowercased())
+        else { return nil }
+        return (command, invocation.body)
+    }
+
+    static func invocation(in text: String) -> (name: String, body: String)? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("/") else { return nil }
         let afterSlash = trimmed.dropFirst()
-        let nameSubstring = afterSlash.prefix(while: { !$0.isWhitespace })
-        let name = String(nameSubstring).lowercased()
-        guard let command = SlashCommand(rawValue: name) else { return nil }
+        let name = afterSlash.prefix(while: { !$0.isWhitespace })
+        guard !name.isEmpty else { return nil }
         let body = afterSlash
-            .dropFirst(nameSubstring.count)
-            .trimmingCharacters(in: .whitespaces)
-        return (command, body)
+            .dropFirst(name.count)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (String(name), body)
     }
 
     static func match(prefix: String) -> [SlashCommand] {

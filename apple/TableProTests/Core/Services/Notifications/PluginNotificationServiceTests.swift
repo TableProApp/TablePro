@@ -85,6 +85,15 @@ struct PluginNotificationServiceTests {
         withExtendedLifetime(service) {}
     }
 
+    @Test("A plugin notification carries the default sound, so the system Play sound switch decides")
+    func notificationCarriesDefaultSound() async throws {
+        let service = makeService()
+        await service.notifyRejected([rejected("com.example.rejected")])
+
+        let request = try #require(presenter.posted.first)
+        #expect(request.content.sound == .default)
+    }
+
     @Test("A manual retry and a later successful install clear the delivered failure")
     func manualRetryClearsTheFailure() async throws {
         let service = makeService()

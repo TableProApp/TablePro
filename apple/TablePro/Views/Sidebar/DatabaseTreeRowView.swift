@@ -1,28 +1,20 @@
-//
-//  DatabaseTreeRowView.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProPluginKit
 
-/// What a row can do on its own. Everything a menu item does now goes through
-/// `SidebarMenuCommand`, so this is only the star, which is a control inside the row.
+// Only the star: every menu item goes through `SidebarMenuCommand`.
 struct DatabaseTreeRowActions {
     let toggleFavorite: (DatabaseTreeTableRef) -> Void
     let toggleFavoriteDatabase: (String) -> Void
 }
 
-/// Row labels are built here rather than inline so the database row reads to VoiceOver in the same
-/// shape `TableRowLogic` already uses for a table, instead of inventing a second phrasing.
+// Same "Kind: Name" shape `TableRowLogic` gives a table, so VoiceOver reads one phrasing.
 enum DatabaseTreeRowLabel {
     static func database(name: String, isFavorite: Bool) -> String {
         guard isFavorite else { return name }
         return name + ", " + String(localized: "favorite")
     }
 
-    /// Read in the "Kind: Name" shape a table row uses. The count takes two keys rather than
-    /// inflection markup, which `String(localized:)` leaves unprocessed.
+    // Two keys rather than inflection markup, which `String(localized:)` leaves unprocessed.
     static func folder(name: String, memberCount: Int) -> String {
         let row = String(format: String(localized: "%@: %@"), String(localized: "Folder"), name)
         let count = memberCount == 1
@@ -39,26 +31,21 @@ struct DatabaseTreeRowContext {
     let systemSchemas: Set<String>
     let pendingTruncates: Set<DatabaseTreeTableRef>
     let pendingDeletes: Set<DatabaseTreeTableRef>
-    /// AppKit sizes the row, but it lays out `NSTableCellView.textField` and `imageView` to do it,
-    /// and this cell hosts SwiftUI instead. The size has to reach the content or the text stays one
-    /// size inside three different row heights.
+    // The cell hosts SwiftUI, so AppKit's row size never reaches the text unless it is passed in.
     var rowSize: SidebarRowSize = .medium
     var isExternalSchema: @MainActor (String, String) -> Bool = { _, _ in false }
-    /// The plugin decides what a table is called, so a section header cannot hardcode "Tables".
     var objectKindTitle: @MainActor (SidebarObjectKind) -> String = { $0.pluralDisplayName }
-    /// Whether a routine's row shows its bare name or its signature depends on the other rows in
-    /// its section, which only the node builder can see, so the row asks rather than deciding.
+    // Bare name or signature depends on the other rows in the section, which only the node builder sees.
     var routineDisplayLabel: @MainActor (DatabaseTreeRoutineRef) -> String = { $0.routine.name }
-    /// Whether a partitioned table's row shows its partition count. It follows the same setting
-    /// that decides whether partitions are listed at all, so a hidden set of partitions does not
-    /// leave a number behind on the parent.
+    // Follows the setting that lists partitions, so hidden partitions leave no count on the parent.
     var showsPartitions: Bool = true
-    /// The engine's schema rows are databases attached beside the opened file, never one to switch to.
+    // The engine's schema rows are databases attached beside the opened file, never one to switch to.
     var listsAttachedSchemas: Bool = false
+    var showsObjectIcons: Bool = true
+    var showsObjectComments: Bool = true
 }
 
 struct DatabaseTreeRowView: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let node: DatabaseTreeNode
     let isFavorite: Bool
     let context: DatabaseTreeRowContext
@@ -66,10 +53,7 @@ struct DatabaseTreeRowView: View {
 
     @State private var isHovered = false
 
-    /// No `.contextMenu` here. A menu on the hosted view answers the right-click before the outline
-    /// view ever sees it, which cost the clicked-row highlight, `clickedRow`, and any menu at all in
-    /// the empty area below the last row. The outline owns the menu now; see
-    /// `DatabaseTreeOutlineCoordinator+Menu`.
+    // No `.contextMenu`: a menu on the hosted view takes the right-click before the outline sets `clickedRow`.
     var body: some View {
         row
     }
@@ -94,6 +78,8 @@ struct DatabaseTreeRowView: View {
         case .temporaryTable(let ref):
             TableRow(
                 table: ref.table,
+                showsIcon: context.showsObjectIcons,
+                showsComment: context.showsObjectComments,
                 isPendingTruncate: false,
                 isPendingDelete: false,
                 showsPartitionCount: context.showsPartitions,
@@ -120,13 +106,17 @@ struct DatabaseTreeRowView: View {
         case .partition(let ref):
             partitionRow(ref)
         case .routine(let ref):
-            RoutineRowView(routine: ref.routine, displayLabel: context.routineDisplayLabel(ref))
+            RoutineRowView(
+                routine: ref.routine,
+                displayLabel: context.routineDisplayLabel(ref),
+                showsIcon: context.showsObjectIcons
+            )
         case .trigger(let ref):
-            TriggerRowView(trigger: ref.trigger)
+            TriggerRowView(trigger: ref.trigger, showsIcon: context.showsObjectIcons)
         case .userType(let ref):
-            UserTypeRowView(type: ref.type)
+            UserTypeRowView(type: ref.type, showsIcon: context.showsObjectIcons)
         case .serverObject(let ref):
-            ServerObjectRowView(object: ref.object, kind: ref.kind)
+            ServerObjectRowView(object: ref.object, kind: ref.kind, showsIcon: context.showsObjectIcons)
         case .status(let status):
             statusRow(status)
         case .objectKindSection(let kind):
@@ -147,9 +137,7 @@ struct DatabaseTreeRowView: View {
         }
     }
 
-    /// A source list section title carries no icon and no chevron of its own: AppKit draws the
-    /// group row's background and its collapse control, and an icon here would be a second glyph
-    /// competing with the one on every object below it.
+    // No icon: AppKit draws the group row and its collapse control, and a glyph here would compete with the rows'.
     private func sectionHeader(_ text: String) -> some View {
         Text(text)
             .font(.caption.weight(.semibold))
@@ -169,14 +157,14 @@ struct DatabaseTreeRowView: View {
         } icon: {
             Image(systemName: "folder")
         }
-        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+        .sidebarRowIcon(visible: context.showsObjectIcons)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(DatabaseTreeRowLabel.folder(name: ref.folder.name, memberCount: ref.memberCount))
     }
 
     private func objectGroupRow(_ kind: SidebarObjectKind) -> some View {
         Label(context.objectKindTitle(kind), systemImage: kind.iconName)
-            .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+            .sidebarRowIcon(visible: context.showsObjectIcons)
             .lineLimit(1)
     }
 
@@ -201,6 +189,8 @@ struct DatabaseTreeRowView: View {
     private func tableRow(_ ref: DatabaseTreeTableRef) -> some View {
         TableRow(
             table: ref.table,
+            showsIcon: context.showsObjectIcons,
+            showsComment: context.showsObjectComments,
             isPendingTruncate: context.pendingTruncates.contains(ref),
             isPendingDelete: context.pendingDeletes.contains(ref),
             isFavorite: isFavorite,
@@ -209,12 +199,7 @@ struct DatabaseTreeRowView: View {
         )
     }
 
-    /// A partition that is a relation draws as the table it is, so a staged Drop or Truncate, a
-    /// favourite star and the accessibility status all keep working, with its bound in the caption
-    /// slot beside the name. One that is not a relation has none of those states to show.
-    ///
-    /// The bound truncates from the middle, not the tail: a range bound puts the value that tells
-    /// one partition from the next at both ends, and tail truncation keeps only the opening one.
+    // A range bound puts the value that tells partitions apart at both ends, so the caption truncates in the middle.
     @ViewBuilder
     private func partitionRow(_ ref: DatabaseTreePartitionRef) -> some View {
         let caption = SidebarPartitionRow.caption(
@@ -224,6 +209,8 @@ struct DatabaseTreeRowView: View {
         if let tableRef = ref.tableRef {
             TableRow(
                 table: tableRef.table,
+                showsIcon: context.showsObjectIcons,
+                showsComment: context.showsObjectComments,
                 isPendingTruncate: context.pendingTruncates.contains(tableRef),
                 isPendingDelete: context.pendingDeletes.contains(tableRef),
                 isFavorite: isFavorite,
@@ -251,7 +238,7 @@ struct DatabaseTreeRowView: View {
                     .selectionAwareTint(Color.accentColor)
                     .frame(width: 16)
             }
-            .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+            .sidebarRowIcon(visible: context.showsObjectIcons)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
                 SidebarPartitionRow.accessibilityLabel(
@@ -263,8 +250,7 @@ struct DatabaseTreeRowView: View {
         }
     }
 
-    /// Redis rows carry their own count and type rather than reusing `TableRow`, which is built
-    /// around a `TableInfo` a key does not have.
+    // Not `TableRow`: that is built around a `TableInfo` a key does not have.
     @ViewBuilder
     private func redisRow(_ node: RedisKeyNode) -> some View {
         switch node {
@@ -318,7 +304,7 @@ struct DatabaseTreeRowView: View {
         } icon: {
             Image(systemName: systemImage)
         }
-        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+        .sidebarRowIcon(visible: context.showsObjectIcons)
         .lineLimit(1)
         .sidebarRowForeground(isActive: isActive, isSystem: isSystem)
     }

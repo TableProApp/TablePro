@@ -1,18 +1,10 @@
-//
-//  DDLTextView.swift
-//  TablePro
-//
-//  Read-only DDL view with tree-sitter syntax highlighting via TableProEditorKit
-//
-
 import SwiftUI
 import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
 
-/// Read-only DDL display with syntax highlighting powered by TableProEditorKit
 struct DDLTextView: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var editorSettings = AppSettingsManager.shared.editorSlice
     let ddl: String
     @Binding var fontSize: Double
     var databaseType: DatabaseType?
@@ -21,7 +13,6 @@ struct DDLTextView: View {
     @State private var editorState = SourceEditorState()
     @State private var editorConfiguration: SourceEditorConfiguration
 
-    /// Primary initializer accepting DDL as a value (read-only display)
     init(ddl: String, fontSize: Binding<Double>, databaseType: DatabaseType? = nil) {
         self.ddl = ddl
         self._text = State(wrappedValue: ddl)
@@ -46,6 +37,9 @@ struct DDLTextView: View {
         }
         .onChange(of: fontSize) { newSize in
             editorConfiguration = Self.makeConfiguration(fontSize: newSize)
+        }
+        .onChange(of: editorSettings.value) { _ in
+            editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
         }
     }
 

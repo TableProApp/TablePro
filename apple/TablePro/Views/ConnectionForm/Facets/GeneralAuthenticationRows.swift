@@ -138,7 +138,7 @@ struct GeneralCredentialsRows: View {
                     store.setCredentialMode(mode)
                 case .saveAsProfile:
                     pickerGeneration += 1
-                    store.isSavingCredentialsAsProfile = true
+                    store.presentSaveCredentialsAsProfile()
                 case .editProfile:
                     pickerGeneration += 1
                     if let profile = store.selectedCredentialProfile {
@@ -170,61 +170,14 @@ private func passwordTitle(_ store: ConnectionEditorStore) -> String {
 struct GeneralPasswordRow: View {
     @ObservedObject var store: ConnectionEditorStore
 
-    @StateObject private var reveal = SecretReveal()
-    @FocusState private var isFocused: Bool
-
-    private var requiresAuthentication: Bool {
-        store.draft.credentials.storedPasswordState != .absent
-    }
-
     var body: some View {
-        let title = passwordTitle(store)
-        LabeledContent {
-            HStack(spacing: 8) {
-                field(title: title)
-                    .labelsHidden()
-                    .frame(minWidth: 0, idealWidth: 200, maxWidth: .infinity)
-                    .focused($isFocused)
-                    .accessibilityIdentifier(BuiltInRow.password.accessibilityIdentifier)
-
-                Button {
-                    Task { await reveal.setRevealed(!reveal.isRevealed, requiresAuthentication: requiresAuthentication) }
-                } label: {
-                    Image(systemName: reveal.isRevealed ? "eye.slash" : "eye")
-                }
-                .buttonStyle(.borderless)
-                .help(revealTitle)
-                .accessibilityLabel(revealTitle)
-                .accessibilityIdentifier("connection-form-password-reveal")
-            }
-        } label: {
-            EditorRowLabel(title, row: .builtIn(.password), store: store)
-        }
-        .editorRowFocus(.builtIn(.password), store: store, isFocused: $isFocused)
-    }
-
-    private var revealTitle: String {
-        reveal.isRevealed ? String(localized: "Hide password") : String(localized: "Show password")
-    }
-
-    @ViewBuilder
-    private func field(title: String) -> some View {
-        let prompt = Text(verbatim: EditorFieldPrompt.text(nil, row: .builtIn(.password), store: store))
-        if reveal.isRevealed {
-            TextField(text: password, prompt: prompt) { Text(verbatim: title) }
-                .autocorrectionDisabled()
-        } else {
-            SecureField(text: password, prompt: prompt) { Text(verbatim: title) }
-        }
-    }
-
-    private var password: Binding<String> {
-        Binding(
-            get: { store.draft.credentials.password },
-            set: { newValue in
-                store.noteEdited(.builtIn(.password))
-                store.update { $0.credentials.password = newValue }
-            }
+        EditorRevealableSecureRow(
+            passwordTitle(store),
+            text: store.binding(\.credentials.password),
+            kind: .password,
+            requiresAuthentication: store.draft.credentials.storedPasswordState != .absent,
+            row: .builtIn(.password),
+            store: store
         )
     }
 }

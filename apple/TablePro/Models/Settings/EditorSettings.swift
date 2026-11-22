@@ -1,9 +1,6 @@
-//
-//  EditorSettings.swift
-//  TablePro
-//
-
 import AppKit
+import Combine
+import CoreText
 import Foundation
 import TableProAutocomplete
 
@@ -15,26 +12,28 @@ internal struct FontFamilyOption: Equatable, Identifiable, Sendable {
 internal enum EditorFontResolver {
     static let systemMonoId = "System Mono"
 
-    static let availableMonospacedFamilies: [FontFamilyOption] = {
-        var options: [FontFamilyOption] = [
-            FontFamilyOption(id: systemMonoId, displayName: systemMonoId)
-        ]
+    // One CoreText query for monospaced faces; asking NSFontManager family by family took 83 to 863 ms.
+    static func availableMonospacedFamilies() -> [FontFamilyOption] {
+        familyOptions(from: monospacedFamilyNames())
+    }
 
-        let familyNames = NSFontManager.shared.availableFontFamilies
-            .filter { $0 != systemMonoId }
-            .filter(isMonospacedFamily)
-            .sorted { lhs, rhs in
-                lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
-            }
+    static func familyOptions(from familyNames: [String]) -> [FontFamilyOption] {
+        let names = Set(familyNames)
+            .filter { !$0.hasPrefix(".") && $0 != systemMonoId }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        return [FontFamilyOption(id: systemMonoId, displayName: systemMonoId)]
+            + names.map { FontFamilyOption(id: $0, displayName: $0) }
+    }
 
-        var seen: Set<String> = [systemMonoId]
-        for family in familyNames where !seen.contains(family) {
-            seen.insert(family)
-            options.append(FontFamilyOption(id: family, displayName: family))
+    private static func monospacedFamilyNames() -> [String] {
+        let traits = [kCTFontSymbolicTrait: CTFontSymbolicTraits.traitMonoSpace.rawValue] as CFDictionary
+        let descriptor = CTFontDescriptorCreateWithAttributes([kCTFontTraitsAttribute: traits] as CFDictionary)
+        let collection = CTFontCollectionCreateWithFontDescriptors([descriptor] as CFArray, nil)
+        guard let matches = CTFontCollectionCreateMatchingFontDescriptors(collection) as? [CTFontDescriptor] else {
+            return []
         }
-
-        return options
-    }()
+        return matches.compactMap { CTFontDescriptorCopyAttribute($0, kCTFontFamilyNameAttribute) as? String }
+    }
 
     static func resolve(familyId: String, size: CGFloat) -> NSFont {
         guard familyId != systemMonoId else {
@@ -49,16 +48,34 @@ internal enum EditorFontResolver {
 
         return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
     }
+}
 
-    static func isAvailable(familyId: String) -> Bool {
-        guard familyId != systemMonoId else { return true }
-        return isMonospacedFamily(familyId)
+// The font pickers' list, rebuilt when a font is installed or removed while the app runs.
+@MainActor
+internal final class MonospacedFontFamilies: ObservableObject {
+    internal static let shared = MonospacedFontFamilies()
+
+    @Published internal private(set) var families: [FontFamilyOption]
+    private let load: () -> [FontFamilyOption]
+    private var fontSetChanges: AnyCancellable?
+
+    internal init(
+        notificationCenter: NotificationCenter = .default,
+        load: @escaping () -> [FontFamilyOption] = { EditorFontResolver.availableMonospacedFamilies() }
+    ) {
+        self.load = load
+        families = load()
+        fontSetChanges = notificationCenter.publisher(for: NSFont.fontSetChangedNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.reload()
+            }
     }
 
-    private static func isMonospacedFamily(_ familyId: String) -> Bool {
-        let descriptor = NSFontDescriptor(fontAttributes: [.family: familyId])
-        guard let font = NSFont(descriptor: descriptor, size: 12) else { return false }
-        return font.fontDescriptor.symbolicTraits.contains(.monoSpace)
+    internal func reload() {
+        let latest = load()
+        guard latest != families else { return }
+        families = latest
     }
 }
 
@@ -73,11 +90,10 @@ internal enum EditorKeyBindings: String, Codable, CaseIterable {
     case emacs
 }
 
-/// Editor settings
 struct EditorSettings: Codable, Equatable {
     var showLineNumbers: Bool
     var highlightCurrentLine: Bool
-    var tabWidth: Int // 2, 4, or 8 spaces
+    var tabWidth: Int
     var wordWrap: Bool
     var keyBindings: EditorKeyBindings
     var keywordCase: SQLKeywordCase
@@ -156,9 +172,7 @@ struct EditorSettings: Codable, Equatable {
         )
     }
 
-    // Spelled out so `uppercaseKeywords` and `vimModeEnabled` stay on the wire after their properties became
-    // `keywordCase` and `keyBindings`. Editor settings sync as one JSON blob, so it carries both the key an older
-    // build reads and the key this one writes.
+    // Synced as one blob, so the legacy uppercaseKeywords and vimModeEnabled keys stay for older builds.
     private enum CodingKeys: String, CodingKey {
         case showLineNumbers
         case highlightCurrentLine
@@ -212,7 +226,6 @@ struct EditorSettings: Codable, Equatable {
         try container.encode(jsonViewerPreferredMode, forKey: .jsonViewerPreferredMode)
     }
 
-    /// Clamped tab width (1-16)
     var clampedTabWidth: Int {
         min(max(tabWidth, 1), 16)
     }

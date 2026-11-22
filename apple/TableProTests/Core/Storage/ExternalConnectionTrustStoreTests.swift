@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 @testable import TablePro
 import Testing
@@ -118,6 +119,37 @@ struct ExternalConnectionTrustStoreTests {
         store.revokeAll()
 
         #expect(store.entries().isEmpty)
+    }
+
+    @Test("Trust, revoke and revoke all notify after the write lands")
+    func changesFollowEachWrite() throws {
+        let store = try makeStore()
+        var seenCounts: [Int] = []
+        let subscription = store.changes.sink { _ in
+            seenCounts.append(store.entries().count)
+        }
+
+        store.trust(loopbackKey(scopeName: "ddev-shop"))
+        store.trust(loopbackKey(scopeName: "ddev-blog"))
+        store.revoke(loopbackKey(scopeName: "ddev-shop"))
+        store.revokeAll()
+
+        #expect(seenCounts == [1, 2, 1, 0])
+        subscription.cancel()
+    }
+
+    @Test("A refused remote trust sends no change")
+    func refusedTrustIsSilent() throws {
+        let store = try makeStore()
+        var changes = 0
+        let subscription = store.changes.sink { _ in changes += 1 }
+
+        store.trust(ExternalConnectionTrustKey(
+            databaseType: "MySQL", host: "db.evil.example.com", database: "db", username: "db", scopeName: ""
+        ))
+
+        #expect(changes == 0)
+        subscription.cancel()
     }
 
     @Test("Trusting the same key twice keeps one entry")

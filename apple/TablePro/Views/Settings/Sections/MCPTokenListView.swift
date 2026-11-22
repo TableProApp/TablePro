@@ -1,143 +1,247 @@
-import AppKit
 import SwiftUI
 import TableProMCP
 
-struct MCPTokenListView: View {
-    let tokens: [MCPAuthToken]
-    let isStoreAvailable: Bool
-    let onGenerate: () -> Void
-    let onRevoke: (UUID) -> Void
-    let onDelete: (Set<UUID>) -> Void
+enum MCPTokenAlert: Equatable {
+    case serverNotRunning
+    case revocationNotSaved
+    case deletionNotSaved
 
-    @State private var selection: Set<UUID> = []
-    @State private var deleteCandidates: [MCPAuthToken] = []
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if tokens.isEmpty {
-                emptyState
-            } else {
-                List(selection: $selection) {
-                    ForEach(tokens) { token in
-                        MCPTokenRow(token: token)
-                            .tag(token.id)
-                            .contextMenu {
-                                contextMenu(for: token)
-                            }
-                    }
-                }
-                .frame(minHeight: 160)
-                .onDeleteCommand(perform: deleteSelectionFromKeyboard)
-            }
-
-            HStack(spacing: 8) {
-                Button {
-                    onGenerate()
-                } label: {
-                    Label(String(localized: "Generate Token"), systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!isStoreAvailable)
-                .accessibilityLabel(String(localized: "Generate token"))
-
-                Spacer()
-            }
-        }
-        .alert(
-            deleteAlertTitle,
-            isPresented: deleteAlertBinding,
-            presenting: deleteCandidates.isEmpty ? nil : deleteCandidates
-        ) { candidates in
-            Button(String(localized: "Cancel"), role: .cancel) {
-                deleteCandidates = []
-            }
-            Button(String(localized: "Delete"), role: .destructive) {
-                let ids = Set(candidates.map(\.id))
-                onDelete(ids)
-                selection.subtract(ids)
-                deleteCandidates = []
-            }
-        } message: { candidates in
-            Text(verbatim: Self.deleteAlertMessage(for: candidates))
+    var title: String {
+        switch self {
+        case .serverNotRunning: String(localized: "MCP Server Not Running")
+        case .revocationNotSaved: String(localized: "Couldn't Save the Revocation")
+        case .deletionNotSaved: String(localized: "Couldn't Save the Deletion")
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "key")
-                .font(.title)
-                .foregroundStyle(.tertiary)
-            Text(isStoreAvailable ? String(localized: "No tokens created") : String(localized: "Tokens are not available"))
-                .foregroundStyle(.secondary)
-            Text(isStoreAvailable
-                ? String(localized: "Generate a token so external clients can connect with their own credentials.")
-                : String(localized: "Tokens load while the MCP server is running."))
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
+    var message: String {
+        switch self {
+        case .serverNotRunning:
+            String(localized: "The MCP server is not running, so TablePro cannot change its tokens now. Start the server, then try again.")
+        case .revocationNotSaved, .deletionNotSaved:
+            String(localized: "TablePro could not save the change to the Keychain. The token works again after TablePro restarts.")
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+    }
+}
+
+// The Tokens page: a full-page list, so a long list of clients scrolls on its own.
+struct MCPTokenListView: View {
+    private struct Confirmation: Identifiable {
+        enum Kind {
+            case revoke
+            case delete
+        }
+
+        let kind: Kind
+        let tokens: [MCPAuthToken]
+
+        var id: [UUID] { tokens.map(\.id) }
+    }
+
+    @ObservedObject var model: MCPSettingsModel
+    let configuredPort: () -> Int
+
+    @State private var selection: Set<UUID> = []
+    @State private var confirmation: Confirmation?
+    @State private var tokenAlert: MCPTokenAlert?
+    @State private var showsCreateSheet = false
+
+    var body: some View {
+        SettingsFullPageList {
+            List(selection: $selection) {
+                ForEach(rows) { token in
+                    MCPTokenRow(
+                        token: token,
+                        onRevoke: token.isActive ? { requestRevoke([token]) } : nil,
+                        onDelete: { requestDelete([token]) }
+                    )
+                    .tag(token.id)
+                }
+            }
+            .accessibilityIdentifier("mcp-tokens-list")
+            .contextMenu(forSelectionType: UUID.self) { ids in
+                menu(for: ids)
+            }
+            .onDeleteCommand {
+                requestDelete(tokens(in: selection))
+            }
+            .alert(
+                confirmationTitle,
+                isPresented: confirmationBinding,
+                presenting: confirmation
+            ) { confirmation in
+                switch confirmation.kind {
+                case .revoke:
+                    Button(String(localized: "Revoke"), role: .destructive) {
+                        revoke(confirmation.tokens)
+                    }
+                case .delete:
+                    Button(String(localized: "Delete"), role: .destructive) {
+                        delete(confirmation.tokens)
+                    }
+                }
+                Button(String(localized: "Cancel"), role: .cancel) {}
+            } message: { confirmation in
+                Text(verbatim: Self.confirmationMessage(confirmation))
+            }
+        } emptyState: {
+            emptyState
+        } bar: {
+            SettingsListBar(
+                addLabel: String(localized: "Generate Token"),
+                removeLabel: String(localized: "Delete"),
+                canAdd: model.tokenStore != nil,
+                canRemove: !tokens(in: selection).isEmpty,
+                addHelp: String(localized: "Generate Token…"),
+                removeHelp: String(localized: "Delete…"),
+                addIdentifier: "mcp-token-add",
+                removeIdentifier: "mcp-token-remove",
+                onAdd: { showsCreateSheet = true },
+                onRemove: { requestDelete(tokens(in: selection)) }
+            )
+        }
+        .sheet(isPresented: $showsCreateSheet) {
+            MCPTokenCreateSheet { request in
+                await model.generate(request, configuredPort: configuredPort())
+            }
+        }
+        .alert(tokenAlert?.title ?? "", isPresented: tokenAlertBinding, presenting: tokenAlert) { _ in
+            Button(String(localized: "OK")) {}
+        } message: { alert in
+            Text(verbatim: alert.message)
+        }
+        .onChange(of: model.tokens.map(\.id)) { ids in
+            selection.formIntersection(ids)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(SettingsPage.mcpTokens.pageIdentifier)
+    }
+
+    // Tokens from a stopped server stay loaded but are not shown, since nothing can change them.
+    private var rows: [MCPAuthToken] {
+        model.tokenStore == nil ? [] : model.tokens
+    }
+
+    private func tokens(in ids: Set<UUID>) -> [MCPAuthToken] {
+        rows.filter { ids.contains($0.id) }
     }
 
     @ViewBuilder
-    private func contextMenu(for token: MCPAuthToken) -> some View {
-        if token.isActive {
-            Button(role: .destructive) {
-                onRevoke(token.id)
-            } label: {
-                Label(String(localized: "Revoke"), systemImage: "xmark.circle")
+    private var emptyState: some View {
+        if model.tokenStore == nil {
+            UnavailableStateView(
+                String(localized: "Tokens Unavailable"),
+                systemImage: "key",
+                description: Text("Tokens load while the MCP server is running.")
+            )
+        } else if model.hasLoadedTokens && model.tokens.isEmpty {
+            UnavailableStateView {
+                Label("No Tokens", systemImage: "key")
+            } description: {
+                Text("Generate a token so external clients can connect with their own credentials.")
+            } actions: {
+                Button(String(localized: "Generate Token…")) {
+                    showsCreateSheet = true
+                }
+                .accessibilityIdentifier("mcp-token-generate-empty")
             }
         }
-        Button {
-            copyTokenId(token.id)
-        } label: {
-            Label(String(localized: "Copy ID"), systemImage: "doc.on.doc")
+    }
+
+    @ViewBuilder
+    private func menu(for ids: Set<UUID>) -> some View {
+        let targets = tokens(in: ids)
+        if !targets.isEmpty {
+            if targets.contains(where: { $0.isActive }) {
+                Button(String(localized: "Revoke…")) {
+                    requestRevoke(targets)
+                }
+            }
+            if targets.count == 1, let token = targets.first {
+                Button(String(localized: "Copy ID")) {
+                    ClipboardService.shared.writeText(token.id.uuidString)
+                }
+            }
+            Divider()
+            Button(String(localized: "Delete…"), role: .destructive) {
+                requestDelete(targets)
+            }
         }
-        Divider()
-        Button(role: .destructive) {
-            // A right-click inside a multiple selection acts on all of it, as in Finder.
-            deleteCandidates = selection.contains(token.id) ? selectedTokens : [token]
-        } label: {
-            Label(String(localized: "Delete…"), systemImage: "trash")
+    }
+
+    private func requestRevoke(_ targets: [MCPAuthToken]) {
+        let active = targets.filter { $0.isActive }
+        guard !active.isEmpty else { return }
+        confirmation = Confirmation(kind: .revoke, tokens: active)
+    }
+
+    private func requestDelete(_ targets: [MCPAuthToken]) {
+        guard !targets.isEmpty else { return }
+        confirmation = Confirmation(kind: .delete, tokens: targets)
+    }
+
+    private func revoke(_ targets: [MCPAuthToken]) {
+        let ids = Set(targets.map(\.id))
+        Task {
+            tokenAlert = await model.revoke(ids)
         }
     }
 
-    private var selectedTokens: [MCPAuthToken] {
-        tokens.filter { selection.contains($0.id) }
-    }
-
-    private func deleteSelectionFromKeyboard() {
-        deleteCandidates = selectedTokens
-    }
-
-    private func copyTokenId(_ id: UUID) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(id.uuidString, forType: .string)
-    }
-
-    private var deleteAlertTitle: String {
-        deleteCandidates.count > 1
-            ? String(format: String(localized: "Delete %d tokens?"), deleteCandidates.count)
-            : String(localized: "Delete token?")
-    }
-
-    private static func deleteAlertMessage(for candidates: [MCPAuthToken]) -> String {
-        guard candidates.count > 1 else {
-            return String(
-                format: String(localized: "“%@” will be permanently deleted. External clients using this token will lose access immediately."),
-                candidates.first?.name ?? ""
-            )
+    private func delete(_ targets: [MCPAuthToken]) {
+        let ids = Set(targets.map(\.id))
+        selection.subtract(ids)
+        Task {
+            tokenAlert = await model.delete(ids)
         }
-        return String(localized: "These tokens will be permanently deleted. External clients using them will lose access immediately.")
     }
 
-    private var deleteAlertBinding: Binding<Bool> {
+    private var confirmationTitle: String {
+        guard let confirmation else { return "" }
+        let count = confirmation.tokens.count
+        let name = confirmation.tokens.first?.name ?? ""
+        switch confirmation.kind {
+        case .revoke:
+            return count > 1
+                ? String(format: String(localized: "Revoke %d Tokens?"), count)
+                : String(format: String(localized: "Revoke “%@”?"), name)
+        case .delete:
+            return count > 1
+                ? String(format: String(localized: "Delete %d Tokens?"), count)
+                : String(format: String(localized: "Delete “%@”?"), name)
+        }
+    }
+
+    private static func confirmationMessage(_ confirmation: Confirmation) -> String {
+        let isSingle = confirmation.tokens.count == 1
+        switch confirmation.kind {
+        case .revoke:
+            return isSingle
+                ? String(localized: "Apps using it lose access now. This can't be undone.")
+                : String(localized: "Apps using them lose access now. This can't be undone.")
+        case .delete:
+            return isSingle
+                ? String(localized: "Apps using it lose access now, and the token leaves this list.")
+                : String(localized: "Apps using them lose access now, and the tokens leave this list.")
+        }
+    }
+
+    private var confirmationBinding: Binding<Bool> {
         Binding(
-            get: { !deleteCandidates.isEmpty },
+            get: { confirmation != nil },
             set: { isPresented in
                 if !isPresented {
-                    deleteCandidates = []
+                    confirmation = nil
+                }
+            }
+        )
+    }
+
+    private var tokenAlertBinding: Binding<Bool> {
+        Binding(
+            get: { tokenAlert != nil },
+            set: { isPresented in
+                if !isPresented {
+                    tokenAlert = nil
                 }
             }
         )
@@ -146,56 +250,79 @@ struct MCPTokenListView: View {
 
 private struct MCPTokenRow: View {
     let token: MCPAuthToken
+    let onRevoke: (() -> Void)?
+    let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(token.name)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: token.name)
+                    .lineLimit(1)
 
-                HStack(spacing: 8) {
+                HStack(spacing: 4) {
                     Text(token.permissions.displayName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Text(token.prefix + "…")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-
+                    Text(verbatim: "·")
+                    connectionsText
+                    Text(verbatim: "·")
+                    Text(verbatim: token.prefix + "…")
+                        .font(.subheadline.monospaced())
+                    Text(verbatim: "·")
                     Text(lastUsedText)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
                 }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
 
                 if token.extraScopes.contains(.connectionsDisplay) {
-                    Text(String(localized: "Lists connections hidden from AI"))
-                        .font(.caption)
+                    Text("Lists connections hidden from AI")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            IntegrationStatusIndicator(status: tokenStatus)
-                .help(tokenStatus == .active
-                    ? String(localized: "Active")
-                    : tokenStatus == .expired
-                        ? String(localized: "Expired")
-                        : String(localized: "Revoked"))
+            status
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityActions {
+            if let onRevoke {
+                Button(String(localized: "Revoke"), action: onRevoke)
+            }
+            Button(String(localized: "Delete"), action: onDelete)
+        }
     }
 
-    private var tokenStatus: IntegrationStatus {
-        if token.isExpired { return .expired }
-        return token.isActive ? .active : .revoked
+    @ViewBuilder
+    private var connectionsText: some View {
+        switch token.connectionAccess {
+        case .all:
+            Text("All connections")
+        case .limited(let ids):
+            Text("^[\(ids.count) connection](inflect: true)")
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        if !token.isActive {
+            IntegrationStatusIndicator(status: .revoked, label: String(localized: "Revoked"))
+        } else if token.isExpired {
+            IntegrationStatusIndicator(status: .expired, label: String(localized: "Expired"))
+        } else if let expiresAt = token.expiresAt {
+            Text(String(format: String(localized: "Expires %@"), expiresAt.formatted(date: .abbreviated, time: .omitted)))
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Active")
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var lastUsedText: String {
         guard let lastUsed = token.lastUsedAt else {
             return String(localized: "Never used")
         }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: lastUsed, relativeTo: .now)
+        return String(format: String(localized: "Last used %@"), lastUsed.formatted(.relative(presentation: .named)))
     }
 }

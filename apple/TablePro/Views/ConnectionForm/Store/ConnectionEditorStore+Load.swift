@@ -156,8 +156,8 @@ extension ConnectionEditorStore {
                 MainActor.assumeIsolated { self?.cloudSQLProxyDownloadDidChange(phase) }
             }
             .store(in: &cancellables)
-        services.appSettings.$ai.map(\.enabled).removeDuplicates()
-            .combineLatest(services.appSettings.$sync.map(\.enabled).removeDuplicates())
+        services.appSettings.aiSlice.publisher.map(\.enabled).removeDuplicates()
+            .combineLatest(services.appSettings.syncSlice.publisher.map(\.enabled).removeDuplicates())
             .dropFirst()
             .sink { [weak self] aiEnabled, syncEnabled in
                 MainActor.assumeIsolated {
@@ -216,9 +216,11 @@ extension ConnectionEditorStore {
         let reads = storage.recordingSecretReads {
             next.ssh.storedPasswordState = storage.sshPasswordState(for: connectionId)
             next.ssh.storedKeyPassphraseState = storage.keyPassphraseState(for: connectionId)
-            next.ssh.password = storage.loadSSHPassword(for: connectionId) ?? ""
-            next.ssh.keyPassphrase = storage.loadKeyPassphrase(for: connectionId) ?? ""
-            next.ssh.totpSecret = storage.loadTOTPSecret(for: connectionId) ?? ""
+            next.ssh.adoptKeychainSecrets(
+                password: storage.loadSSHPassword(for: connectionId),
+                keyPassphrase: storage.loadKeyPassphrase(for: connectionId),
+                totpSecret: storage.loadTOTPSecret(for: connectionId)
+            )
         }
         unreadableSecretKeys.formUnion(reads.unreadable)
         loadedSecrets.merge(reads.loaded) { _, fresh in fresh }

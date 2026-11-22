@@ -20,9 +20,8 @@ struct RetypeProposal: Equatable, Sendable {
 extension ConnectionDraft {
     // One keep-list decides: whatever the new type supports stays, the rest comes from the new type's defaults.
     func retyped(to newTraits: ConnectionTypeTraits, from oldTraits: ConnectionTypeTraits) -> RetypeProposal {
-        var next = ConnectionDraft.new(type: newTraits.type, traits: newTraits)
+        var next = ConnectionDraft.new(type: newTraits.type, traits: newTraits, environment: environment)
         next.name = name
-        next.environment = environment
         next.appearance = appearance
         next.safety = safety
         next.ai = ai

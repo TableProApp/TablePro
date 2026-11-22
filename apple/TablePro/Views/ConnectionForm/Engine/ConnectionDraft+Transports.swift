@@ -32,6 +32,16 @@ struct SSHDraft: Equatable, Sendable {
     var remoteFileAccess: RemoteFileAccess = .onServer
     var storedPasswordState: ConnectionStorage.StoredSecretState = .absent
     var storedKeyPassphraseState: ConnectionStorage.StoredSecretState = .absent
+    // What the connection's or a profile's Keychain items filled in. Never cleared: the values stay on a switch to inline.
+    private(set) var keychainSecrets: Set<SSHSecret> = []
+
+    // Revealing a secret the Keychain handed over asks for authentication first.
+    var savedSecrets: Set<SSHSecret> {
+        var secrets = keychainSecrets
+        if storedPasswordState != .absent { secrets.insert(.password) }
+        if storedKeyPassphraseState != .absent { secrets.insert(.keyPassphrase) }
+        return secrets
+    }
 
     var resolvedAgentSocketPath: String {
         agentSocketOption.resolvedPath(customPath: customAgentSocketPath)
@@ -62,6 +72,15 @@ struct SSHDraft: Equatable, Sendable {
             remoteFilePath: remoteFilePath,
             remoteFileAccess: remoteFileAccess
         )
+    }
+
+    mutating func adoptKeychainSecrets(password: String?, keyPassphrase: String?, totpSecret: String?) {
+        self.password = password ?? ""
+        self.keyPassphrase = keyPassphrase ?? ""
+        self.totpSecret = totpSecret ?? ""
+        if !self.password.isEmpty { keychainSecrets.insert(.password) }
+        if !self.keyPassphrase.isEmpty { keychainSecrets.insert(.keyPassphrase) }
+        if !self.totpSecret.isEmpty { keychainSecrets.insert(.totpSecret) }
     }
 
     mutating func populateFields(from config: SSHConfiguration, configEntries: [SSHConfigEntry]) {

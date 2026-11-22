@@ -1,5 +1,6 @@
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor
@@ -40,6 +41,38 @@ struct RejectedPluginRemovalTests {
 
         #expect(recorder.trashed == [plugin.url])
         #expect(manager.rejectedPlugins.isEmpty)
+    }
+
+    @Test("Removing a rejected plugin also drops the listed copy of the same bundle")
+    func removalDropsTheListedCopy() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let userPlugins = root.appendingPathComponent("Plugins", isDirectory: true)
+        let plugin = try makeBundle(in: userPlugins)
+        let manager = PluginManager(builtInPluginsURL: nil, userPluginsDir: userPlugins)
+        manager.rejectedPlugins = [plugin]
+        manager.plugins = [PluginEntry(
+            id: "com.example.broken",
+            bundle: Bundle.main,
+            url: plugin.url,
+            source: .userInstalled,
+            name: "Broken",
+            version: "1.0",
+            pluginDescription: "",
+            capabilities: [.databaseDriver],
+            databaseTypeId: nil,
+            additionalTypeIds: [],
+            pluginIconName: "puzzlepiece",
+            defaultPort: nil,
+            exportFormatId: nil,
+            importFormatId: nil
+        )]
+        let recorder = TrashRecorder()
+
+        try manager.removeRejectedPlugin(plugin) { recorder.trashed.append($0) }
+
+        #expect(recorder.trashed == [plugin.url])
+        #expect(manager.rejectedPlugins.isEmpty)
+        #expect(manager.plugins.isEmpty)
     }
 
     @Test("A rejected plugin outside the user's folder, such as one inside the app, is refused and kept")

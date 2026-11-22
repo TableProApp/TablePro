@@ -85,7 +85,7 @@ private struct SSHAndProxiesJumpHostSection: View {
 
             Picker(selection: jumpHost.authMethod) {
                 ForEach(SSHJumpAuthMethod.allCases) { method in
-                    Text(Self.title(of: method)).tag(method)
+                    Text(method.displayName).tag(method)
                 }
             } label: {
                 Text(String(localized: "Method"))
@@ -179,13 +179,6 @@ private struct SSHAndProxiesJumpHostSection: View {
 
     private func focusMissingField() {
         focusedField = store.missingJumpHostField(id) ?? .host
-    }
-
-    private static func title(of method: SSHJumpAuthMethod) -> String {
-        switch method {
-        case .privateKey: return SSHAuthMethod.privateKey.displayName
-        case .sshAgent: return SSHAuthMethod.sshAgent.displayName
-        }
     }
 }
 

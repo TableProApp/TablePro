@@ -1,18 +1,10 @@
-//
-//  JSONCodeEditor.swift
-//  TablePro
-//
-//  JSON text view backed by TableProEditorKit (tree-sitter), sharing the
-//  app's editor theme and font with the SQL editor.
-//
-
 import AppKit
 import SwiftUI
 import TableProEditorKit
 import TableProGrammars
 
 internal struct JSONCodeEditor: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var editorSettings = AppSettingsManager.shared.editorSlice
     @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding var text: String
     let isEditable: Bool
@@ -21,9 +13,7 @@ internal struct JSONCodeEditor: View {
 
     @State private var editorState = SourceEditorState()
     @State private var configuration: SourceEditorConfiguration
-    /// Held in `@State` so the editor is handed the same coordinator on every update. It names the
-    /// text view itself, which is where an accessibility identifier has to land: the SwiftUI
-    /// modifier names the representable and never reaches it.
+    // One coordinator across updates; it names the text view, which the SwiftUI accessibility modifier never reaches.
     @State private var coordinators: [any TextViewCoordinator]
 
     init(
@@ -58,7 +48,7 @@ internal struct JSONCodeEditor: View {
         .onChange(of: isEditable) { _ in
             rebuildConfiguration()
         }
-        .onChange(of: settingsManager.editor) { _ in
+        .onChange(of: editorSettings.value) { _ in
             rebuildConfiguration()
         }
         .onReceive(AppEvents.shared.accessibilityTextSizeChanged) { _ in

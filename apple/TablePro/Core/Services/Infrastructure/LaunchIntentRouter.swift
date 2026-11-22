@@ -42,8 +42,8 @@ internal final class LaunchIntentRouter {
             case .startMCPServer:
                 await startMCPServer()
 
-            case .openSettings(let pane):
-                WindowOpener.shared.openSettings(tab: pane)
+            case .openSettings(let location):
+                WindowOpener.shared.openSettings(location)
 
             case .installPlugin(let url):
                 try await installPlugin(url)
@@ -106,7 +106,7 @@ internal final class LaunchIntentRouter {
     private func installPlugin(_ url: URL) async throws {
         let entry = try await PluginManager.shared.installPlugin(from: url)
         Self.logger.info("Installed plugin '\(entry.name, privacy: .public)' from Finder")
-        WindowOpener.shared.openSettings(tab: .plugins)
+        WindowOpener.shared.openSettings(revealingPlugin: entry.id)
     }
 
     private func presentRecoverableError(_ error: Error, for intent: LaunchIntent, title: String) -> Bool {

@@ -29,6 +29,8 @@ final class CopilotService: ObservableObject {
     @Published private(set) var status: Status = .stopped
     @Published private(set) var authState: AuthState = .signedOut
     @Published private(set) var statusMessage: String?
+    // Until the server answers, authState reads signedOut whether or not the user is signed in.
+    @Published private(set) var hasReportedAuthState = false
 
     private var lspClient: LSPClient?
     private var transport: LSPTransport?
@@ -47,8 +49,7 @@ final class CopilotService: ObservableObject {
         }
     )
 
-    /// Stops the LSP server if the user hasn't signed in within this window after start.
-    /// Avoids leaving a Node process idle for users who add a Copilot config but never authorise.
+    // Leaves no Node process idle for someone who adds Copilot and never signs in.
     private static let unauthenticatedTimeout: Duration = .seconds(5 * 60)
 
     private init() {}
@@ -58,10 +59,7 @@ final class CopilotService: ObservableObject {
     var isAuthenticated: Bool { authState.isSignedIn }
     var generation: Int { serverGeneration }
 
-    // MARK: - Lifecycle
-
-    /// Concurrent callers share one launch, so a caller that arrives mid-start waits for it rather
-    /// than finding no client. `stop()` drops the shared launch, so a caller after it starts afresh.
+    // Concurrent callers share one launch; stop() drops it, so a later caller starts afresh.
     func start() async {
         if let startTask {
             await startTask.value
@@ -76,8 +74,7 @@ final class CopilotService: ObservableObject {
         }
     }
 
-    /// The client, starting the language server first when this is its first use. A turn that was
-    /// queued before AI was turned off or Copilot removed must not bring the server back.
+    // A turn queued before AI was turned off or Copilot removed must not bring the server back.
     func runningClient() async throws -> LSPClient {
         guard CopilotLifecycle.allowsRunning(AppSettingsManager.shared.ai) else {
             throw CopilotError.serverNotRunning
@@ -187,8 +184,6 @@ final class CopilotService: ObservableObject {
         Self.logger.info("Copilot language server stopped")
     }
 
-    // MARK: - Authentication
-
     func signIn() async throws {
         await start()
         guard let transport else {
@@ -196,6 +191,7 @@ final class CopilotService: ObservableObject {
         }
         let result = try await authManager.initiateSignIn(transport: transport)
         authState = .signingIn(userCode: result.userCode, verificationURI: result.verificationURI)
+        hasReportedAuthState = true
     }
 
     func completeSignIn() async throws {
@@ -204,6 +200,7 @@ final class CopilotService: ObservableObject {
         }
         let username = try await authManager.completeSignIn(transport: transport)
         authState = .signedIn(username: username)
+        hasReportedAuthState = true
         unauthenticatedStop.cancel()
     }
 
@@ -211,10 +208,9 @@ final class CopilotService: ObservableObject {
         guard let transport else { return }
         await authManager.signOut(transport: transport)
         authState = .signedOut
+        hasReportedAuthState = true
         scheduleUnauthenticatedStopIfNeeded()
     }
-
-    // MARK: - Private
 
     private func scheduleRestart() {
         restartAttempt += 1
@@ -248,6 +244,7 @@ final class CopilotService: ObservableObject {
         } catch {
             Self.logger.debug("Auth status check failed: \(error.localizedDescription)")
         }
+        hasReportedAuthState = true
     }
 
     private func scheduleUnauthenticatedStopIfNeeded() {
@@ -266,6 +263,7 @@ final class CopilotService: ObservableObject {
             statusMessage = message
             if let message, message.lowercased().contains("sign") || message.lowercased().contains("expired") {
                 authState = .signedOut
+                hasReportedAuthState = true
                 scheduleUnauthenticatedStopIfNeeded()
             }
         case "Warning":

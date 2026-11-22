@@ -47,7 +47,7 @@ struct AdvancedFacetView: View {
             )
             .help(connectTimeoutHelp)
         case .builtIn(.queryTimeout):
-            AdvancedQueryTimeoutRow(row: row, store: store, settings: store.services.appSettings)
+            AdvancedQueryTimeoutRow(row: row, store: store, generalSettings: store.services.appSettings.generalSlice)
         case .builtIn(.binaryInlineLimit):
             EditorOptionalNumberRow(
                 String(localized: "Binary Value Limit"),
@@ -120,19 +120,20 @@ struct AdvancedFacetView: View {
 private struct AdvancedQueryTimeoutRow: View {
     let row: EditorRow
     @ObservedObject var store: ConnectionEditorStore
-    @ObservedObject var settings: AppSettingsManager
+    @ObservedObject var generalSettings: SettingsSlice<GeneralSettings>
 
     var body: some View {
-        let globalSeconds = settings.general.queryTimeoutSeconds
+        let globalSeconds = generalSettings.value.queryTimeoutSeconds
         EditorOptionalNumberRow(
             String(localized: "Query Timeout"),
             value: store.binding(\.options.queryTimeoutSeconds),
-            defaultValue: QueryTimeoutInheritance.inheritedSeconds(globalSeconds: globalSeconds),
+            defaultValue: nil,
             range: DatabaseConnection.queryTimeoutSecondsRange,
             unit: String(localized: "seconds"),
             row: row,
-            store: store
+            store: store,
+            subtitle: QueryTimeoutInheritance.subtitle(globalSeconds: globalSeconds),
+            prompt: QueryTimeoutInheritance.prompt(globalSeconds: globalSeconds)
         )
-        .help(QueryTimeoutInheritance.subtitle(globalSeconds: globalSeconds))
     }
 }

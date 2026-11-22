@@ -1,8 +1,3 @@
-//
-//  LicenseKeySheet.swift
-//  TablePro
-//
-
 import SwiftUI
 
 // Use License Key…: a key an older build saved here is offered filled in, and deleted once it is exchanged.
@@ -15,6 +10,7 @@ internal struct LicenseKeySheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var key: String
     @State private var failure: String?
+    @State private var exchange: Task<Void, Never>?
     @FocusState private var isFieldFocused: Bool
 
     init(storedKey: String?, signedInEmail: String?, isWorking: Bool, onUse: @escaping (String) async -> String?) {
@@ -57,29 +53,26 @@ internal struct LicenseKeySheet: View {
 
             if storedKey != nil, trimmedKey == storedKey {
                 Text("An older version of TablePro saved this key on this Mac. It is deleted once it is used.")
-                    .font(.callout)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             if let failure {
-                Label(failure, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
+                NoticeLabel(failure)
+                    .font(.subheadline)
+                    .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("license-key-error")
             }
 
-            HStack {
-                Spacer()
-
+            DialogFooter {
                 if isWorking {
                     ProgressView()
                         .controlSize(.small)
                         .accessibilityLabel(Text("Checking the license key"))
                 }
 
-                Button(String(localized: "Cancel")) { dismiss() }
+                Button(String(localized: "Cancel"), action: cancel)
                     .keyboardShortcut(.cancelAction)
 
                 Button(String(localized: "Use Key"), action: use)
@@ -91,14 +84,22 @@ internal struct LicenseKeySheet: View {
         .padding(20)
         .frame(width: 440)
         .onAppear { isFieldFocused = true }
+        .onDisappear { exchange?.cancel() }
     }
 
     private func use() {
         guard !trimmedKey.isEmpty, !isWorking else { return }
         failure = nil
         let key = trimmedKey
-        Task {
-            failure = await onUse(key)
+        exchange = Task {
+            let result = await onUse(key)
+            guard !Task.isCancelled else { return }
+            failure = result
         }
+    }
+
+    private func cancel() {
+        exchange?.cancel()
+        dismiss()
     }
 }

@@ -37,8 +37,9 @@ struct ConnectionDraft: Equatable, Sendable {
     var ai = AIDraft()
     var appearance = AppearanceDraft()
 
-    init(type: DatabaseType) {
+    init(type: DatabaseType, environment: ConnectionEnvironment = .none) {
         self.type = type
+        self.environment = environment
     }
 
     var usesSSHServer: Bool { transport == .ssh || transport == .remoteFile }

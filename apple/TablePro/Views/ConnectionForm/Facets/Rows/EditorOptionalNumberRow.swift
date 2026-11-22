@@ -53,7 +53,7 @@ struct EditorOptionalNumberRow: View {
                 .labelsHidden()
                 .textFieldStyle(.roundedBorder)
                 .multilineTextAlignment(.trailing)
-                .frame(width: prompt == nil ? 72 : 104)
+                .frame(width: 104)
                 .focused($isFocused)
                 .accessibilityIdentifier(row.accessibilityIdentifier)
                 .onSubmit(settle)

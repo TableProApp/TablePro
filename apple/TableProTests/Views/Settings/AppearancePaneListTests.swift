@@ -4,14 +4,14 @@ import ApplicationServices
 import SwiftUI
 import Testing
 
-/// A List inside the pane's scrolling grouped Form had its scrolling turned off by SwiftUI, so the
-/// themes below the first few rows could never be reached.
+// The Manage Themes list sits outside a grouped Form, which used to disable its scrolling.
 @MainActor
 struct AppearancePaneListTests {
     private struct HostedPane {
         let window: NSWindow
         let table: NSTableView
         let scrollView: NSScrollView
+        let model: ThemeLibraryModel
     }
 
     private static let windowTitle = "AppearancePaneListTests"
@@ -43,7 +43,7 @@ struct AppearancePaneListTests {
     }
 
     private static func hostPane() throws -> HostedPane {
-        let paneSize = SettingsPaneTabViewController.paneSize
+        let paneSize = NSSize(width: SettingsSplitViewController.detailWidth, height: SettingsSplitViewController.minimumContentSize.height)
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: paneSize),
             styleMask: [.titled],
@@ -52,8 +52,10 @@ struct AppearancePaneListTests {
         )
         window.isReleasedWhenClosed = false
         window.title = windowTitle
+        // The shared catalog's built-ins overflow the list; the slots and editors are stand-ins.
+        let model = ThemeLibraryModel(catalog: .shared, selection: InMemoryThemeSelection(), editors: StubThemeEditors())
         // As the Settings window hosts a pane: the window keeps its size whatever the content asks.
-        let hosting = NSHostingController(rootView: AppearanceSettingsView(settings: .constant(.default)))
+        let hosting = NSHostingController(rootView: ThemeLibrarySection(model: model))
         hosting.sizingOptions = []
         window.contentViewController = hosting
         window.setContentSize(paneSize)
@@ -66,7 +68,7 @@ struct AppearancePaneListTests {
             "The pane should show the Themes list"
         )
         let scrollView = try #require(table.enclosingScrollView)
-        return HostedPane(window: window, table: table, scrollView: scrollView)
+        return HostedPane(window: window, table: table, scrollView: scrollView, model: model)
     }
 
     private static func elements(_ attribute: String, of element: AXUIElement) -> [AXUIElement] {
