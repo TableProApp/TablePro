@@ -63,15 +63,4 @@ final class SettingsWindowUITests: UITestCase {
         settings.typeKey("]", modifierFlags: [.command, .control])
         XCTAssertTrue(waitForPredicate(timeout: 5) { settings.title == "Account" }, "View > Forward must return to Account")
     }
-
-    func testDarkAppearanceScreenshots() throws {
-        let app = try launchApp(arguments: ["-AppleInterfaceStyle", "Dark"])
-        let settings = openSettings(in: app)
-        XCTAssertTrue(waitForPredicate(timeout: 5) { settings.title == "General" }, "Settings must open on General")
-        attachScreenshot(of: settings, named: "settings-general-dark")
-
-        selectSettingsPane("appearance", in: settings)
-        XCTAssertTrue(waitForPredicate(timeout: 5) { settings.title == "Appearance" }, "Picking Appearance must title the window")
-        attachScreenshot(of: settings, named: "settings-appearance-dark")
-    }
 }

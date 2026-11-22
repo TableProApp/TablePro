@@ -28,6 +28,10 @@ extension UITestCase {
         drill.click()
     }
 
+    internal func settingsPage(_ page: String, in settings: XCUIElement) -> XCUIElement {
+        settings.descendants(matching: .any).matching(identifier: "settings-page-\(page)").firstMatch
+    }
+
     // The toolbar's navigation group publishes Back and Forward as buttons with their enabled state.
     internal func settingsNavigationButton(_ label: String, in settings: XCUIElement) -> XCUIElement {
         settings.toolbars.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
