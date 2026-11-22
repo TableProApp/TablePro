@@ -17,6 +17,7 @@ internal struct AppearanceSettingsView: View {
                         Text(Self.title(for: mode)).tag(mode)
                     }
                 }
+                .pickerStyle(.segmented)
                 .accessibilityIdentifier("appearance-mode-picker")
             } footer: {
                 Text("Applies to this Mac.")
