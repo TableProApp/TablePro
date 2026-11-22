@@ -12,15 +12,16 @@ struct InstalledPluginsView: View {
     @ObservedObject private var modules = AppModuleSettings.shared
     @ObservedObject private var updates = UpdateCenter.shared
 
-    @State private var selection: PluginListSelection?
+    @Binding private var path: NavigationPath
     @State private var searchText = ""
     @State private var showErrorAlert = false
     @State private var errorAlertTitle = ""
     @State private var errorAlertMessage = ""
     @State private var isRetryingRejected = false
 
-    init(registryClient: RegistryClient = .shared) {
+    init(registryClient: RegistryClient = .shared, path: Binding<NavigationPath> = .constant(NavigationPath())) {
         self.registryClient = registryClient
+        self._path = path
     }
 
     private var filteredPlugins: [PluginEntry] {
@@ -38,17 +39,14 @@ struct InstalledPluginsView: View {
     }
 
     var body: some View {
-        HSplitView {
-            pluginList
-                .frame(minWidth: 200, idealWidth: 240, maxWidth: 280)
-
-            detailPane
-                .frame(minWidth: 340)
-        }
-        .task {
-            await registryClient.fetch(policy: .ifStale)
-        }
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+        pluginList
+            .task {
+                await registryClient.fetch(policy: .ifStale)
+            }
+            .navigationDestination(for: PluginListSelection.self) { selection in
+                detailPage(for: selection)
+            }
+            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard let provider = providers.first,
                   provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else {
                 return false
@@ -73,7 +71,6 @@ struct InstalledPluginsView: View {
 
     // MARK: - Relaunch Row
 
-    // Untagged, so it never takes the selection; the list is where the pending removal is.
     private var relaunchRow: some View {
         HStack(spacing: 8) {
             Label {
@@ -217,7 +214,7 @@ struct InstalledPluginsView: View {
                 showErrorAlert = true
                 return
             }
-            if selection == .rejected(plugin.url) { selection = nil }
+            if !path.isEmpty { path.removeLast() }
         }
     }
 
@@ -229,60 +226,43 @@ struct InstalledPluginsView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
 
-            ScrollViewReader { proxy in
-                List(selection: $selection) {
-                    if pluginManager.needsRestart {
-                        Section {
-                            relaunchRow
+            List {
+                if pluginManager.needsRestart {
+                    Section {
+                        relaunchRow
+                    }
+                }
+                if !filteredModules.isEmpty {
+                    Section(String(localized: "Modules")) {
+                        ForEach(filteredModules, id: \.self) { module in
+                            ModuleToggleRow(module: module, settings: modules)
                         }
                     }
-                    if !filteredModules.isEmpty {
-                        // Untagged, so a module row toggles but never takes the plugin selection.
-                        Section(String(localized: "Modules")) {
-                            ForEach(filteredModules, id: \.self) { module in
-                                ModuleToggleRow(module: module, settings: modules)
-                            }
-                        }
-                    }
-                    if !filteredRejected.isEmpty {
-                        Section(String(localized: "Couldn't Load")) {
-                            ForEach(filteredRejected, id: \.url) { plugin in
+                }
+                if !filteredRejected.isEmpty {
+                    Section(String(localized: "Couldn't Load")) {
+                        ForEach(filteredRejected, id: \.url) { plugin in
+                            NavigationLink(value: PluginListSelection.rejected(plugin.url)) {
                                 rejectedRow(plugin)
-                                    .tag(PluginListSelection.rejected(plugin.url))
-                                    .id(PluginListSelection.rejected(plugin.url))
                             }
                         }
                     }
-                    Section(String(localized: "Plugins")) {
-                        ForEach(filteredPlugins) { plugin in
+                }
+                Section(String(localized: "Plugins")) {
+                    ForEach(filteredPlugins) { plugin in
+                        NavigationLink(value: PluginListSelection.plugin(plugin.id)) {
                             pluginRow(plugin)
-                                .tag(PluginListSelection.plugin(plugin.id))
-                                .id(PluginListSelection.plugin(plugin.id))
                         }
                     }
-                }
-                .listStyle(.inset)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    listBottomBar
-                }
-                .onAppear { revealRequestedPlugin() }
-                .onChange(of: navigation.pendingRequest) { _ in
-                    revealRequestedPlugin()
-                }
-                .onChange(of: selection) { selection in
-                    guard let selection else { return }
-                    proxy.scrollTo(selection)
                 }
             }
-        }
-        .onChange(of: searchText) { _ in
-            switch selection {
-            case .plugin(let id) where !filteredPlugins.contains(where: { $0.id == id }):
-                selection = nil
-            case .rejected(let url) where !filteredRejected.contains(where: { $0.url == url }):
-                selection = nil
-            default:
-                break
+            .listStyle(.inset)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                listBottomBar
+            }
+            .onAppear { revealRequestedPlugin() }
+            .onChange(of: navigation.pendingRequest) { _ in
+                revealRequestedPlugin()
             }
         }
     }
@@ -397,21 +377,6 @@ struct InstalledPluginsView: View {
             .disabled(pluginManager.isInstalling)
             .accessibilityLabel(String(localized: "Install plugin from file"))
 
-            Button {
-                if let plugin = selectedPlugin {
-                    uninstallPlugin(plugin)
-                }
-            } label: {
-                Image(systemName: "minus")
-                    .frame(width: 24, height: 20)
-            }
-            .buttonStyle(.borderless)
-            .disabled(selectedPlugin == nil || selectedPlugin?.source == .builtIn)
-            .accessibilityLabel(
-                selectedPlugin.map { String(format: String(localized: "Uninstall %@"), $0.name) }
-                    ?? String(localized: "Uninstall plugin")
-            )
-
             Spacer()
         }
         .padding(.horizontal, 8)
@@ -483,22 +448,24 @@ struct InstalledPluginsView: View {
 
     // MARK: - Detail Pane
 
-    private var selectedPlugin: PluginEntry? {
-        guard case .plugin(let id) = selection else { return nil }
-        return pluginManager.plugins.first { $0.id == id }
-    }
-
-    private var selectedRejected: RejectedPlugin? {
-        guard case .rejected(let url) = selection else { return nil }
-        return pluginManager.rejectedPlugins.first { $0.url == url }
-    }
-
     @ViewBuilder
-    private var detailPane: some View {
-        if let rejected = selectedRejected {
-            rejectedDetail(rejected)
-        } else if let selected = selectedPlugin {
-            ScrollView {
+    private func detailPage(for selection: PluginListSelection) -> some View {
+        switch selection {
+        case .rejected(let url):
+            if let rejected = pluginManager.rejectedPlugins.first(where: { $0.url == url }) {
+                rejectedDetail(rejected)
+                    .settingsDrillIn(title: rejected.name)
+            }
+        case .plugin(let id):
+            if let selected = pluginManager.plugins.first(where: { $0.id == id }) {
+                pluginDetail(selected)
+                    .settingsDrillIn(title: selected.name)
+            }
+        }
+    }
+
+    private func pluginDetail(_ selected: PluginEntry) -> some View {
+        ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(selected.name)
                         .font(.title3.weight(.semibold))
@@ -575,18 +542,7 @@ struct InstalledPluginsView: View {
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-        } else {
-            VStack(spacing: 8) {
-                Image(systemName: "puzzlepiece.extension")
-                    .font(.title)
-                    .foregroundStyle(.tertiary)
-                Text("Select a plugin to view details")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-    }
 
     // A failure shows on the plugin's row or in the list's bottom bar, from the tracker.
     private func updatePlugin(_ registryPlugin: RegistryPlugin) {
@@ -616,7 +572,7 @@ struct InstalledPluginsView: View {
                   rejected: pluginManager.rejectedPlugins
               ) else { return }
         searchText = ""
-        selection = target
+        path.append(target)
     }
 
     private func installFromFile() {
@@ -638,7 +594,7 @@ struct InstalledPluginsView: View {
     private func installPlugin(from url: URL) {
         Task {
             guard let entry = try? await pluginManager.installPlugin(from: url) else { return }
-            selection = .plugin(entry.id)
+            path.append(PluginListSelection.plugin(entry.id))
         }
     }
 
@@ -655,7 +611,7 @@ struct InstalledPluginsView: View {
 
             do {
                 try await pluginManager.uninstallPlugin(id: plugin.id)
-                selection = nil
+                if !path.isEmpty { path.removeLast() }
             } catch {
                 errorAlertTitle = String(localized: "Uninstall Failed")
                 errorAlertMessage = error.localizedDescription

@@ -191,22 +191,32 @@ private struct SettingsSidebarView: View {
 
 private struct SettingsDetailView: View {
     @ObservedObject fileprivate var model: SettingsNavigationModel
-    @ObservedObject fileprivate var settingsManager = AppSettingsManager.shared
     fileprivate let registryClient: RegistryClient
 
     fileprivate var body: some View {
-        NavigationStack {
-            SettingsPaneContent(pane: model.selection, registryClient: registryClient)
+        // Each pane owns its own stack, keyed by selection, so switching panes resets its depth.
+        SettingsPaneStack(pane: model.selection, registryClient: registryClient)
+            .id(model.selection)
+            .environment(\.appServices, .live)
+    }
+}
+
+private struct SettingsPaneStack: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    fileprivate let pane: SettingsPane
+    fileprivate let registryClient: RegistryClient
+    @State private var path = NavigationPath()
+
+    fileprivate var body: some View {
+        NavigationStack(path: $path) {
+            SettingsPaneContent(pane: pane, registryClient: registryClient, path: $path)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .navigationTitle(model.selection.title)
+                .navigationTitle(pane.title)
                 .navigationDestination(for: SettingsSubpage.self) { subpage in
                     SettingsSubpageView(settingsManager: settingsManager, subpage: subpage)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
         }
-        // Each pane owns its own navigation depth; switching panes resets any pushed sub-page.
-        .id(model.selection)
-        .environment(\.appServices, .live)
     }
 }
 
@@ -253,10 +263,12 @@ private struct SettingsPaneContent: View {
 
     private let pane: SettingsPane
     private let registryClient: RegistryClient
+    private let path: Binding<NavigationPath>
 
-    fileprivate init(pane: SettingsPane, registryClient: RegistryClient) {
+    fileprivate init(pane: SettingsPane, registryClient: RegistryClient, path: Binding<NavigationPath>) {
         self.pane = pane
         self.registryClient = registryClient
+        self.path = path
     }
 
     fileprivate var body: some View {
@@ -298,7 +310,7 @@ private struct SettingsPaneContent: View {
         case .mcp:
             MCPSettingsView(settings: $settingsManager.mcp)
         case .plugins:
-            InstalledPluginsView(registryClient: registryClient)
+            InstalledPluginsView(registryClient: registryClient, path: path)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .sync:
             SyncSettingsView()
