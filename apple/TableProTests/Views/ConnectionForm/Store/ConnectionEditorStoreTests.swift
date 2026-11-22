@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import TableProConnectionLibrary
 import TableProPluginKit
 import TableProSSHConfig
 import Testing
@@ -62,6 +63,41 @@ struct ConnectionEditorStoreTests {
 
         let saved = try store.save().get()
         #expect(ConnectionEditorEngine.record(tested, reassignedTo: connection.id) == saved)
+    }
+
+    @Test("Test dials the host the editor shows, not one stored elsewhere after it opened")
+    func testIgnoresHostChangedElsewhere() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        var connection = postgres()
+        connection.additionalFields["mongoParam_directConnection"] = "true"
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+
+        var elsewhere = try #require(fixture.storage.loadConnection(id: connection.id))
+        elsewhere.host = "db.attacker.example"
+        fixture.seed([elsewhere])
+        fixture.events.connectionUpdated.send(connection.id)
+
+        let tested = store.testRecord(testId: UUID())
+        #expect(tested.host == "db.example.com")
+        #expect(tested.additionalFields["mongoParam_directConnection"] == "true")
+    }
+
+    @Test("A sign-in with this Mac's credentials added elsewhere after the editor opened is not used by Test")
+    func testIgnoresLocalCredentialAddedElsewhere() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = postgres()
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+
+        var elsewhere = try #require(fixture.storage.loadConnection(id: connection.id))
+        elsewhere.additionalFields["awsAuth"] = "profile"
+        elsewhere.additionalFields["mssqlAuthMethod"] = "entra"
+        fixture.seed([elsewhere])
+        #expect(!ConnectionFieldCatalog.localCredentialUses(in: elsewhere.additionalFields).isEmpty)
+
+        let tested = store.testRecord(testId: UUID())
+        #expect(ConnectionFieldCatalog.localCredentialUses(in: tested.additionalFields).isEmpty)
     }
 
     @Test("A result is cleared by an edit to what was tested, and kept by a rename")

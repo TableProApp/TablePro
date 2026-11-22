@@ -100,11 +100,12 @@ struct TestRun {
 extension ConnectionEditorStore {
     var isTesting: Bool { testState == .running }
 
-    // The record Save would write, under a throwaway id: same draft, same base, same merge.
+    // The definition this window shows, under a throwaway id: the draft's edits over the record it loaded, never a
+    // fresh read. Test signs in without consent, so a host or sign-in another writer changed must not reach it.
     func testRecord(testId: UUID) -> DatabaseConnection {
         let edits = ConnectionEditorEngine.edits(draft, traits, originalTraits: originalTraits, context)
-        if !isNew, let fresh = storage.loadConnection(id: connectionId) {
-            return edits.applied(to: ConnectionEditorEngine.record(fresh, reassignedTo: testId), since: baselineEdits)
+        if let loadedRecord {
+            return edits.applied(to: ConnectionEditorEngine.record(loadedRecord, reassignedTo: testId), since: baselineEdits)
         }
         return edits.applied(to: DatabaseConnection(id: testId, name: ""))
     }
