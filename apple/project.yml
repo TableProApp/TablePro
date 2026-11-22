@@ -736,7 +736,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.ParquetExportPlugin
         # DuckDB does the Parquet encoding, so this links the same static library the
         # DuckDB driver does. That is why the plugin is registry-only rather than bundled:
-        # 149MB universal is not worth adding to every app download for one export format.
+        # 226MB universal is not worth adding to every app download for one export format.
+        # force_load is required: the static parquet and core_functions extensions register
+        # through an autoregister constructor nothing references, which a plain link drops.
         HEADER_SEARCH_PATHS:
           - $(inherited)
           - $(SRCROOT)/Plugins/DuckDBDriverPlugin/CDuckDB/include
