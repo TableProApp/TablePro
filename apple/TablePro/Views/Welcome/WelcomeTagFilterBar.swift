@@ -79,6 +79,8 @@ internal final class WelcomeTagFilterBar: NSView {
         button.imagePosition = .imageLeading
         button.lineBreakMode = .byTruncatingTail
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // The symbol's own description ("tag") would otherwise be what VoiceOver reads first.
+        button.setAccessibilityLabel(tag.name)
         button.toolTip = String(localized: "Remove Filter")
         tagIdsByButton[ObjectIdentifier(button)] = tag.id
         return button

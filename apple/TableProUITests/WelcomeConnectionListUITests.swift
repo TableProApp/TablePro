@@ -79,7 +79,8 @@ final class WelcomeConnectionListUITests: UITestCase {
         XCTAssertTrue(bar.waitToExist(timeout: 5), "A tag filter must show the filter bar")
         XCTAssertTrue(waitForPredicate(timeout: 5) { !alpha.exists }, "The tag filter must hide untagged rows")
         XCTAssertTrue(charlie.exists)
-        let barTag = bar.buttons["production"]
+        // A toggle button reads as a checkbox to accessibility.
+        let barTag = bar.checkBoxes["production"]
         XCTAssertTrue(waitUntilHittable(barTag, timeout: 5))
         barTag.click()
         XCTAssertTrue(waitForPredicate(timeout: 5) { !bar.exists && alpha.exists }, "Clicking the tag must stop filtering")

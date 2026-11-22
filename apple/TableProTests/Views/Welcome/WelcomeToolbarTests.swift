@@ -324,6 +324,8 @@ struct WelcomeTagFilterBarTests {
         let bothTitles = both.tagButtons.map { $0.title }
         #expect(bothTitles == ["prod", "eu-west"])
         #expect(both.tagButtons.allSatisfy { $0.state == .on })
+        let labels = both.tagButtons.map { $0.accessibilityLabel() }
+        #expect(labels == ["prod", "eu-west"])
         #expect(both.matchPopUp?.titleOfSelectedItem == "Any Selected Tag")
     }
 
