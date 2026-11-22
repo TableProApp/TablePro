@@ -48,6 +48,20 @@ class RusageInfo(ctypes.Structure):
         "resident_size", "phys_footprint", "proc_start_abstime", "proc_exit_abstime")]
 
 
+class MachTimebase(ctypes.Structure):
+    _fields_ = [("numer", ctypes.c_uint32), ("denom", ctypes.c_uint32)]
+
+
+def _mach_timebase():
+    tb = MachTimebase()
+    LIBPROC.mach_timebase_info(ctypes.byref(tb))
+    return (tb.numer or 1, tb.denom or 1)
+
+
+# ri_user_time/ri_system_time are Mach ticks, not ns; scale by numer/denom.
+MACH_TIMEBASE = _mach_timebase()
+
+
 # Opt-in: named in --paths, but kept out of a default run and the baseline until then.
 OPTIONAL_PATHS = ["table-sqlite-footprint", "table-sqlite-wide", "table-sqlite-bigtext"]
 PATHS = [
@@ -442,7 +456,9 @@ class RunningApp:
         info = RusageInfo()
         if LIBPROC.proc_pid_rusage(self.pid, 0, ctypes.byref(info)) != 0:
             raise BenchmarkError("proc_pid_rusage failed for %d" % self.pid)
-        return round((info.user_time + info.system_time) / 1_000_000.0, 1)
+        numer, denom = MACH_TIMEBASE
+        nanos = (info.user_time + info.system_time) * numer // denom
+        return round(nanos / 1_000_000.0, 1)
 
     def output(self):
         return Path(self.log_path).read_text(errors="replace")
