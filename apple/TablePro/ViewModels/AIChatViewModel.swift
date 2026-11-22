@@ -114,6 +114,9 @@ final class AIChatViewModel: ObservableObject {
     var inFlightSchemaLoad: Task<Void, Never>?
     var relevantTableNames: [String] = []
     var schemaRanker: @Sendable (AISchemaRankingInput) -> [String] = AISchemaContext.relevantTableNames(for:)
+    var customSlashCommandNamed: @MainActor (String) -> CustomSlashCommand? = {
+        CustomSlashCommandStorage.shared.command(named: $0)
+    }
     @Published var tableMentions = TableMentionIndex.empty
     var tableMentionSource: [TableInfo] = []
     var tableMentionBuild: Task<Void, Never>?
@@ -196,6 +199,16 @@ final class AIChatViewModel: ObservableObject {
 
         if let parsed = SlashCommand.parse(text) {
             runSlashCommand(parsed.command, body: parsed.body)
+            return
+        }
+
+        if let invocation = SlashCommand.invocation(in: text),
+           let command = customSlashCommandNamed(invocation.name),
+           command.isValid {
+            guard !isStreaming else { return }
+            // Cleared now, so a second Return before the task runs finds nothing to send.
+            inputText = ""
+            Task { await runCustomSlashCommand(command, body: invocation.body) }
             return
         }
 

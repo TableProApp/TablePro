@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -96,6 +97,48 @@ struct AIChatViewModelSlashTests {
 
         #expect(vm.inputText.isEmpty)
         #expect(vm.errorMessage == nil)
+    }
+
+    @Test("A typed custom command runs with the text after its name as {{body}}")
+    func typedCustomCommandFillsBody() async throws {
+        let vm = AIChatViewModel()
+        let command = CustomSlashCommand(name: "summarize", promptTemplate: "Summarize: {{body}}")
+        vm.customSlashCommandNamed = { name in
+            name.caseInsensitiveCompare(command.name) == .orderedSame ? command : nil
+        }
+        vm.inputText = "/Summarize last week's orders"
+
+        vm.sendMessage()
+
+        #expect(vm.inputText.isEmpty)
+        try await waitUntil {
+            vm.messages.contains { turn in turn.plainText == "Summarize: last week's orders" }
+        }
+        let firstUserTurn = vm.messages.first { turn in turn.role == .user }
+        #expect(firstUserTurn?.plainText == "/summarize last week's orders")
+    }
+
+    @Test("Typing a built-in name runs the built-in even when a custom command shares it")
+    func typedBuiltInWinsOverCustom() {
+        let vm = AIChatViewModel()
+        vm.customSlashCommandNamed = { _ in CustomSlashCommand(name: "help", promptTemplate: "Custom {{body}}") }
+        vm.inputText = "/help"
+
+        vm.sendMessage()
+
+        let assistant = vm.messages.last { turn in turn.role == .assistant }
+        #expect(assistant?.plainText.contains("Available commands") == true)
+    }
+
+    @Test("A slash word that names no command is sent as an ordinary message")
+    func unknownSlashWordIsAMessage() {
+        let vm = AIChatViewModel()
+        vm.customSlashCommandNamed = { _ in nil }
+        vm.inputText = "/etc/hosts is missing"
+
+        vm.sendMessage()
+
+        #expect(vm.messages.first?.plainText == "/etc/hosts is missing")
     }
 
     @Test("A custom command's turn ranks tables by its body, not by the schema it rendered")
