@@ -1,8 +1,3 @@
-//
-//  SSHTypes.swift
-//  TablePro
-//
-
 import Foundation
 import TableProSSHTransport
 
@@ -41,11 +36,7 @@ public enum SSHAuthMethod: String, CaseIterable, Identifiable, Codable, Sendable
 }
 
 public extension SSHAuthMethod {
-    /// iPhone and iPad wrote the case name ("sshAgent", "privateKey") into `sshConfigJson` and into
-    /// `.tablepro` files before the two sides agreed on these raw values, and a strict decode read
-    /// every one of them as Password: an agent or key tunnel that silently stopped authenticating,
-    /// and that the next push from this Mac then wrote back as Password for good. Both spellings
-    /// decode, so a connection synced from an already-shipped iOS build is read as it was meant.
+    // Shipped iOS builds wrote the case name ("sshAgent"), which a strict decode read back as Password.
     init(carrying raw: String) {
         switch raw {
         case Self.password.rawValue, "password": self = .password
@@ -83,9 +74,7 @@ public enum SSHAgentSocketOption: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Says which agent the choice actually reaches. `SSH_AUTH_SOCK` is the ssh-agent macOS
-    /// starts for the login session, so it never finds 1Password however the shell is set up,
-    /// and the connect used to fail with a passphrase prompt for an unrelated key (#2583).
+    // SSH_AUTH_SOCK is the login session's ssh-agent, which never reaches 1Password however the shell is set up (#2583).
     public var explanation: String {
         switch self {
         case .systemDefault:
@@ -130,9 +119,14 @@ public enum SSHJumpAuthMethod: String, CaseIterable, Identifiable, Codable, Send
 
     public var id: String { rawValue }
 
-    /// Same rule as `SSHAuthMethod` above: a hop an iOS build wrote names its case, not its raw
-    /// value, and a strict decode threw `dataCorrupted` inside `jumpHosts`, which took the whole
-    /// SSH configuration and with it the connection.
+    public var displayName: String {
+        switch self {
+        case .privateKey: return String(localized: "Private Key")
+        case .sshAgent: return String(localized: "SSH Agent")
+        }
+    }
+
+    // A hop an iOS build wrote names its case; a strict decode threw inside jumpHosts and lost the connection.
     public init(carrying raw: String) {
         switch raw {
         case Self.privateKey.rawValue, "privateKey", "publicKey": self = .privateKey
@@ -170,8 +164,7 @@ public struct SSHJumpHost: Codable, Hashable, Identifiable, Sendable {
     }
 
     public var isValid: Bool {
-        // Username and port may be empty: the runtime resolver fills them
-        // from ~/.ssh/config (User, Port directives) when the alias matches.
+        // Username and port may be empty: ~/.ssh/config fills them when the host is an alias.
         !host.isEmpty && (authMethod == .sshAgent || !privateKeyPath.isEmpty)
     }
 
@@ -185,9 +178,7 @@ extension SSHJumpHost {
         case id, host, port, username, authMethod, privateKeyPath
     }
 
-    /// Same rule as `SSHConfiguration` below: every property has a default, so every key decodes as
-    /// optional. A required decode threw `keyNotFound` on a hop an older iOS build wrote without
-    /// `authMethod`, and that failure took the whole connection out of the sync pull.
+    // Every key decodes as optional: a hop an older iOS build wrote without authMethod threw keyNotFound.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
@@ -199,13 +190,10 @@ extension SSHJumpHost {
     }
 }
 
-/// How a file-backed connection reaches a database file that lives on an SSH server.
 public enum RemoteFileAccess: String, Codable, Hashable, Sendable {
-    /// Fetch a snapshot over SFTP and open the copy on this Mac, read-only. The original is never
-    /// written. This is what a connection saved before the live mode existed decodes to.
+    // A read-only SFTP snapshot; what a connection saved before the live mode existed decodes to.
     case readOnlyCopy
-    /// Run statements on the server against the live database through the SQLite agent, so reads
-    /// and writes act on the file the server's own programs are using.
+    // Statements run on the server against the live file, through the SQLite agent.
     case onServer
 }
 
@@ -223,19 +211,10 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
     public var totpDigits: Int = 6
     public var totpPeriod: Int = 30
 
-    /// The database file on the SSH server, for a connection whose driver opens a file rather than
-    /// reaching a port. Empty means this configuration forwards TCP, which is what every
-    /// server-backed connection does.
-    ///
-    /// A leading `~` and a relative path are both left as the user typed them and resolved against
-    /// the account's home at connect time. SFTP performs no expansion of its own and rejects a
-    /// literal `~/x` outright, so resolving early would only move the failure somewhere less
-    /// explainable.
+    // Empty forwards TCP. `~` and relative paths stay as typed and resolve at connect time: SFTP expands neither.
     public var remoteFilePath: String = ""
 
-    /// Whether the named file is opened as a read-only copy on this Mac or as a live session on the
-    /// server. Defaults to the copy, so a configuration written before the live mode existed keeps
-    /// its old behaviour, and an older app that cannot decode this key falls back the same way.
+    // Defaults to the copy, so a configuration from before the live mode, or an older app, keeps the old behaviour.
     public var remoteFileAccess: RemoteFileAccess = .readOnlyCopy
 
     public init(
@@ -272,8 +251,7 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
 
     public var forwardsRemoteFile: Bool { enabled && !remoteFilePath.isEmpty }
 
-    /// Username may be empty: the runtime resolver supplies `User` from
-    /// `~/.ssh/config` when the host is an alias.
+    // Username may be empty: ~/.ssh/config supplies User when the host is an alias.
     public var isValid: Bool {
         guard enabled else { return true }
         guard !host.isEmpty else { return false }
@@ -289,11 +267,7 @@ extension SSHConfiguration {
         case remoteFileAccess
     }
 
-    /// Every property here declares a default, so every key decodes as optional. A required decode
-    /// on a field that has a default cannot round-trip a payload written before that field existed:
-    /// it throws `keyNotFound` and takes the whole connection with it, because a connection that
-    /// fails to decode is a connection the user no longer has. `agentSocketPath` was the one still
-    /// required, which is why a stored SSH config from before it existed could not be read back.
+    // Every key decodes as optional: a payload written before a field existed must not lose the connection.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false

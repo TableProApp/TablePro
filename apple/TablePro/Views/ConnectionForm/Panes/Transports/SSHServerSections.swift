@@ -1,17 +1,8 @@
-//
-//  SSHServerSections.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProSSHConfig
 import TableProSSHTransport
 
-/// Which SSH server to reach, and how to sign in to it.
-///
-/// Sections rather than a `Form`, because the Network tab is the form. It used to wrap itself in
-/// one and be embedded inside another by the Remote File pane, which is a grouped form nested in a
-/// grouped form and inset twice.
+// Sections, not a Form: the Network tab is the form, and the Remote File pane embeds these in it too.
 struct SSHServerSections: View {
     @Binding var sshState: SSHTunnelFormState
 
@@ -26,18 +17,21 @@ struct SSHServerSections: View {
                 }
             }
         } else if sshState.selectedProfile == nil {
-            sshInlineFields
+            SSHServerFields(
+                draft: $sshState.server,
+                configEntries: sshState.configEntries,
+                identifierPrefix: "connection-form-ssh",
+                savedSecrets: sshState.savedSecrets
+            )
         }
     }
-
-    // MARK: - SSH Profile Section
 
     private var sshProfileSection: some View {
         Section(String(localized: "Profile")) {
             Picker(String(localized: "Profile"), selection: $sshState.profileId) {
                 Text("Inline Configuration").tag(UUID?.none)
                 ForEach(sshState.profiles) { profile in
-                    Text("\(profile.name) (\(profile.username)@\(profile.host))").tag(UUID?.some(profile.id))
+                    Text(verbatim: "\(profile.name) (\(profile.address))").tag(UUID?.some(profile.id))
                 }
             }
 
@@ -65,9 +59,11 @@ struct SSHServerSections: View {
             if let profile = sshState.selectedProfile {
                 DisclosureGroup(String(localized: "Profile Details")) {
                     LabeledContent(String(localized: "Host"), value: profile.host)
-                    LabeledContent(String(localized: "Port"), value: profile.port.map(String.init) ?? "22")
+                    LabeledContent(String(localized: "Port")) {
+                        Text(verbatim: SettingsFormat.identifier(profile.port ?? 22))
+                    }
                     LabeledContent(String(localized: "Username"), value: profile.username)
-                    LabeledContent(String(localized: "Authentication Method"), value: profile.authMethod.rawValue)
+                    LabeledContent(String(localized: "Authentication Method"), value: profile.authMethod.displayName)
                     if !profile.privateKeyPath.isEmpty {
                         LabeledContent(
                             profile.authMethod == .sshAgent
@@ -77,7 +73,9 @@ struct SSHServerSections: View {
                         )
                     }
                     if !profile.jumpHosts.isEmpty {
-                        LabeledContent(String(localized: "Jump Hosts"), value: "\(profile.jumpHosts.count)")
+                        LabeledContent(String(localized: "Jump Hosts")) {
+                            Text(profile.jumpHosts.count, format: .number)
+                        }
                     }
                 }
             }
@@ -132,242 +130,5 @@ struct SSHServerSections: View {
             totpDigits: sshState.totpDigits,
             totpPeriod: sshState.totpPeriod
         )
-    }
-
-    // MARK: - SSH Inline Fields
-
-    private var sshInlineFields: some View {
-        Group {
-            Section(String(localized: "Server")) {
-                if !sshState.configEntries.isEmpty {
-                    Picker(String(localized: "Config Host"), selection: $sshState.selectedConfigHost) {
-                        Text(String(localized: "Manual")).tag("")
-                        ForEach(sshState.configEntries) { entry in
-                            Text(entry.displayName).tag(entry.host)
-                        }
-                    }
-                    .onChange(of: sshState.selectedConfigHost) { _ in
-                        applySSHConfigEntry(sshState.selectedConfigHost)
-                    }
-                }
-                if sshState.selectedConfigHost.isEmpty || sshState.configEntries.isEmpty {
-                    TextField(String(localized: "SSH Host"), text: $sshState.host, prompt: Text("ssh.example.com"))
-                        .accessibilityIdentifier("connection-form-ssh-host")
-                }
-                TextField(String(localized: "SSH Port"), text: $sshState.port, prompt: Text("22"))
-                TextField(String(localized: "SSH User"), text: $sshState.username, prompt: Text("username"))
-            }
-
-            Section(String(localized: "Authentication")) {
-                Picker(String(localized: "Method"), selection: $sshState.authMethod) {
-                    ForEach(SSHAuthMethod.allCases) { method in
-                        Text(method.rawValue).tag(method)
-                    }
-                }
-                if sshState.authMethod == .password {
-                    SecureField(String(localized: "Password"), text: $sshState.password)
-                } else if sshState.authMethod == .sshAgent {
-                    Picker(String(localized: "Agent Socket"), selection: $sshState.agentSocketOption) {
-                        ForEach(SSHAgentSocketOption.allCases) { option in
-                            Text(option.displayName).tag(option)
-                        }
-                    }
-                    if sshState.agentSocketOption == .custom {
-                        TextField(
-                            String(localized: "Custom Path"),
-                            text: $sshState.customAgentSocketPath,
-                            prompt: Text("/path/to/agent.sock")
-                        )
-                    }
-                    Text(sshState.agentSocketOption.explanation)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    LabeledContent(String(localized: "Identity File")) {
-                        HStack {
-                            TextField(
-                                "",
-                                text: $sshState.privateKeyPath,
-                                prompt: Text("~/.ssh/id_ed25519.pub")
-                            )
-                            Button(String(localized: "Browse")) {
-                                browseForKeyFile(
-                                    message: String(localized: "Choose a public key file")
-                                ) { sshState.privateKeyPath = $0 }
-                            }
-                            .controlSize(.small)
-                        }
-                    }
-                    Text(String(localized: """
-                    Offers the agent key matching this public key file first. With IdentitiesOnly yes \
-                    in ~/.ssh/config, only that key is offered.
-                    """))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if sshState.authMethod == .keyboardInteractive {
-                    SecureField(String(localized: "Password"), text: $sshState.password)
-                    Text(String(localized: "Password is sent via keyboard-interactive challenge-response."))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if sshState.authMethod == .none {
-                    Text("No credentials are sent. Use this when the server handles authentication itself, such as a Tailscale SSH host.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    LabeledContent(String(localized: "Key File")) {
-                        HStack {
-                            TextField("", text: $sshState.privateKeyPath, prompt: Text("~/.ssh/id_rsa"))
-                            Button(String(localized: "Browse")) { browseForKeyFile { sshState.privateKeyPath = $0 } }
-                                .controlSize(.small)
-                        }
-                    }
-                    SecureField(String(localized: "Passphrase"), text: $sshState.keyPassphrase)
-                    if sshState.privateKeyPath.isEmpty {
-                        Text(String(localized: "Auto-detects from ~/.ssh/config and default key locations."))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-
-            if sshState.authMethod.supportsTwoFactorAuthentication {
-                Section(String(localized: "Two-Factor Authentication")) {
-                    Picker(String(localized: "TOTP"), selection: $sshState.totpMode) {
-                        ForEach(TOTPMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
-                    }
-
-                    if sshState.totpMode == .autoGenerate {
-                        SecureField(String(localized: "TOTP Secret"), text: $sshState.totpSecret)
-                            .help(String(localized: "Base32-encoded secret from your authenticator setup"))
-                        Picker(String(localized: "Algorithm"), selection: $sshState.totpAlgorithm) {
-                            ForEach(TOTPAlgorithm.allCases) { algo in
-                                Text(algo.rawValue).tag(algo)
-                            }
-                        }
-                        Picker(String(localized: "Digits"), selection: $sshState.totpDigits) {
-                            Text("6").tag(6)
-                            Text("8").tag(8)
-                        }
-                        Picker(String(localized: "Period"), selection: $sshState.totpPeriod) {
-                            Text("30s").tag(30)
-                            Text("60s").tag(60)
-                        }
-                    } else {
-                        Text(String(localized: "If the SSH server asks for a verification code, TablePro prompts you for it when you connect."))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-
-            Section {
-                DisclosureGroup(String(localized: "Jump Hosts")) {
-                    ForEach(sshState.jumpHosts) { jumpHost in
-                        let jumpHostBinding = $sshState.jumpHosts.element(jumpHost)
-                        DisclosureGroup {
-                            TextField(
-                                String(localized: "Host"),
-                                text: jumpHostBinding.host,
-                                prompt: Text("bastion.example.com")
-                            )
-                            HStack {
-                                TextField(
-                                    String(localized: "Port"),
-                                    text: Binding(
-                                        get: { jumpHostBinding.wrappedValue.port.map(String.init) ?? "" },
-                                        set: { jumpHostBinding.wrappedValue.port = Int($0) }
-                                    ),
-                                    prompt: Text("22")
-                                )
-                                .frame(width: 80)
-                                TextField(
-                                    String(localized: "Username"),
-                                    text: jumpHostBinding.username,
-                                    prompt: Text("admin")
-                                )
-                            }
-                            Picker(String(localized: "Auth"), selection: jumpHostBinding.authMethod) {
-                                ForEach(SSHJumpAuthMethod.allCases) { method in
-                                    Text(method.rawValue).tag(method)
-                                }
-                            }
-                            if jumpHost.authMethod == .privateKey {
-                                LabeledContent(String(localized: "Key File")) {
-                                    HStack {
-                                        TextField(
-                                            "",
-                                            text: jumpHostBinding.privateKeyPath,
-                                            prompt: Text("~/.ssh/id_rsa")
-                                        )
-                                        Button(String(localized: "Browse")) {
-                                            browseForKeyFile { jumpHostBinding.wrappedValue.privateKeyPath = $0 }
-                                        }
-                                        .controlSize(.small)
-                                    }
-                                }
-                            }
-                        } label: {
-                            HStack {
-                                Text(
-                                    jumpHost.host.isEmpty
-                                        ? String(localized: "New Jump Host")
-                                        : "\(jumpHost.username)@\(jumpHost.host)"
-                                )
-                                .foregroundStyle(jumpHost.host.isEmpty ? .secondary : .primary)
-                                Spacer()
-                                Button {
-                                    let idToRemove = jumpHost.id
-                                    withMotion { sshState.jumpHosts.removeAll { $0.id == idToRemove } }
-                                } label: {
-                                    Image(systemName: "minus.circle")
-                                }
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel(String(localized: "Remove jump host"))
-                            }
-                        }
-                    }
-                    .onMove { indices, destination in
-                        sshState.jumpHosts.move(fromOffsets: indices, toOffset: destination)
-                    }
-
-                    Button {
-                        sshState.jumpHosts.append(SSHJumpHost())
-                    } label: {
-                        Label(String(localized: "Add Jump Host"), systemImage: "plus")
-                    }
-
-                    Text(
-                        "Jump hosts are connected in order before reaching the SSH server above. Only key and agent auth are supported for jumps."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    // MARK: - Helper Methods
-
-    private func browseForKeyFile(
-        message: String = String(localized: "Choose a private key file"),
-        onSelect: @escaping (String) -> Void
-    ) {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
-        panel.showsHiddenFiles = true
-        panel.message = message
-        panel.begin { response in
-            if response == .OK, let url = panel.url {
-                onSelect(url.path(percentEncoded: false))
-            }
-        }
-    }
-
-    private func applySSHConfigEntry(_ host: String) {
-        guard !host.isEmpty else { return }
-        sshState.host = host
     }
 }
