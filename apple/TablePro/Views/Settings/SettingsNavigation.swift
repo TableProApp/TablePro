@@ -208,7 +208,7 @@ extension SettingsPane {
             ]
         case .keyboard:
             [
-                String(localized: "Keyboard shortcuts"),
+                String(localized: "Restore Defaults…"),
             ]
         case .connections:
             [
@@ -292,7 +292,7 @@ extension SettingsPane {
                 String(localized: "Active provider"),
                 String(localized: "Providers"),
                 String(localized: "Add Provider"),
-                String(localized: "Apple Intelligence"),
+                AppleIntelligenceAvailability.displayName,
                 String(localized: "Inline Suggestions"),
                 String(localized: "Suggest SQL while typing"),
                 String(localized: "Agent"),
@@ -304,12 +304,15 @@ extension SettingsPane {
             ]
         case .mcp:
             [
+                String(localized: "MCP server"),
                 String(localized: "Status"),
                 String(localized: "Clients"),
-                String(localized: "Connect a Client"),
+                String(localized: "Connect a Client…"),
                 String(localized: "Activity"),
                 String(localized: "Access"),
                 String(localized: "Approval"),
+                String(localized: "Approved connections"),
+                String(localized: "Allow apps to list connections hidden from AI"),
                 String(localized: "Server"),
                 String(localized: "Port"),
                 String(localized: "Default row limit"),
@@ -317,6 +320,7 @@ extension SettingsPane {
                 String(localized: "Query timeout"),
                 String(localized: "Log MCP queries in history"),
                 String(localized: "Outside MCP Servers"),
+                String(localized: "Add Server…"),
             ]
         case .plugins:
             [
@@ -324,7 +328,7 @@ extension SettingsPane {
                 String(localized: "Database Drivers"),
                 String(localized: "Export Formats"),
                 String(localized: "Import Formats"),
-                String(localized: "Install from File"),
+                String(localized: "Install from File…"),
                 String(localized: "Couldn't Load"),
             ] + AppModule.allCases.map(\.title)
         case .sync:
@@ -335,20 +339,20 @@ extension SettingsPane {
                 String(localized: "What Syncs"),
                 String(localized: "Connections"),
                 String(localized: "Passwords"),
-                String(localized: "Groups & tags"),
-                String(localized: "SSH profiles"),
-                String(localized: "Credential profiles"),
-                String(localized: "Table favorites"),
-                String(localized: "Table folders"),
-                String(localized: "Database favorites"),
-                String(localized: "Saved queries"),
+                String(localized: "Groups & Tags"),
+                String(localized: "SSH Profiles"),
+                String(localized: "Credential Profiles"),
+                String(localized: "Table Favorites"),
+                String(localized: "Table Folders"),
+                String(localized: "Database Favorites"),
+                String(localized: "Saved Queries"),
             ]
         case .account:
             [
                 String(localized: "Plan"),
                 String(localized: "Sign In"),
-                String(localized: "Sign Out"),
-                String(localized: "Upgrade"),
+                String(localized: "Sign Out…"),
+                String(localized: "Upgrade…"),
             ]
         }
     }
@@ -413,7 +417,7 @@ extension SettingsPane {
         case .sync:
             [
                 "icloud", "apple account", "keychain", "password", "connections", "saved queries", "favorites", "folders",
-                "credential", "device", "last synced", "sync now", "cloudkit", "backup",
+                "credential", "device", "last synced", "sync now", "cloudkit",
             ]
         case .account:
             [
@@ -435,8 +439,8 @@ extension SettingsPage {
         case .softwareUpdate: [String(localized: "Update channel"), String(localized: "What's New")]
         case .commandLineTool: []
         case .manageThemes: []
-        case .linkedFolders: [String(localized: "Shared connection files")]
-        case .trustedLinks: [String(localized: "Links that connect without asking")]
+        case .linkedFolders: [String(localized: "Add Folder…"), String(localized: "Show in Finder")]
+        case .trustedLinks: [String(localized: "Forget All…")]
         case .sqlFormatting:
             [
                 String(localized: "Indentation"),
@@ -449,7 +453,7 @@ extension SettingsPage {
             ]
         case .queryHistory: [String(localized: "Clear query history")]
         case .dataRewind: [String(localized: "Clear saved changes")]
-        case .slashCommands: [String(localized: "Add Command")]
+        case .slashCommands: [String(localized: "Add Command…")]
         case .mcpApprovals: []
         case .mcpTokens: [String(localized: "Generate Token")]
         case .accountFeatures, .accountDevices, .accountTeams, .accountOffline: []

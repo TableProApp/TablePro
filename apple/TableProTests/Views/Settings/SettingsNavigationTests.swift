@@ -90,11 +90,26 @@ struct SettingsNavigationTests {
         ("debugger", [.plugins]),
         ("long-running", [.notifications]),
         ("Sidebar & Tabs", [.sidebar]),
+        ("Apple Intelligence", [.ai]),
     ]
 
     @Test("Each unit's keywords find their pane", arguments: unitKeywordCases)
     func unitKeywordsFindTheirPane(query: String, expected: [SettingsPane]) {
         #expect(SettingsNavigation.panes(matching: query) == expected)
+    }
+
+    @Test("A label the pane shows finds that pane or page")
+    func visibleLabelsFindTheirPaneOrPage() {
+        #expect(SettingsNavigation.panes(matching: "Saved Queries").contains(.sync))
+        #expect(SettingsNavigation.panes(matching: "Approved connections").contains(.mcp))
+
+        let connections = SettingsNavigation.results(matching: "Forget All").first { $0.pane == .connections }
+        #expect(connections?.pages.contains { $0.location == SettingsLocation(page: .trustedLinks) } == true)
+    }
+
+    @Test("Backup does not find iCloud Sync, which keeps no backup")
+    func backupDoesNotFindSync() {
+        #expect(!SettingsNavigation.panes(matching: "backup").contains(.sync))
     }
 
     @Test("A page title lists the page under its pane")

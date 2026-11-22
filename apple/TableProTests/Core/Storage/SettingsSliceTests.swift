@@ -181,21 +181,19 @@ struct SettingsSliceTests {
         #expect(received == [false, true])
     }
 
-    @Test("A write through the manager publishes only its own slice, and the manager once")
+    @Test("A write through the manager publishes only its own slice")
     func facadeWritePublishesOnlyItsSlice() throws {
         let fixture = try ManagerFixture()
         let manager = fixture.manager
         let editor = PublishCounter(manager.editorSlice.objectWillChange)
         let general = PublishCounter(manager.generalSlice.objectWillChange)
         let dataGrid = PublishCounter(manager.dataGridSlice.objectWillChange)
-        let whole = PublishCounter(manager.objectWillChange)
 
         manager.editor.showLineNumbers.toggle()
 
         #expect(editor.count == 1)
         #expect(general.count == 0)
         #expect(dataGrid.count == 0)
-        #expect(whole.count == 1)
     }
 
     @Test("A change is saved, then marked for sync, before the assignment returns")

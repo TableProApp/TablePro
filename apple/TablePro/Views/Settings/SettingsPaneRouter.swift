@@ -150,18 +150,3 @@ private struct SettingsPaneStack<Root: View, Page: View>: View {
         )
     }
 }
-
-// Stands in for a page whose pane has not moved to the route-based pages yet.
-internal struct SettingsPagePlaceholder: View {
-    internal let title: String
-
-    internal var body: some View {
-        Form {
-            Section {
-                Text(verbatim: title)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
-    }
-}

@@ -4,7 +4,7 @@ import Foundation
 import TableProSyncTransport
 
 @MainActor
-final class AppSettingsManager: ObservableObject {
+final class AppSettingsManager {
     static let shared = AppSettingsManager()
 
     let generalSlice: SettingsSlice<GeneralSettings>
@@ -117,7 +117,6 @@ final class AppSettingsManager: ObservableObject {
     private let applyHistoryRetention: @MainActor () -> Void
     private let resetOutsideSettings: @MainActor () -> Void
     private var deferredDirtyCategories: [String]?
-    private var sliceChanges: AnyCancellable?
 
     init(
         storage: AppSettingsStorage = .shared,
@@ -190,7 +189,6 @@ final class AppSettingsManager: ObservableObject {
         dateFormattingService.updateFormat(dataGridSlice.value.dateFormat)
 
         attachCommits()
-        forwardSliceChanges()
     }
 
     // Settings saved before there was an active provider would otherwise read as AI turned off.
@@ -249,30 +247,6 @@ final class AppSettingsManager: ObservableObject {
         aiSlice.attach { [weak self] _, new in self?.commitAI(new) }
         syncSlice.attach { [weak self] old, new in self?.commitSync(from: old, to: new) }
         mcpSlice.attach { [weak self] old, new in self?.commitMCP(from: old, to: new) }
-    }
-
-    // For views that still observe the whole manager.
-    private func forwardSliceChanges() {
-        let changes: [ObservableObjectPublisher] = [
-            generalSlice.objectWillChange,
-            appearanceSlice.objectWillChange,
-            appearanceModeSlice.objectWillChange,
-            editorSlice.objectWillChange,
-            formatterSlice.objectWillChange,
-            typographySlice.objectWillChange,
-            notificationsSlice.objectWillChange,
-            dataGridSlice.objectWillChange,
-            valueColorsSlice.objectWillChange,
-            historySlice.objectWillChange,
-            tabsSlice.objectWillChange,
-            keyboardSlice.objectWillChange,
-            aiSlice.objectWillChange,
-            syncSlice.objectWillChange,
-            mcpSlice.objectWillChange,
-        ]
-        sliceChanges = Publishers.MergeMany(changes).sink { [weak self] _ in
-            self?.objectWillChange.send()
-        }
     }
 
     // A reset collects its categories and marks them once, after the whole reset is saved.

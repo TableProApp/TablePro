@@ -10,6 +10,8 @@ internal final class SettingsTitleResolver {
         internal var rejectedPlugins: @MainActor () -> [RejectedPlugin]
         internal var providers: @MainActor () -> [AIProviderConfig]
         internal var isSignedIn: @MainActor () -> Bool
+        internal var isAIEnabled: @MainActor () -> Bool
+        internal var isMCPEnabled: @MainActor () -> Bool
         internal var changes: @MainActor () -> [AnyPublisher<Void, Never>]
 
         internal static var live: Sources {
@@ -18,10 +20,13 @@ internal final class SettingsTitleResolver {
                 rejectedPlugins: { PluginManager.shared.rejectedPlugins },
                 providers: { AppSettingsManager.shared.ai.providers },
                 isSignedIn: { FeatureAccess.shared.state.isSignedIn },
+                isAIEnabled: { AppSettingsManager.shared.ai.enabled },
+                isMCPEnabled: { AppSettingsManager.shared.mcp.enabled },
                 changes: {
                     [
                         PluginManager.shared.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
                         AppSettingsManager.shared.aiSlice.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
+                        AppSettingsManager.shared.mcpSlice.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
                         FeatureAccess.shared.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
                     ]
                 }
@@ -36,10 +41,15 @@ internal final class SettingsTitleResolver {
         self.sources = sources
     }
 
+    // A page the pane root hides is unavailable, so Back, Forward and links never land on it.
     internal func isAvailable(_ route: SettingsRoute) -> Bool {
         switch route {
         case .page(.accountDevices), .page(.accountTeams):
             sources.isSignedIn()
+        case .page(.slashCommands):
+            sources.isAIEnabled()
+        case .page(.mcpApprovals), .page(.mcpTokens):
+            sources.isMCPEnabled()
         case .page:
             true
         case .plugin(let id):
@@ -47,7 +57,7 @@ internal final class SettingsTitleResolver {
         case .rejectedPlugin(let url):
             sources.rejectedPlugins().contains { $0.url == url }
         case .aiProvider(let id):
-            sources.providers().contains { $0.id == id }
+            sources.isAIEnabled() && sources.providers().contains { $0.id == id }
         }
     }
 
@@ -68,6 +78,7 @@ internal final class SettingsTitleResolver {
         let plugins = sources.plugins().map {
             SettingsSearchEntry(title: $0.name, location: SettingsLocation(route: .plugin(id: $0.id)))
         }
+        guard sources.isAIEnabled() else { return plugins }
         let providers = sources.providers().map {
             SettingsSearchEntry(title: $0.displayName, location: SettingsLocation(route: .aiProvider($0.id)))
         }
