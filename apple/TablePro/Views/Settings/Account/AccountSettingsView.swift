@@ -16,6 +16,16 @@ internal struct AccountSettingsView: View {
         _model = StateObject(wrappedValue: model())
     }
 
+    private enum Subpage: Hashable {
+        case features, devices, teams, offline
+    }
+
+    private var showsTeams: Bool {
+        let content = model.content
+        let failure = model.access.state.isSignedIn ? model.profile.failure : nil
+        return content.teams?.isEmpty == false || failure != nil || (content.teams == nil && model.profile.isLoading)
+    }
+
     var body: some View {
         let content = model.content
         Form {
@@ -25,17 +35,29 @@ internal struct AccountSettingsView: View {
                 planSection(content)
             }
 
-            AccountFeaturesSection(access: model.access, offersPurchase: content.identity == .signedOut)
-
-            if content.showsDevices {
-                devicesSection(content.devices)
+            Section {
+                NavigationLink(value: Subpage.features) {
+                    Label("Features", systemImage: "star")
+                }
+                if content.showsDevices {
+                    NavigationLink(value: Subpage.devices) {
+                        Label("Devices", systemImage: "laptopcomputer")
+                    }
+                }
+                if showsTeams {
+                    NavigationLink(value: Subpage.teams) {
+                        Label("Teams", systemImage: "person.2")
+                    }
+                }
+                NavigationLink(value: Subpage.offline) {
+                    Label("Offline", systemImage: "wifi.slash")
+                }
             }
-
-            teamsSection(content.teams)
-
-            AccountOfflineSection(model: model, content: content)
         }
         .formStyle(.grouped)
+        .navigationDestination(for: Subpage.self) { subpage in
+            destination(for: subpage)
+        }
         .task { await model.reload() }
         .sheet(isPresented: $model.presentsDeviceLimit) {
             DeviceLimitSheet(model: DeviceLimitModel(services: model.services))
@@ -77,6 +99,31 @@ internal struct AccountSettingsView: View {
             }
         } message: { _ in
             Text("TablePro on that device signs out the next time it checks your account. Its paid features keep working until its last check expires.")
+        }
+    }
+
+    @ViewBuilder
+    private func destination(for subpage: Subpage) -> some View {
+        let content = model.content
+        switch subpage {
+        case .features:
+            Form {
+                AccountFeaturesSection(access: model.access, offersPurchase: content.identity == .signedOut)
+            }
+            .formStyle(.grouped)
+            .settingsDrillIn(title: String(localized: "Features"))
+        case .devices:
+            Form { devicesSection(content.devices) }
+                .formStyle(.grouped)
+                .settingsDrillIn(title: String(localized: "Devices"))
+        case .teams:
+            Form { teamsSection(content.teams) }
+                .formStyle(.grouped)
+                .settingsDrillIn(title: String(localized: "Teams"))
+        case .offline:
+            Form { AccountOfflineSection(model: model, content: content) }
+                .formStyle(.grouped)
+                .settingsDrillIn(title: String(localized: "Offline"))
         }
     }
 

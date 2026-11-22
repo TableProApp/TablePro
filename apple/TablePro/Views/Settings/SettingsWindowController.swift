@@ -212,38 +212,12 @@ private struct SettingsDetailView: View {
 
 // A pushed drill-in page. Back button and title come from the NavigationStack.
 private struct SettingsSubpageView: View {
-    @Environment(\.dismiss) private var dismiss
     @ObservedObject fileprivate var settingsManager: AppSettingsManager
     fileprivate let subpage: SettingsSubpage
 
     fileprivate var body: some View {
         content
-            .navigationTitle(subpage.title)
-            .toolbar {
-                ToolbarItem(placement: .navigation) { backButton }
-            }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                // macOS 13 does not bridge the NavigationStack back button to the window toolbar.
-                if #unavailable(macOS 14.0) {
-                    HStack {
-                        backButton
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.bar)
-                }
-            }
-    }
-
-    private var backButton: some View {
-        Button {
-            dismiss()
-        } label: {
-            Image(systemName: "chevron.backward")
-        }
-        .help(String(localized: "Back"))
-        .accessibilityLabel(String(localized: "Back"))
+            .settingsDrillIn(title: subpage.title)
     }
 
     @ViewBuilder private var content: some View {
