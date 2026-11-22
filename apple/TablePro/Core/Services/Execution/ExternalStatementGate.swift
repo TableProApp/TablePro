@@ -201,7 +201,8 @@ internal enum ExternalStatementGate {
         )
     }
 
-    private static let driverRequestMarkers = [
+    // Also read by QueryClassifier's browse-sentinel guard test, which pins every read marker to `.safe`.
+    internal static let driverRequestMarkers = [
         "BIGQUERY_BROWSE:", "BIGQUERY_COMBINED:", "BIGQUERY_FILTER:", "BIGQUERY_SEARCH:",
         "BIGTABLE_BROWSE:",
         "ELASTICSEARCH_EXPORT:", "ELASTICSEARCH_SEARCH:", "ELASTICSEARCH_WRITE:",
