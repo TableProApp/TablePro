@@ -5,8 +5,11 @@ struct GeneralSettingsView: View {
     @Binding var settings: GeneralSettings
     var onResetAll: () -> Void
 
-    @State private var initialLanguage: AppLanguage?
     @State private var showResetConfirmation = false
+
+    // The UI language is fixed until a relaunch, so the prompt compares against the language in
+    // effect when Settings first opened this run, not against per-view state the pane rebuild resets.
+    @MainActor private static let launchLanguage = AppSettingsManager.shared.general.language
 
     var body: some View {
         Form {
@@ -16,7 +19,7 @@ struct GeneralSettingsView: View {
                 }
             }
 
-            if let initial = initialLanguage, settings.language != initial {
+            if settings.language != Self.launchLanguage {
                 LabeledContent {
                     Button(String(localized: "Relaunch")) {
                         UpdateCenter.shared.relaunch()
@@ -74,9 +77,6 @@ struct GeneralSettingsView: View {
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
             Text("This will reset all settings across every section to their default values. AI providers, their API keys and Enable AI Features are kept.")
-        }
-        .onAppear {
-            if initialLanguage == nil { initialLanguage = settings.language }
         }
     }
 }

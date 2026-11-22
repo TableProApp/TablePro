@@ -39,16 +39,20 @@ internal final class SettingsWindowController: NSWindowController {
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.settings)
         window.keepsKeyViewLoopCurrent()
         window.styleMask = [.titled, .closable, .resizable]
-        // The detail's NavigationStack renders its back button and title into the window toolbar.
+        // The detail's NavigationStack renders its back button and title into the window toolbar;
+        // a transparent titlebar lets the sidebar material flow full-height under it (no empty band).
         window.toolbar = NSToolbar()
         window.toolbarStyle = .unified
+        window.titlebarAppearsTransparent = true
         window.isRestorable = false
+        // Width fixed (sidebar + detail); height resizes.
         window.contentMinSize = SettingsSplitViewController.minimumContentSize
-        window.setContentSize(SettingsSplitViewController.minimumContentSize)
+        window.contentMaxSize = NSSize(width: SettingsSplitViewController.minimumContentSize.width, height: .greatestFiniteMagnitude)
+        window.setContentSize(SettingsSplitViewController.defaultContentSize)
         window.applyAutosaveName(WindowIdentifier.settings)
         window.setContentSize(
             NSSize(
-                width: max(window.contentLayoutRect.width, SettingsSplitViewController.minimumContentSize.width),
+                width: SettingsSplitViewController.minimumContentSize.width,
                 height: max(window.contentLayoutRect.height, SettingsSplitViewController.minimumContentSize.height)
             )
         )
@@ -59,10 +63,11 @@ internal final class SettingsWindowController: NSWindowController {
 // The sidebar list + detail pane. Replaces the twelve-item .preference toolbar; a scrolling
 // sidebar has no item cap, and the detail hosts a NavigationStack so a row can push sub-pages.
 internal final class SettingsSplitViewController: NSSplitViewController {
-    internal static let minimumContentSize = NSSize(width: 775, height: 520)
-    private static let sidebarMinWidth: CGFloat = 204
-    private static let sidebarMaxWidth: CGFloat = 280
-    private static let detailMinWidth: CGFloat = 560
+    // System Settings keeps a fixed width and resizes in height only.
+    internal static let minimumContentSize = NSSize(width: sidebarWidth + detailMinWidth, height: 480)
+    internal static let defaultContentSize = NSSize(width: sidebarWidth + detailMinWidth, height: 700)
+    private static let sidebarWidth: CGFloat = 248
+    private static let detailMinWidth: CGFloat = 520
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SettingsWindow")
 
@@ -99,8 +104,8 @@ internal final class SettingsSplitViewController: NSSplitViewController {
 
         let sidebar = NSHostingController(rootView: SettingsSidebarView(model: model))
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        sidebarItem.minimumThickness = Self.sidebarMinWidth
-        sidebarItem.maximumThickness = Self.sidebarMaxWidth
+        sidebarItem.minimumThickness = Self.sidebarWidth
+        sidebarItem.maximumThickness = Self.sidebarWidth
         sidebarItem.canCollapse = false
         addSplitViewItem(sidebarItem)
 
@@ -172,8 +177,12 @@ private struct SettingsSidebarView: View {
                 if !panes.isEmpty {
                     Section {
                         ForEach(panes, id: \.self) { pane in
-                            Label(pane.title, systemImage: pane.symbol)
-                                .tag(Optional(pane))
+                            Label {
+                                Text(pane.title)
+                            } icon: {
+                                SettingsRowIcon(systemName: pane.symbol, tint: pane.tint)
+                            }
+                            .tag(Optional(pane))
                         }
                     }
                 }

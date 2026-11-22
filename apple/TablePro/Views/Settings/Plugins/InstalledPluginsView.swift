@@ -548,6 +548,8 @@ struct InstalledPluginsView: View {
     private func updatePlugin(_ registryPlugin: RegistryPlugin) {
         Task {
             _ = await pluginManager.performRegistryUpdate(registryPlugin)
+            // A rejected plugin that updated is no longer rejected; pop its now-dead detail page.
+            if !path.isEmpty { path.removeLast() }
         }
     }
 
