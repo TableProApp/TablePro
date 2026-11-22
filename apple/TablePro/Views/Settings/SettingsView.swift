@@ -3,7 +3,7 @@
 //  TablePro
 //
 
-import SwiftUI
+import Foundation
 
 enum SettingsPane: String, CaseIterable {
     case general, sidebar, connections, appearance, editor, data, keyboard, profiles, notifications, ai, mcp, plugins, sync, account
@@ -46,27 +46,6 @@ enum SettingsPane: String, CaseIterable {
         case .plugins: "puzzlepiece.extension"
         case .sync: "arrow.triangle.2.circlepath"
         case .account: "person.crop.circle"
-        }
-    }
-
-    // Fixed per-category tint for the sidebar row tile, System Settings style. A hardcoded system
-    // color, never a theme slot, so the Settings chrome stays off the theme engine.
-    var tint: Color {
-        switch self {
-        case .general: .gray
-        case .sidebar: .indigo
-        case .connections: .green
-        case .appearance: .pink
-        case .editor: .blue
-        case .data: .teal
-        case .keyboard: .gray
-        case .notifications: .red
-        case .ai: .purple
-        case .mcp: .cyan
-        case .plugins: .orange
-        case .profiles: .blue
-        case .sync: .teal
-        case .account: .indigo
         }
     }
 }

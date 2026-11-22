@@ -208,12 +208,10 @@ private struct SettingsSidebarView: View {
                     if !panes.isEmpty {
                         Section {
                             ForEach(panes, id: \.self) { pane in
-                                Label {
-                                    Text(pane.title)
-                                } icon: {
-                                    SettingsRowIcon(systemName: pane.symbol, tint: pane.tint)
-                                }
-                                .tag(Optional(pane))
+                                // The sidebar tints the symbol with the accent and inverts it on
+                                // selection (Xcode's Settings sidebar), so no custom icon view.
+                                Label(pane.title, systemImage: pane.symbol)
+                                    .tag(Optional(pane))
                             }
                         }
                     }
