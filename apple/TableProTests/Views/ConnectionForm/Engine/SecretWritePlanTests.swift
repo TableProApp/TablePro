@@ -66,6 +66,25 @@ struct SecretWritePlanTests {
         #expect(plan.writes(of: .password) == nil)
     }
 
+    @Test("A linked profile's secure field typed on the connection is not stored as a copy of its own")
+    func profileOwnedFieldIsNotWrittenOnSave() {
+        let postgres = traits(.postgresql)
+        let profile = CredentialProfile(name: "Shared", secureFieldIds: ["awsSecretAccessKey"])
+        var context = EditorContext()
+        context.credentialProfiles = [profile]
+        var baseline = ConnectionDraft.new(type: .postgresql, traits: postgres)
+        baseline.setCredentialMode(.profile(id: profile.id))
+        var draft = baseline
+        draft.fieldValues["awsSecretAccessKey"] = "typed"
+        var merged = DatabaseConnection(name: "Orders", host: "db.example.com", port: 5_432, username: "app", type: .postgresql)
+        merged.credentialMode = .profile(id: profile.id)
+        let plan = ConnectionEditorEngine.secretPlan(
+            draft, postgres, originalTraits: postgres, context, since: baseline, mergedInto: merged
+        )
+        #expect(plan.writes(of: .pluginField("awsSecretAccessKey")) == nil)
+        #expect(plan.deletesAfterRecord.contains(.pluginField("awsSecretAccessKey")))
+    }
+
     @Test("An SSH profile this Mac cannot resolve keeps its link and deletes no SSH secret")
     func unresolvedSSHProfileTouchesNothing() {
         let mysql = traits(.mysql)

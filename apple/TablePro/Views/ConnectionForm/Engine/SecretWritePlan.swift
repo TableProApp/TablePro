@@ -77,7 +77,8 @@ extension ConnectionEditorEngine {
             plan.writes.append(SecretWritePlan.Write(item: item, value: value))
         }
 
-        for field in secureFieldsOwnedByForm(traits, originalTraits: originalTraits) {
+        let profileOwned = Set(draft.credentials.mode.profileId.flatMap { context.credentialProfile($0)?.secureFieldIds } ?? [])
+        for field in secureFieldsOwnedByForm(traits, originalTraits: originalTraits) where !profileOwned.contains(field.id) {
             let value = draft.fieldValues[field.id] ?? ""
             if value.isEmpty {
                 plan.stagedDeletes.append(.pluginField(field.id))
@@ -150,10 +151,13 @@ extension ConnectionEditorEngine {
         let before = secretPlan(baseline, baselineTraits, originalTraits: originalTraits, context)
         let draft = normalized(draft, traits)
         func stands(_ item: SecretWritePlan.Item) -> Bool {
+            // A record that still delegates to the profile keeps no copy of its own for the driver to fall back on.
+            if delegatesToProfile(item, merged, context) { return true }
             guard mine.disposition(of: item) != before.disposition(of: item) else { return false }
             return secretValue(item, in: draft).isEmpty || !record(merged, uses: item)
         }
         var plan = mine
+        plan.writes = mine.writes.filter { !delegatesToProfile($0.item, merged, context) }
         plan.stagedDeletes = mine.stagedDeletes.filter(stands)
         plan.deletesAfterRecord = mine.deletesAfterRecord.filter(stands)
         return plan
@@ -171,6 +175,18 @@ extension ConnectionEditorEngine {
         case .cloudSQLServiceAccountKey: return draft.cloudSQLProxy.serviceAccountKeyJSON
         case .socksPassword: return draft.socksProxy.password
         case .pluginField(let fieldId): return draft.fieldValues[fieldId] ?? ""
+        }
+    }
+
+    static func delegatesToProfile(_ item: SecretWritePlan.Item, _ record: DatabaseConnection, _ context: EditorContext) -> Bool {
+        guard let profileId = record.credentialMode.profileId else { return false }
+        switch item {
+        case .password:
+            return true
+        case .pluginField(let fieldId):
+            return context.credentialProfile(profileId)?.secureFieldIds.contains(fieldId) == true
+        default:
+            return false
         }
     }
 
