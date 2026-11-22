@@ -1116,6 +1116,14 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.isWriteQuery(injected, databaseType: .spanner))
     }
 
+    @Test("A browse tag reads the same on any SQL engine, and a raw filter in it still does not")
+    func browseTagIsEngineBlind() {
+        #expect(!QueryClassifier.isWriteQuery("SPANNER_BROWSE:e30=", databaseType: .postgresql))
+        let raw = #"{"filters":[{"column":"__RAW__","value":"1)); DELETE FROM t WHERE TRUE; --"}]}"#
+        let injected = "BIGQUERY_FILTER:" + Data(raw.utf8).base64EncodedString()
+        #expect(QueryClassifier.isWriteQuery(injected, databaseType: .postgresql))
+    }
+
     // Every grid browse/search/count sentinel a driver may hand the gate must read as a read, or Read-Only
     // Safe Mode blocks the grid's Fetch All and MCP browse_table (#4385). Forces the classifier to keep pace
     // with ExternalStatementGate.driverRequestMarkers: a new read marker there without recognition here fails
