@@ -277,6 +277,7 @@ extension QueryClassifier {
     private static let beancountReadPrefixes = ["bql:", "bql ", "pragma table_info", "pragma database_list"]
 
     // A request driver gets the statements the scanner cuts, so each is tiered as cut and the worst one wins.
+    // MongoDB, Neo4j and the SQL engines that tag their grid browse read the whole text instead.
     static func documentStoreClassification(
         _ sql: String,
         databaseType: DatabaseType,
@@ -307,9 +308,39 @@ extension QueryClassifier {
             return worstRequest { firebaseClassification($0, databaseType: databaseType) }
         case .bigtable:
             return worstRequest(bigtableClassification)
+        case .bigQuery, .spanner:
+            // SQL engines, but the app builds a grid browse/search/count as an opaque tagged request the
+            // driver renders into a SELECT at execution. The tag only reads; nil lets real SQL fall through
+            // to SQLStatementClassifier. Tags mirror the driver query builders and
+            // ExternalStatementGate.driverRequestMarkers.
+            return sqlBrowseSentinel(sql) ? .safe : nil
         default:
             return nil
         }
+    }
+
+    // Grid browse, filter and search requests the app builds for a SQL engine whose driver renders the read
+    // itself. The tag is base64 JSON. The strings mirror the per-driver query builders and
+    // ExternalStatementGate.driverRequestMarkers, which refuses them from outside the app.
+    static let sqlBrowseSentinelPrefixes = [
+        "BIGQUERY_BROWSE:", "BIGQUERY_COMBINED:", "BIGQUERY_FILTER:", "BIGQUERY_SEARCH:",
+        "SPANNER_BROWSE:",
+    ]
+
+    static func sqlBrowseSentinel(_ sql: String) -> Bool {
+        let trimmed = StatementBlank.trimming(sql)
+        guard let prefix = sqlBrowseSentinelPrefixes.first(where: trimmed.hasPrefix) else { return false }
+        // A raw filter (TableFilter.rawSQLColumn) is the one part these browses render verbatim
+        // (BigQueryQueryBuilder.filterClause splices it straight in), so a tag that carries one is not provably
+        // a read. Normalise the JSON before the check, because the driver's JSONDecoder resolves \u escapes: a
+        // raw match on the encoded bytes would miss a "__RAW__" column. Columns, structured values, sorts
+        // and search text are all escaped by the builders, so a tag with no raw filter only reads.
+        guard let data = Data(base64Encoded: String(trimmed.dropFirst(prefix.count))),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let normalized = try? JSONSerialization.data(withJSONObject: object),
+              let decoded = String(data: normalized, encoding: .utf8)
+        else { return false }
+        return !decoded.contains(TableFilter.rawSQLColumn)
     }
 
     // The APIs a POST may reach and still only read (REST API spec 8.19). `POST /orders/_mapping` changes the mapping.
@@ -324,6 +355,8 @@ extension QueryClassifier {
     // a query under it deletes, and it is classified as that POST.
     static func elasticsearchClassification(_ sql: String) -> QueryClassification {
         let request = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The grid builds a search as an opaque tag the driver renders into a read; it only reads.
+        if request.hasPrefix("ELASTICSEARCH_SEARCH:") { return .safe }
         var lines = request.components(separatedBy: "\n")
         let header = lines.removeFirst().trimmingCharacters(in: .whitespaces)
         let hasBody = !lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -433,6 +466,8 @@ extension QueryClassifier {
     }
 
     static func typesenseClassification(_ trimmed: String) -> QueryClassification {
+        // The grid builds a search as an opaque tag the driver renders into a read; it only reads.
+        if trimmed.hasPrefix("TYPESENSE_SEARCH:") { return .safe }
         let (verb, path) = typesenseRequestLine(trimmed)
         let route = typesenseRoute(of: path)
         let touchesUnsafeSurface = route.map { route in
