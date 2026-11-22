@@ -10,16 +10,17 @@ internal struct NotificationsSettingsEntry: View {
     }
 
     internal var body: some View {
-        NotificationsSettingsView(settings: $notifications.value)
+        NotificationsSettingsView(settings: $notifications.value, visit: context.visit)
     }
 }
 
+// Notifications has no pages, and the navigation model never pushes another pane's route here.
 internal struct NotificationsSettingsPageEntry: View {
     internal let route: SettingsRoute
     internal let context: SettingsPaneContext
 
     internal var body: some View {
-        SettingsPagePlaceholder(title: context.navigation.title(for: route))
+        EmptyView()
     }
 }
 

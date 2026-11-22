@@ -1,64 +1,75 @@
-//
-//  NotificationsSettingsView.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 import UserNotifications
 
 struct NotificationsSettingsView: View {
     @Binding var settings: NotificationSettings
+    @ObservedObject var visit: SettingsPaneVisit
 
     @StateObject private var permission = NotificationPermissionMonitor()
 
     var body: some View {
         Form {
-            Section {
-                Toggle("Notify when long-running work finishes", isOn: $settings.isEnabled)
-                    .accessibilityIdentifier("notifications-enabled-toggle")
-
-                Picker("Only after", selection: $settings.thresholdSeconds) {
-                    ForEach(Self.thresholdChoices, id: \.self) { seconds in
-                        Text(Self.thresholdLabel(seconds)).tag(seconds)
-                    }
+            if settings.isEnabled, permission.status == .denied {
+                Section {
+                    permissionRow
                 }
-                .disabled(!settings.isEnabled)
-            } header: {
-                Text("Notifications")
-            } footer: {
-                Text("TablePro only notifies when the result is not already on screen.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
-            if permission.status == .denied {
-                Section {
-                    HStack(spacing: 8) {
-                        NoticeLabel(String(localized: "Notifications are turned off for TablePro in System Settings."))
-                        Spacer()
-                        Button("Open System Settings", action: Self.openSystemSettings)
-                    }
+            Section {
+                Toggle(isOn: $settings.isEnabled) {
+                    Text("Show notifications")
+                    Text(
+                        "When long-running work finishes out of sight, an agent needs your answer or its reply fails, or an extension can't load or update."
+                    )
                 }
+                .accessibilityIdentifier("notifications-enabled-toggle")
+
+                Picker(selection: threshold) {
+                    ForEach(settings.thresholdOptions, id: \.self) { seconds in
+                        Text(verbatim: SettingsFormat.duration(seconds: seconds)).tag(seconds)
+                    }
+                } label: {
+                    Text("Treat work as long-running after")
+                    Text(
+                        "When work this long finishes out of sight, its tab is marked and, with notifications on, a notification shows."
+                    )
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("notifications-threshold-picker")
             }
         }
         .formStyle(.grouped)
-        .task {
+        .task(id: visit.count) {
             await permission.refresh()
         }
     }
 
-    private static let thresholdChoices = [5, 10, 20, 30, 60, 120, 300, 600]
+    private var permissionRow: some View {
+        LabeledContent {
+            Button("Open System Settings", action: Self.openSystemSettings)
+                .accessibilityIdentifier("notifications-open-system-settings")
+        } label: {
+            Label {
+                Text("Notifications are off in System Settings")
+                Text("TablePro can't show any notification until you allow it there.")
+            } icon: {
+                Image(systemName: NoticeSeverity.warning.symbolName)
+                    .foregroundStyle(NoticeSeverity.warning.tint)
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("notifications-permission-row")
+    }
 
-    private static func thresholdLabel(_ seconds: Int) -> String {
-        guard seconds >= 60 else {
-            return String(format: String(localized: "%lld seconds"), seconds)
-        }
-        let minutes = seconds / 60
-        if minutes == 1 {
-            return String(localized: "1 minute")
-        }
-        return String(format: String(localized: "%lld minutes"), minutes)
+    // A stored value outside the allowed range shows the value that applies instead of a blank pop-up.
+    private var threshold: Binding<Int> {
+        let settings = $settings
+        return Binding(
+            get: { settings.wrappedValue.validatedThresholdSeconds },
+            set: { settings.wrappedValue.thresholdSeconds = $0 }
+        )
     }
 
     private static func openSystemSettings() {
