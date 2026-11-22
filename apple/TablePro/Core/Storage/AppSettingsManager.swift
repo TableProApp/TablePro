@@ -1,211 +1,107 @@
 import AppKit
 import Combine
 import Foundation
-import os
 import TableProSyncTransport
 
 @MainActor
 final class AppSettingsManager: ObservableObject {
     static let shared = AppSettingsManager()
 
-    @Published var general: GeneralSettings {
-        didSet {
-            guard general != oldValue else { return }
-            if oldValue.language != general.language {
-                general.language.apply()
-            }
-            storage.saveGeneral(general)
-            if oldValue.showWorkspaceRail != general.showWorkspaceRail {
-                appEvents.workspaceRailVisibilityChanged.send(())
-            }
-            if oldValue.connectionHealthCheck != general.connectionHealthCheck {
-                appEvents.connectionHealthCheckChanged.send(())
-            }
-            syncTracker.markDirty(.settings, id: AppSettingsCategory.general)
-        }
-    }
-
-    @Published var appearance: AppearanceSettings {
-        didSet {
-            guard appearance != oldValue else { return }
-            storage.saveAppearance(appearance)
-            themeEngine.select(
-                lightThemeId: appearance.preferredLightThemeId,
-                darkThemeId: appearance.preferredDarkThemeId
-            )
-            syncTracker.markDirty(.settings, id: AppSettingsCategory.appearance)
-        }
-    }
-
+    let generalSlice: SettingsSlice<GeneralSettings>
+    let appearanceSlice: SettingsSlice<AppearanceSettings>
     // Device-local, like typography: each Mac picks Auto, Light or Dark for itself.
-    @Published var appearanceMode: AppAppearanceMode {
-        didSet {
-            guard appearanceMode != oldValue else { return }
-            storage.saveAppearanceMode(appearanceMode)
-            themeEngine.apply(mode: appearanceMode)
-        }
+    let appearanceModeSlice: SettingsSlice<AppAppearanceMode>
+    let editorSlice: SettingsSlice<EditorSettings>
+    let formatterSlice: SettingsSlice<SQLFormatterSettings>
+    // Device-local, absent from `AppSettingsCategory.synced`: a zoom press never pushes a record an older build could reset.
+    let typographySlice: SettingsSlice<TypographySettings>
+    let notificationsSlice: SettingsSlice<NotificationSettings>
+    let dataGridSlice: SettingsSlice<DataGridSettings>
+    let valueColorsSlice: SettingsSlice<ValueColorSettings>
+    let historySlice: SettingsSlice<HistorySettings>
+    let tabsSlice: SettingsSlice<TabSettings>
+    let keyboardSlice: SettingsSlice<KeyboardSettings>
+    let aiSlice: SettingsSlice<AISettings>
+    let syncSlice: SettingsSlice<SyncSettings>
+    let mcpSlice: SettingsSlice<MCPSettings>
+
+    var general: GeneralSettings {
+        get { generalSlice.value }
+        set { generalSlice.value = newValue }
     }
 
-    @Published var editor: EditorSettings {
-        didSet {
-            guard editor != oldValue else { return }
-            storage.saveEditor(editor)
-            appEvents.editorSettingsChanged.send(())
-            syncTracker.markDirty(.settings, id: AppSettingsCategory.editor)
-        }
+    var appearance: AppearanceSettings {
+        get { appearanceSlice.value }
+        set { appearanceSlice.value = newValue }
     }
 
-    @Published var formatter: SQLFormatterSettings {
-        didSet {
-            guard formatter != oldValue else { return }
-            storage.saveFormatter(formatter)
-            syncTracker.markDirty(.settings, id: AppSettingsCategory.formatter)
-        }
+    var appearanceMode: AppAppearanceMode {
+        get { appearanceModeSlice.value }
+        set { appearanceModeSlice.value = newValue }
+    }
+
+    var editor: EditorSettings {
+        get { editorSlice.value }
+        set { editorSlice.value = newValue }
+    }
+
+    var formatter: SQLFormatterSettings {
+        get { formatterSlice.value }
+        set { formatterSlice.value = newValue }
     }
 
     var formatterOptions: SQLFormatterOptions {
         formatter.options(for: editor)
     }
 
-    // Device-local, absent from `AppSettingsCategory.synced`: a zoom press never pushes a record an older build could reset.
-    @Published var typography: TypographySettings {
-        didSet {
-            guard typography != oldValue else { return }
-            storage.saveTypography(typography)
-            themeEngine.apply(typography: typography)
-        }
+    var typography: TypographySettings {
+        get { typographySlice.value }
+        set { typographySlice.value = newValue }
     }
 
-    @Published var notifications: NotificationSettings {
-        didSet {
-            guard !isValidating else { return }
-            var validated = notifications
-            validated.thresholdSeconds = notifications.validatedThresholdSeconds
-            if validated != notifications {
-                isValidating = true
-                notifications = validated
-                isValidating = false
-            }
-            storage.saveNotifications(notifications)
-            syncTracker.markDirty(.settings, id: AppSettingsCategory.notifications)
-        }
+    var notifications: NotificationSettings {
+        get { notificationsSlice.value }
+        set { notificationsSlice.value = newValue }
     }
 
-    @Published var dataGrid: DataGridSettings {
-        didSet {
-            guard !isValidating else { return }
-            var validated = dataGrid
-            validated.nullDisplay = dataGrid.validatedNullDisplay
-            validated.defaultPageSize = dataGrid.validatedDefaultPageSize
-
-            if validated != dataGrid {
-                isValidating = true
-                dataGrid = validated
-                isValidating = false
-            }
-
-            guard validated != oldValue else { return }
-            storage.saveDataGrid(validated)
-            if validated.dateFormat != oldValue.dateFormat {
-                dateFormattingService.updateFormat(validated.dateFormat)
-            }
-            appEvents.dataGridSettingsChanged.send(())
-            syncTracker.markDirty(.settings, id: AppSettingsCategory.dataGrid)
-        }
+    var dataGrid: DataGridSettings {
+        get { dataGridSlice.value }
+        set { dataGridSlice.value = newValue }
     }
 
-    @Published var valueColors: ValueColorSettings {
-        didSet {
-            guard valueColors != oldValue else { return }
-            storage.saveValueColors(valueColors)
-            appEvents.valueColorSettingsChanged.send(())
-            syncTracker.markDirty(.settings, id: AppSettingsCategory.valueColors)
-        }
+    var valueColors: ValueColorSettings {
+        get { valueColorsSlice.value }
+        set { valueColorsSlice.value = newValue }
     }
 
-    @Published var history: HistorySettings {
-        didSet {
-            guard !isValidating else { return }
-            var validated = history
-            validated.maxEntries = history.validatedMaxEntries
-            validated.maxDays = history.validatedMaxDays
-
-            if validated != history {
-                isValidating = true
-                history = validated
-                isValidating = false
-            }
-
-            storage.saveHistory(validated)
-            Task { await applyHistorySettingsImmediately() }
-            syncTracker.markDirty(.settings, id: AppSettingsCategory.history)
-        }
+    var history: HistorySettings {
+        get { historySlice.value }
+        set { historySlice.value = newValue }
     }
 
-    @Published var tabs: TabSettings {
-        didSet {
-            guard tabs != oldValue else { return }
-            storage.saveTabs(tabs)
-            syncTracker.markDirty(.settings, id: AppSettingsCategory.tabs)
-        }
+    var tabs: TabSettings {
+        get { tabsSlice.value }
+        set { tabsSlice.value = newValue }
     }
 
-    @Published var keyboard: KeyboardSettings {
-        didSet {
-            guard keyboard != oldValue else { return }
-            storage.saveKeyboard(keyboard)
-            syncTracker.markDirty(.settings, id: AppSettingsCategory.keyboard)
-            MainMenuBuilder.syncKeyEquivalents(keyboard: keyboard)
-            appEvents.keyboardSettingsChanged.send(())
-        }
+    var keyboard: KeyboardSettings {
+        get { keyboardSlice.value }
+        set { keyboardSlice.value = newValue }
     }
 
-    @Published var ai: AISettings {
-        didSet {
-            guard ai != oldValue else { return }
-            storage.saveAI(ai)
-            syncTracker.markDirty(.settings, id: AppSettingsCategory.ai)
-            appEvents.aiSettingsChanged.send(())
-            copilotService.stopIfDisallowed(by: ai)
-        }
+    var ai: AISettings {
+        get { aiSlice.value }
+        set { aiSlice.value = newValue }
     }
 
-    // Every writer, a reset from another pane included, has to reach the Keychain flag and the coordinator.
-    @Published var sync: SyncSettings {
-        didSet {
-            storage.saveSync(sync)
-            passwordSyncDefaults.set(sync.syncsPasswords, forKey: KeychainHelper.passwordSyncEnabledKey)
-            if oldValue.enabled != sync.enabled {
-                switchSync(sync.enabled)
-            }
-        }
+    var sync: SyncSettings {
+        get { syncSlice.value }
+        set { syncSlice.value = newValue }
     }
 
-    @Published var mcp: MCPSettings {
-        didSet {
-            guard !isValidating else { return }
-            var validated = mcp
-            validated.port = mcp.validatedPort
-            validated.maxRowLimit = mcp.validatedMaxRowLimit
-            validated.defaultRowLimit = mcp.validatedDefaultRowLimit
-            validated.queryTimeoutSeconds = mcp.validatedQueryTimeoutSeconds
-            if validated != mcp {
-                isValidating = true
-                mcp = validated
-                isValidating = false
-            }
-
-            storage.saveMCP(validated)
-            let enabledChanged = mcp.enabled != oldValue.enabled
-            let portChanged = mcp.port != oldValue.port
-            if enabledChanged || portChanged {
-                if mcp.enabled {
-                    mcpServerManager.scheduleRestart(port: UInt16(clamping: mcp.port))
-                } else {
-                    mcpServerManager.scheduleStop()
-                }
-            }
-        }
+    var mcp: MCPSettings {
+        get { mcpSlice.value }
+        set { mcpSlice.value = newValue }
     }
 
     private let storage: AppSettingsStorage
@@ -213,13 +109,15 @@ final class AppSettingsManager: ObservableObject {
     private let syncTracker: SyncChangeTracker
     private let appEvents: AppEvents
     private let dateFormattingService: DateFormattingService
-    private let queryHistoryManager: QueryHistoryManager
     private let mcpServerManager: MCPServerManager
     private let copilotService: CopilotService
     private let connectionListPreferences: ConnectionListPreferences
     private let passwordSyncDefaults: UserDefaults
     private let switchSync: @MainActor (Bool) -> Void
-    private var isValidating = false
+    private let applyHistoryRetention: @MainActor () -> Void
+    private let resetOutsideSettings: @MainActor () -> Void
+    private var deferredDirtyCategories: [String]?
+    private var sliceChanges: AnyCancellable?
 
     init(
         storage: AppSettingsStorage = .shared,
@@ -227,7 +125,6 @@ final class AppSettingsManager: ObservableObject {
         syncTracker: SyncChangeTracker = .shared,
         appEvents: AppEvents = .shared,
         dateFormattingService: DateFormattingService = .shared,
-        queryHistoryManager: QueryHistoryManager = .shared,
         mcpServerManager: MCPServerManager = .shared,
         copilotService: CopilotService = .shared,
         connectionListPreferences: ConnectionListPreferences = .shared,
@@ -239,6 +136,15 @@ final class AppSettingsManager: ObservableObject {
             } else {
                 SyncCoordinator.shared.disableSync()
             }
+        },
+        applyHistoryRetention: @escaping @MainActor () -> Void = {
+            Task { await QueryHistoryManager.shared.applySettingsChange() }
+        },
+        resetOutsideSettings: @escaping @MainActor () -> Void = {
+            InspectorFieldHeightStore.shared.reload()
+            // The reset alert promises every section, so Sparkle's update preferences go too.
+            SoftwareUpdater.shared.resetUpdatePreferences()
+            AppModuleActivation.resetToDefaults()
         }
     ) {
         self.storage = storage
@@ -246,39 +152,45 @@ final class AppSettingsManager: ObservableObject {
         self.syncTracker = syncTracker
         self.appEvents = appEvents
         self.dateFormattingService = dateFormattingService
-        self.queryHistoryManager = queryHistoryManager
         self.mcpServerManager = mcpServerManager
         self.copilotService = copilotService
         self.connectionListPreferences = connectionListPreferences
         self.passwordSyncDefaults = passwordSyncDefaults
         self.switchSync = switchSync
+        self.applyHistoryRetention = applyHistoryRetention
+        self.resetOutsideSettings = resetOutsideSettings
 
-        self.general = storage.loadGeneral()
-        self.appearance = storage.loadAppearance()
-        self.appearanceMode = storage.loadAppearanceMode()
-        self.editor = storage.loadEditor()
-        self.formatter = storage.loadFormatter()
-        self.dataGrid = storage.loadDataGrid()
-        self.valueColors = storage.loadValueColors()
-        self.history = storage.loadHistory()
-        self.tabs = storage.loadTabs()
-        self.keyboard = storage.loadKeyboard()
-        self.ai = Self.migrateAI(storage.loadAI())
-        self.sync = storage.loadSync()
-        self.mcp = storage.loadMCP()
-        self.notifications = storage.loadNotifications()
-        self.typography = storage.loadTypography(systemIsDark: NSApp?.effectiveAppearance.isDarkTheme ?? false)
-
-        general.language.apply()
-
-        themeEngine.apply(typography: typography)
-        themeEngine.apply(
-            mode: appearanceMode,
-            lightThemeId: appearance.preferredLightThemeId,
-            darkThemeId: appearance.preferredDarkThemeId
+        generalSlice = SettingsSlice(storage.loadGeneral())
+        appearanceSlice = SettingsSlice(storage.loadAppearance())
+        appearanceModeSlice = SettingsSlice(storage.loadAppearanceMode())
+        editorSlice = SettingsSlice(storage.loadEditor())
+        formatterSlice = SettingsSlice(storage.loadFormatter())
+        dataGridSlice = SettingsSlice(storage.loadDataGrid(), normalize: { $0.normalized })
+        valueColorsSlice = SettingsSlice(storage.loadValueColors())
+        historySlice = SettingsSlice(storage.loadHistory(), normalize: { $0.normalized })
+        tabsSlice = SettingsSlice(storage.loadTabs())
+        keyboardSlice = SettingsSlice(storage.loadKeyboard())
+        aiSlice = SettingsSlice(Self.migrateAI(storage.loadAI()))
+        syncSlice = SettingsSlice(storage.loadSync())
+        mcpSlice = SettingsSlice(storage.loadMCP(), normalize: { $0.normalized })
+        notificationsSlice = SettingsSlice(storage.loadNotifications(), normalize: { $0.normalized })
+        typographySlice = SettingsSlice(
+            storage.loadTypography(systemIsDark: NSApp?.effectiveAppearance.isDarkTheme ?? false)
         )
 
-        dateFormattingService.updateFormat(dataGrid.dateFormat)
+        generalSlice.value.language.apply()
+
+        themeEngine.apply(typography: typographySlice.value)
+        themeEngine.apply(
+            mode: appearanceModeSlice.value,
+            lightThemeId: appearanceSlice.value.preferredLightThemeId,
+            darkThemeId: appearanceSlice.value.preferredDarkThemeId
+        )
+
+        dateFormattingService.updateFormat(dataGridSlice.value.dateFormat)
+
+        attachCommits()
+        forwardSliceChanges()
     }
 
     // Settings saved before there was an active provider would otherwise read as AI turned off.
@@ -291,19 +203,18 @@ final class AppSettingsManager: ObservableObject {
         return migrated
     }
 
-    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsManager")
-
-    private func applyHistorySettingsImmediately() async {
-        await queryHistoryManager.applySettingsChange()
-    }
-
-    // Resets Sparkle's update preferences too: the reset alert promises every section.
     func resetToDefaults() {
-        general = .default
+        var resetGeneral = GeneralSettings.default
+        // Share usage data is a consent choice, so a reset keeps it.
+        resetGeneral.shareAnalytics = general.shareAnalytics
+
+        deferredDirtyCategories = []
+        general = resetGeneral
         appearance = .default
         appearanceMode = .auto
         editor = .default
         formatter = .default
+        notifications = .default
         dataGrid = .default
         valueColors = .default
         history = .default
@@ -314,9 +225,213 @@ final class AppSettingsManager: ObservableObject {
         mcp = .default
         typography = .default
         storage.resetToDefaults()
-        InspectorFieldHeightStore.shared.reload()
+        let changedCategories = deferredDirtyCategories ?? []
+        deferredDirtyCategories = nil
+        syncTracker.markDirty(.settings, ids: changedCategories)
+
         connectionListPreferences.resetShowsRecent()
-        SoftwareUpdater.shared.resetUpdatePreferences()
-        AppModuleActivation.resetToDefaults()
+        resetOutsideSettings()
+    }
+
+    private func attachCommits() {
+        generalSlice.attach { [weak self] old, new in self?.commitGeneral(from: old, to: new) }
+        appearanceSlice.attach { [weak self] _, new in self?.commitAppearance(new) }
+        appearanceModeSlice.attach { [weak self] _, new in self?.commitAppearanceMode(new) }
+        editorSlice.attach { [weak self] _, new in self?.commitEditor(new) }
+        formatterSlice.attach { [weak self] _, new in self?.commitFormatter(new) }
+        typographySlice.attach { [weak self] _, new in self?.commitTypography(new) }
+        notificationsSlice.attach { [weak self] _, new in self?.commitNotifications(new) }
+        dataGridSlice.attach { [weak self] old, new in self?.commitDataGrid(from: old, to: new) }
+        valueColorsSlice.attach { [weak self] _, new in self?.commitValueColors(new) }
+        historySlice.attach { [weak self] old, new in self?.commitHistory(from: old, to: new) }
+        tabsSlice.attach { [weak self] _, new in self?.commitTabs(new) }
+        keyboardSlice.attach { [weak self] _, new in self?.commitKeyboard(new) }
+        aiSlice.attach { [weak self] _, new in self?.commitAI(new) }
+        syncSlice.attach { [weak self] old, new in self?.commitSync(from: old, to: new) }
+        mcpSlice.attach { [weak self] old, new in self?.commitMCP(from: old, to: new) }
+    }
+
+    // For views that still observe the whole manager.
+    private func forwardSliceChanges() {
+        let changes: [ObservableObjectPublisher] = [
+            generalSlice.objectWillChange,
+            appearanceSlice.objectWillChange,
+            appearanceModeSlice.objectWillChange,
+            editorSlice.objectWillChange,
+            formatterSlice.objectWillChange,
+            typographySlice.objectWillChange,
+            notificationsSlice.objectWillChange,
+            dataGridSlice.objectWillChange,
+            valueColorsSlice.objectWillChange,
+            historySlice.objectWillChange,
+            tabsSlice.objectWillChange,
+            keyboardSlice.objectWillChange,
+            aiSlice.objectWillChange,
+            syncSlice.objectWillChange,
+            mcpSlice.objectWillChange,
+        ]
+        sliceChanges = Publishers.MergeMany(changes).sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
+    // A reset collects its categories and marks them once, after the whole reset is saved.
+    private func markDirty(_ category: String) {
+        if deferredDirtyCategories != nil {
+            deferredDirtyCategories?.append(category)
+        } else {
+            syncTracker.markDirty(.settings, id: category)
+        }
+    }
+
+    private func commitGeneral(from old: GeneralSettings, to new: GeneralSettings) {
+        storage.saveGeneral(new)
+        if old.language != new.language {
+            new.language.apply()
+        }
+        if old.showWorkspaceRail != new.showWorkspaceRail {
+            appEvents.workspaceRailVisibilityChanged.send(())
+        }
+        if old.connectionHealthCheck != new.connectionHealthCheck {
+            appEvents.connectionHealthCheckChanged.send(())
+        }
+        markDirty(AppSettingsCategory.general)
+    }
+
+    private func commitAppearance(_ new: AppearanceSettings) {
+        storage.saveAppearance(new)
+        themeEngine.select(lightThemeId: new.preferredLightThemeId, darkThemeId: new.preferredDarkThemeId)
+        markDirty(AppSettingsCategory.appearance)
+    }
+
+    private func commitAppearanceMode(_ new: AppAppearanceMode) {
+        storage.saveAppearanceMode(new)
+        themeEngine.apply(mode: new)
+    }
+
+    private func commitEditor(_ new: EditorSettings) {
+        storage.saveEditor(new)
+        appEvents.editorSettingsChanged.send(())
+        markDirty(AppSettingsCategory.editor)
+    }
+
+    private func commitFormatter(_ new: SQLFormatterSettings) {
+        storage.saveFormatter(new)
+        markDirty(AppSettingsCategory.formatter)
+    }
+
+    private func commitTypography(_ new: TypographySettings) {
+        storage.saveTypography(new)
+        themeEngine.apply(typography: new)
+    }
+
+    private func commitNotifications(_ new: NotificationSettings) {
+        storage.saveNotifications(new)
+        markDirty(AppSettingsCategory.notifications)
+    }
+
+    private func commitDataGrid(from old: DataGridSettings, to new: DataGridSettings) {
+        storage.saveDataGrid(new)
+        if old.dateFormat != new.dateFormat {
+            dateFormattingService.updateFormat(new.dateFormat)
+        }
+        appEvents.dataGridSettingsChanged.send(())
+        markDirty(AppSettingsCategory.dataGrid)
+    }
+
+    private func commitValueColors(_ new: ValueColorSettings) {
+        storage.saveValueColors(new)
+        appEvents.valueColorSettingsChanged.send(())
+        markDirty(AppSettingsCategory.valueColors)
+    }
+
+    private func commitHistory(from old: HistorySettings, to new: HistorySettings) {
+        storage.saveHistory(new)
+        if !new.hasSameRetention(as: old) {
+            applyHistoryRetention()
+        }
+        markDirty(AppSettingsCategory.history)
+    }
+
+    private func commitTabs(_ new: TabSettings) {
+        storage.saveTabs(new)
+        markDirty(AppSettingsCategory.tabs)
+    }
+
+    private func commitKeyboard(_ new: KeyboardSettings) {
+        storage.saveKeyboard(new)
+        markDirty(AppSettingsCategory.keyboard)
+        MainMenuBuilder.syncKeyEquivalents(keyboard: new)
+        appEvents.keyboardSettingsChanged.send(())
+    }
+
+    private func commitAI(_ new: AISettings) {
+        storage.saveAI(new)
+        markDirty(AppSettingsCategory.ai)
+        appEvents.aiSettingsChanged.send(())
+        copilotService.stopIfDisallowed(by: new)
+    }
+
+    // Every writer, a reset from another pane included, has to reach the Keychain flag and the coordinator.
+    private func commitSync(from old: SyncSettings, to new: SyncSettings) {
+        storage.saveSync(new)
+        passwordSyncDefaults.set(new.syncsPasswords, forKey: KeychainHelper.passwordSyncEnabledKey)
+        if old.enabled != new.enabled {
+            switchSync(new.enabled)
+        }
+    }
+
+    private func commitMCP(from old: MCPSettings, to new: MCPSettings) {
+        storage.saveMCP(new)
+        guard old.enabled != new.enabled || old.port != new.port else { return }
+        if new.enabled {
+            mcpServerManager.scheduleRestart(port: UInt16(clamping: new.port))
+        } else {
+            mcpServerManager.scheduleStop()
+        }
+    }
+}
+
+extension HistorySettings {
+    // Data Rewind's switch is not retention, so turning it never starts a cleanup.
+    func hasSameRetention(as other: HistorySettings) -> Bool {
+        maxEntries == other.maxEntries && maxDays == other.maxDays && autoCleanup == other.autoCleanup
+    }
+}
+
+private extension NotificationSettings {
+    var normalized: NotificationSettings {
+        var settings = self
+        settings.thresholdSeconds = validatedThresholdSeconds
+        return settings
+    }
+}
+
+private extension DataGridSettings {
+    var normalized: DataGridSettings {
+        var settings = self
+        settings.nullDisplay = validatedNullDisplay
+        settings.defaultPageSize = validatedDefaultPageSize
+        return settings
+    }
+}
+
+private extension HistorySettings {
+    var normalized: HistorySettings {
+        var settings = self
+        settings.maxEntries = validatedMaxEntries
+        settings.maxDays = validatedMaxDays
+        return settings
+    }
+}
+
+private extension MCPSettings {
+    var normalized: MCPSettings {
+        var settings = self
+        settings.port = validatedPort
+        settings.maxRowLimit = validatedMaxRowLimit
+        settings.defaultRowLimit = validatedDefaultRowLimit
+        settings.queryTimeoutSeconds = validatedQueryTimeoutSeconds
+        return settings
     }
 }

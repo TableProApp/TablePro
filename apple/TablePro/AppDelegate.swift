@@ -1,8 +1,3 @@
-//
-//  AppDelegate.swift
-//  TablePro
-//
-
 import AppKit
 import Combine
 import os
@@ -16,8 +11,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var hasRunPostLaunchActivation = false
 
-    // MARK: - URL & File Open
-
     func applicationWillFinishLaunching(_ notification: Notification) {
         LaunchTracer.shared.mark(.willFinishLaunchingBegan)
         // First: the migration below writes the flag that tells an existing install from a new one.
@@ -28,6 +21,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         AppSettingsStorage.shared.migrateStartupBehaviorToReopenLastIfNeeded()
         AppSettingsStorage.shared.removeRetiredFieldHeightKeys()
         AIProviderRegistration.registerAll()
+        // Before sync can pull a language change, and not earlier: settings built before the migrations above would miss them.
+        LanguageLaunchState.record()
 
         // Before any window exists, so the bar is right from the first frame.
         MainMenuBuilder.install(keyboard: AppSettingsManager.shared.keyboard)
@@ -60,8 +55,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         AppLaunchCoordinator.shared.handleReopen(hasVisibleWindows: flag)
     }
 
-    // MARK: - Lifecycle
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         LaunchTracer.shared.mark(.didFinishLaunchingBegan)
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
@@ -69,8 +62,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        /// `AppSettingsManager.init` has already resolved the theme from these same three values.
-        /// Only a screenshot run overrides the mode, so only a screenshot run resolves it twice.
+        // AppSettingsManager.init already resolved the theme; only a screenshot run overrides the mode and resolves again.
         if let screenshotMode = ScreenshotEnvironment.appearanceMode {
             let appearanceSettings = AppSettingsManager.shared.appearance
             ThemeEngine.shared.apply(
@@ -95,20 +87,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DatabaseManager.shared.startObservingSystemEvents()
         DatabaseManager.shared.tabStatePersister = SessionTabStatePersister()
 
-        /// A notification the person acted on to launch the app is delivered as soon as
-        /// `applicationDidFinishLaunching` returns, before any window has a frame. Apple documents
-        /// the delegate assignment for that reason, and the two services below own the categories
-        /// `NotificationRouter` looks the action up in, so deferring either drops the action.
+        // Not deferred: a launching notification's action arrives as soon as this returns, and these services own its categories.
         UNUserNotificationCenter.current().delegate = self
         PluginNotificationService.shared.setUp()
         OperationCompletionReporter.shared.setUp()
         AgentAttentionNotifier.shared.setUp()
         ChatToolBootstrap.register()
 
-        /// Prerequisites for a connection, not post-launch work: a `cloudflared` or
-        /// `cloud-sql-proxy` left behind by a crash still holds its local port, and a restored
-        /// connection reaches `ensureConnected` while intents are routing. Both hop straight off
-        /// the main actor, so starting them here costs the first frame nothing.
+        // Not post-launch work: a crashed run's tunnel still holds its port when a restored connection reconnects.
         Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
         Task { await CloudSQLProxyManager.shared.sweepStalePidsIfNeeded() }
         Task { await TunnelCommandManager.shared.sweepStalePidsIfNeeded() }
@@ -159,7 +145,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SoftwareUpdater.shared.start()
         // Before the account starts, so a stored key's migration reaches it as a sign-in.
         Telemetry.shared.start(
-            sharesUsageData: AppSettingsManager.shared.$general.map(\.shareAnalytics).eraseToAnyPublisher(),
+            sharesUsageData: AppSettingsManager.shared.generalSlice.publisher.map(\.shareAnalytics).eraseToAnyPublisher(),
             account: AccountServices.shared
         )
         AccountServices.shared.start()
@@ -172,8 +158,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
     }
-
-    // MARK: - Remote Notifications
 
     func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         SyncCoordinator.shared.pushRegistrationDidFinish(registered: true)
@@ -188,8 +172,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SyncCoordinator.shared.handleRemoteNotification(userInfo)
     }
 
-    /// Unhiding is the one way a window comes back without any window notification firing, and the
-    /// app reports every window it owns as invisible while it is hidden.
+    // Unhiding brings windows back with no window notification, and while hidden every window reports invisible.
     func applicationDidUnhide(_ notification: Notification) {
         AppActivationPolicyController.shared.reevaluate()
     }
@@ -221,8 +204,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         SessionRecoveryTracker.saveOnQuit()
-        /// Synchronously, because an actor hop at terminate may never be scheduled: a session killed
-        /// mid-reply used to come back with its last turn missing.
+        // Synchronously: an actor hop at terminate may never run, which lost a killed session's last turn.
         AgentSessionRegistry.shared.persistSynchronouslyForTermination()
         LinkedFolderWatcher.shared.stop()
         SQLFolderWatcher.shared.stop()
@@ -237,9 +219,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func handleSystemDidWake(_ notification: Notification) {
         SQLFolderWatcher.shared.reload()
     }
-
-
-    // MARK: - Window Notifications
 
     @objc func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
@@ -262,12 +241,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             csvLogger.debug("AppDelegate.windowWillClose - non-main window '\(window.identifier?.rawValue ?? "nil", privacy: .public)' closing")
         }
-        /// Any window, not only a primary one: a machine-started session can have nothing on screen
-        /// but a settings window, and closing it leaves the process with no user interface again.
+        // Any window: a machine-started session may show only a settings window, and closing it leaves no UI.
         AppActivationPolicyController.shared.reevaluate(excluding: window)
     }
-
-    // MARK: - Dock Menu
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         let menu = NSMenu()
@@ -331,8 +307,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Carries a UserNotifications callback from the delegate thread to the main actor.
-/// UNUserNotificationCenter hands each one over exactly once and keeps no reference.
+// The center hands each callback over exactly once and keeps no reference, so carrying it to the main actor is safe.
 private struct NotificationDelivery<Payload>: @unchecked Sendable {
     let payload: Payload
     let complete: () -> Void
