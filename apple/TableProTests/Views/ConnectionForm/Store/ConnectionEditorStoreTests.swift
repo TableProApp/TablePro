@@ -79,13 +79,35 @@ struct ConnectionEditorStoreTests {
         #expect(store.testState == .idle)
     }
 
-    @Test("Test needs no name")
-    func testNeedsNoName() throws {
+    @Test("Name never blocks: Test and Save work with Name empty, and Save names it after the form")
+    func nameNeverBlocks() throws {
         let fixture = try ConnectionEditorStoreFixture()
         let store = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        store.update {
+            $0.host = "db.example.com"
+            $0.database = "orders"
+        }
         #expect(store.draft.name.isEmpty)
+        #expect(store.namePrompt == "db.example.com/orders")
         #expect(store.canTest)
-        #expect(!store.canSave)
+        #expect(store.canSave)
+
+        let saved = try store.save().get()
+        #expect(saved.name == "db.example.com/orders")
+    }
+
+    @Test("Emptying a saved connection's Name keeps its saved name, and the prompt shows it")
+    func emptiedNameKeepsTheSavedName() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = postgres(name: "Orders")
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+
+        store.update { $0.name = "" }
+
+        #expect(store.namePrompt == "Orders")
+        #expect(!store.hasUnsavedChanges)
+        #expect(try store.save().get().name == "Orders")
     }
 
     // MARK: - Save order

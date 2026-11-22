@@ -202,13 +202,12 @@ struct ConnectionURLParserTLSPortTests {
 
     @Test("Importing etcds:// into the form sets TLS Mode to Required, and a plain etcd:// import sets it to Disabled")
     func etcdFormImportSetsTLSMode() throws {
-        let secure = ConnectionFormCoordinator(connectionId: nil, initialParsedURL: try parse("etcds://etcd.example.com:2379"))
-        secure.start()
-        #expect(secure.advanced.additionalFieldValues["etcdTlsMode"] == "Required")
-        #expect(secure.ssl.mode == .disabled)
+        let fixture = try ConnectionEditorStoreFixture()
+        let secure = fixture.makeStore(.new(type: nil, parsedURL: try parse("etcds://etcd.example.com:2379")))
+        #expect(secure.draft.fieldValues["etcdTlsMode"] == "Required")
+        #expect(secure.draft.ssl.mode == .disabled)
 
-        let plain = ConnectionFormCoordinator(connectionId: nil, initialParsedURL: try parse("etcd://etcd.example.com:2379"))
-        plain.start()
-        #expect(plain.advanced.additionalFieldValues["etcdTlsMode"] == "Disabled")
+        let plain = fixture.makeStore(.new(type: nil, parsedURL: try parse("etcd://etcd.example.com:2379")))
+        #expect(plain.draft.fieldValues["etcdTlsMode"] == "Disabled")
     }
 }

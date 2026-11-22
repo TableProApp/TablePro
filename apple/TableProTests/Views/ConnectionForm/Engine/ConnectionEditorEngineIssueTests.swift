@@ -142,13 +142,15 @@ struct ConnectionEditorEngineIssueTests {
         #expect(edits.port == 15_432)
     }
 
-    @Test("A missing name blocks Save but not Test")
-    func nameBlocksSaveOnly() throws {
+    @Test("An empty name is no issue: Save and Test use the suggested name")
+    func emptyNameBlocksNothing() {
         let postgres = traits(.postgresql)
-        let draft = ConnectionDraft.new(type: .postgresql, traits: postgres)
-        let issue = try #require(issues(draft, postgres).first { $0.row == .builtIn(.name) })
-        #expect(issue.blocksSave)
-        #expect(!issue.blocksTest)
+        var draft = ConnectionDraft.new(type: .postgresql, traits: postgres)
+        draft.name = ""
+        draft.host = "db.example.com"
+        #expect(!issues(draft, postgres).contains { $0.row == .builtIn(.name) })
+        let edits = ConnectionEditorEngine.edits(draft, postgres, originalTraits: nil, EditorContext())
+        #expect(edits.name == "db.example.com")
     }
 
     @Test("SSL modes the driver refuses through a tunnel are not offered and block Save")

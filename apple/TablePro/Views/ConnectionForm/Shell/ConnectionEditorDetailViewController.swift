@@ -25,7 +25,9 @@ struct ConnectionEditorFacetPage: View {
 }
 
 // One hosting controller per visited facet, kept while the window is open: rebuilding a facet on every
-// sidebar click drops its scroll position and @State, as it did in Settings.
+// sidebar click drops its scroll position and @State, as it did in Settings. Only the shown one is in the
+// window: a hidden hosting view still re-renders on every store change, which made a keystroke cost one
+// render per visited facet.
 @MainActor
 final class ConnectionEditorDetailViewController: NSViewController {
     enum Content: Equatable {
@@ -35,13 +37,19 @@ final class ConnectionEditorDetailViewController: NSViewController {
 
     private let store: ConnectionEditorStore
     private let onCloseMissingRecord: () -> Void
-    private var facetHosts: [ConnectionFacet: NSHostingController<ConnectionEditorFacetPage>] = [:]
+    private let makePage: @MainActor (ConnectionFacet) -> AnyView
+    private var facetHosts: [ConnectionFacet: NSHostingController<AnyView>] = [:]
     private var recordMissingHost: NSHostingController<ConnectionEditorRecordMissingView>?
     private(set) var shownContent: Content?
 
-    init(store: ConnectionEditorStore, onCloseMissingRecord: @escaping () -> Void) {
+    init(
+        store: ConnectionEditorStore,
+        onCloseMissingRecord: @escaping () -> Void,
+        makePage: (@MainActor (ConnectionFacet) -> AnyView)? = nil
+    ) {
         self.store = store
         self.onCloseMissingRecord = onCloseMissingRecord
+        self.makePage = makePage ?? { AnyView(ConnectionEditorFacetPage(store: store, facet: $0)) }
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -68,19 +76,23 @@ final class ConnectionEditorDetailViewController: NSViewController {
         case .recordMissing:
             shown = recordMissingHost ?? makeRecordMissingHost()
         }
-        for child in children where child !== shown {
-            // A hidden host leaves the key view loop and the accessibility tree, and adds nothing to a live resize.
-            child.view.isHidden = true
-            child.view.autoresizingMask = []
+        for child in children where child !== shown && child.view.superview != nil {
+            child.view.removeFromSuperview()
         }
         shown.view.frame = view.bounds
         shown.view.autoresizingMask = [.width, .height]
-        shown.view.isHidden = false
+        if shown.view.superview !== view {
+            view.addSubview(shown.view)
+        }
         shownContent = content
     }
 
-    private func makeFacetHost(_ facet: ConnectionFacet) -> NSHostingController<ConnectionEditorFacetPage> {
-        let host = NSHostingController(rootView: ConnectionEditorFacetPage(store: store, facet: facet))
+    func host(for facet: ConnectionFacet) -> NSViewController? {
+        facetHosts[facet]
+    }
+
+    private func makeFacetHost(_ facet: ConnectionFacet) -> NSHostingController<AnyView> {
+        let host = NSHostingController(rootView: makePage(facet))
         install(host)
         facetHosts[facet] = host
         return host
@@ -101,7 +113,5 @@ final class ConnectionEditorDetailViewController: NSViewController {
             host.sceneBridgingOptions = []
         }
         addChild(host)
-        host.view.frame = view.bounds
-        view.addSubview(host.view)
     }
 }

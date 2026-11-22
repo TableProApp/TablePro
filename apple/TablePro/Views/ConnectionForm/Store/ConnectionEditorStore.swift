@@ -59,6 +59,8 @@ final class ConnectionEditorStore: ObservableObject {
     @Published var hasUnsavedChanges = false
     @Published var selectedFacet: ConnectionFacet = .general
     @Published var focusRequest: FocusRequest?
+    @Published private(set) var revealedRows: Set<EditorRow> = []
+    @Published private(set) var revealsAllIssues = false
 
     @Published var isRecordMissing = false
     @Published var isLibraryUnreadable = false
@@ -102,6 +104,7 @@ final class ConnectionEditorStore: ObservableObject {
     var cloudflareLogin: CloudflareAccessLogin?
     var wasDownloadingCloudSQLProxy = false
     var isClosing = false
+    var hasPlacedInitialFocus = false
     var cancellables: Set<AnyCancellable> = []
 
     weak var window: NSWindow?
@@ -142,6 +145,7 @@ final class ConnectionEditorStore: ObservableObject {
         self.baseline = draft
         self.context = EditorContext()
         self.layout = EditorLayout(facets: [])
+        revealsAllIssues = !isNew
 
         load(request)
         subscribe()
@@ -167,11 +171,21 @@ final class ConnectionEditorStore: ObservableObject {
         refreshDerivedState()
     }
 
+    // Each assignment is published only when it changed: every publish re-renders each view that observes the store.
     func refreshDerivedState() {
-        layout = ConnectionEditorEngine.layout(draft, traits, context)
-        issues = ConnectionEditorEngine.issues(draft, traits, context, layout: layout)
+        let nextLayout = ConnectionEditorEngine.layout(draft, traits, context)
+        if nextLayout != layout {
+            layout = nextLayout
+        }
+        let nextIssues = ConnectionEditorEngine.issues(draft, traits, context, layout: nextLayout)
+        if nextIssues != issues {
+            issues = nextIssues
+        }
         if let dirtyBaseline {
-            hasUnsavedChanges = dirtyFingerprint() != dirtyBaseline
+            let dirty = dirtyFingerprint() != dirtyBaseline
+            if dirty != hasUnsavedChanges {
+                hasUnsavedChanges = dirty
+            }
         }
         if !layout.facetIDs.contains(selectedFacet) {
             selectedFacet = .general
@@ -201,12 +215,51 @@ final class ConnectionEditorStore: ObservableObject {
         issues.first { $0.row == row }
     }
 
-    func facetHasErrors(_ facet: ConnectionFacet) -> Bool {
-        issues.contains { $0.facet == facet && $0.blocksSave }
-    }
-
     var firstBlockingIssue: FieldIssue? {
         issues.first(where: \.blocksSave)
+    }
+
+    // One rule for the row, the sidebar mark and the commit bar: a pristine new form is never painted red.
+    func isRevealed(_ issue: FieldIssue) -> Bool {
+        revealsAllIssues || revealedRows.contains(issue.row)
+    }
+
+    func revealedIssue(for row: EditorRow) -> FieldIssue? {
+        guard let issue = issue(for: row), isRevealed(issue) else { return nil }
+        return issue
+    }
+
+    func facetHasRevealedErrors(_ facet: ConnectionFacet) -> Bool {
+        issues.contains { $0.facet == facet && $0.blocksSave && isRevealed($0) }
+    }
+
+    func noteEdited(_ row: EditorRow) {
+        guard !revealsAllIssues, !revealedRows.contains(row) else { return }
+        revealedRows.insert(row)
+    }
+
+    func revealAllIssues() {
+        guard !revealsAllIssues else { return }
+        revealsAllIssues = true
+    }
+
+    // Asking why Save is off is asking to see the issue.
+    func reveal(_ issue: FieldIssue) {
+        noteEdited(issue.row)
+        focus(on: issue)
+    }
+
+    // A control's changes count as edits of its row; a write from code, or a field handing back what it showed, does not.
+    func tracking<Value: Equatable>(_ binding: Binding<Value>, row: EditorRow) -> Binding<Value> {
+        Binding(
+            get: { binding.wrappedValue },
+            set: { newValue, transaction in
+                if newValue != binding.wrappedValue {
+                    self.noteEdited(row)
+                }
+                binding.transaction(transaction).wrappedValue = newValue
+            }
+        )
     }
 
     var canSave: Bool { !isRecordMissing && firstBlockingIssue == nil }
@@ -227,6 +280,25 @@ final class ConnectionEditorStore: ObservableObject {
         focus(on: issue)
     }
 
+    // Spent once a row takes it, so a row that appears later never pulls the cursor back.
+    func didApplyFocus(_ request: FocusRequest) {
+        if focusRequest == request {
+            focusRequest = nil
+        }
+    }
+
+    // Once per window: a new connection starts where its address goes, a saved one at its name.
+    func placeInitialFocusIfNeeded() {
+        guard !hasPlacedInitialFocus else { return }
+        hasPlacedInitialFocus = true
+        guard focusRequest == nil, selectedFacet == .general else { return }
+        let rows = layout.facet(.general)?.sections.flatMap(\.rows) ?? []
+        let target = isNew
+            ? [EditorRow.builtIn(.host), .builtIn(.databaseFile)].first { rows.contains($0) } ?? .builtIn(.name)
+            : .builtIn(.name)
+        focus(facet: .general, row: target)
+    }
+
     // MARK: - Window
 
     var windowTitle: String {
@@ -237,6 +309,14 @@ final class ConnectionEditorStore: ObservableObject {
     }
 
     var windowSubtitle: String { traits.displayName }
+
+    var namePrompt: String {
+        ConnectionEditorEngine.fallbackName(draft, traits, context)
+    }
+
+    var effectiveName: String {
+        ConnectionEditorEngine.effectiveName(draft, traits, context)
+    }
 
     func cancel() {
         dismissAction?()

@@ -37,8 +37,10 @@ struct GeneralCredentialsRows: View {
             } label: {
                 EditorRowLabel(String(localized: "Credentials"), row: row, store: store)
             }
+            .editorRowFocus(row, store: store)
         } else {
             picker
+                .editorRowFocus(row, store: store)
         }
 
         if let profile = store.selectedCredentialProfile {
@@ -94,6 +96,7 @@ struct GeneralCredentialsRows: View {
             set: { newValue in
                 switch newValue {
                 case .mode(let mode):
+                    store.noteEdited(row)
                     store.setCredentialMode(mode)
                 case .saveAsProfile:
                     pickerGeneration += 1
@@ -122,7 +125,6 @@ struct GeneralPasswordRow: View {
     @ObservedObject var store: ConnectionEditorStore
 
     @StateObject private var reveal = SecretReveal()
-    @State private var isEdited = false
     @FocusState private var isFocused: Bool
 
     private var requiresAuthentication: Bool {
@@ -153,10 +155,9 @@ struct GeneralPasswordRow: View {
                     .fixedSize()
             }
         } label: {
-            EditorRowLabel(title, row: .builtIn(.password), store: store, isEdited: isEdited)
+            EditorRowLabel(title, row: .builtIn(.password), store: store)
         }
-        .editorRowFocus(.builtIn(.password), store: store, isFocused: $isFocused)
-        .editorRowFocus(.builtIn(.passwordMode), store: store, isFocused: $isFocused)
+        .editorRowFocus(.builtIn(.password), .builtIn(.passwordMode), store: store, isFocused: $isFocused)
     }
 
     private var revealTitle: String {
@@ -177,7 +178,7 @@ struct GeneralPasswordRow: View {
         Binding(
             get: { store.draft.credentials.password },
             set: { newValue in
-                isEdited = true
+                store.noteEdited(.builtIn(.password))
                 store.update { $0.credentials.password = newValue }
             }
         )
@@ -190,7 +191,7 @@ struct GeneralPasswordModeRow: View {
 
     var body: some View {
         if store.draft.credentials.passwordSource != nil {
-            Toggle(isOn: store.passwordPromptBinding) {
+            Toggle(isOn: store.tracking(store.passwordPromptBinding, row: .builtIn(.passwordMode))) {
                 EditorRowLabel(
                     store.traits.connectionMode == .apiOnly
                         ? String(localized: "Prompt for API token")
@@ -200,8 +201,10 @@ struct GeneralPasswordModeRow: View {
                 )
             }
             .accessibilityIdentifier(BuiltInRow.passwordMode.accessibilityIdentifier)
+            .editorRowFocus(.builtIn(.passwordMode), store: store)
         } else {
             GeneralPasswordStoragePicker(store: store, title: passwordTitle(store))
+                .editorRowFocus(.builtIn(.passwordMode), store: store)
         }
     }
 }
@@ -211,7 +214,7 @@ struct GeneralPasswordStoragePicker: View {
     let title: String
 
     var body: some View {
-        Picker(selection: store.passwordPromptBinding) {
+        Picker(selection: store.tracking(store.passwordPromptBinding, row: .builtIn(.passwordMode))) {
             Text(String(localized: "Store in Keychain")).tag(false)
             Text(String(localized: "Ask Every Time")).tag(true)
         } label: {

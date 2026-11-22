@@ -27,6 +27,7 @@ struct GeneralTypeRow: View {
         } label: {
             EditorRowLabel(String(localized: "Type"), row: .builtIn(.type), store: store)
         }
+        .editorRowFocus(.builtIn(.type), store: store)
     }
 }
 
@@ -34,7 +35,7 @@ struct GeneralEnvironmentRow: View {
     @ObservedObject var store: ConnectionEditorStore
 
     var body: some View {
-        Picker(selection: store.environmentBinding) {
+        Picker(selection: store.tracking(store.environmentBinding, row: .builtIn(.environment))) {
             ForEach(ConnectionEnvironment.allCases) { environment in
                 if let image = Self.symbol(for: environment) {
                     Label {
@@ -51,6 +52,7 @@ struct GeneralEnvironmentRow: View {
             EditorRowLabel(String(localized: "Environment"), row: .builtIn(.environment), store: store)
         }
         .accessibilityIdentifier(BuiltInRow.environment.accessibilityIdentifier)
+        .editorRowFocus(.builtIn(.environment), store: store)
     }
 
     // A menu item draws a template image in its own text color, so the tint is baked into a non-template copy.
@@ -67,8 +69,6 @@ struct GeneralEnvironmentRow: View {
 struct GeneralSocketPathRow: View {
     @ObservedObject var store: ConnectionEditorStore
 
-    @State private var isEdited = false
-
     private var prompt: String { store.traits.defaultLocalSocketPath ?? "" }
 
     var body: some View {
@@ -82,14 +82,15 @@ struct GeneralSocketPathRow: View {
                     value: Binding(
                         get: { store.draft.localSocketPath },
                         set: { newValue in
-                            isEdited = true
+                            store.noteEdited(.builtIn(.localSocketPath))
                             store.update { $0.localSocketPath = newValue }
                         }
                     )
                 )
             } label: {
-                EditorRowLabel(String(localized: "Socket"), row: .builtIn(.localSocketPath), store: store, isEdited: isEdited)
+                EditorRowLabel(String(localized: "Socket"), row: .builtIn(.localSocketPath), store: store)
             }
+            .editorRowFocus(.builtIn(.localSocketPath), store: store)
         } else {
             EditorTextRow(
                 String(localized: "Socket"),

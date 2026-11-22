@@ -51,9 +51,6 @@ extension ConnectionEditorEngine {
         layout: EditorLayout
     ) -> [PendingIssue] {
         var pending: [PendingIssue] = []
-        if draft.name.trimmingCharacters(in: .whitespaces).isEmpty {
-            pending.append(PendingIssue(row: .builtIn(.name), message: String(localized: "Connection name is required")))
-        }
         if draft.database.trimmingCharacters(in: .whitespaces).isEmpty {
             switch traits.connectionMode {
             case .fileBased:

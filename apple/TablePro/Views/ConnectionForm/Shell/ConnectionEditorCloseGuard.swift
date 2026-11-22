@@ -60,3 +60,18 @@ struct ConnectionEditorSavePrompt: Equatable {
         String(localized: "Your changes will be lost if you don't save them.")
     }
 }
+
+enum ConnectionEditorEscape {
+    private static let escapeKeyCode: UInt16 = 53
+
+    // Escape while a text field or a code editor is being edited; a sheet answers its own.
+    @MainActor
+    static func endsEditing(_ event: NSEvent, in window: NSWindow) -> Bool {
+        guard event.type == .keyDown, event.keyCode == escapeKeyCode,
+              event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.function).isEmpty,
+              event.windowNumber == window.windowNumber,
+              window.attachedSheet == nil
+        else { return false }
+        return window.firstResponder is NSTextView
+    }
+}

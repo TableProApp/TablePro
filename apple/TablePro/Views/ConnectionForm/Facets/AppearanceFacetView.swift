@@ -42,7 +42,7 @@ struct AppearanceFacetView: View {
         case .builtIn(.icon):
             LabeledContent {
                 SymbolWell(
-                    iconName: store.binding(\.appearance.iconName),
+                    iconName: store.tracking(store.binding(\.appearance.iconName), row: row),
                     subject: .connection(store.draft.type),
                     color: store.draft.appearance.color,
                     accessibilityIdentifier: BuiltInRow.icon.accessibilityIdentifier
@@ -50,23 +50,26 @@ struct AppearanceFacetView: View {
             } label: {
                 EditorRowLabel(String(localized: "Icon"), row: row, store: store)
             }
+            .editorRowFocus(row, store: store)
         case .builtIn(.color):
             AppearanceColorRow(store: store)
         case .builtIn(.tags):
             // The editor names its tag menu `connection-form-tags` and confirms a delete that reaches every connection.
             LabeledContent {
-                ConnectionTagEditor(tagIds: store.binding(\.appearance.tagIds))
+                ConnectionTagEditor(tagIds: store.tracking(store.binding(\.appearance.tagIds), row: row))
             } label: {
                 EditorRowLabel(String(localized: "Tags"), row: row, store: store)
             }
+            .editorRowFocus(row, store: store)
         case .builtIn(.group):
             LabeledContent {
-                ConnectionGroupPicker(selectedGroupId: store.binding(\.appearance.groupId))
+                ConnectionGroupPicker(selectedGroupId: store.tracking(store.binding(\.appearance.groupId), row: row))
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier(BuiltInRow.group.accessibilityIdentifier)
             } label: {
                 EditorRowLabel(String(localized: "Group"), row: row, store: store)
             }
+            .editorRowFocus(row, store: store)
         case .plugin(let fieldID):
             PluginFieldRow(fieldID: fieldID, store: store)
         default:
@@ -80,7 +83,7 @@ struct AppearanceColorRow: View {
     @ObservedObject var store: ConnectionEditorStore
 
     var body: some View {
-        Picker(selection: store.binding(\.appearance.color)) {
+        Picker(selection: store.tracking(store.binding(\.appearance.color), row: .builtIn(.color))) {
             item(.none)
             Divider()
             ForEach(ConnectionColor.allCases.filter { !$0.isDefault }) { color in
@@ -90,6 +93,7 @@ struct AppearanceColorRow: View {
             EditorRowLabel(String(localized: "Color"), row: .builtIn(.color), store: store)
         }
         .accessibilityIdentifier(BuiltInRow.color.accessibilityIdentifier)
+        .editorRowFocus(.builtIn(.color), store: store)
     }
 
     @ViewBuilder

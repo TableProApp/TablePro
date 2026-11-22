@@ -25,6 +25,7 @@ final class ConnectionEditorWindowController: NSWindowController, NSWindowDelega
     private let toolbarController: ConnectionEditorToolbar
     private let frameAutosaveName: String?
     private var storeObservation: AnyCancellable?
+    private var keyMonitor: Any?
 
     var sidebar: ConnectionEditorSidebarViewController { content.split.sidebar }
     var detail: ConnectionEditorDetailViewController { content.split.detail }
@@ -102,6 +103,11 @@ final class ConnectionEditorWindowController: NSWindowController, NSWindowDelega
             self?.syncChrome()
         }
         syncChrome()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
+            nonisolated(unsafe) let event = nsEvent
+            let consumed = MainActor.assumeIsolated { self?.consumesKeyDown(event) ?? false }
+            return consumed ? nil : nsEvent
+        }
     }
 
     @available(*, unavailable)
@@ -224,6 +230,14 @@ final class ConnectionEditorWindowController: NSWindowController, NSWindowDelega
         )
     }
 
+    // The Cancel button answers Escape as a key equivalent before a text view sees the key, so the edit is ended here
+    // instead; an Escape with no field being edited reaches Cancel and its close guard.
+    func consumesKeyDown(_ event: NSEvent) -> Bool {
+        guard let window, ConnectionEditorEscape.endsEditing(event, in: window) else { return false }
+        _ = endEditing()
+        return true
+    }
+
     // Cancel and Escape: the same question the close button asks.
     func requestClose() {
         guard window?.attachedSheet == nil, endEditing() else { return }
@@ -270,6 +284,10 @@ final class ConnectionEditorWindowController: NSWindowController, NSWindowDelega
             ConnectionEditorWindowFrame.save(window, autosaveName: frameAutosaveName)
         }
         storeObservation = nil
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+        }
+        keyMonitor = nil
         store.teardown()
         Self.controllers = Self.controllers.filter { $0.value !== self }
     }
@@ -282,6 +300,67 @@ final class ConnectionEditorWindowController: NSWindowController, NSWindowDelega
     func windowDidMove(_ notification: Notification) {
         guard let window, window.isVisible else { return }
         ConnectionEditorWindowFrame.save(window, autosaveName: frameAutosaveName)
+    }
+
+    // MARK: - Quitting
+
+    // Asked before anything else a quit stops, so Cancel here leaves the app as it was.
+    static func prepareToTerminate(
+        _ editors: [ConnectionEditorWindowController]? = nil,
+        ask: @MainActor (ConnectionEditorWindowController, ConnectionEditorSavePrompt) -> ConnectionEditorCloseGuard.Choice
+            = { editor, prompt in
+                editor.showAndActivate()
+                return editor.askToSaveModally(prompt)
+            }
+    ) -> Bool {
+        for editor in editors ?? openEditorsFrontToBack {
+            guard editor.approvesTermination(ask: ask) else { return false }
+        }
+        return true
+    }
+
+    // The quit skips windowShouldClose, so each editor is closed here to reap what a running test staged.
+    static func closeAllForTermination() {
+        for controller in Array(controllers.values) {
+            controller.close()
+        }
+    }
+
+    private static var openEditorsFrontToBack: [ConnectionEditorWindowController] {
+        let order = NSApp.orderedWindows
+        return controllers.values.sorted { lhs, rhs in
+            let left = lhs.window.flatMap { order.firstIndex(of: $0) } ?? order.count
+            let right = rhs.window.flatMap { order.firstIndex(of: $0) } ?? order.count
+            return left < right
+        }
+    }
+
+    // Save never connects here: the app is about to quit. A Save that fails keeps the window and stops the quit.
+    func approvesTermination(
+        ask: @MainActor (ConnectionEditorWindowController, ConnectionEditorSavePrompt) -> ConnectionEditorCloseGuard.Choice
+    ) -> Bool {
+        if window?.attachedSheet != nil {
+            showAndActivate()
+            NSSound.beep()
+            return false
+        }
+        _ = endEditing()
+        guard case .askToSave(let prompt) = closeVerdict else { return true }
+        switch ask(self, prompt) {
+        case .save:
+            if case .success = store.save(connect: false) { return true }
+            return false
+        case .dontSave:
+            return true
+        case .cancel:
+            return false
+        }
+    }
+
+    func askToSaveModally(_ prompt: ConnectionEditorSavePrompt) -> ConnectionEditorCloseGuard.Choice {
+        // A quit can come from outside the app, and a background process has no Dock icon to reach the alert by.
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+        return ConnectionEditorCloseGuard.choice(for: ConnectionEditorCloseGuard.makeAlert(prompt).runModal())
     }
 
     // File > Save, Cmd+S: saves without connecting, also for a new connection.

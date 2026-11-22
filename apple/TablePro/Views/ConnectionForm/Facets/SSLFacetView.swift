@@ -128,7 +128,7 @@ struct SSLModeRow: View {
     var body: some View {
         let offered = store.offeredSSLModes
         let current = store.draft.ssl.mode
-        Picker(selection: store.sslModeBinding) {
+        Picker(selection: store.tracking(store.sslModeBinding, row: .builtIn(.sslMode))) {
             ForEach(offered) { mode in
                 Text(verbatim: mode.displayLabel).tag(mode)
             }
@@ -142,6 +142,7 @@ struct SSLModeRow: View {
             EditorRowLabel(String(localized: "SSL Mode"), row: .builtIn(.sslMode), store: store)
         }
         .accessibilityIdentifier(BuiltInRow.sslMode.accessibilityIdentifier)
+        .editorRowFocus(.builtIn(.sslMode), store: store)
     }
 }
 

@@ -295,8 +295,7 @@ struct FieldIssue: Hashable, Identifiable, Sendable {
 
     var blocksSave: Bool { severity == .error }
 
-    // A test signs in without a name, so only the name issue spares it.
-    var blocksTest: Bool { severity == .error && row != .builtIn(.name) }
+    var blocksTest: Bool { severity == .error }
 }
 
 struct FocusRequest: Equatable, Sendable {

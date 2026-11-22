@@ -16,7 +16,6 @@ struct EditorPathRow: View {
     private let buttonTitle: String
     private let choose: @MainActor () async -> String?
 
-    @State private var isEdited = false
     @FocusState private var isFocused: Bool
 
     init(
@@ -40,7 +39,7 @@ struct EditorPathRow: View {
     var body: some View {
         LabeledContent {
             HStack(spacing: 8) {
-                TextField(text: $path, prompt: prompt.map { Text(verbatim: $0) }) {
+                TextField(text: store.tracking($path, row: row), prompt: prompt.map { Text(verbatim: $0) }) {
                     Text(verbatim: title)
                 }
                 .labelsHidden()
@@ -50,16 +49,20 @@ struct EditorPathRow: View {
 
                 Button(buttonTitle) {
                     Task {
-                        if let chosen = await choose() { path = chosen }
+                        if let chosen = await choose() { pick(chosen) }
                     }
                 }
                 .accessibilityIdentifier("\(row.accessibilityIdentifier)-choose")
             }
         } label: {
-            EditorRowLabel(title, row: row, store: store, isEdited: isEdited)
+            EditorRowLabel(title, row: row, store: store)
         }
         .editorRowFocus(row, store: store, isFocused: $isFocused)
-        .onChange(of: path) { _ in isEdited = true }
+    }
+
+    private func pick(_ chosen: String) {
+        store.noteEdited(row)
+        path = chosen
     }
 }
 
@@ -73,7 +76,6 @@ struct EditorDatabaseFileRow: View {
     private let chooseIdentifier: String
     private let newIdentifier: String
 
-    @State private var isEdited = false
     @FocusState private var isFocused: Bool
 
     init(
@@ -99,7 +101,7 @@ struct EditorDatabaseFileRow: View {
     var body: some View {
         LabeledContent {
             HStack(spacing: 8) {
-                TextField(text: $path, prompt: prompt.map { Text(verbatim: $0) }) {
+                TextField(text: store.tracking($path, row: row), prompt: prompt.map { Text(verbatim: $0) }) {
                     Text(verbatim: title)
                 }
                 .labelsHidden()
@@ -122,10 +124,14 @@ struct EditorDatabaseFileRow: View {
                 }
             }
         } label: {
-            EditorRowLabel(title, row: row, store: store, isEdited: isEdited)
+            EditorRowLabel(title, row: row, store: store)
         }
         .editorRowFocus(row, store: store, isFocused: $isFocused)
-        .onChange(of: path) { _ in isEdited = true }
+    }
+
+    private func pick(_ chosen: String) {
+        store.noteEdited(row)
+        path = chosen
     }
 
     private func chooseExisting() async {
@@ -134,7 +140,7 @@ struct EditorDatabaseFileRow: View {
             currentPath: path,
             in: EditorFilePanel.window(for: store)
         )
-        if let chosen { path = chosen }
+        if let chosen { pick(chosen) }
     }
 
     private func nameNew() async {
@@ -143,7 +149,7 @@ struct EditorDatabaseFileRow: View {
             currentPath: path,
             in: EditorFilePanel.window(for: store)
         )
-        if let chosen { path = chosen }
+        if let chosen { pick(chosen) }
     }
 }
 

@@ -67,7 +67,7 @@ extension ConnectionEditorEngine {
 
         let ssh = sshValues(draft, context)
         return ConnectionFormEdits(
-            name: draft.name,
+            name: effectiveName(draft, traits, context),
             host: host,
             port: port,
             database: draft.database,
@@ -154,6 +154,8 @@ extension ConnectionEditorEngine {
     struct TestFingerprint: Equatable {
         let edits: ConnectionFormEdits
         let secrets: [String]
+        // Socket with no path writes what Host and Port did, yet a result earned on Host and Port no longer applies.
+        var endpoint: ConnectionDraft.Endpoint?
     }
 
     static func testFingerprint(
@@ -196,7 +198,7 @@ extension ConnectionEditorEngine {
             draft.cloudSQLProxy.serviceAccountKeyJSON,
             draft.socksProxy.password
         ] + pluginSecrets
-        return TestFingerprint(edits: edits, secrets: secrets)
+        return TestFingerprint(edits: edits, secrets: secrets, endpoint: draft.endpoint)
     }
 
     // A test record carries what the saved one would, under a throwaway id.

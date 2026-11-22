@@ -34,6 +34,7 @@ extension ConnectionEditorStore {
             traits = ConnectionTypeTraits.live(for: record.type, pluginManager: services.pluginManager)
             originalTraits = traits
             context.originalType = record.type
+            context.savedName = record.name
             context.participatesInSync = record.participatesInSync
             var secrets = DraftSecrets()
             let reads = storage.recordingSecretReads {
@@ -85,6 +86,7 @@ extension ConnectionEditorStore {
         var context = EditorContext()
         context.isNew = isNew
         context.originalType = self.context.originalType
+        context.savedName = self.context.savedName
         context.participatesInSync = self.context.participatesInSync
         context.aiEnabled = services.appSettings.ai.enabled
         context.syncEnabled = services.appSettings.sync.enabled
@@ -274,7 +276,9 @@ extension ConnectionEditorStore {
     func refreshPgpassStatus() {
         guard ConnectionEditorEngine.usesPgpass(draft, traits) else {
             pgpassLookup = nil
-            pgpassStatus = .notChecked
+            if pgpassStatus != .notChecked {
+                pgpassStatus = .notChecked
+            }
             return
         }
         let lookup = currentPgpassLookup()

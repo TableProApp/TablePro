@@ -111,11 +111,16 @@ struct ConnectionStorageImportTests {
     func connectionFormExplainsUnreadableLibrary() throws {
         let corrupt = Data("not json".utf8)
         try corrupt.write(to: fileURL)
-        let coordinator = ConnectionFormCoordinator(connectionId: nil, services: try services(with: makeStorage()))
+        let store = ConnectionEditorStore(
+            request: .new(type: .mysql, parsedURL: nil),
+            services: services(with: try makeStorage())
+        )
+        store.update { $0.name = "Orders" }
 
-        coordinator.save()
+        store.save()
 
-        #expect(coordinator.saveError == String(
+        #expect(store.saveError == .libraryUnreadable)
+        #expect(store.saveError?.errorDescription == String(
             localized: "TablePro could not read your saved connections, so it did not save over them."
         ))
         #expect(try Data(contentsOf: fileURL) == corrupt)

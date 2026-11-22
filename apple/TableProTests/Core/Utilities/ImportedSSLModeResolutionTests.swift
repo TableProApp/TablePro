@@ -64,9 +64,9 @@ struct ImportedSSLModeResolutionTests {
     ])
     func formAndDeepLinkAgree(url: String) throws {
         let parsed = try parse(url)
-        let coordinator = ConnectionFormCoordinator(connectionId: nil, initialParsedURL: parsed)
-        coordinator.start()
-        #expect(coordinator.ssl.mode == TransientConnectionFactory.build(from: parsed).sslConfig.mode)
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: nil, parsedURL: parsed))
+        #expect(store.draft.ssl.mode == TransientConnectionFactory.build(from: parsed).sslConfig.mode)
     }
 
     @Test("The form and a deep link open the same port for the same URL", arguments: [
@@ -78,10 +78,10 @@ struct ImportedSSLModeResolutionTests {
     ])
     func formAndDeepLinkAgreeOnPort(url: String) throws {
         let parsed = try parse(url)
-        let coordinator = ConnectionFormCoordinator(connectionId: nil, initialParsedURL: parsed)
-        coordinator.start()
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: nil, parsedURL: parsed))
         let transient = TransientConnectionFactory.build(from: parsed)
-        #expect(coordinator.network.port == String(transient.port))
+        #expect(store.draft.portText == String(transient.port))
         #expect(transient.port == parsed.resolvedPort)
     }
 }

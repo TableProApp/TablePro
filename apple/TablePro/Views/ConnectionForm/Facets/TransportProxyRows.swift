@@ -73,6 +73,7 @@ struct TransportCloudflareRow: View {
                     .textSelection(.enabled)
             }
         }
+        .editorRowFocus(editorRow, store: store)
     }
 }
 
@@ -168,8 +169,6 @@ struct TransportToggle: View {
     private let row: EditorRow
     @ObservedObject private var store: ConnectionEditorStore
 
-    @State private var isEdited = false
-
     init(_ title: String, isOn: Binding<Bool>, row: EditorRow, store: ConnectionEditorStore) {
         self.title = title
         _isOn = isOn
@@ -178,11 +177,11 @@ struct TransportToggle: View {
     }
 
     var body: some View {
-        Toggle(isOn: $isOn) {
-            EditorRowLabel(title, row: row, store: store, isEdited: isEdited)
+        Toggle(isOn: store.tracking($isOn, row: row)) {
+            EditorRowLabel(title, row: row, store: store)
         }
         .accessibilityIdentifier(row.accessibilityIdentifier)
-        .onChange(of: isOn) { _ in isEdited = true }
+        .editorRowFocus(row, store: store)
     }
 }
 
@@ -214,13 +213,14 @@ struct TransportBinaryRow: View {
     var body: some View {
         LabeledContent {
             HStack(spacing: 8) {
-                TextField(String(localized: "Path"), text: $path, prompt: Text(String(localized: "Automatic")))
+                TextField(String(localized: "Path"), text: store.tracking($path, row: row), prompt: Text(String(localized: "Automatic")))
                     .labelsHidden()
                     .autocorrectionDisabled()
                     .accessibilityIdentifier(row.accessibilityIdentifier)
                 Button(String(localized: "Choose…")) {
                     Task {
                         if let chosen = await TransportFilePanel.chooseExecutable(currentPath: path, store: store) {
+                            store.noteEdited(row)
                             path = chosen
                         }
                     }
@@ -237,6 +237,7 @@ struct TransportBinaryRow: View {
             Text(String(localized: "Path"))
             status
         }
+        .editorRowFocus(row, store: store)
 
         if case .downloading(let fraction) = downloadPhase {
             LabeledContent {

@@ -32,7 +32,7 @@ struct AIAndMCPFacetView: View {
     private func rowView(_ row: EditorRow) -> some View {
         switch row {
         case .builtIn(.externalAccess):
-            Picker(selection: store.binding(\.ai.externalAccess)) {
+            Picker(selection: store.tracking(store.binding(\.ai.externalAccess), row: row)) {
                 ForEach(ExternalAccessLevel.allCases) { level in
                     Text(verbatim: level.displayName).tag(level)
                 }
@@ -41,8 +41,9 @@ struct AIAndMCPFacetView: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier(row.accessibilityIdentifier)
+            .editorRowFocus(row, store: store)
         case .builtIn(.aiPolicy):
-            Picker(selection: store.binding(\.ai.policy)) {
+            Picker(selection: store.tracking(store.binding(\.ai.policy), row: row)) {
                 Text(String(localized: "Use Default"))
                     .tag(AIConnectionPolicy?.none)
                 ForEach(AIConnectionPolicy.allCases) { policy in
@@ -53,10 +54,12 @@ struct AIAndMCPFacetView: View {
                 EditorRowLabel(String(localized: "AI Policy"), row: row, store: store)
             }
             .accessibilityIdentifier(row.accessibilityIdentifier)
+            .editorRowFocus(row, store: store)
         case .builtIn(.alwaysAllowedTools):
             ForEach(store.draft.ai.alwaysAllowedTools, id: \.self) { tool in
                 LabeledContent {
                     Button(String(localized: "Forget")) {
+                        store.noteEdited(row)
                         store.forgetAlwaysAllowed(tool)
                     }
                     .accessibilityLabel(String(format: String(localized: "Forget %@"), tool))

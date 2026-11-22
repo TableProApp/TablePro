@@ -56,7 +56,7 @@ struct AdvancedFacetView: View {
                 store: store
             )
         case .builtIn(.identifierCase):
-            Picker(selection: store.binding(\.options.completionIdentifierCase)) {
+            Picker(selection: store.tracking(store.binding(\.options.completionIdentifierCase), row: row)) {
                 ForEach(SQLIdentifierCase.allCases, id: \.self) { identifierCase in
                     Text(verbatim: Self.title(for: identifierCase)).tag(identifierCase)
                 }
@@ -64,11 +64,13 @@ struct AdvancedFacetView: View {
                 EditorRowLabel(String(localized: "Identifier case"), row: row, store: store)
             }
             .accessibilityIdentifier(row.accessibilityIdentifier)
+            .editorRowFocus(row, store: store)
         case .builtIn(.localOnly):
-            Toggle(isOn: store.binding(\.options.localOnly)) {
+            Toggle(isOn: store.tracking(store.binding(\.options.localOnly), row: row)) {
                 EditorRowLabel(String(localized: "Local only"), row: row, store: store)
             }
             .accessibilityIdentifier(row.accessibilityIdentifier)
+            .editorRowFocus(row, store: store)
         case .plugin(let fieldID):
             pluginRow(fieldID)
         default:

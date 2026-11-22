@@ -1070,9 +1070,4 @@ struct ConnectionURLParser {
             return nil
         }
     }
-
-    @MainActor internal static func tagId(fromEnvName name: String) -> UUID? {
-        let tags = TagStorage.shared.loadTags()
-        return tags.first(where: { $0.name.lowercased() == name.lowercased() })?.id
-    }
 }

@@ -12,6 +12,7 @@ import TableProSSHConfig
 struct EditorContext: Equatable, Sendable {
     var isNew = true
     var originalType: DatabaseType?
+    var savedName = ""
     var aiEnabled = false
     var syncEnabled = false
     var participatesInSync = false

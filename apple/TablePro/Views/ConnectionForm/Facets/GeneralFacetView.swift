@@ -39,22 +39,7 @@ struct GeneralFacetView: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear(perform: placeInitialFocus)
-    }
-
-    // A new connection starts where its address goes; an existing one at its name.
-    private func placeInitialFocus() {
-        guard store.focusRequest == nil, store.selectedFacet == .general else { return }
-        let rows = store.layout.facet(.general)?.sections.flatMap(\.rows) ?? []
-        let target: EditorRow
-        if !store.isNew {
-            target = .builtIn(.name)
-        } else if let first = [EditorRow.builtIn(.host), .builtIn(.databaseFile)].first(where: { rows.contains($0) }) {
-            target = first
-        } else {
-            target = .builtIn(.name)
-        }
-        store.focus(facet: .general, row: target)
+        .onAppear { store.placeInitialFocusIfNeeded() }
     }
 
     private func socketStatus(for section: SectionLayout) -> String? {
@@ -91,7 +76,7 @@ struct GeneralFacetView: View {
             EditorTextRow(
                 String(localized: "Name"),
                 text: store.binding(\.name),
-                prompt: String(localized: "Connection name"),
+                prompt: store.namePrompt,
                 row: .builtIn(.name),
                 store: store
             )
@@ -100,13 +85,14 @@ struct GeneralFacetView: View {
         case .environment:
             GeneralEnvironmentRow(store: store)
         case .endpointKind:
-            Picker(selection: store.endpointBinding) {
+            Picker(selection: store.tracking(store.endpointBinding, row: .builtIn(.endpointKind))) {
                 Text(String(localized: "Host and Port")).tag(ConnectionDraft.Endpoint.hostAndPort)
                 Text(String(localized: "Socket")).tag(ConnectionDraft.Endpoint.localSocket)
             } label: {
                 EditorRowLabel(String(localized: "Connect Using"), row: .builtIn(.endpointKind), store: store)
             }
             .accessibilityIdentifier(BuiltInRow.endpointKind.accessibilityIdentifier)
+            .editorRowFocus(.builtIn(.endpointKind), store: store)
         case .localSocketPath:
             GeneralSocketPathRow(store: store)
         case .host:

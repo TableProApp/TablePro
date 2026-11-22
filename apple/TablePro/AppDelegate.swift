@@ -195,7 +195,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let plan = QuitApproval.approve() else {
+        // The connection editors first: their Cancel keeps the app open before anything else is asked or stopped.
+        guard ConnectionEditorWindowController.prepareToTerminate(), let plan = QuitApproval.approve() else {
             AppRelauncher.shared.terminationWasCancelled()
             return .terminateCancel
         }
@@ -220,6 +221,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        ConnectionEditorWindowController.closeAllForTermination()
         SessionRecoveryTracker.saveOnQuit()
         /// Synchronously, because an actor hop at terminate may never be scheduled: a session killed
         /// mid-reply used to come back with its last turn missing.

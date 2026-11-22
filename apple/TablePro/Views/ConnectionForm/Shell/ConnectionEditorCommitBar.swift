@@ -101,11 +101,18 @@ struct ConnectionEditorCommitStatus: View {
             // A test result outranks a blocking issue: Test needs no name, and its result would never show otherwise.
             testStatus
         } else if let issue = store.firstBlockingIssue {
+            // Save is off either way, so the bar says why; it turns red only once the issue is revealed.
             Button {
-                store.focus(on: issue)
+                store.reveal(issue)
             } label: {
-                NoticeLabel(issue.message, severity: .error)
-                    .lineLimit(1)
+                if store.isRevealed(issue) {
+                    NoticeLabel(issue.message, severity: .error)
+                        .lineLimit(1)
+                } else {
+                    Text(verbatim: issue.message)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             .buttonStyle(.plain)
             .help(issue.message)

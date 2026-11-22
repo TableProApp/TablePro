@@ -43,6 +43,7 @@ extension ConnectionEditorStore {
     // Preflight, secrets, record, then deletes; a new id's secrets go again when its record write fails.
     @discardableResult
     func save(connect: Bool = false) -> Result<DatabaseConnection, ConnectionEditorSaveError> {
+        revealAllIssues()
         let result = performSave()
         switch result {
         case .success(let record):

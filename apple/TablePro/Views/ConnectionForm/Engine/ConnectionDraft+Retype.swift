@@ -110,14 +110,15 @@ extension ConnectionDraft {
 
     // Not the nearest kind: a kept MySQL port forward would otherwise become SQLite's file copy.
     private func keepTransport(into next: inout ConnectionDraft, newTraits: ConnectionTypeTraits) {
-        guard let transport else { return }
-        guard ConnectionEditorEngine.availableTransports(next, newTraits).contains(transport) else { return }
+        // A path only Remote File reads would otherwise ride into the saved SSH configuration.
+        next.ssh.remoteFilePath = ""
+        guard let transport, ConnectionEditorEngine.availableTransports(next, newTraits).contains(transport) else { return }
         next.transport = transport
         if transport == .ssh, newTraits.socketForwardApplies {
             next.sshForwardUnixSocketPath = sshForwardUnixSocketPath
         }
-        if transport != .remoteFile {
-            next.ssh.remoteFilePath = ""
+        if transport == .remoteFile {
+            next.ssh.remoteFilePath = ssh.remoteFilePath
         }
     }
 

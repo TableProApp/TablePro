@@ -8,9 +8,7 @@ struct AdvancedExtensionRows: View {
     @ObservedObject var store: ConnectionEditorStore
 
     @State private var model = LoadableExtensionListModel(encoded: "")
-    @State private var isEdited = false
     @FocusState private var focusedEntry: UUID?
-    @State private var handledFocusToken: UUID?
 
     private var row: EditorRow { .plugin(fieldID: fieldID) }
     private var value: Binding<String> { store.pluginFieldBinding(fieldID) }
@@ -60,19 +58,16 @@ struct AdvancedExtensionRows: View {
             }
             .accessibilityIdentifier("connection-extensions-add")
         } label: {
-            if let issue = EditorIssueVisibility.issue(for: row, in: store, isEdited: isEdited) {
-                NoticeLabel(issue.message, severity: issue.severity == .error ? .error : .warning)
+            if let issue = store.revealedIssue(for: row) {
+                NoticeLabel(issue.message, severity: issue.noticeSeverity)
             } else if model.rows.isEmpty {
                 Text(String(localized: "No Extensions"))
                     .foregroundStyle(.secondary)
             }
         }
-        .onAppear {
-            reload()
-            focus(store.focusRequest)
-        }
+        .onAppear(perform: reload)
         .onChange(of: value.wrappedValue) { _ in reload() }
-        .onChange(of: store.focusRequest) { focus($0) }
+        .onEditorFocusRequest(row, store: store) { focusedEntry = model.rows.first?.id }
     }
 
     private func pathBinding(for id: UUID) -> Binding<String> {
@@ -101,7 +96,7 @@ struct AdvancedExtensionRows: View {
     }
 
     private func commit() {
-        isEdited = true
+        store.noteEdited(row)
         let encoded = model.encoded
         guard value.wrappedValue != encoded else { return }
         value.wrappedValue = encoded
@@ -118,14 +113,6 @@ struct AdvancedExtensionRows: View {
     private func remove(_ id: UUID) {
         _ = model.remove([id])
         commit()
-    }
-
-    // The issue names no entry, so the first file field takes the focus.
-    private func focus(_ request: FocusRequest?) {
-        guard let request, request.row == row, request.token != handledFocusToken else { return }
-        handledFocusToken = request.token
-        let target = model.rows.first?.id
-        DispatchQueue.main.async { focusedEntry = target }
     }
 
     private func chooseFiles() async {

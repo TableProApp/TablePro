@@ -17,12 +17,10 @@ struct SSHAndProxiesJumpHostRows: View {
     }
 
     @FocusState private var focusedField: Field?
-    @State private var handledToken: UUID?
-    @State private var isEdited = false
 
     private var row: EditorRow { .builtIn(.jumpHost(id)) }
     private var identifier: String { row.accessibilityIdentifier }
-    private var jumpHost: Binding<SSHJumpHost> { store.jumpHostBinding(id) }
+    private var jumpHost: Binding<SSHJumpHost> { store.tracking(store.jumpHostBinding(id), row: row) }
     private var jumpHosts: [SSHJumpHost] { store.draft.ssh.jumpHosts }
     private var index: Int { jumpHosts.firstIndex { $0.id == id } ?? 0 }
 
@@ -53,13 +51,10 @@ struct SSHAndProxiesJumpHostRows: View {
             EditorRowLabel(
                 String(format: String(localized: "Jump Host %lld"), Int64(index + 1)),
                 row: row,
-                store: store,
-                isEdited: isEdited
+                store: store
             )
         }
-        .onAppear { applyFocus(store.focusRequest) }
-        .onChange(of: store.focusRequest) { applyFocus($0) }
-        .onChange(of: jumpHost.wrappedValue) { _ in isEdited = true }
+        .onEditorFocusRequest(row, store: store, perform: focusMissingField)
 
         TextField(String(localized: "Port"), text: portText, prompt: Text(verbatim: "22"))
             .accessibilityIdentifier("\(identifier)-port")
@@ -142,14 +137,9 @@ struct SSHAndProxiesJumpHostRows: View {
     }
 
     // The issue covers the whole hop, so focus lands on the field that is missing.
-    private func applyFocus(_ request: FocusRequest?) {
-        guard let request, request.row == row, request.token != handledToken else { return }
-        handledToken = request.token
+    private func focusMissingField() {
         let hop = jumpHost.wrappedValue
-        let field: Field = !hop.host.isEmpty && hop.authMethod == .privateKey && hop.privateKeyPath.isEmpty ? .keyFile : .host
-        DispatchQueue.main.async {
-            focusedField = field
-        }
+        focusedField = !hop.host.isEmpty && hop.authMethod == .privateKey && hop.privateKeyPath.isEmpty ? .keyFile : .host
     }
 
     private static func title(of method: SSHJumpAuthMethod) -> String {

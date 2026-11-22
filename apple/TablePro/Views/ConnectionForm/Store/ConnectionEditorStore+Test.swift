@@ -91,6 +91,7 @@ extension ConnectionEditorStore {
     }
 
     func test() {
+        revealAllIssues()
         guard canTest else { return }
         let runId = UUID()
         let testId = UUID()
@@ -107,7 +108,7 @@ extension ConnectionEditorStore {
             password: password,
             prompts: prompts,
             sshPassword: draft.usesSSHServer && draft.ssh.profileId == nil ? draft.ssh.password : nil,
-            displayName: draft.name.isEmpty ? draft.host : draft.name,
+            displayName: effectiveName,
             isAPIToken: traits.connectionMode == .apiOnly,
             signInFields: draft.fieldValues,
             typeName: traits.displayName

@@ -31,7 +31,7 @@ struct ConnectionEditorSidebarRow: Equatable {
                 facet: layout.facet,
                 title: layout.title,
                 symbolName: layout.facet.symbolName,
-                issueMessages: store.issues(for: layout.facet).filter { $0.blocksSave }.map(\.message)
+                issueMessages: store.issues(for: layout.facet).filter { $0.blocksSave && store.isRevealed($0) }.map(\.message)
             )
         }
     }

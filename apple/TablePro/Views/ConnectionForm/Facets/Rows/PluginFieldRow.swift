@@ -12,8 +12,6 @@ struct PluginFieldRow: View {
     @ObservedObject private var store: ConnectionEditorStore
     private let title: String?
 
-    @State private var isEdited = false
-
     // `title` replaces the plugin's label where the facet shows it under a header that already says it.
     init(fieldID: String, store: ConnectionEditorStore, title: String? = nil) {
         self.fieldID = fieldID
@@ -50,11 +48,13 @@ struct PluginFieldRow: View {
                 label(field)
             }
             .accessibilityIdentifier(row.accessibilityIdentifier)
+            .editorRowFocus(row, store: store)
         case .toggle:
             Toggle(isOn: toggleBinding(value)) {
                 label(field)
             }
             .accessibilityIdentifier(row.accessibilityIdentifier)
+            .editorRowFocus(row, store: store)
         case .stepper(let range):
             LabeledContent {
                 ConnectionStepperField(
@@ -68,6 +68,7 @@ struct PluginFieldRow: View {
             } label: {
                 label(field)
             }
+            .editorRowFocus(row, store: store)
         case .hostList:
             LabeledContent {
                 HostListFieldRow(
@@ -82,6 +83,7 @@ struct PluginFieldRow: View {
             } label: {
                 label(field)
             }
+            .editorRowFocus(row, store: store)
         case .attachedDatabases:
             listEditor {
                 AttachedDatabaseListEditor(value: trackingEdits(value), databaseType: store.draft.type)
@@ -116,11 +118,12 @@ struct PluginFieldRow: View {
             } label: {
                 label(field)
             }
+            .editorRowFocus(row, store: store)
         }
     }
 
     private func label(_ field: ConnectionField) -> EditorRowLabel {
-        EditorRowLabel(title ?? field.label, row: row, store: store, isEdited: isEdited)
+        EditorRowLabel(title ?? field.label, row: row, store: store)
     }
 
     // A list is the whole row, titled by its section header, so its issue sits under it in the same row.
@@ -129,10 +132,9 @@ struct PluginFieldRow: View {
             editor()
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier(row.accessibilityIdentifier)
-            if let issue = EditorIssueVisibility.issue(for: row, in: store, isEdited: isEdited) {
-                NoticeLabel(issue.message, severity: issue.severity == .error ? .error : .warning)
-            }
+            EditorRowIssueNotice(row: row, store: store)
         }
+        .editorRowFocus(row, store: store)
     }
 
     private func trackingEdits(_ binding: Binding<String>) -> Binding<String> {
@@ -140,7 +142,7 @@ struct PluginFieldRow: View {
             get: { binding.wrappedValue },
             set: { newValue in
                 guard newValue != binding.wrappedValue else { return }
-                isEdited = true
+                store.noteEdited(row)
                 binding.wrappedValue = newValue
             }
         )
@@ -150,7 +152,7 @@ struct PluginFieldRow: View {
         Binding(
             get: { binding.wrappedValue == "true" },
             set: { newValue in
-                isEdited = true
+                store.noteEdited(row)
                 binding.wrappedValue = newValue ? "true" : "false"
             }
         )

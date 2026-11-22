@@ -257,7 +257,7 @@ private struct SSHAndProxiesTransportPicker: View {
     private let row = EditorRow.builtIn(.transport)
 
     var body: some View {
-        Picker(selection: store.transportBinding) {
+        Picker(selection: store.tracking(store.transportBinding, row: row)) {
             ForEach(store.availableTransports, id: \.self) { transport in
                 Text(transport?.displayName ?? ConnectionTunnelKind.directDisplayName).tag(transport)
             }
@@ -265,6 +265,7 @@ private struct SSHAndProxiesTransportPicker: View {
             EditorRowLabel(String(localized: "Connect via"), row: row, store: store, subtitle: store.tunnelHostListAdvice)
         }
         .accessibilityIdentifier(row.accessibilityIdentifier)
+        .editorRowFocus(row, store: store)
     }
 }
 
@@ -283,13 +284,14 @@ private struct SSHAndProxiesRemoteFileRow: View {
                 store: store
             )
         case .remoteFileAccess:
-            Picker(selection: store.binding(\.ssh.remoteFileAccess)) {
+            Picker(selection: store.tracking(store.binding(\.ssh.remoteFileAccess), row: .builtIn(row))) {
                 Text(String(localized: "On the Server")).tag(RemoteFileAccess.onServer)
                 Text(String(localized: "As a Read-Only Copy")).tag(RemoteFileAccess.readOnlyCopy)
             } label: {
                 EditorRowLabel(String(localized: "Open"), row: .builtIn(row), store: store)
             }
             .accessibilityIdentifier(EditorRow.builtIn(row).accessibilityIdentifier)
+            .editorRowFocus(.builtIn(row), store: store)
         default:
             EmptyView()
         }

@@ -19,7 +19,6 @@ struct EditorOptionalNumberRow: View {
     private let prompt: String?
 
     @State private var text: String
-    @State private var isEdited = false
     @FocusState private var isFocused: Bool
 
     init(
@@ -48,7 +47,7 @@ struct EditorOptionalNumberRow: View {
     var body: some View {
         LabeledContent {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                TextField(text: $text, prompt: promptText.map { Text(verbatim: $0) }) {
+                TextField(text: store.tracking($text, row: row), prompt: promptText.map { Text(verbatim: $0) }) {
                     Text(verbatim: title)
                 }
                 .labelsHidden()
@@ -69,12 +68,11 @@ struct EditorOptionalNumberRow: View {
                 Text(verbatim: title)
                 NoticeLabel(localError, severity: .error)
             } else {
-                EditorRowLabel(title, row: row, store: store, subtitle: subtitle, isEdited: isEdited)
+                EditorRowLabel(title, row: row, store: store, subtitle: subtitle)
             }
         }
         .editorRowFocus(row, store: store, isFocused: $isFocused)
         .onChange(of: text) { newText in
-            isEdited = true
             write(newText)
         }
         .onChange(of: value) { newValue in

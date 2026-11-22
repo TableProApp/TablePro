@@ -133,7 +133,7 @@ struct SSHAndProxiesSSHRow: View {
         if option == .custom {
             TextField(
                 String(localized: "Path"),
-                text: store.binding(\.ssh.customAgentSocketPath),
+                text: store.tracking(store.binding(\.ssh.customAgentSocketPath), row: editorRow),
                 prompt: Text(verbatim: "/path/to/agent.sock")
             )
             .autocorrectionDisabled()
@@ -142,7 +142,7 @@ struct SSHAndProxiesSSHRow: View {
     }
 }
 
-// A menu picker whose label carries the row's issue, revealed once the person picks something.
+// A menu picker whose label carries the row's issue.
 struct SSHAndProxiesPicker<Value: Hashable, Content: View>: View {
     private let title: String
     @Binding private var selection: Value
@@ -150,8 +150,6 @@ struct SSHAndProxiesPicker<Value: Hashable, Content: View>: View {
     @ObservedObject private var store: ConnectionEditorStore
     private let subtitle: String?
     private let content: Content
-
-    @State private var isEdited = false
 
     init(
         _ title: String,
@@ -170,13 +168,13 @@ struct SSHAndProxiesPicker<Value: Hashable, Content: View>: View {
     }
 
     var body: some View {
-        Picker(selection: $selection) {
+        Picker(selection: store.tracking($selection, row: row)) {
             content
         } label: {
-            EditorRowLabel(title, row: row, store: store, subtitle: subtitle, isEdited: isEdited)
+            EditorRowLabel(title, row: row, store: store, subtitle: subtitle)
         }
         .accessibilityIdentifier(row.accessibilityIdentifier)
-        .onChange(of: selection) { _ in isEdited = true }
+        .editorRowFocus(row, store: store)
     }
 }
 
@@ -274,5 +272,6 @@ private struct SSHAndProxiesMissingProfileRow: View {
         } label: {
             NoticeLabel(message, severity: .warning)
         }
+        .editorRowFocus(row, store: store)
     }
 }

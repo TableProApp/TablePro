@@ -36,11 +36,12 @@ struct SafeModeFacetView: View {
         case .builtIn(.safeModeLevel):
             safeModeLevelRow(row)
         case .builtIn(.manualCommit):
-            Toggle(isOn: store.manualCommitBinding) {
+            Toggle(isOn: store.tracking(store.manualCommitBinding, row: row)) {
                 EditorRowLabel(String(localized: "Manual Commit"), row: row, store: store)
             }
             .disabled(!store.traits.manualCommitAvailable)
             .accessibilityIdentifier(row.accessibilityIdentifier)
+            .editorRowFocus(row, store: store)
         case .builtIn(.maskingRules):
             maskingRuleRows
         case .plugin(let fieldID):
@@ -61,8 +62,9 @@ struct SafeModeFacetView: View {
             } label: {
                 EditorRowLabel(String(localized: "Safe Mode"), row: row, store: store)
             }
+            .editorRowFocus(row, store: store)
         } else {
-            Picker(selection: store.safeModeLevelBinding) {
+            Picker(selection: store.tracking(store.safeModeLevelBinding, row: row)) {
                 ForEach(levels) { level in
                     Text(verbatim: level.displayName).tag(level)
                 }
@@ -70,6 +72,7 @@ struct SafeModeFacetView: View {
                 EditorRowLabel(String(localized: "Safe Mode"), row: row, store: store)
             }
             .accessibilityIdentifier(row.accessibilityIdentifier)
+            .editorRowFocus(row, store: store)
         }
     }
 
@@ -78,13 +81,17 @@ struct SafeModeFacetView: View {
         let rules = store.draft.safety.maskingRules
         ForEach(rules) { rule in
             SafeModeMaskingRuleRow(
-                rule: store.maskingRuleBinding(rule.id),
+                rule: store.tracking(store.maskingRuleBinding(rule.id), row: .builtIn(.maskingRules)),
                 focusedRule: $focusedRule,
-                onRemove: { store.removeMaskingRule(id: rule.id) }
+                onRemove: {
+                    store.noteEdited(.builtIn(.maskingRules))
+                    store.removeMaskingRule(id: rule.id)
+                }
             )
         }
         LabeledContent {
             Button(String(localized: "Add Rule")) {
+                store.noteEdited(.builtIn(.maskingRules))
                 let id = store.addMaskingRule()
                 // The new row is not in the form until the next update.
                 DispatchQueue.main.async { focusedRule = id }
@@ -95,6 +102,9 @@ struct SafeModeFacetView: View {
                 Text(String(localized: "No Masking Rules"))
                     .foregroundStyle(.secondary)
             }
+        }
+        .onEditorFocusRequest(.builtIn(.maskingRules), store: store) {
+            focusedRule = store.draft.safety.maskingRules.first?.id
         }
     }
 }

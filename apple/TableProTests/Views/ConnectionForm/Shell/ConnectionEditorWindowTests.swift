@@ -216,11 +216,12 @@ struct ConnectionEditorWindowTests {
         #expect(edited.window?.isDocumentEdited == false)
 
         edited.store.update { $0.name = "" }
-        try await waitUntil { edited.window?.isDocumentEdited == true }
+        try await waitUntil { edited.store.draft.name.isEmpty }
         #expect(edited.window?.title == "Orders")
 
         edited.store.update { $0.name = "Billing" }
         try await waitUntil { edited.window?.title == "Billing" }
+        #expect(edited.window?.isDocumentEdited == true)
     }
 
     // MARK: - Record missing
@@ -328,7 +329,7 @@ struct ConnectionEditorWindowTests {
 
         let blocked = makeController(fixture, .edit(connectionId: connection.id))
         defer { blocked.close() }
-        blocked.store.update { $0.name = "" }
+        blocked.store.setPort("99999")
         blocked.store.selectedFacet = .appearance
         blocked.resolveClose(.save)
         #expect(!blocked.store.isClosing)
@@ -343,7 +344,7 @@ struct ConnectionEditorWindowTests {
 
     @Test("An invalid field is not an alert: Save already shows it in place")
     func saveErrorAlerts() {
-        let issue = FieldIssue(facet: .general, row: .builtIn(.name), message: "Name", severity: .error)
+        let issue = FieldIssue(facet: .general, row: .builtIn(.port), message: "Port", severity: .error)
         #expect(!ConnectionEditorPresentations.alertsSaveError(nil))
         #expect(!ConnectionEditorPresentations.alertsSaveError(.invalid(issue)))
         #expect(ConnectionEditorPresentations.alertsSaveError(.keychainWriteFailed))

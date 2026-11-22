@@ -82,67 +82,82 @@ struct ConnectionTimeoutSettingsTests {
         #expect(decoded.queryTimeoutSeconds == 0)
     }
 
+    private func traits(_ type: DatabaseType = .mysql) -> ConnectionTypeTraits {
+        ConnectionTypeTraits.live(for: type, pluginManager: .shared)
+    }
+
+    private func advancedIssues(_ draft: ConnectionDraft) -> [String] {
+        ConnectionEditorEngine.issues(draft, traits(draft.type), EditorContext())
+            .filter { $0.facet == .advanced }
+            .map(\.message)
+    }
+
+    private func namedDraft() -> ConnectionDraft {
+        var draft = ConnectionDraft.new(type: .mysql, traits: traits())
+        draft.name = "Timeouts"
+        return draft
+    }
+
     @Test("Customization loads both timeout overrides")
     func customizationLoadsTimeoutOverrides() {
         var connection = DatabaseConnection(name: "Timeouts")
         connection.connectTimeoutSeconds = 75
         connection.queryTimeoutSeconds = 180
-        let viewModel = CustomizationPaneViewModel()
 
-        viewModel.load(from: connection)
+        let draft = ConnectionDraft.loaded(from: connection, secrets: .none, traits: traits(connection.type))
 
-        #expect(viewModel.connectTimeoutSeconds == 75)
-        #expect(viewModel.queryTimeoutSeconds == 180)
+        #expect(draft.options.connectTimeoutSeconds == 75)
+        #expect(draft.options.queryTimeoutSeconds == 180)
     }
 
     @Test("Connect timeout accepts only values from 1 through 600")
     func validatesConnectTimeout() {
-        let viewModel = CustomizationPaneViewModel()
+        var draft = namedDraft()
 
-        viewModel.connectTimeoutSeconds = nil
-        #expect(viewModel.validationIssues.isEmpty)
+        draft.options.connectTimeoutSeconds = nil
+        #expect(advancedIssues(draft).isEmpty)
 
-        viewModel.connectTimeoutSeconds = 0
-        #expect(viewModel.validationIssues == ["Connect timeout must be between 1 and 600 seconds."])
+        draft.options.connectTimeoutSeconds = 0
+        #expect(advancedIssues(draft) == ["Connect timeout must be between 1 and 600 seconds."])
 
-        viewModel.connectTimeoutSeconds = 600
-        #expect(viewModel.validationIssues.isEmpty)
+        draft.options.connectTimeoutSeconds = 600
+        #expect(advancedIssues(draft).isEmpty)
 
-        viewModel.connectTimeoutSeconds = 601
-        #expect(viewModel.validationIssues == ["Connect timeout must be between 1 and 600 seconds."])
+        draft.options.connectTimeoutSeconds = 601
+        #expect(advancedIssues(draft) == ["Connect timeout must be between 1 and 600 seconds."])
     }
 
     @Test("Query timeout accepts only values safe for millisecond APIs")
     func validatesQueryTimeout() {
-        let viewModel = CustomizationPaneViewModel()
+        var draft = namedDraft()
         let maximum = DatabaseConnection.queryTimeoutSecondsRange.upperBound
 
-        viewModel.queryTimeoutSeconds = nil
-        #expect(viewModel.validationIssues.isEmpty)
+        draft.options.queryTimeoutSeconds = nil
+        #expect(advancedIssues(draft).isEmpty)
 
-        viewModel.queryTimeoutSeconds = 0
-        #expect(viewModel.validationIssues.isEmpty)
+        draft.options.queryTimeoutSeconds = 0
+        #expect(advancedIssues(draft).isEmpty)
 
-        viewModel.queryTimeoutSeconds = 120
-        #expect(viewModel.validationIssues.isEmpty)
+        draft.options.queryTimeoutSeconds = 120
+        #expect(advancedIssues(draft).isEmpty)
 
-        viewModel.queryTimeoutSeconds = maximum
-        #expect(viewModel.validationIssues.isEmpty)
+        draft.options.queryTimeoutSeconds = maximum
+        #expect(advancedIssues(draft).isEmpty)
 
-        viewModel.queryTimeoutSeconds = maximum + 1
-        #expect(viewModel.validationIssues == ["Query timeout must be between 0 and 2,147,483 seconds."])
+        draft.options.queryTimeoutSeconds = maximum + 1
+        #expect(advancedIssues(draft) == ["Query timeout must be between 0 and 2,147,483 seconds."])
 
-        viewModel.queryTimeoutSeconds = -1
-        #expect(viewModel.validationIssues == ["Query timeout must be between 0 and 2,147,483 seconds."])
+        draft.options.queryTimeoutSeconds = -1
+        #expect(advancedIssues(draft) == ["Query timeout must be between 0 and 2,147,483 seconds."])
     }
 
     @Test("Connection form edits include both timeout overrides")
     func coordinatorBuildsTimeoutEdits() {
-        let coordinator = ConnectionFormCoordinator(connectionId: nil)
-        coordinator.customization.connectTimeoutSeconds = 90
-        coordinator.customization.queryTimeoutSeconds = 0
+        var draft = namedDraft()
+        draft.options.connectTimeoutSeconds = 90
+        draft.options.queryTimeoutSeconds = 0
 
-        let edits = coordinator.buildEdits()
+        let edits = ConnectionEditorEngine.edits(draft, traits(), originalTraits: nil, EditorContext())
 
         #expect(edits.connectTimeoutSeconds == 90)
         #expect(edits.queryTimeoutSeconds == 0)
