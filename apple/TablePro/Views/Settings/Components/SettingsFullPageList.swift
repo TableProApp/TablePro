@@ -1,7 +1,10 @@
+import AppKit
 import SwiftUI
 
 // Not a grouped Form: a List inside one does not scroll.
 struct SettingsFullPageList<Content: View, EmptyState: View, Bar: View>: View {
+    private static var borderWidth: CGFloat { 1 }
+
     private let content: Content
     private let emptyState: EmptyState
     private let bar: Bar
@@ -17,14 +20,27 @@ struct SettingsFullPageList<Content: View, EmptyState: View, Bar: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            content
-                .listStyle(.bordered(alternatesRowBackgrounds: false))
-                .frame(maxHeight: .infinity)
-                .overlay { emptyState }
+        list
+            .frame(maxHeight: .infinity)
+            .padding(20)
+    }
 
-            bar
+    @ViewBuilder
+    private var list: some View {
+        let bordered = content
+            .listStyle(.bordered(alternatesRowBackgrounds: false))
+            .overlay { emptyState }
+
+        if Bar.self == EmptyView.self {
+            bordered
+        } else {
+            // An inset, unlike the .listBar overlay, scrolls the last row clear of the bar.
+            bordered.safeAreaInset(edge: .bottom, spacing: 0) {
+                ListBar { bar }
+                    // Rows scroll under the bar, so it needs the list's fill, kept inside the border.
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .padding([.horizontal, .bottom], Self.borderWidth)
+            }
         }
-        .padding(20)
     }
 }
