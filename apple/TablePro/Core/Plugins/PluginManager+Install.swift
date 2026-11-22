@@ -154,8 +154,6 @@ extension PluginManager {
         )
     }
 
-    // MARK: - Local bundle / zip install
-
     // A file never puts back an older build than the one installed or staged. It drops the registry sidecar only at
     // or above the app's build, which the update pass never targets; below it the pass keeps the plugin current.
     nonisolated static func refuseOlderFile(build: Int, installedBuild: Int?) throws {
@@ -183,8 +181,24 @@ extension PluginManager {
             .max()
     }
 
+    // Staging and replacing move the bundle they are given, so a file from elsewhere is copied first and stays put.
+    // The copy is what gets verified, so the file cannot change between the check and the install.
+    nonisolated static func copyLooseBundle(at url: URL, into workingDir: URL) throws -> URL {
+        try FileManager.default.createDirectory(at: workingDir, withIntermediateDirectories: true)
+        let copyURL = workingDir.appendingPathComponent(url.lastPathComponent, isDirectory: true)
+        try FileManager.default.copyItem(at: url, to: copyURL)
+        return copyURL
+    }
+
     private func installLooseBundle(from url: URL) async throws -> PluginEntry {
-        guard let sourceBundle = Bundle(url: url) else {
+        let destURL = userPluginsDir.appendingPathComponent(url.lastPathComponent)
+        let isInPlace = url.standardizedFileURL == destURL.standardizedFileURL
+        let workingDir = PluginInstaller.stagingRoot(for: userPluginsDir)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: workingDir) }
+        let bundleURL = try isInPlace ? url : Self.copyLooseBundle(at: url, into: workingDir)
+
+        guard let sourceBundle = Bundle(url: bundleURL) else {
             throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
         }
         try PluginCodeSignatureVerifier.verify(bundle: sourceBundle)
@@ -195,22 +209,16 @@ extension PluginManager {
 
         if let existing = plugins.first(where: { $0.id == bundleId }) {
             guard url.standardizedFileURL != existing.url.standardizedFileURL else { return existing }
-            try Self.refuseOlderFile(build: Self.bundleBuild(at: url), installedBuild: installedBuild(of: existing))
-            PluginInstaller.stripQuarantine(at: url)
-            return try stageForNextLaunch(bundleAt: url, replacing: existing)
+            try Self.refuseOlderFile(build: Self.bundleBuild(at: bundleURL), installedBuild: installedBuild(of: existing))
+            PluginInstaller.stripQuarantine(at: bundleURL)
+            return try stageForNextLaunch(bundleAt: bundleURL, replacing: existing)
         }
-        let fileBuild = Self.bundleBuild(at: url)
+        let fileBuild = Self.bundleBuild(at: bundleURL)
         let rejected = rejectedBuild(of: bundleId)
         try Self.refuseOlderFile(build: fileBuild, installedBuild: rejected)
 
         try FileManager.default.createDirectory(at: userPluginsDir, withIntermediateDirectories: true)
-        let destURL = userPluginsDir.appendingPathComponent(url.lastPathComponent)
-        let loadURL: URL
-        if url.standardizedFileURL != destURL.standardizedFileURL {
-            loadURL = try PluginInstaller.atomicReplace(stagedBundleURL: url, destURL: destURL)
-        } else {
-            loadURL = destURL
-        }
+        let loadURL = try isInPlace ? destURL : PluginInstaller.atomicReplace(stagedBundleURL: bundleURL, destURL: destURL)
         PluginInstaller.stripQuarantine(at: loadURL)
         if rejected == nil || fileBuild >= Bundle.main.buildNumber {
             removeRegistryMetadata(for: loadURL)

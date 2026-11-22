@@ -5,28 +5,29 @@ import SwiftUI
 import TableProPluginKit
 
 extension PluginManager {
-    func uninstallPlugin(id: String) async throws {
-        guard let index = plugins.firstIndex(where: { $0.id == id }) else {
+    // The bundle goes first, so a refused removal leaves the plugin listed and working.
+    func uninstallPlugin(
+        id: String,
+        removeBundle: (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }
+    ) async throws {
+        guard let entry = plugins.first(where: { $0.id == id }) else {
             throw PluginError.notFound
         }
-
-        let entry = plugins[index]
 
         guard entry.source == .userInstalled else {
             throw PluginError.cannotUninstallBuiltIn
         }
 
-        unregisterCapabilities(pluginId: id)
-        entry.bundle.unload()
-        plugins.remove(at: index)
-
-        removeRegistryMetadata(for: entry.url)
-
-        let fm = FileManager.default
-        if fm.fileExists(atPath: entry.url.path) {
-            try fm.removeItem(at: entry.url)
+        if FileManager.default.fileExists(atPath: entry.url.path) {
+            try removeBundle(entry.url)
         }
 
+        unregisterCapabilities(pluginId: id)
+        entry.bundle.unload()
+        plugins.removeAll { $0.id == id }
+        rebuildLazyRegistrations()
+
+        removeRegistryMetadata(for: entry.url)
         PluginSettingsStorage(pluginId: id).removeAll()
         removeStagedUpdate(pluginId: id)
 
@@ -46,7 +47,8 @@ extension PluginManager {
         return folder == userPluginsDir.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
-    // To the Trash rather than deleted, so a mistaken removal can be put back.
+    // To the Trash rather than deleted, so a mistaken removal can be put back. A lazily registered copy of the
+    // same bundle goes with it, or the plugin would stay listed after its file is gone.
     func removeRejectedPlugin(
         _ plugin: RejectedPlugin,
         moveToTrash: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
@@ -58,6 +60,10 @@ extension PluginManager {
             } catch CocoaError.fileNoSuchFile {}
         }
         removeFromRejected(url: plugin.url)
+        if plugins.contains(where: { $0.url == plugin.url }) {
+            plugins.removeAll { $0.url == plugin.url }
+            rebuildLazyRegistrations()
+        }
         Self.logger.info("Moved rejected plugin '\(plugin.name, privacy: .public)' to the Trash")
     }
 }

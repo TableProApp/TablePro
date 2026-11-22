@@ -1,331 +1,326 @@
 import AppKit
 import SwiftUI
-import TableProPluginKit
 import UniformTypeIdentifiers
 
+// The Extensions pane root. The toolbar filter narrows it; the pages are their own views in the pane's stack.
 struct InstalledPluginsView: View {
-    @ObservedObject private var pluginManager = PluginManager.shared
-    @ObservedObject private var registryClient: RegistryClient
-    // Install progress lives in the tracker, which the plugin manager does not republish.
-    @ObservedObject private var installTracker = PluginInstallTracker.shared
-    @ObservedObject private var navigation = PluginsSettingsNavigation.shared
-    @ObservedObject private var modules = AppModuleSettings.shared
-    @ObservedObject private var updates = UpdateCenter.shared
+    private static let importTypes: [UTType] = [.zip] + (UTType("com.tablepro.plugin").map { [$0] } ?? [])
 
-    @Binding private var path: NavigationPath
-    @State private var searchText = ""
-    @State private var showErrorAlert = false
-    @State private var errorAlertTitle = ""
-    @State private var errorAlertMessage = ""
-    @State private var isRetryingRejected = false
+    private let context: SettingsPaneContext
+    @EnvironmentObject private var model: ExtensionsPaneModel
+    @ObservedObject private var filter: SettingsPaneFilter
+    @ObservedObject private var reveal: SettingsPluginReveal
+    @ObservedObject private var visit: SettingsPaneVisit
+    @State private var isDropTargeted = false
+    @State private var isImporting = false
 
-    init(registryClient: RegistryClient = .shared, path: Binding<NavigationPath> = .constant(NavigationPath())) {
-        self.registryClient = registryClient
-        self._path = path
-    }
-
-    private var filteredPlugins: [PluginEntry] {
-        if searchText.isEmpty { return pluginManager.plugins }
-        return pluginManager.plugins.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
-    }
-
-    private var filteredModules: [AppModule] {
-        AppModule.allCases.filter { $0.matches(filter: searchText) }
-    }
-
-    private var filteredRejected: [RejectedPlugin] {
-        if searchText.isEmpty { return pluginManager.rejectedPlugins }
-        return pluginManager.rejectedPlugins.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    init(context: SettingsPaneContext) {
+        self.context = context
+        _filter = ObservedObject(wrappedValue: context.filter ?? SettingsPaneFilter())
+        _reveal = ObservedObject(wrappedValue: context.navigation.pluginReveal)
+        _visit = ObservedObject(wrappedValue: context.visit)
     }
 
     var body: some View {
-        pluginList
-        .task {
-            await registryClient.fetch(policy: .ifStale)
-        }
-        .navigationDestination(for: PluginListSelection.self) { selection in
-            detailPage(for: selection)
-        }
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            guard let provider = providers.first,
-                  provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else {
-                return false
+        let content = model.snapshot.filtered(filter.query)
+        Group {
+            if content.isFiltering && content.isEmpty {
+                UnavailableStateView.search(text: filter.query)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("extensions-no-results")
+            } else {
+                form(content)
             }
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
-                guard let data = data as? Data,
-                      let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-                let ext = url.pathExtension.lowercased()
-                guard ext == "zip" || ext == "tableplugin" else { return }
-                Task { @MainActor in
-                    installPlugin(from: url)
+        }
+        .task(id: visit.count) {
+            _ = await model.registryClient.fetch(policy: .ifStale)
+        }
+        .task(id: reveal.pending?.id) {
+            await model.revealPending(in: context)
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            model.install(urls, context: context)
+        } isTargeted: { isTargeted in
+            isDropTargeted = isTargeted
+        }
+        .overlay { dropHighlight }
+        .fileImporter(isPresented: $isImporting, allowedContentTypes: Self.importTypes, allowsMultipleSelection: true) { result in
+            guard case .success(let urls) = result else { return }
+            model.install(urls, context: context)
+        }
+    }
+
+    private func form(_ content: ExtensionsFilteredContent) -> some View {
+        Form {
+            ExtensionsAttentionSection(snapshot: model.snapshot, context: context, tracker: model.manager.installTracker)
+
+            if !content.rejected.isEmpty {
+                Section(String(localized: "Couldn't Load")) {
+                    ForEach(content.rejected) { row in
+                        ExtensionsRejectedRowView(row: row, context: context, tracker: model.manager.installTracker)
+                    }
                 }
             }
-            return true
-        }
-        .alert(errorAlertTitle, isPresented: $showErrorAlert) {
-            Button("OK") {}
-        } message: {
-            Text(errorAlertMessage)
-        }
-    }
 
-    // MARK: - Relaunch Row
-
-    private var relaunchRow: some View {
-        HStack(spacing: 8) {
-            Label {
-                Text("Relaunch to finish removing plugins.")
-                    .lineLimit(2)
-            } icon: {
-                Image(systemName: "arrow.clockwise")
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 4)
-            Button(String(localized: "Relaunch")) { updates.relaunch() }
-                .controlSize(.small)
-                .accessibilityIdentifier("plugins-relaunch-button")
-        }
-        .padding(.vertical, 2)
-    }
-
-    // MARK: - Rejected Plugins
-
-    private func rejectedRow(_ plugin: RejectedPlugin) -> some View {
-        let status = RejectedPluginStatus(action: pluginManager.rejectedAction(for: plugin))
-        return HStack(spacing: 8) {
-            PluginIconView(name: PluginManager.iconName(forPrimaryTypeId: plugin.providedDatabaseTypeIds.first))
-                .font(.title3)
-                .frame(width: 24, height: 24)
-                .foregroundStyle(.tertiary)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(plugin.name)
-                    .lineLimit(1)
-                Text(status.caption)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            if !content.modules.isEmpty {
+                Section(String(localized: "Modules")) {
+                    ForEach(content.modules, id: \.self) { module in
+                        ModuleToggleRow(module: module)
+                    }
+                }
             }
 
-            Spacer()
+            ForEach(content.groups) { section in
+                Section(section.group.title) {
+                    ForEach(section.rows) { row in
+                        ExtensionsPluginRowView(row: row, context: context, tracker: model.manager.installTracker)
+                    }
+                }
+            }
 
-            Image(systemName: status.severity.symbolName)
-                .selectionAwareTint(status.severity.tint)
+            // System Settings puts Add below its list.
+            if !content.isFiltering {
+                Section {
+                    LabeledContent {
+                        Button(String(localized: "Install from File…")) {
+                            isImporting = true
+                        }
+                        .accessibilityIdentifier("extensions-install-from-file")
+                    } label: {
+                        Text("Install a plugin")
+                        Text("Choose a .tableplugin bundle or a .zip archive, or drop one on this window.")
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    @ViewBuilder private var dropHighlight: some View {
+        if isDropTargeted {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(.tint, lineWidth: 2)
+                .padding(8)
+                .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
-        .padding(.vertical, 2)
-        .accessibilityElement(children: .combine)
     }
+}
 
-    private func rejectedDetail(_ plugin: RejectedPlugin) -> some View {
-        let action = pluginManager.rejectedAction(for: plugin)
-        let status = RejectedPluginStatus(action: action)
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(plugin.name)
-                    .font(.title3.weight(.semibold))
+// Unfiltered: a relaunch or an install in progress matters whatever the query.
+private struct ExtensionsAttentionSection: View {
+    let snapshot: ExtensionsSnapshot
+    let context: SettingsPaneContext
+    @ObservedObject var tracker: PluginInstallTracker
+    @EnvironmentObject private var model: ExtensionsPaneModel
 
-                NoticeLabel(plugin.reason, severity: status.severity)
-                    .font(.callout)
-
-                if let bundleId = plugin.bundleId {
-                    Divider()
-                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {
-                        GridRow {
-                            Text("Bundle ID")
-                                .foregroundStyle(.secondary)
-                            Text(bundleId)
-                                .textSelection(.enabled)
+    var body: some View {
+        let activities = ExtensionsSnapshot.activities(in: tracker.entries, excluding: snapshot.trackedIds)
+        if snapshot.relaunch != nil || !activities.isEmpty {
+            Section {
+                if let relaunch = snapshot.relaunch {
+                    LabeledContent {
+                        Button(String(localized: "Relaunch")) {
+                            UpdateCenter.shared.relaunch()
                         }
+                        .accessibilityIdentifier("plugins-relaunch-button")
+                    } label: {
+                        Text("Relaunch TablePro to finish")
+                        Text(verbatim: relaunch.text)
                     }
-                    .font(.callout)
                 }
-
-                Divider()
-
-                HStack(spacing: 8) {
-                    rejectedActionControl(for: plugin, action: action)
-                    if pluginManager.canRemoveRejectedPlugin(plugin) {
-                        Button(String(localized: "Remove")) {
-                            removeRejectedPlugin(plugin)
-                        }
-                        .accessibilityLabel(String(format: String(localized: "Remove %@"), plugin.name))
-                    }
+                ForEach(activities) { entry in
+                    activityRow(entry)
                 }
             }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     @ViewBuilder
-    private func rejectedActionControl(for plugin: RejectedPlugin, action: RejectedPluginAction) -> some View {
-        switch action {
-        case .updateAvailable(let registryPlugin):
-            Button(String(localized: "Update Now")) {
-                updatePlugin(registryPlugin)
-            }
-            .disabled(pluginManager.isInstalling)
-            .accessibilityLabel(String(format: String(localized: "Update %@"), plugin.name))
-        case .requiresAppUpdate:
-            Button(updates.status.appUpdateTitle) {
-                updates.performAppUpdateAction()
-            }
-            .disabled(!updates.isAppUpdateActionEnabled)
-            .help(String(localized: "A newer TablePro is required to load this plugin."))
-        case .awaitingCompatibleBuild:
-            if pluginManager.isUpdatingEnabled {
-                if isRetryingRejected {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Button(String(localized: "Try Again")) {
-                        retryRejectedPlugins()
-                    }
-                }
-            }
-        case .notInRegistry:
-            EmptyView()
-        }
-    }
-
-    private func retryRejectedPlugins() {
-        isRetryingRejected = true
-        Task {
-            defer { isRetryingRejected = false }
-            await pluginManager.retryRejectedPluginRepairs(registryClient: registryClient)
-        }
-    }
-
-    private func removeRejectedPlugin(_ plugin: RejectedPlugin) {
-        Task {
-            let confirmed = await AlertHelper.confirmDestructive(
-                title: String(format: String(localized: "Move “%@” to the Trash?"), plugin.name),
-                message: String(localized: "The plugin can't be loaded. You can put it back from the Trash."),
-                confirmButton: String(localized: "Move to Trash"),
-                cancelButton: String(localized: "Cancel")
-            )
-            guard confirmed else { return }
-            do {
-                try pluginManager.removeRejectedPlugin(plugin)
-            } catch {
-                errorAlertTitle = String(localized: "Remove Failed")
-                errorAlertMessage = error.localizedDescription
-                showErrorAlert = true
-                return
-            }
-            if !path.isEmpty { path.removeLast() }
-        }
-    }
-
-    // MARK: - Plugin List
-
-    private var pluginList: some View {
-        VStack(spacing: 0) {
-            NativeSearchField(text: $searchText, placeholder: String(localized: "Filter…"))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-
-            List {
-                if pluginManager.needsRestart {
-                    Section {
-                        relaunchRow
-                    }
-                }
-                if !filteredModules.isEmpty {
-                    Section(String(localized: "Modules")) {
-                        ForEach(filteredModules, id: \.self) { module in
-                            ModuleToggleRow(module: module, settings: modules)
-                        }
-                    }
-                }
-                if !filteredRejected.isEmpty {
-                    Section(String(localized: "Couldn't Load")) {
-                        ForEach(filteredRejected, id: \.url) { plugin in
-                            NavigationLink(value: PluginListSelection.rejected(plugin.url)) {
-                                rejectedRow(plugin)
-                            }
-                        }
-                    }
-                }
-                Section(String(localized: "Plugins")) {
-                    ForEach(filteredPlugins) { plugin in
-                        NavigationLink(value: PluginListSelection.plugin(plugin.id)) {
-                            pluginRow(plugin)
-                        }
-                    }
-                }
-            }
-            .listStyle(.inset)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                listBottomBar
-            }
-            .onAppear { revealRequestedPlugin() }
-            .onChange(of: navigation.pendingRequest) { _ in
-                revealRequestedPlugin()
-            }
-        }
-    }
-
-    private var listBottomBar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let install = bottomBarInstall {
-                bottomBarStatus(install)
-                    .padding(.horizontal, 10)
-                    .padding(.top, 8)
-            }
-            listBottomButtons
-        }
-    }
-
-    // A running install first; then a failure with no plugin row to show it.
-    private var bottomBarInstall: PluginInstallTracker.Entry? {
-        if let running = installTracker.runningEntries.first {
-            return running
-        }
-        return installTracker.failedEntries.last { install in
-            !pluginManager.plugins.contains { $0.id == install.pluginId }
-        }
-    }
-
-    @ViewBuilder
-    private func bottomBarStatus(_ install: PluginInstallTracker.Entry) -> some View {
-        switch install.phase {
+    private func activityRow(_ entry: PluginInstallTracker.Entry) -> some View {
+        switch entry.phase {
         case .downloading, .installing:
-            let title = String(format: String(localized: "Installing %@…"), install.displayName)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 4)
-                    Button(String(localized: "Cancel")) {
-                        installTracker.cancel(pluginId: install.pluginId)
-                    }
-                    .controlSize(.small)
-                    .disabled(install.phase == .installing)
-                    .accessibilityLabel(String(format: String(localized: "Cancel installing %@"), install.displayName))
+            let title = String(format: String(localized: "Installing %@…"), entry.displayName)
+            LabeledContent {
+                Button(String(localized: "Cancel")) {
+                    tracker.cancel(pluginId: entry.pluginId)
                 }
-                installProgress(install.phase)
-                    .accessibilityLabel(Text(title))
+                .disabled(entry.phase == .installing)
+                .accessibilityLabel(String(format: String(localized: "Cancel installing %@"), entry.displayName))
+            } label: {
+                Text(verbatim: title)
+                ExtensionsInstallProgress(phase: entry.phase)
+                    .accessibilityLabel(Text(verbatim: title))
             }
         case .failed(let reason):
-            VStack(alignment: .leading, spacing: 4) {
-                Text(String(format: String(localized: "%@ could not be installed"), install.displayName))
-                    .font(.callout)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                installFailure(install, reason: reason)
+            LabeledContent {
+                HStack(spacing: 8) {
+                    if entry.retry != nil {
+                        Button(String(localized: "Try Again")) {
+                            model.retryInstall(entry, context: context)
+                        }
+                        .accessibilityLabel(String(format: String(localized: "Try installing %@ again"), entry.displayName))
+                    }
+                    Button(String(localized: "Dismiss")) {
+                        tracker.cancel(pluginId: entry.pluginId)
+                    }
+                }
+            } label: {
+                Text(verbatim: String(format: String(localized: "%@ could not be installed"), entry.displayName))
+                Text(verbatim: reason)
             }
         case .completed:
             EmptyView()
         }
     }
+}
+
+private struct ExtensionsRejectedRowView: View {
+    let row: ExtensionsRejectedRow
+    let context: SettingsPaneContext
+    @ObservedObject var tracker: PluginInstallTracker
+    @EnvironmentObject private var model: ExtensionsPaneModel
+
+    var body: some View {
+        NavigationLink(value: SettingsRoute.rejectedPlugin(row.url)) {
+            HStack(spacing: 10) {
+                PluginIconView(name: row.iconName, size: 20)
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: row.name)
+                        .lineLimit(1)
+                    Text(verbatim: caption)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: row.severity.symbolName)
+                    .selectionAwareTint(row.severity.tint)
+                    .accessibilityHidden(true)
+            }
+        }
+        .contextMenu {
+            if row.canRemove {
+                Button(String(localized: "Move to Trash…")) {
+                    model.moveToTrash(row.url, context: context)
+                }
+            }
+            Button(String(localized: "Show in Finder")) {
+                model.showInFinder(row.url)
+            }
+        }
+        .modifier(ExtensionsOptionalAction(name: row.canRemove ? String(localized: "Move to Trash") : nil) {
+            model.moveToTrash(row.url, context: context)
+        })
+        .accessibilityAction(named: Text("Show in Finder")) {
+            model.showInFinder(row.url)
+        }
+        .accessibilityIdentifier("extensions-rejected-row-\(row.url.lastPathComponent)")
+    }
+
+    private var caption: String {
+        switch row.trackerId.flatMap({ tracker.entries[$0]?.phase }) {
+        case .downloading?: String(localized: "Downloading update…")
+        case .installing?: String(localized: "Installing update…")
+        default: row.caption
+        }
+    }
+}
+
+private struct ExtensionsPluginRowView: View {
+    let row: ExtensionsPluginRow
+    let context: SettingsPaneContext
+    @ObservedObject var tracker: PluginInstallTracker
+    @EnvironmentObject private var model: ExtensionsPaneModel
+
+    var body: some View {
+        let install = tracker.entries[row.id]
+        NavigationLink(value: SettingsRoute.plugin(id: row.id)) {
+            HStack(spacing: 10) {
+                PluginIconView(name: row.iconName, size: 20)
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: row.name)
+                        .lineLimit(1)
+                    ExtensionsPluginStatusLine(
+                        status: ExtensionsPluginStatus(
+                            phase: install?.phase,
+                            isStaged: row.isStaged,
+                            isBuiltIn: row.isBuiltIn,
+                            version: row.version
+                        )
+                    )
+                }
+            }
+        }
+        .contextMenu { menu(install) }
+        .modifier(ExtensionsOptionalAction(name: row.isBuiltIn ? nil : String(localized: "Uninstall")) {
+            model.uninstall(row, context: context)
+        })
+        .modifier(ExtensionsOptionalAction(name: row.isBuiltIn ? nil : String(localized: "Show in Finder")) {
+            model.showInFinder(row.url)
+        })
+        .accessibilityIdentifier("extensions-plugin-row-\(row.id)")
+    }
 
     @ViewBuilder
-    private func installProgress(_ phase: PluginInstallTracker.Phase) -> some View {
+    private func menu(_ install: PluginInstallTracker.Entry?) -> some View {
+        if let install {
+            switch install.phase {
+            case .downloading, .installing:
+                Button(String(localized: "Cancel Update")) {
+                    tracker.cancel(pluginId: row.id)
+                }
+                .disabled(install.phase == .installing)
+            case .failed:
+                if install.retry != nil {
+                    Button(String(localized: "Try Again")) {
+                        model.retryInstall(install, context: context)
+                    }
+                }
+                Button(String(localized: "Dismiss")) {
+                    tracker.cancel(pluginId: row.id)
+                }
+            case .completed:
+                EmptyView()
+            }
+        }
+        if !row.isBuiltIn {
+            if install.map({ $0.phase != .completed }) == true {
+                Divider()
+            }
+            Button(String(localized: "Uninstall…")) {
+                model.uninstall(row, context: context)
+            }
+            Button(String(localized: "Show in Finder")) {
+                model.showInFinder(row.url)
+            }
+        }
+    }
+}
+
+struct ExtensionsPluginStatusLine: View {
+    let status: ExtensionsPluginStatus
+
+    var body: some View {
+        Group {
+            if status == .failed {
+                NoticeLabel(status.text, severity: .warning)
+            } else {
+                Text(verbatim: status.text)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.subheadline)
+        .lineLimit(1)
+    }
+}
+
+struct ExtensionsInstallProgress: View {
+    let phase: PluginInstallTracker.Phase
+
+    var body: some View {
         if case .downloading(let fraction?) = phase {
             ProgressView(value: fraction)
                 .controlSize(.small)
@@ -335,309 +330,19 @@ struct InstalledPluginsView: View {
                 .controlSize(.small)
         }
     }
-
-    private func installFailure(_ install: PluginInstallTracker.Entry, reason: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .symbolRenderingMode(.multicolor)
-                    .accessibilityHidden(true)
-                Text(reason)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-                    .help(reason)
-            }
-            .font(.caption)
-            .accessibilityElement(children: .combine)
-
-            HStack(spacing: 6) {
-                if install.retry != nil {
-                    Button(String(localized: "Try Again")) {
-                        retryInstall(install)
-                    }
-                    .accessibilityLabel(String(format: String(localized: "Try installing %@ again"), install.displayName))
-                }
-                Button(String(localized: "Dismiss")) {
-                    installTracker.cancel(pluginId: install.pluginId)
-                }
-            }
-            .controlSize(.small)
-        }
-    }
-
-    private var listBottomButtons: some View {
-        HStack(spacing: 4) {
-            Button {
-                installFromFile()
-            } label: {
-                Image(systemName: "plus")
-                    .frame(width: 24, height: 20)
-            }
-            .buttonStyle(.borderless)
-            .disabled(pluginManager.isInstalling)
-            .accessibilityLabel(String(localized: "Install plugin from file"))
-
-            Spacer()
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-    }
-
-    // MARK: - Plugin Row
-
-    @ViewBuilder
-    private func pluginRow(_ plugin: PluginEntry) -> some View {
-        HStack(spacing: 8) {
-            PluginIconView(name: plugin.pluginIconName)
-                .font(.title3)
-                .frame(width: 24, height: 24)
-                .foregroundStyle(.secondary)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(plugin.name)
-                    .lineLimit(1)
-
-                HStack(spacing: 8) {
-                    Text("v\(plugin.version)")
-                    if let capability = plugin.capabilities.first {
-                        Text(capability.displayName)
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-                if let install = installTracker.entries[plugin.id] {
-                    pluginRowInstallCaption(install)
-                } else if pluginManager.stagedPluginIds.contains(plugin.id) {
-                    Text("Updates when TablePro relaunches")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer()
-
-            Text(plugin.source == .builtIn ? String(localized: "Built-in") : String(localized: "User"))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 2)
-    }
-
-    @ViewBuilder
-    private func pluginRowInstallCaption(_ install: PluginInstallTracker.Entry) -> some View {
-        switch install.phase {
-        case .downloading:
-            Text("Downloading update…")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .installing:
-            Text("Installing update…")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .completed:
-            if pluginManager.stagedPluginIds.contains(install.pluginId) {
-                Text("Updates when TablePro relaunches")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        case .failed(let reason):
-            installFailure(install, reason: reason)
-        }
-    }
-
-    // MARK: - Detail Pane
-
-    @ViewBuilder
-    private func detailPage(for selection: PluginListSelection) -> some View {
-        switch selection {
-        case .rejected(let url):
-            if let rejected = pluginManager.rejectedPlugins.first(where: { $0.url == url }) {
-                rejectedDetail(rejected)
-                    .settingsDrillIn(title: rejected.name)
-            }
-        case .plugin(let id):
-            if let selected = pluginManager.plugins.first(where: { $0.id == id }) {
-                pluginDetail(selected)
-                    .settingsDrillIn(title: selected.name)
-            }
-        }
-    }
-
-    private func pluginDetail(_ selected: PluginEntry) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(selected.name)
-                    .font(.title3.weight(.semibold))
-
-                Text("v\(selected.version), \(selected.source == .builtIn ? String(localized: "Built-in") : String(localized: "User-installed"))")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                if !selected.pluginDescription.isEmpty {
-                    Text(selected.pluginDescription)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-
-                Divider()
-
-                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {
-                    GridRow {
-                        Text("Bundle ID")
-                            .foregroundStyle(.secondary)
-                            .gridColumnAlignment(.leading)
-                        Text(selected.id)
-                            .textSelection(.enabled)
-                            .gridColumnAlignment(.leading)
-                    }
-
-                    if !selected.capabilities.isEmpty {
-                        GridRow {
-                            Text("Capabilities")
-                                .foregroundStyle(.secondary)
-                            Text(selected.capabilities.map(\.displayName).joined(separator: ", "))
-                        }
-                    }
-
-                    if let typeId = selected.databaseTypeId {
-                        GridRow {
-                            Text("Database Type")
-                                .foregroundStyle(.secondary)
-                            Text(typeId)
-                        }
-
-                        if !selected.additionalTypeIds.isEmpty {
-                            GridRow {
-                                Text("Also handles")
-                                    .foregroundStyle(.secondary)
-                                Text(selected.additionalTypeIds.joined(separator: ", "))
-                            }
-                        }
-
-                        if let port = selected.defaultPort {
-                            GridRow {
-                                Text("Default Port")
-                                    .foregroundStyle(.secondary)
-                                Text(verbatim: "\(port)")
-                            }
-                        }
-                    }
-                }
-                .font(.callout)
-
-                if let settable = pluginManager.pluginInstances[selected.id] as? any SettablePluginDiscoverable,
-                   let pluginSettings = settable.settingsView() {
-                    Divider()
-                    pluginSettings
-                }
-
-                if selected.source == .userInstalled {
-                    Divider()
-                    Button("Uninstall", role: .destructive) {
-                        uninstallPlugin(selected)
-                    }
-                }
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    // A failure shows on the plugin's row or in the list's bottom bar, from the tracker.
-    private func updatePlugin(_ registryPlugin: RegistryPlugin) {
-        Task {
-            _ = await pluginManager.performRegistryUpdate(registryPlugin)
-            // A rejected plugin that updated is no longer rejected; pop its now-dead detail page.
-            if !path.isEmpty { path.removeLast() }
-        }
-    }
-
-    private func retryInstall(_ install: PluginInstallTracker.Entry) {
-        switch install.retry {
-        case .registry(let registryPlugin):
-            updatePlugin(registryPlugin)
-        case .file(let url):
-            installPlugin(from: url)
-        case nil:
-            break
-        }
-    }
-
-    // MARK: - Actions
-
-    private func revealRequestedPlugin() {
-        guard let request = navigation.consumePendingRequest(),
-              let target = PluginListSelection.revealTarget(
-                  pluginId: request.pluginId,
-                  loadedIds: pluginManager.plugins.map(\.id),
-                  rejected: pluginManager.rejectedPlugins
-              ) else { return }
-        searchText = ""
-        path.append(target)
-    }
-
-    private func installFromFile() {
-        let panel = NSOpenPanel()
-        panel.title = String(localized: "Select Plugin")
-        panel.allowedContentTypes = [.zip] + (UTType("com.tablepro.plugin").map { [$0] } ?? [])
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.treatsFilePackagesAsDirectories = false
-
-        guard let window = NSApp.keyWindow else { return }
-        panel.beginSheetModal(for: window) { response in
-            guard response == .OK, let url = panel.url else { return }
-            self.installPlugin(from: url)
-        }
-    }
-
-    // A failure shows in the list's bottom bar, from the tracker.
-    private func installPlugin(from url: URL) {
-        Task {
-            guard let entry = try? await pluginManager.installPlugin(from: url) else { return }
-            path.append(PluginListSelection.plugin(entry.id))
-        }
-    }
-
-    private func uninstallPlugin(_ plugin: PluginEntry) {
-        Task {
-            let confirmed = await AlertHelper.confirmDestructive(
-                title: String(localized: "Uninstall Plugin?"),
-                message: String(format: String(localized: "\"%@\" will be removed from your system. This action cannot be undone."), plugin.name),
-                confirmButton: String(localized: "Uninstall"),
-                cancelButton: String(localized: "Cancel")
-            )
-
-            guard confirmed else { return }
-
-            do {
-                try await pluginManager.uninstallPlugin(id: plugin.id)
-                if !path.isEmpty { path.removeLast() }
-            } catch {
-                errorAlertTitle = String(localized: "Uninstall Failed")
-                errorAlertMessage = error.localizedDescription
-                showErrorAlert = true
-            }
-        }
-    }
 }
 
-// MARK: - PluginCapability Display Names
+// VoiceOver gets every row action the context menu offers.
+struct ExtensionsOptionalAction: ViewModifier {
+    let name: String?
+    let action: () -> Void
 
-private extension PluginCapability {
-    var displayName: String {
-        switch self {
-        case .databaseDriver: String(localized: "Database Driver")
-        case .exportFormat: String(localized: "Export Format")
-        case .importFormat: String(localized: "Import Format")
-        case .documentInspector: String(localized: "Document Inspector")
-        @unknown default: String(localized: "Unknown")
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let name {
+            content.accessibilityAction(named: Text(verbatim: name), action)
+        } else {
+            content
         }
     }
-}
-
-#Preview {
-    InstalledPluginsView()
-        .frame(width: 650, height: 500)
 }
