@@ -17,8 +17,13 @@ struct SettingsRowIcon: View {
             .fill(tint)
             .frame(width: 20, height: 20)
             .overlay {
+                // Fit the glyph to a fixed 11pt box so wide symbols (paintbrush) and narrow ones
+                // (bell) keep the same ~4.5pt inset, matching the System Settings tile.
                 Image(systemName: systemName)
-                    .font(.system(size: 12, weight: .semibold))
+                    .resizable()
+                    .scaledToFit()
+                    .fontWeight(.medium)
+                    .frame(width: 11, height: 11)
                     .foregroundStyle(.white)
             }
             .accessibilityHidden(true)

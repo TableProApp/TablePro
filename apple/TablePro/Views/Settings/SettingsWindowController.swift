@@ -137,7 +137,6 @@ internal final class SettingsSplitViewController: NSSplitViewController {
 @MainActor
 internal final class SettingsNavigationModel: ObservableObject {
     @Published internal var selection: SettingsPane
-    @Published internal var searchText: String = ""
     // The detail's NavigationStack path, owned here so the window toolbar can read depth and drive Back.
     @Published internal var path = NavigationPath()
     // The pushed page's title, reported by the drill-in modifier; nil at a pane root.
@@ -179,6 +178,9 @@ internal final class SettingsNavigationModel: ObservableObject {
 
 private struct SettingsSidebarView: View {
     @ObservedObject fileprivate var model: SettingsNavigationModel
+    // Search lives here, not on the nav model, so typing re-renders only the sidebar list and never
+    // the detail pane or the toolbar.
+    @State private var searchText = ""
 
     private var selectionBinding: Binding<SettingsPane?> {
         Binding(
@@ -188,15 +190,21 @@ private struct SettingsSidebarView: View {
     }
 
     fileprivate var body: some View {
-        VStack(spacing: 0) {
-            NativeSearchField(text: $model.searchText, placeholder: String(localized: "Search"))
-                .padding(.horizontal, 10)
-                .padding(.top, 10)
-                .padding(.bottom, 6)
+        let matches = Set(SettingsNavigation.panes(matching: searchText))
+        return VStack(spacing: 0) {
+            NativeSearchField(
+                text: $searchText,
+                placeholder: String(localized: "Search"),
+                fixedHeight: 28,
+                accessibilityIdentifier: "settings-sidebar-search"
+            )
+            .padding(.horizontal, 10)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
 
             List(selection: selectionBinding) {
                 ForEach(SettingsNavigation.sections, id: \.id) { section in
-                    let panes = visiblePanes(in: section)
+                    let panes = section.panes.filter(matches.contains)
                     if !panes.isEmpty {
                         Section {
                             ForEach(panes, id: \.self) { pane in
@@ -213,11 +221,6 @@ private struct SettingsSidebarView: View {
             }
             .listStyle(.sidebar)
         }
-    }
-
-    private func visiblePanes(in section: SettingsSection) -> [SettingsPane] {
-        let matches = Set(SettingsNavigation.panes(matching: model.searchText))
-        return section.panes.filter(matches.contains)
     }
 }
 

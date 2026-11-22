@@ -11,9 +11,15 @@ import SwiftUI
 
 private final class IntrinsicHeightSearchField: NSSearchField {
     var focusOnAppear = false
+    // When set, the field reports this height instead of the text-cell height; the Settings sidebar
+    // uses it to reach the taller System Settings search pill.
+    var fixedHeight: CGFloat?
     private let windowKeyObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
 
     override var intrinsicContentSize: NSSize {
+        if let fixedHeight {
+            return NSSize(width: NSView.noIntrinsicMetric, height: fixedHeight)
+        }
         let cellHeight = cell?.cellSize.height ?? super.intrinsicContentSize.height
         return NSSize(width: NSView.noIntrinsicMetric, height: cellHeight)
     }
@@ -63,6 +69,7 @@ struct NativeSearchField: NSViewRepresentable {
     var focusOnAppear: Bool = false
     var focusTrigger: Int = 0
     var maxWidth: CGFloat?
+    var fixedHeight: CGFloat?
     var accessibilityIdentifier: String = "sidebar-filter"
 
     func makeNSView(context: Context) -> NSSearchField {
@@ -70,6 +77,7 @@ struct NativeSearchField: NSViewRepresentable {
         field.placeholderString = placeholder
         field.delegate = context.coordinator
         field.controlSize = controlSize
+        field.fixedHeight = fixedHeight
         field.sendsSearchStringImmediately = true
         field.setAccessibilityIdentifier(accessibilityIdentifier)
         field.cell?.usesSingleLineMode = true
