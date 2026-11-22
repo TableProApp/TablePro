@@ -13,6 +13,7 @@ import Testing
 @MainActor
 struct ConnectionTileGlyphColorTests {
     private static let postgresBlue = NSColor(srgbRed: 0x33 / 255, green: 0x67 / 255, blue: 0x91 / 255, alpha: 1)
+    private static let yellow = NSColor(srgbRed: 0xFF / 255, green: 0xD1 / 255, blue: 0x00 / 255, alpha: 1)
     private static let orange = NSColor(srgbRed: 0xF2 / 255, green: 0x91 / 255, blue: 0x11 / 255, alpha: 1)
     private static let tolerance: CGFloat = 0.01
 
@@ -46,7 +47,7 @@ struct ConnectionTileGlyphColorTests {
         return hue
     }
 
-    @Test("PostgreSQL's blue fails on the dark tile as drawn, and the lifted glyph clears 3:1")
+    @Test("PostgreSQL's blue fails on the dark tile as drawn, and the lifted glyph clears the floor")
     func postgresBlueIsLiftedInDarkMode() throws {
         let resolved = try resolve(Self.postgresBlue, in: .darkAqua)
         let raw = ConnectionTileMetrics.contrast(Self.postgresBlue.relativeLuminance, resolved.tileLuminance)
@@ -66,10 +67,24 @@ struct ConnectionTileGlyphColorTests {
 
     @Test("A brand that already clears the dark tile is left alone")
     func legibleBrandIsUntouched() throws {
-        let resolved = try resolve(Self.orange, in: .darkAqua)
-        #expect(abs(resolved.glyph.redComponent - Self.orange.redComponent) < Self.tolerance)
-        #expect(abs(resolved.glyph.greenComponent - Self.orange.greenComponent) < Self.tolerance)
-        #expect(abs(resolved.glyph.blueComponent - Self.orange.blueComponent) < Self.tolerance)
+        let resolved = try resolve(Self.yellow, in: .darkAqua)
+        #expect(abs(resolved.glyph.redComponent - Self.yellow.redComponent) < Self.tolerance)
+        #expect(abs(resolved.glyph.greenComponent - Self.yellow.greenComponent) < Self.tolerance)
+        #expect(abs(resolved.glyph.blueComponent - Self.yellow.blueComponent) < Self.tolerance)
+    }
+
+    // MySQL's orange cleared 3:1 and still read as a smudge at tile size.
+    // The tile as the editor drew it in Dark Mode: (69, 67, 67), quaternary label over the form's row.
+    @Test("A brand over 3:1 but under the text floor is lifted too, keeping its hue")
+    func thinLineArtNeedsTheTextFloor() {
+        let tile: CGFloat = 0.058
+        let raw = ConnectionTileMetrics.contrast(Self.orange.relativeLuminance, tile)
+        let lifted = ConnectionTileMetrics.liftedGlyph(Self.orange, onTileLuminance: tile)
+
+        #expect(raw >= 3)
+        #expect(raw < ConnectionTileMetrics.minimumGlyphContrast)
+        #expect(ConnectionTileMetrics.contrast(lifted.relativeLuminance, tile) >= ConnectionTileMetrics.minimumGlyphContrast - Self.tolerance)
+        #expect(abs(hue(of: lifted) - hue(of: Self.orange)) < Self.tolerance)
     }
 
     @Test("A hue too dark at full brightness gives up saturation and still clears 3:1")

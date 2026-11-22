@@ -26,19 +26,19 @@ struct SSHAndProxiesSSHRow: View {
             }
         case .sshHost:
             EditorTextRow(
-                String(localized: "SSH Host"),
+                String(localized: "Host"),
                 text: store.binding(\.ssh.host),
                 prompt: "ssh.example.com",
                 row: editorRow,
                 store: store
             )
         case .sshPort:
-            EditorTextRow(String(localized: "SSH Port"), text: store.binding(\.ssh.port), prompt: "22", row: editorRow, store: store)
+            EditorTextRow(String(localized: "Port"), text: store.binding(\.ssh.port), prompt: "22", row: editorRow, store: store)
         case .sshUsername:
             EditorTextRow(
-                String(localized: "SSH User"),
+                String(localized: "Username"),
                 text: store.binding(\.ssh.username),
-                prompt: String(localized: "username"),
+                prompt: "admin",
                 row: editorRow,
                 store: store
             )
@@ -142,7 +142,6 @@ struct SSHAndProxiesSSHRow: View {
     }
 }
 
-// A menu picker whose label carries the row's issue.
 struct SSHAndProxiesPicker<Value: Hashable, Content: View>: View {
     private let title: String
     @Binding private var selection: Value
@@ -178,21 +177,48 @@ struct SSHAndProxiesPicker<Value: Hashable, Content: View>: View {
     }
 }
 
+// Profile commands are pop-up items, as in General's Credentials, so typing a host never adds a button.
 struct SSHAndProxiesProfileRows: View {
     @ObservedObject var store: ConnectionEditorStore
+
+    @State private var pickerGeneration = 0
+
+    private enum Choice: Hashable {
+        case profile(UUID?)
+        case saveAsProfile
+        case editProfile
+        case newProfile
+    }
 
     private let row = EditorRow.builtIn(.sshProfile)
 
     var body: some View {
-        SSHAndProxiesPicker(String(localized: "SSH Profile"), selection: store.sshProfileBinding, row: row, store: store) {
-            Text(String(localized: "Inline Configuration")).tag(UUID?.none)
+        Picker(selection: choice) {
+            Text(String(localized: "Inline Configuration")).tag(Choice.profile(nil))
+            // A selection with no matching item reads as nothing chosen, so a profile this Mac lacks gets one.
             if store.sshProfileIsUnresolved, let missingId = store.draft.ssh.profileId {
-                Text(String(localized: "Missing Profile")).tag(UUID?.some(missingId))
+                Text(String(localized: "Missing Profile")).tag(Choice.profile(missingId))
             }
-            ForEach(store.context.sshProfiles) { profile in
-                Text(verbatim: Self.menuTitle(for: profile)).tag(UUID?.some(profile.id))
+            if !store.context.sshProfiles.isEmpty {
+                Divider()
+                ForEach(store.context.sshProfiles) { profile in
+                    Text(verbatim: Self.menuTitle(for: profile)).tag(Choice.profile(profile.id))
+                }
             }
+            Divider()
+            if store.canSaveSSHAsProfile {
+                Text(String(localized: "Save These as a Profile…")).tag(Choice.saveAsProfile)
+            }
+            if store.selectedSSHProfile != nil {
+                Text(String(localized: "Edit Profile…")).tag(Choice.editProfile)
+            }
+            Text(String(localized: "New Profile…")).tag(Choice.newProfile)
+        } label: {
+            EditorRowLabel(String(localized: "SSH Profile"), row: row, store: store)
         }
+        .id(pickerGeneration)
+        .accessibilityIdentifier(row.accessibilityIdentifier)
+        .editorRowFocus(row, store: store)
 
         if let profile = store.selectedSSHProfile {
             LabeledContent(String(localized: "Server")) {
@@ -216,26 +242,30 @@ struct SSHAndProxiesProfileRows: View {
                 }
             }
         }
+    }
 
-        HStack(spacing: 8) {
-            Button(String(localized: "Create New Profile…")) {
-                store.presentSSHProfileCreation()
-            }
-            .accessibilityIdentifier("connection-form-ssh-profile-create")
-            if store.selectedSSHProfile != nil {
-                Button(String(localized: "Edit Profile…")) {
-                    store.presentSSHProfileEditing()
-                }
-                .accessibilityIdentifier("connection-form-ssh-profile-edit")
-            }
-            if store.canSaveSSHAsProfile {
-                Button(String(localized: "Save Current as Profile…")) {
+    // A command item leaves the selection where it was; the new identity redraws the pop-up on it.
+    private var choice: Binding<Choice> {
+        Binding(
+            get: { .profile(store.draft.ssh.profileId) },
+            set: { newValue in
+                switch newValue {
+                case .profile(let id):
+                    guard id != store.draft.ssh.profileId else { return }
+                    store.noteEdited(row)
+                    store.selectSSHProfile(id)
+                case .saveAsProfile:
+                    pickerGeneration += 1
                     store.presentSaveSSHAsProfile()
+                case .editProfile:
+                    pickerGeneration += 1
+                    store.presentSSHProfileEditing()
+                case .newProfile:
+                    pickerGeneration += 1
+                    store.presentSSHProfileCreation()
                 }
-                .accessibilityIdentifier("connection-form-ssh-profile-save-current")
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .trailing)
+        )
     }
 
     private static func menuTitle(for profile: SSHProfile) -> String {

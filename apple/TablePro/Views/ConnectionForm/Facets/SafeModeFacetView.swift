@@ -101,6 +101,8 @@ struct SafeModeFacetView: View {
             if rules.isEmpty {
                 Text(String(localized: "No Masking Rules"))
                     .foregroundStyle(.secondary)
+            } else {
+                Text("^[\(rules.count) Rule](inflect: true)")
             }
         }
         .onEditorFocusRequest(.builtIn(.maskingRules), store: store) {
@@ -109,47 +111,53 @@ struct SafeModeFacetView: View {
     }
 }
 
+// Only the pattern stretches, so a rule never asks for more width than the column has.
 private struct SafeModeMaskingRuleRow: View {
     @Binding var rule: MaskingRule
     let focusedRule: FocusState<UUID?>.Binding
     let onRemove: () -> Void
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
-            GridRow {
-                Text(String(localized: "Pattern"))
-                    .gridColumnAlignment(.trailing)
-                TextField(
-                    String(localized: "Pattern"),
-                    text: $rule.pattern,
-                    prompt: Text(verbatim: rule.target == .column ? "*.email" : "uuid")
-                )
-                .labelsHidden()
-                .textFieldStyle(.roundedBorder)
-                .focused(focusedRule, equals: rule.id)
-                .accessibilityIdentifier("connection-form-masking-pattern")
-                Button(String(localized: "Remove"), action: onRemove)
-            }
-            GridRow {
-                Text(String(localized: "Match"))
-                HStack(spacing: 16) {
-                    Picker(String(localized: "Match"), selection: $rule.target) {
-                        ForEach(MaskingTarget.allCases) { target in
-                            Text(verbatim: target.displayName).tag(target)
-                        }
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-
-                    Picker(String(localized: "Mask"), selection: $rule.style) {
-                        ForEach(MaskingStyle.allCases) { style in
-                            Text(verbatim: style.displayName).tag(style)
-                        }
-                    }
-                    .fixedSize()
+        HStack(spacing: 8) {
+            Picker(String(localized: "Match"), selection: $rule.target) {
+                ForEach(MaskingTarget.allCases) { target in
+                    Text(verbatim: target.displayName).tag(target)
                 }
-                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
             }
+            .labelsHidden()
+            .fixedSize()
+            .help(String(localized: "Match the pattern against column names or column types"))
+            .accessibilityIdentifier("connection-form-masking-target")
+
+            TextField(
+                String(localized: "Pattern"),
+                text: $rule.pattern,
+                prompt: Text(verbatim: rule.target == .column ? "*.email" : "uuid")
+            )
+            .labelsHidden()
+            .autocorrectionDisabled()
+            .multilineTextAlignment(.leading)
+            .frame(minWidth: 0, maxWidth: .infinity)
+            .focused(focusedRule, equals: rule.id)
+            .accessibilityIdentifier("connection-form-masking-pattern")
+
+            Picker(String(localized: "Mask"), selection: $rule.style) {
+                ForEach(MaskingStyle.allCases) { style in
+                    Text(verbatim: style.displayName).tag(style)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .help(String(localized: "How matching values are hidden"))
+            .accessibilityIdentifier("connection-form-masking-style")
+
+            Button(action: onRemove) {
+                Image(systemName: "minus.circle")
+            }
+            .buttonStyle(.borderless)
+            .help(String(localized: "Remove Rule"))
+            .accessibilityLabel(String(localized: "Remove Rule"))
+            .accessibilityIdentifier("connection-form-masking-remove")
         }
         .accessibilityElement(children: .contain)
     }

@@ -5,6 +5,12 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSSHConfig
+
+enum JumpHostField: Hashable {
+    case host
+    case keyFile
+}
 
 extension ConnectionEditorStore {
     // An SSH tunnel forwards one endpoint, so a host list in General reaches its first host only.
@@ -13,6 +19,19 @@ extension ConnectionEditorStore {
               let field = ConnectionEditorEngine.visibleHostListFields(draft, traits).first else { return nil }
         let hosts = draft.fieldValues[field.id] ?? field.defaultValue ?? ""
         return TunnelHostListAdvice.message(fieldId: field.id, hosts: hosts)
+    }
+
+    // A file database offers only where the file lives, so the picker reads as a location, not a transport.
+    var transportIsLocationChoice: Bool {
+        traits.supportsRemoteDatabaseFile && availableTransports.allSatisfy { $0 == nil || $0 == .remoteFile }
+    }
+
+    // The engine flags a whole hop; this is the field it still lacks, in the order SSHJumpHost.isValid checks.
+    func missingJumpHostField(_ id: UUID) -> JumpHostField? {
+        guard let hop = draft.ssh.jumpHosts.first(where: { $0.id == id }) else { return nil }
+        if hop.host.isEmpty { return .host }
+        if hop.authMethod == .privateKey, hop.privateKeyPath.isEmpty { return .keyFile }
+        return nil
     }
 }
 

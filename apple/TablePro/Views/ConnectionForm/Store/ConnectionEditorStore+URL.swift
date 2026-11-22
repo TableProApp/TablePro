@@ -10,6 +10,7 @@ import TableProConnectionLibrary
 struct PastedURLNotice: Equatable, Identifiable {
     let id = UUID()
     let changes: [String]
+    var sourceText = ""
 
     var message: String {
         guard !changes.isEmpty else { return String(localized: "The URL matches this connection.") }
@@ -38,6 +39,11 @@ extension ConnectionEditorStore {
     func setHost(_ text: String, undoManager: UndoManager?) {
         let restoring = undoManager?.isUndoing == true || undoManager?.isRedoing == true
         if !restoring, let url = Self.pastedURL(replacing: draft.host, with: text) {
+            // The field still shows the pasted URL and hands it back; applying it again would find nothing changed.
+            if pastedURLNotice?.sourceText == url || pendingPastedURL != nil {
+                objectWillChange.send()
+                return
+            }
             if case .notAURL = applyPastedURL(url, undoManager: undoManager) {
                 update { $0.host = text }
             }
@@ -56,6 +62,7 @@ extension ConnectionEditorStore {
             return .notAURL
         }
         let snapshot = draft
+        let source = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if parsed.type != draft.type {
             let proposal = proposeRetype(to: parsed.type)
             if !isNew, proposal.needsConfirmation {
@@ -63,13 +70,18 @@ extension ConnectionEditorStore {
                 pendingRetype = proposal
                 return .needsRetypeConfirmation(proposal)
             }
-            return .applied(applyPasted(parsed, snapshot: snapshot, retypeTo: parsed.type))
+            return .applied(applyPasted(parsed, snapshot: snapshot, retypeTo: parsed.type, sourceText: source))
         }
-        return .applied(applyPasted(parsed, snapshot: snapshot, retypeTo: nil))
+        return .applied(applyPasted(parsed, snapshot: snapshot, retypeTo: nil, sourceText: source))
     }
 
     @discardableResult
-    func applyPasted(_ parsed: ParsedConnectionURL, snapshot: ConnectionDraft, retypeTo type: DatabaseType?) -> PastedURLNotice {
+    func applyPasted(
+        _ parsed: ParsedConnectionURL,
+        snapshot: ConnectionDraft,
+        retypeTo type: DatabaseType?,
+        sourceText: String = ""
+    ) -> PastedURLNotice {
         isApplyingPaste = true
         defer { isApplyingPaste = false }
         if let type {
@@ -78,7 +90,10 @@ extension ConnectionEditorStore {
         var next = draft
         next.apply(parsed, traits: traits, policy: isNew ? .newConnection : .existingConnection, safeModeFloor: safeModeFloor)
         commit(next)
-        let notice = PastedURLNotice(changes: ConnectionDraft.changedValues(from: snapshot, to: draft, traits: traits))
+        let notice = PastedURLNotice(
+            changes: ConnectionDraft.changedValues(from: snapshot, to: draft, traits: traits),
+            sourceText: sourceText
+        )
         pastedURLSnapshot = snapshot
         pastedURLNotice = notice
         registerPasteUndo(restoring: snapshot)

@@ -100,6 +100,48 @@ struct ConnectionEditorEngineFieldVisibilityTests {
         #expect(pluginRows(sentinel, traits, facet: .general, section: "authentication").contains("sentinelPassword"))
     }
 
+    // "Use ~/.pgpass" sat between Username and Method, and the method picker under the credentials it decides.
+    @Test("Authentication reads Method, Credentials, Username, Password, then the switch that stands in for the password")
+    func authenticationRowOrder() {
+        let traits = traits([
+            field("usePgpass", section: .authentication, type: .toggle, hidesPassword: true),
+            field(
+                "authMethod",
+                section: .authentication,
+                defaultValue: "password",
+                type: .dropdown(options: [.init(value: "password", label: "Password"), .init(value: "sso", label: "SSO")]),
+                hidesPassword: true
+            ),
+        ])
+        let rows = ConnectionEditorEngine.layout(draft(traits), traits, EditorContext())
+            .facet(.general)?.sections.first { $0.id == "authentication" }?.rows
+
+        #expect(rows == [
+            .plugin(fieldID: "authMethod"),
+            .builtIn(.credentialProfile),
+            .builtIn(.username),
+            .builtIn(.passwordMode),
+            .builtIn(.password),
+            .plugin(fieldID: "usePgpass"),
+        ])
+    }
+
+    @Test("PostgreSQL's Authentication puts ~/.pgpass after Password")
+    func postgresPgpassFollowsPassword() throws {
+        let postgres = ConnectionTypeTraits.live(for: .postgresql, pluginManager: .shared)
+        try #require(postgres.field("usePgpass") != nil)
+        let rows = ConnectionEditorEngine.layout(draft(postgres), postgres, EditorContext())
+            .facet(.general)?.sections.first { $0.id == "authentication" }?.rows ?? []
+        let pgpass = try #require(rows.firstIndex(of: .plugin(fieldID: "usePgpass")))
+        let password = try #require(rows.firstIndex(of: .builtIn(.password)))
+        let credentials = try #require(rows.firstIndex(of: .builtIn(.credentialProfile)))
+
+        #expect(password < pgpass)
+        if let method = rows.firstIndex(of: .plugin(fieldID: "awsAuth")) {
+            #expect(method < credentials)
+        }
+    }
+
     @Test("A dropdown off its default, a toggle that is on, or the type itself hides the password")
     func hidesPasswordFromDropdownToggleAndType() {
         let dropdown = traits([field(

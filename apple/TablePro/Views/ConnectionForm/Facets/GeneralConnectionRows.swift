@@ -19,6 +19,7 @@ struct GeneralTypeRow: View {
                     size: 22
                 )
                 Text(verbatim: store.traits.displayName)
+                    .foregroundStyle(.primary)
                 Button(String(localized: "Change…")) {
                     store.isChoosingType = true
                 }

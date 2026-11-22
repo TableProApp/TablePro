@@ -110,7 +110,7 @@ struct PluginFieldRow: View {
             LabeledContent {
                 SuggestionComboBox(
                     suggestions: Self.awsProfiles,
-                    placeholder: field.placeholder,
+                    placeholder: EditorFieldPrompt.text(prompt, row: row, store: store),
                     accessibilityLabel: name,
                     accessibilityIdentifier: row.accessibilityIdentifier,
                     value: trackingEdits(value)

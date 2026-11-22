@@ -166,11 +166,12 @@ struct GeneralPasswordRow: View {
 
     @ViewBuilder
     private func field(title: String) -> some View {
+        let prompt = Text(verbatim: EditorFieldPrompt.text(nil, row: .builtIn(.password), store: store))
         if reveal.isRevealed {
-            TextField(text: password) { Text(verbatim: title) }
+            TextField(text: password, prompt: prompt) { Text(verbatim: title) }
                 .autocorrectionDisabled()
         } else {
-            SecureField(text: password) { Text(verbatim: title) }
+            SecureField(text: password, prompt: prompt) { Text(verbatim: title) }
         }
     }
 
@@ -194,8 +195,8 @@ struct GeneralPasswordModeRow: View {
             Toggle(isOn: store.tracking(store.passwordPromptBinding, row: .builtIn(.passwordMode))) {
                 EditorRowLabel(
                     store.traits.connectionMode == .apiOnly
-                        ? String(localized: "Prompt for API token")
-                        : String(localized: "Prompt for password"),
+                        ? String(localized: "Prompt for API Token")
+                        : String(localized: "Prompt for Password"),
                     row: .builtIn(.passwordMode),
                     store: store
                 )

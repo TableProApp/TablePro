@@ -19,28 +19,39 @@ enum ConnectionEditorCloseGuard {
     }
 
     // A record deleted elsewhere cannot be saved, so there is nothing to ask.
-    static func verdict(hasUnsavedChanges: Bool, isRecordMissing: Bool, connectionName: String) -> Verdict {
+    static func verdict(
+        hasUnsavedChanges: Bool,
+        isRecordMissing: Bool,
+        connectionName: String,
+        blockingIssue: String? = nil
+    ) -> Verdict {
         guard hasUnsavedChanges, !isRecordMissing else { return .close }
-        return .askToSave(ConnectionEditorSavePrompt(connectionName: connectionName))
+        return .askToSave(ConnectionEditorSavePrompt(connectionName: connectionName, blockingIssue: blockingIssue))
     }
 
-    // The order of `makeAlert`: Save, Cancel, Don't Save.
-    static func choice(for response: NSApplication.ModalResponse) -> Choice {
-        switch response {
-        case .alertFirstButtonReturn: return .save
-        case .alertThirdButtonReturn: return .dontSave
+    // The order of `makeAlert`: Save, Cancel, Don't Save; or Cancel, Don't Save when Save is blocked.
+    static func choice(for response: NSApplication.ModalResponse, canSave: Bool = true) -> Choice {
+        switch (response, canSave) {
+        case (.alertFirstButtonReturn, true): return .save
+        case (.alertThirdButtonReturn, true), (.alertSecondButtonReturn, false): return .dontSave
         default: return .cancel
         }
     }
 
+    // An alert offers no button that cannot do what it says: with Save blocked it names why and offers Don't Save
+    // and Cancel, and Return picks neither, since the only other answer discards.
     @MainActor
     static func makeAlert(_ prompt: ConnectionEditorSavePrompt) -> NSAlert {
         let alert = NSAlert()
         alert.messageText = prompt.title
         alert.informativeText = prompt.message
         alert.alertStyle = .warning
-        alert.addButton(withTitle: String(localized: "Save"))
-        AlertHelper.addCancelButton(to: alert, title: String(localized: "Cancel"))
+        if prompt.canSave {
+            alert.addButton(withTitle: String(localized: "Save"))
+            AlertHelper.addCancelButton(to: alert, title: String(localized: "Cancel"))
+        } else {
+            AlertHelper.addCancelButton(to: alert, title: String(localized: "Cancel"))
+        }
         let dontSave = alert.addButton(withTitle: String(localized: "Don't Save"))
         dontSave.hasDestructiveAction = true
         dontSave.keyEquivalent = "d"
@@ -51,13 +62,21 @@ enum ConnectionEditorCloseGuard {
 
 struct ConnectionEditorSavePrompt: Equatable {
     let connectionName: String
+    var blockingIssue: String?
+
+    var canSave: Bool { blockingIssue == nil }
 
     var title: String {
-        String(format: String(localized: "Do you want to save the changes to “%@”?"), connectionName)
+        guard canSave else {
+            return String(format: String(localized: "The changes to “%@” can't be saved yet."), connectionName)
+        }
+        return String(format: String(localized: "Do you want to save the changes to “%@”?"), connectionName)
     }
 
     var message: String {
-        String(localized: "Your changes will be lost if you don't save them.")
+        let consequence = String(localized: "Your changes will be lost if you don't save them.")
+        guard let blockingIssue else { return consequence }
+        return "\(blockingIssue)\n\n\(consequence)"
     }
 }
 

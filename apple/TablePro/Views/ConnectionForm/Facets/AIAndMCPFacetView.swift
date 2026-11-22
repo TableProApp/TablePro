@@ -51,7 +51,7 @@ struct AIAndMCPFacetView: View {
                         .tag(AIConnectionPolicy?.some(policy))
                 }
             } label: {
-                EditorRowLabel(String(localized: "AI Policy"), row: row, store: store)
+                EditorRowLabel(String(localized: "Policy"), row: row, store: store)
             }
             .accessibilityIdentifier(row.accessibilityIdentifier)
             .editorRowFocus(row, store: store)
@@ -79,22 +79,24 @@ struct AIAndMCPFacetView: View {
 
     // The engine leaves these footers to the view: they read live state the layout does not carry.
     private func footer(for section: SectionLayout) -> String? {
-        var lines = section.footer.map { [$0] } ?? []
+        var paragraphs = section.footer.map { [$0] } ?? []
         if section.rows.contains(.builtIn(.externalAccess)) {
             if section.footer == nil {
-                // swiftlint:disable:next line_length
-                lines.append(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope."))
+                paragraphs.append(String(
+                    localized: "Limits what MCP clients, scripts and shortcuts can do with this connection, whatever their token allows."
+                ))
             }
             if let note = store.externalClientsReadOnlyNote {
-                lines.append(note)
+                paragraphs.append(note)
             }
         }
         if section.rows.contains(.builtIn(.aiPolicy)), section.footer == nil {
-            lines.append(String(localized: "AI Policy applies to AI features and MCP clients."))
+            var sentences = [String(localized: "Sets when the assistant and MCP clients may read this connection.")]
+            if section.rows.contains(.builtIn(.alwaysAllowedTools)) {
+                sentences.append(String(localized: "Forget a tool to be asked before it runs again."))
+            }
+            paragraphs.append(sentences.joined(separator: " "))
         }
-        if section.rows.contains(.builtIn(.alwaysAllowedTools)) {
-            lines.append(String(localized: "Always Allow on an assistant tool card adds the tool here. Forget makes its next call ask again."))
-        }
-        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+        return paragraphs.isEmpty ? nil : paragraphs.joined(separator: "\n")
     }
 }

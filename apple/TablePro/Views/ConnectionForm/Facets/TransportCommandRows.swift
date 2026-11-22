@@ -46,7 +46,7 @@ struct TransportCommandRow: View {
             )
         case .tunnelCommandExecutable:
             EditorPathRow(
-                String(localized: "Executable path"),
+                String(localized: "Executable Path"),
                 path: store.binding(\.tunnelCommand.config.executablePath),
                 prompt: executablePrompt,
                 row: editorRow,

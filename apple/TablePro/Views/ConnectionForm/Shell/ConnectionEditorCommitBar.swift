@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import SwiftUI
 
 // What the bar's buttons ask the window for: each ends editing first, so a half-typed value counts.
@@ -33,12 +34,14 @@ struct ConnectionEditorCommitBar: View {
         .modifier(ConnectionEditorPresentations(store: store))
     }
 
+    // The Spacer keeps both groups on their edges when there is no status to show.
     private var bar: some View {
         HStack(spacing: 12) {
             moreMenu
             testButton
             ConnectionEditorCommitStatus(store: store)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(-1)
+            Spacer(minLength: 0)
             Button(String(localized: "Cancel"), action: actions.cancel)
                 .keyboardShortcut(.cancelAction)
                 .fixedSize()
@@ -57,14 +60,24 @@ struct ConnectionEditorCommitBar: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
     }
 
     private var moreMenu: some View {
         Menu {
-            Button(String(localized: "Copy as URL"), action: actions.copyURL)
+            Button(action: actions.copyURL) {
+                Label(String(localized: "Copy as URL"), systemImage: "link")
+            }
             if store.canDelete {
                 Divider()
-                Button(String(localized: "Delete…"), role: .destructive, action: actions.delete)
+                Button(role: .destructive, action: actions.delete) {
+                    Label {
+                        Text(String(localized: "Delete…"))
+                    } icon: {
+                        Image(nsImage: Self.destructiveSymbol)
+                    }
+                }
+                .accessibilityIdentifier("connection-form-delete")
             }
         } label: {
             Label(String(localized: "More"), systemImage: "ellipsis.circle")
@@ -77,6 +90,14 @@ struct ConnectionEditorCommitBar: View {
         .help(String(localized: "More"))
         .accessibilityLabel(String(localized: "More"))
         .accessibilityIdentifier("connection-form-more")
+    }
+
+    // A menu item draws a template image in its own text colour, so the red is baked into a non-template copy.
+    private static var destructiveSymbol: NSImage {
+        let image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [.systemRed])) ?? NSImage()
+        image.isTemplate = false
+        return image
     }
 
     private var testButton: some View {
@@ -157,9 +178,9 @@ struct ConnectionEditorCommitStatus: View {
                     .accessibilityIdentifier("connection-form-test-status")
                 ConnectionTestDetailsButton {
                     ConnectionTestDetails(
-                        title: failure.step.title,
+                        title: failure.summary,
                         message: failure.message,
-                        recoverySuggestion: failure.recoverySuggestion,
+                        recoverySuggestion: failure.suggestion,
                         recoveryTitle: failure.recoveryAction?.title,
                         recover: { store.performTestRecovery() }
                     )
@@ -188,7 +209,8 @@ private struct ConnectionTestDetailsButton<Details: View>: View {
     }
 }
 
-// Read only: what failed, the server's own words, and the one fix TablePro can start.
+// Read only: what failed, the server's own words, what to check, and the one fix TablePro can start. Opaque, so the
+// form under the popover never shows through the server's text.
 private struct ConnectionTestDetails: View {
     let title: String
     let message: String
@@ -199,14 +221,20 @@ private struct ConnectionTestDetails: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.headline)
-            Text(message)
-                .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+            if isLong {
+                ScrollView {
+                    messageText
+                }
+                .frame(height: 160)
+            } else {
+                messageText
+            }
             if let recoverySuggestion, !recoverySuggestion.isEmpty {
-                Text(recoverySuggestion)
+                Text(verbatim: recoverySuggestion)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -215,10 +243,24 @@ private struct ConnectionTestDetails: View {
                     dismiss()
                     recover()
                 }
-                .padding(.top, 4)
+                .padding(.top, 2)
             }
         }
         .padding(16)
-        .frame(width: 340, alignment: .leading)
+        .frame(width: 360, alignment: .leading)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    // A popover sizes to its content, so text past about eight lines scrolls inside a fixed height instead.
+    private var isLong: Bool {
+        message.count > 480 || message.split(separator: "\n", omittingEmptySubsequences: false).count > 8
+    }
+
+    private var messageText: some View {
+        Text(verbatim: message)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("connection-form-test-message")
     }
 }

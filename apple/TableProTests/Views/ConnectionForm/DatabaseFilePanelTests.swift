@@ -7,8 +7,11 @@
 //  no name field, so a database file that did not exist yet could only be typed by hand.
 //
 
+import Darwin
 import Foundation
 @testable import TablePro
+import TableProTestSupport
+import TableProUtilities
 import Testing
 
 @MainActor
@@ -53,10 +56,51 @@ struct DatabaseFilePanelTests {
         #expect(rule.isEnabled(try file("map.gpkg", contents: sqliteHeader)))
     }
 
-    @Test("A file on this Mac's own disk is read, and a missing one is not")
+    @Test("A file on this Mac's own disk is read, and a missing or empty one is not")
     func onlyLocalFilesAreRead() throws {
-        #expect(PanelEnableFilter.isQuickToRead(try file("local.bin")))
-        #expect(!PanelEnableFilter.isQuickToRead(folder.appendingPathComponent("absent.bin")))
+        #expect(DatabaseFileClassifier.isReadableWithoutWaiting(try file("local.bin")))
+        #expect(!DatabaseFileClassifier.isReadableWithoutWaiting(folder.appendingPathComponent("absent.bin")))
+        #expect(!DatabaseFileClassifier.isReadableWithoutWaiting(try file("empty.db", contents: Data())))
+    }
+
+    // The panel asks on the main thread; a FIFO blocks open() until a writer appears, which froze the app.
+    @Test("A FIFO, named like a database or not, is dimmed at once and never opened")
+    func fifoIsDimmedWithoutBlocking() async throws {
+        let named = try fifo("pipe.db")
+        let bare = try fifo("pipe")
+        let rule = DatabaseFileBrowseRule(type: .sqlite, extensions: sqliteExtensions)
+
+        let answers = await BoundedCall.resultOnItsOwnThread(within: .seconds(5)) {
+            [rule.isEnabled(named), rule.isEnabled(bare), DatabaseFileClassifier.isReadableWithoutWaiting(bare)]
+        }
+        #expect(answers == [false, false, false])
+
+        let classified = await BoundedCall.resultOnItsOwnThread(within: .seconds(5)) {
+            let candidates = ["SQLite": [DatabaseFileSignature.magic("SQLite format 3\u{0}")]]
+            return [
+                DatabaseFileClassifier.classify(bare, candidates: candidates, access: .withoutWaiting),
+                DatabaseFileClassifier.classify(bare, candidates: candidates, access: .mayWait),
+            ]
+        }
+        #expect(classified == [nil, nil])
+
+        try #require(answers != nil, "The rule blocked, so asking the filter on the main thread would hang")
+        let filter = PanelEnableFilter(isEnabled: rule.isEnabled)
+        #expect(!filter.panel(NSObject(), shouldEnable: named))
+        #expect(!filter.panel(NSObject(), shouldEnable: bare))
+    }
+
+    @Test("A SQLite file read without waiting is still identified by its bytes")
+    func localDatabaseIsReadWithoutWaiting() throws {
+        let candidates = ["SQLite": [DatabaseFileSignature.magic("SQLite format 3\u{0}")]]
+        let database = try file("History", contents: sqliteHeader)
+        #expect(DatabaseFileClassifier.classify(database, candidates: candidates, access: .withoutWaiting) == .sqlite)
+    }
+
+    private func fifo(_ name: String) throws -> URL {
+        let url = folder.appendingPathComponent(name)
+        try #require(mkfifo(url.path, 0o600) == 0)
+        return url
     }
 
     @Test("A file of some other kind stays disabled")

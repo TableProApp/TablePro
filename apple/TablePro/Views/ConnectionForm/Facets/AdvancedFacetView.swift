@@ -1,5 +1,6 @@
 import SwiftUI
 import TableProAutocomplete
+import TableProPluginKit
 
 struct AdvancedFacetView: View {
     @ObservedObject var store: ConnectionEditorStore
@@ -34,7 +35,7 @@ struct AdvancedFacetView: View {
         switch row {
         case .builtIn(.connectTimeout):
             EditorOptionalNumberRow(
-                String(localized: "Connect timeout"),
+                String(localized: "Connect Timeout"),
                 value: store.binding(\.options.connectTimeoutSeconds),
                 defaultValue: ConnectionTimeoutPolicy.defaultConnectTimeoutSeconds,
                 range: DatabaseConnection.connectTimeoutSecondsRange,
@@ -47,7 +48,7 @@ struct AdvancedFacetView: View {
             AdvancedQueryTimeoutRow(row: row, store: store, settings: store.services.appSettings)
         case .builtIn(.binaryInlineLimit):
             EditorOptionalNumberRow(
-                String(localized: "Load binary values up to"),
+                String(localized: "Binary Value Limit"),
                 value: store.binding(\.options.binaryInlineLimitKilobytes),
                 defaultValue: UnloadedValuePlan.defaultInlineByteLimit / 1_024,
                 range: DatabaseConnection.binaryInlineLimitKilobytesRange,
@@ -61,13 +62,13 @@ struct AdvancedFacetView: View {
                     Text(verbatim: Self.title(for: identifierCase)).tag(identifierCase)
                 }
             } label: {
-                EditorRowLabel(String(localized: "Identifier case"), row: row, store: store)
+                EditorRowLabel(String(localized: "Identifier Case"), row: row, store: store)
             }
             .accessibilityIdentifier(row.accessibilityIdentifier)
             .editorRowFocus(row, store: store)
         case .builtIn(.localOnly):
             Toggle(isOn: store.tracking(store.binding(\.options.localOnly), row: row)) {
-                EditorRowLabel(String(localized: "Local only"), row: row, store: store)
+                EditorRowLabel(String(localized: "Local Only"), row: row, store: store)
             }
             .accessibilityIdentifier(row.accessibilityIdentifier)
             .editorRowFocus(row, store: store)
@@ -99,8 +100,15 @@ struct AdvancedFacetView: View {
         return [section.footer, removal].compactMap { $0 }.joined(separator: "\n")
     }
 
+    // A file database has no network setup to wait for, only the open.
     private var connectTimeoutHelp: String {
-        String(
+        guard store.traits.connectionMode != .fileBased else {
+            return String(
+                format: String(localized: "Maximum time to open the database. Leave blank to use the %d-second default."),
+                ConnectionTimeoutPolicy.defaultConnectTimeoutSeconds
+            )
+        }
+        return String(
             format: String(localized: """
                 Maximum time for TCP, TLS, authentication, tunnel, and proxy setup. \
                 Leave blank to use the %d-second default.
@@ -111,10 +119,10 @@ struct AdvancedFacetView: View {
 
     private static func title(for identifierCase: SQLIdentifierCase) -> String {
         switch identifierCase {
-        case .asStored: return String(localized: "As stored")
+        case .asStored: return String(localized: "As Stored")
         case .lower: return String(localized: "lowercase")
         case .upper: return String(localized: "UPPERCASE")
-        case .matchTyped: return String(localized: "Match what I type")
+        case .matchTyped: return String(localized: "Match What I Type")
         }
     }
 }
@@ -128,7 +136,7 @@ private struct AdvancedQueryTimeoutRow: View {
     var body: some View {
         let globalSeconds = settings.general.queryTimeoutSeconds
         EditorOptionalNumberRow(
-            String(localized: "Query timeout"),
+            String(localized: "Query Timeout"),
             value: store.binding(\.options.queryTimeoutSeconds),
             defaultValue: QueryTimeoutInheritance.inheritedSeconds(globalSeconds: globalSeconds),
             range: DatabaseConnection.queryTimeoutSecondsRange,

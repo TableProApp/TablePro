@@ -39,7 +39,7 @@ struct EditorPathRow: View {
     var body: some View {
         LabeledContent {
             HStack(spacing: 8) {
-                TextField(text: store.tracking($path, row: row), prompt: prompt.map { Text(verbatim: $0) }) {
+                TextField(text: store.tracking($path, row: row), prompt: Text(verbatim: EditorFieldPrompt.text(prompt, row: row, store: store))) {
                     Text(verbatim: title)
                 }
                 .labelsHidden()
@@ -101,7 +101,7 @@ struct EditorDatabaseFileRow: View {
     var body: some View {
         LabeledContent {
             HStack(spacing: 8) {
-                TextField(text: store.tracking($path, row: row), prompt: prompt.map { Text(verbatim: $0) }) {
+                TextField(text: store.tracking($path, row: row), prompt: Text(verbatim: EditorFieldPrompt.text(prompt, row: row, store: store))) {
                     Text(verbatim: title)
                 }
                 .labelsHidden()

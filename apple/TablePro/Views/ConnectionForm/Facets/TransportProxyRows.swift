@@ -31,20 +31,27 @@ struct TransportCloudflareRow: View {
         case .cloudflareSignIn:
             signInRow
         case .cloudflareTokenId:
-            EditorSecureRow(String(localized: "Client ID"), text: store.binding(\.cloudflare.serviceTokenId), row: editorRow, store: store)
+            EditorSecureRow(
+                String(localized: "Client ID"),
+                text: store.binding(\.cloudflare.serviceTokenId),
+                prompt: String(localized: "Required"),
+                row: editorRow,
+                store: store
+            )
         case .cloudflareTokenSecret:
             EditorSecureRow(
                 String(localized: "Client Secret"),
                 text: store.binding(\.cloudflare.serviceTokenSecret),
+                prompt: String(localized: "Required"),
                 row: editorRow,
                 store: store
             )
         case .cloudflareAutomaticPort:
-            TransportToggle(String(localized: "Choose port automatically"), isOn: store.binding(\.cloudflare.automaticPort), row: editorRow, store: store)
+            TransportToggle(String(localized: "Choose Port Automatically"), isOn: store.binding(\.cloudflare.automaticPort), row: editorRow, store: store)
         case .cloudflareLocalPort:
-            EditorTextRow(String(localized: "Local port"), text: store.binding(\.cloudflare.localPort), prompt: "5432", row: editorRow, store: store)
+            EditorTextRow(String(localized: "Local Port"), text: store.binding(\.cloudflare.localPort), prompt: "5432", row: editorRow, store: store)
         case .cloudflareExposeToLAN:
-            TransportToggle(String(localized: "Expose to local network"), isOn: store.binding(\.cloudflare.exposeToLAN), row: editorRow, store: store)
+            TransportToggle(String(localized: "Expose to Local Network"), isOn: store.binding(\.cloudflare.exposeToLAN), row: editorRow, store: store)
         case .cloudflareBinary:
             TransportBinaryRow(
                 path: store.binding(\.cloudflare.binaryPath),
@@ -87,7 +94,7 @@ struct TransportCloudSQLRow: View {
         switch row {
         case .cloudSQLInstance:
             EditorTextRow(
-                String(localized: "Instance connection name"),
+                String(localized: "Instance Connection Name"),
                 text: store.binding(\.cloudSQLProxy.instanceConnectionName),
                 prompt: "project:region:instance",
                 row: editorRow,
@@ -108,22 +115,22 @@ struct TransportCloudSQLRow: View {
             )
         case .cloudSQLIAMAuth:
             TransportToggle(
-                String(localized: "Use IAM database authentication"),
+                String(localized: "Use IAM Database Authentication"),
                 isOn: store.binding(\.cloudSQLProxy.useIAMAuth),
                 row: editorRow,
                 store: store
             )
         case .cloudSQLPrivateIP:
-            TransportToggle(String(localized: "Connect over private IP"), isOn: store.binding(\.cloudSQLProxy.usePrivateIP), row: editorRow, store: store)
+            TransportToggle(String(localized: "Connect over Private IP"), isOn: store.binding(\.cloudSQLProxy.usePrivateIP), row: editorRow, store: store)
         case .cloudSQLAutomaticPort:
             TransportToggle(
-                String(localized: "Choose port automatically"),
+                String(localized: "Choose Port Automatically"),
                 isOn: store.binding(\.cloudSQLProxy.automaticPort),
                 row: editorRow,
                 store: store
             )
         case .cloudSQLLocalPort:
-            EditorTextRow(String(localized: "Local port"), text: store.binding(\.cloudSQLProxy.localPort), prompt: "5432", row: editorRow, store: store)
+            EditorTextRow(String(localized: "Local Port"), text: store.binding(\.cloudSQLProxy.localPort), prompt: "5432", row: editorRow, store: store)
         case .cloudSQLBinary:
             TransportBinaryRow(
                 path: store.binding(\.cloudSQLProxy.binaryPath),
@@ -278,7 +285,6 @@ struct TransportBinaryRow: View {
     }
 }
 
-// Open panels for this facet's paths, as sheets on the editor window.
 @MainActor
 enum TransportFilePanel {
     static func chooseSSHKey(message: String, store: ConnectionEditorStore) async -> String? {

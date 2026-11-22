@@ -42,13 +42,29 @@ enum ConnectionTestFailureStep: Equatable {
     case network
     case other
 
-    var title: String {
+    var headline: String {
         switch self {
-        case .tunnel(let kind): return kind.displayName
-        case .tls: return String(localized: "TLS")
-        case .authentication: return String(localized: "Authentication")
-        case .network: return String(localized: "Network")
-        case .other: return String(localized: "Connection")
+        case .tunnel(let kind): return String(format: String(localized: "%@ failed"), kind.displayName)
+        case .tls: return String(localized: "TLS handshake failed")
+        case .authentication: return String(localized: "Sign-in failed")
+        case .network: return String(localized: "Server not reachable")
+        case .other: return String(localized: "Connection failed")
+        }
+    }
+
+    // What to check when the error itself offers nothing.
+    var suggestion: String? {
+        switch self {
+        case .tunnel:
+            return String(localized: "Check the settings in SSH & Proxies.")
+        case .tls:
+            return String(localized: "Check the SSL mode and certificates in SSL/TLS.")
+        case .authentication:
+            return String(localized: "Check the username and password.")
+        case .network:
+            return String(localized: "Check the host and port, and that the server is running and reachable from this Mac.")
+        case .other:
+            return nil
         }
     }
 }
@@ -60,8 +76,11 @@ struct ConnectionTestFailure: Equatable {
     let recoveryAction: ConnectionRecoveryAction?
     let testedConnection: DatabaseConnection?
 
-    var summary: String {
-        String(format: String(localized: "%@ failed"), step.title)
+    var summary: String { step.headline }
+
+    var suggestion: String? {
+        if let recoverySuggestion, !recoverySuggestion.isEmpty { return recoverySuggestion }
+        return step.suggestion
     }
 }
 
@@ -265,7 +284,7 @@ extension ConnectionEditorStore {
             let info = ConnectionFailureClassifier.info(for: error)
             return ConnectionTestFailure(
                 step: step,
-                message: [info.message, info.failureReason].compactMap { $0 }.joined(separator: "\n\n"),
+                message: readable([info.message, info.failureReason].compactMap { $0 }.joined(separator: "\n\n")),
                 recoverySuggestion: info.recoverySuggestion,
                 recoveryAction: action,
                 testedConnection: connection
@@ -273,12 +292,29 @@ extension ConnectionEditorStore {
         }
         return ConnectionTestFailure(
             step: step,
-            message: SSLHandshakeError.formatted(error),
+            message: readable(SSLHandshakeError.formatted(error)),
             recoverySuggestion: nil,
             recoveryAction: nil,
             testedConnection: connection
         )
     }
+
+    // Drivers indent continuation lines with tabs (libpq's "\tIs the server running…"), which a popover shows as gaps.
+    static func readable(_ message: String) -> String {
+        message
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // Drivers report an unreachable server as their own error type, so the wording is all there is to go on.
+    private static let unreachablePhrases = [
+        "could not translate host name", "nodename nor servname", "name or service not known",
+        "unknown mysql server host", "connection refused", "no route to host", "network is unreachable",
+        "host is down", "could not connect to server", "can't connect to", "connection timed out",
+        "operation timed out", "timeout expired",
+    ]
 
     static func failureStep(for error: Error, transport: ConnectionTunnelKind?) -> ConnectionTestFailureStep {
         switch error {
@@ -306,6 +342,10 @@ extension ConnectionEditorStore {
         }
         let domain = (error as NSError).domain
         if domain == NSPOSIXErrorDomain || domain == NSURLErrorDomain {
+            return .network
+        }
+        let message = error.localizedDescription.lowercased()
+        if unreachablePhrases.contains(where: { message.contains($0) }) {
             return .network
         }
         return .other

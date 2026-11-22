@@ -13,6 +13,7 @@ struct ConnectionEditorPresentations: ViewModifier {
         content
             .sheet(isPresented: $store.isChoosingType) {
                 DatabaseTypeChooserSheet(
+                    purpose: .changeType,
                     initialType: store.draft.type,
                     onSelected: { choose($0) },
                     onCancel: { store.isChoosingType = false }

@@ -124,37 +124,45 @@ extension ConnectionEditorEngine {
             return SectionLayout(id: "authentication", title: String(localized: "Authentication"), footer: nil, rows: rows)
         }
         let split = authFields.splitCredentialControllers()
-        var rows: [EditorRow] = [.builtIn(.credentialProfile)]
-        if draft.credentials.usesProfile {
-            rows += pluginRows(split.rest, draft, traits)
-        } else {
-            rows += pluginRows(split.usernameControllers, draft, traits)
-            if traits.connectionMode == .network, !hidesUsername(draft, traits) {
-                rows.append(.builtIn(.username))
-            }
-            rows += pluginRows(split.passwordControllers, draft, traits)
-            if !hidesPassword(draft, traits) {
-                if draft.credentials.passwordSource != nil {
-                    if !draft.credentials.promptsForPassword {
-                        rows.append(.builtIn(.passwordSource))
-                    }
-                    rows.append(.builtIn(.passwordMode))
-                } else {
-                    rows.append(.builtIn(.passwordMode))
-                    if !draft.credentials.promptsForPassword {
-                        rows.append(.builtIn(.password))
-                    }
+        guard !draft.credentials.usesProfile else {
+            let rows: [EditorRow] = [.builtIn(.credentialProfile)] + pluginRows(split.rest, draft, traits)
+            return SectionLayout(id: "authentication", title: String(localized: "Authentication"), footer: nil, rows: rows)
+        }
+        // Method, Credentials, Username, Password, then a switch that only stands in for the password (~/.pgpass):
+        // the method decides what the rows under it are, so it leads, and the switch sits after what it replaces.
+        let methods = (split.usernameControllers + split.passwordControllers).filter(isMethodPicker)
+        var rows: [EditorRow] = pluginRows(methods, draft, traits) + [.builtIn(.credentialProfile)]
+        rows += pluginRows(split.usernameControllers.filter { !isMethodPicker($0) }, draft, traits)
+        if traits.connectionMode == .network, !hidesUsername(draft, traits) {
+            rows.append(.builtIn(.username))
+        }
+        if !hidesPassword(draft, traits) {
+            if draft.credentials.passwordSource != nil {
+                if !draft.credentials.promptsForPassword {
+                    rows.append(.builtIn(.passwordSource))
+                }
+                rows.append(.builtIn(.passwordMode))
+            } else {
+                rows.append(.builtIn(.passwordMode))
+                if !draft.credentials.promptsForPassword {
+                    rows.append(.builtIn(.password))
                 }
             }
-            rows += pluginRows(split.rest, draft, traits)
-            if showsKerberosNote(draft, traits) {
-                rows.append(.builtIn(.kerberosNote))
-            }
-            if usesPgpass(draft, traits) {
-                rows.append(.builtIn(.pgpassStatus))
-            }
+        }
+        rows += pluginRows(split.rest, draft, traits)
+        if showsKerberosNote(draft, traits) {
+            rows.append(.builtIn(.kerberosNote))
+        }
+        rows += pluginRows(split.passwordControllers.filter { !isMethodPicker($0) }, draft, traits)
+        if usesPgpass(draft, traits) {
+            rows.append(.builtIn(.pgpassStatus))
         }
         return SectionLayout(id: "authentication", title: String(localized: "Authentication"), footer: nil, rows: rows)
+    }
+
+    private static func isMethodPicker(_ field: ConnectionField) -> Bool {
+        if case .dropdown = field.fieldType { return true }
+        return false
     }
 
     static let pgpassFieldId = "usePgpass"

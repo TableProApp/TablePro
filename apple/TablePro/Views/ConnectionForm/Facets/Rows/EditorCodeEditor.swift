@@ -23,6 +23,7 @@ struct EditorCodeEditor: View {
     private let minHeight: CGFloat
 
     private static let maxHeight: CGFloat = 320
+    private static let wellShape = RoundedRectangle(cornerRadius: 6)
 
     init(
         text: Binding<String>,
@@ -40,18 +41,32 @@ struct EditorCodeEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextValueEditor(
-                text: store.tracking($text, row: row),
-                font: font,
-                borderType: .bezelBorder,
-                movesFocusOnTab: true,
-                style: language == .plain ? .plain : .code
-            )
-            .frame(height: height)
-            .editorRowFocus(row, store: store)
-            .accessibilityIdentifier(row.accessibilityIdentifier)
+            editor
+                .frame(height: height)
+                .editorRowFocus(row, store: store)
 
             EditorRowIssueNotice(row: row, store: store)
+        }
+    }
+
+    // The card is the only frame: prose sits on it, code sits in a well like CodeWell, on the editor's colors.
+    @ViewBuilder
+    private var editor: some View {
+        let field = TextValueEditor(
+            text: store.tracking($text, row: row),
+            font: font,
+            borderType: .noBorder,
+            movesFocusOnTab: true,
+            style: language == .plain ? .plain : .code,
+            drawsBackground: language != .plain
+        )
+        .accessibilityIdentifier(row.accessibilityIdentifier)
+        if language == .plain {
+            field
+        } else {
+            field
+                .clipShape(Self.wellShape)
+                .overlay(Self.wellShape.stroke(Color(nsColor: .separatorColor), lineWidth: 1))
         }
     }
 

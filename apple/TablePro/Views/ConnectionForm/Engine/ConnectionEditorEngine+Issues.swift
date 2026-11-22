@@ -54,9 +54,9 @@ extension ConnectionEditorEngine {
         if draft.database.trimmingCharacters(in: .whitespaces).isEmpty {
             switch traits.connectionMode {
             case .fileBased:
-                pending.append(PendingIssue(row: .builtIn(.databaseFile), message: String(localized: "Database file path is required")))
+                pending.append(PendingIssue(row: .builtIn(.databaseFile), message: String(localized: "Choose a database file.")))
             case .apiOnly where traits.showsBuiltInDatabaseField:
-                pending.append(PendingIssue(row: .builtIn(.database), message: String(localized: "Database name is required")))
+                pending.append(PendingIssue(row: .builtIn(.database), message: String(localized: "Enter a database name.")))
             default:
                 break
             }
@@ -81,7 +81,7 @@ extension ConnectionEditorEngine {
         if credentialProfileIsMissing(draft, context), !context.credentialProfilesLoadFailed {
             pending.append(PendingIssue(
                 row: .builtIn(.credentialProfile),
-                message: String(localized: "This connection uses a credential profile that isn't on this Mac."),
+                message: String(localized: "This profile isn't on this Mac."),
                 severity: .warning
             ))
         }
@@ -171,12 +171,12 @@ extension ConnectionEditorEngine {
         case .socksProxy:
             var pending: [PendingIssue] = []
             if draft.socksProxy.host.trimmingCharacters(in: .whitespaces).isEmpty {
-                pending.append(PendingIssue(row: .builtIn(.socksHost), message: String(localized: "SOCKS proxy host is required")))
+                pending.append(PendingIssue(row: .builtIn(.socksHost), message: String(localized: "Enter the proxy host.")))
             }
             if parsePort(draft.socksProxy.port) == nil {
                 pending.append(PendingIssue(
                     row: .builtIn(.socksPort),
-                    message: String(localized: "SOCKS proxy port must be between 1 and 65535")
+                    message: portRangeMessage
                 ))
             }
             return pending
@@ -202,18 +202,19 @@ extension ConnectionEditorEngine {
             if draft.ssh.host.trimmingCharacters(in: .whitespaces).isEmpty {
                 pending.append(PendingIssue(
                     row: .builtIn(.sshHost),
-                    message: String(localized: "SSH host is required"),
+                    message: String(localized: "Enter an SSH host."),
                     fallbackRow: .builtIn(.sshConfigHost)
                 ))
             }
             if !draft.ssh.port.isEmpty, parsePort(draft.ssh.port) == nil {
-                pending.append(PendingIssue(row: .builtIn(.sshPort), message: String(localized: "SSH port must be between 1 and 65535")))
+                pending.append(PendingIssue(row: .builtIn(.sshPort), message: portRangeMessage))
             }
-            for jumpHost in draft.ssh.jumpHosts where !jumpHost.isValid {
-                pending.append(PendingIssue(
-                    row: .builtIn(.jumpHost(jumpHost.id)),
-                    message: String(localized: "Jump host configuration is invalid")
-                ))
+            for (index, jumpHost) in draft.ssh.jumpHosts.enumerated() where !jumpHost.isValid {
+                let number = Int64(index + 1)
+                let message = jumpHost.host.isEmpty
+                    ? String(format: String(localized: "Enter the address of jump host %lld."), number)
+                    : String(format: String(localized: "Choose a key file for jump host %lld."), number)
+                pending.append(PendingIssue(row: .builtIn(.jumpHost(jumpHost.id)), message: message))
             }
         case .unresolvedProfile:
             if !context.sshProfilesLoadFailed {
@@ -235,13 +236,13 @@ extension ConnectionEditorEngine {
             case .inline, .disabled: host = draft.ssh.host
             }
             if host.trimmingCharacters(in: .whitespaces).isEmpty {
-                pending.append(PendingIssue(row: .builtIn(.sshProfile), message: String(localized: "SSH host is required")))
+                pending.append(PendingIssue(row: .builtIn(.sshProfile), message: String(localized: "Enter an SSH host.")))
             }
         }
         if draft.ssh.remoteFilePath.trimmingCharacters(in: .whitespaces).isEmpty {
             pending.append(PendingIssue(
                 row: .builtIn(.remoteFilePath),
-                message: String(localized: "Remote database file path is required")
+                message: String(localized: "Enter the file's path on the server.")
             ))
         }
         return pending
@@ -250,12 +251,12 @@ extension ConnectionEditorEngine {
     private static func cloudflareIssues(_ cloudflare: CloudflareDraft) -> [PendingIssue] {
         var pending: [PendingIssue] = []
         if cloudflare.accessHostname.trimmingCharacters(in: .whitespaces).isEmpty {
-            pending.append(PendingIssue(row: .builtIn(.cloudflareHostname), message: String(localized: "Cloudflare hostname is required")))
+            pending.append(PendingIssue(row: .builtIn(.cloudflareHostname), message: String(localized: "Enter the Access hostname.")))
         }
         if !cloudflare.automaticPort, parsePort(cloudflare.localPort) == nil {
             pending.append(PendingIssue(
                 row: .builtIn(.cloudflareLocalPort),
-                message: String(localized: "Local port must be between 1 and 65535")
+                message: portRangeMessage
             ))
         }
         if cloudflare.authMethod == .serviceToken,
@@ -263,7 +264,7 @@ extension ConnectionEditorEngine {
             || cloudflare.serviceTokenSecret.trimmingCharacters(in: .whitespaces).isEmpty {
             pending.append(PendingIssue(
                 row: .builtIn(.cloudflareTokenId),
-                message: String(localized: "Service token ID and secret are required")
+                message: String(localized: "Enter the client ID and secret.")
             ))
         }
         return pending
@@ -274,19 +275,19 @@ extension ConnectionEditorEngine {
         if !proxy.configuration.isValid {
             pending.append(PendingIssue(
                 row: .builtIn(.cloudSQLInstance),
-                message: String(localized: "Instance connection name must be project:region:instance")
+                message: String(localized: "Enter it as project:region:instance.")
             ))
         }
         if !proxy.automaticPort, parsePort(proxy.localPort) == nil {
             pending.append(PendingIssue(
                 row: .builtIn(.cloudSQLLocalPort),
-                message: String(localized: "Local port must be between 1 and 65535")
+                message: portRangeMessage
             ))
         }
         if proxy.authMode == .serviceAccountKey, !proxy.hasServiceAccountKey {
             pending.append(PendingIssue(
                 row: .builtIn(.cloudSQLServiceAccountKey),
-                message: String(localized: "A service account key is required")
+                message: String(localized: "Add a service account key.")
             ))
         }
         return pending
@@ -300,15 +301,15 @@ extension ConnectionEditorEngine {
         let mode = draft.ssl.mode
         if !offeredSSLModes(draft, traits).contains(mode) {
             let message = traits.ssl.supportedModes.contains(mode)
-                ? String(format: String(localized: "The %1$@ driver cannot use SSL Mode %2$@ through a tunnel."), traits.displayName, mode.displayLabel)
-                : String(format: String(localized: "The %1$@ driver does not support SSL Mode %2$@."), traits.displayName, mode.displayLabel)
+                ? String(format: String(localized: "%@ doesn't work through a tunnel."), mode.displayLabel)
+                : String(format: String(localized: "This driver doesn't support %@."), mode.displayLabel)
             pending.append(PendingIssue(row: .builtIn(.sslMode), message: message))
         }
         guard traits.ssl.supportsPerConnectionCertificatePaths else { return pending }
         if traits.ssl.requiresCACertificate(for: mode), draft.ssl.caCertPath.trimmingCharacters(in: .whitespaces).isEmpty {
             pending.append(PendingIssue(
                 row: .builtIn(.sslCACertificate),
-                message: String(localized: "CA certificate is required for verification modes")
+                message: String(localized: "Choose a CA certificate.")
             ))
         }
         let hasClientCert = !draft.ssl.clientCertPath.trimmingCharacters(in: .whitespaces).isEmpty
@@ -316,7 +317,7 @@ extension ConnectionEditorEngine {
         if hasClientCert, !hasClientKey {
             pending.append(PendingIssue(
                 row: .builtIn(.sslClientKey),
-                message: String(localized: "Client key is required when client certificate is set")
+                message: String(localized: "Choose the client key.")
             ))
         }
         return pending
@@ -324,32 +325,40 @@ extension ConnectionEditorEngine {
 
     // MARK: - Options
 
+    private static func secondsRangeMessage(_ range: ClosedRange<Int>) -> String {
+        String(format: String(localized: "Enter %1$@ to %2$@ seconds."), range.lowerBound.formatted(), range.upperBound.formatted())
+    }
+
     private static func optionIssues(_ draft: ConnectionDraft, _ traits: ConnectionTypeTraits, layout: EditorLayout) -> [PendingIssue] {
         var pending: [PendingIssue] = []
         let options = draft.options
         if let seconds = options.connectTimeoutSeconds, !DatabaseConnection.connectTimeoutSecondsRange.contains(seconds) {
             pending.append(PendingIssue(
                 row: .builtIn(.connectTimeout),
-                message: String(localized: "Connect timeout must be between 1 and 600 seconds.")
+                message: secondsRangeMessage(DatabaseConnection.connectTimeoutSecondsRange)
             ))
         }
         if let seconds = options.queryTimeoutSeconds, !DatabaseConnection.queryTimeoutSecondsRange.contains(seconds) {
             pending.append(PendingIssue(
                 row: .builtIn(.queryTimeout),
-                message: String(localized: "Query timeout must be between 0 and 2,147,483 seconds.")
+                message: secondsRangeMessage(DatabaseConnection.queryTimeoutSecondsRange)
             ))
         }
         if let kilobytes = options.binaryInlineLimitKilobytes,
            !DatabaseConnection.binaryInlineLimitKilobytesRange.contains(kilobytes) {
             pending.append(PendingIssue(
                 row: .builtIn(.binaryInlineLimit),
-                message: String(localized: "Binary values limit must be between 1 and 1,048,576 KB.")
+                message: String(
+                    format: String(localized: "Enter %1$@ to %2$@ KB."),
+                    DatabaseConnection.binaryInlineLimitKilobytesRange.lowerBound.formatted(),
+                    DatabaseConnection.binaryInlineLimitKilobytesRange.upperBound.formatted()
+                )
             ))
         }
         if let seconds = options.scriptTimeoutSeconds, !ConnectionScriptRunner.timeoutSecondsRange.contains(seconds) {
             pending.append(PendingIssue(
                 row: .builtIn(.scriptTimeout),
-                message: String(localized: "Script timeout must be between 1 and 300 seconds.")
+                message: secondsRangeMessage(ConnectionScriptRunner.timeoutSecondsRange)
             ))
         }
         return pending

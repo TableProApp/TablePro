@@ -415,4 +415,63 @@ struct ConnectionEditorStoreTests {
         #expect(store.pastedURLNotice == nil)
         #expect(store.draft.database.isEmpty)
     }
+
+    // The Host field still showed the URL and handed it back, and the second apply found nothing to list.
+    @Test("A paste into Host lists what it filled, and the URL handed back again changes nothing")
+    func pastedURLHandedBackIsIgnored() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        let url = "postgresql://app@db.example.com:5432/orders"
+
+        store.setHost(url, undoManager: nil)
+        let notice = try #require(store.pastedURLNotice)
+        for filled in [String(localized: "Host"), String(localized: "Database"), String(localized: "Username")] {
+            #expect(notice.changes.contains(filled))
+        }
+        #expect(notice.message != String(localized: "The URL matches this connection."))
+
+        store.setHost(url, undoManager: nil)
+        #expect(store.pastedURLNotice == notice)
+        #expect(store.draft.host == "db.example.com")
+        #expect(store.draft.database == "orders")
+    }
+
+    @Test("A URL without a name leaves Name empty, so the suggestion names it and follows the host")
+    func pastedURLNameFollowsTheSuggestion() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+
+        store.setHost("postgresql://app@db.example.com/orders", undoManager: nil)
+        #expect(store.draft.name.isEmpty)
+        #expect(store.namePrompt == ConnectionEditorEngine.suggestedName(store.draft, store.traits))
+        #expect(store.namePrompt == "db.example.com/orders")
+
+        store.update { $0.host = "127.0.0.1" }
+        #expect(store.namePrompt == "127.0.0.1/orders")
+
+        let imported = try ConnectionEditorStoreFixture()
+            .makeStore(.new(type: nil, parsedURL: try ConnectionURLParser.parse("postgresql://app@db.example.com/orders").get()))
+        #expect(imported.effectiveName == "db.example.com/orders")
+    }
+
+    @Test("A driver's unreachable-server text reads as Server not reachable, with what to check and no tab indents")
+    func unreachableServerFailure() {
+        let refused = NSError(domain: "PostgreSQL", code: 0, userInfo: [
+            NSLocalizedDescriptionKey: "connection to server at \"127.0.0.1\", port 5999 failed: Connection refused\n"
+                + "\tIs the server running on that host and accepting TCP/IP connections?",
+        ])
+        let unknownHost = NSError(domain: "PostgreSQL", code: 0, userInfo: [
+            NSLocalizedDescriptionKey: "could not translate host name \"db.example.com\" to address: "
+                + "nodename nor servname provided, or not known",
+        ])
+        let connection = DatabaseConnection(name: "Orders", type: .postgresql)
+
+        for error in [refused, unknownHost] {
+            let failure = ConnectionEditorStore.failure(for: error, connection: connection)
+            #expect(failure.step == .network)
+            #expect(failure.summary == String(localized: "Server not reachable"))
+            #expect(failure.suggestion == ConnectionTestFailureStep.network.suggestion)
+            #expect(!failure.message.contains("\t"))
+        }
+    }
 }

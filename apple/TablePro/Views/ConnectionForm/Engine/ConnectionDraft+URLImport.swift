@@ -47,12 +47,10 @@ extension ConnectionDraft {
         }
         applyEngineFields(parsed, traits: traits)
 
-        if isNew {
-            if let connectionName = parsed.connectionName, !connectionName.isEmpty {
-                name = connectionName
-            } else if name.isEmpty {
-                name = parsed.suggestedName
-            }
+        // Without a name in the URL the name stays empty, so the form suggests one from what it points at
+        // (`ConnectionEditorEngine.suggestedName`) and the suggestion follows later edits of the host.
+        if isNew, let connectionName = parsed.connectionName, !connectionName.isEmpty {
+            name = connectionName
         }
         applySafeMode(parsed, isNew: isNew, floor: safeModeFloor)
     }

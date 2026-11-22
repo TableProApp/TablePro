@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import SwiftUI
 import TableProPluginKit
 
@@ -40,6 +41,20 @@ struct GeneralFacetView: View {
         }
         .formStyle(.grouped)
         .onAppear { store.placeInitialFocusIfNeeded() }
+        .onChange(of: store.pastedURLNotice?.id) { id in
+            guard id != nil else { return }
+            redrawHostAfterPaste()
+        }
+    }
+
+    // A field being edited keeps the text it was given, so Host would show the pasted URL until it lost focus.
+    // Ending the edit redraws it from the draft, and the focus goes straight back.
+    private func redrawHostAfterPaste() {
+        guard let window = store.window, window.firstResponder is NSTextView else { return }
+        DispatchQueue.main.async {
+            guard window.makeFirstResponder(nil) else { return }
+            store.focus(facet: .general, row: .builtIn(.host))
+        }
     }
 
     private func socketStatus(for section: SectionLayout) -> String? {

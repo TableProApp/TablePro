@@ -110,6 +110,11 @@ struct ConnectionTimeoutSettingsTests {
         #expect(draft.options.queryTimeoutSeconds == 180)
     }
 
+    // One line under the label: the range as a fix, grouped the way the locale writes numbers.
+    private static func seconds(_ lower: Int, _ upper: Int) -> String {
+        String(format: String(localized: "Enter %1$@ to %2$@ seconds."), lower.formatted(), upper.formatted())
+    }
+
     @Test("Connect timeout accepts only values from 1 through 600")
     func validatesConnectTimeout() {
         var draft = namedDraft()
@@ -118,13 +123,13 @@ struct ConnectionTimeoutSettingsTests {
         #expect(advancedIssues(draft).isEmpty)
 
         draft.options.connectTimeoutSeconds = 0
-        #expect(advancedIssues(draft) == ["Connect timeout must be between 1 and 600 seconds."])
+        #expect(advancedIssues(draft) == [Self.seconds(1, 600)])
 
         draft.options.connectTimeoutSeconds = 600
         #expect(advancedIssues(draft).isEmpty)
 
         draft.options.connectTimeoutSeconds = 601
-        #expect(advancedIssues(draft) == ["Connect timeout must be between 1 and 600 seconds."])
+        #expect(advancedIssues(draft) == [Self.seconds(1, 600)])
     }
 
     @Test("Query timeout accepts only values safe for millisecond APIs")
@@ -145,10 +150,10 @@ struct ConnectionTimeoutSettingsTests {
         #expect(advancedIssues(draft).isEmpty)
 
         draft.options.queryTimeoutSeconds = maximum + 1
-        #expect(advancedIssues(draft) == ["Query timeout must be between 0 and 2,147,483 seconds."])
+        #expect(advancedIssues(draft) == [Self.seconds(0, 2_147_483)])
 
         draft.options.queryTimeoutSeconds = -1
-        #expect(advancedIssues(draft) == ["Query timeout must be between 0 and 2,147,483 seconds."])
+        #expect(advancedIssues(draft) == [Self.seconds(0, 2_147_483)])
     }
 
     @Test("Connection form edits include both timeout overrides")

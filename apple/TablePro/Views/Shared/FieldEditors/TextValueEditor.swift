@@ -22,6 +22,7 @@ internal struct TextValueEditor: NSViewRepresentable {
     var textContainerInset = NSSize(width: 4, height: 6)
     var style: Style = .plain
     var marksInvisibleCharacters = false
+    var drawsBackground = true
     // A new one is another document: the view shows it from the top, with no undo left from the one before.
     var documentID: AnyHashable?
 
@@ -103,6 +104,12 @@ internal struct TextValueEditor: NSViewRepresentable {
         coordinator.movesFocusOnTab = movesFocusOnTab
         if scrollView.borderType != borderType {
             scrollView.borderType = borderType
+        }
+        if scrollView.drawsBackground != drawsBackground {
+            scrollView.drawsBackground = drawsBackground
+        }
+        if textView.drawsBackground != drawsBackground {
+            textView.drawsBackground = drawsBackground
         }
         if textView.font != font {
             textView.font = font

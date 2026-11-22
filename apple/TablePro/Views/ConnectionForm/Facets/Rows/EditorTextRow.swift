@@ -23,7 +23,7 @@ struct EditorTextRow: View {
     }
 
     var body: some View {
-        TextField(text: store.tracking($text, row: row), prompt: prompt.map { Text(verbatim: $0) }) {
+        TextField(text: store.tracking($text, row: row), prompt: Text(verbatim: EditorFieldPrompt.text(prompt, row: row, store: store))) {
             EditorRowLabel(title, row: row, store: store)
         }
         .autocorrectionDisabled()
@@ -51,11 +51,23 @@ struct EditorSecureRow: View {
     }
 
     var body: some View {
-        SecureField(text: store.tracking($text, row: row), prompt: prompt.map { Text(verbatim: $0) }) {
+        SecureField(text: store.tracking($text, row: row), prompt: Text(verbatim: EditorFieldPrompt.text(prompt, row: row, store: store))) {
             EditorRowLabel(title, row: row, store: store)
         }
         .focused($isFocused)
         .accessibilityIdentifier(row.accessibilityIdentifier)
         .editorRowFocus(row, store: store, isFocused: $isFocused)
+    }
+}
+
+// A borderless field with nothing in it is invisible, so every field shows a prompt: the facet's example when it has
+// one, else whether the field must be filled in. A required field that is empty carries an issue on its row.
+@MainActor
+enum EditorFieldPrompt {
+    static func text(_ example: String?, row: EditorRow, store: ConnectionEditorStore) -> String {
+        if let example, !example.isEmpty { return example }
+        return store.issues(for: row).contains { $0.severity == .error }
+            ? String(localized: "Required")
+            : String(localized: "Optional")
     }
 }

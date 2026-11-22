@@ -51,7 +51,12 @@ enum ConnectionEditorEngine {
     static func portIssue(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, parsePort(trimmed) == nil else { return nil }
-        return String(localized: "Port must be a whole number between 1 and 65535")
+        return portRangeMessage
+    }
+
+    // Fix-it wording short enough for the label column, so an issue stays on one line under its label.
+    static var portRangeMessage: String {
+        String(localized: "Enter a port from 1 to 65535.")
     }
 
     static func resolvedPort(_ draft: ConnectionDraft, _ traits: ConnectionTypeTraits) -> Int {

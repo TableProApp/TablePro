@@ -6,6 +6,12 @@
 import SwiftUI
 
 struct DatabaseTypeChooserSheet: View {
+    enum Purpose {
+        case newConnection
+        case changeType
+    }
+
+    let purpose: Purpose
     let initialType: DatabaseType?
     let onSelected: (DatabaseType) -> Void
     let onImportFromURL: (() -> Void)?
@@ -15,15 +21,44 @@ struct DatabaseTypeChooserSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     init(
+        purpose: Purpose = .newConnection,
         initialType: DatabaseType? = nil,
         onSelected: @escaping (DatabaseType) -> Void,
         onImportFromURL: (() -> Void)? = nil,
         onCancel: @escaping () -> Void = {}
     ) {
+        self.purpose = purpose
         self.initialType = initialType
         self.onSelected = onSelected
         self.onImportFromURL = onImportFromURL
         self.onCancel = onCancel
+    }
+
+    private var title: String {
+        switch purpose {
+        case .newConnection: return String(localized: "Choose a Database")
+        case .changeType: return String(localized: "Change Database Type")
+        }
+    }
+
+    private var subtitle: String {
+        switch purpose {
+        case .newConnection: return String(localized: "Pick the type of database you want to connect to.")
+        case .changeType: return String(localized: "Settings the new type can't use are listed before anything changes.")
+        }
+    }
+
+    private var commitTitle: String {
+        switch purpose {
+        case .newConnection: return String(localized: "Continue")
+        case .changeType: return String(localized: "Change")
+        }
+    }
+
+    // Changing to the type the connection already has would change nothing.
+    private var canCommit: Bool {
+        guard let highlighted = model.highlightedType else { return false }
+        return purpose == .newConnection || highlighted != initialType
     }
 
     var body: some View {
@@ -44,9 +79,9 @@ struct DatabaseTypeChooserSheet: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "Choose a Database"))
+                Text(verbatim: title)
                     .font(.headline)
-                Text(String(localized: "Pick the type of database you want to connect to."))
+                Text(verbatim: subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -54,7 +89,7 @@ struct DatabaseTypeChooserSheet: View {
             Spacer()
 
             // The field editor eats arrows before onMoveCommand sees them, so the delegate hands them over.
-            // onSubmit stays unwired: Return already reaches Continue's .defaultAction.
+            // onSubmit stays unwired: Return already reaches the commit button's .defaultAction.
             NativeSearchField(
                 text: $model.searchText,
                 placeholder: String(localized: "Search"),
@@ -75,9 +110,16 @@ struct DatabaseTypeChooserSheet: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollViewReader { proxy in
+                // The category is an untagged row rather than a section header: a header pins to the top as a
+                // translucent bar, and the rows scrolling under it smeared through.
                 List(selection: $model.highlightedType) {
                     ForEach(model.groupedTypes, id: \.category) { section in
                         Section {
+                            Text(verbatim: section.category.displayName)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .accessibilityAddTraits(.isHeader)
+                                .listRowSeparator(.hidden)
                             ForEach(section.types, id: \.self) { type in
                                 DatabaseTypeChooserRow(
                                     type: type,
@@ -88,8 +130,6 @@ struct DatabaseTypeChooserSheet: View {
                                 .id(type)
                                 .listRowSeparator(.hidden)
                             }
-                        } header: {
-                            Text(section.category.displayName)
                         }
                     }
                 }
@@ -97,7 +137,7 @@ struct DatabaseTypeChooserSheet: View {
                 .contextMenu(forSelectionType: DatabaseType.self) { _ in
                     EmptyView()
                 } primaryAction: { selection in
-                    if let type = selection.first { commit(type) }
+                    if let type = selection.first, purpose == .newConnection || type != initialType { commit(type) }
                 }
                 .onAppear {
                     if let initialType {
@@ -132,14 +172,14 @@ struct DatabaseTypeChooserSheet: View {
             }
             .keyboardShortcut(.cancelAction)
 
-            Button(String(localized: "Continue")) {
-                if let type = model.highlightedType {
+            Button(commitTitle) {
+                if canCommit, let type = model.highlightedType {
                     commit(type)
                 }
             }
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
-            .disabled(model.highlightedType == nil)
+            .disabled(!canCommit)
         }
         .padding(20)
     }

@@ -20,9 +20,10 @@ internal enum ConnectionTileMetrics {
         size * 0.5
     }
 
-    // WCAG's floor for a graphic. Brand hues are picked for a white page, so several (PostgreSQL's
-    // blue, Kafka's near black) sit under it on the dark tile.
-    internal static let minimumGlyphContrast: CGFloat = 3
+    // Brand hues are picked for a white page, so several (PostgreSQL's blue, Kafka's near black) fail on the dark
+    // tile. WCAG's 3:1 for a graphic was not enough: the engine marks are thin line art, and antialiasing blends
+    // their strokes into the tile, so the elephant still vanished. They are lifted to the floor for text instead.
+    internal static let minimumGlyphContrast: CGFloat = 4.5
 
     // The brand colour in Light Mode; in Dark Mode the same hue lifted until it clears the tile.
     internal static func glyphColor(brand: NSColor) -> NSColor {

@@ -29,46 +29,67 @@ final class DatabaseTypeChooserModel: ObservableObject {
         highlightedType = type
     }
 
+    private var query: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
     var filteredTypes: [DatabaseType] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return allTypes }
-        let needle = trimmed.lowercased()
-        return allTypes.filter { type in
-            if type.rawValue.lowercased().contains(needle) { return true }
-            if let tagline = type.tagline, tagline.lowercased().contains(needle) { return true }
-            if type.category.displayName.lowercased().contains(needle) { return true }
-            return false
-        }
+        let query = query
+        guard !query.isEmpty else { return allTypes }
+        return allTypes.filter { Self.rank(of: $0, for: query) != nil }
     }
 
+    // While searching, the best match leads: its section first, and within a section the closer names first.
     var groupedTypes: [(category: DatabaseCategory, types: [DatabaseType])] {
+        let query = query
         let grouped = Dictionary(grouping: filteredTypes, by: { $0.category })
+        guard !query.isEmpty else {
+            return grouped
+                .map { (category: $0.key, types: $0.value.sorted { $0.rawValue < $1.rawValue }) }
+                .sorted { $0.category.sortOrder < $1.category.sortOrder }
+        }
+        func rank(_ type: DatabaseType) -> Int { Self.rank(of: type, for: query) ?? .max }
         return grouped
-            .map { (category: $0.key, types: $0.value.sorted { $0.rawValue < $1.rawValue }) }
-            .sorted { $0.category.sortOrder < $1.category.sortOrder }
+            .map { entry in
+                (category: entry.key, types: entry.value.sorted { lhs, rhs in
+                    rank(lhs) == rank(rhs) ? lhs.rawValue < rhs.rawValue : rank(lhs) < rank(rhs)
+                })
+            }
+            .sorted { lhs, rhs in
+                let left = lhs.types.first.map(rank) ?? .max
+                let right = rhs.types.first.map(rank) ?? .max
+                return left == right ? lhs.category.sortOrder < rhs.category.sortOrder : left < right
+            }
     }
 
-    // Arrowing follows the rows as drawn: category order, then alphabetical.
+    // Arrowing follows the rows as drawn.
     var orderedTypes: [DatabaseType] {
         groupedTypes.flatMap(\.types)
     }
 
-    // Ranked, not the first row: the filter matches taglines too, so "PostgreSQL" puts CockroachDB on top
-    // and Return would commit a driver the user never looked at.
+    // A name match, never a tagline or category hit among several: Return would commit a driver the user never
+    // looked at. A sole result is unambiguous whatever matched.
     var bestMatch: DatabaseType? {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !trimmed.isEmpty else { return nil }
+        let query = query
+        guard !query.isEmpty else { return nil }
         let candidates = orderedTypes
-        if let exact = candidates.first(where: { $0.rawValue.lowercased() == trimmed }) {
-            return exact
-        }
-        if let prefixed = candidates.first(where: { $0.rawValue.lowercased().hasPrefix(trimmed) }) {
-            return prefixed
-        }
-        if let named = candidates.first(where: { $0.rawValue.lowercased().contains(trimmed) }) {
-            return named
+        if let first = candidates.first, let rank = Self.rank(of: first, for: query), rank < Self.otherMatch {
+            return first
         }
         return candidates.count == 1 ? candidates.first : nil
+    }
+
+    private static let otherMatch = 3
+
+    // 0 the exact name, 1 a name prefix, 2 inside the name, 3 the tagline or category; nil no match.
+    private static func rank(of type: DatabaseType, for query: String) -> Int? {
+        let name = type.rawValue.lowercased()
+        if name == query { return 0 }
+        if name.hasPrefix(query) { return 1 }
+        if name.contains(query) { return 2 }
+        if let tagline = type.tagline, tagline.lowercased().contains(query) { return otherMatch }
+        if type.category.displayName.lowercased().contains(query) { return otherMatch }
+        return nil
     }
 
     func moveHighlight(by offset: Int) {
@@ -83,10 +104,15 @@ final class DatabaseTypeChooserModel: ObservableObject {
         highlightedType = items[target]
     }
 
-    // Never falls back to the first row: a tagline-only query leaves nothing armed and Continue dimmed.
+    // Each query arms its best match, so typing on past a prefix PGlite matched lands on PostgreSQL. Without one the
+    // highlight stays while it is still on screen, and a tagline-only query arms nothing.
     private func settleHighlight() {
+        if let best = bestMatch {
+            highlightedType = best
+            return
+        }
         if let current = highlightedType, orderedTypes.contains(current) { return }
-        highlightedType = bestMatch
+        highlightedType = nil
     }
 }
 

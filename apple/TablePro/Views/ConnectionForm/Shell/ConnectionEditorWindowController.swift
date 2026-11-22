@@ -226,7 +226,8 @@ final class ConnectionEditorWindowController: NSWindowController, NSWindowDelega
         ConnectionEditorCloseGuard.verdict(
             hasUnsavedChanges: store.hasUnsavedChanges,
             isRecordMissing: store.isRecordMissing,
-            connectionName: store.windowTitle
+            connectionName: store.windowTitle,
+            blockingIssue: store.canSave ? nil : store.firstBlockingIssue?.message
         )
     }
 
@@ -257,14 +258,20 @@ final class ConnectionEditorWindowController: NSWindowController, NSWindowDelega
         case .dontSave:
             close()
         case .cancel:
-            break
+            revealWhatBlocksSave()
         }
+    }
+
+    // Staying after the alert said Save is blocked means fixing it, so the editor goes to the issue.
+    private func revealWhatBlocksSave() {
+        guard !store.canSave, let issue = store.firstBlockingIssue else { return }
+        store.reveal(issue)
     }
 
     private func askToSave(_ prompt: ConnectionEditorSavePrompt) {
         guard let window, window.attachedSheet == nil else { return }
         AlertHelper.present(ConnectionEditorCloseGuard.makeAlert(prompt), in: window) { [weak self] response in
-            self?.resolveClose(ConnectionEditorCloseGuard.choice(for: response))
+            self?.resolveClose(ConnectionEditorCloseGuard.choice(for: response, canSave: prompt.canSave))
         }
     }
 
@@ -353,6 +360,7 @@ final class ConnectionEditorWindowController: NSWindowController, NSWindowDelega
         case .dontSave:
             return true
         case .cancel:
+            revealWhatBlocksSave()
             return false
         }
     }
@@ -360,7 +368,8 @@ final class ConnectionEditorWindowController: NSWindowController, NSWindowDelega
     func askToSaveModally(_ prompt: ConnectionEditorSavePrompt) -> ConnectionEditorCloseGuard.Choice {
         // A quit can come from outside the app, and a background process has no Dock icon to reach the alert by.
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-        return ConnectionEditorCloseGuard.choice(for: ConnectionEditorCloseGuard.makeAlert(prompt).runModal())
+        let response = ConnectionEditorCloseGuard.makeAlert(prompt).runModal()
+        return ConnectionEditorCloseGuard.choice(for: response, canSave: prompt.canSave)
     }
 
     // File > Save, Cmd+S: saves without connecting, also for a new connection.

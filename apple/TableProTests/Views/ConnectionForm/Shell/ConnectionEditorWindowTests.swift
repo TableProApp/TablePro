@@ -301,6 +301,46 @@ struct ConnectionEditorWindowTests {
         #expect(ConnectionEditorCloseGuard.choice(for: .alertThirdButtonReturn) == .dontSave)
     }
 
+    @Test("With Save blocked the alert says why and offers only Cancel and Don't Save, neither on Return")
+    func blockedSaveAlert() {
+        let reason = "Enter a port from 1 to 65535."
+        let prompt = ConnectionEditorSavePrompt(connectionName: "Orders", blockingIssue: reason)
+        let alert = ConnectionEditorCloseGuard.makeAlert(prompt)
+        let titles = alert.buttons.map { $0.title }
+
+        #expect(!prompt.canSave)
+        #expect(titles == [String(localized: "Cancel"), String(localized: "Don't Save")])
+        #expect(alert.buttons.first?.keyEquivalent == "\u{1B}")
+        #expect(!alert.buttons.contains { $0.keyEquivalent == "\r" })
+        #expect(alert.messageText == String(format: String(localized: "The changes to “%@” can't be saved yet."), "Orders"))
+        #expect(alert.informativeText.hasPrefix(reason))
+        #expect(ConnectionEditorCloseGuard.choice(for: .alertFirstButtonReturn, canSave: false) == .cancel)
+        #expect(ConnectionEditorCloseGuard.choice(for: .alertSecondButtonReturn, canSave: false) == .dontSave)
+    }
+
+    @Test("A blocked close names the issue, and Cancel keeps the window and goes to it")
+    func blockedCancelRevealsTheIssue() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = postgres()
+        fixture.seed([connection])
+        let blocked = makeController(fixture, .edit(connectionId: connection.id))
+        defer { blocked.close() }
+        blocked.store.update { $0.host = "replica.example.com" }
+        blocked.store.setPort("99999")
+        blocked.store.selectedFacet = .appearance
+
+        guard case .askToSave(let prompt) = blocked.closeVerdict else {
+            Issue.record("Expected the close to ask")
+            return
+        }
+        #expect(prompt.blockingIssue == blocked.store.firstBlockingIssue?.message)
+        blocked.resolveClose(.cancel)
+
+        #expect(!blocked.store.isClosing)
+        #expect(blocked.store.selectedFacet == .general)
+        #expect(fixture.storage.loadConnection(id: connection.id)?.host == "db.example.com")
+    }
+
     @Test("Cancel on an untouched editor closes it at once")
     func cancelWithoutEditsCloses() throws {
         let fixture = try ConnectionEditorStoreFixture()

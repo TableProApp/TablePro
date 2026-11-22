@@ -44,7 +44,9 @@ private struct SSHAndProxiesSectionView: View {
     }
 
     var body: some View {
-        if !isHidden {
+        if section.id == "sshJumpHosts" {
+            SSHAndProxiesJumpHostSections(rows: section.rows, store: store)
+        } else if !isHidden {
             Section {
                 ForEach(inlineRows, id: \.self) { row in
                     SSHAndProxiesRowView(row: row, store: store)
@@ -79,8 +81,14 @@ private struct SSHAndProxiesSectionView: View {
     }
 
     private var footer: String? {
-        if let footer = section.footer { return footer }
         let draft = store.draft
+        if section.id == "transport", store.transportIsLocationChoice, draft.transport == nil {
+            return String(localized: """
+                Opens the database file set in General, on this Mac. \
+                For a file on another computer, choose Remote Server over SSH.
+                """)
+        }
+        if let footer = section.footer { return footer }
         switch section.id {
         case "remoteFile":
             var lines = [String(localized: "Absolute, or relative to the SSH account's home directory.")]
@@ -93,10 +101,6 @@ private struct SSHAndProxiesSectionView: View {
         case "sshTwoFactor":
             guard draft.ssh.totpMode != .autoGenerate else { return nil }
             return String(localized: "If the SSH server asks for a verification code, TablePro prompts you for it when you connect.")
-        case "sshJumpHosts":
-            return String(
-                localized: "Jump hosts are connected in order before reaching the SSH server above. Only key and agent auth are supported for jumps."
-            )
         case "forwardTo":
             return forwardToFooter
         case "cloudflareAuthentication":
@@ -178,18 +182,18 @@ private struct SSHAndProxiesSectionView: View {
     }
 
     private func cloudSQLAuthenticationFooter(_ proxy: CloudSQLProxyDraft) -> String? {
-        var lines: [String] = []
+        var sentences: [String] = []
         if proxy.authMode == .applicationDefault {
-            lines.append(String(
-                localized: "Uses this Mac's Application Default Credentials. Run “gcloud auth application-default login” first, or set GOOGLE_APPLICATION_CREDENTIALS."
+            sentences.append(String(
+                localized: "Signs in with this Mac's Application Default Credentials, from “gcloud auth application-default login” or GOOGLE_APPLICATION_CREDENTIALS."
             ))
         }
         if proxy.useIAMAuth {
-            lines.append(String(
-                localized: "Set the connection's username to the IAM principal, a user email or name@project.iam for a service account. The database password is not used."
+            sentences.append(String(
+                localized: "With IAM, the username in General is the IAM principal, such as a user email or name@project.iam, and no password is sent."
             ))
         }
-        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+        return sentences.isEmpty ? nil : sentences.joined(separator: " ")
     }
 
     private func tunnelMethodFooter(_ method: TunnelCommandMethod) -> String {
@@ -225,10 +229,6 @@ private struct SSHAndProxiesRowView: View {
                 SSHAndProxiesRemoteFileRow(row: builtIn, store: store)
             case .sshProfile:
                 SSHAndProxiesProfileRows(store: store)
-            case .jumpHost(let id):
-                SSHAndProxiesJumpHostRows(id: id, store: store)
-            case .addJumpHost:
-                SSHAndProxiesAddJumpHostRow(store: store)
             case .sshProfileMissing, .sshConfigHost, .sshHost, .sshPort, .sshUsername, .sshAuthMethod, .sshPassword,
                  .sshAgentSocket, .sshIdentityFile, .sshKeyFile, .sshKeyPassphrase, .sshNoAuthenticationNote,
                  .sshTOTPMode, .sshTOTPSecret, .sshTOTPAlgorithm, .sshTOTPDigits, .sshTOTPPeriod:
@@ -257,15 +257,30 @@ private struct SSHAndProxiesTransportPicker: View {
     private let row = EditorRow.builtIn(.transport)
 
     var body: some View {
+        let isLocation = store.transportIsLocationChoice
         Picker(selection: store.tracking(store.transportBinding, row: row)) {
             ForEach(store.availableTransports, id: \.self) { transport in
-                Text(transport?.displayName ?? ConnectionTunnelKind.directDisplayName).tag(transport)
+                Text(Self.title(of: transport, asLocation: isLocation)).tag(transport)
             }
         } label: {
-            EditorRowLabel(String(localized: "Connect via"), row: row, store: store, subtitle: store.tunnelHostListAdvice)
+            EditorRowLabel(
+                isLocation ? String(localized: "Location") : String(localized: "Connect Via"),
+                row: row,
+                store: store,
+                subtitle: store.tunnelHostListAdvice
+            )
         }
         .accessibilityIdentifier(row.accessibilityIdentifier)
         .editorRowFocus(row, store: store)
+    }
+
+    private static func title(of transport: ConnectionTunnelKind?, asLocation: Bool) -> String {
+        guard asLocation else { return transport?.displayName ?? ConnectionTunnelKind.directDisplayName }
+        switch transport {
+        case nil: return String(localized: "This Mac")
+        case .remoteFile?: return String(localized: "Remote Server over SSH")
+        case let other?: return other.displayName
+        }
     }
 }
 
