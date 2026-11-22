@@ -1,65 +1,102 @@
-//
-//  EditorSettingsView.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProAutocomplete
 
 struct EditorSettingsView: View {
-    @Binding var settings: EditorSettings
-    @Binding var typography: TypographySettings
+    static let tabWidths = [2, 4, 8]
+
+    @ObservedObject var editor: SettingsSlice<EditorSettings>
+    @ObservedObject var typography: SettingsSlice<TypographySettings>
 
     var body: some View {
         Form {
-            TypographySection(domain: .editor, settings: $typography)
-
-            Section("Display") {
-                Toggle("Show line numbers", isOn: $settings.showLineNumbers)
-                Toggle("Highlight current line", isOn: $settings.highlightCurrentLine)
-                Toggle("Highlight current statement", isOn: $settings.highlightCurrentStatement)
-                Toggle("Show invisible characters", isOn: $settings.showInvisibleCharacters)
-                Toggle("Word wrap", isOn: $settings.wordWrap)
+            Section {
+                TypographyRows(domain: .editor, typography: $typography.value)
+            } header: {
+                Text("Font")
             }
 
-            Section("Gutter") {
-                Toggle("Code folding", isOn: $settings.codeFoldingEnabled)
-                Toggle("Run button beside each statement", isOn: $settings.showStatementRunControls)
-                    .disabled(!settings.showLineNumbers)
-                    .help(Text("The run button sits in the gutter, which needs line numbers."))
+            Section {
+                Toggle("Highlight current line", isOn: $editor.value.highlightCurrentLine)
+                    .accessibilityIdentifier("editor-highlight-current-line")
+                Toggle(isOn: $editor.value.highlightCurrentStatement) {
+                    Text("Highlight current statement")
+                    Text("A faint band behind the statement the cursor is in.")
+                }
+                .accessibilityIdentifier("editor-highlight-current-statement")
+                Toggle("Show invisible characters", isOn: $editor.value.showInvisibleCharacters)
+                    .accessibilityIdentifier("editor-show-invisibles")
+                Toggle("Word wrap", isOn: $editor.value.wordWrap)
+                    .accessibilityIdentifier("editor-word-wrap")
+            } header: {
+                Text("Display")
             }
 
-            Section("Editing") {
-                Picker("Tab width:", selection: $settings.tabWidth) {
-                    Text("2 spaces").tag(2)
-                    Text("4 spaces").tag(4)
-                    Text("8 spaces").tag(8)
+            Section {
+                Toggle("Show line numbers", isOn: $editor.value.showLineNumbers)
+                    .accessibilityIdentifier("editor-line-numbers")
+                Toggle(isOn: $editor.value.showStatementRunControls) {
+                    Text("Run button beside each statement")
+                    Text("Needs line numbers.")
                 }
-                Picker("Keyword case:", selection: $settings.keywordCase) {
-                    ForEach(SQLKeywordCase.allCases, id: \.self) { keywordCase in
-                        Text(keywordCase.displayName).tag(keywordCase)
-                    }
-                }
-                Toggle("Query parameters (:name syntax)", isOn: $settings.queryParametersEnabled)
-                Picker("Key bindings:", selection: $settings.keyBindings) {
+                .disabled(!editor.value.showLineNumbers)
+                .accessibilityIdentifier("editor-run-buttons")
+                Toggle("Code folding", isOn: $editor.value.codeFoldingEnabled)
+                    .accessibilityIdentifier("editor-code-folding")
+            } header: {
+                Text("Gutter")
+            }
+
+            Section {
+                Picker("Key bindings", selection: $editor.value.keyBindings) {
                     Text("Standard").tag(EditorKeyBindings.standard)
                     Text(verbatim: "Vim").tag(EditorKeyBindings.vim)
                     Text(verbatim: "Emacs").tag(EditorKeyBindings.emacs)
                 }
+                .pickerStyle(.menu)
                 .accessibilityIdentifier("key-bindings-picker")
+
+                Picker("Tab width", selection: Self.tabWidthBinding($editor.value)) {
+                    SettingsChoiceItems(Self.tabWidths, including: editor.value.clampedTabWidth) { width in
+                        Text("\(width) spaces")
+                    }
+                }
+                .accessibilityIdentifier("editor-tab-width")
+
+                Picker(selection: $editor.value.keywordCase) {
+                    Text(SQLKeywordCase.matchTypedElseUpper.displayName).tag(SQLKeywordCase.matchTypedElseUpper)
+                    Text(SQLKeywordCase.matchTypedElseLower.displayName).tag(SQLKeywordCase.matchTypedElseLower)
+                    Divider()
+                    Text(SQLKeywordCase.upper.displayName).tag(SQLKeywordCase.upper)
+                    Text(SQLKeywordCase.lower.displayName).tag(SQLKeywordCase.lower)
+                } label: {
+                    Text("Keyword case")
+                    Text("The case completions use. UPPERCASE and lowercase also change keywords as you type.")
+                }
+                .accessibilityIdentifier("editor-keyword-case")
+
+                Toggle(isOn: $editor.value.queryParametersEnabled) {
+                    Text("Query parameters")
+                    Text("Asks for a value for each :name placeholder before the query runs.")
+                }
+                .accessibilityIdentifier("editor-query-parameters")
+            } header: {
+                Text("Editing")
             }
 
             Section {
-                NavigationLink(value: SettingsSubpage.sqlFormatting) {
-                    Label("SQL Formatting", systemImage: "text.alignleft")
-                }
+                SettingsDrillRow(route: SettingsRoute.page(.sqlFormatting), title: SettingsPage.sqlFormatting.title)
             }
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-pane-editor")
     }
-}
 
-#Preview {
-    EditorSettingsView(settings: .constant(.default), typography: .constant(.default))
-        .frame(width: 450, height: 500)
+    // Shows the width the editor uses; a pick writes the stored field.
+    static func tabWidthBinding(_ editor: Binding<EditorSettings>) -> Binding<Int> {
+        Binding(
+            get: { editor.wrappedValue.clampedTabWidth },
+            set: { editor.wrappedValue.tabWidth = $0 }
+        )
+    }
 }

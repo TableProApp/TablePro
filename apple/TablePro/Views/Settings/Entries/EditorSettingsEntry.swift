@@ -1,41 +1,24 @@
+import Combine
 import SwiftUI
 
 internal struct EditorSettingsEntry: View {
     internal let context: SettingsPaneContext
-    @ObservedObject private var editor: SettingsSlice<EditorSettings>
-    @ObservedObject private var typography: SettingsSlice<TypographySettings>
-
-    internal init(context: SettingsPaneContext) {
-        self.context = context
-        self._editor = ObservedObject(wrappedValue: context.settings.editorSlice)
-        self._typography = ObservedObject(wrappedValue: context.settings.typographySlice)
-    }
 
     internal var body: some View {
-        EditorSettingsView(settings: $editor.value, typography: $typography.value)
+        EditorSettingsView(editor: context.settings.editorSlice, typography: context.settings.typographySlice)
     }
 }
 
 internal struct EditorSettingsPageEntry: View {
     internal let route: SettingsRoute
     internal let context: SettingsPaneContext
-    @ObservedObject private var formatter: SettingsSlice<SQLFormatterSettings>
-    @ObservedObject private var editor: SettingsSlice<EditorSettings>
-
-    internal init(route: SettingsRoute, context: SettingsPaneContext) {
-        self.route = route
-        self.context = context
-        self._formatter = ObservedObject(wrappedValue: context.settings.formatterSlice)
-        self._editor = ObservedObject(wrappedValue: context.settings.editorSlice)
-    }
 
     internal var body: some View {
         switch route {
         case .page(.sqlFormatting):
-            Form { FormatterSection(settings: $formatter.value, editor: editor.value) }
-                .formStyle(.grouped)
+            SQLFormattingPageHost(formatter: context.settings.formatterSlice, editor: context.settings.editorSlice)
         default:
-            SettingsPagePlaceholder(title: context.navigation.title(for: route))
+            EmptyView()
         }
     }
 }
@@ -45,5 +28,17 @@ internal struct EditorStackPresentations: ViewModifier {
 
     internal func body(content: Content) -> some View {
         content
+    }
+}
+
+// Follows only the editor font, so a theme change elsewhere never re-renders the page.
+private struct SQLFormattingPageHost: View {
+    @ObservedObject var formatter: SettingsSlice<SQLFormatterSettings>
+    @ObservedObject var editor: SettingsSlice<EditorSettings>
+    @State private var font = ThemeEngine.shared.editorFonts.font
+
+    var body: some View {
+        SQLFormattingPage(settings: $formatter.value, editor: editor.value, font: font)
+            .onReceive(ThemeEngine.shared.$editorFonts.map(\.font).removeDuplicates()) { font = $0 }
     }
 }
