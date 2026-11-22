@@ -79,7 +79,6 @@ struct SyncSection: View {
             }
         }
     }
-
 }
 
 // The sync-category toggles, shown on the What Syncs drill-in.

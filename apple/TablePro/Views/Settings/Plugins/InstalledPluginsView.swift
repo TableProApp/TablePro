@@ -40,13 +40,13 @@ struct InstalledPluginsView: View {
 
     var body: some View {
         pluginList
-            .task {
-                await registryClient.fetch(policy: .ifStale)
-            }
-            .navigationDestination(for: PluginListSelection.self) { selection in
-                detailPage(for: selection)
-            }
-            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+        .task {
+            await registryClient.fetch(policy: .ifStale)
+        }
+        .navigationDestination(for: PluginListSelection.self) { selection in
+            detailPage(for: selection)
+        }
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard let provider = providers.first,
                   provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else {
                 return false
@@ -466,83 +466,83 @@ struct InstalledPluginsView: View {
 
     private func pluginDetail(_ selected: PluginEntry) -> some View {
         ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(selected.name)
-                        .font(.title3.weight(.semibold))
+            VStack(alignment: .leading, spacing: 16) {
+                Text(selected.name)
+                    .font(.title3.weight(.semibold))
 
-                    Text("v\(selected.version), \(selected.source == .builtIn ? String(localized: "Built-in") : String(localized: "User-installed"))")
-                        .font(.subheadline)
+                Text("v\(selected.version), \(selected.source == .builtIn ? String(localized: "Built-in") : String(localized: "User-installed"))")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                if !selected.pluginDescription.isEmpty {
+                    Text(selected.pluginDescription)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
+                }
 
-                    if !selected.pluginDescription.isEmpty {
-                        Text(selected.pluginDescription)
-                            .font(.callout)
+                Divider()
+
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {
+                    GridRow {
+                        Text("Bundle ID")
                             .foregroundStyle(.secondary)
+                            .gridColumnAlignment(.leading)
+                        Text(selected.id)
+                            .textSelection(.enabled)
+                            .gridColumnAlignment(.leading)
                     }
 
-                    Divider()
-
-                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {
+                    if !selected.capabilities.isEmpty {
                         GridRow {
-                            Text("Bundle ID")
+                            Text("Capabilities")
                                 .foregroundStyle(.secondary)
-                                .gridColumnAlignment(.leading)
-                            Text(selected.id)
-                                .textSelection(.enabled)
-                                .gridColumnAlignment(.leading)
-                        }
-
-                        if !selected.capabilities.isEmpty {
-                            GridRow {
-                                Text("Capabilities")
-                                    .foregroundStyle(.secondary)
-                                Text(selected.capabilities.map(\.displayName).joined(separator: ", "))
-                            }
-                        }
-
-                        if let typeId = selected.databaseTypeId {
-                            GridRow {
-                                Text("Database Type")
-                                    .foregroundStyle(.secondary)
-                                Text(typeId)
-                            }
-
-                            if !selected.additionalTypeIds.isEmpty {
-                                GridRow {
-                                    Text("Also handles")
-                                        .foregroundStyle(.secondary)
-                                    Text(selected.additionalTypeIds.joined(separator: ", "))
-                                }
-                            }
-
-                            if let port = selected.defaultPort {
-                                GridRow {
-                                    Text("Default Port")
-                                        .foregroundStyle(.secondary)
-                                    Text(verbatim: "\(port)")
-                                }
-                            }
+                            Text(selected.capabilities.map(\.displayName).joined(separator: ", "))
                         }
                     }
-                    .font(.callout)
 
-                    if let settable = pluginManager.pluginInstances[selected.id] as? any SettablePluginDiscoverable,
-                       let pluginSettings = settable.settingsView() {
-                        Divider()
-                        pluginSettings
-                    }
+                    if let typeId = selected.databaseTypeId {
+                        GridRow {
+                            Text("Database Type")
+                                .foregroundStyle(.secondary)
+                            Text(typeId)
+                        }
 
-                    if selected.source == .userInstalled {
-                        Divider()
-                        Button("Uninstall", role: .destructive) {
-                            uninstallPlugin(selected)
+                        if !selected.additionalTypeIds.isEmpty {
+                            GridRow {
+                                Text("Also handles")
+                                    .foregroundStyle(.secondary)
+                                Text(selected.additionalTypeIds.joined(separator: ", "))
+                            }
+                        }
+
+                        if let port = selected.defaultPort {
+                            GridRow {
+                                Text("Default Port")
+                                    .foregroundStyle(.secondary)
+                                Text(verbatim: "\(port)")
+                            }
                         }
                     }
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .font(.callout)
+
+                if let settable = pluginManager.pluginInstances[selected.id] as? any SettablePluginDiscoverable,
+                   let pluginSettings = settable.settingsView() {
+                    Divider()
+                    pluginSettings
+                }
+
+                if selected.source == .userInstalled {
+                    Divider()
+                    Button("Uninstall", role: .destructive) {
+                        uninstallPlugin(selected)
+                    }
+                }
             }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
 
     // A failure shows on the plugin's row or in the list's bottom bar, from the tracker.
     private func updatePlugin(_ registryPlugin: RegistryPlugin) {
