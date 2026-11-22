@@ -1,8 +1,3 @@
-//
-//  AddRemoveControlGroup.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 
@@ -99,8 +94,7 @@ struct ListBar<Content: View>: View {
 }
 
 extension View {
-    // An overlay, not a safe area inset: an inset shrinks a bordered list and leaves the bar outside its border.
-    // The caller's list height counts ListBarMetrics.height, so no row ever sits under the bar.
+    // An overlay for a fixed-height list whose height already counts ListBarMetrics.height; a scrolling list uses SettingsFullPageList's inset.
     func listBar<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         overlay(alignment: .bottom) {
             ListBar(content: content)
