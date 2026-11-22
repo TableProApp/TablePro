@@ -24,14 +24,14 @@ struct SSHProfileEditorView: View {
     @State private var username: String = ""
 
     @State private var authMethod: SSHAuthMethod = .password
-    @State private var password = StoredSecretDraft(stored: .absent)
+    @State private var sshPassword: String = ""
     @State private var privateKeyPath: String = ""
-    @State private var keyPassphrase = StoredSecretDraft(stored: .absent)
+    @State private var keyPassphrase: String = ""
     @State private var agentSocketOption: SSHAgentSocketOption = .systemDefault
     @State private var customAgentSocketPath: String = ""
 
     @State private var totpMode: TOTPMode = .none
-    @State private var totpSecret = StoredSecretDraft(stored: .absent)
+    @State private var totpSecret: String = ""
     @State private var totpAlgorithm: TOTPAlgorithm = .sha1
     @State private var totpDigits: Int = 6
     @State private var totpPeriod: Int = 30
@@ -41,8 +41,6 @@ struct SSHProfileEditorView: View {
     @State private var sshConfigEntries: [SSHConfigEntry] = []
     @State private var selectedSSHConfigHost: String = ""
 
-    // Read once on appear: the profiles live in UserDefaults and body runs on every keystroke.
-    @State private var isStored = false
     @State private var showingDeleteConfirmation = false
     @State private var saveError: String?
     @State private var connectionsUsingProfile = 0
@@ -51,7 +49,10 @@ struct SSHProfileEditorView: View {
     @State private var testError: String?
     @State private var testTask: Task<Void, Never>?
 
-    private var storage: SSHProfileStorage { .shared }
+    private var isStoredProfile: Bool {
+        guard let profile = existingProfile else { return false }
+        return SSHProfileStorage.shared.profile(for: profile.id) != nil
+    }
 
     private var isValid: Bool {
         let nameValid = !profileName.trimmingCharacters(in: .whitespaces).isEmpty
@@ -67,18 +68,8 @@ struct SSHProfileEditorView: View {
         agentSocketOption.resolvedPath(customPath: customAgentSocketPath)
     }
 
-    private var usesPassword: Bool {
-        authMethod == .password || authMethod == .keyboardInteractive
-    }
-
     var body: some View {
         VStack(spacing: 0) {
-            ProfileSheetHeader(
-                title: isStored ? String(localized: "Edit SSH Profile") : String(localized: "New SSH Profile"),
-                subtitle: String(localized: "Connections that use this profile reach their database through this SSH server.")
-            )
-            Divider()
-
             Form {
                 Section(String(localized: "Profile")) {
                     TextField(String(localized: "Name"), text: $profileName, prompt: Text("My Server"))
@@ -98,7 +89,7 @@ struct SSHProfileEditorView: View {
             Divider()
             bottomBar
         }
-        .frame(minWidth: 520, minHeight: 440, idealHeight: 560)
+        .frame(minWidth: 480, idealHeight: 500)
         .onAppear {
             loadExistingProfile()
         }
@@ -110,13 +101,13 @@ struct SSHProfileEditorView: View {
         .onChange(of: port) { _ in testSucceeded = false }
         .onChange(of: username) { _ in testSucceeded = false }
         .onChange(of: authMethod) { _ in testSucceeded = false }
-        .onChange(of: password.text) { _ in testSucceeded = false }
+        .onChange(of: sshPassword) { _ in testSucceeded = false }
         .onChange(of: privateKeyPath) { _ in testSucceeded = false }
-        .onChange(of: keyPassphrase.text) { _ in testSucceeded = false }
+        .onChange(of: keyPassphrase) { _ in testSucceeded = false }
         .onChange(of: agentSocketOption) { _ in testSucceeded = false }
         .onChange(of: customAgentSocketPath) { _ in testSucceeded = false }
         .onChange(of: totpMode) { _ in testSucceeded = false }
-        .onChange(of: totpSecret.text) { _ in testSucceeded = false }
+        .onChange(of: totpSecret) { _ in testSucceeded = false }
         .onChange(of: jumpHosts) { _ in testSucceeded = false }
         .onDisappear {
             testTask?.cancel()
@@ -152,12 +143,11 @@ struct SSHProfileEditorView: View {
         Section(String(localized: "Authentication")) {
             Picker(String(localized: "Method"), selection: $authMethod) {
                 ForEach(SSHAuthMethod.allCases) { method in
-                    Text(method.displayName).tag(method)
+                    Text(method.rawValue).tag(method)
                 }
             }
             if authMethod == .password {
-                SecureField(String(localized: "Password"), text: $password.text)
-                StoredSecretNotice(draft: $password)
+                SecureField(String(localized: "Password"), text: $sshPassword)
             } else if authMethod == .sshAgent {
                 Picker(String(localized: "Agent Socket"), selection: $agentSocketOption) {
                     ForEach(SSHAgentSocketOption.allCases) { option in
@@ -177,7 +167,8 @@ struct SSHProfileEditorView: View {
                 LabeledContent(String(localized: "Identity File")) {
                     HStack {
                         TextField("", text: $privateKeyPath, prompt: Text("~/.ssh/id_ed25519.pub"))
-                        Button(String(localized: "Browse…")) { browseForPrivateKey() }
+                        Button(String(localized: "Browse")) { browseForPrivateKey() }
+                            .controlSize(.small)
                     }
                 }
                 Text(String(localized: """
@@ -187,8 +178,7 @@ struct SSHProfileEditorView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if authMethod == .keyboardInteractive {
-                SecureField(String(localized: "Password"), text: $password.text)
-                StoredSecretNotice(draft: $password)
+                SecureField(String(localized: "Password"), text: $sshPassword)
                 Text(String(localized: "Password is sent via keyboard-interactive challenge-response."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -200,11 +190,11 @@ struct SSHProfileEditorView: View {
                 LabeledContent(String(localized: "Key File")) {
                     HStack {
                         TextField("", text: $privateKeyPath, prompt: Text("~/.ssh/id_rsa"))
-                        Button(String(localized: "Browse…")) { browseForPrivateKey() }
+                        Button(String(localized: "Browse")) { browseForPrivateKey() }
+                            .controlSize(.small)
                     }
                 }
-                SecureField(String(localized: "Passphrase"), text: $keyPassphrase.text)
-                StoredSecretNotice(draft: $keyPassphrase)
+                SecureField(String(localized: "Passphrase"), text: $keyPassphrase)
             }
         }
     }
@@ -220,9 +210,8 @@ struct SSHProfileEditorView: View {
             }
 
             if totpMode == .autoGenerate {
-                SecureField(String(localized: "TOTP Secret"), text: $totpSecret.text)
+                SecureField(String(localized: "TOTP Secret"), text: $totpSecret)
                     .help(String(localized: "Base32-encoded secret from your authenticator setup"))
-                StoredSecretNotice(draft: $totpSecret)
 
                 Picker(String(localized: "Algorithm"), selection: $totpAlgorithm) {
                     ForEach(TOTPAlgorithm.allCases) { algo in
@@ -270,16 +259,17 @@ struct SSHProfileEditorView: View {
                         }
                         Picker(String(localized: "Auth"), selection: jumpHostBinding.authMethod) {
                             ForEach(SSHJumpAuthMethod.allCases) { method in
-                                Text(Self.jumpAuthLabel(method)).tag(method)
+                                Text(method.rawValue).tag(method)
                             }
                         }
                         if jumpHost.authMethod == .privateKey {
                             LabeledContent(String(localized: "Key File")) {
                                 HStack {
                                     TextField("", text: jumpHostBinding.privateKeyPath, prompt: Text("~/.ssh/id_rsa"))
-                                    Button(String(localized: "Browse…")) {
+                                    Button(String(localized: "Browse")) {
                                         browseForJumpHostKey(jumpHost: jumpHostBinding)
                                     }
+                                    .controlSize(.small)
                                 }
                             }
                         }
@@ -296,9 +286,11 @@ struct SSHProfileEditorView: View {
                                 let idToRemove = jumpHost.id
                                 withMotion { jumpHosts.removeAll { $0.id == idToRemove } }
                             } label: {
-                                Image(systemName: "minus.circle")
+                                Image(systemName: "minus.circle.fill")
+                                    .frame(width: 24, height: 24)
+                                    .foregroundStyle(.red)
                             }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.plain)
                             .accessibilityLabel(String(localized: "Remove jump host"))
                         }
                     }
@@ -320,36 +312,31 @@ struct SSHProfileEditorView: View {
         }
     }
 
-    private static func jumpAuthLabel(_ method: SSHJumpAuthMethod) -> String {
-        switch method {
-        case .privateKey: String(localized: "Private Key")
-        case .sshAgent: String(localized: "SSH Agent")
-        }
-    }
-
     // MARK: - Bottom Bar
 
     private var bottomBar: some View {
         HStack {
-            if isStored {
+            if isStoredProfile {
                 Button(role: .destructive) {
-                    let profileId = existingProfile?.id
                     connectionsUsingProfile = ConnectionStorage.shared.loadConnections()
-                        .filter { connection in profileId.map { connection.isLinked(toSSHProfile: $0) } ?? false }
+                        .filter { connection in
+                            guard case .profile(let id, _) = connection.sshTunnelMode else { return false }
+                            return id == existingProfile?.id
+                        }
                         .count
                     showingDeleteConfirmation = true
                 } label: {
                     Text("Delete Profile")
                 }
                 .alert(
-                    String(localized: "Delete SSH Profile?"),
+                    "Delete SSH Profile?",
                     isPresented: $showingDeleteConfirmation
                 ) {
-                    Button(String(localized: "Delete"), role: .destructive) { deleteProfile() }
-                    Button(String(localized: "Cancel"), role: .cancel) {}
+                    Button("Delete", role: .destructive) { deleteProfile() }
+                    Button("Cancel", role: .cancel) {}
                 } message: {
                     if connectionsUsingProfile > 0 {
-                        Text("Used by ^[\(connectionsUsingProfile) connection](inflect: true). Each keeps this configuration as its own SSH tunnel.")
+                        Text("\(connectionsUsingProfile) connection(s) use this profile. They keep this configuration as their own SSH tunnel.")
                     } else {
                         Text("This profile will be permanently deleted.")
                     }
@@ -379,7 +366,7 @@ struct SSHProfileEditorView: View {
             if let saveError {
                 NoticeLabel(saveError, severity: .error)
                     .font(.caption)
-                    .lineLimit(3)
+                    .lineLimit(2)
                     .truncationMode(.tail)
             } else if testSucceeded {
                 NoticeLabel(String(localized: "Connected"), severity: .success)
@@ -393,10 +380,10 @@ struct SSHProfileEditorView: View {
 
             Spacer()
 
-            Button(String(localized: "Cancel")) { dismiss() }
+            Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
 
-            Button(isStored ? String(localized: "Save") : String(localized: "Create")) { saveProfile() }
+            Button(isStoredProfile ? "Save" : "Create") { saveProfile() }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!isValid)
         }
@@ -407,7 +394,6 @@ struct SSHProfileEditorView: View {
 
     private func loadExistingProfile() {
         guard let profile = existingProfile else { return }
-        isStored = storage.profile(for: profile.id) != nil
         profileName = profile.name
         host = profile.host
         port = profile.port.map(String.init) ?? ""
@@ -426,24 +412,17 @@ struct SSHProfileEditorView: View {
             customAgentSocketPath = profile.agentSocketPath
         }
 
-        // The fallbacks are what "Save Current as Profile" carries over from the inline tunnel.
-        password = StoredSecretDraft(
-            stored: storage.storedSecret(.password, for: profile.id),
-            fallback: initialPassword
-        )
-        keyPassphrase = StoredSecretDraft(
-            stored: storage.storedSecret(.keyPassphrase, for: profile.id),
-            fallback: initialKeyPassphrase
-        )
-        totpSecret = StoredSecretDraft(
-            stored: storage.storedSecret(.totpSecret, for: profile.id),
-            fallback: initialTOTPSecret
-        )
+        // Load secrets from Keychain, falling back to initial values (e.g. from "Save as Profile")
+        sshPassword = SSHProfileStorage.shared.loadSSHPassword(for: profile.id) ?? initialPassword ?? ""
+        keyPassphrase = SSHProfileStorage.shared.loadKeyPassphrase(for: profile.id) ?? initialKeyPassphrase ?? ""
+        totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: profile.id) ?? initialTOTPSecret ?? ""
     }
 
     private func saveProfile() {
+        let profileId = existingProfile?.id ?? UUID()
+
         let profile = SSHProfile(
-            id: existingProfile?.id ?? UUID(),
+            id: profileId,
             name: profileName.trimmingCharacters(in: .whitespaces),
             host: host,
             port: Int(port),
@@ -458,32 +437,39 @@ struct SSHProfileEditorView: View {
             totpPeriod: totpPeriod
         )
 
-        let outcome = storage.save(profile, isNew: !isStored, secrets: [
-            .password: password.change(inUse: usesPassword),
-            .keyPassphrase: keyPassphrase.change(inUse: authMethod == .privateKey),
-            .totpSecret: totpSecret.change(inUse: totpMode == .autoGenerate),
-        ])
+        let persisted = isStoredProfile
+            ? SSHProfileStorage.shared.updateProfile(profile)
+            : SSHProfileStorage.shared.addProfile(profile)
 
-        switch outcome {
-        case .recordNotSaved:
+        /// The keychain writes below are keyed by the profile id, so running them for a profile
+        /// that never reached disk would leave secrets nothing can name. Dismissing would also
+        /// report a save that did not happen.
+        guard persisted else {
             saveError = String(localized: "Could not save the profile. Reopen the SSH settings and try again.")
-        case .secretsNotSaved(let kinds):
-            // The record exists now, so a retry has to update it rather than add a second one.
-            isStored = true
-            saveError = StoredSecretCopy.notStoredMessage(kinds.map(Self.secretName))
-        case .saved:
-            saveError = nil
-            onSave?(profile)
-            dismiss()
+            return
         }
-    }
+        saveError = nil
 
-    private static func secretName(_ kind: SSHProfileStorage.SecretKind) -> String {
-        switch kind {
-        case .password: String(localized: "the password")
-        case .keyPassphrase: String(localized: "the key passphrase")
-        case .totpSecret: String(localized: "the TOTP secret")
+        if (authMethod == .password || authMethod == .keyboardInteractive) && !sshPassword.isEmpty {
+            SSHProfileStorage.shared.saveSSHPassword(sshPassword, for: profileId)
+        } else {
+            SSHProfileStorage.shared.deleteSSHPassword(for: profileId)
         }
+
+        if authMethod == .privateKey && !keyPassphrase.isEmpty {
+            SSHProfileStorage.shared.saveKeyPassphrase(keyPassphrase, for: profileId)
+        } else {
+            SSHProfileStorage.shared.deleteKeyPassphrase(for: profileId)
+        }
+
+        if totpMode == .autoGenerate && !totpSecret.isEmpty {
+            SSHProfileStorage.shared.saveTOTPSecret(totpSecret, for: profileId)
+        } else {
+            SSHProfileStorage.shared.deleteTOTPSecret(for: profileId)
+        }
+
+        onSave?(profile)
+        dismiss()
     }
 
     func testSSHConnection() {
@@ -507,9 +493,9 @@ struct SSHProfileEditorView: View {
         )
 
         let credentials = SSHTunnelCredentials(
-            sshPassword: password.text.isEmpty ? nil : password.text,
-            keyPassphrase: keyPassphrase.text.isEmpty ? nil : keyPassphrase.text,
-            totpSecret: totpSecret.text.isEmpty ? nil : totpSecret.text,
+            sshPassword: sshPassword.isEmpty ? nil : sshPassword,
+            keyPassphrase: keyPassphrase.isEmpty ? nil : keyPassphrase,
+            totpSecret: totpSecret.isEmpty ? nil : totpSecret,
             keyboardInteractivePromptProvider: nil
         )
 
@@ -536,7 +522,7 @@ struct SSHProfileEditorView: View {
 
     private func deleteProfile() {
         guard let profile = existingProfile else { return }
-        guard storage.deleteProfile(profile) else {
+        guard SSHProfileStorage.shared.deleteProfile(profile) else {
             saveError = String(localized: "Could not delete the profile. Reopen the SSH settings and try again.")
             return
         }
@@ -577,60 +563,5 @@ struct SSHProfileEditorView: View {
                 jumpHost.wrappedValue.privateKeyPath = url.path(percentEncoded: false)
             }
         }
-    }
-}
-
-// MARK: - Shared by the profile sheets
-
-struct ProfileSheetHeader: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.headline)
-                .accessibilityAddTraits(.isHeader)
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-    }
-}
-
-// Shown under a secret field whose saved value the Keychain would not return.
-struct StoredSecretNotice: View {
-    @Binding var draft: StoredSecretDraft
-
-    var body: some View {
-        if draft.showsUnreadableNotice {
-            LabeledContent {
-                if draft.removesUnreadable {
-                    Button(String(localized: "Keep")) { draft.removesUnreadable = false }
-                } else {
-                    Button(String(localized: "Remove")) { draft.removesUnreadable = true }
-                }
-            } label: {
-                NoticeLabel(
-                    draft.removesUnreadable
-                        ? String(localized: "The saved value is removed when you save.")
-                        : String(localized: "The Keychain could not read the saved value, so it is not shown. Saving keeps it unless you type a new one.")
-                )
-                .font(.caption)
-            }
-        }
-    }
-}
-
-enum StoredSecretCopy {
-    static func notStoredMessage(_ names: [String]) -> String {
-        let list = ListFormatter.localizedString(byJoining: names)
-        let template = names.count == 1
-            ? String(localized: "The profile was saved, but the Keychain could not store %@. Enter it again and click Save.")
-            : String(localized: "The profile was saved, but the Keychain could not store %@. Enter them again and click Save.")
-        return String(format: template, list)
     }
 }
