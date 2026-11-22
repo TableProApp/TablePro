@@ -348,7 +348,8 @@ private final class SettingsSidebarPaneCell: NSTableCellView {
         image?.accessibilityDescription = ""
         glyph.image = image
         label.stringValue = pane.title
-        setAccessibilityIdentifier("settings-sidebar-\(pane.rawValue)")
+        // The table publishes its own AXCell for this view and drops the view's identifier, so the label carries it.
+        label.setAccessibilityIdentifier("settings-sidebar-\(pane.rawValue)")
         setAccessibilityLabel(pane.title)
     }
 }
@@ -380,6 +381,6 @@ private final class SettingsSidebarPageCell: NSTableCellView {
         label.stringValue = title
         setAccessibilityLabel(title)
         let pageIdentifier = location.routes.last?.page.map(\.urlIdentifier)
-        setAccessibilityIdentifier(pageIdentifier.map { "settings-sidebar-page-\($0)" } ?? "")
+        label.setAccessibilityIdentifier(pageIdentifier.map { "settings-sidebar-page-\($0)" } ?? "")
     }
 }
