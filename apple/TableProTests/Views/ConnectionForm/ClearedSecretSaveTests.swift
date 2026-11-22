@@ -1,11 +1,10 @@
 import Foundation
+import TableProSSHConfig
 import Testing
 
 @testable import TablePro
 
-/// Emptying a password field and saving has to delete the stored secret. Leaving it behind means
-/// the next connect still authenticates with the old password, an encrypted export still carries
-/// it, and a duplicate copies it.
+// A secret left behind still authenticates the next connect, rides along in an export and is copied by a duplicate.
 @MainActor
 struct ClearedSecretSaveTests {
     private let suite: EphemeralDefaults
@@ -127,5 +126,42 @@ struct ClearedSecretSaveTests {
 
         #expect(!state.clearsStoredPassword)
         #expect(!state.clearsStoredKeyPassphrase)
+    }
+
+    @Test("Showing an inline SSH secret the Keychain returned asks for authentication first")
+    func savedInlineSSHSecretsNeedAuthenticationToShow() {
+        var state = SSHTunnelFormState()
+        state.enabled = true
+        state.loadSecrets(connectionId: UUID(), storage: makeStorage(.found("secret")))
+
+        #expect(state.savedSecrets == [.password, .keyPassphrase, .totpSecret])
+    }
+
+    @Test("A connection with no inline SSH secrets has nothing to guard")
+    func absentInlineSSHSecretsNeedNoAuthentication() {
+        var state = SSHTunnelFormState()
+        state.enabled = true
+        state.loadSecrets(connectionId: UUID(), storage: makeStorage(.notFound))
+
+        #expect(state.savedSecrets.isEmpty)
+    }
+
+    @Test("An edit through the shared SSH fields lands on the form state, secrets included")
+    func sharedFieldsWriteThrough() {
+        var state = SSHTunnelFormState()
+        var server = state.server
+        server.host = "bastion.example.com"
+        server.port = "2222"
+        server.authMethod = .privateKey
+        server.keyPassphrase = "phrase"
+        server.addJumpHost()
+        state.server = server
+
+        #expect(state.host == "bastion.example.com")
+        #expect(state.port == "2222")
+        #expect(state.authMethod == .privateKey)
+        #expect(state.keyPassphrase == "phrase")
+        #expect(state.jumpHosts.count == 1)
+        #expect(state.server == server)
     }
 }

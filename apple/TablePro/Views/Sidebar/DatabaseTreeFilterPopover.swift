@@ -1,8 +1,3 @@
-//
-//  DatabaseTreeFilterPopover.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProUtilities
 
@@ -18,7 +13,7 @@ struct DatabaseTreeFilterPopover: View {
 
     @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
     @ObservedObject private var schemaService = SchemaService.shared
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var sidebarDisplay = SidebarDisplayPreferences.shared
     @State private var selection: Set<String>
     @State private var searchText: String = ""
 
@@ -37,7 +32,7 @@ struct DatabaseTreeFilterPopover: View {
     }
 
     private var showsSystemContainers: Bool {
-        settingsManager.general.showSystemContainers
+        sidebarDisplay.options.showSystemContainers
     }
 
     private var databases: [DatabaseMetadata] {

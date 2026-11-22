@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDisplayName</key>
+	<string>Cloudflare R2 SQL Driver</string>
 	<key>TableProPluginKitVersion</key>
 	<integer>TABLEPRO_PLUGINKIT_VERSION</integer>
 	<key>TableProProvidesDatabaseTypeIds</key>

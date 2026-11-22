@@ -1,26 +1,16 @@
-//
-//  SSHTunnelFormState.swift
-//  TablePro
-//
-
 import Foundation
 import TableProSSHConfig
 import TableProSSHTransport
 
-/// Encapsulates all SSH tunnel UI state for the connection form.
-/// Replaces the 23 scattered @State variables in ConnectionFormView.
 struct SSHTunnelFormState {
-    // Mode
     var enabled: Bool = false
     var profileId: UUID?
     var profiles: [SSHProfile] = []
 
-    // Sheet presentation
     var showingCreateProfile: Bool = false
     var editingProfile: SSHProfile?
     var showingSaveAsProfile: Bool = false
 
-    // Inline config fields
     var host: String = ""
     var port: String = ""
     var username: String = ""
@@ -39,20 +29,17 @@ struct SSHTunnelFormState {
     var totpDigits: Int = 6
     var totpPeriod: Int = 30
 
-    /// What the keychain held for the inline namespace when the form opened, so an emptied field
-    /// can be told apart from a keychain that could not be read.
+    // What the Keychain held when the form opened, so an emptied field is told apart from an unreadable Keychain.
     private(set) var storedPasswordState: ConnectionStorage.StoredSecretState = .absent
     private(set) var storedKeyPassphraseState: ConnectionStorage.StoredSecretState = .absent
+    private(set) var loadedTOTPSecret = false
+    // Secrets read from a profile's Keychain stay in the fields after a switch to inline.
+    private(set) var profileSecrets: Set<SSHSecret> = []
 
-    // Remote database file
     var remoteFilePath: String = ""
 
-    /// New connections default to running on the server, which is what a user reaching for a remote
-    /// SQLite database wants; loading an existing connection overwrites this with its saved value,
-    /// and a connection saved before the live mode existed decodes as the read-only copy.
+    // New connections run on the server; a connection saved before the live mode existed decodes as the copy.
     var remoteFileAccess: RemoteFileAccess = .onServer
-
-    // MARK: - Computed Properties
 
     var selectedProfile: SSHProfile? {
         guard let id = profileId else { return nil }
@@ -63,7 +50,55 @@ struct SSHTunnelFormState {
         agentSocketOption.resolvedPath(customPath: customAgentSocketPath)
     }
 
-    // MARK: - Build Methods
+    var server: SSHServerDraft {
+        get {
+            var draft = SSHServerDraft()
+            draft.host = host
+            draft.port = port
+            draft.username = username
+            draft.authMethod = authMethod
+            draft.password = password
+            draft.privateKeyPath = privateKeyPath
+            draft.keyPassphrase = keyPassphrase
+            draft.agentSocketOption = agentSocketOption
+            draft.customAgentSocketPath = customAgentSocketPath
+            draft.selectedConfigHost = selectedConfigHost
+            draft.jumpHosts = jumpHosts
+            draft.totpMode = totpMode
+            draft.totpSecret = totpSecret
+            draft.totpAlgorithm = totpAlgorithm
+            draft.totpDigits = totpDigits
+            draft.totpPeriod = totpPeriod
+            return draft
+        }
+        set {
+            host = newValue.host
+            port = newValue.port
+            username = newValue.username
+            authMethod = newValue.authMethod
+            password = newValue.password
+            privateKeyPath = newValue.privateKeyPath
+            keyPassphrase = newValue.keyPassphrase
+            agentSocketOption = newValue.agentSocketOption
+            customAgentSocketPath = newValue.customAgentSocketPath
+            selectedConfigHost = newValue.selectedConfigHost
+            jumpHosts = newValue.jumpHosts
+            totpMode = newValue.totpMode
+            totpSecret = newValue.totpSecret
+            totpAlgorithm = newValue.totpAlgorithm
+            totpDigits = newValue.totpDigits
+            totpPeriod = newValue.totpPeriod
+        }
+    }
+
+    // Revealing a secret the Keychain handed over asks for authentication first.
+    var savedSecrets: Set<SSHSecret> {
+        var secrets: Set<SSHSecret> = []
+        if storedPasswordState != .absent { secrets.insert(.password) }
+        if storedKeyPassphraseState != .absent { secrets.insert(.keyPassphrase) }
+        if loadedTOTPSecret { secrets.insert(.totpSecret) }
+        return secrets.union(profileSecrets)
+    }
 
     func buildInlineConfig() -> SSHConfiguration {
         SSHConfiguration(
@@ -84,9 +119,7 @@ struct SSHTunnelFormState {
         )
     }
 
-    /// A profile describes a server, not a file, so the remote path is overlaid onto whichever
-    /// configuration is in play. Two connections through one bastion routinely name two different
-    /// databases, so the path cannot live on the profile.
+    // The remote path lives on the connection: two connections through one bastion name different files.
     func buildSSHConfig() -> SSHConfiguration {
         guard let profileId, let profile = profiles.first(where: { $0.id == profileId }) else {
             return buildInlineConfig()
@@ -96,8 +129,6 @@ struct SSHTunnelFormState {
         config.remoteFileAccess = remoteFileAccess
         return config
     }
-
-    // MARK: - Load Methods
 
     mutating func load(from connection: DatabaseConnection) {
         switch connection.sshTunnelMode {
@@ -122,22 +153,31 @@ struct SSHTunnelFormState {
     @MainActor
     mutating func loadSecrets(connectionId: UUID, storage: ConnectionStorage) {
         if case .profile(let profileId, _) = buildTunnelMode() {
-            // Profile-mode: load secrets from profile keychain namespace
-            password = SSHProfileStorage.shared.loadSSHPassword(for: profileId) ?? ""
-            keyPassphrase = SSHProfileStorage.shared.loadKeyPassphrase(for: profileId) ?? ""
-            totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: profileId) ?? ""
+            adoptProfileSecrets(
+                password: SSHProfileStorage.shared.loadSSHPassword(for: profileId) ?? "",
+                keyPassphrase: SSHProfileStorage.shared.loadKeyPassphrase(for: profileId) ?? "",
+                totpSecret: SSHProfileStorage.shared.loadTOTPSecret(for: profileId) ?? ""
+            )
         } else {
-            // Inline/disabled: load from connection keychain namespace
+            profileSecrets = []
             storedPasswordState = storage.sshPasswordState(for: connectionId)
             storedKeyPassphraseState = storage.keyPassphraseState(for: connectionId)
             password = storage.loadSSHPassword(for: connectionId) ?? ""
             keyPassphrase = storage.loadKeyPassphrase(for: connectionId) ?? ""
             totpSecret = storage.loadTOTPSecret(for: connectionId) ?? ""
+            loadedTOTPSecret = !totpSecret.isEmpty
         }
     }
 
-    /// The user emptied an inline SSH secret that had a value. Without this the old secret stays in
-    /// the keychain and the next connect still authenticates with it.
+    mutating func adoptProfileSecrets(password: String, keyPassphrase: String, totpSecret: String) {
+        self.password = password
+        self.keyPassphrase = keyPassphrase
+        self.totpSecret = totpSecret
+        loadedTOTPSecret = false
+        profileSecrets = server.filledSecrets
+    }
+
+    // Without this the old inline secret stays in the Keychain and the next connect still uses it.
     var clearsStoredPassword: Bool {
         password.isEmpty && storedPasswordState == .stored
     }
@@ -146,7 +186,6 @@ struct SSHTunnelFormState {
         keyPassphrase.isEmpty && storedKeyPassphraseState == .stored
     }
 
-    /// Build the SSHTunnelMode for saving to the connection.
     func buildTunnelMode() -> SSHTunnelMode {
         guard enabled else { return .disabled }
         if let profileId, let profile = profiles.first(where: { $0.id == profileId }) {
@@ -157,8 +196,6 @@ struct SSHTunnelFormState {
         }
         return .inline(buildInlineConfig())
     }
-
-    // MARK: - Mutation Methods
 
     mutating func disable() {
         enabled = false
@@ -179,6 +216,7 @@ struct SSHTunnelFormState {
         totpAlgorithm = .sha1
         totpDigits = 6
         totpPeriod = 30
+        profileSecrets = []
     }
 
     mutating func switchToInline(fromProfile profile: SSHProfile) {

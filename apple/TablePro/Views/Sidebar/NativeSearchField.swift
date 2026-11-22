@@ -1,10 +1,3 @@
-//
-//  NativeSearchField.swift
-//  TablePro
-//
-//  Native NSSearchField wrapped for SwiftUI.
-//
-
 import AppKit
 import os
 import SwiftUI

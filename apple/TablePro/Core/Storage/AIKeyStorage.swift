@@ -1,11 +1,3 @@
-//
-//  AIKeyStorage.swift
-//  TablePro
-//
-//  Keychain storage for AI provider API keys.
-//  Follows ConnectionStorage.swift Keychain pattern.
-//
-
 import Foundation
 import os
 
@@ -20,9 +12,10 @@ final class AIKeyStorage: Sendable {
         self.keychain = keychain
     }
 
-    func saveAPIKey(_ apiKey: String, for providerID: UUID) {
+    @discardableResult
+    func saveAPIKey(_ apiKey: String, for providerID: UUID) -> Bool {
         let key = "com.TablePro.aikey.\(providerID.uuidString)"
-        keychain.writeString(apiKey, forKey: key)
+        return keychain.writeString(apiKey, forKey: key)
     }
 
     func loadAPIKey(for providerID: UUID) -> String? {

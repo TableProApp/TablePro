@@ -1,8 +1,3 @@
-//
-//  DeviceLimitSheet.swift
-//  TablePro
-//
-
 import SwiftUI
 
 internal struct DeviceLimitSheet: View {
@@ -16,66 +11,53 @@ internal struct DeviceLimitSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "laptopcomputer.and.iphone")
-                    .font(.largeTitle)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+        VStack(spacing: 0) {
+            header
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Your plan is in use on 3 other devices")
-                        .font(.headline)
+            Divider()
 
-                    Text("Remove one to use your plan on this Mac. Until then, TablePro works on the Free plan here.")
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            VStack(spacing: 0) {
-                ForEach(model.rows) { row in
-                    if row.id != model.rows.first?.id {
-                        Divider()
+            Form {
+                Section {
+                    ForEach(model.rows) { row in
+                        DeviceLimitRow(
+                            row: row,
+                            isRemoving: model.removing == row.id,
+                            isDisabled: model.removing != nil
+                        ) {
+                            pendingRemoval = row
+                        }
                     }
-                    DeviceLimitRow(
-                        row: row,
-                        isRemoving: model.removing == row.id,
-                        isDisabled: model.removing != nil
-                    ) {
-                        pendingRemoval = row
+
+                    if let failure = model.failure {
+                        NoticeLabel(failure)
+                            .font(.subheadline)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("device-limit-error")
                     }
                 }
             }
-            .background(.background, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(nsColor: .separatorColor)))
+            .formStyle(.grouped)
+            // A grouped Form answers any proposal with the whole height, so it alone is capped.
+            .frame(height: 260)
 
-            if let failure = model.failure {
-                Label(failure, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("device-limit-error")
-            }
+            Divider()
 
-            HStack {
+            DialogFooter {
                 Button(String(localized: "Manage Devices…")) {
                     openURL(model.services.configuration.portalDevices)
                 }
-
-                Spacer()
-
+            } actions: {
                 Button(String(localized: "Not Now")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                     .accessibilityIdentifier("device-limit-not-now")
             }
+            .padding(16)
         }
-        .padding(20)
         .frame(width: 480)
         .onChange(of: model.isResolved) { isResolved in
             if isResolved { dismiss() }
         }
-        .confirmationDialog(
+        .alert(
             pendingRemoval.map { String(format: String(localized: "Remove “%@”?"), $0.name) } ?? "",
             isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
             presenting: pendingRemoval
@@ -83,11 +65,33 @@ internal struct DeviceLimitSheet: View {
             Button(String(localized: "Remove"), role: .destructive) {
                 Task { await model.remove(row) }
             }
+            Button(String(localized: "Cancel"), role: .cancel) {}
         } message: { _ in
             Text("TablePro on that device signs out the next time it checks your account, and this Mac takes its place.")
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("device-limit-sheet")
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "desktopcomputer")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Your plan is in use on 3 other devices")
+                    .font(.headline)
+
+                Text("Remove one to use your plan on this Mac. Until then, TablePro works on the Free plan here.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(20)
     }
 }
 
@@ -98,38 +102,32 @@ private struct DeviceLimitRow: View {
     let onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.name)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Text(AccountDeviceText.detail(system: row.system, lastSeenAt: row.lastSeenAt))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 12)
-
+        SettingsRecordRow(
+            title: row.name,
+            subtitle: AccountDeviceText.detail(system: row.system, lastSeenAt: row.lastSeenAt)
+        ) {
             if let offlineUntil = row.offlineUntil {
                 Text(AccountDeviceText.offlineFile(until: offlineUntil))
-                    .font(.callout)
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.trailing)
+                    .lineLimit(1)
+                    .layoutPriority(1)
             } else if isRemoving {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityLabel(Text("Removing"))
             } else {
-                Button(String(localized: "Remove"), action: onRemove)
+                Button(String(localized: "Remove…"), action: onRemove)
                     .disabled(isDisabled)
+                    .fixedSize()
                     .accessibilityLabel(Text(String(format: String(localized: "Remove %@"), row.name)))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .accessibilityElement(children: .contain)
+        .contextMenu {
+            if row.offlineUntil == nil {
+                Button(String(localized: "Remove…"), action: onRemove)
+                    .disabled(isDisabled)
+            }
+        }
     }
 }
 
@@ -141,6 +139,12 @@ internal enum AccountDeviceText {
         )
         guard !system.isEmpty else { return lastSeen }
         return String(format: String(localized: "%@ · %@"), system, lastSeen)
+    }
+
+    // This Mac is the one showing the list, so it is seen now whatever the server last recorded.
+    static func detail(system: String, lastSeenAt: Date, isThisMac: Bool) -> String {
+        guard isThisMac else { return detail(system: system, lastSeenAt: lastSeenAt) }
+        return String(format: String(localized: "%@ · %@"), String(localized: "This Mac"), detail(system: system, lastSeenAt: Date()))
     }
 
     static func offlineFile(until date: Date) -> String {

@@ -12,14 +12,14 @@ extension OperationCompletionReporter: NotificationHandling {
     internal func presentationOptions(for notification: UNNotification) -> UNNotificationPresentationOptions {
         guard let payload = OperationNotificationPayload(userInfo: notification.request.content.userInfo),
               let connectionId = payload.connectionId
-        else { return [.banner, .list] }
+        else { return [.banner, .list, .sound] }
 
         let owner: OperationOwner = payload.compareWindowId.map { .compareWindow($0) }
             ?? payload.tabId.map { .tab(windowId: payload.windowId, tabId: $0) }
             ?? .connection(connectionId)
 
         let visibility = ResultVisibilityResolver.resolve(owner: owner, connectionId: connectionId)
-        return visibility.resultIsOnScreen ? [] : [.banner, .list]
+        return visibility.resultIsOnScreen ? [] : [.banner, .list, .sound]
     }
 
     internal func handle(_ response: UNNotificationResponse) {

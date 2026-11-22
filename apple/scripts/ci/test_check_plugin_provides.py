@@ -45,12 +45,22 @@ IMPORTER = """final class ExampleImportPlugin: ObservableObject, ImportFormatPlu
 """
 
 
+NAMED_DRIVER = DRIVER.replace("{\n", '{\n    static let pluginName = "Example Driver"\n', 1)
+
+COMPUTED_NAME_DRIVER = DRIVER.replace("{\n", '{\n    static var pluginName: String { "Example Driver" }\n', 1)
+
+
 def provides(key, values):
     items = "".join(f"\t\t<string>{value}</string>\n" for value in values)
     return f"\t<key>{key}</key>\n\t<array>\n{items}\t</array>\n"
 
 
+def display_name(name):
+    return f"\t<key>{check.NAME_KEY}</key>\n\t<string>{name}</string>\n"
+
+
 DRIVER_PLIST = HEADER + provides(check.DATABASE_KEY, ["Example", "ExampleCloud", "ExampleLite"]) + FOOTER
+NAMED_DRIVER_PLIST = DRIVER_PLIST.replace("<dict>\n", "<dict>\n" + display_name("Example Driver"), 1)
 
 
 class CheckPluginProvidesTests(unittest.TestCase):
@@ -168,6 +178,33 @@ class CheckPluginProvidesTests(unittest.TestCase):
         self.assertIn("::error::OddDriverPlugin: declares neither", err)
         self.assertEqual((odd / "Info.plist").read_text(encoding="utf-8"), HEADER + FOOTER)
         self.assertEqual((driver / "Info.plist").read_text(encoding="utf-8"), DRIVER_PLIST)
+
+    def test_a_display_name_that_differs_from_the_plugin_name_is_reported(self):
+        missing = self.plugin("ExampleDriverPlugin", NAMED_DRIVER, DRIVER_PLIST)
+        stale = self.plugin("StaleDriverPlugin", NAMED_DRIVER, NAMED_DRIVER_PLIST.replace("Example Driver", "Old Name"))
+        named = self.plugin("NamedDriverPlugin", NAMED_DRIVER, NAMED_DRIVER_PLIST)
+        for directory in (missing, stale):
+            problems = check.problems_in(directory)
+            self.assertEqual(len(problems), 1)
+            self.assertIn(check.NAME_KEY, problems[0])
+            self.assertIn("'Example Driver'", problems[0])
+        self.assertEqual(check.problems_in(named), [])
+
+    def test_write_stamps_the_plugin_name_as_the_display_name(self):
+        driver = self.plugin("ExampleDriverPlugin", NAMED_DRIVER, DRIVER_PLIST)
+        self.assertEqual(self.run_main("--write")[0], 0)
+        self.assertEqual((driver / "Info.plist").read_text(encoding="utf-8"), NAMED_DRIVER_PLIST)
+        self.assertEqual(self.run_main()[0], 0)
+
+    def test_a_plugin_name_that_is_not_a_literal_leaves_the_display_name_alone(self):
+        plist = DRIVER_PLIST.replace("<dict>\n", "<dict>\n" + display_name("Hand Written"), 1)
+        driver = self.plugin("ExampleDriverPlugin", COMPUTED_NAME_DRIVER, plist)
+        unnamed = self.plugin("UnnamedDriverPlugin", COMPUTED_NAME_DRIVER, DRIVER_PLIST)
+        self.assertEqual(check.problems_in(driver), [])
+        self.assertEqual(check.problems_in(unnamed), [])
+        self.assertEqual(self.run_main("--write"), (0, "", ""))
+        self.assertEqual((driver / "Info.plist").read_text(encoding="utf-8"), plist)
+        self.assertEqual((unnamed / "Info.plist").read_text(encoding="utf-8"), DRIVER_PLIST)
 
     def test_write_leaves_a_correct_plist_untouched(self):
         exporter = self.plugin("ExampleExportPlugin", EXPORTER, HEADER + provides(check.EXPORT_KEY, ["ex"]) + "\n" + FOOTER)

@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-struct SoftwareUpdateSection: View {
+struct SoftwareUpdatePage: View {
     @ObservedObject var updater: SoftwareUpdater
     @ObservedObject var updates: UpdateCenter
 
@@ -32,47 +32,56 @@ struct SoftwareUpdateSection: View {
     }
 
     var body: some View {
-        Section {
-            LabeledContent {
-                Button(summary.actionTitle) {
-                    updates.performPrimaryAction()
+        Form {
+            Section {
+                LabeledContent {
+                    Button(summary.actionTitle) {
+                        updates.performPrimaryAction()
+                    }
+                    .disabled(!updates.isPrimaryActionEnabled)
+                    .accessibilityIdentifier("software-update-action")
+                } label: {
+                    Text(summary.headline)
+                        .accessibilityIdentifier("software-update-headline")
+                    Text(summary.detail)
+                        .accessibilityIdentifier("software-update-detail")
                 }
-                .disabled(!updates.isPrimaryActionEnabled)
-                .accessibilityIdentifier("software-update-action")
-            } label: {
-                Text(summary.headline)
-                    .accessibilityIdentifier("software-update-headline")
-                Text(summary.detail)
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("software-update-detail")
+                .accessibilityElement(children: .contain)
+
+                Button(String(localized: "What's New")) {
+                    NSApp.sendAction(#selector(AppDelegate.openChangelog(_:)), to: nil, from: nil)
+                }
+                .buttonStyle(.link)
+                .accessibilityIdentifier("whats-new-link")
             }
-            .accessibilityElement(children: .contain)
 
-            Picker("Update channel:", selection: channel) {
-                Text("Stable").tag(UpdateChannel.stable)
-                Text("Beta").tag(UpdateChannel.beta)
-            }
-            .accessibilityIdentifier("update-channel-picker")
+            Section {
+                Toggle("Automatically check for updates", isOn: automaticallyChecksForUpdates)
+                    .accessibilityIdentifier("automatic-update-check-toggle")
 
-            Toggle("Automatically check for updates", isOn: automaticallyChecksForUpdates)
-                .accessibilityIdentifier("automatic-update-check-toggle")
-
-            Toggle("Download and install updates automatically", isOn: automaticallyDownloadsUpdates)
-                .disabled(!updater.allowsAutomaticUpdates)
+                Toggle(isOn: automaticallyDownloadsUpdates) {
+                    Text("Download and install updates automatically")
+                    Text("A new version downloads in the background and installs the next time you quit TablePro.")
+                }
+                .disabled(!updater.allowsAutomaticUpdates || !updater.automaticallyChecksForUpdates)
                 .accessibilityIdentifier("automatic-update-install-toggle")
-                .help(String(localized: "A new version downloads in the background and installs the next time you quit TablePro."))
-
-            Button {
-                NSApp.sendAction(#selector(AppDelegate.openChangelog(_:)), to: nil, from: nil)
-            } label: {
-                Text(String(localized: "What's New"))
+            } header: {
+                Text("Automatic Updates")
             }
-            .buttonStyle(.link)
-            .accessibilityIdentifier("whats-new-link")
-        } header: {
-            Text("Software Update")
-        } footer: {
-            Text("Betas get new features first. Switching back to Stable keeps the beta you have until a newer release ships.")
+
+            Section {
+                Picker(selection: channel) {
+                    Text("Stable").tag(UpdateChannel.stable)
+                    Text("Beta").tag(UpdateChannel.beta)
+                } label: {
+                    Text("Update channel")
+                    Text("Betas get new features first. Switching back to Stable keeps the beta you have until a newer release ships.")
+                }
+                .accessibilityIdentifier("update-channel-picker")
+            }
         }
+        .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(SettingsPage.softwareUpdate.pageIdentifier)
     }
 }

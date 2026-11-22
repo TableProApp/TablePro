@@ -1,16 +1,7 @@
-//
-//  BoundKey.swift
-//  TablePro
-//
-//  A keyboard shortcut stored as a hardware key code plus modifiers. Storing the
-//  physical key code (rather than the produced character) makes matching
-//  layout-independent and avoids the shifted-symbol ambiguity where "[" and "{"
-//  describe the same physical key.
-//
-
 import AppKit
 import SwiftUI
 
+// Stored as the physical key code, so matching ignores the layout and "[" and "{" are one key.
 struct BoundKey: Codable, Equatable, Hashable {
     let keyCode: UInt16
     let command: Bool
@@ -26,10 +17,7 @@ struct BoundKey: Codable, Equatable, Hashable {
         self.control = control
     }
 
-    // MARK: - Recorder Capture
-
-    /// Build from a recorded key event. Requires Command or Control, or one of the
-    /// bare keys allowed for grid actions (Escape, Delete, Forward Delete, Space).
+    // Requires Command or Control, or a bare key the grid can read (Escape, Delete, Forward Delete, Space, F-keys).
     init?(from event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let hasCommand = flags.contains(.command)
@@ -44,15 +32,19 @@ struct BoundKey: Codable, Equatable, Hashable {
         self.control = hasControl
     }
 
-    // MARK: - Default Construction
+    // The raw chord with no gate; ShortcutAction.accepts(_:) decides whether it can be bound.
+    init(capturing event: NSEvent) {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        self.init(
+            keyCode: event.keyCode,
+            command: flags.contains(.command),
+            shift: flags.contains(.shift),
+            option: flags.contains(.option),
+            control: flags.contains(.control)
+        )
+    }
 
-    /// Build a binding from a base character, resolving it to a key code on the
-    /// active layout. Used to anchor default shortcuts to a semantic character.
-    /// A character with no key code on the active layout yields the cleared
-    /// sentinel, so the binding reads as unassigned rather than silently aliasing
-    /// some other physical key. Every default and reserved character is ASCII and
-    /// resolves through the US fallback, so the failure path is a programmer error
-    /// and trips an assertion in debug.
+    // A character with no key code on the active layout yields .cleared, so the binding reads as unassigned instead of aliasing another key.
     static func character(
         _ character: Character,
         command: Bool = false,
@@ -67,7 +59,6 @@ struct BoundKey: Codable, Equatable, Hashable {
         return BoundKey(keyCode: keyCode, command: command, shift: shift, option: option, control: control)
     }
 
-    /// Build a binding from a named special key (layout-independent).
     static func special(
         _ key: KeyCode,
         command: Bool = false,
@@ -78,9 +69,6 @@ struct BoundKey: Codable, Equatable, Hashable {
         BoundKey(keyCode: key.rawValue, command: command, shift: shift, option: option, control: control)
     }
 
-    // MARK: - Migration
-
-    /// Convert a legacy character-string shortcut (pre-keyCode storage) to a BoundKey.
     init?(legacyKey: String, isSpecialKey: Bool, command: Bool, shift: Bool, option: Bool, control: Bool) {
         if legacyKey.isEmpty, !command, !shift, !option, !control {
             self = .cleared
@@ -98,8 +86,6 @@ struct BoundKey: Codable, Equatable, Hashable {
         self.init(keyCode: keyCode, command: command, shift: shift, option: option, control: control)
     }
 
-    // MARK: - Matching
-
     func matches(_ event: NSEvent) -> Bool {
         guard !isCleared else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -114,15 +100,15 @@ struct BoundKey: Codable, Equatable, Hashable {
         command || shift || option || control
     }
 
-    /// Function keys (F1-F12) are valid as bare shortcuts: they reach the menu as
-    /// key-equivalents without a modifier and never collide with typing.
+    // F-keys reach the menu as bare key equivalents and never collide with typing.
     var isFunctionKey: Bool {
         KeyCode(rawValue: keyCode)?.functionKeyIndex != nil
     }
 
-    // MARK: - SwiftUI Integration
+    var isBareRecordable: Bool {
+        Self.isBareRecordable(keyCode)
+    }
 
-    /// The SwiftUI key equivalent, or nil when the key code has no representable key.
     var swiftUIKeyEquivalent: KeyEquivalent? {
         if let special = Self.specialKeyEquivalent(for: keyCode) {
             return special
@@ -134,12 +120,7 @@ struct BoundKey: Codable, Equatable, Hashable {
         return KeyEquivalent(character)
     }
 
-    // MARK: - AppKit Integration
-
-    /// The `NSMenuItem.keyEquivalent` string, or nil when the key code has no
-    /// representable key. Always the unshifted character, because AppKit infers
-    /// Shift from an uppercase key equivalent and the modifier belongs in
-    /// `modifierFlags` instead.
+    // Always the unshifted character: AppKit infers Shift from an uppercase equivalent, and Shift belongs in modifierFlags.
     var menuKeyEquivalent: String? {
         swiftUIKeyEquivalent.map { String($0.character) }
     }
@@ -162,9 +143,6 @@ struct BoundKey: Codable, Equatable, Hashable {
         return flags
     }
 
-    // MARK: - Display
-
-    /// Human-readable representation (e.g. "⌘S", "⇧⌘P", "⌥⌫").
     var displayString: String {
         guard !isCleared else { return "" }
         var parts: [String] = []
@@ -189,15 +167,11 @@ struct BoundKey: Codable, Equatable, Hashable {
         return "?"
     }
 
-    // MARK: - Cleared Sentinel
-
     static let cleared = BoundKey(keyCode: 0xFFFF)
 
     var isCleared: Bool {
         keyCode == 0xFFFF
     }
-
-    // MARK: - Special Key Tables
 
     private static let bareRecordableKeyCodes: Set<UInt16> = [
         KeyCode.escape.rawValue,

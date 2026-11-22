@@ -4,6 +4,7 @@ final class AppearanceSettingsUITests: UITestCase {
     func testCustomThemeFromCreationToTrashAndBack() throws {
         let app = try launchOpeningURL("tablepro://settings/appearance")
         let settings = try appearancePane(in: app)
+        openManageThemes(in: settings)
 
         createTheme(basedOn: "Dracula", in: settings)
         let editor = window("theme-editor", in: app)
@@ -25,6 +26,7 @@ final class AppearanceSettingsUITests: UITestCase {
 
         renameInRow("Dracula Copy", to: "Midnight", in: settings)
 
+        goBack(in: settings)
         let dark = settings.popUpButtons["appearance-dark-theme"]
         XCTAssertTrue(dark.waitToExist(timeout: 10))
         choose("Midnight", in: dark)
@@ -33,30 +35,42 @@ final class AppearanceSettingsUITests: UITestCase {
             "A custom dark theme should be offered in the Dark popup"
         )
 
+        openManageThemes(in: settings)
+        XCTAssertTrue(
+            row("Dark, in use", in: settings).waitToExist(timeout: 5),
+            "The theme the Dark slot uses should say so in the list"
+        )
         moveToTrash("Midnight", in: settings)
+        XCTAssertNil(themeDocument(named: "Midnight"), "The theme file should leave the Themes folder")
+
+        goBack(in: settings)
         XCTAssertTrue(
             waitForPredicate(timeout: 5) { (dark.value as? String) == "Default Dark" },
             "The slot that held the trashed theme should go back to its built-in"
         )
-        XCTAssertNil(themeDocument(named: "Midnight"), "The theme file should leave the Themes folder")
 
+        // The list's model outlives the page, so Undo works from the root page after Back.
         app.typeShortcut(.undo)
-        XCTAssertTrue(row("Midnight", in: settings).waitToExist(timeout: 5), "Undo should bring the theme back")
-        XCTAssertTrue(
-            waitForPredicate(timeout: 5) { self.themeDocument(named: "Midnight") != nil },
-            "Undo should put the file back in the Themes folder"
-        )
         XCTAssertTrue(
             waitForPredicate(timeout: 5) { (dark.value as? String) == "Midnight" },
             "Undo should give the Dark slot its theme back"
         )
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { self.themeDocument(named: "Midnight") != nil },
+            "Undo should put the file back in the Themes folder"
+        )
+
+        openManageThemes(in: settings)
+        XCTAssertTrue(row("Midnight", in: settings).waitToExist(timeout: 5), "Undo should bring the theme back to the list")
     }
 
     func testThemesListScrollsAndTakesArrowKeys() throws {
         let app = try launchOpeningURL("tablepro://settings/appearance")
         let settings = try appearancePane(in: app)
+        openManageThemes(in: settings)
+
         let list = settings.outlines.containing(NSPredicate(format: "value == %@", "Default Light")).firstMatch
-        XCTAssertTrue(list.waitToExist(timeout: 10), "The Themes list should be on the Appearance pane")
+        XCTAssertTrue(waitUntilHittable(list, timeout: 10), "Manage Themes should list the themes")
         // The bar under the list marks where its visible rows end; an outline's own frame spans every row.
         let footer = element("appearance-theme-add", in: settings)
         XCTAssertTrue(footer.waitToExist(timeout: 10))
@@ -81,7 +95,25 @@ final class AppearanceSettingsUITests: UITestCase {
         )
     }
 
-    // MARK: - Steps
+    private func openManageThemes(in settings: XCUIElement) {
+        selectSettingsPane("appearance", page: "themes", in: settings)
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { settings.title == "Manage Themes" },
+            "The link should push Manage Themes, the window is titled \(settings.title)"
+        )
+        let list = element("appearance-themes-list", in: settings)
+        XCTAssertTrue(list.waitToExist(timeout: 10), "Manage Themes should show the themes list")
+    }
+
+    private func goBack(in settings: XCUIElement) {
+        let back = settingsNavigationButton("Back", in: settings)
+        XCTAssertTrue(waitForPredicate(timeout: 5) { back.exists && back.isEnabled }, "Back should be enabled on Manage Themes")
+        back.click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { settings.title == "Appearance" },
+            "Back should return to the Appearance pane, the window is titled \(settings.title)"
+        )
+    }
 
     private func createTheme(basedOn source: String, in window: XCUIElement) {
         let add = element("appearance-theme-add", in: window)
@@ -101,7 +133,7 @@ final class AppearanceSettingsUITests: UITestCase {
         item.click()
     }
 
-    /// The shared color panel cannot be driven reliably; ThemeEditorModelTests covers what a well hands back.
+    // The shared color panel cannot be driven reliably; ThemeEditorModelTests covers what a well hands back.
     private func resetAndUndoEditorBackground(in editor: XCUIElement, app: XCUIApplication, themeName: String) {
         let reset = element("theme-color-reset-editor.background", in: editor)
         XCTAssertTrue(reset.waitToExist(timeout: 10), "A Dracula copy sets the editor background")
@@ -171,10 +203,8 @@ final class AppearanceSettingsUITests: UITestCase {
         XCTAssertTrue(waitForPredicate(timeout: 5) { !themeRow.exists }, "The trashed theme should leave the list")
     }
 
-    // MARK: - Helpers
-
     private func appearancePane(in app: XCUIApplication) throws -> XCUIElement {
-        let settings = window("settings", in: app)
+        let settings = settingsWindow(in: app)
         XCTAssertTrue(settings.waitToExist(timeout: 10))
         XCTAssertTrue(
             waitForPredicate(timeout: 5) { settings.title == "Appearance" },
@@ -183,8 +213,7 @@ final class AppearanceSettingsUITests: UITestCase {
         return settings
     }
 
-    /// A control clipped by its scroll view still reads as hittable, and a click on it lands on
-    /// whatever is drawn there, so the frames decide when it is in view.
+    // A control clipped by its scroll view still reads as hittable and a click lands on what is drawn there.
     private func reveal(_ control: XCUIElement, in scrollView: XCUIElement, scrollingAt point: CGVector) {
         let deadline = Date(timeIntervalSinceNow: 10)
         while control.frame.maxY > scrollView.frame.maxY || control.frame.minY < scrollView.frame.minY, Date() < deadline {

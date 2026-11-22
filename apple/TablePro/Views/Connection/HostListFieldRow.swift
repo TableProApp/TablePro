@@ -10,7 +10,6 @@ struct HostEntry: Identifiable {
     var value: String
 }
 
-/// Selection arithmetic for `HostListFieldRow`.
 enum HostListSelection {
     static func nextSelection(
         afterRemoving removedIds: Set<UUID>,
@@ -40,25 +39,14 @@ struct HostListFieldRow: View {
             }
             .listStyle(.bordered(alternatesRowBackgrounds: false))
             .frame(height: listHeight)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                VStack(spacing: 0) {
-                    Divider()
-                    HStack(spacing: 0) {
-                        AddRemoveControlGroup(
-                            addLabel: String(localized: "Add Host"),
-                            removeLabel: String(localized: "Remove Host"),
-                            canRemove: !selectedId.isEmpty && entries.count > 1,
-                            onAdd: { addEntry() },
-                            onRemove: { removeSelected() }
-                        )
-                        .controlSize(.small)
-
-                        Spacer()
-                    }
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
-                }
-                .background(.bar)
+            .listBar {
+                AddRemoveControlGroup(
+                    addLabel: String(localized: "Add Host"),
+                    removeLabel: String(localized: "Remove Host"),
+                    canRemove: !selectedId.isEmpty && entries.count > 1,
+                    onAdd: { addEntry() },
+                    onRemove: { removeSelected() }
+                )
             }
         } label: {
             Text(label)
@@ -67,8 +55,7 @@ struct HostListFieldRow: View {
         .onChange(of: value) { _ in parseValue() }
     }
 
-    /// A plugin can declare a per-field example, which matters when one form has two host lists
-    /// on different default ports: Sentinel answers on 26379 and a cluster seed on 6379.
+    // A plugin's per-field example, since one form can hold host lists on different default ports (Sentinel 26379, cluster 6379).
     private var prompt: String {
         placeholder.isEmpty ? "hostname:\(defaultPort)" : placeholder
     }
@@ -76,11 +63,8 @@ struct HostListFieldRow: View {
     private var listHeight: CGFloat {
         let rowHeight: CGFloat = 24
         let rows = CGFloat(max(entries.count, 1))
-        /// The control group brings its own intrinsic height, which is taller than the two
-        /// hand-sized 20pt buttons this row used to draw.
-        let buttonBarHeight: CGFloat = 32
         // No cap: a List in a grouped Form never scrolls, so it shows every row and the Form scrolls.
-        return rows * rowHeight + buttonBarHeight + 8
+        return rows * rowHeight + ListBarMetrics.height + 8
     }
 
     private func bindingForEntry(_ entry: HostEntry) -> Binding<String> {

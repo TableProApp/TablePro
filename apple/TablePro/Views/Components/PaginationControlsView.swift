@@ -1,26 +1,16 @@
-//
-//  PaginationControlsView.swift
-//  TablePro
-//
-
 import SwiftUI
 
 struct PaginationControlsView: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var keyboard = AppSettingsManager.shared.keyboardSlice
     let pagination: PaginationState
     let loadedRowCount: Int
-    /// Identity of the tab these controls describe. Not used for display: a change to it is what
-    /// discards a half-typed page number so it cannot be submitted against the next tab.
+    // Not displayed: a change discards a half-typed page number so it cannot be submitted against the next tab.
     let tabId: UUID?
     var showsPageNavigation = true
-    /// First and Last. The Query menu carries all four page commands, so the two edges are the first
-    /// thing this cluster gives up when the bar runs out of room.
+    // The Query menu carries all four page commands, so First and Last go first when the bar runs out of room.
     var showsEdgePageButtons = true
-    /// Whether rows-per-page stands beside the page indicator or moves inside its menu. Rows-per-page
-    /// has no menu-bar home, so the narrow bar folds it in rather than dropping it, which is where
-    /// TablePlus and Sequel Ace both keep theirs.
+    // Rows-per-page has no menu-bar home, so a narrow bar folds it into the page menu rather than dropping it.
     var pageSizeIsInline = true
-    /// The most rows the engine returns from one statement, when it caps them.
     var maximumPageSize: Int?
     let onFirst: () -> Void
     let onPrevious: () -> Void
@@ -39,8 +29,7 @@ struct PaginationControlsView: View {
 
     private static let pageSizePresets = [5, 10, 20, 100, 500, 1_000]
 
-    /// Anything past this is a mistake rather than an intent, and it used to be unbounded: pasting
-    /// `9223372036854775807` set the page size to `Int.max` and the next status-bar render trapped.
+    // Bounded: pasting `Int.max` as the page size trapped the next status bar render.
     static let maximumPageSize = 1_000_000
 
     static func pageSizePresets(upTo maximum: Int?) -> [Int] {
@@ -52,8 +41,7 @@ struct PaginationControlsView: View {
         min(maximumPageSize ?? Self.maximumPageSize, Self.maximumPageSize)
     }
 
-    /// An engine that cannot seek shows no page indicator, so there is nowhere to fold rows-per-page
-    /// into and it has to stand on its own however narrow the bar is.
+    // An engine that cannot seek has no page indicator to fold rows-per-page into.
     private var showsInlinePageSize: Bool {
         pageSizeIsInline || !showsPageNavigation
     }
@@ -75,11 +63,7 @@ struct PaginationControlsView: View {
         }
     }
 
-    // MARK: - Page Size
-
-    /// A bordered pull-down rather than a borderless one. Measured on macOS 27, a borderless
-    /// `NSPopUpButton` reports a 16pt fitting height and ignores `controlSize` at every size, so it
-    /// sat visibly shorter than the 20pt bordered controls beside it.
+    // Bordered: a borderless `NSPopUpButton` ignores `controlSize` and sat shorter than the controls beside it.
     private var pageSizeMenu: some View {
         Menu {
             pageSizeMenuItems
@@ -100,8 +84,7 @@ struct PaginationControlsView: View {
         }
     }
 
-    /// Shared by the standalone pull-down and by the page indicator that swallows it when the bar is
-    /// narrow, so rows-per-page offers the same choices whichever control carries it.
+    // Shared, so rows-per-page offers the same choices whichever control carries it.
     @ViewBuilder
     private var pageSizeMenuItems: some View {
         Picker(String(localized: "Rows per page"), selection: pageSizeBinding) {
@@ -127,11 +110,7 @@ struct PaginationControlsView: View {
         Binding(get: { pagination.pageSize }, set: { onPageSizeChange($0) })
     }
 
-    // MARK: - Navigation
-
-    /// A progress indicator never goes inside this cluster. Sitting between the page indicator and
-    /// Next, it would push both nav buttons sideways every time a page loaded, which is the reflow
-    /// the readout's own indicator already reports without moving anything.
+    // No progress indicator here: it would push the nav buttons sideways on every page load.
     private var navigationCluster: some View {
         HStack(spacing: 0) {
             if showsEdgePageButtons {
@@ -189,12 +168,10 @@ struct PaginationControlsView: View {
     }
 
     private func helpText(_ label: String, for shortcut: ShortcutAction) -> String {
-        settingsManager.keyboard.shortcutHint(label, for: shortcut)
+        keyboard.value.shortcutHint(label, for: shortcut)
     }
 
-    /// A button straight to the jump popover while rows-per-page has its own control, and a menu
-    /// carrying both once it does not. The menu is what keeps rows-per-page reachable on a narrow
-    /// bar: it has no menu-bar equivalent, so it cannot simply be dropped.
+    // A menu once rows-per-page has no control of its own, so it stays reachable on a narrow bar.
     @ViewBuilder
     private var pageIndicator: some View {
         if showsInlinePageSize {
@@ -213,9 +190,7 @@ struct PaginationControlsView: View {
             }
         } else {
             Menu {
-                /// The catalog's existing spelling, which is also this control's tooltip when it is
-                /// a plain button. A new string here would fall back to English in every translated
-                /// locale at exactly the width where the menu is the only route to these commands.
+                // The catalog's existing spelling: a new string would fall back to English where this menu is the only route.
                 Button(String(localized: "Go to page")) {
                     jumpPage = pagination.currentPage
                     showJumpPopover = true
@@ -250,8 +225,7 @@ struct PaginationControlsView: View {
             .frame(minWidth: 44)
     }
 
-    /// The total is marked when it came from a driver estimate, so a page count the user cannot
-    /// trust never looks like one they can.
+    // An estimated total is marked, so a page count the user cannot trust never looks exact.
     @ViewBuilder
     private var pageIndicatorText: some View {
         if pagination.hasExactRowCount {
@@ -270,15 +244,12 @@ struct PaginationControlsView: View {
         return String(format: String(localized: "Page %d of %d"), pagination.currentPage, pagination.totalPages)
     }
 
-    // MARK: - Popovers
-
     private var jumpPopover: some View {
         NumberEntryPopover(
             caption: String(localized: "Go to page"),
             value: $jumpPage,
             minimum: 1,
-            /// An estimated total is not a ceiling. Clamping to it here would put back the wall that
-            /// `PaginationState.goToPage` was opened up to remove.
+            // An estimated total is not a ceiling for `PaginationState.goToPage`.
             maximum: pagination.hasExactRowCount ? pagination.totalPages : nil,
             fieldWidth: 80,
             isFocused: $isJumpFocused,
@@ -331,8 +302,7 @@ struct PaginationControlsView: View {
 }
 
 private extension View {
-    /// One home for the page indicator's accessibility, because XCUITest keys on the identifier and
-    /// the control is a button or a menu depending on how much room the bar has.
+    // XCUITest keys on the identifier, and the control is a button or a menu depending on the room.
     func pageIndicatorAccessibility(value: String) -> some View {
         accessibilityLabel(String(localized: "Page"))
             .accessibilityValue(value)

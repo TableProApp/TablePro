@@ -134,16 +134,20 @@ struct StructureSectionView: View {
             } else {
                 emptyRow
             }
-            ForEach(notes) { note in
-                Label(note.text, systemImage: note.systemImage)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 10)
-                    .padding(.top, 6)
-                    .accessibilityIdentifier(note.identifier)
-            }
             footer
+            if !notes.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(notes) { note in
+                        Label(note.text, systemImage: note.systemImage)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier(note.identifier)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+            }
         }
     }
 
@@ -185,21 +189,20 @@ struct StructureSectionView: View {
     private var footer: some View {
         let labels = StructureFooterPolicy.labels(for: section)
         let reason = editor.refusal(adding: section)
-        return AddRemoveControlGroup(
-            addLabel: labels.add,
-            removeLabel: labels.remove,
-            canAdd: editor.canAdd(section),
-            canRemove: editor.canRemoveSelection(in: section),
-            addHelp: reason,
-            removeHelp: reason,
-            addIdentifier: "structure-\(section.rawValue)-add",
-            removeIdentifier: "structure-\(section.rawValue)-remove",
-            onAdd: { editor.add(section) },
-            onRemove: { editor.removeSelection(in: section) }
-        )
-        .padding(.horizontal, 10)
-        .padding(.top, 6)
-        .padding(.bottom, 10)
+        return ListBar {
+            AddRemoveControlGroup(
+                addLabel: labels.add,
+                removeLabel: labels.remove,
+                canAdd: editor.canAdd(section),
+                canRemove: editor.canRemoveSelection(in: section),
+                addHelp: reason,
+                removeHelp: reason,
+                addIdentifier: "structure-\(section.rawValue)-add",
+                removeIdentifier: "structure-\(section.rawValue)-remove",
+                onAdd: { editor.add(section) },
+                onRemove: { editor.removeSelection(in: section) }
+            )
+        }
     }
 }
 

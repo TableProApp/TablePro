@@ -8,7 +8,7 @@ struct CopyableCodeBlock: View {
     var body: some View {
         HStack(alignment: .top) {
             Text(verbatim: displayText ?? text)
-                .font(.system(.caption, design: .monospaced))
+                .font(.system(.callout, design: .monospaced))
                 .textSelection(.enabled)
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)

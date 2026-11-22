@@ -1,8 +1,3 @@
-//
-//  TableInfoView.swift
-//  TablePro
-//
-
 import SwiftUI
 
 // The table's own statistics, when the inspector has a table but no row selected. Not a grouped `Form`: its 30pt
@@ -22,7 +17,7 @@ internal struct TableInfoView: View {
 
 // The statistics alone, for a pane that scrolls them with its own content.
 internal struct TableInfoSections: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var generalSettings = AppSettingsManager.shared.generalSlice
     internal let metadata: TableMetadata
     internal var includesComment = true
 
@@ -33,7 +28,7 @@ internal struct TableInfoSections: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if includesComment, settingsManager.general.showObjectComments,
+            if includesComment, generalSettings.value.showObjectComments,
                let comment = metadata.comment, !comment.isEmpty {
                 section(String(localized: "Comment")) {
                     Text(comment)

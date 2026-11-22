@@ -1,11 +1,4 @@
-//
-//  AppActivationPolicyTests.swift
-//  TableProTests
-//
-//  The MCP bridge launches TablePro to answer a client, and that launch opens no window. The app
-//  used to take a Dock icon and an app-switcher entry for it anyway, which is a process claiming to
-//  be something the person never started.
-//
+// The MCP bridge's launch opens no window, so it must not take a Dock icon or an app-switcher entry.
 
 import Foundation
 @testable import TablePro
@@ -34,7 +27,7 @@ struct AppActivationPolicyTests {
         #expect(LaunchIntent.openDataFile(URL(fileURLWithPath: "/tmp/rows.csv")).impliesUserInterface)
         #expect(LaunchIntent.openConnectionShare(URL(string: "tablepro://share")!).impliesUserInterface)
         #expect(LaunchIntent.installPlugin(URL(string: "tablepro://plugin")!).impliesUserInterface)
-        #expect(LaunchIntent.openSettings(.mcp).impliesUserInterface)
+        #expect(LaunchIntent.openSettings(.root(.mcp)).impliesUserInterface)
         #expect(LaunchIntent.openSettings(nil).impliesUserInterface)
         #expect(
             LaunchIntent.openTable(
@@ -91,7 +84,7 @@ struct AppActivationPolicyTests {
     func settingsLinkLaunchIsUser() {
         #expect(
             AppActivationPolicyDecision.origin(
-                adopting: [.openSettings(.mcp)], current: .machine, isLaunching: true
+                adopting: [.openSettings(.root(.mcp))], current: .machine, isLaunching: true
             ) == .user
         )
     }

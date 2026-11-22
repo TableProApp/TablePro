@@ -1,8 +1,3 @@
-//
-//  AppSettingsStorageResetTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -57,5 +52,30 @@ struct AppSettingsStorageResetTests {
 
         #expect(defaults.object(forKey: PreferenceKeys.rowInspectorFieldHeights.name) == nil)
         #expect(defaults.object(forKey: PreferenceKeys.rowInspectorGeometryFieldMode.name) == nil)
+    }
+
+    @Test("Reset returns notifications to their defaults")
+    func resetRestoresNotifications() throws {
+        let storage = AppSettingsStorage(userDefaults: try pool.make().defaults)
+        storage.saveNotifications(NotificationSettings(isEnabled: false, thresholdSeconds: 120))
+
+        storage.resetToDefaults()
+
+        #expect(storage.loadNotifications() == .default)
+    }
+
+    @Test("Reset keeps the Share usage data choice and resets the rest of General")
+    func resetKeepsShareUsageData() throws {
+        let storage = AppSettingsStorage(userDefaults: try pool.make().defaults)
+        var general = GeneralSettings.default
+        general.shareAnalytics = false
+        general.showRecentTables.toggle()
+        storage.saveGeneral(general)
+
+        storage.resetToDefaults()
+
+        var expected = GeneralSettings.default
+        expected.shareAnalytics = false
+        #expect(storage.loadGeneral() == expected)
     }
 }

@@ -1,10 +1,3 @@
-//
-//  WelcomeViewModel+TeamCatalog.swift
-//  TablePro
-//
-//  Publishing connections to the shared team catalog.
-//
-
 import AppKit
 
 extension WelcomeViewModel {
@@ -47,8 +40,8 @@ extension WelcomeViewModel {
             format: String(
                 localized: "Choose a shared folder for your team's connection catalog. Teammates add this folder under Settings > %1$@ > %2$@ to see published connections."
             ),
-            SettingsPane.general.title,
-            LinkedFoldersSection.title
+            SettingsPane.connections.title,
+            SettingsPage.linkedFolders.title
         )
     }
 

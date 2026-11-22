@@ -1,8 +1,3 @@
-//
-//  HighlightedSQLTextView.swift
-//  TablePro
-//
-
 import AppKit
 import Combine
 import SwiftUI
@@ -11,14 +6,12 @@ import TableProGrammars
 import TableProPluginKit
 import TableProTheme
 
-/// A code view: `ThemeTextViewStyle` puts it on the editor's background, text, caret and selection, and its
-/// syntax comes from the editor's own grammar and `EditorTheme`, so every token draws in the slot the SQL
-/// editor gives it.
+// A code view in the editor's theme slots and grammar, so every token draws as it does in the SQL editor.
 struct HighlightedSQLTextView: NSViewRepresentable {
     internal enum LineLayout: Equatable {
         case unwrapped
         case wrapped
-        /// Wraps, and is as tall as its text up to `maxLines`; it scrolls vertically past that.
+        // Wraps, and grows with its text up to maxLines; it scrolls past that.
         case fitted(maxLines: Int)
     }
 
@@ -30,9 +23,9 @@ struct HighlightedSQLTextView: NSViewRepresentable {
     let sql: String
     var databaseType: DatabaseType = .mysql
     var highlighting: Highlighting = .engine
-    /// A SwiftUI `.accessibilityIdentifier` lands on the representable's wrapper, not on the text
-    /// view AppKit publishes, so the only way to name this element is to set it on the text view.
+    // A SwiftUI accessibilityIdentifier lands on the representable's wrapper, never on the text view AppKit publishes.
     var accessibilityIdentifier: String?
+    var accessibilityLabel = String(localized: "Query preview")
     var lineLayout: LineLayout = .unwrapped
 
     @ObservedObject private var themeEngine = ThemeEngine.shared
@@ -45,7 +38,7 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         }
 
         textView.setAccessibilityIdentifier(accessibilityIdentifier)
-        textView.setAccessibilityLabel(String(localized: "Query preview"))
+        textView.setAccessibilityLabel(accessibilityLabel)
         textView.isEditable = false
         textView.isSelectable = true
         textView.font = themeEngine.editorFonts.font
@@ -113,6 +106,9 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         if textChanged {
             textView.string = sql
         }
+        if textView.accessibilityLabel() != accessibilityLabel {
+            textView.setAccessibilityLabel(accessibilityLabel)
+        }
         // A short query would otherwise show the scroll view's own color below its last line.
         if scrollView.backgroundColor !== textView.backgroundColor {
             scrollView.backgroundColor = textView.backgroundColor
@@ -170,8 +166,6 @@ struct HighlightedSQLTextView: NSViewRepresentable {
                 }
         }
     }
-
-    // MARK: - Syntax Highlighting
 
     private var language: CodeLanguage {
         switch highlighting {

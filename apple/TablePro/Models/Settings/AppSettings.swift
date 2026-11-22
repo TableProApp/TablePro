@@ -1,15 +1,5 @@
-//
-//  AppSettings.swift
-//  TablePro
-//
-//  Application settings models - pure data structures
-//
-
 import Foundation
 import SwiftUI
-
-
-// MARK: - Appearance Settings
 
 enum AppAppearanceMode: String, Codable, CaseIterable {
     case light
@@ -47,9 +37,6 @@ struct AppearanceSettings: Codable, Equatable {
         case preferredLightThemeId, preferredDarkThemeId
     }
 }
-
-
-// MARK: - Data Grid Settings
 
 enum DataGridRowHeight: Int, Codable, CaseIterable, Identifiable {
     case compact = 20
@@ -216,44 +203,26 @@ struct DataGridSettings: Codable, Equatable {
         resultSetsKeptPerRun = container.decodeSetting(.resultSetsKeptPerRun, default: fallback.resultSetsKeptPerRun)
     }
 
-    // MARK: - Validated Properties
-
     var validatedNullDisplay: String {
-        let sanitized = nullDisplay.sanitized
-        let maxLength = SettingsValidationRules.nullDisplayMaxLength
-
-        if sanitized.isEmpty {
-            return "NULL"
-        } else if sanitized.count > maxLength {
-            return String(sanitized.prefix(maxLength))
-        }
-        return sanitized
+        Self.normalizedNullDisplay(nullDisplay)
     }
 
     var validatedDefaultPageSize: Int {
         defaultPageSize.clamped(to: SettingsValidationRules.defaultPageSizeRange)
     }
 
-    var nullDisplayValidationError: String? {
-        let sanitized = nullDisplay.sanitized
+    // Blank is not an error: the field's prompt reads NULL, and a blank entry commits as NULL.
+    static func nullDisplayValidationError(for text: String) -> String? {
         let maxLength = SettingsValidationRules.nullDisplayMaxLength
-
-        if sanitized.isEmpty {
-            return String(localized: "NULL display cannot be empty")
-        } else if sanitized.count > maxLength {
-            return String(format: String(localized: "NULL display must be %d characters or less"), maxLength)
-        } else if nullDisplay != sanitized {
-            return String(localized: "NULL display contains invalid characters (newlines/tabs)")
-        }
-        return nil
+        guard text.sanitized.count > maxLength else { return nil }
+        return String(format: String(localized: "Up to %lld characters"), maxLength)
     }
 
-    var defaultPageSizeValidationError: String? {
-        let range = SettingsValidationRules.defaultPageSizeRange
-        if defaultPageSize < range.lowerBound || defaultPageSize > range.upperBound {
-            return String(format: String(localized: "Page size must be between %@ and %@"), range.lowerBound.formatted(), range.upperBound.formatted())
-        }
-        return nil
+    // Trimmed again after the cut, so a prefix that ends in a space never stores one.
+    static func normalizedNullDisplay(_ text: String) -> String {
+        let limited = String(text.sanitized.prefix(SettingsValidationRules.nullDisplayMaxLength))
+            .trimmingCharacters(in: .whitespaces)
+        return limited.isEmpty ? "NULL" : limited
     }
 
     // Nil keeps every result.
@@ -266,20 +235,24 @@ struct DataGridSettings: Codable, Equatable {
         return queryResultRowCap.clamped(to: SettingsValidationRules.queryResultRowCapRange)
     }
 
-    var queryResultRowCapValidationError: String? {
-        let range = SettingsValidationRules.queryResultRowCapRange
-        if queryResultRowCap != 0 && (queryResultRowCap < range.lowerBound || queryResultRowCap > range.upperBound) {
-            return String(
-                format: String(localized: "Query result row cap must be between %@ and %@"),
-                range.lowerBound.formatted(),
-                range.upperBound.formatted()
-            )
+    var queryResultLimit: Int? {
+        guard truncateQueryResults else { return nil }
+        let cap = validatedQueryResultRowCap
+        return cap > 0 ? cap : nil
+    }
+
+    // No limit keeps the stored cap, so turning the limit back on returns to it.
+    func withQueryResultLimit(_ limit: Int?) -> DataGridSettings {
+        var updated = self
+        if let limit {
+            updated.truncateQueryResults = true
+            updated.queryResultRowCap = limit
+        } else {
+            updated.truncateQueryResults = false
         }
-        return nil
+        return updated
     }
 }
-
-// MARK: - Value Color Settings
 
 struct ValueColorSettings: Codable, Equatable {
     var colorsValuesByType: Bool
@@ -295,8 +268,6 @@ struct ValueColorSettings: Codable, Equatable {
         colorsValuesByType = container.decodeSetting(.colorsValuesByType, default: Self.default.colorsValuesByType)
     }
 }
-
-// MARK: - History Settings
 
 struct HistorySettings: Codable, Equatable {
     var maxEntries: Int // 0 = unlimited
@@ -328,8 +299,6 @@ struct HistorySettings: Codable, Equatable {
         keepRewindHistory = container.decodeSetting(.keepRewindHistory, default: fallback.keepRewindHistory)
     }
 
-    // MARK: - Validated Properties
-
     var validatedMaxEntries: Int {
         max(0, maxEntries)
     }
@@ -337,23 +306,7 @@ struct HistorySettings: Codable, Equatable {
     var validatedMaxDays: Int {
         max(0, maxDays)
     }
-
-    var maxEntriesValidationError: String? {
-        if maxEntries < 0 {
-            return String(localized: "Maximum entries cannot be negative")
-        }
-        return nil
-    }
-
-    var maxDaysValidationError: String? {
-        if maxDays < 0 {
-            return String(localized: "Maximum days cannot be negative")
-        }
-        return nil
-    }
 }
-
-// MARK: - Tab Settings
 
 struct TabSettings: Codable, Equatable {
     var enablePreviewTabs: Bool = true

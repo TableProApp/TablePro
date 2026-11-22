@@ -1,19 +1,16 @@
-//
-//  OptionsPaneView.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 import TableProAutocomplete
 import TableProPluginKit
 
 struct OptionsPaneView: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var aiSettings = AppSettingsManager.shared.aiSlice
+    @ObservedObject private var generalSettings = AppSettingsManager.shared.generalSlice
+    @ObservedObject private var syncSettings = AppSettingsManager.shared.syncSlice
     @ObservedObject var coordinator: ConnectionFormCoordinator
 
     private var databaseType: DatabaseType { coordinator.network.type }
-    private var aiIsEnabled: Bool { settingsManager.ai.enabled }
+    private var aiIsEnabled: Bool { aiSettings.value.enabled }
 
     // Nil until this connection is open as the type the form shows.
     private var liveDriverRunsReadOnly: Bool? {
@@ -40,13 +37,11 @@ struct OptionsPaneView: View {
             if aiIsEnabled {
                 aiRulesSection
             }
-            if settingsManager.sync.enabled {
+            if syncSettings.value.enabled {
                 syncSection
             }
         }
     }
-
-    // MARK: - Timeouts
 
     private var timeoutSection: some View {
         Section {
@@ -68,13 +63,13 @@ struct OptionsPaneView: View {
             }
             .help(connectTimeoutHelp)
 
-            LabeledContent(String(localized: "Query timeout")) {
+            LabeledContent {
                 HStack(spacing: 4) {
                     TextField(
                         String(localized: "Query timeout"),
                         value: $coordinator.customization.queryTimeoutSeconds,
                         format: .number.grouping(.never),
-                        prompt: Text(verbatim: queryTimeoutPlaceholder)
+                        prompt: Text(verbatim: Self.queryTimeoutPlaceholder(globalSeconds: globalQueryTimeoutSeconds))
                     )
                     .labelsHidden()
                     .frame(width: 100)
@@ -83,8 +78,10 @@ struct OptionsPaneView: View {
                     Text(String(localized: "seconds"))
                         .foregroundStyle(.secondary)
                 }
+            } label: {
+                Text(String(localized: "Query timeout"))
+                Text(verbatim: Self.queryTimeoutInheritance(globalSeconds: globalQueryTimeoutSeconds))
             }
-            .help(queryTimeoutHelp)
         } header: {
             Text(String(localized: "Timeouts"))
         } footer: {
@@ -116,31 +113,34 @@ struct OptionsPaneView: View {
         )
     }
 
-    private var queryTimeoutPlaceholder: String {
-        String(
-            format: String(localized: "Global (%d)"),
-            settingsManager.general.queryTimeoutSeconds
+    private var globalQueryTimeoutSeconds: Int { generalSettings.value.queryTimeoutSeconds }
+
+    // The field is 100 points wide beside a "seconds" label, so words go in the subtitle and the prompt stays short.
+    nonisolated static func queryTimeoutPlaceholder(globalSeconds: Int) -> String {
+        let seconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: nil,
+            globalSeconds: globalSeconds
         )
+        guard seconds > 0 else { return String(localized: "No limit") }
+        return String(format: String(localized: "Global (%d)"), seconds)
     }
 
-    private var queryTimeoutHelp: String {
-        let globalQueryTimeoutSeconds = settingsManager.general.queryTimeoutSeconds
-        guard globalQueryTimeoutSeconds > 0 else {
-            return String(localized: """
-                Leave blank to use the global setting, which has no limit. \
-                This setting applies only to database drivers that support it.
-                """)
+    nonisolated static func queryTimeoutInheritance(
+        globalSeconds: Int,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        let seconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: nil,
+            globalSeconds: globalSeconds
+        )
+        guard seconds > 0 else {
+            return String(localized: "Leave blank to use Settings > Connections: no limit.")
         }
-        return String(
-            format: String(localized: """
-                Leave blank to use the global %d-second timeout. \
-                This setting applies only to database drivers that support it.
-                """),
-            globalQueryTimeoutSeconds
+        let duration = Duration.seconds(seconds).formatted(
+            .units(allowed: [.hours, .minutes, .seconds], width: .wide).locale(locale)
         )
+        return String(format: String(localized: "Leave blank to use Settings > Connections: %@."), duration)
     }
-
-    // MARK: - Binary values
 
     @ViewBuilder
     private var binaryValuesSection: some View {
@@ -179,8 +179,6 @@ struct OptionsPaneView: View {
         String(format: String(localized: "Default (%d)"), UnloadedValuePlan.defaultInlineByteLimit / 1_024)
     }
 
-    // MARK: - Autocomplete
-
     @ViewBuilder
     private var completionSection: some View {
         if databaseType.identifierRules != nil {
@@ -217,8 +215,6 @@ struct OptionsPaneView: View {
         }
     }
 
-    // MARK: - Driver options
-
     @ViewBuilder
     private var driverSection: some View {
         let fields = coordinator.advanced.advancedFields
@@ -246,8 +242,6 @@ struct OptionsPaneView: View {
         )
     }
 
-    // MARK: - Attached Databases
-
     @ViewBuilder
     private var attachedDatabasesSection: some View {
         if let field = coordinator.advanced.attachedDatabaseListField {
@@ -263,8 +257,6 @@ struct OptionsPaneView: View {
         }
     }
 
-    // MARK: - Extensions
-
     @ViewBuilder
     private var extensionsSection: some View {
         if let field = coordinator.advanced.extensionListField {
@@ -279,8 +271,6 @@ struct OptionsPaneView: View {
             }
         }
     }
-
-    // MARK: - Startup
 
     private var startupSection: some View {
         Section {
@@ -349,22 +339,21 @@ struct OptionsPaneView: View {
         String(format: String(localized: "Default (%d)"), ConnectionScriptRunner.defaultTimeoutSeconds)
     }
 
-    // MARK: - Safety
-
     private var safetySection: some View {
         Section {
             safeModeRow
             Toggle(String(localized: "Manual Commit"), isOn: $coordinator.effectiveManualCommit)
                 .disabled(!coordinator.isManualCommitAvailable)
-            if aiIsEnabled {
-                Picker(String(localized: "AI Policy"), selection: $coordinator.advanced.aiPolicy) {
-                    Text(String(localized: "Use Default"))
-                        .tag(AIConnectionPolicy?.none as AIConnectionPolicy?)
-                    ForEach(AIConnectionPolicy.allCases) { policy in
-                        Text(policy.displayName)
-                            .tag(AIConnectionPolicy?.some(policy) as AIConnectionPolicy?)
-                    }
+            // MCP enforces the policy whether or not AI features are on, so it stays editable.
+            Picker(String(localized: "AI Policy"), selection: $coordinator.advanced.aiPolicy) {
+                Text(String(localized: "Use Default"))
+                    .tag(AIConnectionPolicy?.none as AIConnectionPolicy?)
+                ForEach(AIConnectionPolicy.allCases) { policy in
+                    Text(policy.displayName)
+                        .tag(AIConnectionPolicy?.some(policy) as AIConnectionPolicy?)
                 }
+            }
+            if aiIsEnabled {
                 ForEach(coordinator.advanced.aiAlwaysAllowedTools, id: \.self) { tool in
                     alwaysAllowedRow(tool)
                 }
@@ -420,15 +409,10 @@ struct OptionsPaneView: View {
             } else {
                 Text(ManualCommit.unavailableExplanation)
             }
-            if aiIsEnabled {
-                // swiftlint:disable:next line_length
-                Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
-                if !coordinator.advanced.aiAlwaysAllowedTools.isEmpty {
-                    Text(String(localized: "Always Allow on an assistant tool card adds the tool here. Forget makes its next call ask again."))
-                }
-            } else {
-                // swiftlint:disable:next line_length
-                Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope."))
+            // swiftlint:disable:next line_length
+            Text(String(localized: "AI Policy applies to AI features and MCP clients. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
+            if aiIsEnabled, !coordinator.advanced.aiAlwaysAllowedTools.isEmpty {
+                Text(String(localized: "Always Allow on an assistant tool card adds the tool here. Forget makes its next call ask again."))
             }
             if coordinator.advanced.externalAccess == .readOnly {
                 Text(
@@ -443,8 +427,6 @@ struct OptionsPaneView: View {
         .foregroundStyle(.secondary)
     }
 
-    // MARK: - AI rules
-
     private var aiRulesSection: some View {
         Section {
             StartupCommandsEditor(text: $coordinator.aiRules.rules, style: .plain)
@@ -457,8 +439,6 @@ struct OptionsPaneView: View {
                 .foregroundStyle(.secondary)
         }
     }
-
-    // MARK: - Sync
 
     private var syncSection: some View {
         Section {
@@ -478,7 +458,7 @@ struct OptionsPaneView: View {
     }
 }
 
-/// Columns whose values TablePro hides, for this connection, in the grid, exports, the assistant and MCP.
+// Columns whose values TablePro hides, for this connection, in the grid, exports, the assistant and MCP.
 private struct MaskingRulesSection: View {
     @ObservedObject var model: MaskingRulesPaneViewModel
 

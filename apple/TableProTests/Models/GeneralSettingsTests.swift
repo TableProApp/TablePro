@@ -29,12 +29,11 @@ struct AppLanguageTests {
         #expect(try JSONDecoder().decode(GeneralSettings.self, from: data).language == .french)
     }
 
-    /// The picker writes the choice to `AppleLanguages`, and a language the catalog does not carry
-    /// silently falls back to English, so offering one is a promise only the catalog can keep.
+    // A language the catalog does not carry falls back to English after the picker writes AppleLanguages.
     @Test("Every language the picker offers is translated in the app's catalog")
     func everyOfferedLanguageShipsInTheCatalog() throws {
         let catalog = try Self.catalogStrings()
-        let languageLabel = try #require(catalog["Language:"]?["localizations"] as? [String: Any])
+        let languageLabel = try #require(catalog["Language"]?["localizations"] as? [String: Any])
 
         for language in AppLanguage.allCases where language != .system && language != .english {
             #expect(languageLabel[language.rawValue] != nil, "\(language.rawValue) is offered but not translated")

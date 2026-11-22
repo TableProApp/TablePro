@@ -1,8 +1,3 @@
-//
-//  SSHProfileStorage.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import TableProSyncTransport
@@ -25,9 +20,7 @@ final class SSHProfileStorage {
     private let syncTracker: SyncChangeTracker
     private(set) var lastLoadFailed = false
 
-    /// The keychain arrives through `AppStorageEnvironment` rather than as `KeychainHelper.shared`,
-    /// so a sandboxed run keeps its profile secrets inside the sandbox instead of writing them to
-    /// the real login keychain, exactly as `ConnectionStorage` already does.
+    // The Keychain comes from AppStorageEnvironment, so a sandboxed run keeps profile secrets inside the sandbox.
     init(
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
@@ -39,8 +32,6 @@ final class SSHProfileStorage {
         self.syncTracker = syncTracker
         self.connectionStorageProvider = connectionStorage
     }
-
-    // MARK: - Profile CRUD
 
     func loadProfiles() -> [SSHProfile] {
         guard let data = defaults.data(forKey: profilesKey) else {
@@ -59,8 +50,7 @@ final class SSHProfileStorage {
         }
     }
 
-    /// Returns `false` when nothing reached disk, so a caller that also writes keychain items or
-    /// tombstones can abort instead of stranding them against a profile that was never persisted.
+    // False when nothing reached disk, so a caller that also writes Keychain items or tombstones can stop.
     @discardableResult
     func saveProfiles(_ profiles: [SSHProfile]) -> Bool {
         let previous = loadProfiles()
@@ -90,6 +80,10 @@ final class SSHProfileStorage {
     func addProfile(_ profile: SSHProfile) -> Bool {
         var profiles = loadProfiles()
         guard !lastLoadFailed else { return false }
+        guard !profiles.contains(where: { $0.id == profile.id }) else {
+            Self.logger.error("Refusing to add SSH profile \(profile.id.uuidString, privacy: .public): the id is taken")
+            return false
+        }
         profiles.append(profile)
         return saveProfiles(profiles)
     }
@@ -101,9 +95,7 @@ final class SSHProfileStorage {
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return false }
         profiles[index] = profile
         guard saveProfiles(profiles) else { return false }
-        /// Best effort, and deliberately not part of the result. The profile is the source of
-        /// truth and it is saved; a connection whose snapshot could not be rewritten is still
-        /// resolved against the profile by `refreshingLinkedProfile` at connect time.
+        // Best effort: a connection whose snapshot was not rewritten is resolved against the profile at connect time.
         if !refreshLinkedConnections(with: profile) {
             Self.logger.error("Saved SSH profile \(profile.id.uuidString, privacy: .public) but could not update the connections linked to it")
         }
@@ -114,8 +106,10 @@ final class SSHProfileStorage {
     func deleteProfile(_ profile: SSHProfile) -> Bool {
         var profiles = loadProfiles()
         guard !lastLoadFailed else { return false }
+        // The stored record, not the caller's copy: unlinking writes its configuration into every linked connection.
+        let current = profiles.first { $0.id == profile.id } ?? profile
         profiles.removeAll { $0.id == profile.id }
-        guard unlinkConnections(fromProfile: profile) else { return false }
+        guard unlinkConnections(fromProfile: current) else { return false }
         guard saveProfiles(profiles) else { return false }
         syncTracker.markDeleted(.sshProfile, id: profile.id.uuidString)
 
@@ -127,14 +121,7 @@ final class SSHProfileStorage {
         loadProfiles().first { $0.id == id }
     }
 
-    // MARK: - Linked Connections
-
-    /// Writes an edited profile's configuration into every connection that links to it.
-    ///
-    /// A linked connection stores `.profile(id:snapshot:)`, and that snapshot is what
-    /// `resolvedSSHConfig` hands to the tunnel, the URL formatter, the display strings and the
-    /// stage labels. Only the secrets were ever resolved live, so changing a profile's host left
-    /// every already-linked connection tunnelling to the old one while sending the new password.
+    // A linked connection tunnels through its stored snapshot, so an edited profile has to be written into each one.
     @discardableResult
     func refreshLinkedConnections(with profile: SSHProfile, byUser: Bool = true) -> Bool {
         let storage = connectionStorageProvider()
@@ -148,11 +135,7 @@ final class SSHProfileStorage {
         }
     }
 
-    /// The connection as it would be if the fan-out above had already run for it.
-    ///
-    /// The fan-out covers an edit made here. This covers the window before one has run: a profile
-    /// edited on another Mac and synced down, or a connection whose store could not be written.
-    /// Connecting is the moment the answer has to be right, so it asks the profile directly.
+    // Covers a profile edited on another Mac, or a fan-out that could not be written, at the moment it matters.
     func refreshingLinkedProfile(_ connection: DatabaseConnection) -> DatabaseConnection {
         guard case .profile(let profileId, _) = connection.sshTunnelMode,
               let profile = profile(for: profileId)
@@ -160,19 +143,15 @@ final class SSHProfileStorage {
         return profile.applied(to: connection)
     }
 
-    /// Turns every connection pointing at a profile that is going away into an inline tunnel
-    /// carrying the same configuration, so a delete never leaves a connection addressing a profile
-    /// id that no longer resolves.
-    ///
-    /// The configuration comes from the profile as it stands now, never from the connection's
-    /// stored snapshot: a snapshot the fan-out never reached is stale, and converting that one
-    /// while handing over the profile's current password would send new credentials to the old
-    /// server. Returns false without changing anything when the secrets cannot be moved, because a
-    /// connection converted without them cannot authenticate and there is nothing left to recover
-    /// them from once the profile is deleted.
+    // The tunnel comes from the profile as it stands, never a stale snapshot, or new credentials reach the old server.
     @discardableResult
     func unlinkConnections(fromProfile profile: SSHProfile) -> Bool {
         let storage = connectionStorageProvider()
+        // An unreadable library may hold connections that use this profile, and they would be left pointing at nothing.
+        guard !storage.isLibraryUnreadable else {
+            Self.logger.error("Refusing to unlink from SSH profile \(profile.id.uuidString, privacy: .public): the connections could not be read")
+            return false
+        }
         let linked = storage.loadConnections().filter { $0.isLinked(toSSHProfile: profile.id) }
         guard !linked.isEmpty else { return true }
 
@@ -194,10 +173,7 @@ final class SSHProfileStorage {
             connection.sshProfileId = nil
         }
 
-        /// The copies go back if the conversion did not land. A connection still in profile mode
-        /// reads its secrets from the profile, so the copy would sit in its inline namespace with
-        /// nothing reading it. Deleting is safe there because the form already clears that
-        /// namespace on every save a profile-linked connection makes.
+        // A connection still in profile mode never reads its inline namespace, so the copies go back.
         if !converted {
             for connection in linked {
                 storage.deleteSSHPassword(for: connection.id)
@@ -208,8 +184,6 @@ final class SSHProfileStorage {
         return converted
     }
 
-    /// A profile's secrets on their way into a connection's own keychain namespace, which is where
-    /// an inline tunnel reads them from.
     private struct ProfileSecrets {
         let password: String?
         let keyPassphrase: String?
@@ -224,100 +198,92 @@ final class SSHProfileStorage {
         }
     }
 
-    private enum SecretRead {
-        case readable(String?)
-        case unreadable
-    }
-
-    /// Nil when any of the three could not be read. A profile that simply has none reads as three
-    /// nils, which is correct for agent and keyless authentication.
+    // Nil when any of the three could not be read; agent and keyless profiles read as three nils.
     private func readSecrets(for profileId: UUID) -> ProfileSecrets? {
-        guard case .readable(let password) = readSecret(Self.passwordKey(profileId)),
-              case .readable(let keyPassphrase) = readSecret(Self.passphraseKey(profileId)),
-              case .readable(let totpSecret) = readSecret(Self.totpKey(profileId))
-        else { return nil }
-        return ProfileSecrets(password: password, keyPassphrase: keyPassphrase, totpSecret: totpSecret)
-    }
-
-    private func readSecret(_ key: String) -> SecretRead {
-        switch keychain.readStringResult(forKey: key) {
-        case .found(let value):
-            return .readable(value.isEmpty ? nil : value)
-        case .notFound:
-            return .readable(nil)
-        case .locked, .userCancelled, .authFailed, .error:
-            return .unreadable
+        var values: [SSHSecret: String] = [:]
+        for secret in SSHSecret.allCases {
+            switch readSecret(secret, for: profileId) {
+            case .found(let value): values[secret] = value
+            case .absent: break
+            case .unreadable: return nil
+            }
         }
-    }
-
-    /// Every keychain item this type writes, removed together. A key written here and missing from
-    /// this list is a secret that outlives its owner with nothing left that can name it.
-    func deleteSecrets(for profileId: UUID) {
-        deleteSSHPassword(for: profileId)
-        deleteKeyPassphrase(for: profileId)
-        deleteTOTPSecret(for: profileId)
-    }
-
-    // MARK: - SSH Password Storage
-
-    func saveSSHPassword(_ password: String, for profileId: UUID) {
-        keychain.writeString(password, forKey: Self.passwordKey(profileId))
-    }
-
-    func loadSSHPassword(for profileId: UUID) -> String? {
-        resolveString(label: "SSH profile password", profileId: profileId, forKey: Self.passwordKey(profileId))
-    }
-
-    func deleteSSHPassword(for profileId: UUID) {
-        keychain.delete(forKey: Self.passwordKey(profileId))
-    }
-
-    // MARK: - Key Passphrase Storage
-
-    func saveKeyPassphrase(_ passphrase: String, for profileId: UUID) {
-        keychain.writeString(passphrase, forKey: Self.passphraseKey(profileId))
-    }
-
-    func loadKeyPassphrase(for profileId: UUID) -> String? {
-        resolveString(
-            label: "SSH profile key passphrase",
-            profileId: profileId,
-            forKey: Self.passphraseKey(profileId)
+        return ProfileSecrets(
+            password: values[.password],
+            keyPassphrase: values[.keyPassphrase],
+            totpSecret: values[.totpSecret]
         )
     }
 
-    func deleteKeyPassphrase(for profileId: UUID) {
-        keychain.delete(forKey: Self.passphraseKey(profileId))
+    // Every Keychain item this type writes. A key missing here outlives its profile with nothing left to name it.
+    func deleteSecrets(for profileId: UUID) {
+        for secret in SSHSecret.allCases {
+            deleteSecret(secret, for: profileId)
+        }
     }
 
-    // MARK: - TOTP Secret Storage
+    func readSecret(_ secret: SSHSecret, for profileId: UUID) -> ProfileSecretRead {
+        ProfileSecretRead(keychain.readStringResult(forKey: Self.key(secret, profileId)))
+    }
 
-    func saveTOTPSecret(_ secret: String, for profileId: UUID) {
-        keychain.writeString(secret, forKey: Self.totpKey(profileId))
+    @discardableResult
+    func saveSecret(_ value: String, _ secret: SSHSecret, for profileId: UUID) -> Bool {
+        keychain.writeString(value, forKey: Self.key(secret, profileId))
+    }
+
+    func deleteSecret(_ secret: SSHSecret, for profileId: UUID) {
+        keychain.delete(forKey: Self.key(secret, profileId))
+    }
+
+    @discardableResult
+    func saveSSHPassword(_ password: String, for profileId: UUID) -> Bool {
+        saveSecret(password, .password, for: profileId)
+    }
+
+    func loadSSHPassword(for profileId: UUID) -> String? {
+        resolveString(label: "SSH profile password", profileId: profileId, secret: .password)
+    }
+
+    func deleteSSHPassword(for profileId: UUID) {
+        deleteSecret(.password, for: profileId)
+    }
+
+    @discardableResult
+    func saveKeyPassphrase(_ passphrase: String, for profileId: UUID) -> Bool {
+        saveSecret(passphrase, .keyPassphrase, for: profileId)
+    }
+
+    func loadKeyPassphrase(for profileId: UUID) -> String? {
+        resolveString(label: "SSH profile key passphrase", profileId: profileId, secret: .keyPassphrase)
+    }
+
+    func deleteKeyPassphrase(for profileId: UUID) {
+        deleteSecret(.keyPassphrase, for: profileId)
+    }
+
+    @discardableResult
+    func saveTOTPSecret(_ secret: String, for profileId: UUID) -> Bool {
+        saveSecret(secret, .totpSecret, for: profileId)
     }
 
     func loadTOTPSecret(for profileId: UUID) -> String? {
-        resolveString(label: "SSH profile TOTP secret", profileId: profileId, forKey: Self.totpKey(profileId))
+        resolveString(label: "SSH profile TOTP secret", profileId: profileId, secret: .totpSecret)
     }
 
     func deleteTOTPSecret(for profileId: UUID) {
-        keychain.delete(forKey: Self.totpKey(profileId))
+        deleteSecret(.totpSecret, for: profileId)
     }
 
-    private static func passwordKey(_ profileId: UUID) -> String {
-        "com.TablePro.sshprofile.password.\(profileId.uuidString)"
+    private static func key(_ secret: SSHSecret, _ profileId: UUID) -> String {
+        switch secret {
+        case .password: "com.TablePro.sshprofile.password.\(profileId.uuidString)"
+        case .keyPassphrase: "com.TablePro.sshprofile.keypassphrase.\(profileId.uuidString)"
+        case .totpSecret: "com.TablePro.sshprofile.totpsecret.\(profileId.uuidString)"
+        }
     }
 
-    private static func passphraseKey(_ profileId: UUID) -> String {
-        "com.TablePro.sshprofile.keypassphrase.\(profileId.uuidString)"
-    }
-
-    private static func totpKey(_ profileId: UUID) -> String {
-        "com.TablePro.sshprofile.totpsecret.\(profileId.uuidString)"
-    }
-
-    private func resolveString(label: String, profileId: UUID, forKey key: String) -> String? {
-        keychain.readStringResult(forKey: key)
+    private func resolveString(label: String, profileId: UUID, secret: SSHSecret) -> String? {
+        keychain.readStringResult(forKey: Self.key(secret, profileId))
             .value(label: "\(label) (profileId=\(profileId.uuidString))", logger: Self.logger)
     }
 }

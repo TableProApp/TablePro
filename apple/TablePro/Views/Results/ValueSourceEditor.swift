@@ -1,14 +1,9 @@
-//
-//  ValueSourceEditor.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 
 internal struct ValueSourceEditor: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var dataGridSettings = AppSettingsManager.shared.dataGridSlice
     @Binding var text: String
     var isEditable: Bool
     var textContainerInset = NSSize(width: 4, height: 6)
@@ -20,7 +15,7 @@ internal struct ValueSourceEditor: View {
             font: themeEngine.valueFont,
             textContainerInset: textContainerInset,
             style: .code,
-            marksInvisibleCharacters: settingsManager.dataGrid.showInvisibleCharacters
+            marksInvisibleCharacters: dataGridSettings.value.showInvisibleCharacters
         )
     }
 }

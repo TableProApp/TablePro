@@ -105,7 +105,7 @@ final class PluginManager: ObservableObject {
     private var lazyExportURLs: [String: URL] = [:]
     private var lazyImportURLs: [String: URL] = [:]
     private var activatedBundleIds: Set<String> = []
-    /// Bundles a connect already took through the load gate and loaded off the main actor.
+    // Bundles already taken through the load gate off the main actor, so activation skips a second check.
     private var gatedBundleURLs: Set<URL> = []
 
     internal var registryUpdateTask: Task<Void, Never>?
@@ -151,8 +151,6 @@ final class PluginManager: ObservableObject {
             .appendingPathComponent("TablePro/Plugins", isDirectory: true)
     }
 
-    // MARK: - Registry Metadata
-
     struct RegistryMetadata: Codable {
         let pluginId: String
     }
@@ -189,8 +187,6 @@ final class PluginManager: ObservableObject {
             Self.logger.error("Failed to remove registry metadata at \(url.lastPathComponent): \(error.localizedDescription)")
         }
     }
-
-    // MARK: - Loading
 
     func loadPlugins() {
         hasStartedInitialLoad = true
@@ -259,8 +255,6 @@ final class PluginManager: ObservableObject {
         }
     }
 
-    // MARK: - Lazy Plugin Activation
-
     private func registerLazyManifest(at url: URL, source: PluginSource, manifest: PluginManifest) {
         guard let bundle = Bundle(url: url) else { return }
         let bundleId = manifest.bundleId
@@ -278,6 +272,8 @@ final class PluginManager: ObservableObject {
         let info = bundle.infoDictionary ?? [:]
         let version = (info["CFBundleShortVersionString"] as? String) ?? "0.0.0"
         let displayName = registrySnapshot?.displayName
+            ?? Self.declaredDisplayName(in: info)
+            ?? Self.formatDisplayName(manifest: manifest)
             ?? bundleId.split(separator: ".").last.map(String.init)
             ?? bundleId
         let pluginIconName = Self.iconName(forPrimaryTypeId: primaryTypeId)
@@ -319,8 +315,28 @@ final class PluginManager: ObservableObject {
         typeId.flatMap { PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: $0)?.iconName } ?? "puzzlepiece"
     }
 
-    /// Takes back everything `registerLazyManifest` published for this bundle, so a plugin the app
-    /// would refuse to activate stops being offered as an installed one.
+    // check-plugin-provides.py stamps pluginName here, so a plugin is named before its code loads.
+    nonisolated static func declaredDisplayName(in info: [String: Any]) -> String? {
+        guard let name = info["CFBundleDisplayName"] as? String else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    nonisolated static func formatDisplayName(manifest: PluginManifest) -> String? {
+        if let formatId = manifest.providedExportFormatIds.first {
+            return String(format: String(localized: "%@ Export"), formatId.uppercased())
+        }
+        if let formatId = manifest.providedImportFormatIds.first {
+            return String(format: String(localized: "%@ Import"), formatId.uppercased())
+        }
+        return nil
+    }
+
+    nonisolated static func rejectedDisplayName(at url: URL) -> String {
+        declaredDisplayName(in: infoPlist(at: url)) ?? url.deletingPathExtension().lastPathComponent
+    }
+
+    // A plugin the app would refuse to activate stops being offered as an installed one.
     internal func withdrawPlugin(at url: URL, reason: Error) {
         let manifest = Bundle(url: url).flatMap { PluginManifest(bundle: $0) }
 
@@ -328,7 +344,7 @@ final class PluginManager: ObservableObject {
         rebuildLazyRegistrations()
 
         guard !rejectedPlugins.contains(where: { $0.url == url }) else { return }
-        let name = manifest?.bundleId ?? url.deletingPathExtension().lastPathComponent
+        let name = Self.declaredDisplayName(in: Self.infoPlist(at: url)) ?? manifest?.bundleId ?? url.deletingPathExtension().lastPathComponent
         let registryId = Self.readRegistryMetadata(for: url)?.pluginId
         rejectedPlugins.append(RejectedPlugin(
             url: url,
@@ -341,12 +357,9 @@ final class PluginManager: ObservableObject {
         ))
     }
 
-    /// Rebuilt from the surviving manifests rather than filtered by URL.
-    ///
-    /// Two bundles may declare the same driver or format key, and the one registered
-    /// last owns it. Deleting the withdrawn bundle's keys would take the shared key with it and
-    /// leave the valid plugin listed but unreachable for the rest of the process.
-    private func rebuildLazyRegistrations() {
+    // Rebuilt rather than filtered by URL: two bundles may declare one key, and dropping the removed one's
+    // keys would leave the other listed but unreachable for the rest of the process.
+    internal func rebuildLazyRegistrations() {
         lazyDriverURLs = [:]
         gatedBundleURLs = []
         lazyExportURLs = [:]
@@ -394,17 +407,36 @@ final class PluginManager: ObservableObject {
         Array(lazyImportURLs.keys)
     }
 
-    // The signature check and dlopen of a driver plugin hold the thread for hundreds of milliseconds the
-    // first time a launch reads its file, so a connect does both here and leaves only registration to main.
+    // The signature check and dlopen of a plugin hold the thread for hundreds of milliseconds the first time
+    // a launch reads its file, so a connect or a Settings page does both here and leaves only registration to main.
     func loadLazyDriverExecutable(typeId: String) async {
         guard driverPlugins[typeId] == nil, let url = lazyDriverURLs[typeId], !gatedBundleURLs.contains(url) else { return }
+        guard await loadLazyBundleExecutable(at: url) else { return }
+        gatedBundleURLs.insert(url)
+    }
+
+    // Only a driver load records the gate (plugin_gated_bundle_insert), so activation checks a format again,
+    // but the dlopen has already happened here.
+    func loadLazyExportExecutable(formatId: String) async {
+        guard exportPlugins[formatId] == nil, let url = lazyExportURLs[formatId] else { return }
+        await loadLazyBundleExecutable(at: url)
+    }
+
+    func loadLazyImportExecutable(formatId: String) async {
+        guard importPlugins[formatId] == nil, let url = lazyImportURLs[formatId] else { return }
+        await loadLazyBundleExecutable(at: url)
+    }
+
+    @discardableResult
+    private func loadLazyBundleExecutable(at url: URL) async -> Bool {
         let source = plugins.first(where: { $0.url == url })?.source ?? .userInstalled
         do {
             _ = try await Self.validateAndLoadBundleAsync(at: url, source: source)
-            gatedBundleURLs.insert(url)
+            return true
         } catch {
             // Activation runs the gate again on the main actor and records the rejection there.
-            Self.logger.error("Loading driver plugin '\(url.lastPathComponent)' ahead of activation failed: \(error.localizedDescription)")
+            Self.logger.error("Loading plugin '\(url.lastPathComponent)' ahead of activation failed: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -569,7 +601,7 @@ final class PluginManager: ObservableObject {
                 url: failure.url,
                 bundleId: bundle?.bundleIdentifier,
                 registryId: registryId,
-                name: failure.url.deletingPathExtension().lastPathComponent,
+                name: Self.rejectedDisplayName(at: failure.url),
                 reason: failure.reason,
                 isOutdated: false,
                 providedDatabaseTypeIds: Self.databaseTypeIds(of: bundle, registryId: registryId)
@@ -670,7 +702,7 @@ final class PluginManager: ObservableObject {
                         url: winner.url,
                         bundleId: bundle?.bundleIdentifier,
                         registryId: registryId,
-                        name: winner.url.deletingPathExtension().lastPathComponent,
+                        name: Self.rejectedDisplayName(at: winner.url),
                         reason: error.localizedDescription,
                         isOutdated: (error as? PluginError)?.isOutdated ?? false,
                         providedDatabaseTypeIds: Self.databaseTypeIds(of: bundle, registryId: registryId)
