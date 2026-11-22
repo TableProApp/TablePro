@@ -14,12 +14,23 @@ internal enum ThemeLibraryItem: Hashable, Sendable {
 @MainActor
 internal protocol ThemeSelectionStore: AnyObject {
     var themeSelection: AppearanceSettings { get set }
+    var themeSelectionWillChange: AnyPublisher<Void, Never> { get }
+}
+
+extension ThemeSelectionStore {
+    internal var themeSelectionWillChange: AnyPublisher<Void, Never> {
+        Empty().eraseToAnyPublisher()
+    }
 }
 
 extension AppSettingsManager: ThemeSelectionStore {
     internal var themeSelection: AppearanceSettings {
-        get { appearance }
-        set { appearance = newValue }
+        get { appearanceSlice.value }
+        set { appearanceSlice.value = newValue }
+    }
+
+    internal var themeSelectionWillChange: AnyPublisher<Void, Never> {
+        appearanceSlice.objectWillChange.eraseToAnyPublisher()
     }
 }
 
@@ -63,8 +74,7 @@ internal struct ThemeImportReport: Equatable {
     internal var imported: [ThemeDefinition] = []
     internal var failures: [ThemeImportFailure] = []
 
-    /// A clean import needs no alert: the new row is selected. Anything else is one alert for the
-    /// whole drop, so ten files never mean ten alerts.
+    // One alert for a whole drop, and none for a clean one: the new row is selected.
     internal var alert: ThemeLibraryAlert? {
         guard !failures.isEmpty else { return nil }
         let lines = failures.map {
@@ -76,13 +86,50 @@ internal struct ThemeImportReport: Equatable {
                 message: only.reason
             )
         }
-        let title: String
-        switch imported.count {
-        case 0: title = String(localized: "No Themes Imported")
-        case 1: title = String(localized: "Imported 1 theme.")
-        default: title = String(format: String(localized: "Imported %d themes."), imported.count)
-        }
+        let title = imported.isEmpty
+            ? String(localized: "No Themes Imported")
+            : String(format: String(localized: "Imported %lld Themes"), imported.count)
         return ThemeLibraryAlert(title: title, message: lines.joined(separator: "\n"))
+    }
+}
+
+internal enum ThemeLibraryAction: Hashable, Sendable {
+    case edit
+    case showInEditor
+    case duplicate
+    case rename
+    case export
+    case use(ThemeAppearance)
+    case showInFinder
+    case tryAgain
+    case moveToTrash
+
+    internal var title: String {
+        switch self {
+        case .edit: return String(localized: "Edit…")
+        case .showInEditor: return String(localized: "Show in Theme Editor")
+        case .duplicate: return String(localized: "Duplicate")
+        case .rename: return String(localized: "Rename")
+        case .export: return String(localized: "Export…")
+        case .use(.light): return String(localized: "Use for Light Appearance")
+        case .use(.dark): return String(localized: "Use for Dark Appearance")
+        case .showInFinder: return String(localized: "Show in Finder")
+        case .tryAgain: return String(localized: "Try Again")
+        case .moveToTrash: return String(localized: "Move to Trash")
+        }
+    }
+}
+
+internal struct ThemeLibraryMenuEntry: Hashable, Sendable {
+    internal let action: ThemeLibraryAction
+    internal let isEnabled: Bool
+    // A separator goes before it when anything shows above it.
+    internal let startsGroup: Bool
+
+    internal init(_ action: ThemeLibraryAction, isEnabled: Bool, startsGroup: Bool = false) {
+        self.action = action
+        self.isEnabled = isEnabled
+        self.startsGroup = startsGroup
     }
 }
 
@@ -105,19 +152,22 @@ internal struct ThemeFileDocument: FileDocument {
     }
 }
 
-/// Every action of the Appearance pane's theme list. Views call it and show what it publishes; it
-/// never reaches the engine, which follows the catalog by itself. An action on a theme whose editor
-/// is open goes through that editor, so the window and the list cannot write over each other.
+// Never reaches the engine, which follows the catalog itself. An action on a theme whose editor is
+// open goes through that editor, so the window and the list cannot write over each other.
 @MainActor
 internal final class ThemeLibraryModel: ObservableObject {
     @Published internal var alert: ThemeLibraryAlert?
+
+    // The Settings window sets this. It shows an alert raised while the Manage Themes page is off
+    // screen, an undo from another page for one, and returns true; false leaves it to the page.
+    internal var presentOffPage: (@MainActor (ThemeLibraryAlert) -> Bool)?
 
     internal let catalog: ThemeCatalog
     private let selection: ThemeSelectionStore
     private let editors: ThemeEditorPresenting
     private let revealInFinder: @MainActor ([URL]) -> Void
     private let dragDirectory: URL
-    private var catalogCancellable: AnyCancellable?
+    private var cancellables: Set<AnyCancellable> = []
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeLibrary")
 
@@ -134,12 +184,14 @@ internal final class ThemeLibraryModel: ObservableObject {
         self.editors = editors
         self.dragDirectory = dragDirectory
         self.revealInFinder = revealInFinder
-        catalogCancellable = catalog.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
-        }
+        catalog.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        // The in-use subtitles follow the slots, which sync and the theme editor also write.
+        selection.themeSelectionWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
-
-    // MARK: - Contents
 
     internal var builtInThemes: [ThemeDefinition] {
         catalog.themes.filter(\.isBuiltIn)
@@ -168,13 +220,28 @@ internal final class ThemeLibraryModel: ObservableObject {
         return record(for: item) != nil
     }
 
-    /// The slot a theme can still be chosen for, or nil when it is already the choice there.
+    internal func hasFile(_ item: ThemeLibraryItem?) -> Bool {
+        if case let .theme(id) = item { return catalog.fileURL(for: id) != nil }
+        return record(for: item) != nil
+    }
+
+    // The slot a theme can still be chosen for, or nil when it is already the choice there.
     internal func availableSlot(for theme: ThemeDefinition) -> ThemeAppearance? {
         let current = selection.themeSelection
         switch theme.appearance {
         case .light: return current.preferredLightThemeId == theme.id ? nil : .light
         case .dark: return current.preferredDarkThemeId == theme.id ? nil : .dark
         }
+    }
+
+    // The themes the windows draw with, resolved as the pop-ups resolve them.
+    internal var inUseThemeIds: Set<String> {
+        let current = selection.themeSelection
+        let themes = catalog.themes
+        return [
+            ThemeSlotChoice(slot: .light, savedId: current.preferredLightThemeId, themes: themes).selectedId,
+            ThemeSlotChoice(slot: .dark, savedId: current.preferredDarkThemeId, themes: themes).selectedId,
+        ]
     }
 
     internal static func appearanceLabel(_ appearance: ThemeAppearance) -> String {
@@ -184,8 +251,40 @@ internal final class ThemeLibraryModel: ObservableObject {
         }
     }
 
-    // MARK: - Opening and choosing
+    internal static func rowSubtitle(_ appearance: ThemeAppearance, isInUse: Bool) -> String {
+        guard isInUse else { return appearanceLabel(appearance) }
+        switch appearance {
+        case .light: return String(localized: "Light, in use")
+        case .dark: return String(localized: "Dark, in use")
+        }
+    }
 
+    // One list for the context menu, which leaves out a disabled entry, and the pull-down, which dims it.
+    internal func menuEntries(for item: ThemeLibraryItem?) -> [ThemeLibraryMenuEntry] {
+        if record(for: item) != nil {
+            return [
+                ThemeLibraryMenuEntry(.showInFinder, isEnabled: true),
+                ThemeLibraryMenuEntry(.tryAgain, isEnabled: true),
+                ThemeLibraryMenuEntry(.moveToTrash, isEnabled: true, startsGroup: true),
+            ]
+        }
+        guard let theme = theme(for: item) else {
+            let actions: [ThemeLibraryAction] = [.edit, .duplicate, .rename, .export, .showInFinder]
+            return actions.map { ThemeLibraryMenuEntry($0, isEnabled: false) }
+                + [ThemeLibraryMenuEntry(.moveToTrash, isEnabled: false, startsGroup: true)]
+        }
+        return [
+            ThemeLibraryMenuEntry(theme.isEditable ? .edit : .showInEditor, isEnabled: true),
+            ThemeLibraryMenuEntry(.duplicate, isEnabled: true),
+            ThemeLibraryMenuEntry(.rename, isEnabled: theme.isEditable),
+            ThemeLibraryMenuEntry(.export, isEnabled: true),
+            ThemeLibraryMenuEntry(.use(theme.appearance), isEnabled: availableSlot(for: theme) != nil),
+            ThemeLibraryMenuEntry(.showInFinder, isEnabled: hasFile(item)),
+            ThemeLibraryMenuEntry(.moveToTrash, isEnabled: theme.isEditable, startsGroup: true),
+        ]
+    }
+
+    // A built-in opens read-only, with Duplicate.
     internal func edit(_ id: String) {
         guard catalog.theme(id: id) != nil else { return }
         editors.openEditor(for: id)
@@ -201,14 +300,12 @@ internal final class ThemeLibraryModel: ObservableObject {
         selection.themeSelection = updated
     }
 
-    // MARK: - Creating
-
     @discardableResult
     internal func duplicate(_ id: String, undoManager: UndoManager?) -> ThemeDefinition? {
         makeCopy(of: id, actionName: String(localized: "Duplicate"), undoManager: undoManager)
     }
 
-    /// A theme made to be edited, so its editor opens with it.
+    // A theme made to be edited, so its editor opens with it.
     @discardableResult
     internal func createTheme(basedOn id: String, undoManager: UndoManager?) -> ThemeDefinition? {
         guard let copy = makeCopy(of: id, actionName: String(localized: "New Theme"), undoManager: undoManager) else {
@@ -243,15 +340,13 @@ internal final class ThemeLibraryModel: ObservableObject {
         }
         registerCreation(of: report.imported.map(\.id), actionName: String(localized: "Import"), undoManager: undoManager)
         if let alert = report.alert {
-            self.alert = alert
+            raise(alert)
         }
         return report
     }
 
-    // MARK: - Renaming
-
-    /// The name the rename field starts from: the file's own, not the "Ocean 2" the list shows for
-    /// the second of two "Ocean" themes, so committing it untouched changes nothing.
+    // The file's own name, not the "Ocean 2" the list shows for the second of two "Ocean" themes,
+    // so committing it untouched changes nothing.
     internal func nameForRenaming(_ id: String) -> String? {
         catalog.storedTheme(id: id)?.name
     }
@@ -299,14 +394,12 @@ internal final class ThemeLibraryModel: ObservableObject {
         register(on: undoManager, actionName: String(localized: "Rename")) { model in
             guard let current = model.catalog.storedTheme(id: id)?.name else { return }
             if case let .rejected(reason) = model.applyRename(id, to: name) {
-                model.alert = ThemeLibraryAlert(title: String(localized: "Couldn't Rename the Theme"), message: reason)
+                model.raise(ThemeLibraryAlert(title: String(localized: "Couldn't Rename the Theme"), message: reason))
                 return
             }
             model.registerRename(id, back: current, undoManager: undoManager)
         }
     }
-
-    // MARK: - Export
 
     internal func exportDocument(for id: String) -> ThemeFileDocument? {
         editors.editor(for: id)?.flush()
@@ -322,12 +415,15 @@ internal final class ThemeLibraryModel: ObservableObject {
         return cleaned.isEmpty ? theme.id : cleaned
     }
 
-    /// A copy in a folder of its own rather than the theme's file, because Finder may move a dragged
-    /// file instead of copying it, and a built-in theme has no file.
+    // A copy, because Finder may move a dragged file rather than copy it, and a built-in has no file.
+    // One folder per theme, emptied on each drag, so drags never pile up copies.
     internal func dragExportURL(for id: String) throws -> URL {
         editors.editor(for: id)?.flush()
         guard let theme = catalog.storedTheme(id: id) else { throw CocoaError(.fileNoSuchFile) }
-        let folder = dragDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let folder = dragDirectory.appendingPathComponent(id, isDirectory: true)
+        if FileManager.default.fileExists(atPath: folder.path) {
+            try FileManager.default.removeItem(at: folder)
+        }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let url = folder.appendingPathComponent(Self.exportFileName(for: theme) + ".json", isDirectory: false)
         try ThemeFileFormat.encode(theme).write(to: url, options: .atomic)
@@ -348,26 +444,23 @@ internal final class ThemeLibraryModel: ObservableObject {
         url.standardizedFileURL.path.hasPrefix(dragDirectory.standardizedFileURL.path + "/")
     }
 
-    // MARK: - Finder
-
     internal func revealInFinder(_ item: ThemeLibraryItem?) {
         if case let .theme(id) = item, let url = catalog.fileURL(for: id) {
             revealInFinder([url])
         } else if let record = record(for: item) {
             revealInFinder([URL(fileURLWithPath: record.path)])
-        } else {
-            revealInFinder([catalog.themesDirectory])
         }
+    }
+
+    internal func revealThemesFolder() {
+        revealInFinder([catalog.themesDirectory])
     }
 
     internal func retryLoading() {
         catalog.reloadSynchronously()
     }
 
-    // MARK: - Trash
-
-    /// Asked only when the trash changes what the windows draw. Moving a theme nothing uses is undone
-    /// from the Edit menu, so it needs no alert.
+    // Asked only when the trash changes what the windows draw; any other trash is undone from the Edit menu.
     internal func trashConfirmation(for item: ThemeLibraryItem) -> ThemeTrashConfirmation? {
         guard let theme = theme(for: item), theme.isEditable else { return nil }
         let current = selection.themeSelection
@@ -392,7 +485,7 @@ internal final class ThemeLibraryModel: ObservableObject {
         }
         return ThemeTrashConfirmation(
             item: item,
-            title: String(format: String(localized: "Delete “%@”?"), theme.name),
+            title: String(format: String(localized: "Move “%@” to the Trash?"), theme.name),
             message: message
         )
     }
@@ -458,9 +551,7 @@ internal final class ThemeLibraryModel: ObservableObject {
         }
     }
 
-    // MARK: - Undoing a creation
-
-    /// The way Finder undoes a duplicate: the new file goes to the Trash, and Redo brings it back.
+    // As Finder undoes a duplicate: the new file goes to the Trash, and Redo brings it back.
     private func registerCreation(of ids: [String], actionName: String, undoManager: UndoManager?) {
         guard let undoManager, !ids.isEmpty else { return }
         register(on: undoManager, actionName: actionName) { model in
@@ -497,7 +588,7 @@ internal final class ThemeLibraryModel: ObservableObject {
         registerCreation(of: ids, actionName: actionName, undoManager: undoManager)
     }
 
-    /// A group of its own, so each action is one undo whether or not the manager groups by event.
+    // A group of its own, so each action is one undo whether or not the manager groups by event.
     private func register(
         on undoManager: UndoManager,
         actionName: String,
@@ -513,8 +604,6 @@ internal final class ThemeLibraryModel: ObservableObject {
         undoManager.endUndoGrouping()
     }
 
-    // MARK: - Failures
-
     private func perform<Value>(_ title: String, _ work: () throws -> Value) -> Value? {
         do {
             return try work()
@@ -526,13 +615,17 @@ internal final class ThemeLibraryModel: ObservableObject {
 
     private func fail(_ title: String, _ error: Error) {
         Self.logger.error("Theme action failed: \(error.publicLogShape, privacy: .public)")
-        alert = ThemeLibraryAlert(title: title, message: error.localizedDescription)
+        raise(ThemeLibraryAlert(title: title, message: error.localizedDescription))
+    }
+
+    private func raise(_ alert: ThemeLibraryAlert) {
+        if presentOffPage?(alert) == true { return }
+        self.alert = alert
     }
 }
 
 internal extension AppearanceSettings {
-    /// A slot that held a theme the user just trashed goes back to its built-in, so the popup does
-    /// not then report that theme as missing.
+    // A slot that held a trashed theme goes back to its built-in, so the pop-up does not report it missing.
     func releasing(themeId: String) -> AppearanceSettings {
         var updated = self
         if updated.preferredLightThemeId == themeId {
@@ -544,8 +637,7 @@ internal extension AppearanceSettings {
         return updated
     }
 
-    /// Undo of a trash puts the theme back only into the slots the trash released and nothing has
-    /// chosen since.
+    // Undo of a trash refills only the slots the trash released and nothing has chosen since.
     func reclaiming(themeId: String, from before: AppearanceSettings) -> AppearanceSettings {
         var updated = self
         if before.preferredLightThemeId == themeId, updated.preferredLightThemeId == BuiltInThemes.defaultLightId {

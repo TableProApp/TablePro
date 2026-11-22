@@ -55,8 +55,6 @@ internal struct ThemeEditorView: View {
         }
     }
 
-    // MARK: - Sections
-
     private var builtInSection: some View {
         Section {
             HStack {
@@ -148,8 +146,6 @@ internal struct ThemeEditorView: View {
         )
     }
 
-    // MARK: - Alerts
-
     @ViewBuilder
     private func alertButtons(for alert: ThemeEditorModel.Alert) -> some View {
         switch alert {
@@ -164,15 +160,15 @@ internal struct ThemeEditorView: View {
     }
 }
 
-// Observes the settings itself, so a settings change re-renders this footer and not the editor or its preview.
+// Observes the value colors slice itself, so a change re-renders this footer and not the editor or its preview.
 private struct ThemeValuesSectionFooter: View {
     let contrastNote: String?
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var valueColors = AppSettingsManager.shared.valueColorsSlice
 
     var body: some View {
         let settingNote = ThemeValueColorsNote.message(
             for: .values,
-            colorsValuesByType: settingsManager.valueColors.colorsValuesByType
+            colorsValuesByType: valueColors.value.colorsValuesByType
         )
         if contrastNote != nil || settingNote != nil {
             VStack(alignment: .leading, spacing: 4) {
@@ -206,7 +202,7 @@ internal extension ThemeEditorModel.Alert {
         case .changedOnDisk:
             return String(localized: "It was changed outside TablePro. The editor now shows the newer version.")
         case .unreadableOnDisk:
-            return String(localized: "It was changed outside TablePro and no longer loads. Settings > Appearance lists it under Not Loaded with the reason.")
+            return String(localized: "It was changed outside TablePro and no longer loads. Settings > Appearance > Manage Themes lists it under Couldn't Load with the reason.")
         case .deletedOnDisk:
             return String(localized: "The file was removed outside TablePro, possibly on another Mac.")
         case let .saveFailed(_, reason):

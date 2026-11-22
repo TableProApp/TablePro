@@ -3,40 +3,36 @@ import TableProTheme
 
 internal struct AppearanceSettingsView: View {
     @Binding internal var settings: AppearanceSettings
+    @Binding internal var appearanceMode: AppAppearanceMode
 
     @ObservedObject private var catalog = ThemeCatalog.shared
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
 
     private static let modes: [AppAppearanceMode] = [.auto, .light, .dark]
 
     internal var body: some View {
         Form {
             Section {
-                Picker(String(localized: "Appearance"), selection: $settingsManager.appearanceMode) {
+                Picker(selection: $appearanceMode) {
                     ForEach(Self.modes, id: \.self) { mode in
                         Text(Self.title(for: mode)).tag(mode)
                     }
+                } label: {
+                    Text("Appearance")
+                    Text("Controls, sidebars and Settings follow this. Applies to this Mac.")
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("appearance-mode-picker")
-            } footer: {
-                Text("Applies to this Mac.")
             }
 
-            Section {
+            Section("Themes") {
                 themePicker(ThemeSlotChoice(slot: .light, savedId: settings.preferredLightThemeId, themes: catalog.themes))
                 themePicker(ThemeSlotChoice(slot: .dark, savedId: settings.preferredDarkThemeId, themes: catalog.themes))
-            } footer: {
-                Text("Themes color the editor, the data grid, other content views and the window background. Controls, sidebars and Settings follow the system appearance.")
-            }
-
-            Section {
-                NavigationLink(value: SettingsSubpage.manageThemes) {
-                    Label("Manage Themes", systemImage: "paintpalette")
-                }
+                SettingsDrillRow(route: SettingsRoute.page(.manageThemes), title: SettingsPage.manageThemes.title)
             }
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-pane-appearance")
     }
 
     private static func title(for mode: AppAppearanceMode) -> String {
@@ -65,11 +61,12 @@ internal struct AppearanceSettingsView: View {
                     .accessibilityIdentifier("appearance-\(choice.slot.rawValue)-theme-note")
             }
         }
+        .pickerStyle(.menu)
         .accessibilityIdentifier("appearance-\(choice.slot.rawValue)-theme")
     }
 
-    /// The popup shows the theme in use, but only a pick writes the setting: a saved id this Mac
-    /// cannot resolve stays saved for the Mac that has the theme.
+    // Shows the theme in use, but only a pick writes: a saved id this Mac cannot resolve stays saved
+    // for the Mac that has the theme.
     private func selectionBinding(for choice: ThemeSlotChoice) -> Binding<String> {
         Binding(
             get: { choice.selectedId },
@@ -86,6 +83,6 @@ internal struct AppearanceSettingsView: View {
 }
 
 #Preview {
-    AppearanceSettingsView(settings: .constant(.default))
-        .frame(width: 720, height: 560)
+    AppearanceSettingsView(settings: .constant(.default), appearanceMode: .constant(.auto))
+        .frame(width: 520, height: 480)
 }
