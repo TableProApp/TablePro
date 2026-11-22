@@ -350,6 +350,51 @@ struct ConnectionEditorStoreTests {
         #expect(fixture.storage.loadPassword(for: connection.id) == "first")
     }
 
+    @Test("Local only set elsewhere while the editor is open keeps this Save's password on this Mac")
+    func localOnlySetElsewhereKeepsSecretsOnThisMac() throws {
+        let keychain = ScopeRecordingKeychain()
+        let fixture = try ConnectionEditorStoreFixture(storageKeychain: keychain)
+        let connection = postgres()
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+
+        var elsewhere = try #require(fixture.storage.loadConnection(id: connection.id))
+        elsewhere.localOnly = true
+        fixture.seed([elsewhere])
+
+        store.update { $0.credentials.password = "typed-here" }
+        _ = try store.save().get()
+
+        let key = "com.TablePro.password.\(connection.id.uuidString)"
+        #expect(try #require(fixture.storage.loadConnection(id: connection.id)).localOnly)
+        #expect(keychain.localValue(forKey: key) == "typed-here")
+        #expect(keychain.syncedValue(forKey: key) == nil)
+    }
+
+    @Test("A connection moved to another group is placed after that group's connections")
+    func groupChangeTakesTheNextSortOrder() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let groupId = UUID()
+        var first = postgres(name: "First")
+        first.groupId = groupId
+        first.sortOrder = 0
+        var second = postgres(name: "Second")
+        second.groupId = groupId
+        second.sortOrder = 1
+        let moving = postgres(name: "Moving")
+        fixture.seed([first, second, moving])
+        let expected = ConnectionStorage.nextSortOrder(in: [first, second, moving], groupId: groupId)
+        let store = fixture.makeStore(.edit(connectionId: moving.id))
+
+        store.update { $0.appearance.groupId = groupId }
+        _ = try store.save().get()
+
+        let saved = try #require(fixture.storage.loadConnection(id: moving.id))
+        #expect(saved.groupId == groupId)
+        #expect(saved.sortOrder == expected)
+        #expect(saved.sortOrder > second.sortOrder)
+    }
+
     @Test("A connection deleted elsewhere turns the editor into the missing state")
     func deletionElsewhereShowsMissing() throws {
         let fixture = try ConnectionEditorStoreFixture()

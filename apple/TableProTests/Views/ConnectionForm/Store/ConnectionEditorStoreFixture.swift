@@ -75,13 +75,15 @@ final class ConnectionEditorStoreFixture {
     let envVarApprovals: ConnectionApprovalStore
     let localCredentialApprovals: ConnectionApprovalStore
 
-    init() throws {
+    // `storageKeychain` stands in for `keychain` where a test needs the Keychain's scopes or unreadable items.
+    init(storageKeychain: (any KeychainStoring)? = nil) throws {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-editor-store-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         suite = try EphemeralDefaults()
         let defaults = suite.defaults
-        let keychain = keychain
+        let recording = keychain
+        let keychain: any KeychainStoring = storageKeychain ?? recording
         let events = events
         let storage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),

@@ -104,10 +104,10 @@ extension ConnectionEditorStore {
     // fresh read. Test signs in without consent, so a host or sign-in another writer changed must not reach it.
     func testRecord(testId: UUID) -> DatabaseConnection {
         let edits = ConnectionEditorEngine.edits(draft, traits, originalTraits: originalTraits, context)
-        if let loadedRecord {
-            return edits.applied(to: ConnectionEditorEngine.record(loadedRecord, reassignedTo: testId), since: baselineEdits)
-        }
-        return edits.applied(to: DatabaseConnection(id: testId, name: ""))
+        let merged = loadedRecord.map {
+            edits.applied(to: ConnectionEditorEngine.record($0, reassignedTo: testId), since: baselineEdits)
+        } ?? edits.applied(to: DatabaseConnection(id: testId, name: ""))
+        return enforcingInvariants(merged, use: .test).record
     }
 
     func test() {

@@ -104,6 +104,19 @@ struct SecretWritePlanTests {
         #expect(plan.stagedDeletes.contains(.sshKeyPassphrase))
     }
 
+    @Test("An SSL key passphrase is written only beside a client key, and cleared without one")
+    func sslKeyPassphraseNeedsAClientKey() {
+        let postgres = traits(.postgresql)
+        var draft = ConnectionDraft.new(type: .postgresql, traits: postgres)
+        draft.ssl.clientKeyPassphrase = "key-secret"
+        let withoutKey = plan(draft, postgres)
+        #expect(withoutKey.writes(of: .sslClientKeyPassphrase) == nil)
+        #expect(withoutKey.stagedDeletes.contains(.sslClientKeyPassphrase))
+
+        draft.ssl.clientKeyPath = "/Users/alice/client.key"
+        #expect(plan(draft, postgres).writes(of: .sslClientKeyPassphrase) == "key-secret")
+    }
+
     @Test("A secure field outside Authentication is written like any other")
     func secureFieldInAnySectionIsWritten() {
         var traits = ConnectionTypeTraits(type: DatabaseType(rawValue: "Probe"))

@@ -189,7 +189,7 @@ extension DatabaseConnection {
     }
 }
 
-private extension DatabaseConnection {
+extension DatabaseConnection {
     // SSH sorts first, so it is never one of those turned off.
     mutating func keepOnlyFirstTransport() {
         for kind in switchedOnTransports.dropFirst() {
@@ -202,7 +202,9 @@ private extension DatabaseConnection {
             }
         }
     }
+}
 
+private extension DatabaseConnection {
     mutating func takeTransports(from other: DatabaseConnection) {
         sshConfig = other.sshConfig
         sshProfileId = other.sshProfileId

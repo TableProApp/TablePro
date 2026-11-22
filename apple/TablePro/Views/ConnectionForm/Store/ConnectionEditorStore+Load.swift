@@ -76,7 +76,15 @@ extension ConnectionEditorStore {
         secrets.cloudSQLServiceAccountKey = storage.loadCloudSQLProxyServiceAccountKey(for: id)
         secrets.socksPassword = storage.loadSOCKSProxyPassword(for: id)
         for fieldId in traits.declaredSecureFieldIds {
-            if let value = storage.loadPluginSecureField(fieldId: fieldId, for: id) {
+            var value: String?
+            let reads = storage.recordingSecretReads {
+                value = storage.loadPluginSecureField(fieldId: fieldId, for: id)
+            }
+            // A stored item wins over a plain-text copy an unfinished Keychain migration left, as the migration rules.
+            if (value ?? "").isEmpty, reads.unreadable.isEmpty,
+               let plaintext = record.additionalFields[fieldId], !plaintext.isEmpty {
+                secrets.pluginSecureFields[fieldId] = plaintext
+            } else if let value {
                 secrets.pluginSecureFields[fieldId] = value
             }
         }

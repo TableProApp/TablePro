@@ -172,17 +172,9 @@ enum EditorFilePanel {
         store.window ?? NSApp.keyWindow
     }
 
-    // A sheet wider than its window hangs past both edges. The panel is narrowed first, but no further than its own
-    // minimum, which for an open panel (833 pt with the sidebar on macOS 27, measured) is wider than the 780 pt
-    // editor, so a panel that still does not fit runs app-modal on its own, keeping the editor waiting as a sheet would.
+    // A sheet on the window it serves, also when the panel is wider than the editor, as open and save panels are on macOS.
     static func present(_ panel: NSSavePanel, in window: NSWindow?) async -> NSApplication.ModalResponse {
         guard let window else { return await panel.begin() }
-        let available = window.frame.width
-        if panel.frame.width > available {
-            let height = panel.contentRect(forFrameRect: panel.frame).height
-            panel.setContentSize(NSSize(width: available, height: height))
-        }
-        guard panel.frame.width <= available else { return panel.runModal() }
         return await panel.presentAsSheet(for: window)
     }
 

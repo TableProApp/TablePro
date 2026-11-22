@@ -76,19 +76,21 @@ extension ConnectionEditorStore {
         let edits = ConnectionEditorEngine.edits(saving, traits, originalTraits: originalTraits, context)
         var record: DatabaseConnection
         let reviewed: DatabaseConnection
-        let plan: SecretWritePlan
+        var plan: SecretWritePlan
         if let existingIndex {
             let fresh = connections[existingIndex]
-            record = edits.applied(to: fresh, since: baselineEdits)
+            let merged = enforcingInvariants(edits.applied(to: fresh, since: baselineEdits))
+            record = merged.record
             if fresh.groupId != record.groupId {
                 record.sortOrder = ConnectionStorage.nextSortOrder(in: connections, groupId: record.groupId)
             }
-            reviewed = edits.applied(to: loadedRecord ?? fresh, since: baselineEdits)
+            reviewed = enforcingInvariants(edits.applied(to: loadedRecord ?? fresh, since: baselineEdits)).record
             plan = ConnectionEditorEngine.secretPlan(
                 saving, traits, originalTraits: originalTraits, context, since: baseline, mergedInto: record
             )
+            settlePlaintextSecrets(merged.plaintextSecrets, plan: &plan, record: &record)
         } else {
-            record = edits.applied(to: DatabaseConnection(id: connectionId, name: ""))
+            record = enforcingInvariants(edits.applied(to: DatabaseConnection(id: connectionId, name: ""))).record
             record.sortOrder = ConnectionStorage.nextSortOrder(in: connections, groupId: record.groupId)
             reviewed = record
             plan = ConnectionEditorEngine.secretPlan(saving, traits, originalTraits: originalTraits, context)
@@ -133,6 +135,41 @@ extension ConnectionEditorStore {
             deleteSecret(item, for: connectionId)
         }
         return .success((record, reviewed))
+    }
+
+    // A record another writer retyped while the editor was open is held to its own type's rules.
+    func enforcingInvariants(
+        _ record: DatabaseConnection,
+        use: ConnectionRecordInvariants.Use = .save
+    ) -> ConnectionRecordInvariants.Outcome {
+        let recordTraits = record.type == traits.type
+            ? traits
+            : ConnectionTypeTraits.live(for: record.type, pluginManager: services.pluginManager)
+        return ConnectionRecordInvariants.enforce(
+            record, traits: recordTraits, originalTraits: originalTraits, context: context, use: use
+        )
+    }
+
+    // The migration's rule: a plain-text secret the editor did not set leaves the record once the Keychain holds the
+    // field, a stored item winning over the copy. One whose item cannot be read stays, as the migration leaves it.
+    private func settlePlaintextSecrets(
+        _ plaintext: [String: String],
+        plan: inout SecretWritePlan,
+        record: inout DatabaseConnection
+    ) {
+        for (fieldId, value) in plaintext.sorted(by: { $0.key < $1.key }) {
+            let item = SecretWritePlan.Item.pluginField(fieldId)
+            guard plan.disposition(of: item) == .untouched else { continue }
+            var stored: String?
+            let reads = storage.recordingSecretReads {
+                stored = storage.loadPluginSecureField(fieldId: fieldId, for: connectionId)
+            }
+            if !reads.unreadable.isEmpty {
+                record.additionalFields[fieldId] = value
+            } else if (stored ?? "").isEmpty {
+                plan.writes.append(SecretWritePlan.Write(item: item, value: value))
+            }
+        }
     }
 
     private func finishSave(_ record: DatabaseConnection, reviewed: DatabaseConnection, connect: Bool) {
