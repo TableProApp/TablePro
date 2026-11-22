@@ -356,12 +356,13 @@ struct WelcomeTagFilterBarTests {
     func barComesAndGoesWithTheFilter() throws {
         let split = WelcomeSplitViewController(viewModel: fixture.viewModel)
         _ = split.view
+        let listItem = try #require(split.splitViewItems.last)
         #expect(split.tagFilterBar == nil)
 
         fixture.viewModel.setTagFilter(fixture.prod.id, isOn: true)
         let bar = try #require(split.tagFilterBar)
         if #available(macOS 26.0, *) {
-            let accessories = try #require(split.splitViewItems.last).topAlignedAccessoryViewControllers
+            let accessories = listItem.topAlignedAccessoryViewControllers
             #expect(accessories.count == 1)
             #expect(accessories.first?.view === bar)
         } else {
@@ -371,7 +372,7 @@ struct WelcomeTagFilterBarTests {
         fixture.viewModel.clearTagFilters()
         #expect(split.tagFilterBar == nil)
         if #available(macOS 26.0, *) {
-            #expect(try #require(split.splitViewItems.last).topAlignedAccessoryViewControllers.isEmpty)
+            #expect(listItem.topAlignedAccessoryViewControllers.isEmpty)
         }
     }
 }
