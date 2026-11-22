@@ -1,86 +1,100 @@
-import AppKit
 import SwiftUI
 
 struct GeneralSettingsView: View {
-    @Binding var settings: GeneralSettings
-    var onResetAll: () -> Void
+    @ObservedObject var settings: SettingsSlice<GeneralSettings>
+    let onResetAll: () -> Void
 
     @State private var showResetConfirmation = false
 
     var body: some View {
         Form {
-            Picker("Language:", selection: $settings.language) {
-                ForEach(AppLanguage.allCases) { lang in
-                    Text(lang.displayName).tag(lang)
-                }
-            }
-
-            if settings.language != LanguageLaunchState.language {
-                LabeledContent {
-                    Button(String(localized: "Relaunch")) {
-                        UpdateCenter.shared.relaunch()
+            Section {
+                Picker("Language", selection: $settings.value.language) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(language.displayName).tag(language)
                     }
-                    .accessibilityIdentifier("language-relaunch-button")
-                } label: {
-                    Text("Relaunch TablePro to finish switching languages.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-            }
+                .accessibilityIdentifier("general-language-picker")
 
-            Picker("When TablePro starts:", selection: $settings.startupBehavior) {
-                ForEach(StartupBehavior.allCases) { behavior in
-                    Text(behavior.displayName).tag(behavior)
+                if settings.value.language != LanguageLaunchState.language {
+                    LabeledContent {
+                        Button(String(localized: "Relaunch")) {
+                            UpdateCenter.shared.relaunch()
+                        }
+                        .accessibilityIdentifier("language-relaunch-button")
+                    } label: {
+                        Text("Relaunch TablePro to finish switching languages.")
+                    }
                 }
+
+                Picker("When TablePro starts", selection: $settings.value.startupBehavior) {
+                    ForEach(StartupBehavior.allCases) { behavior in
+                        Text(behavior.displayName).tag(behavior)
+                    }
+                }
+                .accessibilityIdentifier("general-startup-picker")
             }
 
             Section {
-                NavigationLink(value: SettingsSubpage.commandLine) {
-                    Label("Command Line Tool", systemImage: "terminal")
-                }
-                NavigationLink(value: SettingsSubpage.softwareUpdate) {
-                    Label("Software Update", systemImage: "arrow.down.circle")
-                }
+                SoftwareUpdateDrillRow()
+                SettingsDrillRow(route: SettingsRoute.page(.commandLineTool), title: SettingsPage.commandLineTool.title)
             }
 
-            LinkedFoldersSection()
-
-            TrustedExternalConnectionsSection()
-
             Section {
-                Toggle("Share usage data", isOn: $settings.shareAnalytics)
+                Toggle(isOn: $settings.value.shareAnalytics) {
+                    Text("Share usage data")
+                    Text(
+                        """
+                        Sent to PostHog: app and macOS versions, Mac model, screen size, architecture, language, time zone, \
+                        database types, connection count, first connection and query, plan prompts, sign-in and sign-out, \
+                        and your account ID once you sign in. Never hostnames, credentials, queries, or rows.
+                        """
+                    )
+                }
+                .accessibilityIdentifier("general-share-usage-toggle")
             } header: {
                 Text("Privacy")
-            } footer: {
-                Text(
-                    """
-                    Sent to PostHog: app and macOS versions, Mac model, screen size, architecture, language, time zone, \
-                    database types, connection count, first connection and query, plan prompts, sign-in and sign-out, \
-                    and your account ID once you sign in. Never hostnames, credentials, queries, or rows.
-                    """
-                )
             }
 
             Section {
-                Button(String(localized: "Reset All Settings to Defaults"), role: .destructive) {
-                    showResetConfirmation = true
+                LabeledContent {
+                    Button(String(localized: "Reset…"), role: .destructive) {
+                        showResetConfirmation = true
+                    }
+                    .accessibilityLabel(String(localized: "Reset All Settings…"))
+                    .accessibilityIdentifier("general-reset-all-button")
+                } label: {
+                    Text("Reset all settings")
+                    Text("Returns every section to its defaults.")
                 }
             }
         }
         .formStyle(.grouped)
-        .alert(String(localized: "Reset All Settings"), isPresented: $showResetConfirmation) {
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-pane-general")
+        .alert(String(localized: "Reset all settings?"), isPresented: $showResetConfirmation) {
             Button(String(localized: "Reset"), role: .destructive) { onResetAll() }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
-            Text("This will reset all settings across every section to their default values. AI providers, their API keys and Enable AI Features are kept.")
+            Text(
+                """
+                Every section returns to its default values. AI providers and their API keys, Enable AI features, \
+                Share usage data, linked folders, trusted links, connections and history are kept.
+                """
+            )
         }
     }
 }
 
-#Preview {
-    GeneralSettingsView(
-        settings: .constant(.default),
-        onResetAll: {}
-    )
-    .frame(width: 450, height: 500)
+// Only this row re-renders when the update status changes.
+private struct SoftwareUpdateDrillRow: View {
+    @ObservedObject private var updates = UpdateCenter.shared
+
+    var body: some View {
+        SettingsDrillRow(
+            route: SettingsRoute.page(.softwareUpdate),
+            title: SettingsPage.softwareUpdate.title,
+            value: updates.status.indicatorTitle
+        )
+    }
 }
