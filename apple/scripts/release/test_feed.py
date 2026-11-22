@@ -106,7 +106,9 @@ for archive in archives:
         if rest.endswith("-" + candidate):
             arch, short = candidate, rest[:-(len(candidate) + 1)]
             break
-    lines = ["<item>", "<title>" + short + "</title>"]
+    # Sparkle dates an item by its archive's creation time, so two downloads never share one.
+    published = "Sun, 22 Nov 2026 10:00:" + ("30" if arch == "arm64" else "00") + " +0000"
+    lines = ["<item>", "<title>" + short + "</title>", "<pubDate>" + published + "</pubDate>"]
     if option("--channel"):
         lines.append("<sparkle:channel>" + option("--channel") + "</sparkle:channel>")
     if option("--phased-rollout-interval"):
@@ -195,8 +197,8 @@ REFUSED_UNSIGNED = (r"no signature vouches for the published plugins/v3.json\. C
                     r"for one run, then unset it\)")
 
 
-def item(build, short, channel=None, critical=None, signature="c2ln", url=None, hardware=None):
-    lines = ["<item>"]
+def item(build, short, channel=None, critical=None, signature="c2ln", url=None, hardware=None, published=None):
+    lines = ["<item>"] + ([f"<pubDate>{published}</pubDate>"] if published is not None else [])
     if channel is not None:
         lines.append(f"<sparkle:channel>{channel}</sparkle:channel>")
     if critical is not None:
@@ -266,12 +268,29 @@ class FeedRulesTests(unittest.TestCase):
             "0.82.0's items run x86_64, arm64, not arm64, x86_64; Sparkle takes the first of two equal versions, "
             "so Apple silicon would install the Intel build"])
 
+    def test_both_items_carry_one_date(self):
+        release = version.parse_tag("v0.82.0")
+        base = "https://example.com/"
+        apart = feed.parse_items(appcast(
+            item(820099, "0.82.0", url=base + feed.archive_name(release, "arm64"), hardware="arm64",
+                 published="Sun, 22 Nov 2026 10:00:30 +0000"),
+            item(820099, "0.82.0", url=base + feed.archive_name(release, "x86_64"),
+                 published="Sun, 22 Nov 2026 10:00:00 +0000")))
+        self.assertEqual(feed.new_item_problems(apart, release, base), [
+            "0.82.0's items carry the pubDates 'Sun, 22 Nov 2026 10:00:30 +0000', 'Sun, 22 Nov 2026 10:00:00 +0000'; "
+            "a phased rollout would offer the x86_64 build alone between them"])
+
     def test_pairs_the_arm64_item_before_the_x86_64_one(self):
         release = version.parse_tag("v0.82.0")
         intel = appcast(item(820099, "0.82.0", url="https://example.com/x86_64"), item(140, "0.81.0"),
                         item(139, "0.80.0"))
-        arm = appcast(item(820099, "0.82.0", url="https://example.com/arm64", hardware="arm64"), item(140, "0.81.0"))
+        arm = appcast(item(820099, "0.82.0", url="https://example.com/arm64", hardware="arm64",
+                           published="Sun, 22 Nov 2026 10:00:30 +0000"), item(140, "0.81.0"))
         paired = feed.parse_items(feed.pair_items(intel, arm, release))
+        dated = appcast(item(820099, "0.82.0", url="https://example.com/x86_64",
+                             published="Sun, 22 Nov 2026 10:00:00 +0000"))
+        self.assertEqual([each.published for each in feed.parse_items(feed.pair_items(dated, arm, release))],
+                         ["Sun, 22 Nov 2026 10:00:00 +0000", "Sun, 22 Nov 2026 10:00:00 +0000"])
         self.assertEqual([(each.short_version, each.url, each.hardware_requirements) for each in paired], [
             ("0.82.0", "https://example.com/arm64", "arm64"),
             ("0.82.0", "https://example.com/x86_64", None),
@@ -490,9 +509,9 @@ class FeedSiteTests(unittest.TestCase):
         items = feed.parse_items(published.encode())
         self.assertEqual([(each.short_version, each.channel) for each in items],
                          [("0.82.0-beta.1", "beta"), ("0.82.0-beta.1", "beta"), ("0.81.0", None), ("0.80.0", None)])
-        self.assertEqual([(Path(each.url).name, each.hardware_requirements) for each in items[:2]], [
-            ("TablePro-0.82.0-beta.1-arm64.tar.xz", "arm64"),
-            ("TablePro-0.82.0-beta.1-x86_64.tar.xz", None)])
+        self.assertEqual([(Path(each.url).name, each.hardware_requirements, each.published) for each in items[:2]], [
+            ("TablePro-0.82.0-beta.1-arm64.tar.xz", "arm64", "Sun, 22 Nov 2026 10:00:00 +0000"),
+            ("TablePro-0.82.0-beta.1-x86_64.tar.xz", None, "Sun, 22 Nov 2026 10:00:00 +0000")])
         manifest = json.loads(self.published("plugins/v3.json"))
         self.assertGreaterEqual(manifest["serial"], started)
         self.assertEqual([plugin["id"] for plugin in manifest["plugins"]],

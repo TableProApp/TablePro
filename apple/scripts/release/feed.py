@@ -62,6 +62,7 @@ class Item:
     url: Optional[str]
     signature: Optional[str]
     hardware_requirements: Optional[str]
+    published: Optional[str]
 
     @property
     def label(self) -> str:
@@ -94,6 +95,7 @@ def parse_items(data: bytes) -> List[Item]:
             url=enclosure.get("url") if enclosure is not None else None,
             signature=enclosure.get(SPARKLE + "edSignature") if enclosure is not None else None,
             hardware_requirements=_sparkle_value(element, "hardwareRequirements"),
+            published=(element.findtext("pubDate") or "").strip() or None,
         ))
     return items
 
@@ -144,10 +146,14 @@ def new_item_problems(items: List[Item], release: version.Version, url_base: str
         if not item.signature:
             problems.append(f"{release}'s {arch} enclosure has no sparkle:edSignature; "
                             "SPARKLE_PRIVATE_KEY does not match the archive's SUPublicEDKey")
-    order = [expected[item.url] for item in found if item.url in expected]
+    paired = [item for item in found if item.url in expected]
+    order = [expected[item.url] for item in paired]
     if sorted(order) == sorted(ARCHES) and order != list(ARCHES):
         problems.append(f"{release}'s items run {', '.join(order)}, not {', '.join(ARCHES)}; Sparkle takes the "
                         "first of two equal versions, so Apple silicon would install the Intel build")
+    if sorted(order) == sorted(ARCHES) and len({item.published for item in paired}) != 1:
+        problems.append(f"{release}'s items carry the pubDates {', '.join(repr(item.published) for item in paired)}; "
+                        "a phased rollout would offer the x86_64 build alone between them")
     return problems
 
 
@@ -164,6 +170,11 @@ def _channel(data: bytes) -> Tuple[minidom.Document, minidom.Element]:
     if not channels:
         raise FeedError(f"{APPCAST} has no rss channel")
     return document, channels[0]
+
+
+def _child(node: minidom.Element, name: str) -> Optional[minidom.Element]:
+    return next((each for each in node.childNodes if each.nodeType == each.ELEMENT_NODE and each.tagName == name),
+                None)
 
 
 def _item_nodes(channel: minidom.Element, matches: Callable[[str, str], bool]) -> List[minidom.Element]:
@@ -197,8 +208,16 @@ def pair_items(intel: bytes, arm: bytes, release: version.Version) -> Optional[b
         raise FeedError(f"generate_appcast wrote {len(arm_items)} arm64 and {len(intel_items)} x86_64 items for "
                         f"{release} ({release.build}), not one each")
     target = intel_items[0]
+    arm_item = document.importNode(arm_items[0], True)
+    # generate_appcast dates each item by its archive's creation time, and a phased rollout counts from that date.
+    # One date keeps the arm64 item eligible whenever the x86_64 one is.
+    published, arm_published = _child(target, "pubDate"), _child(arm_item, "pubDate")
+    if published is not None and arm_published is not None:
+        for each in list(arm_published.childNodes):
+            arm_published.removeChild(each)
+        arm_published.appendChild(document.createTextNode(_text(published)))
     spacing = target.previousSibling
-    channel.insertBefore(document.importNode(arm_items[0], True), target)
+    channel.insertBefore(arm_item, target)
     if spacing is not None and spacing.nodeType == spacing.TEXT_NODE:
         channel.insertBefore(document.createTextNode(spacing.data), target)
     return document.toxml(encoding="utf-8", standalone=True)
