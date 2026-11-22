@@ -68,18 +68,21 @@ internal final class MCPServerManager: ObservableObject {
     @Published internal private(set) var connectedClients: [SessionSnapshot] = []
     @Published internal private(set) var tokenStore: MCPTokenStore?
 
+    // Fires when Settings forgets an approval or a revocation withdraws one; a new approval waits for the next visit.
+    internal let grantChanges = MCPChangeSignal()
+
     private let lifecycle = MCPServerLifecycleQueue()
     private let handshake: MCPHandshakeFile
     private let isEnabled: @MainActor () -> Bool
 
-    @Published private(set) var composition: MCPServerComposition?
-    @Published private var bridgeCredential: BridgeCredential?
-    @Published private var instanceId = ""
-    @Published private var generation = 0
-    @Published private var revocationObserverId: UUID?
-    @Published private var dispatchTask: Task<Void, Never>?
-    @Published private var stateTask: Task<Void, Never>?
-    @Published private var tokenRenewalTask: Task<Void, Never>?
+    private(set) var composition: MCPServerComposition?
+    private var bridgeCredential: BridgeCredential?
+    private var instanceId = ""
+    private var generation = 0
+    private var revocationObserverId: UUID?
+    private var dispatchTask: Task<Void, Never>?
+    private var stateTask: Task<Void, Never>?
+    private var tokenRenewalTask: Task<Void, Never>?
 
     internal var isRunning: Bool {
         if case .running = state { return true }
@@ -149,10 +152,12 @@ internal final class MCPServerManager: ObservableObject {
 
     internal func forgetGrant(subject: String, connectionId: UUID) async {
         await approvalPolicy().revokeGrant(subject: subject, connectionId: connectionId)
+        grantChanges.send()
     }
 
     internal func forgetEveryGrant() async {
         await approvalPolicy().forgetEveryGrant()
+        grantChanges.send()
     }
 
     private func approvalPolicy() -> MCPAuthPolicy {
@@ -193,6 +198,7 @@ internal final class MCPServerManager: ObservableObject {
         let withdrawn = stored?.subjectWithdrawnWhenEnded ?? .token(tokenId)
         let persisted = await revokeToken(id: tokenId)
         await composition.authPolicy.clearApprovals(subject: withdrawn)
+        grantChanges.send()
         await composition.activityLedger.forget(tokenId: tokenId)
         await refreshClients()
         return persisted
@@ -468,6 +474,7 @@ internal final class MCPServerManager: ObservableObject {
         let cancelled = await dispatcher.cancelInflight(matchingTokenId: tokenId)
         if let subject {
             await composition?.authPolicy.clearApprovals(subject: subject)
+            grantChanges.send()
         }
         guard cancelled > 0 else { return }
         Self.logger.info(

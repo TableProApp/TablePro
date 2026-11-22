@@ -1,296 +1,173 @@
-import AppKit
 import SwiftUI
 import TableProMCP
 
 struct MCPSection: View {
     @Binding var settings: MCPSettings
-    @ObservedObject private var manager = MCPServerManager.shared
-    @State private var tokenList: [MCPAuthToken] = []
-    @State private var showSetupSheet = false
-    @State private var showCreateSheet = false
-    @State private var showRevealSheet = false
-    @State private var revealedPlaintext: String = ""
-    @State private var tokenAlert: MCPTokenAlert?
-    @State private var rejectedPort: Int?
+    @ObservedObject var model: MCPSettingsModel
+    let onChangeAIPolicy: () -> Void
+
+    @State private var showsClientSetup = false
 
     var body: some View {
         Section {
-            Toggle(String(localized: "Enable MCP Server"), isOn: $settings.enabled)
-                .accessibilityIdentifier("mcp-enable-server-toggle")
+            Toggle(isOn: $settings.enabled) {
+                Text("MCP server")
+                Text("Lets AI apps such as Claude and Cursor work with your connections through TablePro.")
+            }
+            .accessibilityIdentifier("mcp-enable-server-toggle")
 
             if settings.enabled {
                 MCPStatusRow(configuredPort: settings.port)
+
+                LabeledContent {
+                    Button(String(localized: "Connect a Client…")) {
+                        showsClientSetup = true
+                    }
+                    .accessibilityIdentifier("mcp-connect-client")
+                } label: {
+                    Text("Clients")
+                    Text("Add TablePro to Claude, Cursor and other apps on this Mac.")
+                }
+
+                LabeledContent {
+                    Button(String(localized: "View Activity…")) {
+                        WindowOpener.shared.openIntegrationsActivity()
+                    }
+                    .accessibilityIdentifier("mcp-view-activity")
+                } label: {
+                    Text("Activity")
+                    Text("Requests, approvals and connected clients.")
+                }
             }
+        }
+        .sheet(isPresented: $showsClientSetup) {
+            MCPClientSetupSheet()
         }
 
         if settings.enabled {
-            configurationSection
-            connectionAccessSection
-            authenticationSection
-            helpSection
+            accessSection
+            serverSection
         }
     }
 
-    private var connectionAccessSection: some View {
+    private var accessSection: some View {
         Section {
-            Picker(String(localized: "Approval"), selection: $settings.connectionApproval) {
+            Picker(selection: $settings.connectionApproval) {
                 ForEach(MCPConnectionApproval.allCases) { approval in
                     Text(approval.displayName).tag(approval)
                 }
+            } label: {
+                Text("Approval")
+                Text(settings.connectionApproval.explanation)
             }
             .pickerStyle(.menu)
+            .accessibilityIdentifier("mcp-approval-picker")
 
-            Text(settings.connectionApproval.explanation)
-                .foregroundStyle(.secondary)
-                .font(.callout)
+            NavigationLink(value: SettingsRoute.page(.mcpApprovals)) {
+                LabeledContent {
+                    if let approvalsValue {
+                        Text(approvalsValue)
+                            .foregroundStyle(.secondary)
+                    }
+                } label: {
+                    Text("Approved connections")
+                    if settings.connectionApproval != .oncePerConnection {
+                        Text("Used only with Ask Once for Each Connection.")
+                    }
+                }
+            }
+            .accessibilityIdentifier(SettingsPage.mcpApprovals.drillIdentifier)
 
-            MCPGrantListView()
+            SettingsDrillRow(route: SettingsRoute.page(.mcpTokens), title: "Tokens", value: tokensValue)
 
-            Toggle(
-                String(localized: "Allow apps to list connections hidden from AI"),
-                isOn: $settings.allowsHiddenConnectionListing
-            )
+            MCPDefaultAIPolicyRow(onChange: onChangeAIPolicy)
+
+            Toggle(isOn: $settings.allowsHiddenConnectionListing) {
+                Text("Allow apps to list connections hidden from AI")
+                // swiftlint:disable:next line_length
+                Text("A paired app, such as a launcher, can ask when it pairs to show connections whose AI Policy is Never, with their user names. It still cannot query them. Turning this off stops every app at once.")
+            }
             .accessibilityIdentifier("mcp-hidden-connection-listing-toggle")
 
             // swiftlint:disable:next line_length
-            Text(String(localized: "A paired app, such as a launcher, can ask when it pairs to show connections whose AI Policy is Never, with their user names. It still cannot query them. Turning this off stops every app at once."))
-                .foregroundStyle(.secondary)
-                .font(.callout)
+            SettingsHelpRow("Approval is separate from what a client may reach. A connection blocked for external clients stays blocked, a read-only one stays read only, and Safe Mode still confirms destructive statements.")
         } header: {
-            Text("Connection Access")
-        } footer: {
-            // swiftlint:disable:next line_length
-            Text("Approval is separate from what a client may reach. A connection blocked for external clients stays blocked, a read-only one stays read only, and Safe Mode still confirms destructive statements.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text("Access")
         }
     }
 
-    private var configurationSection: some View {
+    private var serverSection: some View {
         Section {
-            LabeledContent(String(localized: "Port")) {
-                TextField("", value: portBinding, format: .number.grouping(.never))
-                    .frame(width: 80)
-                    .multilineTextAlignment(.trailing)
-                    .accessibilityIdentifier("mcp-port-field")
-            }
+            SettingsNumberField(
+                "Port",
+                value: $settings.port,
+                range: MCPSettings.portRange,
+                width: 64,
+                invalid: .reject(String(
+                    format: String(localized: "Choose a port from %d to %d."),
+                    MCPSettings.portRange.lowerBound,
+                    MCPSettings.portRange.upperBound
+                )),
+                identifier: "mcp-port-field"
+            )
 
-            LabeledContent(String(localized: "Default row limit")) {
-                TextField("", value: $settings.defaultRowLimit, format: .number.grouping(.never))
-                    .frame(width: 80)
-                    .multilineTextAlignment(.trailing)
-            }
+            SettingsNumberField(
+                "Default row limit",
+                subtitle: "Rows a query returns when the client sets no limit.",
+                value: $settings.defaultRowLimit,
+                range: settings.requestableRowLimitRange,
+                step: 100,
+                unit: "rows",
+                width: 72,
+                identifier: "mcp-default-row-limit-field"
+            )
 
-            LabeledContent(String(localized: "Maximum row limit")) {
-                TextField("", value: $settings.maxRowLimit, format: .number.grouping(.never))
-                    .frame(width: 80)
-                    .multilineTextAlignment(.trailing)
-            }
+            SettingsNumberField(
+                "Maximum row limit",
+                subtitle: "The most rows a client can ask for.",
+                value: maxRowLimit,
+                range: SettingsValidationRules.mcpRowLimitRange,
+                step: 1_000,
+                unit: "rows",
+                width: 72,
+                identifier: "mcp-max-row-limit-field"
+            )
 
-            LabeledContent(String(localized: "Query timeout")) {
-                HStack(spacing: 4) {
-                    TextField("", value: $settings.queryTimeoutSeconds, format: .number.grouping(.never))
-                        .frame(width: 80)
-                        .multilineTextAlignment(.trailing)
-                    Text(String(localized: "seconds"))
-                        .foregroundStyle(.secondary)
-                }
-            }
+            SettingsNumberField(
+                "Query timeout",
+                value: $settings.queryTimeoutSeconds,
+                range: SettingsValidationRules.mcpQueryTimeoutRange,
+                step: 5,
+                unit: "seconds",
+                width: 56,
+                identifier: "mcp-query-timeout-field"
+            )
 
-            Toggle(String(localized: "Log MCP queries in history"), isOn: $settings.logQueriesInHistory)
+            Toggle("Log MCP queries in history", isOn: $settings.logQueriesInHistory)
+                .accessibilityIdentifier("mcp-log-queries-toggle")
         } header: {
-            Text(String(localized: "Server Configuration"))
-        } footer: {
-            if let rejectedPort {
-                NoticeLabel(
-                    String(
-                        format: String(localized: "Port %d cannot be used. Choose a port from %d to %d."),
-                        rejectedPort,
-                        MCPSettings.portRange.lowerBound,
-                        MCPSettings.portRange.upperBound
-                    ),
-                    severity: .error
-                )
-                .font(.caption)
-            }
+            Text("Server")
         }
     }
 
-    // An out-of-range port is kept out of the settings, so the server never binds a port the field did not show.
-    private var portBinding: Binding<Int> {
+    // A lower maximum pulls the default down with it in the same write.
+    private var maxRowLimit: Binding<Int> {
         Binding(
-            get: { settings.port },
-            set: { newValue in
-                if MCPSettings.portRange.contains(newValue) {
-                    rejectedPort = nil
-                    settings.port = newValue
-                } else {
-                    rejectedPort = newValue
-                }
-            }
+            get: { settings.maxRowLimit },
+            set: { settings = settings.withMaxRowLimit($0) }
         )
     }
 
-    private var authenticationSection: some View {
-        Section(String(localized: "Authentication")) {
-            MCPTokenListView(
-                tokens: tokenList,
-                isStoreAvailable: manager.tokenStore != nil,
-                onGenerate: { showCreateSheet = true },
-                onRevoke: { id in revoke(id) },
-                onDelete: { ids in delete(ids) }
-            )
-        }
-        .task(id: manager.tokenStore.map { ObjectIdentifier($0) }) { await refreshTokens() }
-        .sheet(isPresented: $showCreateSheet) {
-            MCPTokenCreateSheet { name, permissions, connectionIds, expiresAt in
-                await generate(name: name, permissions: permissions, connectionIds: connectionIds, expiresAt: expiresAt)
-            }
-        }
-        .sheet(isPresented: $showRevealSheet) {
-            if !revealedPlaintext.isEmpty {
-                MCPTokenRevealSheet(
-                    plaintext: revealedPlaintext,
-                    port: manager.listeningPort ?? settings.port,
-                    configuredPort: settings.port
-                )
-            }
-        }
-        .alert(tokenAlert?.title ?? "", isPresented: tokenAlertBinding, presenting: tokenAlert) { _ in
-            Button(String(localized: "OK")) {}
-        } message: { alert in
-            Text(verbatim: alert.message)
-        }
+    private var approvalsValue: String? {
+        guard model.hasLoadedGrants else { return nil }
+        return model.grants.isEmpty ? String(localized: "None") : SettingsFormat.count(model.grants.count)
     }
 
-    private var tokenAlertBinding: Binding<Bool> {
-        Binding(
-            get: { tokenAlert != nil },
-            set: { isPresented in
-                if !isPresented {
-                    tokenAlert = nil
-                }
-            }
-        )
-    }
-
-    private var helpSection: some View {
-        Section {
-            Button(String(localized: "Connect a Client…")) {
-                showSetupSheet = true
-            }
-            .accessibilityIdentifier("mcp-connect-client")
-            Button(String(localized: "View Activity…")) {
-                WindowOpener.shared.openIntegrationsActivity()
-            }
-            .accessibilityIdentifier("mcp-view-activity")
-        }
-        .sheet(isPresented: $showSetupSheet) {
-            MCPClientSetupSheet()
-        }
-    }
-
-    private func generate(
-        name: String,
-        permissions: TokenPermissions,
-        connectionIds: Set<UUID>?,
-        expiresAt: Date?
-    ) async -> MCPTokenCreateFailure? {
-        guard let store = manager.tokenStore else {
-            return MCPTokenCreateFailure(
-                message: String(localized: "The MCP server is not running, so TablePro cannot save a token now. Start the server, then try again."),
-                endsSheet: true
-            )
-        }
-        let access: ConnectionAccess = connectionIds.map { .limited($0) } ?? .all
-        do {
-            let result = try await store.generate(
-                name: name,
-                permissions: permissions,
-                connectionAccess: access,
-                expiresAt: expiresAt,
-                isBridgeCredential: false,
-                isClaudeAgentCredential: false,
-                extraScopes: []
-            )
-            revealedPlaintext = result.plaintext
-            showCreateSheet = false
-            showRevealSheet = true
-            await refreshTokens()
-            return nil
-        } catch {
-            return MCPTokenCreateFailure(message: Self.generateFailureMessage(error), endsSheet: false)
-        }
-    }
-
-    private static func generateFailureMessage(_ error: Error) -> String {
-        switch error as? MCPTokenStoreError {
-        case .storedTokensUnreadable?:
-            String(localized: "TablePro could not read the tokens saved in the Keychain, so it will not save a new one over them. Restart TablePro and try again.")
-        case .randomGenerationFailed?:
-            String(localized: "macOS could not generate a secure token. Try again.")
-        case .keychainUnavailable?, .notSaved?, nil:
-            String(localized: "TablePro could not save the token to the Keychain, so it was not created. Try again.")
-        }
-    }
-
-    private func revoke(_ id: UUID) {
-        Task {
-            guard manager.tokenStore != nil else {
-                tokenAlert = .serverNotRunning
-                return
-            }
-            if !(await manager.revokeToken(id: id)) {
-                tokenAlert = .revocationNotSaved
-            }
-            await refreshTokens()
-        }
-    }
-
-    private func delete(_ ids: Set<UUID>) {
-        Task {
-            guard let store = manager.tokenStore else {
-                tokenAlert = .serverNotRunning
-                return
-            }
-            var allSaved = true
-            for id in ids {
-                let saved = await store.delete(tokenId: id)
-                allSaved = allSaved && saved
-            }
-            if !allSaved {
-                tokenAlert = .deletionNotSaved
-            }
-            await refreshTokens()
-        }
-    }
-
-    private func refreshTokens() async {
-        guard let store = manager.tokenStore else { return }
-        tokenList = await store.list().filter { !$0.isBridgeCredential }
-    }
-}
-
-private enum MCPTokenAlert: Equatable {
-    case serverNotRunning
-    case revocationNotSaved
-    case deletionNotSaved
-
-    var title: String {
-        switch self {
-        case .serverNotRunning: String(localized: "MCP Server Not Running")
-        case .revocationNotSaved: String(localized: "Couldn't Save the Revocation")
-        case .deletionNotSaved: String(localized: "Couldn't Save the Deletion")
-        }
-    }
-
-    var message: String {
-        switch self {
-        case .serverNotRunning:
-            String(localized: "The MCP server is not running, so TablePro cannot change its tokens now. Start the server, then try again.")
-        case .revocationNotSaved, .deletionNotSaved:
-            String(localized: "TablePro could not save the change to the Keychain. The token works again after TablePro restarts.")
-        }
+    private var tokensValue: String? {
+        guard model.tokenStore != nil else { return String(localized: "Unavailable") }
+        guard model.hasLoadedTokens else { return nil }
+        if model.tokens.isEmpty { return String(localized: "None") }
+        return String(format: String(localized: "%lld active"), model.activeTokenCount)
     }
 }
 
@@ -300,24 +177,42 @@ private struct MCPStatusRow: View {
 
     var body: some View {
         let presentation = MCPServerStatusPresentation(state: manager.state, configuredPort: configuredPort)
-        LabeledContent(String(localized: "Status")) {
+        LabeledContent {
             HStack(spacing: 8) {
                 IntegrationStatusIndicator(status: presentation.status, label: presentation.title)
                 if presentation.offersRetry {
                     Button(String(localized: "Try Again")) {
                         manager.retry()
                     }
-                    .controlSize(.small)
                     .accessibilityIdentifier("mcp-status-try-again")
                 }
             }
+        } label: {
+            Text("Status")
+            if let detail = presentation.detail {
+                Text(verbatim: detail)
+                    .textSelection(.enabled)
+            }
         }
-        if let detail = presentation.detail {
-            Text(detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+// Read only: the policy belongs to AI, and MCP enforces it for connections without their own.
+private struct MCPDefaultAIPolicyRow: View {
+    @ObservedObject private var ai = AppSettingsManager.shared.aiSlice
+    let onChange: () -> Void
+
+    var body: some View {
+        LabeledContent {
+            HStack(spacing: 8) {
+                Text(ai.value.defaultConnectionPolicy.displayName)
+                    .foregroundStyle(.secondary)
+                Button(String(localized: "Change…"), action: onChange)
+                    .accessibilityIdentifier("mcp-default-ai-policy-change")
+            }
+        } label: {
+            Text("Default AI policy")
+            Text("Connections without their own AI Policy use it. Clients cannot query a connection set to Never.")
         }
     }
 }
