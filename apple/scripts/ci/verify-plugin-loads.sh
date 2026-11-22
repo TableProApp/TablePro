@@ -3,13 +3,25 @@ set -euo pipefail
 
 # Loads every built .tableplugin with dlopen and fails naming any that will not load.
 #
-# Usage: verify-plugin-loads.sh <directory-with-tableplugins> [more-directories...]
+# Usage: verify-plugin-loads.sh [--arch <arch>] <directory-with-tableplugins> [more-directories...]
 #
 # dlopen resolves the binary and every library and framework it links, the dyld path behind
 # "Bundle failed to load executable". It does not instantiate the principal class. PluginKit ABI:
 # .claude/rules/plugin-system.md, ABI, checked with `verify.sh abi`.
+#
+# --arch builds the probe for a single-arch build's slice. dlopen refuses a wrong-arch binary, so an
+# x86_64 build is checked with an x86_64 probe (Rosetta runs it on Apple Silicon). Default: host arch.
+# A Mac that cannot run that arch skips the check, except in CI.
 
-[ $# -gt 0 ] || { echo "Usage: $0 <directory-with-tableplugins>..." >&2; exit 2; }
+ARCH_FLAGS=()
+ARCH="$(uname -m)"
+if [ "${1:-}" = --arch ]; then
+    [ $# -ge 2 ] || { echo "$0: --arch needs an arch" >&2; exit 2; }
+    ARCH="$2"
+    ARCH_FLAGS=(-arch "$2")
+    shift 2
+fi
+[ $# -gt 0 ] || { echo "Usage: $0 [--arch <arch>] <directory-with-tableplugins>..." >&2; exit 2; }
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -28,7 +40,20 @@ int main(int argc, char **argv) {
     return 0;
 }
 PROBE
-clang -o "$WORK/probe" "$WORK/probe.c"
+clang ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} -o "$WORK/probe" "$WORK/probe.c"
+
+# With no argument the probe exits 2; anything else means this Mac cannot run it: an Intel Mac for
+# arm64, Apple silicon without Rosetta for x86_64.
+runs=0
+"$WORK/probe" > /dev/null 2>&1 || runs=$?
+if [ "$runs" -ne 2 ]; then
+    if [ "${CI:-}" = true ]; then
+        echo "verify-plugin-loads.sh: this runner cannot run $ARCH code; x86_64 needs Rosetta 2" >&2
+        exit 1
+    fi
+    echo "verify-plugin-loads.sh: this Mac cannot run $ARCH code, so the $ARCH plugins are not load-checked here" >&2
+    exit 0
+fi
 
 # The plugins link the app's frameworks, which sit beside them in the products directory. Without
 # these dyld cannot resolve TableProPluginKit and every plugin would "fail" for the wrong reason.

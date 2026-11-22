@@ -42,8 +42,9 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$APP" ]; then
-    (cd "$ROOT" && scripts/release/build.sh app --unsigned)
-    APP="$ROOT/build/release/TablePro.app"
+    arch="$(uname -m)"
+    (cd "$ROOT" && scripts/release/build.sh app "$arch" --unsigned)
+    APP="$ROOT/build/release/$arch/TablePro.app"
 fi
 [ -d "$APP/Contents/MacOS" ] || { echo "not an app bundle: $APP" >&2; exit 2; }
 
