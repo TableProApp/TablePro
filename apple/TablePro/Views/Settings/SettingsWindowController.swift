@@ -34,16 +34,17 @@ internal final class SettingsWindowController: NSWindowController {
     internal convenience init(registryClient: RegistryClient) {
         let split = SettingsSplitViewController(registryClient: registryClient)
 
-        // NSWindow(contentViewController:) binds the title to the split controller's, which mirrors the selected row.
         let window = NSWindow(contentViewController: split)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.settings)
         window.keepsKeyViewLoopCurrent()
-        window.styleMask = [.titled, .closable, .resizable]
-        // The detail's NavigationStack renders its back button and title into the window toolbar;
-        // a transparent titlebar lets the sidebar material flow full-height under it (no empty band).
-        window.toolbar = NSToolbar()
-        window.toolbarStyle = .unified
+        // fullSizeContentView lets the sidebar material run the full window height, behind the
+        // traffic lights, like System Settings and other native sidebar windows.
+        window.styleMask = [.titled, .closable, .resizable, .fullSizeContentView]
+        // No centered window title; the pane name lives in the toolbar beside Back.
+        window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unified
+        window.toolbar = split.toolbarController.makeToolbar()
         window.isRestorable = false
         // Width fixed (sidebar + detail); height resizes.
         window.contentMinSize = SettingsSplitViewController.minimumContentSize
@@ -72,14 +73,16 @@ internal final class SettingsSplitViewController: NSSplitViewController {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SettingsWindow")
 
     internal let model: SettingsNavigationModel
+    internal let toolbarController: SettingsWindowToolbar
     private let registryClient: RegistryClient
     private var cancellables: Set<AnyCancellable> = []
 
     internal init(registryClient: RegistryClient = .shared) {
         self.registryClient = registryClient
-        self.model = SettingsNavigationModel(initial: Self.persistedPane)
+        let model = SettingsNavigationModel(initial: Self.persistedPane)
+        self.model = model
+        self.toolbarController = SettingsWindowToolbar(model: model)
         super.init(nibName: nil, bundle: nil)
-        title = model.selection.title
     }
 
     internal required init?(coder: NSCoder) {
@@ -120,7 +123,6 @@ internal final class SettingsSplitViewController: NSSplitViewController {
         model.$selection
             .removeDuplicates()
             .sink { [weak self] pane in
-                self?.title = pane.title
                 self?.persistUserSelection(pane)
             }
             .store(in: &cancellables)
@@ -136,7 +138,14 @@ internal final class SettingsSplitViewController: NSSplitViewController {
 internal final class SettingsNavigationModel: ObservableObject {
     @Published internal var selection: SettingsPane
     @Published internal var searchText: String = ""
+    // The detail's NavigationStack path, owned here so the window toolbar can read depth and drive Back.
+    @Published internal var path = NavigationPath()
+    // The pushed page's title, reported by the drill-in modifier; nil at a pane root.
+    @Published internal var drillTitle: String?
     internal private(set) var isApplyingProgrammatic = false
+
+    internal var currentTitle: String { drillTitle ?? selection.title }
+    internal var canGoBack: Bool { !path.isEmpty }
 
     internal init(initial: SettingsPane) {
         self.selection = initial
@@ -144,15 +153,27 @@ internal final class SettingsNavigationModel: ObservableObject {
 
     // From the sidebar list: the user picked a row, so it becomes the last-used pane.
     internal func userSelect(_ pane: SettingsPane) {
+        resetDepth()
         isApplyingProgrammatic = false
         selection = pane
     }
 
     // From openSettings / a deep link: show the pane but do not rewrite the last-used pane.
     internal func applyProgrammatic(_ pane: SettingsPane) {
+        resetDepth()
         isApplyingProgrammatic = true
         selection = pane
         isApplyingProgrammatic = false
+    }
+
+    internal func goBack() {
+        guard !path.isEmpty else { return }
+        path.removeLast()
+    }
+
+    private func resetDepth() {
+        path = NavigationPath()
+        drillTitle = nil
     }
 }
 
@@ -206,22 +227,24 @@ private struct SettingsDetailView: View {
 
     fileprivate var body: some View {
         // Each pane owns its own stack, keyed by selection, so switching panes resets its depth.
-        SettingsPaneStack(pane: model.selection, registryClient: registryClient)
+        SettingsPaneStack(model: model, pane: model.selection, registryClient: registryClient)
             .id(model.selection)
             .environment(\.appServices, .live)
     }
 }
 
 private struct SettingsPaneStack: View {
+    @ObservedObject fileprivate var model: SettingsNavigationModel
     fileprivate let pane: SettingsPane
     fileprivate let registryClient: RegistryClient
-    @State private var path = NavigationPath()
 
     fileprivate var body: some View {
-        NavigationStack(path: $path) {
-            SettingsPaneContent(pane: pane, registryClient: registryClient, path: $path)
+        NavigationStack(path: $model.path) {
+            SettingsPaneContent(pane: pane, registryClient: registryClient, path: $model.path)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .navigationTitle(pane.title)
+        }
+        .onPreferenceChange(SettingsPageTitleKey.self) { title in
+            MainActor.assumeIsolated { model.drillTitle = title }
         }
     }
 }

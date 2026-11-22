@@ -5,43 +5,20 @@
 
 import SwiftUI
 
-// Title and a Back control for any page pushed onto a Settings pane's NavigationStack. The control
-// sits at the top of the detail column (like System Settings), not in the window toolbar, so it
-// never overlaps the sidebar.
-private struct SettingsDrillInChrome: ViewModifier {
-    @Environment(\.dismiss) private var dismiss
-    let title: String
+// A pushed Settings page reports its title up to the pane's NavigationStack, which hands it to the
+// window toolbar (shown next to the Back control, System Settings style). The Back button and the
+// title live in the toolbar, so a drill-in page adds no chrome of its own.
+struct SettingsPageTitleKey: PreferenceKey {
+    static var defaultValue: String? { nil }
 
-    func body(content: Content) -> some View {
-        content
-            .navigationTitle(title)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HStack(spacing: 6) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.backward")
-                            .fontWeight(.semibold)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
-                    .help(String(localized: "Back"))
-                    .accessibilityLabel(String(localized: "Back"))
-
-                    Text(title)
-                        .font(.headline)
-
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
-                .background(.bar)
-            }
+    static func reduce(value: inout String?, nextValue: () -> String?) {
+        if let next = nextValue() { value = next }
     }
 }
 
 extension View {
     func settingsDrillIn(title: String) -> some View {
-        modifier(SettingsDrillInChrome(title: title))
+        navigationTitle(title)
+            .preference(key: SettingsPageTitleKey.self, value: title)
     }
 }

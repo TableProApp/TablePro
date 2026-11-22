@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import SwiftUI
 @testable import TablePro
 import TableProTestSupport
 import Testing
@@ -54,14 +55,14 @@ extension GlobalStateSuites {
             #expect(Set(SettingsNavigation.orderedPanes) == Set(SettingsPane.allCases))
         }
 
-        @Test("The window title follows the selected pane")
-        func windowTitleFollowsTheSelectedPane() async throws {
+        @Test("The toolbar title follows the selected pane")
+        func toolbarTitleFollowsTheSelectedPane() async throws {
             let host = try Host()
-            let (split, window) = host.makeSplit()
+            let (split, _) = host.makeSplit()
 
             for pane in SettingsPane.allCases {
                 split.navigate(to: pane)
-                #expect(window.title == pane.title)
+                #expect(split.model.currentTitle == pane.title)
             }
             await host.tearDown()
         }
@@ -73,8 +74,8 @@ extension GlobalStateSuites {
                 SettingsPane.keyboard.rawValue,
                 forKey: PreferenceKeys.selectedSettingsPane.name
             )
-            let (_, window) = host.makeSplit()
-            #expect(window.title == SettingsPane.keyboard.title)
+            let (split, _) = host.makeSplit()
+            #expect(split.model.currentTitle == SettingsPane.keyboard.title)
             await host.tearDown()
         }
 
@@ -82,8 +83,8 @@ extension GlobalStateSuites {
         func storedMCPPaneRestoresTheMCPTitle() async throws {
             let host = try Host()
             AppStorageEnvironment.shared.defaults.set("mcp", forKey: PreferenceKeys.selectedSettingsPane.name)
-            let (_, window) = host.makeSplit()
-            #expect(window.title == "MCP")
+            let (split, _) = host.makeSplit()
+            #expect(split.model.currentTitle == "MCP")
             await host.tearDown()
         }
 
@@ -98,16 +99,16 @@ extension GlobalStateSuites {
         @Test("Navigating with no pane reads the stored pane rather than staying put")
         func navigatingWithNoPaneReadsTheStoredPane() async throws {
             let host = try Host()
-            let (split, window) = host.makeSplit()
+            let (split, _) = host.makeSplit()
             split.navigate(to: .plugins)
-            #expect(window.title == SettingsPane.plugins.title)
+            #expect(split.model.currentTitle == SettingsPane.plugins.title)
 
             AppStorageEnvironment.shared.defaults.set(
                 SettingsPane.editor.rawValue,
                 forKey: PreferenceKeys.selectedSettingsPane.name
             )
             split.navigate(to: nil)
-            #expect(window.title == SettingsPane.editor.title)
+            #expect(split.model.currentTitle == SettingsPane.editor.title)
             await host.tearDown()
         }
 
@@ -126,6 +127,26 @@ extension GlobalStateSuites {
             split.model.userSelect(.mcp)
             #expect(AppStorageEnvironment.shared.defaults.string(forKey: key) == SettingsPane.mcp.rawValue)
             await host.tearDown()
+        }
+
+        // The toolbar reads these: Back is enabled only while the detail stack has a pushed page,
+        // and a pane switch pops back to the pane's own title.
+        @Test("Back enablement and title track the detail stack depth")
+        func backEnablementTracksDepth() {
+            let model = SettingsNavigationModel(initial: .appearance)
+            #expect(!model.canGoBack)
+            #expect(model.currentTitle == SettingsPane.appearance.title)
+
+            model.path.append(SettingsSubpage.manageThemes)
+            #expect(model.canGoBack)
+
+            model.goBack()
+            #expect(!model.canGoBack)
+
+            model.path.append(SettingsSubpage.manageThemes)
+            model.userSelect(.editor)
+            #expect(!model.canGoBack)
+            #expect(model.currentTitle == SettingsPane.editor.title)
         }
 
         @Test("The window refuses to shrink below the sidebar plus detail minimum")
