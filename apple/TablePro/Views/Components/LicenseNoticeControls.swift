@@ -1,8 +1,3 @@
-//
-//  LicenseNoticeControls.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 import TableProHTTP
@@ -50,20 +45,12 @@ struct LicenseCheckFailureLine: View {
 
     var body: some View {
         if let failure = LicensePresentation.checkFailureMessage(featureAccess.state.refresh) {
-            Label {
-                Text(failure)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-            }
-            .font(.callout)
+            NoticeLabel(failure, severity: .warning)
+                .font(.subheadline)
         }
     }
 }
 
-// A control a plan unlocks says what it needs and offers the way there.
 struct LicenseGateRow: View {
     let feature: ProFeature
 
@@ -76,7 +63,7 @@ struct LicenseGateRow: View {
                     Text(notice.title)
 
                     Text(notice.message)
-                        .font(.callout)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
