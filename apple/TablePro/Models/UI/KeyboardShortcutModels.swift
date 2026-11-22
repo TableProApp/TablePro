@@ -1,47 +1,24 @@
-//
-//  KeyboardShortcutModels.swift
-//  TablePro
-//
-//  Data models for keyboard shortcut customization. The binding type itself
-//  lives in BoundKey.swift.
-//
-
 import AppKit
 import SwiftUI
 
-// MARK: - Shortcut Context
-
-/// Where an action can fire. The same physical combo can mean different things
-/// in different contexts because the focused responder resolves it (e.g. Cmd+[
-/// is pagination in the grid and indent in the editor). Two actions only
-/// conflict when their contexts can be active at the same time.
+// The focused responder resolves a combo (Cmd-[ pages the grid and outdents the editor), so two actions conflict only when their contexts can be active at once.
 enum ShortcutContext: String {
     case global
     case editor
     case dataGrid
 
-    /// Two contexts overlap when they can be the active responder at the same
-    /// time. Non-overlapping contexts (editor vs data grid) may share a combo:
-    /// the editor's local key monitor consumes the keystroke while it is focused,
-    /// so the grid's menu key-equivalent only fires when the grid has focus. The
-    /// conflict resolver guards uniqueness within an overlapping context; it does
-    /// not stop a user from binding a grid combo that also reaches a global menu
-    /// item, which focus alone cannot disambiguate.
+    // Editor and grid may share a combo: the editor's local key monitor takes it while the editor has focus.
     func overlaps(_ other: ShortcutContext) -> Bool {
         self == .global || other == .global || self == other
     }
 }
 
-// MARK: - Shortcut Category
-
-/// Groups shortcuts in the settings list by the surface they act on.
 enum ShortcutCategory: String, Codable, CaseIterable, Identifiable {
     case editor
     case dataGrid
     case navigation
     case connections
     case debug
-    case app
 
     var id: String { rawValue }
 
@@ -52,12 +29,9 @@ enum ShortcutCategory: String, Codable, CaseIterable, Identifiable {
         case .navigation: return String(localized: "Navigation")
         case .connections: return String(localized: "Connections")
         case .debug: return String(localized: "Debug")
-        case .app: return String(localized: "App")
         }
     }
 }
-
-// MARK: - Shortcut Action
 
 enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     // Connections
@@ -253,9 +227,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         allCases.filter { $0.category == category && $0.isAvailable(enabledModules: enabledModules) }
     }
 
-    /// A command that dispatches to whichever surface holds focus must be `.global`, or the
-    /// conflict resolver treats its combo as free in the other context and AppKit blanks one of
-    /// the two menu items that end up claiming it. The three find commands all route that way.
+    // A command that dispatches to whichever surface has focus must be .global, or AppKit blanks one of the two menu items that end up sharing its combo.
     var context: ShortcutContext {
         switch self {
         case .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind:
@@ -271,9 +243,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters, .jumpToColumn,
              .copyCellValue, .copyAsCsv, .copyAsCsvWithHeaders, .copyAsMarkdown, .copyAsInClause,
              .copyAsInsert, .copyAsUpdate,
-             /// Named rather than left to the `default:` below. It reverses a row the grid is
-             /// showing, so it belongs in the grid's context the way Add Row and Delete do, and
-             /// inheriting `.global` would let the recorder call a grid combo free for it.
+             // Named so it never falls to default: and .global, which would let the recorder call a grid combo free for it.
              .restorePreviousValues:
             return .dataGrid
         default:
@@ -285,9 +255,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         self == .switchToRecentTab || self == .switchToLeastRecentTab
     }
 
-    /// The focused grid reads this action's key from `keyDown`, whatever its modifiers, so its menu
-    /// item never carries a key equivalent. Its default, Option-Return, breaks a line in a text
-    /// field, and AppKit hands an equivalent to the menu before the field sees the key.
+    // The grid reads this key in keyDown, so its menu item has no equivalent: Option-Return breaks a line in a text field, and AppKit hands an equivalent to the menu first.
     var isReadByFocusedGrid: Bool {
         self == .openValueEditor
     }
@@ -297,13 +265,26 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         isReadByFocusedGrid || other.isReadByFocusedGrid || context.overlaps(other.context)
     }
 
+    // The focused grid reads a bare key only for this action; nothing dispatches one for Delete or Clear Selection.
     var allowsBareKey: Bool {
-        switch self {
-        case .previewFKReference, .clearSelection, .delete:
+        self == .previewFKReference
+    }
+
+    func accepts(_ key: BoundKey) -> Bool {
+        if key.command || key.control || key.isFunctionKey {
             return true
-        default:
-            return false
         }
+        if key == KeyboardSettings.defaultShortcuts[self] {
+            return true
+        }
+        guard key.isBareRecordable else { return false }
+        return key.hasModifier || allowsBareKey
+    }
+
+    var modifierRefusal: String {
+        self == .previewFKReference
+            ? String(localized: "Use ⌘ or ⌃, Space, or a function key.")
+            : String(localized: "Add ⌘ or ⌃ to this shortcut.")
     }
 
     var displayName: String {
@@ -438,12 +419,44 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Built-in Editor Shortcuts
+struct ShortcutSection: Identifiable, Equatable {
+    let category: ShortcutCategory
+    let actions: [ShortcutAction]
+
+    var id: ShortcutCategory { category }
+}
 
 extension ShortcutAction {
-    /// Shortcuts owned by the embedded SQL editor. They are not customizable, but
-    /// the recorder surfaces them so a user does not silently shadow one with an
-    /// editor-context binding.
+    private static let modifierGlyphs: Set<Character> = ["⌃", "⌥", "⇧", "⌘"]
+
+    // Every whitespace-separated term has to match; a term holding a modifier glyph can match the bound key too.
+    static func settingsSections(
+        matching query: String,
+        in settings: KeyboardSettings,
+        enabledModules: Set<AppModule>
+    ) -> [ShortcutSection] {
+        let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        return ShortcutCategory.allCases.compactMap { category in
+            let actions = settingsRows(in: category, enabledModules: enabledModules)
+                .filter { $0.matches(terms, in: settings) }
+            return actions.isEmpty ? nil : ShortcutSection(category: category, actions: actions)
+        }
+    }
+
+    private func matches(_ terms: [String], in settings: KeyboardSettings) -> Bool {
+        terms.allSatisfy { term in
+            if displayName.localizedStandardContains(term) || category.displayName.localizedStandardContains(term) {
+                return true
+            }
+            guard term.contains(where: { Self.modifierGlyphs.contains($0) }),
+                  let key = settings.boundKey(for: self) else { return false }
+            return key.displayString.localizedStandardContains(term)
+        }
+    }
+}
+
+extension ShortcutAction {
+    // Owned by the embedded editor and not rebindable; listed so an editor-context binding never shadows one.
     static let editorBuiltIns: [(key: BoundKey, name: String)] = [
         (.character("/", command: true), String(localized: "Toggle Comment")),
         (.character("[", command: true), String(localized: "Outdent")),
@@ -457,16 +470,16 @@ extension ShortcutAction {
         (.special(.downArrow, shift: true, option: true), String(localized: "Extend Selection to Next Statement"))
     ]
 
-    /// AppKit's own text-editing key bindings, taken from `StandardKeyBinding.dict`.
-    /// The editor's local key monitor claims `editorBuiltIns` before the menu bar
-    /// sees them, but these resolve at the very end of dispatch, inside the focused
-    /// responder's `interpretKeyEvents`. An enabled menu key equivalent is matched
-    /// long before that, so a data-grid action bound to one of these has to stand
-    /// down while a text input holds focus.
+    // StandardKeyBinding.dict and the text input keys: they resolve last, in interpretKeyEvents, so an enabled menu equivalent always beats them.
     static let standardTextEditingBindings: [(key: BoundKey, name: String)] = [
         (.special(.delete, command: true), String(localized: "Delete to Beginning of Line")),
         (.special(.delete, option: true), String(localized: "Delete Word Backward")),
         (.special(.forwardDelete, option: true), String(localized: "Delete Word Forward")),
+        (.special(.delete, shift: true), String(localized: "Delete Backward")),
+        (.special(.forwardDelete, shift: true), String(localized: "Delete Forward")),
+        (.special(.space, shift: true), String(localized: "Insert Space")),
+        (.special(.space, option: true), String(localized: "Insert Non-Breaking Space")),
+        (.special(.escape, option: true), String(localized: "Complete Word")),
         (.special(.leftArrow, command: true), String(localized: "Move to Beginning of Line")),
         (.special(.rightArrow, command: true), String(localized: "Move to End of Line")),
         (.special(.upArrow, command: true), String(localized: "Move to Beginning of Document")),
@@ -475,10 +488,7 @@ extension ShortcutAction {
         (.special(.rightArrow, option: true), String(localized: "Move Word Right"))
     ]
 
-    /// Every key equivalent a menu builder hardcodes, and so every combo no `ShortcutAction`
-    /// can be bound to. These fire regardless of focus, and AppKit blanks the loser when two
-    /// menu items claim one combo, so a binding the recorder let through would silently kill
-    /// the hardcoded command instead. An entry added to a menu builder belongs here too.
+    // Hardcoded by a menu builder: AppKit blanks the loser when two items share a combo, so no action may take one. A new menu-builder key goes here too.
     static let reservedAppShortcuts: [(key: BoundKey, name: String)] = {
         var shortcuts: [(key: BoundKey, name: String)] = [
             (.character("=", command: true), String(localized: "Zoom In")),
@@ -503,9 +513,6 @@ extension ShortcutAction {
         return shortcuts
     }()
 
-    /// The name of a reserved command this combo would shadow: an app-level menu
-    /// shortcut (always), or a built-in editor or system text command when the
-    /// action can fire while the editor is focused.
     static func reservedConflict(for key: BoundKey, context: ShortcutContext) -> String? {
         if let appName = reservedAppShortcuts.first(where: { $0.key == key })?.name {
             return appName
@@ -517,24 +524,15 @@ extension ShortcutAction {
         return standardTextEditingBindings.first(where: { $0.key == key })?.name
     }
 
-    /// Whether this action's binding duplicates one of AppKit's standard
-    /// text-editing bindings, which the focused responder owns. Only data-grid
-    /// actions yield: an editor or global action is meant to fire while text is
-    /// focused, so it keeps its key equivalent and the recorder warns instead.
+    // Only grid actions stand down while text has focus; an editor or global action keeps its key and the recorder refuses the combo instead.
     func shadowsStandardTextEditingBinding(_ key: BoundKey?) -> Bool {
         guard context == .dataGrid, let key, !key.isCleared else { return false }
         return Self.standardTextEditingBindings.contains { $0.key == key }
     }
 }
 
-// MARK: - Keyboard Settings
-
-/// User's keyboard shortcut customization settings.
-/// Only stores overrides; an empty dictionary means all defaults.
+// Only overrides are stored, keyed by action rawValue; a renamed action's stale entry never matches.
 struct KeyboardSettings: Codable, Equatable {
-    /// User-customized shortcuts (action rawValue -> BoundKey).
-    /// Only contains overrides; missing entries use defaults. A renamed action's
-    /// stale key becomes a harmless no-op (never matched by any action).
     var shortcuts: [String: BoundKey]
 
     static let `default` = KeyboardSettings(shortcuts: [:])
@@ -545,13 +543,9 @@ struct KeyboardSettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        // BoundKey requires `keyCode` and LegacyKeyCombo requires `key`, and
-        // neither field exists in the other shape, so the two never decode each
-        // other's payload. Modern data is tried first; a legacy file fails that
-        // decode and falls through to migration. Only then are unreadable
-        // entries dropped one by one, or a legacy file would lose every entry.
+        // The two shapes never decode each other (keyCode vs key); entries drop one by one only after both fail, or a legacy file would lose them all.
         if let modern = try? container.decodeIfPresent([String: BoundKey].self, forKey: .shortcuts) {
-            shortcuts = modern ?? [:]
+            shortcuts = modern
         } else if let legacy = try? container.decode([String: LegacyKeyCombo].self, forKey: .shortcuts) {
             shortcuts = legacy.compactMapValues { $0.migrated() }
         } else {
@@ -559,14 +553,7 @@ struct KeyboardSettings: Codable, Equatable {
         }
     }
 
-    /// Get the effective shortcut for an action (user override or default).
-    /// Returns nil if the user explicitly cleared the shortcut, or if a chord the user assigned
-    /// by hand has already claimed this action's default.
-    ///
-    /// The yield is resolved here rather than written into `shortcuts`, which means only what the
-    /// user chose. Storing it would make the stand-down permanent: rebinding the conflicting chord
-    /// would leave the default cleared forever, Settings would show the action as customized, and
-    /// its Reset arrow would appear to work until the next launch re-applied the clear.
+    // A default an override claims yields here, never in `shortcuts`, so rebinding the claimant re-arms it and the action never reads as customized.
     func shortcut(for action: ShortcutAction) -> BoundKey? {
         if let override = shortcuts[action.rawValue] {
             return override
@@ -576,8 +563,7 @@ struct KeyboardSettings: Codable, Equatable {
         return fallback
     }
 
-    /// The action whose user-assigned chord stands this default down, if any. Only overrides
-    /// claim: two defaults cannot collide, because `DefaultShortcutHygieneTests` forbids it.
+    // Only overrides claim: DefaultShortcutHygieneTests keeps two defaults from colliding.
     private func findOverrideClaimant(of key: BoundKey, excluding action: ShortcutAction) -> ShortcutAction? {
         guard !key.isCleared else { return nil }
         for (rawValue, override) in shortcuts {
@@ -593,12 +579,24 @@ struct KeyboardSettings: Codable, Equatable {
         return nil
     }
 
+    func boundKey(for action: ShortcutAction) -> BoundKey? {
+        guard let key = shortcut(for: action), !key.isCleared else { return nil }
+        return key
+    }
+
     func isCustomized(_ action: ShortcutAction) -> Bool {
         shortcuts[action.rawValue] != nil
     }
 
-    /// Find a conflicting action for the given combo within an overlapping
-    /// context, excluding the specified action.
+    var customizedCount: Int {
+        shortcuts.keys.filter { ShortcutAction(rawValue: $0) != nil }.count
+    }
+
+    func defaultClaimant(for action: ShortcutAction) -> ShortcutAction? {
+        guard !isCustomized(action), let fallback = Self.defaultShortcuts[action] else { return nil }
+        return findOverrideClaimant(of: fallback, excluding: action)
+    }
+
     func findConflict(for key: BoundKey, excluding action: ShortcutAction) -> ShortcutAction? {
         findConflict(for: key, excluding: action, enabledModules: AppModule.storedEnabledModules())
     }
@@ -608,32 +606,77 @@ struct KeyboardSettings: Codable, Equatable {
         excluding action: ShortcutAction,
         enabledModules: Set<AppModule>
     ) -> ShortcutAction? {
-        guard !key.isCleared else { return nil }
-        for other in ShortcutAction.allCases where other != action && other.isAvailable(enabledModules: enabledModules) {
-            guard action.contends(with: other),
-                  let otherKey = shortcut(for: other), !otherKey.isCleared,
-                  otherKey == key else { continue }
-            return other
+        conflicts(for: key, excluding: action, enabledModules: enabledModules).first
+    }
+
+    func conflicts(
+        for key: BoundKey,
+        excluding action: ShortcutAction,
+        enabledModules: Set<AppModule>
+    ) -> [ShortcutAction] {
+        guard !key.isCleared else { return [] }
+        return ShortcutAction.allCases.filter { other in
+            other != action
+                && other.isAvailable(enabledModules: enabledModules)
+                && action.contends(with: other)
+                && boundKey(for: other) == key
         }
-        return nil
     }
 
     mutating func setShortcut(_ key: BoundKey, for action: ShortcutAction) {
         shortcuts[action.rawValue] = key
     }
 
-    /// Clear a shortcut so the action has no binding.
     mutating func clearShortcut(for action: ShortcutAction) {
         shortcuts[action.rawValue] = BoundKey.cleared
     }
 
-    /// Reset a specific action to its default shortcut.
     mutating func resetToDefault(for action: ShortcutAction) {
         shortcuts.removeValue(forKey: action.rawValue)
     }
 
-    /// Drop overrides that can never dispatch (bare keys on menu-driven actions),
-    /// reverting them to their default. Cleared and unknown overrides are kept.
+    // Picking the default again stores nothing, so the action stops reading as customized.
+    func assigning(_ key: BoundKey, to action: ShortcutAction) -> KeyboardSettings {
+        var next = self
+        if key == Self.defaultShortcuts[action], findOverrideClaimant(of: key, excluding: action) == nil {
+            next.resetToDefault(for: action)
+        } else {
+            next.setShortcut(key, for: action)
+        }
+        return next
+    }
+
+    // An action with no default needs no cleared marker to have no key.
+    func clearing(_ action: ShortcutAction) -> KeyboardSettings {
+        var next = self
+        if Self.defaultShortcuts[action] == nil {
+            next.resetToDefault(for: action)
+        } else {
+            next.clearShortcut(for: action)
+        }
+        return next
+    }
+
+    func resetting(_ action: ShortcutAction) -> KeyboardSettings {
+        var next = self
+        next.resetToDefault(for: action)
+        return next
+    }
+
+    // A holder still on its default needs no write: the new override claims that default.
+    func reassigning(
+        _ key: BoundKey,
+        to action: ShortcutAction,
+        enabledModules: Set<AppModule>
+    ) -> KeyboardSettings {
+        var next = self
+        for holder in conflicts(for: key, excluding: action, enabledModules: enabledModules) where isCustomized(holder) {
+            next = next.clearing(holder)
+        }
+        return next.assigning(key, to: action)
+    }
+
+    // Drops overrides that can never dispatch (a bare key on a menu action); cleared and unknown entries stay.
     func sanitized() -> KeyboardSettings {
         var cleaned = shortcuts
         for (rawValue, key) in shortcuts {
@@ -645,10 +688,7 @@ struct KeyboardSettings: Codable, Equatable {
         return KeyboardSettings(shortcuts: cleaned)
     }
 
-    /// Build a SwiftUI KeyboardShortcut for the given action's menu item.
-    /// Returns nil when the shortcut is cleared, has no representable key, or is a
-    /// bare (modifier-less) key. Bare keys dispatch through the responder chain in
-    /// the focused view, not through a global menu key-equivalent.
+    // A bare key reaches the focused responder, never a menu key equivalent.
     func keyboardShortcut(for action: ShortcutAction) -> KeyboardShortcut? {
         guard !action.isReadByFocusedGrid,
               let key = shortcut(for: action), !key.isCleared, key.hasModifier || key.isFunctionKey,
@@ -658,10 +698,6 @@ struct KeyboardSettings: Codable, Equatable {
         return KeyboardShortcut(equivalent, modifiers: key.eventModifiers)
     }
 
-    /// The AppKit key equivalent for the given action's menu item, resolved through
-    /// user overrides. Returns nil under the same conditions as `keyboardShortcut(for:)`:
-    /// a cleared binding, an unrepresentable key, or a bare key, which reaches the
-    /// focused responder directly rather than through a global menu key-equivalent.
     func menuKeyEquivalent(for action: ShortcutAction) -> (characters: String, modifiers: NSEvent.ModifierFlags)? {
         guard !action.isReadByFocusedGrid,
               let key = shortcut(for: action), !key.isCleared, key.hasModifier || key.isFunctionKey,
@@ -671,19 +707,12 @@ struct KeyboardSettings: Codable, Equatable {
         return (characters, key.modifierFlags)
     }
 
-    /// A tooltip/help string that appends the action's resolved shortcut, e.g.
-    /// "Switch Connection (⌃⌘C)". Returns just the label when the shortcut is
-    /// cleared or unset. Reflects user overrides because it resolves through
-    /// `shortcut(for:)`.
     func shortcutHint(_ label: String, for action: ShortcutAction) -> String {
         guard let key = shortcut(for: action), !key.isCleared else { return label }
         return "\(label) (\(key.displayString))"
     }
 
-    // MARK: - Default Shortcuts
-
-    // An action absent here shows as unassigned until the user binds it. Commit and Roll Back Transaction ship
-    // unbound: they are infrequent, and a stray Roll Back discards work.
+    // Commit and Roll Back Transaction ship unbound: they are infrequent, and a stray Roll Back discards work.
     static let defaultShortcuts: [ShortcutAction: BoundKey] = [
         // Connections
         .newConnection: .character("n", command: true),
@@ -750,12 +779,7 @@ struct KeyboardSettings: Codable, Equatable {
         .jumpToColumn: .character("j", command: true, shift: true),
 
         // Navigation
-        /// Not the Safari chord. Command+[ and Command+] are Previous/Next Page and are claimed
-        /// again by the editor's own indent and outdent, Option+Command+[ and ] are the result
-        /// tabs, Shift+Command+[ and ] are the editor tabs, Control+Command+Left and Right are
-        /// Previous/Next Statement, and Option+Command+Left is Toggle Fold. Two menu items cannot
-        /// share a key equivalent: AppKit blanks the loser's. This completes the bracket family
-        /// the app already reads as "step through something".
+        // Not Safari's chord: Cmd-[ ] page and indent, Opt-Cmd-[ ] step results, Shift-Cmd-[ ] step tabs, and two menu items cannot share one.
         .navigateBack: .character("[", command: true, control: true),
         .navigateForward: .character("]", command: true, control: true),
         .newTab: .character("t", command: true),
@@ -765,8 +789,7 @@ struct KeyboardSettings: Codable, Equatable {
         .toggleTableBrowser: .character("0", command: true),
         .toggleInspector: .character("i", command: true, option: true),
         .toggleAssistant: .character("a", command: true, option: true),
-        /// Not Shift-Command-A, which Apple's own table assigns to Deselect All and which
-        /// `clearSelection` is waiting for. This keeps the "a is the assistant" family together.
+        // Not Shift-Cmd-A, Apple's Deselect All, which clearSelection waits for.
         .toggleAgentMode: .character("a", command: true, shift: true, option: true),
         .toggleFilters: .character("f", command: true, shift: true),
         .toggleHistory: .character("y", command: true),
@@ -783,10 +806,7 @@ struct KeyboardSettings: Codable, Equatable {
         .focusAssistant: .character("a", command: true, option: true, control: true),
         .showPreviousTab: .character("[", command: true, shift: true),
         .showNextTab: .character("]", command: true, shift: true),
-        /// The one Control chord among the defaults. Control-Tab is not a system hotkey, it is the
-        /// chord AppKit itself gives tab switching in every app with window tabs, and it is what
-        /// DataGrip, VS Code and Zed switch recent tabs with. Show Previous and Next Window Tab
-        /// have no default, since this is the chord AppKit would otherwise give them.
+        // Control-Tab is AppKit's own tab-switching chord, not a system hotkey; window tabs get no default so they never take it.
         .switchToRecentTab: .special(.tab, control: true),
         .switchToLeastRecentTab: .special(.tab, shift: true, control: true),
         .toggleWorkspaceRail: .character("0", command: true, option: true),
@@ -801,10 +821,7 @@ struct KeyboardSettings: Codable, Equatable {
     ]
 }
 
-// MARK: - Legacy Migration
-
-/// The pre-keyCode stored shape of a shortcut. Used only to migrate persisted
-/// settings to BoundKey.
+// The pre-keyCode stored shape, read only to migrate.
 private struct LegacyKeyCombo: Codable {
     let key: String
     var command = false
