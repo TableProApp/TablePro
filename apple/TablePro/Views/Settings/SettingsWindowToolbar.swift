@@ -91,6 +91,9 @@ internal final class SettingsWindowToolbar: NSObject, NSToolbarDelegate {
         item.label = label
         item.paletteLabel = label
         item.isBordered = true
+        // Enablement is driven by canGoBack; without this AppKit auto-enables Back because its
+        // target responds to the action, so it would never dim at a pane root.
+        item.autovalidates = false
         return item
     }
 
