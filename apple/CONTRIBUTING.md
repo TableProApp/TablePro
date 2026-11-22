@@ -61,7 +61,7 @@ xcodebuild build -project TablePro.xcodeproj -scheme AllPlugins -destination 'pl
 
 ### A Release build
 
-`scripts/release/build.sh` builds the app and the registry plugins the way a tag does, universal, into `build/release/`; `package.sh` writes the assets to `dist/`. The nightly's Release Build job runs the same:
+`scripts/release/build.sh` builds the app and the registry plugins the way a tag does: the app once per arch into `build/release/<arch>/`, the plugins universal into `build/release/plugins`; `package.sh` writes the assets to `dist/`. The nightly's Release Build job runs the same:
 
 ```bash
 export VERSION=0.0.0-dev BUILD=9999999
@@ -72,7 +72,7 @@ scripts/release/build.sh plugins --unsigned && scripts/release/package.sh plugin
 
 Signed: drop `--unsigned`, with the Developer ID identity and the provisioning profile `scripts/release/ExportOptions.plist` names. `scripts/release/notarize.sh <path>...` needs the profile `xcrun notarytool store-credentials TablePro --key <p8> --key-id <id> --issuer <issuer>` creates.
 
-The disk image opens to the window `scripts/release/dmg.DS_Store` describes, a file Finder wrote. To change it, edit the Finder settings in `scripts/release/dmg.sh`, run `scripts/release/dmg.sh layout build/release/TablePro.app` on a Mac with a logged-in session, and open a disk image built with the new file before committing it.
+The disk image opens to the window `scripts/release/dmg.DS_Store` describes, a file Finder wrote. To change it, edit the Finder settings in `scripts/release/dmg.sh`, run `scripts/release/dmg.sh layout build/release/arm64/TablePro.app` on a Mac with a logged-in session, and open a disk image built with the new file before committing it.
 
 ### Clean builds
 
