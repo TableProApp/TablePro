@@ -20,13 +20,15 @@ struct ConnectionEditorEngineIssueTests {
         ConnectionEditorEngine.issues(draft, traits, context)
     }
 
-    // Every type, every bad value at once: no issue may point at a row the layout does not show.
-    @Test("Every issue names a row the layout shows, for every registered type")
+    // Every type, every bad value at once, with each transport and a socket forward: no issue may point at a row the
+    // layout hides or shows disabled.
+    @Test("Every issue names a row the layout shows enabled, for every registered type")
     func everyIssueRowIsVisible() {
         for type in DatabaseType.allKnownTypes {
             let traits = traits(type)
             var draft = ConnectionDraft.new(type: type, traits: traits)
             draft.name = ""
+            draft.database = ""
             draft.portText = "99999"
             draft.options.connectTimeoutSeconds = 0
             draft.options.queryTimeoutSeconds = -5
@@ -40,9 +42,18 @@ struct ConnectionEditorEngineIssueTests {
             for transport in ConnectionEditorEngine.availableTransports(draft, traits) {
                 var withTransport = draft
                 withTransport.selectTransport(transport)
-                let layout = ConnectionEditorEngine.layout(withTransport, traits, EditorContext())
-                for issue in ConnectionEditorEngine.issues(withTransport, traits, EditorContext(), layout: layout) {
-                    #expect(layout.facet(issue.facet)?.contains(issue.row) == true, "\(type.rawValue): \(issue.message)")
+                var variants = [withTransport]
+                if transport == .ssh {
+                    var forwarding = withTransport
+                    forwarding.sshForwardUnixSocketPath = "/var/run/db.sock"
+                    variants.append(forwarding)
+                }
+                for variant in variants {
+                    let layout = ConnectionEditorEngine.layout(variant, traits, EditorContext())
+                    for issue in ConnectionEditorEngine.issues(variant, traits, EditorContext(), layout: layout) {
+                        #expect(layout.facet(issue.facet)?.contains(issue.row) == true, "\(type.rawValue): \(issue.message)")
+                        #expect(!layout.disabledRows.contains(issue.row), "\(type.rawValue): \(issue.message) on a disabled row")
+                    }
                 }
             }
         }
@@ -140,6 +151,42 @@ struct ConnectionEditorEngineIssueTests {
         #expect(!issues(draft, postgres).contains { $0.row == .builtIn(.port) })
         let edits = ConnectionEditorEngine.edits(draft, postgres, originalTraits: nil, EditorContext())
         #expect(edits.port == 15_432)
+    }
+
+    @Test("Port blocks nothing while the SSH tunnel forwards to a socket and the field is off")
+    func portIsUnusedWhileForwardingToASocket() {
+        let postgres = traits(.postgresql)
+        var draft = ConnectionDraft.new(type: .postgresql, traits: postgres)
+        draft.name = "Orders"
+        draft.setPort("99999", traits: postgres)
+        draft.selectTransport(.ssh)
+        draft.ssh.host = "bastion.example.com"
+        #expect(issues(draft, postgres).contains { $0.row == .builtIn(.port) })
+
+        draft.sshForwardUnixSocketPath = "/var/run/postgresql/.s.PGSQL.5432"
+        #expect(!issues(draft, postgres).contains { $0.row == .builtIn(.port) })
+        let layout = ConnectionEditorEngine.layout(draft, postgres, EditorContext())
+        #expect(layout.contains(.builtIn(.port)))
+        #expect(!layout.isEnabled(.builtIn(.port)))
+    }
+
+    @Test("A file on an SSH server needs no local database file, and General says the local path is unused")
+    func remoteFileNeedsNoLocalFile() throws {
+        let sqlite = traits(.sqlite)
+        var draft = ConnectionDraft.new(type: .sqlite, traits: sqlite)
+        draft.name = "Remote"
+        draft.database = ""
+        #expect(issues(draft, sqlite).contains { $0.row == .builtIn(.databaseFile) })
+
+        draft.selectTransport(.remoteFile)
+        draft.ssh.host = "prod-1"
+        draft.ssh.username = "deploy"
+        draft.ssh.remoteFilePath = "/srv/app.db"
+        #expect(issues(draft, sqlite).isEmpty)
+        let layout = ConnectionEditorEngine.layout(draft, sqlite, EditorContext())
+        let section = try #require(layout.facet(.general)?.section(containing: .builtIn(.databaseFile)))
+        #expect(section.footer != nil)
+        #expect(!layout.isEnabled(.builtIn(.databaseFile)))
     }
 
     @Test("An empty name is no issue: Save and Test use the suggested name")

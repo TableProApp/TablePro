@@ -8,16 +8,31 @@ import SwiftUI
 import TableProPluginKit
 
 // The pop-up carries the profile commands as its last items, as a Team or printer pop-up does, so the row keeps
-// one control and no button lands on a line of its own.
+// one control and no button lands on a line of its own. The commands and their order match SSH Profile's.
 struct GeneralCredentialsRows: View {
     @ObservedObject var store: ConnectionEditorStore
 
     @State private var pickerGeneration = 0
+    @State private var profileSheet: ProfileSheet?
 
     private enum Choice: Hashable {
         case mode(CredentialMode)
         case saveAsProfile
+        case editProfile
+        case newProfile
         case manageProfiles
+    }
+
+    private enum ProfileSheet: Identifiable {
+        case create
+        case edit(CredentialProfile)
+
+        var id: String {
+            switch self {
+            case .create: return "create"
+            case .edit(let profile): return "edit-\(profile.id.uuidString)"
+            }
+        }
     }
 
     private var row: EditorRow { .builtIn(.credentialProfile) }
@@ -77,12 +92,35 @@ struct GeneralCredentialsRows: View {
             if canSaveAsProfile {
                 Text(String(localized: "Save These as a Profile…")).tag(Choice.saveAsProfile)
             }
+            if store.selectedCredentialProfile != nil {
+                Text(String(localized: "Edit Profile…")).tag(Choice.editProfile)
+            }
+            Text(String(localized: "New Profile…")).tag(Choice.newProfile)
             Text(String(localized: "Manage Profiles…")).tag(Choice.manageProfiles)
         } label: {
             EditorRowLabel(String(localized: "Credentials"), row: row, store: store)
         }
         .id(pickerGeneration)
         .accessibilityIdentifier(row.accessibilityIdentifier)
+        .sheet(item: $profileSheet) { sheet in
+            profileEditor(sheet)
+        }
+    }
+
+    // The store links a profile made here, as it does one saved from these values; an edit or a delete reaches it as
+    // a profiles change.
+    @ViewBuilder
+    private func profileEditor(_ sheet: ProfileSheet) -> some View {
+        switch sheet {
+        case .create:
+            CredentialProfileEditorSheet(
+                existingProfile: nil,
+                initialDatabaseType: store.draft.type,
+                onSave: { store.didSaveCredentialProfile($0) }
+            )
+        case .edit(let profile):
+            CredentialProfileEditorSheet(existingProfile: profile, initialDatabaseType: store.draft.type)
+        }
     }
 
     private var canSaveAsProfile: Bool {
@@ -101,6 +139,14 @@ struct GeneralCredentialsRows: View {
                 case .saveAsProfile:
                     pickerGeneration += 1
                     store.isSavingCredentialsAsProfile = true
+                case .editProfile:
+                    pickerGeneration += 1
+                    if let profile = store.selectedCredentialProfile {
+                        profileSheet = .edit(profile)
+                    }
+                case .newProfile:
+                    pickerGeneration += 1
+                    profileSheet = .create
                 case .manageProfiles:
                     pickerGeneration += 1
                     WindowOpener.shared.openSettings(tab: .profiles)
@@ -120,7 +166,7 @@ private func passwordTitle(_ store: ConnectionEditorStore) -> String {
     store.traits.connectionMode == .apiOnly ? String(localized: "API Token") : String(localized: "Password")
 }
 
-// The password and where it is kept share one row, so "Password" labels it once.
+// The field takes the row's width; where the password is kept is the row above it, and Ask Every Time drops the field.
 struct GeneralPasswordRow: View {
     @ObservedObject var store: ConnectionEditorStore
 
@@ -137,6 +183,7 @@ struct GeneralPasswordRow: View {
             HStack(spacing: 8) {
                 field(title: title)
                     .labelsHidden()
+                    .frame(minWidth: 0, idealWidth: 200, maxWidth: .infinity)
                     .focused($isFocused)
                     .accessibilityIdentifier(BuiltInRow.password.accessibilityIdentifier)
 
@@ -149,15 +196,11 @@ struct GeneralPasswordRow: View {
                 .help(revealTitle)
                 .accessibilityLabel(revealTitle)
                 .accessibilityIdentifier("connection-form-password-reveal")
-
-                GeneralPasswordStoragePicker(store: store, title: title)
-                    .labelsHidden()
-                    .fixedSize()
             }
         } label: {
             EditorRowLabel(title, row: .builtIn(.password), store: store)
         }
-        .editorRowFocus(.builtIn(.password), .builtIn(.passwordMode), store: store, isFocused: $isFocused)
+        .editorRowFocus(.builtIn(.password), store: store, isFocused: $isFocused)
     }
 
     private var revealTitle: String {
@@ -186,7 +229,7 @@ struct GeneralPasswordRow: View {
     }
 }
 
-// Without a password field (Ask Every Time, or a source set in connections.json) the choice is the row.
+// Where the password is kept, or with a source set in connections.json whether TablePro asks for it instead.
 struct GeneralPasswordModeRow: View {
     @ObservedObject var store: ConnectionEditorStore
 
@@ -204,7 +247,7 @@ struct GeneralPasswordModeRow: View {
             .accessibilityIdentifier(BuiltInRow.passwordMode.accessibilityIdentifier)
             .editorRowFocus(.builtIn(.passwordMode), store: store)
         } else {
-            GeneralPasswordStoragePicker(store: store, title: passwordTitle(store))
+            GeneralPasswordStoragePicker(store: store)
                 .editorRowFocus(.builtIn(.passwordMode), store: store)
         }
     }
@@ -212,11 +255,14 @@ struct GeneralPasswordModeRow: View {
 
 struct GeneralPasswordStoragePicker: View {
     @ObservedObject var store: ConnectionEditorStore
-    let title: String
+
+    private var title: String {
+        store.traits.connectionMode == .apiOnly ? String(localized: "Save API Token") : String(localized: "Save Password")
+    }
 
     var body: some View {
         Picker(selection: store.tracking(store.passwordPromptBinding, row: .builtIn(.passwordMode))) {
-            Text(String(localized: "Store in Keychain")).tag(false)
+            Text(String(localized: "In Keychain")).tag(false)
             Text(String(localized: "Ask Every Time")).tag(true)
         } label: {
             EditorRowLabel(title, row: .builtIn(.passwordMode), store: store)

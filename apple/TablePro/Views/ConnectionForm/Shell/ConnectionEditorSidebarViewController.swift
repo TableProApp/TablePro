@@ -30,10 +30,17 @@ struct ConnectionEditorSidebarRow: Equatable {
             ConnectionEditorSidebarRow(
                 facet: layout.facet,
                 title: layout.title,
-                symbolName: layout.facet.symbolName,
+                symbolName: symbolName(for: layout.facet, in: store),
                 issueMessages: store.issues(for: layout.facet).filter { $0.blocksSave && store.isRevealed($0) }.map(\.message)
             )
         }
+    }
+
+    // A file database's transport facet is titled Location: where the file is, not a network route.
+    @MainActor
+    private static func symbolName(for facet: ConnectionFacet, in store: ConnectionEditorStore) -> String {
+        guard facet == .sshAndProxies, store.traits.supportsRemoteDatabaseFile else { return facet.symbolName }
+        return "folder"
     }
 }
 

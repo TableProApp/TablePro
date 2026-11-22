@@ -11,6 +11,7 @@ struct SafeModeFacetView: View {
                 Section {
                     ForEach(section.rows, id: \.self) { row in
                         rowView(row)
+                            .id(row)
                     }
                 } header: {
                     if let title = section.title {
@@ -24,6 +25,7 @@ struct SafeModeFacetView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollsToEditorFocus(.safeMode, store: store)
     }
 
     private var sections: [SectionLayout] {
@@ -111,24 +113,47 @@ struct SafeModeFacetView: View {
     }
 }
 
-// Only the pattern stretches, so a rule never asks for more width than the column has.
+// The pattern sits in the label column, so a rule lines up with the rows around it, and only it stretches; the two
+// pop-ups and Remove trail it.
 private struct SafeModeMaskingRuleRow: View {
     @Binding var rule: MaskingRule
     let focusedRule: FocusState<UUID?>.Binding
     let onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Picker(String(localized: "Match"), selection: $rule.target) {
-                ForEach(MaskingTarget.allCases) { target in
-                    Text(verbatim: target.displayName).tag(target)
+        LabeledContent {
+            HStack(spacing: 8) {
+                Picker(String(localized: "Match"), selection: $rule.target) {
+                    ForEach(MaskingTarget.allCases) { target in
+                        Text(verbatim: target.displayName).tag(target)
+                    }
                 }
-            }
-            .labelsHidden()
-            .fixedSize()
-            .help(String(localized: "Match the pattern against column names or column types"))
-            .accessibilityIdentifier("connection-form-masking-target")
+                .labelsHidden()
+                .fixedSize()
+                .help(String(localized: "Match the pattern against column names or column types"))
+                .accessibilityLabel(String(localized: "Match"))
+                .accessibilityIdentifier("connection-form-masking-target")
 
+                Picker(String(localized: "Mask"), selection: $rule.style) {
+                    ForEach(MaskingStyle.allCases) { style in
+                        Text(verbatim: style.displayName).tag(style)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+                .help(String(localized: "How matching values are hidden"))
+                .accessibilityLabel(String(localized: "Mask"))
+                .accessibilityIdentifier("connection-form-masking-style")
+
+                Button(action: onRemove) {
+                    Image(systemName: "minus.circle")
+                }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Remove Rule"))
+                .accessibilityLabel(String(localized: "Remove Rule"))
+                .accessibilityIdentifier("connection-form-masking-remove")
+            }
+        } label: {
             TextField(
                 String(localized: "Pattern"),
                 text: $rule.pattern,
@@ -136,28 +161,9 @@ private struct SafeModeMaskingRuleRow: View {
             )
             .labelsHidden()
             .autocorrectionDisabled()
-            .multilineTextAlignment(.leading)
-            .frame(minWidth: 0, maxWidth: .infinity)
             .focused(focusedRule, equals: rule.id)
+            .accessibilityLabel(String(localized: "Pattern"))
             .accessibilityIdentifier("connection-form-masking-pattern")
-
-            Picker(String(localized: "Mask"), selection: $rule.style) {
-                ForEach(MaskingStyle.allCases) { style in
-                    Text(verbatim: style.displayName).tag(style)
-                }
-            }
-            .labelsHidden()
-            .fixedSize()
-            .help(String(localized: "How matching values are hidden"))
-            .accessibilityIdentifier("connection-form-masking-style")
-
-            Button(action: onRemove) {
-                Image(systemName: "minus.circle")
-            }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Remove Rule"))
-            .accessibilityLabel(String(localized: "Remove Rule"))
-            .accessibilityIdentifier("connection-form-masking-remove")
         }
         .accessibilityElement(children: .contain)
     }

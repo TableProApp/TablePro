@@ -85,7 +85,8 @@ final class ConnectionEditorStore: ObservableObject {
     @Published var pgpassStatus: PgpassStatus = .notChecked
     @Published var pastedURLNotice: PastedURLNotice?
 
-    // Fixed at load: the merge's base. A connectionUpdated event never moves it.
+    // Fixed at load: the merge's base. A connectionUpdated event never moves it; only the sign-in a deleted credential
+    // profile hands over reaches loadedRecord, as it reaches the draft.
     var baseline: ConnectionDraft
     var baselineEdits: ConnectionFormEdits?
     var loadedRecord: DatabaseConnection?
@@ -296,9 +297,8 @@ final class ConnectionEditorStore: ObservableObject {
         guard !hasPlacedInitialFocus else { return }
         hasPlacedInitialFocus = true
         guard focusRequest == nil, selectedFacet == .general else { return }
-        let rows = layout.facet(.general)?.sections.flatMap(\.rows) ?? []
         let target = isNew
-            ? [EditorRow.builtIn(.host), .builtIn(.databaseFile)].first { rows.contains($0) } ?? .builtIn(.name)
+            ? [EditorRow.builtIn(.host), .builtIn(.databaseFile)].first { layout.isEnabled($0) } ?? .builtIn(.name)
             : .builtIn(.name)
         focus(facet: .general, row: target)
     }

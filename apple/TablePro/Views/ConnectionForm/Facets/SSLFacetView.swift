@@ -20,6 +20,7 @@ struct SSLFacetView: View {
                     Section {
                         ForEach(section.rows, id: \.self) { row in
                             rowView(row)
+                                .id(row)
                         }
                     } header: {
                         if let title = section.title {
@@ -34,6 +35,7 @@ struct SSLFacetView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollsToEditorFocus(.sslTLS, store: store)
     }
 
     // The mode section explains the mode that is selected, not the type's note about Preferred under every mode.

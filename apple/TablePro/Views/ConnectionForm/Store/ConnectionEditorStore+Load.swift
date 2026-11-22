@@ -179,8 +179,13 @@ extension ConnectionEditorStore {
                 next.credentials.storedPasswordState = storage.passwordState(for: refreshed.id)
                 next.credentials.password = storage.loadPassword(for: refreshed.id) ?? ""
             }
+            if traits.field(ConnectionEditorEngine.pgpassFieldId) != nil {
+                next.fieldValues[ConnectionEditorEngine.pgpassFieldId] = refreshed.usePgpass ? "true" : "false"
+            }
             unreadableSecretKeys.formUnion(reads.unreadable)
             loadedSecrets.merge(reads.loaded) { _, fresh in fresh }
+            // Test builds on the loaded record, and the edits never carry the source, so it takes the same hand-over.
+            loadedRecord?.takeSignIn(from: refreshed)
         }
         commit(next)
     }
@@ -309,5 +314,17 @@ extension ConnectionEditorStore {
             database: draft.database,
             username: PgpassReader.effectiveUsername(draft.credentials.username.trimmingCharacters(in: .whitespaces))
         )
+    }
+}
+
+private extension DatabaseConnection {
+    // What CredentialProfileStorage.unlinkConnections writes onto a connection whose profile is deleted.
+    mutating func takeSignIn(from other: DatabaseConnection) {
+        credentialMode = other.credentialMode
+        username = other.username
+        passwordSource = other.passwordSource
+        for key in ["promptForPassword", ConnectionEditorEngine.pgpassFieldId] {
+            additionalFields[key] = other.additionalFields[key]
+        }
     }
 }

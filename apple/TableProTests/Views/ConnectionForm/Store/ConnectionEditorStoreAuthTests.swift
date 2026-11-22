@@ -116,6 +116,39 @@ struct ConnectionEditorStoreAuthTests {
         #expect(store.testRecord(testId: UUID()).passwordSource == source)
     }
 
+    @Test("Test runs the source a profile deleted while the editor was open handed to the connection")
+    func testUsesTheSourceADeletedProfileHandsOver() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let source = PasswordSource.env(variable: "DB_PASSWORD")
+        let profile = CredentialProfile(name: "Shared", username: "shared", passwordMode: .source(source))
+        #expect(fixture.credentialProfiles.addProfile(profile))
+        let store = editing(connection(source: nil) { $0.credentialMode = .profile(id: profile.id) }, in: fixture)
+
+        #expect(fixture.credentialProfiles.deleteProfile(profile))
+        #expect(store.draft.credentials.passwordSource == source)
+
+        let tested = store.testRecord(testId: UUID())
+        #expect(tested.credentialMode == .inline)
+        #expect(tested.username == "shared")
+        #expect(tested.passwordSource == source)
+    }
+
+    @Test("A ~/.pgpass profile deleted while the editor is open leaves the form and Test on ~/.pgpass")
+    func deletedPgpassProfileIsAdopted() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let profile = CredentialProfile(name: "Local", username: "app", passwordMode: .pgpass)
+        #expect(fixture.credentialProfiles.addProfile(profile))
+        let store = editing(
+            connection(source: nil, type: .postgresql) { $0.credentialMode = .profile(id: profile.id) },
+            in: fixture
+        )
+
+        #expect(fixture.credentialProfiles.deleteProfile(profile))
+
+        #expect(ConnectionEditorEngine.usesPgpass(store.draft, store.traits))
+        #expect(store.testRecord(testId: UUID()).usePgpass)
+    }
+
     @Test("A connection with only a source can still be saved as a profile")
     func sourceAloneIsPromotable() throws {
         let fixture = try ConnectionEditorStoreFixture()

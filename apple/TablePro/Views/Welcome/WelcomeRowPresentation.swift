@@ -47,6 +47,10 @@ internal struct WelcomeConnectionRowModel: Equatable {
     // Part of the model so a reload hands a reused row a changed value; status has no observable home.
     internal let status: ConnectionDisplayStatus
 
+    internal var hasSecondLine: Bool {
+        !detail.isEmpty || groupLabel != nil || !tags.isEmpty || hiddenTagCount > 0
+    }
+
     // The tile is hidden from VoiceOver, so the label names the engine a custom icon may replace.
     internal var accessibilityLabel: String {
         [name, type.displayName, environment.accessibilityName]
@@ -157,7 +161,7 @@ internal enum WelcomeRowPresentation {
         return WelcomeConnectionRowModel(
             id: connection.id,
             name: connection.name,
-            detail: connection.connectionSubtitle,
+            detail: Self.detail(connection.connectionSubtitle, under: connection.name),
             type: connection.type,
             iconName: connection.iconName,
             identityColor: connection.identityColor,
@@ -185,7 +189,7 @@ internal enum WelcomeRowPresentation {
         return WelcomeConnectionRowModel(
             id: linked.id,
             name: exportable.name,
-            detail: detail,
+            detail: Self.detail(detail, under: exportable.name),
             type: type,
             iconName: LibrarySymbolCatalog.normalizedName(exportable.iconName),
             identityColor: exportable.color.flatMap { ConnectionColor(rawValue: $0) }.flatMap { $0.isDefault ? nil : $0 },
@@ -198,6 +202,12 @@ internal enum WelcomeRowPresentation {
             tooltip: [exportable.name, type.displayName, account + detail].joined(separator: "\n"),
             status: ConnectionStatusResolver.status(for: linked.id)
         )
+    }
+
+    // A connection saved with no name is named after its address, which would then repeat under it.
+    internal static func detail(_ detail: String, under name: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespaces)
+        return trimmed == name.trimmingCharacters(in: .whitespaces) ? "" : detail
     }
 
     internal static func endpoint(host: String, port: Int, defaultPort: Int, database: String) -> String {

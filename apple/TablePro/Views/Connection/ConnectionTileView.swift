@@ -37,19 +37,24 @@ internal enum ConnectionTileMetrics {
         }
     }
 
-    // The tile as it draws: quaternaryLabelColor over the window background, in the current appearance.
+    // The tile as it draws: quaternaryLabelColor over what is behind it, in the current appearance. The window
+    // background was not enough: the same tile sits on a form card, a sheet and a selected row, all lighter, and the
+    // elephant measured 2.6:1 in the chooser's selected row. So the floor is met over the lightest of them.
     internal static func tileLuminance() -> CGFloat {
-        guard let tile = NSColor.quaternaryLabelColor.usingColorSpace(.sRGB),
-              let base = NSColor.windowBackgroundColor.usingColorSpace(.sRGB)
-        else { return 0 }
+        guard let tile = NSColor.quaternaryLabelColor.usingColorSpace(.sRGB) else { return 0 }
         let alpha = tile.alphaComponent
-        let composite = NSColor(
-            srgbRed: tile.redComponent * alpha + base.redComponent * (1 - alpha),
-            green: tile.greenComponent * alpha + base.greenComponent * (1 - alpha),
-            blue: tile.blueComponent * alpha + base.blueComponent * (1 - alpha),
-            alpha: 1
-        )
-        return composite.relativeLuminance
+        return tileBackdrops.compactMap { $0.usingColorSpace(.sRGB) }.map { base in
+            NSColor(
+                srgbRed: tile.redComponent * alpha + base.redComponent * (1 - alpha),
+                green: tile.greenComponent * alpha + base.greenComponent * (1 - alpha),
+                blue: tile.blueComponent * alpha + base.blueComponent * (1 - alpha),
+                alpha: 1
+            ).relativeLuminance
+        }.max() ?? 0
+    }
+
+    private static var tileBackdrops: [NSColor] {
+        [.windowBackgroundColor, .underPageBackgroundColor, .unemphasizedSelectedContentBackgroundColor]
     }
 
     internal static func contrast(_ first: CGFloat, _ second: CGFloat) -> CGFloat {

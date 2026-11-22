@@ -22,7 +22,23 @@ extension ConnectionEditorEngine {
         facets.append(aiFacet(draft, context))
         facets.append(startupFacet())
         facets.append(advancedFacet(draft, traits, context))
-        return EditorLayout(facets: facets)
+        return EditorLayout(facets: facets, disabledRows: unusedRows(draft, traits))
+    }
+
+    private static func unusedRows(_ draft: ConnectionDraft, _ traits: ConnectionTypeTraits) -> Set<EditorRow> {
+        var rows: Set<EditorRow> = []
+        if forwardsToUnixSocket(draft) {
+            rows.formUnion([.builtIn(.host), .builtIn(.port)])
+        }
+        // Remote File swaps the local path for its own copy or session at connect.
+        if draft.transport == .remoteFile {
+            if case .additionalField(let fieldId) = traits.localFilePathField {
+                rows.insert(.plugin(fieldID: fieldId))
+            } else {
+                rows.insert(.builtIn(.databaseFile))
+            }
+        }
+        return rows
     }
 
     private static func pluginRows(
@@ -65,7 +81,9 @@ extension ConnectionEditorEngine {
             return SectionLayout(
                 id: "connection",
                 title: String(localized: "Database File"),
-                footer: nil,
+                footer: draft.transport == .remoteFile
+                    ? String(localized: "File Path is unused. The connection opens the file on the SSH server chosen in Location.")
+                    : nil,
                 rows: [.builtIn(.databaseFile)] + pluginRows(connectionFields, draft, traits)
             )
         case .apiOnly:
@@ -232,7 +250,7 @@ extension ConnectionEditorEngine {
         case .remoteDatabaseSession, nil:
             break
         }
-        let title = traits.supportsRemoteDatabaseFile ? String(localized: "Remote File") : ConnectionFacet.sshAndProxies.title
+        let title = traits.supportsRemoteDatabaseFile ? String(localized: "Location") : ConnectionFacet.sshAndProxies.title
         return FacetLayout(facet: .sshAndProxies, title: title, sections: sections)
     }
 

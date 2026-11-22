@@ -301,7 +301,11 @@ extension ConnectionEditorStore {
     }
 
     var hostAndPortAreUnused: Bool {
-        ConnectionEditorEngine.forwardsToUnixSocket(draft)
+        isDisabled(.builtIn(.port))
+    }
+
+    func isDisabled(_ row: EditorRow) -> Bool {
+        layout.disabledRows.contains(row)
     }
 
     var portTLSNotice: PortTLSNotice? {

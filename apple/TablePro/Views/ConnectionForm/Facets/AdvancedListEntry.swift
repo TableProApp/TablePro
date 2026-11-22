@@ -1,37 +1,34 @@
 import SwiftUI
 
-// A List nested in a grouped Form does not scroll, so each entry of an ordered list is a row of its section.
-struct AdvancedListEntry<Primary: View, Secondary: View>: View {
-    let primaryTitle: String
-    let secondaryTitle: String
+// One entry of an ordered list as one row of its section, since a List nested in a grouped Form does not scroll: its
+// title, the file's path under it, an optional value, and its commands in a trailing menu.
+struct AdvancedListEntry<Title: View, Value: View>: View {
+    let path: String
     let notice: String?
     let actionsLabel: String
+    let identifier: String
     let canMoveUp: Bool
     let canMoveDown: Bool
     let onMove: (Int) -> Void
+    let onChangeFile: () -> Void
     let onRemove: () -> Void
-    @ViewBuilder let primary: () -> Primary
-    @ViewBuilder let secondary: () -> Secondary
+    @ViewBuilder let title: () -> Title
+    @ViewBuilder let value: () -> Value
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
-            GridRow {
-                Text(verbatim: primaryTitle)
-                    .gridColumnAlignment(.trailing)
-                primary()
+        LabeledContent {
+            HStack(spacing: 8) {
+                value()
                 actions
             }
-            GridRow {
-                Text(verbatim: secondaryTitle)
-                secondary()
-                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
-            }
+        } label: {
+            title()
+            Text(verbatim: (path as NSString).abbreviatingWithTildeInPath)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(path)
             if let notice {
-                GridRow {
-                    Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
-                    NoticeLabel(notice)
-                        .gridCellColumns(2)
-                }
+                NoticeLabel(notice)
             }
         }
         .accessibilityElement(children: .contain)
@@ -47,18 +44,26 @@ struct AdvancedListEntry<Primary: View, Secondary: View>: View {
 
     private var actions: some View {
         Menu {
+            Button(String(localized: "Change File…"), action: onChangeFile)
+                .accessibilityIdentifier("\(identifier)-change-file")
+            Divider()
             Button(String(localized: "Move Up")) { onMove(-1) }
                 .disabled(!canMoveUp)
+                .accessibilityIdentifier("\(identifier)-move-up")
             Button(String(localized: "Move Down")) { onMove(1) }
                 .disabled(!canMoveDown)
+                .accessibilityIdentifier("\(identifier)-move-down")
             Divider()
-            Button(String(localized: "Remove"), action: onRemove)
+            Button(String(localized: "Remove"), role: .destructive, action: onRemove)
+                .accessibilityIdentifier("\(identifier)-remove")
         } label: {
             Image(systemName: "ellipsis.circle")
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .help(String(localized: "Actions"))
         .accessibilityLabel(actionsLabel)
+        .accessibilityIdentifier("\(identifier)-actions")
     }
 }

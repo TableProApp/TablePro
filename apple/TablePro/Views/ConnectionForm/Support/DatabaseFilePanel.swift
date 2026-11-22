@@ -21,10 +21,10 @@ internal enum DatabaseFilePanel {
         panel.canChooseDirectories = false
         panel.directoryURL = DatabaseFileLocation(path: currentPath).existingFolder
 
-        let rule = DatabaseFileBrowseRule(type: type, extensions: PluginManager.shared.fileExtensions(for: type))
-        let filter = PanelEnableFilter(isEnabled: rule.isEnabled)
+        let rule = DatabaseFileBrowseRule.forType(type, extensions: PluginManager.shared.fileExtensions(for: type))
+        let filter = PanelEnableFilter(isEnabled: rule.isEnabled, validate: rule.validate)
         panel.delegate = filter
-        let response = await present(panel, in: window)
+        let response = await EditorFilePanel.present(panel, in: window)
         withExtendedLifetime(filter) {}
 
         guard response == .OK, let url = panel.url else { return nil }
@@ -52,34 +52,49 @@ internal enum DatabaseFilePanel {
         panel.directoryURL = location.existingFolder
         panel.nameFieldStringValue = location.suggestedNewFileName(preferredExtension: extensions.first)
 
-        guard await present(panel, in: window) == .OK, let url = panel.url else { return nil }
+        guard await EditorFilePanel.present(panel, in: window) == .OK, let url = panel.url else { return nil }
         return url.path(percentEncoded: false)
-    }
-
-    private static func present(_ panel: NSSavePanel, in window: NSWindow?) async -> NSApplication.ModalResponse {
-        guard let window else { return await panel.begin() }
-        return await panel.presentAsSheet(for: window)
     }
 }
 
-// Which items Choose… lets someone pick for a database file field: by extension first, which settles most of a
-// folder without reading anything, then by the file's own bytes when they are already on this Mac, so a SQLite
-// database with no extension or another app's (a browser's `History`, a `.gpkg`) can still be picked. A type that
-// declares no extensions keeps every file. A plain folder stays enabled so the panel can be navigated; a package is
-// a file to the user and is matched like one.
+// Which items Choose… offers for a database file field, decided from the name and the file's type only: AppKit asks
+// on the main thread while the panel browses. A file with one of the driver's extensions is enabled, one another
+// driver claims is not, and one whose name says nothing stays enabled, since only its bytes can tell; `validate` reads
+// them once the file is picked. A type that declares no extensions keeps every file. A plain folder stays enabled so
+// the panel can be navigated; a package is a file to the user and is matched like one.
 internal struct DatabaseFileBrowseRule: Sendable {
     private let type: DatabaseType
+    private let typeName: String
     private let extensions: Set<String>
+    private let otherDriversExtensions: Set<String>
     private let classify: @Sendable (URL) -> DatabaseType?
+    private let isReadable: @Sendable (URL) -> Bool
 
     internal init(
         type: DatabaseType,
         extensions: [String],
-        classify: @escaping @Sendable (URL) -> DatabaseType? = { DatabaseFileClassifier.classify($0, access: .withoutWaiting) }
+        otherDriversExtensions: [String] = [],
+        typeName: String? = nil,
+        classify: @escaping @Sendable (URL) -> DatabaseType? = { DatabaseFileClassifier.classify($0, access: .withoutWaiting) },
+        isReadable: @escaping @Sendable (URL) -> Bool = { DatabaseFileClassifier.isReadableWithoutWaiting($0) }
     ) {
         self.type = type
+        self.typeName = typeName ?? type.rawValue
         self.extensions = Set(extensions.map(Self.normalized).filter { !$0.isEmpty })
+        self.otherDriversExtensions = Set(otherDriversExtensions.map(Self.normalized).filter { !$0.isEmpty })
         self.classify = classify
+        self.isReadable = isReadable
+    }
+
+    @MainActor
+    internal static func forType(_ type: DatabaseType, extensions: [String]) -> DatabaseFileBrowseRule {
+        let claimed = PluginManager.shared.allRegisteredFileExtensions.filter { $0.value != type }.map(\.key)
+        return DatabaseFileBrowseRule(
+            type: type,
+            extensions: extensions,
+            otherDriversExtensions: claimed,
+            typeName: type.displayName
+        )
     }
 
     internal func isEnabled(_ url: URL) -> Bool {
@@ -87,8 +102,25 @@ internal struct DatabaseFileBrowseRule: Sendable {
         if values?.isDirectory == true, values?.isPackage != true { return true }
         if let kind = values?.fileResourceType, Self.blockingKinds.contains(kind) { return false }
         guard !extensions.isEmpty else { return true }
-        if extensions.contains(Self.normalized(url.pathExtension)) { return true }
-        return classify(url) == type
+        if matchesExtension(url) { return true }
+        if otherDriversExtensions.contains(Self.normalized(url.pathExtension)) { return false }
+        return values?.fileResourceType == .regular && PanelFileName.leavesKindOpen(url)
+    }
+
+    // The person picked the file, which grants the read. One whose bytes are not on this Mac yet is let through: the
+    // driver names a wrong file when it opens it.
+    internal func validate(_ url: URL) throws {
+        guard !extensions.isEmpty, !matchesExtension(url) else { return }
+        let isFolder = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+        if !isFolder {
+            guard classify(url) != type else { return }
+            guard isReadable(url) else { return }
+        }
+        throw DatabaseFilePanelError.notADatabase(fileName: url.lastPathComponent, typeName: typeName)
+    }
+
+    private func matchesExtension(_ url: URL) -> Bool {
+        extensions.contains(Self.normalized(url.pathExtension))
     }
 
     // A driver opening one of these waits forever, whatever its name says.
@@ -96,6 +128,17 @@ internal struct DatabaseFileBrowseRule: Sendable {
 
     private static func normalized(_ fileExtension: String) -> String {
         fileExtension.trimmingCharacters(in: CharacterSet(charactersIn: ". ")).lowercased()
+    }
+}
+
+private enum DatabaseFilePanelError: LocalizedError {
+    case notADatabase(fileName: String, typeName: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notADatabase(let fileName, let typeName):
+            return String(format: String(localized: "“%1$@” isn’t a database %2$@ can open."), fileName, typeName)
+        }
     }
 }
 

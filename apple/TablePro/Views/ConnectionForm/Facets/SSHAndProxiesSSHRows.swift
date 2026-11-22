@@ -177,7 +177,8 @@ struct SSHAndProxiesPicker<Value: Hashable, Content: View>: View {
     }
 }
 
-// Profile commands are pop-up items, as in General's Credentials, so typing a host never adds a button.
+// Profile commands are pop-up items, the same ones in the same order as General's Credentials, so typing a host
+// never adds a button.
 struct SSHAndProxiesProfileRows: View {
     @ObservedObject var store: ConnectionEditorStore
 
@@ -188,6 +189,7 @@ struct SSHAndProxiesProfileRows: View {
         case saveAsProfile
         case editProfile
         case newProfile
+        case manageProfiles
     }
 
     private let row = EditorRow.builtIn(.sshProfile)
@@ -213,6 +215,7 @@ struct SSHAndProxiesProfileRows: View {
                 Text(String(localized: "Edit Profile…")).tag(Choice.editProfile)
             }
             Text(String(localized: "New Profile…")).tag(Choice.newProfile)
+            Text(String(localized: "Manage Profiles…")).tag(Choice.manageProfiles)
         } label: {
             EditorRowLabel(String(localized: "SSH Profile"), row: row, store: store)
         }
@@ -263,6 +266,9 @@ struct SSHAndProxiesProfileRows: View {
                 case .newProfile:
                     pickerGeneration += 1
                     store.presentSSHProfileCreation()
+                case .manageProfiles:
+                    pickerGeneration += 1
+                    WindowOpener.shared.openSettings(tab: .profiles)
                 }
             }
         )

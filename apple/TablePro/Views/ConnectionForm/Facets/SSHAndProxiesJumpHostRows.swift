@@ -6,7 +6,7 @@
 import SwiftUI
 import TableProSSHConfig
 
-// One Section per hop, so two hops never read as one card.
+// What jump hosts are leads, then one card per hop, so two hops never read as one card.
 struct SSHAndProxiesJumpHostSections: View {
     let rows: [EditorRow]
     @ObservedObject var store: ConnectionEditorStore
@@ -20,18 +20,20 @@ struct SSHAndProxiesJumpHostSections: View {
 
     var body: some View {
         let ids = hopIDs
-        ForEach(Array(ids.enumerated()), id: \.element) { index, id in
-            SSHAndProxiesJumpHostSection(id: id, index: index, count: ids.count, store: store)
-        }
         if rows.contains(.builtIn(.addJumpHost)) {
             Section {
-                SSHAndProxiesAddJumpHostRow(store: store)
+                SSHAndProxiesAddJumpHostRow(hopCount: ids.count, store: store)
+            } header: {
+                Text(String(localized: "Jump Hosts"))
             } footer: {
                 Text(String(localized: """
                     TablePro connects through the jump hosts in order, then the SSH server. \
                     A jump host signs in with a key file or the SSH agent.
                     """))
             }
+        }
+        ForEach(Array(ids.enumerated()), id: \.element) { index, id in
+            SSHAndProxiesJumpHostSection(id: id, index: index, count: ids.count, store: store)
         }
     }
 }
@@ -48,8 +50,19 @@ private struct SSHAndProxiesJumpHostSection: View {
     private var identifier: String { row.accessibilityIdentifier }
     private var jumpHost: Binding<SSHJumpHost> { store.tracking(store.jumpHostBinding(id), row: row) }
 
+    private var title: String {
+        String(format: String(localized: "Jump Host %lld"), Int64(index + 1))
+    }
+
     var body: some View {
         Section {
+            LabeledContent {
+                actions
+            } label: {
+                Text(verbatim: title)
+            }
+            .id(row)
+
             TextField(text: jumpHost.host, prompt: Text(verbatim: "bastion.example.com")) {
                 label(String(localized: "Host"), for: .host)
             }
@@ -82,30 +95,38 @@ private struct SSHAndProxiesJumpHostSection: View {
             if jumpHost.wrappedValue.authMethod == .privateKey {
                 keyFileRow
             }
-        } header: {
-            Text(String(format: String(localized: "Jump Host %lld"), Int64(index + 1)))
-        } footer: {
-            HStack(spacing: 8) {
-                Spacer()
-                if count > 1 {
-                    Button(String(localized: "Move Up")) {
-                        store.moveJumpHosts(fromOffsets: IndexSet(integer: index), toOffset: index - 1)
-                    }
-                    .disabled(index == 0)
-                    .accessibilityIdentifier("\(identifier)-move-up")
-
-                    Button(String(localized: "Move Down")) {
-                        store.moveJumpHosts(fromOffsets: IndexSet(integer: index), toOffset: index + 2)
-                    }
-                    .disabled(index == count - 1)
-                    .accessibilityIdentifier("\(identifier)-move-down")
-                }
-                Button(String(localized: "Remove")) {
-                    store.removeJumpHost(id: id)
-                }
-                .accessibilityIdentifier("\(identifier)-remove")
-            }
         }
+    }
+
+    private var actions: some View {
+        Menu {
+            Button(String(localized: "Move Up")) {
+                store.moveJumpHosts(fromOffsets: IndexSet(integer: index), toOffset: index - 1)
+            }
+            .disabled(index == 0)
+            .accessibilityIdentifier("\(identifier)-move-up")
+
+            Button(String(localized: "Move Down")) {
+                store.moveJumpHosts(fromOffsets: IndexSet(integer: index), toOffset: index + 2)
+            }
+            .disabled(index == count - 1)
+            .accessibilityIdentifier("\(identifier)-move-down")
+
+            Divider()
+
+            Button(String(localized: "Remove"), role: .destructive) {
+                store.removeJumpHost(id: id)
+            }
+            .accessibilityIdentifier("\(identifier)-remove")
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(String(localized: "Actions"))
+        .accessibilityLabel(String(format: String(localized: "Actions for %@"), title))
+        .accessibilityIdentifier("\(identifier)-actions")
     }
 
     private var keyFileRow: some View {
@@ -118,6 +139,7 @@ private struct SSHAndProxiesJumpHostSection: View {
                 )
                 .labelsHidden()
                 .autocorrectionDisabled()
+                .editorPathField(jumpHost.wrappedValue.privateKeyPath)
                 .focused($focusedField, equals: .keyFile)
                 .accessibilityIdentifier("\(identifier)-key-file")
                 Button(String(localized: "Choose…")) {
@@ -168,6 +190,7 @@ private struct SSHAndProxiesJumpHostSection: View {
 }
 
 struct SSHAndProxiesAddJumpHostRow: View {
+    let hopCount: Int
     @ObservedObject var store: ConnectionEditorStore
 
     var body: some View {
@@ -178,7 +201,13 @@ struct SSHAndProxiesAddJumpHostRow: View {
             }
             .accessibilityIdentifier(EditorRow.builtIn(.addJumpHost).accessibilityIdentifier)
         } label: {
-            Text(String(localized: "Jump Hosts"))
+            if hopCount == 0 {
+                Text(String(localized: "No Jump Hosts"))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("^[\(hopCount) Jump Host](inflect: true)")
+            }
         }
+        .id(EditorRow.builtIn(.addJumpHost))
     }
 }

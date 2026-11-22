@@ -15,28 +15,27 @@ struct AdvancedAttachedDatabaseRows: View {
     var body: some View {
         ForEach(Array(model.rows.enumerated()), id: \.element.id) { index, entry in
             AdvancedListEntry(
-                primaryTitle: String(localized: "Name"),
-                secondaryTitle: String(localized: "File"),
+                path: entry.path,
                 notice: AttachedDatabaseFileIssue.issue(forPath: entry.path)?.message,
                 actionsLabel: String(format: String(localized: "Actions for %@"), entry.name),
+                identifier: "connection-attached-database-\(index)",
                 canMoveUp: index > 0,
                 canMoveDown: index < model.rows.count - 1,
                 onMove: { offset in move(entry.id, by: offset) },
+                onChangeFile: { Task { await changeFile(of: entry.id) } },
                 onRemove: { remove(entry.id) }
             ) {
-                TextField(String(localized: "Name"), text: nameBinding(for: entry.id))
-                    .labelsHidden()
-                    .textFieldStyle(.roundedBorder)
-                    .focused($focusedEntry, equals: entry.id)
-                    .help(String(localized: "The name a statement uses for this database, as in name.table."))
-            } secondary: {
-                TextField(
-                    String(localized: "Database File"),
-                    text: pathBinding(for: entry.id),
-                    prompt: Text(verbatim: "/path/to/database.db")
-                )
+                // The name a statement reaches it by, edited where it reads.
+                TextField(text: nameBinding(for: entry.id), prompt: Text(String(localized: "Name"))) {
+                    Text(String(localized: "Name"))
+                }
                 .labelsHidden()
-                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .focused($focusedEntry, equals: entry.id)
+                .help(String(localized: "The name a statement uses for this database, as in name.table."))
+                .accessibilityIdentifier("connection-attached-database-\(index)-name")
+            } value: {
+                EmptyView()
             }
         }
 
@@ -46,7 +45,7 @@ struct AdvancedAttachedDatabaseRows: View {
 
         LabeledContent {
             Button(String(localized: "Attach Database…")) {
-                Task { await chooseFiles() }
+                Task { await attach() }
             }
             .accessibilityIdentifier("connection-attached-databases-add")
         } label: {
@@ -55,6 +54,8 @@ struct AdvancedAttachedDatabaseRows: View {
             } else if model.rows.isEmpty {
                 Text(String(localized: "No Attached Databases"))
                     .foregroundStyle(.secondary)
+            } else {
+                Text("^[\(model.rows.count) Attached Database](inflect: true)")
             }
         }
         .onAppear(perform: reload)
@@ -67,16 +68,6 @@ struct AdvancedAttachedDatabaseRows: View {
             get: { model.rows.first { $0.id == id }?.name ?? "" },
             set: { newValue in
                 model.setName(newValue, for: id)
-                commit()
-            }
-        )
-    }
-
-    private func pathBinding(for id: UUID) -> Binding<String> {
-        Binding(
-            get: { model.rows.first { $0.id == id }?.path ?? "" },
-            set: { newValue in
-                model.setPath(newValue, for: id)
                 commit()
             }
         )
@@ -107,25 +98,53 @@ struct AdvancedAttachedDatabaseRows: View {
         commit()
     }
 
-    private func chooseFiles() async {
-        let panel = NSOpenPanel()
-        let rule = DatabaseFileBrowseRule(type: store.draft.type, extensions: store.traits.fileExtensions)
-        let filter = PanelEnableFilter(isEnabled: rule.isEnabled)
-        panel.title = String(localized: "Attach Database")
-        panel.prompt = String(localized: "Attach")
-        panel.message = String(localized: "Choose the database files to attach each time this connection opens.")
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-        panel.delegate = filter
-        let response: NSApplication.ModalResponse
-        if let window = EditorFilePanel.window(for: store) {
-            response = await panel.presentAsSheet(for: window)
-        } else {
-            response = await panel.begin()
-        }
-        withExtendedLifetime(filter) {}
-        guard response == .OK else { return }
-        _ = model.add(paths: panel.urls.map { $0.path(percentEncoded: false) })
+    private func attach() async {
+        let paths = await chooseFiles(
+            title: String(localized: "Attach Database"),
+            prompt: String(localized: "Attach"),
+            message: String(localized: "Choose the database files to attach each time this connection opens."),
+            allowsMultipleSelection: true
+        )
+        guard !paths.isEmpty else { return }
+        _ = model.add(paths: paths)
         commit()
+    }
+
+    // The entry keeps its name and its place; only the file it names changes.
+    private func changeFile(of id: UUID) async {
+        guard let entry = model.rows.first(where: { $0.id == id }) else { return }
+        let paths = await chooseFiles(
+            title: String(localized: "Change File"),
+            prompt: String(localized: "Choose"),
+            message: String(format: String(localized: "Choose the database file to attach as “%@”."), entry.name),
+            allowsMultipleSelection: false,
+            currentPath: entry.path
+        )
+        guard let path = paths.first else { return }
+        model.setPath(path, for: id)
+        commit()
+    }
+
+    private func chooseFiles(
+        title: String,
+        prompt: String,
+        message: String,
+        allowsMultipleSelection: Bool,
+        currentPath: String = ""
+    ) async -> [String] {
+        let panel = NSOpenPanel()
+        let rule = DatabaseFileBrowseRule.forType(store.draft.type, extensions: store.traits.fileExtensions)
+        let filter = PanelEnableFilter(isEnabled: rule.isEnabled, validate: rule.validate)
+        panel.title = title
+        panel.prompt = prompt
+        panel.message = message
+        panel.allowsMultipleSelection = allowsMultipleSelection
+        panel.canChooseDirectories = false
+        panel.directoryURL = DatabaseFileLocation(path: currentPath).existingFolder
+        panel.delegate = filter
+        let response = await EditorFilePanel.present(panel, in: EditorFilePanel.window(for: store))
+        withExtendedLifetime(filter) {}
+        guard response == .OK else { return [] }
+        return panel.urls.map { $0.path(percentEncoded: false) }
     }
 }

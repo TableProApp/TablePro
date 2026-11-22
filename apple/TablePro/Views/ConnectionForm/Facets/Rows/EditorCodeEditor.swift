@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProTheme
 
 enum EditorCodeLanguage {
     case sql
@@ -49,7 +50,8 @@ struct EditorCodeEditor: View {
         }
     }
 
-    // The card is the only frame: prose sits on it, code sits in a well like CodeWell, on the editor's colors.
+    // The card is the only frame: the text sits on it, and code wears the editor's background only while the theme
+    // sets one, as CodeWell does.
     @ViewBuilder
     private var editor: some View {
         let field = TextValueEditor(
@@ -58,15 +60,13 @@ struct EditorCodeEditor: View {
             borderType: .noBorder,
             movesFocusOnTab: true,
             style: language == .plain ? .plain : .code,
-            drawsBackground: language != .plain
+            drawsBackground: false
         )
         .accessibilityIdentifier(row.accessibilityIdentifier)
         if language == .plain {
             field
         } else {
-            field
-                .clipShape(Self.wellShape)
-                .overlay(Self.wellShape.stroke(Color(nsColor: .separatorColor), lineWidth: 1))
+            field.themeBackground(.editorBackground, native: Color.clear, in: Self.wellShape)
         }
     }
 

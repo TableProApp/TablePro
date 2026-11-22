@@ -23,6 +23,7 @@ struct GeneralFacetView: View {
                     Section {
                         ForEach(section.rows, id: \.self) { row in
                             rowView(row, in: section)
+                                .id(row)
                         }
                     } header: {
                         if let title = section.title {
@@ -40,6 +41,7 @@ struct GeneralFacetView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollsToEditorFocus(.general, store: store)
         .onAppear { store.placeInitialFocusIfNeeded() }
         .onChange(of: store.pastedURLNotice?.id) { id in
             guard id != nil else { return }
@@ -71,6 +73,7 @@ struct GeneralFacetView: View {
         switch row {
         case .plugin(let fieldID):
             PluginFieldRow(fieldID: fieldID, store: store, title: pluginTitle(fieldID, in: section))
+                .disabled(store.isDisabled(row))
         case .builtIn(let builtIn):
             builtInRow(builtIn, in: section)
         }
@@ -102,9 +105,9 @@ struct GeneralFacetView: View {
         case .endpointKind:
             Picker(selection: store.tracking(store.endpointBinding, row: .builtIn(.endpointKind))) {
                 Text(String(localized: "Host and Port")).tag(ConnectionDraft.Endpoint.hostAndPort)
-                Text(String(localized: "Socket")).tag(ConnectionDraft.Endpoint.localSocket)
+                Text(String(localized: "Unix Socket")).tag(ConnectionDraft.Endpoint.localSocket)
             } label: {
-                EditorRowLabel(String(localized: "Connect Using"), row: .builtIn(.endpointKind), store: store)
+                EditorRowLabel(String(localized: "Address"), row: .builtIn(.endpointKind), store: store)
             }
             .accessibilityIdentifier(BuiltInRow.endpointKind.accessibilityIdentifier)
             .editorRowFocus(.builtIn(.endpointKind), store: store)
@@ -118,7 +121,7 @@ struct GeneralFacetView: View {
                 row: .builtIn(.host),
                 store: store
             )
-            .disabled(store.hostAndPortAreUnused)
+            .disabled(store.isDisabled(.builtIn(.host)))
             if let notice = store.pastedURLNotice {
                 GeneralPastedURLNoticeRow(notice: notice, store: store)
             }
@@ -130,7 +133,7 @@ struct GeneralFacetView: View {
                 row: .builtIn(.port),
                 store: store
             )
-            .disabled(store.hostAndPortAreUnused)
+            .disabled(store.isDisabled(.builtIn(.port)))
         case .portTLSNotice:
             if let notice = store.portTLSNotice {
                 GeneralPortTLSNoticeRow(notice: notice, store: store)
@@ -145,6 +148,7 @@ struct GeneralFacetView: View {
                 chooseIdentifier: "connection-form-file-browse",
                 newIdentifier: "connection-form-file-new"
             )
+            .disabled(store.isDisabled(.builtIn(.databaseFile)))
         case .database:
             EditorTextRow(
                 store.traits.containerEntityName,
@@ -165,15 +169,9 @@ struct GeneralFacetView: View {
         case .passwordSource:
             GeneralPasswordSourceRows(store: store)
         case .passwordMode:
-            if section.rows.contains(.builtIn(.password)) {
-                GeneralPasswordRow(store: store)
-            } else {
-                GeneralPasswordModeRow(store: store)
-            }
+            GeneralPasswordModeRow(store: store)
         case .password:
-            if !section.rows.contains(.builtIn(.passwordMode)) {
-                GeneralPasswordRow(store: store)
-            }
+            GeneralPasswordRow(store: store)
         case .kerberosNote:
             GeneralKerberosNote(store: store)
         case .pgpassStatus:

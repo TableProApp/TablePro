@@ -209,8 +209,8 @@ private struct ConnectionTestDetailsButton<Details: View>: View {
     }
 }
 
-// Read only: what failed, the server's own words, what to check, and the one fix TablePro can start. Opaque, so the
-// form under the popover never shows through the server's text.
+// Read only: what failed and what to check in plain words, then the server's own words, and the one fix TablePro can
+// start. Opaque, so the form under the popover never shows through the server's text.
 private struct ConnectionTestDetails: View {
     let title: String
     let message: String
@@ -220,11 +220,20 @@ private struct ConnectionTestDetails: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    private var plainSummary: String? {
+        guard let recoverySuggestion, !recoverySuggestion.isEmpty else { return nil }
+        return recoverySuggestion
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.headline)
                 .fixedSize(horizontal: false, vertical: true)
+            if let plainSummary {
+                Text(verbatim: plainSummary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if isLong {
                 ScrollView {
                     messageText
@@ -232,11 +241,6 @@ private struct ConnectionTestDetails: View {
                 .frame(height: 160)
             } else {
                 messageText
-            }
-            if let recoverySuggestion, !recoverySuggestion.isEmpty {
-                Text(verbatim: recoverySuggestion)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             if let recoveryTitle {
                 Button(recoveryTitle) {
@@ -256,8 +260,10 @@ private struct ConnectionTestDetails: View {
         message.count > 480 || message.split(separator: "\n", omittingEmptySubsequences: false).count > 8
     }
 
+    // The server's words are the detail under a plain summary, and the whole story without one.
     private var messageText: some View {
         Text(verbatim: message)
+            .foregroundStyle(plainSummary == nil ? HierarchicalShapeStyle.primary : HierarchicalShapeStyle.secondary)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)

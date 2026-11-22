@@ -9,6 +9,7 @@ struct AIAndMCPFacetView: View {
                 Section {
                     ForEach(section.rows, id: \.self) { row in
                         rowView(row)
+                            .id(row)
                     }
                 } header: {
                     if let title = section.title {
@@ -22,6 +23,7 @@ struct AIAndMCPFacetView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollsToEditorFocus(.aiAndMCP, store: store)
     }
 
     private var sections: [SectionLayout] {

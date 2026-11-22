@@ -18,8 +18,10 @@ struct GeneralTypeRow: View {
                     identityColor: store.draft.appearance.color.isDefault ? nil : store.draft.appearance.color,
                     size: 22
                 )
+                // A new identity per type: the row's accessibility value kept the first type's name after a retype.
                 Text(verbatim: store.traits.displayName)
                     .foregroundStyle(.primary)
+                    .id(store.draft.type)
                 Button(String(localized: "Change…")) {
                     store.isChoosingType = true
                 }
@@ -28,6 +30,7 @@ struct GeneralTypeRow: View {
         } label: {
             EditorRowLabel(String(localized: "Type"), row: .builtIn(.type), store: store)
         }
+        .accessibilityValue(Text(verbatim: store.traits.displayName))
         .editorRowFocus(.builtIn(.type), store: store)
     }
 }

@@ -20,6 +20,7 @@ struct AppearanceFacetView: View {
                     Section {
                         ForEach(section.rows, id: \.self) { row in
                             rowView(row)
+                                .id(row)
                         }
                     } header: {
                         if let title = section.title {
@@ -34,6 +35,7 @@ struct AppearanceFacetView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollsToEditorFocus(.appearance, store: store)
     }
 
     @ViewBuilder

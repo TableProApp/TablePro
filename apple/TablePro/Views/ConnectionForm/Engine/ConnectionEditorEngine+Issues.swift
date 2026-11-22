@@ -16,7 +16,8 @@ extension ConnectionEditorEngine {
         var fallbackRow: EditorRow?
     }
 
-    // Every issue names a row the layout shows; one whose row is not on screen moves to its fallback or is dropped.
+    // Every issue names a row the layout shows enabled; one whose row is hidden or disabled moves to its fallback or is
+    // dropped.
     static func issues(
         _ draft: ConnectionDraft,
         _ traits: ConnectionTypeTraits,
@@ -32,8 +33,8 @@ extension ConnectionEditorEngine {
 
         var issues: [FieldIssue] = []
         for item in pending {
-            let row = layout.contains(item.row) ? item.row : item.fallbackRow
-            guard let row, let facet = layout.facet(containing: row) else { continue }
+            let row = layout.isEnabled(item.row) ? item.row : item.fallbackRow
+            guard let row, layout.isEnabled(row), let facet = layout.facet(containing: row) else { continue }
             let issue = FieldIssue(facet: facet, row: row, message: item.message, severity: item.severity)
             if !issues.contains(issue) {
                 issues.append(issue)

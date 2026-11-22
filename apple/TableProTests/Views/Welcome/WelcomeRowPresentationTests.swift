@@ -320,4 +320,23 @@ struct WelcomeRowPresentationTests {
         #expect(row(status: .connected).accessibilityValue == "db.acme.io/app")
         #expect(row(status: .notConnected).accessibilityValue == "db.acme.io/app")
     }
+
+    @Test("A connection named after its address shows the address once")
+    func addressNamedRowShowsItOnce() {
+        var unnamed = DatabaseConnection(name: "", host: "db.example.com", database: "app", type: .postgresql)
+        unnamed.name = unnamed.connectionSubtitle
+        let named = DatabaseConnection(name: "Prod", host: "db.example.com", database: "app", type: .postgresql)
+
+        let unnamedModel = WelcomeRowPresentation.savedConnection(
+            unnamed, section: .connections, tags: [], group: nil, groupPath: [], isDriverRejected: false
+        )
+        let namedModel = WelcomeRowPresentation.savedConnection(
+            named, section: .connections, tags: [], group: nil, groupPath: [], isDriverRejected: false
+        )
+
+        #expect(unnamedModel.detail.isEmpty)
+        #expect(!unnamedModel.hasSecondLine)
+        #expect(namedModel.detail == named.connectionSubtitle)
+        #expect(namedModel.hasSecondLine)
+    }
 }

@@ -19,6 +19,7 @@ struct SSHAndProxiesFacetView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollsToEditorFocus(.sshAndProxies, store: store)
     }
 }
 
@@ -50,6 +51,7 @@ private struct SSHAndProxiesSectionView: View {
             Section {
                 ForEach(inlineRows, id: \.self) { row in
                     SSHAndProxiesRowView(row: row, store: store)
+                        .id(row)
                 }
             } header: {
                 if let headerTitle {
@@ -63,6 +65,7 @@ private struct SSHAndProxiesSectionView: View {
             if let standaloneRow {
                 Section {
                     SSHAndProxiesRowView(row: standaloneRow, store: store)
+                        .id(standaloneRow)
                 } header: {
                     Text(String(localized: "Service Account Key"))
                 } footer: {

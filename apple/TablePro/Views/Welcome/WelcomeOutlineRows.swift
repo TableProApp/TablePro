@@ -118,14 +118,16 @@ internal struct WelcomeConnectionRow: View {
                     WelcomeConnectionAccessories(model: model)
                 }
 
-                HStack(spacing: 8) {
-                    Text(model.detail)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 6)
-                    WelcomeConnectionLabels(model: model)
+                if model.hasSecondLine {
+                    HStack(spacing: 8) {
+                        Text(model.detail)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 6)
+                        WelcomeConnectionLabels(model: model)
+                    }
                 }
             }
         }

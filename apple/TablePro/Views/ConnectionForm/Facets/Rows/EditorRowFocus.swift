@@ -26,6 +26,36 @@ extension View {
     func onEditorFocusRequest(_ row: EditorRow, store: ConnectionEditorStore, perform: @escaping @MainActor () -> Void) -> some View {
         modifier(EditorFocusRequestModifier(rows: [row], store: store, perform: perform))
     }
+
+    // On a facet's Form, whose rows carry `.id(row)`: a Form builds the rows it shows, so the requested one is
+    // scrolled to first and takes the focus once it is built.
+    func scrollsToEditorFocus(_ facet: ConnectionFacet, store: ConnectionEditorStore) -> some View {
+        modifier(EditorFacetScrollModifier(facet: facet, store: store))
+    }
+}
+
+private struct EditorFacetScrollModifier: ViewModifier {
+    let facet: ConnectionFacet
+    @ObservedObject var store: ConnectionEditorStore
+
+    @State private var handledToken: UUID?
+
+    func body(content: Content) -> some View {
+        ScrollViewReader { proxy in
+            content
+                .onAppear { scroll(proxy, to: store.focusRequest) }
+                .onChange(of: store.focusRequest) { scroll(proxy, to: $0) }
+        }
+    }
+
+    // Deferred a turn, as the focus is: a facet built for this request is not laid out yet when it lands.
+    private func scroll(_ proxy: ScrollViewProxy, to request: FocusRequest?) {
+        guard let request, request.facet == facet, request.token != handledToken else { return }
+        handledToken = request.token
+        DispatchQueue.main.async {
+            proxy.scrollTo(request.row)
+        }
+    }
 }
 
 private struct EditorFocusRequestModifier: ViewModifier {
@@ -48,6 +78,11 @@ private struct EditorFocusRequestModifier: ViewModifier {
         DispatchQueue.main.async {
             perform()
             store.didApplyFocus(request)
+            // SwiftUI moves the focus on its next update and never scrolls to it, so a field below the fold of a row
+            // already on screen would take the keyboard out of sight.
+            DispatchQueue.main.async {
+                EditorRowFocusTarget.revealFirstResponder(in: store.window)
+            }
         }
     }
 }
@@ -86,6 +121,22 @@ final class EditorRowFocusTarget {
     func anchorDidMoveToWindow() {
         guard pendingFocus else { return }
         DispatchQueue.main.async { [weak self] in self?.focus() }
+    }
+
+    static func revealFirstResponder(in window: NSWindow?) {
+        guard let responder = window?.firstResponder as? NSView else { return }
+        let shown: NSView
+        if let textView = responder as? NSTextView {
+            if textView.isFieldEditor, let field = textView.delegate as? NSView {
+                shown = field
+            } else {
+                // A code editor scrolls inside itself; its frame is what the form scrolls to.
+                shown = textView.enclosingScrollView ?? textView
+            }
+        } else {
+            shown = responder
+        }
+        shown.scrollToVisible(shown.bounds)
     }
 
     // Text input first, in reading order; a control only when the row has no text input.

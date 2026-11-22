@@ -250,6 +250,38 @@ struct ConnectionFormEditsMergeTests {
         }
     }
 
+    @Test("A transport picked here replaces one another writer turned on, so one transport stays on")
+    func pickedTransportReplacesConcurrentOne() {
+        let base = Self.base()
+        var fresh = base
+        fresh.sshTunnelMode = .inline(SSHConfiguration(enabled: true, host: "bastion"))
+        var edited = base
+        edited.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy", port: 1_080, username: ""))
+
+        let result = Self.edits(edited).applied(to: fresh, since: Self.edits(base))
+
+        #expect(result.sshTunnelMode == .disabled)
+        #expect(result.socksProxyMode == edited.socksProxyMode)
+        #expect(result.enabledTunnelKinds == [.socksProxy])
+    }
+
+    @Test("A transport another writer switched to stays, with its settings, when the form only edited the old one")
+    func concurrentTransportSwitchIsKept() {
+        var base = Self.base()
+        base.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy", port: 1_080, username: ""))
+        var fresh = base
+        fresh.socksProxyMode = .disabled
+        fresh.sshTunnelMode = .inline(SSHConfiguration(enabled: true, host: "bastion"))
+        var edited = base
+        edited.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy", port: 1_081, username: ""))
+
+        let result = Self.edits(edited).applied(to: fresh, since: Self.edits(base))
+
+        #expect(result.sshTunnelMode == fresh.sshTunnelMode)
+        #expect(result.socksProxyMode == .disabled)
+        #expect(result.enabledTunnelKinds == [.ssh])
+    }
+
     @Test("Without a baseline the merge is the plain apply")
     func noBaselineIsPlainApply() {
         let base = Self.base()

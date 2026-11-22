@@ -223,6 +223,7 @@ struct TransportBinaryRow: View {
                 TextField(String(localized: "Path"), text: store.tracking($path, row: row), prompt: Text(String(localized: "Automatic")))
                     .labelsHidden()
                     .autocorrectionDisabled()
+                    .editorPathField(path)
                     .accessibilityIdentifier(row.accessibilityIdentifier)
                 Button(String(localized: "Choose…")) {
                     Task {
@@ -312,13 +313,9 @@ enum TransportFilePanel {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
-        let response: NSApplication.ModalResponse
-        if let window = EditorFilePanel.window(for: store) {
-            response = await panel.presentAsSheet(for: window)
-        } else {
-            response = await panel.begin()
-        }
-        guard response == .OK, let url = panel.url else { return nil }
+        guard await EditorFilePanel.present(panel, in: EditorFilePanel.window(for: store)) == .OK,
+              let url = panel.url
+        else { return nil }
         return url.path(percentEncoded: false)
     }
 }

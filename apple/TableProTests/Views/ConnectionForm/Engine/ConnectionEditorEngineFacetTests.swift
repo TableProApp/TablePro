@@ -51,7 +51,7 @@ struct ConnectionEditorEngineFacetTests {
         let draft = ConnectionDraft.new(type: .sqlite, traits: sqlite)
         let layout = ConnectionEditorEngine.layout(draft, sqlite, EditorContext())
         let transport = try #require(layout.facet(.sshAndProxies))
-        #expect(transport.title == String(localized: "Remote File"))
+        #expect(transport.title == String(localized: "Location"))
         #expect(layout.facet(.sslTLS) == nil)
         #expect(layout.contains(.builtIn(.databaseFile)))
         #expect(!layout.contains(.builtIn(.password)))

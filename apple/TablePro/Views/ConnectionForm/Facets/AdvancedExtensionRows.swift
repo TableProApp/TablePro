@@ -15,36 +15,31 @@ struct AdvancedExtensionRows: View {
 
     var body: some View {
         ForEach(Array(model.rows.enumerated()), id: \.element.id) { index, entry in
+            let fileName = (entry.path as NSString).lastPathComponent
             AdvancedListEntry(
-                primaryTitle: String(localized: "File"),
-                secondaryTitle: String(localized: "Entry Point"),
+                path: entry.path,
                 notice: LoadableExtensionFileIssue.issue(forPath: entry.path)?.message,
-                actionsLabel: String(
-                    format: String(localized: "Actions for %@"),
-                    (entry.path as NSString).lastPathComponent
-                ),
+                actionsLabel: String(format: String(localized: "Actions for %@"), fileName),
+                identifier: "connection-extension-\(index)",
                 canMoveUp: index > 0,
                 canMoveDown: index < model.rows.count - 1,
                 onMove: { offset in move(entry.id, by: offset) },
+                onChangeFile: { Task { await changeFile(of: entry.id) } },
                 onRemove: { remove(entry.id) }
             ) {
-                TextField(
-                    String(localized: "Extension File"),
-                    text: pathBinding(for: entry.id),
-                    prompt: Text(verbatim: "/opt/homebrew/lib/mod_spatialite.dylib")
-                )
-                .labelsHidden()
-                .textFieldStyle(.roundedBorder)
-                .focused($focusedEntry, equals: entry.id)
-            } secondary: {
+                Text(verbatim: fileName)
+            } value: {
                 TextField(
                     String(localized: "Entry Point"),
                     text: entryPointBinding(for: entry.id),
                     prompt: Text(String(localized: "Default entry point"))
                 )
                 .labelsHidden()
-                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .frame(minWidth: 0, idealWidth: 140, maxWidth: .infinity)
+                .focused($focusedEntry, equals: entry.id)
                 .help(String(localized: "The initialization function to call. Leave empty to use the one SQLite derives from the file name."))
+                .accessibilityIdentifier("connection-extension-\(index)-entry-point")
             }
         }
 
@@ -54,7 +49,7 @@ struct AdvancedExtensionRows: View {
 
         LabeledContent {
             Button(String(localized: "Add Extension…")) {
-                Task { await chooseFiles() }
+                Task { await add() }
             }
             .accessibilityIdentifier("connection-extensions-add")
         } label: {
@@ -63,21 +58,13 @@ struct AdvancedExtensionRows: View {
             } else if model.rows.isEmpty {
                 Text(String(localized: "No Extensions"))
                     .foregroundStyle(.secondary)
+            } else {
+                Text("^[\(model.rows.count) Extension](inflect: true)")
             }
         }
         .onAppear(perform: reload)
         .onChange(of: value.wrappedValue) { _ in reload() }
         .onEditorFocusRequest(row, store: store) { focusedEntry = model.rows.first?.id }
-    }
-
-    private func pathBinding(for id: UUID) -> Binding<String> {
-        Binding(
-            get: { model.rows.first { $0.id == id }?.path ?? "" },
-            set: { newValue in
-                model.setPath(newValue, for: id)
-                commit()
-            }
-        )
     }
 
     private func entryPointBinding(for id: UUID) -> Binding<String> {
@@ -115,27 +102,55 @@ struct AdvancedExtensionRows: View {
         commit()
     }
 
-    private func chooseFiles() async {
+    private func add() async {
+        let paths = await chooseFiles(
+            title: String(localized: "Add Extension"),
+            prompt: String(localized: "Add"),
+            message: String(localized: "Choose the SQLite extension libraries to load when this connection opens."),
+            allowsMultipleSelection: true
+        )
+        guard !paths.isEmpty else { return }
+        _ = model.add(paths: paths)
+        commit()
+    }
+
+    // The entry keeps its entry point and its place; only the library it loads changes.
+    private func changeFile(of id: UUID) async {
+        guard let entry = model.rows.first(where: { $0.id == id }) else { return }
+        let paths = await chooseFiles(
+            title: String(localized: "Change File"),
+            prompt: String(localized: "Choose"),
+            message: String(localized: "Choose the SQLite extension library to load in its place."),
+            allowsMultipleSelection: false,
+            currentPath: entry.path
+        )
+        guard let path = paths.first else { return }
+        model.setPath(path, for: id)
+        commit()
+    }
+
+    private func chooseFiles(
+        title: String,
+        prompt: String,
+        message: String,
+        allowsMultipleSelection: Bool,
+        currentPath: String = ""
+    ) async -> [String] {
         let panel = NSOpenPanel()
         let validator = AdvancedExtensionPanelValidator()
-        panel.title = String(localized: "Add Extension")
-        panel.prompt = String(localized: "Add")
-        panel.message = String(localized: "Choose the SQLite extension libraries to load when this connection opens.")
-        panel.allowsMultipleSelection = true
+        panel.title = title
+        panel.prompt = prompt
+        panel.message = message
+        panel.allowsMultipleSelection = allowsMultipleSelection
         panel.canChooseDirectories = false
         panel.resolvesAliases = false
         panel.allowedContentTypes = AdvancedExtensionPanelValidator.contentTypes
+        panel.directoryURL = DatabaseFileLocation(path: currentPath).existingFolder
         panel.delegate = validator
-        let response: NSApplication.ModalResponse
-        if let window = EditorFilePanel.window(for: store) {
-            response = await panel.presentAsSheet(for: window)
-        } else {
-            response = await panel.begin()
-        }
+        let response = await EditorFilePanel.present(panel, in: EditorFilePanel.window(for: store))
         withExtendedLifetime(validator) {}
-        guard response == .OK else { return }
-        _ = model.add(paths: panel.urls.map { $0.path(percentEncoded: false) })
-        commit()
+        guard response == .OK else { return [] }
+        return panel.urls.map { $0.path(percentEncoded: false) }
     }
 }
 
@@ -155,7 +170,7 @@ private final class AdvancedExtensionPanelValidator: NSObject, NSOpenSavePanelDe
             code: NSFileReadCorruptFileError,
             userInfo: [
                 NSLocalizedDescriptionKey: String(
-                    format: String(localized: "\"%@\" is not a library."),
+                    format: String(localized: "“%@” isn’t a library."),
                     url.lastPathComponent
                 )
             ]

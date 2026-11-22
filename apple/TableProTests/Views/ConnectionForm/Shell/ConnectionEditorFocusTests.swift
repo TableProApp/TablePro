@@ -105,6 +105,34 @@ struct ConnectionEditorFocusTests {
         #expect(controller.detail.visitedFacets.count == 7)
     }
 
+    @Test("A row focused below the fold is scrolled into view, so the keyboard never lands out of sight")
+    func focusScrollsTheRowIntoView() async throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let controller = makeController(fixture)
+        defer { controller.close() }
+        let store = controller.store
+        let window = try #require(controller.window)
+        store.selectTransport(.ssh)
+        var last = UUID()
+        for index in 0..<5 {
+            last = store.addJumpHost()
+            store.updateJumpHost(SSHJumpHost(id: last, host: "jump\(index).example.com"))
+        }
+        store.updateJumpHost(SSHJumpHost(id: last, host: "probe-last-hop"))
+        store.selectedFacet = .sshAndProxies
+        try await waitUntil { controller.detail.shownContent == .facet(.sshAndProxies) }
+        flush(window)
+
+        store.focus(facet: .sshAndProxies, row: .builtIn(.jumpHost(last)))
+
+        try await waitUntil(timeout: .seconds(3)) { focusedText(in: window) == "probe-last-hop" }
+        let field = try #require((window.firstResponder as? NSTextView)?.delegate as? NSView)
+        let scrollView = try #require(field.enclosingScrollView)
+        try await waitUntil(timeout: .seconds(3)) {
+            scrollView.contentView.bounds.contains(field.convert(field.bounds, to: scrollView.contentView))
+        }
+    }
+
     @Test("Escape in a text field ends the edit and keeps the window; outside one it is left to Cancel")
     func escapeInTextField() async throws {
         let fixture = try ConnectionEditorStoreFixture()

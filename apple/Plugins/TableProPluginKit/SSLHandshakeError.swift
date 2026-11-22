@@ -103,7 +103,7 @@ public enum SSLHandshakeError: Error, LocalizedError, Sendable {
         case .clientKeyPassphraseIncorrect:
             return String(localized: "Correct the Key Passphrase in the connection's SSL/TLS settings.")
         case .clientKeyInvalid:
-            return String(localized: "Check that the client key file is a valid PEM private key.")
+            return String(localized: "In the connection's SSL/TLS settings, check that the Key under Client Certificates is a valid PEM private key.")
         case .cipherMismatch:
             return String(localized: "Update the server's TLS configuration or use a newer database server version that supports modern ciphers.")
         case .unknown:

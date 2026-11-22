@@ -44,6 +44,7 @@ struct EditorPathRow: View {
                 }
                 .labelsHidden()
                 .autocorrectionDisabled()
+                .editorPathField(path)
                 .focused($isFocused)
                 .accessibilityIdentifier(row.accessibilityIdentifier)
 
@@ -106,6 +107,7 @@ struct EditorDatabaseFileRow: View {
                 }
                 .labelsHidden()
                 .autocorrectionDisabled()
+                .editorPathField(path)
                 .focused($isFocused)
                 .accessibilityIdentifier(row.accessibilityIdentifier)
 
@@ -153,11 +155,35 @@ struct EditorDatabaseFileRow: View {
     }
 }
 
-// Open panels for the editor's path rows, as sheets on the editor window.
+extension View {
+    // A long path keeps its file name in sight: the middle gives way, the tooltip has it whole, and the ideal width
+    // keeps the row on one line where the path's own width would stack the label above it.
+    func editorPathField(_ path: String) -> some View {
+        truncationMode(.middle)
+            .frame(minWidth: 0, idealWidth: 200, maxWidth: .infinity)
+            .help(path)
+    }
+}
+
+// Open and save panels for the editor's path rows.
 @MainActor
 enum EditorFilePanel {
     static func window(for store: ConnectionEditorStore) -> NSWindow? {
         store.window ?? NSApp.keyWindow
+    }
+
+    // A sheet wider than its window hangs past both edges. The panel is narrowed first, but no further than its own
+    // minimum, which for an open panel (833 pt with the sidebar on macOS 27, measured) is wider than the 780 pt
+    // editor, so a panel that still does not fit runs app-modal on its own, keeping the editor waiting as a sheet would.
+    static func present(_ panel: NSSavePanel, in window: NSWindow?) async -> NSApplication.ModalResponse {
+        guard let window else { return await panel.begin() }
+        let available = window.frame.width
+        if panel.frame.width > available {
+            let height = panel.contentRect(forFrameRect: panel.frame).height
+            panel.setContentSize(NSSize(width: available, height: height))
+        }
+        guard panel.frame.width <= available else { return panel.runModal() }
+        return await panel.presentAsSheet(for: window)
     }
 
     static func chooseFile(
@@ -179,13 +205,7 @@ enum EditorFilePanel {
             let expanded = (trimmed as NSString).expandingTildeInPath
             panel.directoryURL = URL(fileURLWithPath: expanded).deletingLastPathComponent()
         }
-        let response: NSApplication.ModalResponse
-        if let window {
-            response = await panel.presentAsSheet(for: window)
-        } else {
-            response = await panel.begin()
-        }
-        guard response == .OK, let url = panel.url else { return nil }
+        guard await present(panel, in: window) == .OK, let url = panel.url else { return nil }
         return url.path(percentEncoded: false)
     }
 }

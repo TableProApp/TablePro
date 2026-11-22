@@ -85,13 +85,9 @@ struct PluginFieldRow: View {
             }
             .editorRowFocus(row, store: store)
         case .attachedDatabases:
-            listEditor {
-                AttachedDatabaseListEditor(value: trackingEdits(value), databaseType: store.draft.type)
-            }
+            AdvancedAttachedDatabaseRows(fieldID: fieldID, store: store)
         case .loadableExtensions:
-            listEditor {
-                LoadableExtensionListEditor(value: trackingEdits(value))
-            }
+            AdvancedExtensionRows(fieldID: fieldID, store: store)
         case .localDatabaseFile:
             EditorDatabaseFileRow(
                 name,
@@ -124,17 +120,6 @@ struct PluginFieldRow: View {
 
     private func label(_ field: ConnectionField) -> EditorRowLabel {
         EditorRowLabel(title ?? field.label, row: row, store: store)
-    }
-
-    // A list is the whole row, titled by its section header, so its issue sits under it in the same row.
-    private func listEditor<Editor: View>(@ViewBuilder _ editor: () -> Editor) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            editor()
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier(row.accessibilityIdentifier)
-            EditorRowIssueNotice(row: row, store: store)
-        }
-        .editorRowFocus(row, store: store)
     }
 
     private func trackingEdits(_ binding: Binding<String>) -> Binding<String> {

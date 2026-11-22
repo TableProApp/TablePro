@@ -124,10 +124,6 @@ struct ConnectionFormEdits: Equatable {
         merge(\.tagIds)
         merge(\.groupId)
         merge(\.credentialMode)
-        merge(\.cloudflareTunnelMode)
-        merge(\.cloudSQLProxyMode)
-        merge(\.socksProxyMode)
-        merge(\.tunnelCommandMode)
         merge(\.preferredSafeModeLevel)
         merge(\.aiPolicy)
         merge(\.aiRules)
@@ -136,13 +132,23 @@ struct ConnectionFormEdits: Equatable {
         merge(\.startupCommands)
         merge(\.localOnly)
 
-        // One tunnel description: a half-merged trio would name a profile with another tunnel's settings.
-        if mine.sshConfig != theirs.sshConfig
-            || mine.sshProfileId != theirs.sshProfileId
-            || mine.sshTunnelMode != theirs.sshTunnelMode {
-            result.sshConfig = mine.sshConfig
-            result.sshProfileId = mine.sshProfileId
-            result.sshTunnelMode = mine.sshTunnelMode
+        // One transport at a time: a switch made here replaces the stored transports whole, and a switch another
+        // writer made stays whole, so a merge never turns on two.
+        if Self.switchedOnTransports(mine) != Self.switchedOnTransports(theirs) {
+            result.takeTransports(from: mine)
+        } else if Self.switchedOnTransports(fresh) == Self.switchedOnTransports(theirs) {
+            merge(\.cloudflareTunnelMode)
+            merge(\.cloudSQLProxyMode)
+            merge(\.socksProxyMode)
+            merge(\.tunnelCommandMode)
+            // One tunnel description: a half-merged trio would name a profile with another tunnel's settings.
+            if mine.sshConfig != theirs.sshConfig
+                || mine.sshProfileId != theirs.sshProfileId
+                || mine.sshTunnelMode != theirs.sshTunnelMode {
+                result.sshConfig = mine.sshConfig
+                result.sshProfileId = mine.sshProfileId
+                result.sshTunnelMode = mine.sshTunnelMode
+            }
         }
 
         for key in Set(mine.additionalFields.keys).union(theirs.additionalFields.keys)
@@ -154,6 +160,17 @@ struct ConnectionFormEdits: Equatable {
         return result
     }
 
+    // The SSH trio counts once, whether it forwards a port or opens a remote file.
+    private static func switchedOnTransports(_ connection: DatabaseConnection) -> Set<ConnectionTunnelKind> {
+        var kinds: Set<ConnectionTunnelKind> = []
+        if connection.sshTunnelMode != .disabled { kinds.insert(.ssh) }
+        if connection.isCloudflareEnabled { kinds.insert(.cloudflare) }
+        if connection.isCloudSQLProxyEnabled { kinds.insert(.cloudSQLProxy) }
+        if connection.isSOCKSProxyEnabled { kinds.insert(.socksProxy) }
+        if connection.isTunnelCommandEnabled { kinds.insert(.tunnelCommand) }
+        return kinds
+    }
+
     private func mergedAdditionalFields(onto existing: [String: String]) -> [String: String] {
         var merged = existing
         for id in ownedAdditionalFieldIDs {
@@ -163,5 +180,18 @@ struct ConnectionFormEdits: Equatable {
             merged[id] = value
         }
         return merged
+    }
+}
+
+private extension DatabaseConnection {
+    mutating func takeTransports(from other: DatabaseConnection) {
+        sshConfig = other.sshConfig
+        sshProfileId = other.sshProfileId
+        sshTunnelMode = other.sshTunnelMode
+        cloudflareTunnelMode = other.cloudflareTunnelMode
+        cloudSQLProxyMode = other.cloudSQLProxyMode
+        socksProxyMode = other.socksProxyMode
+        tunnelCommandMode = other.tunnelCommandMode
+        additionalFields[Self.sshForwardUnixSocketPathKey] = other.additionalFields[Self.sshForwardUnixSocketPathKey]
     }
 }

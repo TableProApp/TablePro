@@ -11,6 +11,7 @@ struct AdvancedFacetView: View {
                 Section {
                     ForEach(section.rows, id: \.self) { row in
                         rowView(row)
+                            .id(row)
                     }
                 } header: {
                     if let title = section.title {
@@ -24,6 +25,7 @@ struct AdvancedFacetView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollsToEditorFocus(.advanced, store: store)
     }
 
     private var sections: [SectionLayout] {
@@ -73,22 +75,9 @@ struct AdvancedFacetView: View {
             .accessibilityIdentifier(row.accessibilityIdentifier)
             .editorRowFocus(row, store: store)
         case .plugin(let fieldID):
-            pluginRow(fieldID)
+            PluginFieldRow(fieldID: fieldID, store: store)
         default:
             EmptyView()
-        }
-    }
-
-    // A list's entries are rows of its section, never a List nested in the form.
-    @ViewBuilder
-    private func pluginRow(_ fieldID: String) -> some View {
-        switch store.pluginFieldKind(fieldID) {
-        case .attachedDatabases?:
-            AdvancedAttachedDatabaseRows(fieldID: fieldID, store: store)
-        case .loadableExtensions?:
-            AdvancedExtensionRows(fieldID: fieldID, store: store)
-        default:
-            PluginFieldRow(fieldID: fieldID, store: store)
         }
     }
 

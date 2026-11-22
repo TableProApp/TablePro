@@ -7,8 +7,14 @@ import Foundation
 
 struct EditorLayout: Equatable, Sendable {
     var facets: [FacetLayout]
+    // Shown so a value survives a switch back, but the connect ignores them: drawn disabled and never validated.
+    var disabledRows: Set<EditorRow> = []
 
     var facetIDs: [ConnectionFacet] { facets.map(\.facet) }
+
+    func isEnabled(_ row: EditorRow) -> Bool {
+        contains(row) && !disabledRows.contains(row)
+    }
 
     func facet(_ facet: ConnectionFacet) -> FacetLayout? {
         facets.first { $0.facet == facet }
