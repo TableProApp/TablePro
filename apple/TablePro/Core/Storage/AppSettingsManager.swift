@@ -10,7 +10,10 @@ final class AppSettingsManager: ObservableObject {
 
     @Published var general: GeneralSettings {
         didSet {
-            general.language.apply()
+            guard general != oldValue else { return }
+            if oldValue.language != general.language {
+                general.language.apply()
+            }
             storage.saveGeneral(general)
             if oldValue.showWorkspaceRail != general.showWorkspaceRail {
                 appEvents.workspaceRailVisibilityChanged.send(())
@@ -24,6 +27,7 @@ final class AppSettingsManager: ObservableObject {
 
     @Published var appearance: AppearanceSettings {
         didSet {
+            guard appearance != oldValue else { return }
             storage.saveAppearance(appearance)
             themeEngine.select(
                 lightThemeId: appearance.preferredLightThemeId,
@@ -44,6 +48,7 @@ final class AppSettingsManager: ObservableObject {
 
     @Published var editor: EditorSettings {
         didSet {
+            guard editor != oldValue else { return }
             storage.saveEditor(editor)
             appEvents.editorSettingsChanged.send(())
             syncTracker.markDirty(.settings, id: AppSettingsCategory.editor)
@@ -99,8 +104,11 @@ final class AppSettingsManager: ObservableObject {
                 isValidating = false
             }
 
+            guard validated != oldValue else { return }
             storage.saveDataGrid(validated)
-            dateFormattingService.updateFormat(validated.dateFormat)
+            if validated.dateFormat != oldValue.dateFormat {
+                dateFormattingService.updateFormat(validated.dateFormat)
+            }
             appEvents.dataGridSettingsChanged.send(())
             syncTracker.markDirty(.settings, id: AppSettingsCategory.dataGrid)
         }
@@ -136,6 +144,7 @@ final class AppSettingsManager: ObservableObject {
 
     @Published var tabs: TabSettings {
         didSet {
+            guard tabs != oldValue else { return }
             storage.saveTabs(tabs)
             syncTracker.markDirty(.settings, id: AppSettingsCategory.tabs)
         }
@@ -143,6 +152,7 @@ final class AppSettingsManager: ObservableObject {
 
     @Published var keyboard: KeyboardSettings {
         didSet {
+            guard keyboard != oldValue else { return }
             storage.saveKeyboard(keyboard)
             syncTracker.markDirty(.settings, id: AppSettingsCategory.keyboard)
             MainMenuBuilder.syncKeyEquivalents(keyboard: keyboard)
@@ -152,6 +162,7 @@ final class AppSettingsManager: ObservableObject {
 
     @Published var ai: AISettings {
         didSet {
+            guard ai != oldValue else { return }
             storage.saveAI(ai)
             syncTracker.markDirty(.settings, id: AppSettingsCategory.ai)
             appEvents.aiSettingsChanged.send(())

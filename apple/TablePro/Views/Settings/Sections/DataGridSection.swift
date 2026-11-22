@@ -9,6 +9,17 @@ struct DataGridSection: View {
     @Binding var settings: DataGridSettings
     @Binding var valueColors: ValueColorSettings
 
+    // NULL display commits on Return/focus loss, not per keystroke: a live binding re-encodes the
+    // whole settings struct and reformats every open grid on each character.
+    @State private var nullDisplayDraft = ""
+    @FocusState private var nullDisplayFocused: Bool
+
+    private func commitNullDisplay() {
+        if settings.nullDisplay != nullDisplayDraft {
+            settings.nullDisplay = nullDisplayDraft
+        }
+    }
+
     var body: some View {
         Section {
             Picker("Row height:", selection: $settings.rowHeight) {
@@ -23,15 +34,17 @@ struct DataGridSection: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                TextField("NULL display:", text: $settings.nullDisplay)
-                    .help("Max \(SettingsValidationRules.nullDisplayMaxLength) characters")
-
-                if let error = settings.nullDisplayValidationError {
-                    NoticeLabel(error, severity: .error)
-                        .font(.caption)
+            TextField("NULL display:", text: $nullDisplayDraft)
+                .focused($nullDisplayFocused)
+                .help("Max \(SettingsValidationRules.nullDisplayMaxLength) characters")
+                .onSubmit(commitNullDisplay)
+                .onChange(of: nullDisplayFocused) { focused in
+                    if !focused { commitNullDisplay() }
                 }
-            }
+                .onChange(of: settings.nullDisplay) { value in
+                    if !nullDisplayFocused { nullDisplayDraft = value }
+                }
+                .onAppear { nullDisplayDraft = settings.nullDisplay }
 
             Toggle("Show alternate row backgrounds", isOn: $settings.showAlternateRows)
             Toggle("Show row numbers", isOn: $settings.showRowNumbers)
@@ -59,7 +72,12 @@ struct DataGridSection: View {
         } header: {
             Text("Data Grid")
         } footer: {
-            Text("Default row sort is applied when a table first opens. Sort direction also sets which way the first click on a column header sorts.")
+            VStack(alignment: .leading, spacing: 4) {
+                if let error = settings.nullDisplayValidationError {
+                    NoticeLabel(error, severity: .error)
+                }
+                Text("Default row sort is applied when a table first opens. Sort direction also sets which way the first click on a column header sorts.")
+            }
         }
 
         Section {
@@ -110,21 +128,21 @@ struct DataGridSection: View {
                     Text("100,000").tag(100_000)
                     Text("500,000").tag(500_000)
                 }
-
-                if let error = settings.queryResultRowCapValidationError {
-                    NoticeLabel(error, severity: .error)
-                        .font(.caption)
-                }
             }
         } header: {
             Text("Query Result Row Cap")
         } footer: {
-            if settings.truncateQueryResults, settings.queryResultRowCapValidationError == nil {
-                Text("""
-                SELECT queries without their own LIMIT run with this cap applied. The query text in the \
-                editor never changes. Capped results show a Fetch All button, and Execute Without Limit \
-                skips the cap for one run.
-                """)
+            VStack(alignment: .leading, spacing: 4) {
+                if let error = settings.queryResultRowCapValidationError {
+                    NoticeLabel(error, severity: .error)
+                }
+                if settings.truncateQueryResults, settings.queryResultRowCapValidationError == nil {
+                    Text("""
+                    SELECT queries without their own LIMIT run with this cap applied. The query text in the \
+                    editor never changes. Capped results show a Fetch All button, and Execute Without Limit \
+                    skips the cap for one run.
+                    """)
+                }
             }
         }
 
