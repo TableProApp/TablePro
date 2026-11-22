@@ -34,8 +34,7 @@ struct DatabaseTypeChooserSheet: View {
             Divider()
             footer
         }
-        // Pinned width, flexible height: the HIG allows a resizable sheet when people may want to
-        // expand the list, while keeping the sensible default size.
+        // Pinned width, flexible height: the HIG allows a resizable sheet when people may want a longer list.
         .frame(minWidth: 560, maxWidth: 560, minHeight: 440, idealHeight: 520, maxHeight: 860)
         .onAppear {
             model.preselect(initialType)
@@ -54,16 +53,14 @@ struct DatabaseTypeChooserSheet: View {
 
             Spacer()
 
-            /// Arrow keys are handed over by the search field's own `NSSearchFieldDelegate`, which
-            /// is the only route: a focused field editor consumes them as `doCommandBySelector:`
-            /// before `onMoveCommand` or `onKeyPress` can see them, and `searchFocused` is
-            /// macOS 15. `onSubmit` stays unwired, or Return would commit through both the field
-            /// editor and Continue's `.defaultAction`.
+            // The field editor eats arrows before onMoveCommand sees them, so the delegate hands them over.
+            // onSubmit stays unwired: Return already reaches Continue's .defaultAction.
             NativeSearchField(
                 text: $model.searchText,
                 placeholder: String(localized: "Search"),
                 onMoveUp: { model.moveHighlight(by: -1) },
                 onMoveDown: { model.moveHighlight(by: 1) },
+                focusOnAppear: true,
                 accessibilityIdentifier: "database-type-chooser-search"
             )
             .frame(width: 180)
@@ -178,6 +175,7 @@ internal struct DatabaseTypeChooserRow: View {
             if isCurrent {
                 Image(systemName: "checkmark")
                     .selectionAwareTint(Color.accentColor)
+                    .accessibilityLabel(Text("Current type"))
             }
 
             if shouldShowNotInstalledBadge {
@@ -186,6 +184,7 @@ internal struct DatabaseTypeChooserRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .accessibilityElement(children: .combine)
     }
 
     private var shouldShowNotInstalledBadge: Bool {

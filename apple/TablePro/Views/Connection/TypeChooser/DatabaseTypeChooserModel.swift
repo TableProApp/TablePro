@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import Combine
 import Foundation
 
@@ -47,20 +48,13 @@ final class DatabaseTypeChooserModel: ObservableObject {
             .sorted { $0.category.sortOrder < $1.category.sortOrder }
     }
 
-    /// The rows as the list draws them, which is category order and then alphabetical, not the
-    /// order `filteredTypes` happens to produce. Arrowing has to follow what is on screen.
+    // Arrowing follows the rows as drawn: category order, then alphabetical.
     var orderedTypes: [DatabaseType] {
         groupedTypes.flatMap(\.types)
     }
 
-    /// The match a query most plausibly meant, or nil when the query matched nothing.
-    ///
-    /// Ranked, and that is the whole point: the filter also matches taglines and category names, so
-    /// the first row on screen is routinely not the best answer. "PostgreSQL" matches CockroachDB
-    /// ("Distributed SQL, PostgreSQL-compatible") and PGlite, and CockroachDB sorts ahead of
-    /// PostgreSQL alphabetically inside Relational. Arming the first row would let Return commit a
-    /// driver the user never looked at, and on an existing connection a type change resets its
-    /// credentials, SSL, driver options and transport.
+    // Ranked, not the first row: the filter matches taglines too, so "PostgreSQL" puts CockroachDB on top
+    // and Return would commit a driver the user never looked at.
     var bestMatch: DatabaseType? {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty else { return nil }
@@ -89,12 +83,53 @@ final class DatabaseTypeChooserModel: ObservableObject {
         highlightedType = items[target]
     }
 
-    /// Keeps a highlight the query still shows, and otherwise arms the best match, or nothing.
-    ///
-    /// Never falls back to the first row: a query that matched only taglines leaves the highlight
-    /// nil and Continue dimmed, which is correct, because no row is a defensible default there.
+    // Never falls back to the first row: a tagline-only query leaves nothing armed and Continue dimmed.
     private func settleHighlight() {
         if let current = highlightedType, orderedTypes.contains(current) { return }
         highlightedType = bestMatch
+    }
+}
+
+// The check Welcome runs after the chooser (WelcomeViewModel+ConnectionCreation), shared so a type change
+// inside the editor asks the same question before it applies.
+@MainActor
+internal enum DatabaseTypeInstallCheck {
+    internal enum Requirement: Equatable, Sendable {
+        case ready
+        case install
+    }
+
+    // A bundled driver that did not load is disabled or damaged: no download fixes it, the connect says which.
+    nonisolated internal static func requirement(isInstalled: Bool, isDownloadable: Bool) -> Requirement {
+        !isInstalled && isDownloadable ? .install : .ready
+    }
+
+    internal static func requirement(for type: DatabaseType) -> Requirement {
+        requirement(
+            isInstalled: PluginManager.shared.isDriverInstalled(for: type),
+            isDownloadable: type.isDownloadablePlugin
+        )
+    }
+
+    // True when the type can be used now: installed already, or the user agreed and the install finished.
+    internal static func ensureInstalled(_ type: DatabaseType, window: NSWindow?) async -> Bool {
+        if !PluginManager.shared.isDriverInstalled(for: type) {
+            await PluginManager.shared.waitForInitialLoad()
+        }
+        guard requirement(for: type) == .install else { return true }
+
+        let confirmed = await AlertHelper.confirm(
+            title: String(localized: "Plugin Not Installed"),
+            message: String(
+                format: String(localized: "The %@ plugin is not installed. Would you like to install it?"),
+                type.displayName
+            ),
+            confirmButton: String(localized: "Install"),
+            window: window
+        )
+        guard confirmed else { return false }
+        return await PluginInstallPrompt.run(pluginName: type.displayName, window: window) { onBegin in
+            try await PluginManager.shared.installMissingPlugin(for: type, onBegin: onBegin)
+        }
     }
 }

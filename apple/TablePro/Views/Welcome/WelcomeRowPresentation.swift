@@ -23,8 +23,7 @@ internal struct WelcomeGroupRowModel: Equatable {
     internal let connectionCount: Int
 }
 
-/// Shared by tags and groups, so each label carries its own symbol: a group draws the icon it was
-/// given, a tag always draws the tag.
+// Shared by tags and groups: a group draws the icon it was given, a tag always draws the tag.
 internal struct WelcomeTagLabel: Hashable {
     internal let name: String
     internal let color: ConnectionColor
@@ -38,6 +37,7 @@ internal struct WelcomeConnectionRowModel: Equatable {
     internal let type: DatabaseType
     internal let iconName: String?
     internal let identityColor: ConnectionColor?
+    internal let environment: ConnectionEnvironment
     internal let tags: [WelcomeTagLabel]
     internal let hiddenTagCount: Int
     internal let groupLabel: WelcomeTagLabel?
@@ -46,6 +46,26 @@ internal struct WelcomeConnectionRowModel: Equatable {
     internal let tooltip: String
     // Part of the model so a reload hands a reused row a changed value; status has no observable home.
     internal let status: ConnectionDisplayStatus
+
+    // The tile is hidden from VoiceOver, so the label names the engine a custom icon may replace.
+    internal var accessibilityLabel: String {
+        [name, type.displayName, environment.accessibilityName]
+            .compactMap { $0 }
+            .joined(separator: ", ")
+    }
+
+    internal var accessibilityValue: String {
+        let presentation = ConnectionStatusPresentation(status)
+        var parts: [String] = []
+        if isDriverRejected { parts.append(String(localized: "Plugin not loaded")) }
+        if isLocalOnly { parts.append(String(localized: "Local only")) }
+        if presentation.symbol != nil { parts.append(presentation.accessibilityStatus) }
+        parts.append(detail)
+        if let groupLabel { parts.append(groupLabel.name) }
+        parts.append(contentsOf: tags.map(\.name))
+        if hiddenTagCount > 0 { parts.append(String(format: String(localized: "+%lld"), Int64(hiddenTagCount))) }
+        return parts.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
 }
 
 internal enum WelcomeSortOption: CaseIterable {
@@ -107,9 +127,7 @@ internal enum WelcomeRowPresentation {
 
     internal static let renameGlyphSide: CGFloat = 16
 
-    /// An image rather than a symbol name, because most engine logos are assets. An asset comes at
-    /// its SVG artboard size (2500pt for one), and the rename field's image view is constrained in
-    /// width only, so it would take that as its height.
+    // An asset logo comes at its artboard size, which the width-only rename image view takes as its height.
     internal static func renameGlyph(for connection: DatabaseConnection) -> NSImage? {
         guard let image = LibraryGlyph.connectionNSImage(
             type: connection.type,
@@ -143,6 +161,7 @@ internal enum WelcomeRowPresentation {
             type: connection.type,
             iconName: connection.iconName,
             identityColor: connection.identityColor,
+            environment: ConnectionEnvironment.stored(in: connection.additionalFields),
             tags: Array(labels.prefix(visibleTagLimit)),
             hiddenTagCount: max(0, labels.count - visibleTagLimit),
             groupLabel: section == .connections ? nil : group.map { groupLabel($0) },
@@ -170,6 +189,7 @@ internal enum WelcomeRowPresentation {
             type: type,
             iconName: LibrarySymbolCatalog.normalizedName(exportable.iconName),
             identityColor: exportable.color.flatMap { ConnectionColor(rawValue: $0) }.flatMap { $0.isDefault ? nil : $0 },
+            environment: ConnectionEnvironment.stored(in: exportable.additionalFields),
             tags: [],
             hiddenTagCount: 0,
             groupLabel: nil,

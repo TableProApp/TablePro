@@ -59,7 +59,7 @@ internal struct ConnectionTile: View {
         if let identityColor {
             image.foregroundStyle(Color.legibleForeground(on: identityColor.color))
         } else {
-            image.selectionAwareTint(type.themeColor)
+            image.selectionAwareTint(Color(nsColor: ConnectionTileMetrics.glyphColor(brand: NSColor(type.themeColor))))
         }
     }
 
@@ -131,7 +131,9 @@ internal struct WelcomeConnectionRow: View {
         }
         .padding(.trailing, 8)
         .help(model.tooltip)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(model.accessibilityLabel))
+        .accessibilityValue(Text(model.accessibilityValue))
     }
 }
 
@@ -140,6 +142,8 @@ private struct WelcomeConnectionAccessories: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            ConnectionEnvironmentLabel(environment: model.environment)
+
             if model.isDriverRejected {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .imageScale(.small)
@@ -179,6 +183,28 @@ private struct WelcomeConnectionLabels: View {
             }
         }
         .fixedSize()
+    }
+}
+
+internal struct ConnectionEnvironmentLabel: View {
+    let environment: ConnectionEnvironment
+
+    var body: some View {
+        if let symbolName = environment.symbolName, let spokenName = environment.accessibilityName {
+            HStack(spacing: 3) {
+                Image(systemName: symbolName)
+                    .imageScale(.small)
+                    .selectionAwareTint(environment.tint)
+                    .accessibilityHidden(true)
+                Text(environment.displayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .fixedSize()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(spokenName))
+        }
     }
 }
 

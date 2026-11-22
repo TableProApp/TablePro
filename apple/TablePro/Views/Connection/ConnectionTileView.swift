@@ -19,6 +19,87 @@ internal enum ConnectionTileMetrics {
     internal static func glyphPointSize(for size: CGFloat) -> CGFloat {
         size * 0.5
     }
+
+    // WCAG's floor for a graphic. Brand hues are picked for a white page, so several (PostgreSQL's
+    // blue, Kafka's near black) sit under it on the dark tile.
+    internal static let minimumGlyphContrast: CGFloat = 3
+
+    // The brand colour in Light Mode; in Dark Mode the same hue lifted until it clears the tile.
+    internal static func glyphColor(brand: NSColor) -> NSColor {
+        NSColor(name: nil) { appearance in
+            guard appearance.isDarkTheme else { return brand }
+            var lifted = brand
+            appearance.performAsCurrentDrawingAppearance {
+                lifted = liftedGlyph(brand, onTileLuminance: tileLuminance())
+            }
+            return lifted
+        }
+    }
+
+    // The tile as it draws: quaternaryLabelColor over the window background, in the current appearance.
+    internal static func tileLuminance() -> CGFloat {
+        guard let tile = NSColor.quaternaryLabelColor.usingColorSpace(.sRGB),
+              let base = NSColor.windowBackgroundColor.usingColorSpace(.sRGB)
+        else { return 0 }
+        let alpha = tile.alphaComponent
+        let composite = NSColor(
+            srgbRed: tile.redComponent * alpha + base.redComponent * (1 - alpha),
+            green: tile.greenComponent * alpha + base.greenComponent * (1 - alpha),
+            blue: tile.blueComponent * alpha + base.blueComponent * (1 - alpha),
+            alpha: 1
+        )
+        return composite.relativeLuminance
+    }
+
+    internal static func contrast(_ first: CGFloat, _ second: CGFloat) -> CGFloat {
+        (max(first, second) + 0.05) / (min(first, second) + 0.05)
+    }
+
+    // Raises brightness first, which keeps hue and saturation; only a hue too dark at full brightness
+    // (pure blue) also gives up saturation.
+    internal static func liftedGlyph(_ color: NSColor, onTileLuminance tile: CGFloat) -> NSColor {
+        guard let srgb = color.usingColorSpace(.sRGB) else { return color }
+        func passes(_ candidate: NSColor) -> Bool {
+            contrast(candidate.relativeLuminance, tile) >= minimumGlyphContrast
+        }
+        guard !passes(srgb) else { return color }
+
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+        srgb.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+
+        let bright = NSColor(hue: hue, saturation: saturation, brightness: 1, alpha: alpha)
+        if passes(bright) {
+            var failing = brightness
+            var passing: CGFloat = 1
+            for _ in 0 ..< liftSteps {
+                let middle = (failing + passing) / 2
+                if passes(NSColor(hue: hue, saturation: saturation, brightness: middle, alpha: alpha)) {
+                    passing = middle
+                } else {
+                    failing = middle
+                }
+            }
+            return NSColor(hue: hue, saturation: saturation, brightness: passing, alpha: alpha)
+        }
+
+        var passing: CGFloat = 0
+        var failing = saturation
+        for _ in 0 ..< liftSteps {
+            let middle = (failing + passing) / 2
+            if passes(NSColor(hue: hue, saturation: middle, brightness: 1, alpha: alpha)) {
+                passing = middle
+            } else {
+                failing = middle
+            }
+        }
+        return NSColor(hue: hue, saturation: passing, brightness: 1, alpha: alpha)
+    }
+
+    // Enough halvings to land inside a step no 8-bit channel can express.
+    private static let liftSteps = 12
 }
 
 // AppKit twin of `ConnectionTile`: the rail is an `NSTableView` whose cells are `NSTableCellView`s,
@@ -124,7 +205,9 @@ internal final class ConnectionTileView: NSView {
             if let identityColor {
                 glyph.contentTintColor = NSColor(Color.legibleForeground(on: identityColor.color))
             } else {
-                glyph.contentTintColor = isEmphasized ? .alternateSelectedControlTextColor : brandColor
+                glyph.contentTintColor = isEmphasized
+                    ? .alternateSelectedControlTextColor
+                    : ConnectionTileMetrics.glyphColor(brand: brandColor)
             }
         }
     }

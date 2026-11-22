@@ -6,15 +6,12 @@
 import SwiftUI
 import TableProPluginKit
 
-/// One credential profile: the name every connection picks it by, the username, and where the
-/// password comes from.
 struct CredentialProfileEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let existingProfile: CredentialProfile?
     var initialPassword: String?
-    /// Which engine's secrets to offer first, so a profile promoted from a Postgres connection
-    /// does not open on MySQL's fields.
+    // Which engine's secrets to offer first, so a profile promoted from a Postgres connection opens on Postgres.
     var initialDatabaseType: DatabaseType?
     var onSave: ((CredentialProfile) -> Void)?
     var onDelete: (() -> Void)?
@@ -22,7 +19,7 @@ struct CredentialProfileEditorSheet: View {
     @State private var name: String = ""
     @State private var username: String = ""
     @State private var passwordKind: PasswordKind = .stored
-    @State private var password: String = ""
+    @State private var password = StoredSecretDraft(stored: .absent)
     @State private var passwordWasPrefilled = false
     @State private var sourceKind: PasswordSourceKind = .file
     @State private var sourceValue: String = ""
@@ -31,23 +28,22 @@ struct CredentialProfileEditorSheet: View {
     @State private var vaultAccess = VaultAccessDraft()
     // A new profile keeps this id when saved, so its first connect signs in as the user Test Source leased.
     @State private var draftProfileId = UUID()
+    @State private var savedSortOrder: Int?
 
+    @State private var secretTypes: [DatabaseType] = []
     @State private var secureFieldType: DatabaseType = .mysql
-    @State private var secureFieldValues: [String: String] = [:]
+    @State private var secretLayout = ProfileSecretLayout(fields: [])
+    @State private var secretMethod: String?
+    @State private var secureFieldDrafts: [String: StoredSecretDraft] = [:]
+    @State private var secureFieldLabels: [String: String] = [:]
 
     @State private var showingDeleteConfirmation = false
     @State private var dependentCount = 0
     @State private var saveError: String?
 
-    /// Read once when the sheet opens. `body` reads `nameIsUnique` and `isStored` several times per
-    /// pass, and each one used to decode the whole profiles file off disk, on every keystroke.
+    // Read once on appear: body reads these several times a pass and each read decoded the profiles file.
     @State private var otherProfileNames: [String] = []
     @State private var isStored = false
-    @State private var secureFields: [ConnectionField] = []
-    /// False when a keychain read failed rather than finding nothing. Saving then must not
-    /// treat an empty field as the user clearing a secret: a rename while the keychain was
-    /// locked would delete the password of every connection on the profile.
-    @State private var secretsWereReadable = true
 
     private var storage: CredentialProfileStorage { .shared }
 
@@ -66,8 +62,7 @@ struct CredentialProfileEditorSheet: View {
         passwordKind == .source && sourceKind.suppliesUsername
     }
 
-    /// Two profiles with one name are indistinguishable in every picker that offers them, which is
-    /// the reason the system's own profile editors refuse it.
+    // Two profiles with one name cannot be told apart in any picker that offers them.
     private var nameIsUnique: Bool {
         !otherProfileNames.contains {
             $0.compare(trimmedName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
@@ -76,6 +71,14 @@ struct CredentialProfileEditorSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            ProfileSheetHeader(
+                title: isStored
+                    ? String(localized: "Edit Credential Profile")
+                    : String(localized: "New Credential Profile"),
+                subtitle: String(localized: "Connections that use this profile sign in with these credentials.")
+            )
+            Divider()
+
             Form {
                 Section(String(localized: "Profile")) {
                     TextField(String(localized: "Name"), text: $name, prompt: Text("Production reader"))
@@ -93,14 +96,6 @@ struct CredentialProfileEditorSheet: View {
                     .accessibilityIdentifier("credential-profile-username")
                 }
 
-                if !secretsWereReadable {
-                    Section {
-                        NoticeLabel(
-                            String(localized: "The Keychain could not be read, so the stored secrets are not shown. Editing the name is safe; they are left as they are.")
-                        )
-                        .font(.caption)
-                    }
-                }
                 passwordSection
                 secureFieldsSection
             }
@@ -109,7 +104,7 @@ struct CredentialProfileEditorSheet: View {
             Divider()
             bottomBar
         }
-        .frame(minWidth: 480, minHeight: 420, idealHeight: 460)
+        .frame(minWidth: 520, minHeight: 460, idealHeight: 540)
         .onAppear(perform: load)
     }
 
@@ -129,9 +124,10 @@ struct CredentialProfileEditorSheet: View {
             case .stored:
                 RevealablePasswordField(
                     title: String(localized: "Password"),
-                    text: $password,
+                    text: $password.text,
                     requiresAuthentication: passwordWasPrefilled
                 )
+                StoredSecretNotice(draft: $password)
             case .prompt:
                 Text("Every connection using this profile asks for the password once each time TablePro runs.")
                     .font(.caption)
@@ -301,18 +297,32 @@ struct CredentialProfileEditorSheet: View {
     private var secureFieldsSection: some View {
         Section {
             Picker(String(localized: "For"), selection: $secureFieldType) {
-                ForEach(DatabaseType.allKnownTypes, id: \.self) { type in
-                    Text(type.rawValue).tag(type)
+                ForEach(secretTypes, id: \.self) { type in
+                    Text(type.displayName).tag(type)
                 }
             }
             .onChange(of: secureFieldType) { _ in reloadSecureFields() }
-            if secureFields.isEmpty {
-                Text("This database type signs in with the username and password above.")
+
+            if let methodField = secretLayout.methodField {
+                Picker(methodField.label, selection: $secretMethod) {
+                    ForEach(secretLayout.methods) { method in
+                        Text(method.label).tag(String?.some(method.value))
+                    }
+                }
+                .accessibilityIdentifier("credential-profile-secret-method")
+            }
+
+            let shown = secretLayout.fields(for: secretMethod)
+            if shown.isEmpty {
+                Text(secretLayout.methodField == nil
+                    ? String(localized: "This database type signs in with the username and password above.")
+                    : String(localized: "Nothing else to store for this sign-in method."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(secureFields, id: \.id) { field in
-                    ConnectionFieldRow(field: field, value: secureFieldBinding(for: field))
+                ForEach(shown, id: \.id) { field in
+                    ConnectionFieldRow(field: field, value: secureFieldTextBinding(for: field))
+                    StoredSecretNotice(draft: secureFieldDraftBinding(for: field))
                 }
             }
         } header: {
@@ -325,14 +335,33 @@ struct CredentialProfileEditorSheet: View {
     }
 
     private func reloadSecureFields() {
-        secureFields = PluginManager.shared.additionalConnectionFields(for: secureFieldType).filter(\.isSecure)
+        let fields = PluginManager.shared.additionalConnectionFields(for: secureFieldType)
+        secretLayout = ProfileSecretLayout(fields: fields)
+        for field in fields where field.isSecure {
+            secureFieldLabels[field.id] = field.label
+        }
+        let held = Set(secureFieldDrafts.filter { $0.value.stored != .absent || !$0.value.text.isEmpty }.keys)
+        secretMethod = secretLayout.initialMethod(holding: held)
     }
 
-    private func secureFieldBinding(for field: ConnectionField) -> Binding<String> {
+    private func secureFieldTextBinding(for field: ConnectionField) -> Binding<String> {
         Binding(
-            get: { secureFieldValues[field.id] ?? "" },
-            set: { secureFieldValues[field.id] = $0 }
+            get: { secureFieldDrafts[field.id]?.text ?? "" },
+            set: { secureFieldDrafts[field.id, default: StoredSecretDraft(stored: .absent)].text = $0 }
         )
+    }
+
+    private func secureFieldDraftBinding(for field: ConnectionField) -> Binding<StoredSecretDraft> {
+        Binding(
+            get: { secureFieldDrafts[field.id] ?? StoredSecretDraft(stored: .absent) },
+            set: { secureFieldDrafts[field.id] = $0 }
+        )
+    }
+
+    private static func typesWithSecrets() -> [DatabaseType] {
+        DatabaseType.allKnownTypes
+            .filter { type in PluginManager.shared.additionalConnectionFields(for: type).contains(where: \.isSecure) }
+            .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
     }
 
     // MARK: - Bottom bar
@@ -341,7 +370,7 @@ struct CredentialProfileEditorSheet: View {
         HStack {
             if isStored {
                 Button(role: .destructive) {
-                    dependentCount = storage.connectionsUsing(existingProfile?.id ?? UUID()).count
+                    dependentCount = storage.connectionsUsing(profileId).count
                     showingDeleteConfirmation = true
                 } label: {
                     Text("Delete Profile")
@@ -352,7 +381,7 @@ struct CredentialProfileEditorSheet: View {
                     Button(String(localized: "Cancel"), role: .cancel) {}
                 } message: {
                     if dependentCount > 0 {
-                        Text("^[\(dependentCount) connection](inflect: true) use this profile. They keep these credentials as their own.")
+                        Text("Used by ^[\(dependentCount) connection](inflect: true). Each keeps these credentials as its own.")
                     } else {
                         Text("This profile will be permanently deleted.")
                     }
@@ -362,7 +391,7 @@ struct CredentialProfileEditorSheet: View {
             if let saveError {
                 NoticeLabel(saveError, severity: .error)
                     .font(.caption)
-                    .lineLimit(2)
+                    .lineLimit(3)
             }
 
             Spacer()
@@ -384,93 +413,116 @@ struct CredentialProfileEditorSheet: View {
         let profiles = storage.loadProfiles()
         otherProfileNames = profiles.filter { $0.id != existingProfile?.id }.map { $0.name }
         isStored = existingProfile.map { candidate in profiles.contains { $0.id == candidate.id } } ?? false
+        secretTypes = Self.typesWithSecrets()
+
+        if let profile = existingProfile {
+            name = profile.name
+            username = profile.username
+            // Only a saved profile can hold an item, so a miss on a new one is not a failed read.
+            for fieldId in profile.secureFieldIds {
+                secureFieldDrafts[fieldId] = StoredSecretDraft(
+                    stored: Self.stored(storage.loadSecureField(fieldId: fieldId, for: profile.id), expected: isStored)
+                )
+            }
+
+            switch profile.passwordMode {
+            case .stored:
+                passwordKind = .stored
+                password = StoredSecretDraft(
+                    stored: Self.stored(storage.loadPassword(for: profile.id), expected: isStored),
+                    fallback: initialPassword
+                )
+                passwordWasPrefilled = !password.text.isEmpty
+            case .prompt:
+                passwordKind = .prompt
+            case .pgpass:
+                passwordKind = .pgpass
+            case .source(let source):
+                passwordKind = .source
+                (sourceKind, sourceValue, sourceField) = PasswordSourceKind.decompose(source)
+                if case .command(_, let reuseSeconds) = source {
+                    commandReuseSeconds = reuseSeconds
+                }
+                if let role = source.vaultDatabaseRole {
+                    vaultAccess = VaultAccessDraft(role)
+                }
+            }
+        }
+
         if let initialDatabaseType {
             secureFieldType = initialDatabaseType
+        } else if let carrying = secretTypes.first(where: { type in
+            PluginManager.shared.additionalConnectionFields(for: type)
+                .contains { $0.isSecure && secureFieldDrafts[$0.id] != nil }
+        }) {
+            secureFieldType = carrying
+        } else if let first = secretTypes.first {
+            secureFieldType = first
+        }
+        if !secretTypes.contains(secureFieldType) {
+            secretTypes.insert(secureFieldType, at: 0)
         }
         reloadSecureFields()
-
-        guard let profile = existingProfile else { return }
-        name = profile.name
-        username = profile.username
-        for fieldId in profile.secureFieldIds {
-            if let value = storage.loadSecureField(fieldId: fieldId, for: profile.id) {
-                secureFieldValues[fieldId] = value
-            } else {
-                secretsWereReadable = false
-            }
-        }
-
-        switch profile.passwordMode {
-        case .stored:
-            passwordKind = .stored
-            if let stored = storage.loadPassword(for: profile.id) {
-                password = stored
-            } else if let initialPassword {
-                password = initialPassword
-            } else if isStored {
-                secretsWereReadable = false
-            }
-            passwordWasPrefilled = !password.isEmpty
-        case .prompt:
-            passwordKind = .prompt
-        case .pgpass:
-            passwordKind = .pgpass
-        case .source(let source):
-            passwordKind = .source
-            (sourceKind, sourceValue, sourceField) = PasswordSourceKind.decompose(source)
-            if case .command(_, let reuseSeconds) = source {
-                commandReuseSeconds = reuseSeconds
-            }
-            if let role = source.vaultDatabaseRole {
-                vaultAccess = VaultAccessDraft(role)
-            }
-        }
     }
 
+    // The storage reads nil both for a missing item and for one it could not read; a saved one is assumed there.
+    private static func stored(_ value: String?, expected: Bool) -> StoredSecretDraft.Stored {
+        guard let value else { return expected ? .unreadable : .absent }
+        return value.isEmpty ? .absent : .value(value)
+    }
+
+    // Record first, then secrets, as the connection editor saves: a secret under an unsaved id has no owner.
     private func saveProfile() {
-        let liveFields = secureFieldValues.filter { !$0.value.isEmpty }
+        let passwordChange = password.change(inUse: passwordKind == .stored)
+        let fieldIds = secureFieldDrafts.keys.sorted()
         let profile = CredentialProfile(
             id: profileId,
             name: trimmedName,
             username: username.trimmingCharacters(in: .whitespaces),
             passwordMode: buildPasswordMode(),
-            secureFieldIds: secretsWereReadable
-                ? liveFields.keys.sorted()
-                : Array(Set(existingProfile?.secureFieldIds ?? []).union(liveFields.keys)).sorted(),
-            sortOrder: existingProfile?.sortOrder ?? 0
+            secureFieldIds: fieldIds.filter { secureFieldDrafts[$0]?.keepsItem(inUse: true) ?? false },
+            sortOrder: existingProfile?.sortOrder ?? savedSortOrder ?? 0
         )
 
         let persisted = isStored ? storage.updateProfile(profile) : storage.addProfile(profile)
-        /// The keychain writes below are keyed by the profile id, so running them for a profile
-        /// that never reached disk would leave secrets nothing can name.
         guard persisted else {
             saveError = String(localized: "Could not save the profile. Check disk space and permissions, then try again.")
             return
         }
-        saveError = nil
-
-        if case .stored = profile.passwordMode, !password.isEmpty {
-            guard storage.savePassword(password, for: profileId) else {
-                saveError = String(localized: "Could not save the password to the Keychain. Nothing was changed.")
-                return
-            }
-        } else if secretsWereReadable {
-            storage.deletePassword(for: profileId)
+        if !isStored {
+            isStored = true
+            savedSortOrder = storage.profile(for: profileId)?.sortOrder
         }
 
-        /// Only what was read back is eligible for deletion. A field whose value could not be read
-        /// is still there and still in use.
-        if secretsWereReadable {
-            let removed = Set(existingProfile?.secureFieldIds ?? []).subtracting(liveFields.keys)
-            for fieldId in removed {
+        var notStored: [String] = []
+        switch passwordChange {
+        case .keep:
+            break
+        case .write(let value):
+            if !storage.savePassword(value, for: profileId) {
+                notStored.append(String(localized: "the password"))
+            }
+        case .delete:
+            storage.deletePassword(for: profileId)
+        }
+        for fieldId in fieldIds {
+            switch secureFieldDrafts[fieldId]?.change(inUse: true) ?? .keep {
+            case .keep:
+                continue
+            case .write(let value):
+                if !storage.saveSecureField(value, fieldId: fieldId, for: profileId) {
+                    notStored.append(secureFieldLabels[fieldId] ?? fieldId)
+                }
+            case .delete:
                 storage.deleteSecureField(fieldId: fieldId, for: profileId)
             }
         }
-        for (fieldId, value) in liveFields where !storage.saveSecureField(value, fieldId: fieldId, for: profileId) {
-            saveError = String(localized: "Could not save a secret to the Keychain. Nothing was changed.")
+
+        guard notStored.isEmpty else {
+            saveError = StoredSecretCopy.notStoredMessage(notStored)
             return
         }
-
+        saveError = nil
         onSave?(profile)
         dismiss()
     }
@@ -502,7 +554,7 @@ struct CredentialProfileEditorSheet: View {
     }
 
     private func deleteProfile() {
-        guard let profile = existingProfile else { return }
+        guard let profile = existingProfile ?? storage.profile(for: profileId) else { return }
         guard storage.deleteProfile(profile) else {
             saveError = String(localized: "Could not delete the profile. Check disk space and permissions, then try again.")
             return
@@ -515,6 +567,7 @@ struct CredentialProfileEditorSheet: View {
 // MARK: - Kinds
 
 extension CredentialProfileEditorSheet {
+    // Same words as the connection editor's password menu.
     enum PasswordKind: String, CaseIterable, Identifiable {
         case stored, prompt, pgpass, source
 
@@ -522,11 +575,76 @@ extension CredentialProfileEditorSheet {
 
         var displayName: String {
             switch self {
-            case .stored: String(localized: "Saved in the Keychain")
-            case .prompt: String(localized: "Ask every time")
-            case .pgpass: String(localized: "~/.pgpass")
-            case .source: String(localized: "Read from elsewhere")
+            case .stored: String(localized: "Store in Keychain")
+            case .prompt: String(localized: "Ask Every Time")
+            case .pgpass: String(localized: "Use ~/.pgpass")
+            case .source: String(localized: "Read From Elsewhere")
             }
         }
+    }
+}
+
+// Profiles carry no database type, so the sheet lists one type's secrets at a time, and the ones a
+// sign-in method needs (AWS, Google Cloud, Kerberos) only under that method, as the editor shows them.
+struct ProfileSecretLayout {
+    struct Method: Identifiable {
+        let value: String
+        let label: String
+        var id: String { value }
+    }
+
+    let alwaysShown: [ConnectionField]
+    let methodField: ConnectionField?
+    let methods: [Method]
+    private let byMethod: [String: [ConnectionField]]
+
+    init(fields: [ConnectionField]) {
+        let secure = fields.filter(\.isSecure)
+        var counts: [String: Int] = [:]
+        var order: [String] = []
+        for controllerId in secure.compactMap({ $0.visibleWhen?.fieldId }) {
+            if counts[controllerId] == nil { order.append(controllerId) }
+            counts[controllerId, default: 0] += 1
+        }
+        let controllerId = order.max { (counts[$0] ?? 0) < (counts[$1] ?? 0) }
+        guard let controllerId,
+              let controller = fields.first(where: { $0.id == controllerId }),
+              case .dropdown(let options) = controller.fieldType
+        else {
+            alwaysShown = secure
+            methodField = nil
+            methods = []
+            byMethod = [:]
+            return
+        }
+
+        alwaysShown = secure.filter { $0.visibleWhen?.fieldId != controllerId }
+        methodField = controller
+        methods = options.map { Method(value: $0.value, label: $0.label) }
+        var grouped: [String: [ConnectionField]] = [:]
+        for option in options {
+            grouped[option.value] = secure.filter { field in
+                guard let rule = field.visibleWhen, rule.fieldId == controllerId else { return false }
+                return rule.values.contains(option.value)
+            }
+        }
+        byMethod = grouped
+    }
+
+    func fields(for method: String?) -> [ConnectionField] {
+        alwaysShown + (method.flatMap { byMethod[$0] } ?? [])
+    }
+
+    // The method whose secrets the profile already holds, else the menu's own default.
+    func initialMethod(holding fieldIds: Set<String>) -> String? {
+        guard let methodField else { return nil }
+        let holding = methods.first { method in
+            (byMethod[method.value] ?? []).contains { fieldIds.contains($0.id) }
+        }
+        if let holding { return holding.value }
+        if let fallback = methodField.defaultValue, methods.contains(where: { $0.value == fallback }) {
+            return fallback
+        }
+        return methods.first?.value
     }
 }

@@ -16,6 +16,19 @@ final class SSHProfileStorage {
     static let shared = SSHProfileStorage()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SSHProfileStorage")
 
+    enum SecretKind: CaseIterable, Sendable {
+        case password
+        case keyPassphrase
+        case totpSecret
+    }
+
+    enum SaveOutcome: Equatable, Sendable {
+        case saved
+        case recordNotSaved
+        // The record is on disk; these secrets are not.
+        case secretsNotSaved([SecretKind])
+    }
+
     private let profilesKey = "com.TablePro.sshProfiles"
     private let defaults: UserDefaults
     private let encoder = JSONEncoder()
@@ -25,9 +38,7 @@ final class SSHProfileStorage {
     private let syncTracker: SyncChangeTracker
     private(set) var lastLoadFailed = false
 
-    /// The keychain arrives through `AppStorageEnvironment` rather than as `KeychainHelper.shared`,
-    /// so a sandboxed run keeps its profile secrets inside the sandbox instead of writing them to
-    /// the real login keychain, exactly as `ConnectionStorage` already does.
+    // The keychain comes from AppStorageEnvironment so a sandboxed run keeps profile secrets in its sandbox.
     init(
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
@@ -59,8 +70,6 @@ final class SSHProfileStorage {
         }
     }
 
-    /// Returns `false` when nothing reached disk, so a caller that also writes keychain items or
-    /// tombstones can abort instead of stranding them against a profile that was never persisted.
     @discardableResult
     func saveProfiles(_ profiles: [SSHProfile]) -> Bool {
         let previous = loadProfiles()
@@ -101,13 +110,32 @@ final class SSHProfileStorage {
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return false }
         profiles[index] = profile
         guard saveProfiles(profiles) else { return false }
-        /// Best effort, and deliberately not part of the result. The profile is the source of
-        /// truth and it is saved; a connection whose snapshot could not be rewritten is still
-        /// resolved against the profile by `refreshingLinkedProfile` at connect time.
+        // Best effort: a connection the fan-out missed is still resolved against the profile at connect time.
         if !refreshLinkedConnections(with: profile) {
             Self.logger.error("Saved SSH profile \(profile.id.uuidString, privacy: .public) but could not update the connections linked to it")
         }
         return true
+    }
+
+    // Record first: a secret written under an id that never reached disk is one nothing can name.
+    func save(_ profile: SSHProfile, isNew: Bool, secrets: [SecretKind: StoredSecretDraft.Change]) -> SaveOutcome {
+        let persisted = isNew ? addProfile(profile) : updateProfile(profile)
+        guard persisted else { return .recordNotSaved }
+
+        var failed: [SecretKind] = []
+        for kind in SecretKind.allCases {
+            switch secrets[kind] ?? .keep {
+            case .keep:
+                continue
+            case .write(let value):
+                if !keychain.writeString(value, forKey: Self.key(kind, profile.id)) {
+                    failed.append(kind)
+                }
+            case .delete:
+                keychain.delete(forKey: Self.key(kind, profile.id))
+            }
+        }
+        return failed.isEmpty ? .saved : .secretsNotSaved(failed)
     }
 
     @discardableResult
@@ -129,12 +157,7 @@ final class SSHProfileStorage {
 
     // MARK: - Linked Connections
 
-    /// Writes an edited profile's configuration into every connection that links to it.
-    ///
-    /// A linked connection stores `.profile(id:snapshot:)`, and that snapshot is what
-    /// `resolvedSSHConfig` hands to the tunnel, the URL formatter, the display strings and the
-    /// stage labels. Only the secrets were ever resolved live, so changing a profile's host left
-    /// every already-linked connection tunnelling to the old one while sending the new password.
+    // A linked connection tunnels with its stored snapshot, so an edited host has to reach every snapshot.
     @discardableResult
     func refreshLinkedConnections(with profile: SSHProfile, byUser: Bool = true) -> Bool {
         let storage = connectionStorageProvider()
@@ -148,11 +171,7 @@ final class SSHProfileStorage {
         }
     }
 
-    /// The connection as it would be if the fan-out above had already run for it.
-    ///
-    /// The fan-out covers an edit made here. This covers the window before one has run: a profile
-    /// edited on another Mac and synced down, or a connection whose store could not be written.
-    /// Connecting is the moment the answer has to be right, so it asks the profile directly.
+    // Covers a profile synced from another Mac before any fan-out ran here.
     func refreshingLinkedProfile(_ connection: DatabaseConnection) -> DatabaseConnection {
         guard case .profile(let profileId, _) = connection.sshTunnelMode,
               let profile = profile(for: profileId)
@@ -160,16 +179,8 @@ final class SSHProfileStorage {
         return profile.applied(to: connection)
     }
 
-    /// Turns every connection pointing at a profile that is going away into an inline tunnel
-    /// carrying the same configuration, so a delete never leaves a connection addressing a profile
-    /// id that no longer resolves.
-    ///
-    /// The configuration comes from the profile as it stands now, never from the connection's
-    /// stored snapshot: a snapshot the fan-out never reached is stale, and converting that one
-    /// while handing over the profile's current password would send new credentials to the old
-    /// server. Returns false without changing anything when the secrets cannot be moved, because a
-    /// connection converted without them cannot authenticate and there is nothing left to recover
-    /// them from once the profile is deleted.
+    // Converts from the profile as it stands, never the snapshot: a stale snapshot would send new
+    // credentials to the old server. Refuses when the secrets cannot move, since nothing could recover them.
     @discardableResult
     func unlinkConnections(fromProfile profile: SSHProfile) -> Bool {
         let storage = connectionStorageProvider()
@@ -194,10 +205,7 @@ final class SSHProfileStorage {
             connection.sshProfileId = nil
         }
 
-        /// The copies go back if the conversion did not land. A connection still in profile mode
-        /// reads its secrets from the profile, so the copy would sit in its inline namespace with
-        /// nothing reading it. Deleting is safe there because the form already clears that
-        /// namespace on every save a profile-linked connection makes.
+        // A connection still on the profile never reads its inline namespace, so the copies go back.
         if !converted {
             for connection in linked {
                 storage.deleteSSHPassword(for: connection.id)
@@ -208,8 +216,6 @@ final class SSHProfileStorage {
         return converted
     }
 
-    /// A profile's secrets on their way into a connection's own keychain namespace, which is where
-    /// an inline tunnel reads them from.
     private struct ProfileSecrets {
         let password: String?
         let keyPassphrase: String?
@@ -224,43 +230,41 @@ final class SSHProfileStorage {
         }
     }
 
-    private enum SecretRead {
-        case readable(String?)
-        case unreadable
-    }
-
-    /// Nil when any of the three could not be read. A profile that simply has none reads as three
-    /// nils, which is correct for agent and keyless authentication.
+    // Nil when any secret could not be read; a profile with none reads as three nils.
     private func readSecrets(for profileId: UUID) -> ProfileSecrets? {
-        guard case .readable(let password) = readSecret(Self.passwordKey(profileId)),
-              case .readable(let keyPassphrase) = readSecret(Self.passphraseKey(profileId)),
-              case .readable(let totpSecret) = readSecret(Self.totpKey(profileId))
-        else { return nil }
-        return ProfileSecrets(password: password, keyPassphrase: keyPassphrase, totpSecret: totpSecret)
-    }
-
-    private func readSecret(_ key: String) -> SecretRead {
-        switch keychain.readStringResult(forKey: key) {
-        case .found(let value):
-            return .readable(value.isEmpty ? nil : value)
-        case .notFound:
-            return .readable(nil)
-        case .locked, .userCancelled, .authFailed, .error:
-            return .unreadable
+        var values: [SecretKind: String] = [:]
+        for kind in SecretKind.allCases {
+            switch storedSecret(kind, for: profileId) {
+            case .unreadable:
+                return nil
+            case .absent:
+                continue
+            case .value(let value):
+                values[kind] = value
+            }
         }
+        return ProfileSecrets(
+            password: values[.password],
+            keyPassphrase: values[.keyPassphrase],
+            totpSecret: values[.totpSecret]
+        )
     }
 
-    /// Every keychain item this type writes, removed together. A key written here and missing from
-    /// this list is a secret that outlives its owner with nothing left that can name it.
+    func storedSecret(_ kind: SecretKind, for profileId: UUID) -> StoredSecretDraft.Stored {
+        StoredSecretDraft.Stored(keychain.readStringResult(forKey: Self.key(kind, profileId)))
+    }
+
+    // Every item this type writes: a key missing here outlives its owner with nothing left to name it.
     func deleteSecrets(for profileId: UUID) {
-        deleteSSHPassword(for: profileId)
-        deleteKeyPassphrase(for: profileId)
-        deleteTOTPSecret(for: profileId)
+        for kind in SecretKind.allCases {
+            keychain.delete(forKey: Self.key(kind, profileId))
+        }
     }
 
     // MARK: - SSH Password Storage
 
-    func saveSSHPassword(_ password: String, for profileId: UUID) {
+    @discardableResult
+    func saveSSHPassword(_ password: String, for profileId: UUID) -> Bool {
         keychain.writeString(password, forKey: Self.passwordKey(profileId))
     }
 
@@ -274,7 +278,8 @@ final class SSHProfileStorage {
 
     // MARK: - Key Passphrase Storage
 
-    func saveKeyPassphrase(_ passphrase: String, for profileId: UUID) {
+    @discardableResult
+    func saveKeyPassphrase(_ passphrase: String, for profileId: UUID) -> Bool {
         keychain.writeString(passphrase, forKey: Self.passphraseKey(profileId))
     }
 
@@ -292,7 +297,8 @@ final class SSHProfileStorage {
 
     // MARK: - TOTP Secret Storage
 
-    func saveTOTPSecret(_ secret: String, for profileId: UUID) {
+    @discardableResult
+    func saveTOTPSecret(_ secret: String, for profileId: UUID) -> Bool {
         keychain.writeString(secret, forKey: Self.totpKey(profileId))
     }
 
@@ -302,6 +308,14 @@ final class SSHProfileStorage {
 
     func deleteTOTPSecret(for profileId: UUID) {
         keychain.delete(forKey: Self.totpKey(profileId))
+    }
+
+    private static func key(_ kind: SecretKind, _ profileId: UUID) -> String {
+        switch kind {
+        case .password: passwordKey(profileId)
+        case .keyPassphrase: passphraseKey(profileId)
+        case .totpSecret: totpKey(profileId)
+        }
     }
 
     private static func passwordKey(_ profileId: UUID) -> String {
@@ -319,5 +333,65 @@ final class SSHProfileStorage {
     private func resolveString(label: String, profileId: UUID, forKey key: String) -> String? {
         keychain.readStringResult(forKey: key)
             .value(label: "\(label) (profileId=\(profileId.uuidString))", logger: Self.logger)
+    }
+}
+
+// A secret as the Keychain returned it and as the user left it, so a failed read never becomes a delete.
+struct StoredSecretDraft: Equatable, Sendable {
+    enum Stored: Equatable, Sendable {
+        case absent
+        case value(String)
+        case unreadable
+
+        init(_ result: KeychainStringResult) {
+            switch result {
+            case .found(let value): self = value.isEmpty ? .absent : .value(value)
+            case .notFound: self = .absent
+            case .locked, .userCancelled, .authFailed, .error: self = .unreadable
+            }
+        }
+    }
+
+    enum Change: Equatable, Sendable {
+        case keep
+        case write(String)
+        case delete
+    }
+
+    let stored: Stored
+    var text: String
+    var removesUnreadable = false
+
+    init(stored: Stored, fallback: String? = nil) {
+        self.stored = stored
+        if case .value(let value) = stored {
+            text = value
+        } else {
+            text = fallback ?? ""
+        }
+    }
+
+    var showsUnreadableNotice: Bool {
+        stored == .unreadable && text.isEmpty
+    }
+
+    // Whether a Keychain item will exist for this secret after the change runs.
+    func keepsItem(inUse: Bool) -> Bool {
+        switch change(inUse: inUse) {
+        case .write: true
+        case .delete: false
+        case .keep: stored != .absent
+        }
+    }
+
+    func change(inUse: Bool) -> Change {
+        if inUse, !text.isEmpty {
+            return stored == .value(text) ? .keep : .write(text)
+        }
+        switch stored {
+        case .absent: return .keep
+        case .value: return .delete
+        case .unreadable: return removesUnreadable ? .delete : .keep
+        }
     }
 }

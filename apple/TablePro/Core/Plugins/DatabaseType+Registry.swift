@@ -165,8 +165,8 @@ extension DatabaseType {
         switch rawValue {
         case "PostgreSQL", "Redshift", "CockroachDB":
             return String(localized: """
-                Preferred tries TLS first, falls back to plain. Matches psql and DataGrip defaults. \
-                Required by AWS RDS, Cloud SQL, Heroku, Supabase, Neon.
+                Preferred tries TLS first and connects without it when the server offers none. \
+                Use Required for AWS RDS, Cloud SQL, Heroku, Supabase and Neon.
                 """)
         case "KingbaseES", "StarRocks":
             return String(localized: "Preferred tries TLS first, falls back to plain.")

@@ -100,6 +100,60 @@ struct ConnectionFormEdits: Equatable {
         return result
     }
 
+    // Writes only what changed since `baseline`; typed properties sit over additionalFields keys, so both sides apply first.
+    func applied(to fresh: DatabaseConnection, since baseline: ConnectionFormEdits?) -> DatabaseConnection {
+        guard let baseline else { return applied(to: fresh) }
+        let mine = applied(to: fresh)
+        let theirs = baseline.applied(to: fresh)
+        var result = fresh
+
+        func merge<Value: Equatable>(_ keyPath: WritableKeyPath<DatabaseConnection, Value>) {
+            if mine[keyPath: keyPath] != theirs[keyPath: keyPath] {
+                result[keyPath: keyPath] = mine[keyPath: keyPath]
+            }
+        }
+        merge(\.name)
+        merge(\.host)
+        merge(\.port)
+        merge(\.database)
+        merge(\.username)
+        merge(\.type)
+        merge(\.sslConfig)
+        merge(\.color)
+        merge(\.iconName)
+        merge(\.tagIds)
+        merge(\.groupId)
+        merge(\.credentialMode)
+        merge(\.cloudflareTunnelMode)
+        merge(\.cloudSQLProxyMode)
+        merge(\.socksProxyMode)
+        merge(\.tunnelCommandMode)
+        merge(\.preferredSafeModeLevel)
+        merge(\.aiPolicy)
+        merge(\.aiRules)
+        merge(\.externalAccess)
+        merge(\.redisDatabase)
+        merge(\.startupCommands)
+        merge(\.localOnly)
+
+        // One tunnel description: a half-merged trio would name a profile with another tunnel's settings.
+        if mine.sshConfig != theirs.sshConfig
+            || mine.sshProfileId != theirs.sshProfileId
+            || mine.sshTunnelMode != theirs.sshTunnelMode {
+            result.sshConfig = mine.sshConfig
+            result.sshProfileId = mine.sshProfileId
+            result.sshTunnelMode = mine.sshTunnelMode
+        }
+
+        for key in Set(mine.additionalFields.keys).union(theirs.additionalFields.keys)
+            where mine.additionalFields[key] != theirs.additionalFields[key] {
+            result.additionalFields[key] = mine.additionalFields[key]
+        }
+
+        result.aiAlwaysAllowedTools.subtract(revokedAIAlwaysAllowedTools)
+        return result
+    }
+
     private func mergedAdditionalFields(onto existing: [String: String]) -> [String: String] {
         var merged = existing
         for id in ownedAdditionalFieldIDs {

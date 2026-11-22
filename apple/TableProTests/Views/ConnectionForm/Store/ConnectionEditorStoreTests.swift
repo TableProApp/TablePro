@@ -1,0 +1,396 @@
+//
+//  ConnectionEditorStoreTests.swift
+//  TableProTests
+//
+
+import Combine
+import Foundation
+import TableProPluginKit
+import TableProSSHConfig
+import Testing
+
+@testable import TablePro
+
+@MainActor
+struct ConnectionEditorStoreTests {
+    private func postgres(name: String = "Orders") -> DatabaseConnection {
+        DatabaseConnection(
+            name: name,
+            host: "db.example.com",
+            port: 5_432,
+            database: "orders",
+            username: "app",
+            type: .postgresql
+        )
+    }
+
+    // MARK: - Load
+
+    @Test("Editing an id the library does not have shows the missing state and refuses Save")
+    func missingRecord() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        fixture.seed([postgres()])
+        let store = fixture.makeStore(.edit(connectionId: UUID()))
+        #expect(store.isRecordMissing)
+        #expect(!store.canSave)
+    }
+
+    @Test("A stored connection loads unchanged and reads as not edited")
+    func loadIsClean() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = postgres()
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        #expect(store.draft.host == "db.example.com")
+        #expect(!store.hasUnsavedChanges)
+        store.update { $0.host = "other.example.com" }
+        #expect(store.hasUnsavedChanges)
+    }
+
+    // MARK: - Test record
+
+    @Test("Test signs in with the record Save would write, unowned keys included")
+    func testRecordMatchesSavedRecord() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        var connection = postgres()
+        connection.additionalFields["mongoParam_directConnection"] = "true"
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        store.update { $0.host = "replica.example.com" }
+        let tested = store.testRecord(testId: UUID())
+        #expect(tested.additionalFields["mongoParam_directConnection"] == "true")
+
+        let saved = try store.save().get()
+        #expect(ConnectionEditorEngine.record(tested, reassignedTo: connection.id) == saved)
+    }
+
+    @Test("A result is cleared by an edit to what was tested, and kept by a rename")
+    func resultClearsOnTestedEdit() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        store.lastTestedFingerprint = ConnectionEditorEngine.testFingerprint(
+            store.draft, store.traits, originalTraits: store.originalTraits, store.context
+        )
+        let success = ConnectionTestSuccess(typeName: "PostgreSQL", serverVersion: "16.4", elapsedMilliseconds: 42, warning: nil)
+        store.testState = .succeeded(success)
+        store.update { $0.name = "Renamed" }
+        #expect(store.testState == .succeeded(success))
+        store.update { $0.host = "elsewhere.example.com" }
+        #expect(store.testState == .idle)
+    }
+
+    @Test("Test needs no name")
+    func testNeedsNoName() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        #expect(store.draft.name.isEmpty)
+        #expect(store.canTest)
+        #expect(!store.canSave)
+    }
+
+    // MARK: - Save order
+
+    @Test("A refused Keychain write saves no record and says nothing was saved")
+    func keychainFailureSavesNothing() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        store.update {
+            $0.name = "Orders"
+            $0.credentials.password = "hunter2"
+        }
+        fixture.keychain.refuseWrites(true)
+        #expect(store.save() == .failure(.keychainWriteFailed))
+        #expect(fixture.storage.loadConnection(id: store.connectionId) == nil)
+        #expect(fixture.secretKeys(for: store.connectionId).isEmpty)
+    }
+
+    @Test("A failed record write leaves no secret behind, and the retry saves under the same id")
+    func failedRecordWriteCleansUpAndRetriesUnderTheSameId() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        fixture.seed([postgres(name: "Existing")])
+        let store = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        let id = store.connectionId
+        store.update {
+            $0.name = "Orders"
+            $0.credentials.password = "hunter2"
+        }
+        try fixture.makeLibraryReadOnly(true)
+        #expect(store.save() == .failure(.recordWriteFailed))
+        #expect(fixture.secretKeys(for: id).isEmpty)
+
+        try fixture.makeLibraryReadOnly(false)
+        let saved = try store.save().get()
+        #expect(saved.id == id)
+        #expect(store.connectionId == id)
+        #expect(fixture.storage.loadPassword(for: id) == "hunter2")
+    }
+
+    @Test("A record deleted elsewhere is refused before any secret is written")
+    func deletedRecordIsRefusedBeforeSecrets() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = postgres()
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        fixture.storage.deleteConnection(connection)
+        fixture.keychain.resetWriteCount()
+        store.update { $0.credentials.password = "changed" }
+        #expect(store.save() == .failure(.recordMissing))
+        #expect(fixture.keychain.writeCount == 0)
+    }
+
+    // MARK: - Merge
+
+    @Test("A change made elsewhere while the editor is open survives its Save")
+    func concurrentEditSurvivesSave() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = postgres()
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+
+        var elsewhere = try #require(fixture.storage.loadConnection(id: connection.id))
+        elsewhere.name = "Renamed in Welcome"
+        elsewhere.commitMode = .manual
+        elsewhere.preferredSafeModeLevel = .safeMode
+        fixture.seed([elsewhere])
+        fixture.events.connectionUpdated.send(connection.id)
+
+        store.update { $0.host = "replica.example.com" }
+        _ = try store.save().get()
+        let saved = try #require(fixture.storage.loadConnection(id: connection.id))
+        #expect(saved.name == "Renamed in Welcome")
+        #expect(saved.commitMode == .manual)
+        #expect(saved.preferredSafeModeLevel == .safeMode)
+        #expect(saved.host == "replica.example.com")
+    }
+
+    @Test("A connection deleted elsewhere turns the editor into the missing state")
+    func deletionElsewhereShowsMissing() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = postgres()
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        fixture.storage.deleteConnection(connection)
+        fixture.events.connectionUpdated.send(nil)
+        #expect(store.isRecordMissing)
+    }
+
+    // MARK: - Profiles
+
+    @Test("An SSH profile this Mac lacks stays linked through a Save, and no SSH secret is deleted")
+    func unresolvedSSHProfileStaysLinked() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let profileId = UUID()
+        var connection = postgres()
+        connection.sshProfileId = profileId
+        connection.sshTunnelMode = .profile(id: profileId, snapshot: SSHConfiguration(enabled: true, host: "bastion"))
+        fixture.seed([connection])
+        fixture.storage.saveSSHPassword("tunnel-secret", for: connection.id)
+
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        #expect(store.sshProfileIsUnresolved)
+        #expect(store.issues.contains { $0.row == .builtIn(.sshProfileMissing) && !$0.blocksSave })
+        store.update { $0.name = "Renamed" }
+        _ = try store.save().get()
+
+        let saved = try #require(fixture.storage.loadConnection(id: connection.id))
+        #expect(saved.sshProfileId == profileId)
+        guard case .profile(let id, let snapshot) = saved.sshTunnelMode else {
+            Issue.record("The link was converted: \(saved.sshTunnelMode)")
+            return
+        }
+        #expect(id == profileId)
+        #expect(snapshot.host == "bastion")
+        #expect(fixture.storage.loadSSHPassword(for: connection.id) == "tunnel-secret")
+    }
+
+    @Test("A profile deleted in Settings while the editor is open is adopted inline with its password")
+    func deletedSSHProfileIsAdoptedInline() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let profile = SSHProfile(name: "Bastion", host: "bastion.example.com", username: "ops")
+        #expect(fixture.sshProfiles.addProfile(profile))
+        #expect(fixture.sshProfiles.saveSSHPassword("profile-secret", for: profile.id))
+        var connection = postgres()
+        connection.sshProfileId = profile.id
+        connection.sshTunnelMode = .profile(id: profile.id, snapshot: profile.toSSHConfiguration())
+        fixture.seed([connection])
+
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        #expect(store.draft.ssh.profileId == profile.id)
+        #expect(fixture.sshProfiles.deleteProfile(profile))
+        #expect(store.draft.ssh.profileId == nil)
+        #expect(store.draft.ssh.host == "bastion.example.com")
+        #expect(store.draft.ssh.password == "profile-secret")
+
+        store.update { $0.name = "Renamed" }
+        _ = try store.save().get()
+        let saved = try #require(fixture.storage.loadConnection(id: connection.id))
+        #expect(saved.sshProfileId == nil)
+        #expect(fixture.storage.loadSSHPassword(for: connection.id) == "profile-secret")
+    }
+
+    @Test("A credential profile deleted elsewhere is dropped by the store, whichever facet is shown")
+    func deletedCredentialProfileIsDropped() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let profile = CredentialProfile(name: "Shared", username: "shared")
+        #expect(fixture.credentialProfiles.addProfile(profile))
+        var connection = postgres()
+        connection.credentialMode = .profile(id: profile.id)
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        store.selectedFacet = .advanced
+        #expect(store.draft.credentials.mode == .profile(id: profile.id))
+        #expect(fixture.credentialProfiles.deleteProfile(profile))
+        #expect(store.draft.credentials.mode == .inline)
+    }
+
+    // MARK: - Delete
+
+    @Test("A delete that cannot be written is reported and the window stays")
+    func failedDeleteIsReported() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = postgres()
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        var dismissed = false
+        store.dismissAction = { dismissed = true }
+        try fixture.makeLibraryReadOnly(true)
+        guard case .failure(let error) = store.delete() else {
+            Issue.record("The delete reported success")
+            return
+        }
+        #expect(error == .writeFailed)
+        #expect(!dismissed)
+        #expect(store.deleteError == .writeFailed)
+        try fixture.makeLibraryReadOnly(false)
+    }
+
+    @Test("A delete cleans up what Welcome's delete cleans up")
+    func deleteCleansUp() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = postgres()
+        fixture.seed([connection])
+        fixture.recents.record(connection.id)
+        fixture.listPreferences.setFavoritesOrder([connection.id])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        var dismissed = false
+        store.dismissAction = { dismissed = true }
+        guard case .success = store.delete() else {
+            Issue.record("The delete failed")
+            return
+        }
+        #expect(dismissed)
+        #expect(fixture.storage.loadConnection(id: connection.id) == nil)
+        #expect(fixture.recents.lastConnected[connection.id] == nil)
+        #expect(!fixture.listPreferences.favoritesOrder.contains(connection.id))
+    }
+
+    // MARK: - Retype
+
+    @Test("A retype cancels a running test, and closing deletes exactly what that test wrote")
+    func retypeCancelsTestAndCleansItsSecrets() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .snowflake, parsedURL: nil))
+        let testId = UUID()
+        store.writeSecret(.pluginField("snowflakePassword"), value: "s3cret", for: testId)
+        store.pendingTestReceipts[testId] = TestSecretReceipt(testId: testId, items: [.pluginField("snowflakePassword")])
+        store.testRun = TestRun(
+            id: UUID(),
+            testId: testId,
+            fingerprint: ConnectionEditorEngine.testFingerprint(store.draft, store.traits, originalTraits: nil, store.context)
+        )
+        store.testState = .running
+
+        store.retype(to: .sqlite)
+        #expect(store.testState == .idle)
+        #expect(store.testRun == nil)
+        store.teardown()
+        #expect(fixture.secretKeys(for: testId).isEmpty)
+    }
+
+    @Test("Production defaults Safe Mode to Alert for a new connection until the user picks a level")
+    func productionDefaultInStore() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        store.setEnvironment(.production)
+        #expect(store.effectiveSafeModeLevel == .alert)
+        store.setEnvironment(.development)
+        #expect(store.effectiveSafeModeLevel == .silent)
+        store.setSafeModeLevel(.safeMode)
+        store.setEnvironment(.production)
+        #expect(store.effectiveSafeModeLevel == .safeMode)
+    }
+
+    // MARK: - Transports
+
+    @Test("Picking Cloudflare on a new connection starts the cloudflared lookup")
+    func cloudflaredDetectionStartsOnSelection() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        #expect(store.cloudflaredDetection == .notChecked)
+        store.selectTransport(.cloudflare)
+        #expect(store.cloudflaredDetection != .notChecked)
+    }
+
+    // MARK: - URL
+
+    @Test("Copy as URL carries no password and no secure field")
+    func copiedURLHasNoSecrets() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        let secureIds = store.traits.declaredSecureFieldIds
+        store.update {
+            $0.name = "Orders"
+            $0.host = "db.example.com"
+            $0.credentials.username = "app"
+            $0.credentials.password = "hunter2"
+            for fieldId in secureIds {
+                $0.fieldValues[fieldId] = "secret-\(fieldId)"
+            }
+        }
+        let url = store.connectionURLForCopy()
+        #expect(url.contains("db.example.com"))
+        #expect(!url.contains("hunter2"))
+        #expect(!url.contains("secret-"))
+    }
+
+    @Test("A paste on a saved connection keeps Safe Mode and the name, and Undo restores the whole draft")
+    func pasteOnSavedConnection() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        var connection = postgres()
+        connection.preferredSafeModeLevel = .safeMode
+        fixture.seed([connection])
+        fixture.storage.savePassword("original", for: connection.id)
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        let before = store.draft
+
+        let outcome = store.applyPastedURL("postgresql://ops:pw@db2.example.com/orders?safemodelevel=0&name=Other", undoManager: nil)
+        guard case .applied(let notice) = outcome else {
+            Issue.record("Not applied: \(outcome)")
+            return
+        }
+        #expect(notice.changes.contains(String(localized: "Host")))
+        #expect(store.draft.host == "db2.example.com")
+        #expect(store.draft.credentials.password == "pw")
+        #expect(store.draft.name == "Orders")
+        #expect(store.draft.safety.safeModeLevel == .safeMode)
+
+        store.undoPastedURL()
+        #expect(store.draft == before)
+        #expect(store.pastedURLNotice == nil)
+    }
+
+    @Test("Typing into Host one character at a time never fills the form")
+    func typingIntoHostDoesNotFill() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        store.update { $0.host = "" }
+        var typed = ""
+        for character in "postgresql://app@db.example.com/orders" {
+            typed.append(character)
+            store.setHost(typed, undoManager: nil)
+        }
+        #expect(store.draft.host == "postgresql://app@db.example.com/orders")
+        #expect(store.pastedURLNotice == nil)
+        #expect(store.draft.database.isEmpty)
+    }
+}
