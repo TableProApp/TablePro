@@ -39,10 +39,12 @@ compile_module() {
         -emit-module-path "$WORK/$name.swiftmodule" -o "$WORK/lib$name.dylib" 2>> "$WORK/compile.log"
 }
 
-if ! compile_module TableProTabularIO "$PACKAGE"/TableProTabularIO/*.swift \
-    || ! compile_module TableProTabular -lTableProTabularIO "$PACKAGE"/TableProTabular/*.swift \
+if ! compile_module TableProWireIO "$PACKAGE"/TableProWireIO/*.swift \
+    || ! compile_module TableProNumberFormatting "$PACKAGE"/TableProNumberFormatting/*.swift \
+    || ! compile_module TableProTabularIO -lTableProWireIO "$PACKAGE"/TableProTabularIO/*.swift \
+    || ! compile_module TableProTabular -lTableProTabularIO -lTableProNumberFormatting "$PACKAGE"/TableProTabular/*.swift \
     || ! xcrun swiftc -O -parse-as-library -module-name DataFilesBenchmark -I "$WORK" -L "$WORK" \
-        -lTableProTabularIO -lTableProTabular -Xlinker -rpath -Xlinker "$WORK" \
+        -lTableProTabular -lTableProTabularIO -lTableProNumberFormatting -lTableProWireIO -Xlinker -rpath -Xlinker "$WORK" \
         "$HERE/main.swift" -o "$WORK/benchmark" 2>> "$WORK/compile.log"; then
     cat "$WORK/compile.log" >&2
     exit 1

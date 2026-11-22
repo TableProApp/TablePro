@@ -2,6 +2,7 @@
 # Driver for scripts/benchmark-app-paths.sh, which builds and signs the app first.
 
 import argparse
+import ctypes
 import datetime
 import json
 import math
@@ -30,6 +31,39 @@ BUDGET_FACTOR = 1.25
 SETTLE_SECONDS = 0.5
 BENCH_DATABASE = "tablepro_bench"
 
+# Wide and big-text fixtures for the opt-in footprint and wide-row paths.
+WIDE_COLUMNS = int(os.environ.get("BENCH_COLUMNS") or 7)
+WIDE_ROWS = 2000
+WIDE_TABLE = "bench_wide"
+BIGTEXT_ROWS = 300
+BIGTEXT_TABLE = "bench_bigtext"
+
+# proc_pid_rusage backs RunningApp.footprint_mb and cpu_ms.
+LIBPROC = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+
+
+class RusageInfo(ctypes.Structure):
+    _fields_ = [("uuid", ctypes.c_uint8 * 16)] + [(name, ctypes.c_uint64) for name in (
+        "user_time", "system_time", "pkg_idle_wkups", "interrupt_wkups", "pageins", "wired_size",
+        "resident_size", "phys_footprint", "proc_start_abstime", "proc_exit_abstime")]
+
+
+class MachTimebase(ctypes.Structure):
+    _fields_ = [("numer", ctypes.c_uint32), ("denom", ctypes.c_uint32)]
+
+
+def _mach_timebase():
+    tb = MachTimebase()
+    LIBPROC.mach_timebase_info(ctypes.byref(tb))
+    return (tb.numer or 1, tb.denom or 1)
+
+
+# ri_user_time/ri_system_time are Mach ticks, not ns; scale by numer/denom.
+MACH_TIMEBASE = _mach_timebase()
+
+
+# Opt-in: named in --paths, but kept out of a default run and the baseline until then.
+OPTIONAL_PATHS = ["table-sqlite-footprint", "table-sqlite-wide", "table-sqlite-bigtext"]
 PATHS = [
     "launch-welcome",
     "launch-restore",
@@ -38,7 +72,8 @@ PATHS = [
     "table-postgresql",
     "tabs-next",
     "tabs-recent",
-]
+] + OPTIONAL_PATHS
+DEFAULT_PATHS = [name for name in PATHS if name not in OPTIONAL_PATHS]
 
 LAUNCH_DONE = re.compile(r"^\s+firstFramePresented\s+([0-9.]+)", re.M)
 TAB_SWITCH = re.compile(
@@ -197,6 +232,88 @@ def prepare_postgres(server):
     """.format(rows=TABLE_ROWS), BENCH_DATABASE)
 
 
+# A few typed columns, the rest padded as colNNNN, for whichever engine opens the wide table.
+def wide_columns(engine, count):
+    if engine == "mysql":
+        concat = lambda *parts: "CONCAT(%s)" % ", ".join(parts)
+        id_type, text_type, email_type, amount_type, pad_type = (
+            "INT PRIMARY KEY", "VARCHAR(64)", "VARCHAR(128)", "DECIMAL(12,2)", "TEXT")
+        counter = "n"
+    elif engine == "postgres":
+        concat = lambda *parts: " || ".join(parts)
+        id_type, text_type, email_type, amount_type, pad_type = (
+            "INT PRIMARY KEY", "TEXT", "TEXT", "NUMERIC(12,2)", "TEXT")
+        counter = "n"
+    else:
+        concat = lambda *parts: " || ".join(parts)
+        id_type, text_type, email_type, amount_type, pad_type = (
+            "INTEGER PRIMARY KEY", "TEXT", "TEXT", "REAL", "TEXT")
+        counter = "i"
+    typed = [
+        ("id", id_type, counter),
+        ("name", text_type, concat("'name '", counter)),
+        ("email", email_type, concat("'user'", counter, "'@example.com'")),
+        ("amount", amount_type, "(%s %% 100000) / 100.0" % counter),
+    ]
+    columns = list(typed[:count])
+    for place in range(len(columns), count):
+        columns.append(("col%04d" % (place - len(typed) + 1), pad_type, concat("'v'", counter)))
+    return columns
+
+
+def mysql_numbers(rows):
+    places = max(1, len(str(rows)))
+    digits = ", ".join("%s d%d" % (MYSQL_DIGITS, place) for place in range(places))
+    number = " + ".join("d%d.d * %d" % (place, 10 ** place) for place in range(places)) + " + 1"
+    return "(SELECT {number} AS n FROM {digits}) numbers".format(number=number, digits=digits)
+
+
+def wide_table_sql(engine, table, count, rows):
+    columns = wide_columns(engine, count)
+    defs = ", ".join("%s %s" % (name, type_) for name, type_, _ in columns)
+    exprs = ", ".join(expr for _, _, expr in columns)
+    if engine == "mysql":
+        return ("CREATE TABLE IF NOT EXISTS {table} ({defs});\n"
+                "INSERT INTO {table} SELECT {exprs} FROM {source} WHERE n <= {rows};").format(
+            table=table, defs=defs, exprs=exprs, source=mysql_numbers(rows), rows=rows)
+    if engine == "postgres":
+        return ("CREATE TABLE IF NOT EXISTS {table} ({defs});\n"
+                "INSERT INTO {table} SELECT {exprs} FROM generate_series(1, {rows}) AS n;").format(
+            table=table, defs=defs, exprs=exprs, rows=rows)
+    return ("CREATE TABLE {table} ({defs});\n"
+            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < {rows})\n"
+            "INSERT INTO {table} SELECT {exprs} FROM n;").format(
+        table=table, defs=defs, exprs=exprs, rows=rows)
+
+
+def make_sqlite_wide(path, columns, rows):
+    if path.exists():
+        path.unlink()
+    connection = sqlite3.connect(str(path))
+    try:
+        connection.executescript(sqlite_rows_sql("bench_small", 3))
+        connection.executescript(wide_table_sql("sqlite", WIDE_TABLE, columns, rows))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+# hex(randomblob(524288)) is 1,048,576 hex chars, so one body column is ~1 MB per row.
+def make_sqlite_bigtext(path, rows):
+    if path.exists():
+        path.unlink()
+    connection = sqlite3.connect(str(path))
+    try:
+        connection.executescript(
+            ("CREATE TABLE {table} (id INTEGER PRIMARY KEY, body TEXT);\n"
+             "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < {rows})\n"
+             "INSERT INTO {table} SELECT i, hex(randomblob(524288)) FROM n;").format(
+                table=BIGTEXT_TABLE, rows=rows))
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def connection_record(name, database_type, sort_order, database, server=None):
     server = server or {"host": "", "port": 0, "user": ""}
     record = {
@@ -328,6 +445,21 @@ class RunningApp:
     def pid(self):
         return self.process.pid
 
+    # phys_footprint is what Activity Monitor shows; proc_pid_rusage flavor 0 is rusage_info_v0.
+    def footprint_mb(self):
+        info = RusageInfo()
+        if LIBPROC.proc_pid_rusage(self.pid, 0, ctypes.byref(info)) != 0:
+            raise BenchmarkError("proc_pid_rusage failed for %d" % self.pid)
+        return round(info.phys_footprint / 1048576.0, 1)
+
+    def cpu_ms(self):
+        info = RusageInfo()
+        if LIBPROC.proc_pid_rusage(self.pid, 0, ctypes.byref(info)) != 0:
+            raise BenchmarkError("proc_pid_rusage failed for %d" % self.pid)
+        numer, denom = MACH_TIMEBASE
+        nanos = (info.user_time + info.system_time) * numer // denom
+        return round(nanos / 1_000_000.0, 1)
+
     def output(self):
         return Path(self.log_path).read_text(errors="replace")
 
@@ -428,7 +560,7 @@ def completed_loads(sandbox, database_type, row_bucket=None):
     ]
 
 
-def table_samples(app, sandbox, work, runs, database_type, path_name):
+def table_samples(app, sandbox, work, runs, database_type, path_name, table="bench_rows", row_bucket="101-1000"):
     samples = []
     with RunningApp(app, sandbox, work / ("%s.log" % path_name)) as running:
         running.launch_ms()
@@ -438,15 +570,15 @@ def table_samples(app, sandbox, work, runs, database_type, path_name):
                          lambda: completed_loads(sandbox, database_type) or None, timeout=60)
         time.sleep(1)
         for index in range(runs + 1):
-            before = len(completed_loads(sandbox, database_type, "101-1000"))
+            before = len(completed_loads(sandbox, database_type, row_bucket))
             running.keystroke("o", ("command", "shift"))
             time.sleep(0.8)
-            running.keystroke("bench_rows")
+            running.keystroke(table)
             time.sleep(0.8)
             running.keystroke(36)
             loads = running.wait_for(
-                "bench_rows to load",
-                lambda: (completed_loads(sandbox, database_type, "101-1000")[before:] or None),
+                "%s to load" % table,
+                lambda: (completed_loads(sandbox, database_type, row_bucket)[before:] or None),
                 timeout=60,
             )
             value = float(loads[0]["totalMs"])
@@ -460,13 +592,33 @@ def table_samples(app, sandbox, work, runs, database_type, path_name):
     return samples
 
 
-def table_sandbox(work, name, record):
+def table_sandbox(work, name, record, table="bench_small"):
     sandbox = Sandbox(work, name)
     database = record["database"] if record["type"] != "SQLite" else ""
     quote = "`" if record["type"] == "MySQL" else '"'
-    sandbox.add_connection(record, [table_tab("bench_small", database, quote)], is_open=True)
+    sandbox.add_connection(record, [table_tab(table, database, quote)], is_open=True)
     sandbox.finish("reopenLast")
     return sandbox
+
+
+# The table it names is already the restored tab, so it samples steady-state memory after that load settles.
+def footprint_samples(app, sandbox, work, runs, database_type, path_name):
+    footprints, cpus = [], []
+    with RunningApp(app, sandbox, work / ("%s.log" % path_name)) as running:
+        running.launch_ms()
+        running.bring_forward()
+        running.wait_for("the restored tab to load",
+                         lambda: completed_loads(sandbox, database_type) or None, timeout=60)
+        time.sleep(1)
+        for index in range(runs + 1):
+            footprint = running.footprint_mb()
+            cpu = running.cpu_ms()
+            if index == 0:
+                continue
+            footprints.append(footprint)
+            cpus.append(cpu)
+            log("  %s run %d: %.1f MB rss, %.1f ms cpu" % (path_name, index, footprint, cpu))
+    return footprints, cpus
 
 
 def switch_samples(app, sandbox, work, runs, wanted):
@@ -648,7 +800,7 @@ def main():
     parser = argparse.ArgumentParser(description="Time launch, a large table and tab switches in TablePro.app.")
     parser.add_argument("app", type=Path, help="a signed TablePro.app")
     parser.add_argument("--runs", type=int, default=10)
-    parser.add_argument("--paths", default=",".join(PATHS), help="comma-separated: " + ", ".join(PATHS))
+    parser.add_argument("--paths", default=",".join(DEFAULT_PATHS), help="comma-separated: " + ", ".join(PATHS))
     parser.add_argument("--mysql", help="user@host:port or user@/path/to.sock; default: the mysql client's own socket")
     parser.add_argument("--postgres", default="127.0.0.1:5432", help="user@host:port")
     parser.add_argument("--record", action="store_true", help="write this run as the baseline")
@@ -725,6 +877,37 @@ def main():
             sandbox = table_sandbox(work, name, record)
             sandboxes.append(sandbox)
             add(name, table_samples(options.app, sandbox, work, options.runs, record["type"], name))
+
+        if "table-sqlite-footprint" in wanted:
+            log("table-sqlite-footprint")
+            path = work / "bench-footprint.sqlite"
+            log("seeding %d rows into %s" % (TABLE_ROWS, path))
+            make_sqlite(path, [("bench_rows", TABLE_ROWS)])
+            record = connection_record("Bench SQLite Footprint", "SQLite", 0, str(path))
+            sandbox = table_sandbox(work, "table-sqlite-footprint", record, table="bench_rows")
+            sandboxes.append(sandbox)
+            footprint_samples(options.app, sandbox, work, options.runs, "SQLite", "table-sqlite-footprint")
+
+        if "table-sqlite-wide" in wanted:
+            log("table-sqlite-wide")
+            path = work / "bench-wide.sqlite"
+            log("seeding %d rows x %d columns into %s" % (WIDE_ROWS, WIDE_COLUMNS, path))
+            make_sqlite_wide(path, WIDE_COLUMNS, WIDE_ROWS)
+            record = connection_record("Bench SQLite Wide", "SQLite", 0, str(path))
+            sandbox = table_sandbox(work, "table-sqlite-wide", record)
+            sandboxes.append(sandbox)
+            add("table-sqlite-wide", table_samples(options.app, sandbox, work, options.runs,
+                                                   "SQLite", "table-sqlite-wide", table=WIDE_TABLE))
+
+        if "table-sqlite-bigtext" in wanted:
+            log("table-sqlite-bigtext")
+            path = work / "bench-bigtext.sqlite"
+            log("seeding %d big-text rows into %s" % (BIGTEXT_ROWS, path))
+            make_sqlite_bigtext(path, BIGTEXT_ROWS)
+            record = connection_record("Bench SQLite BigText", "SQLite", 0, str(path))
+            sandbox = table_sandbox(work, "table-sqlite-bigtext", record, table=BIGTEXT_TABLE)
+            sandboxes.append(sandbox)
+            footprint_samples(options.app, sandbox, work, options.runs, "SQLite", "table-sqlite-bigtext")
 
         if "tabs-next" in wanted or "tabs-recent" in wanted:
             log("tabs")

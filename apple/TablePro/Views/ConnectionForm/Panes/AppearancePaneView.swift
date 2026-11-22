@@ -28,8 +28,6 @@ struct AppearancePaneView: View {
             LabeledContent(String(localized: "Group")) {
                 ConnectionGroupPicker(selectedGroupId: $coordinator.customization.groupId)
             }
-        } header: {
-            Text(String(localized: "Appearance"))
         } footer: {
             Text(String(localized: "The icon and color mark this connection in the connection list and its window."))
                 .font(.caption)
