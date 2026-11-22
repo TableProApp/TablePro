@@ -12,6 +12,8 @@ struct AISettingsView: View {
     @State private var editingProviderID: UUID?
     @State private var addingProvider: AIProviderConfig?
     @State private var pendingDeleteID: UUID?
+    // Probed on appear, not on every body pass (the whole AI form re-evaluates on any settings change).
+    @State private var appleIntelligence: AppleIntelligenceAvailability = .unavailable(.unknown)
     @ObservedObject private var chatGPTCodexService = ChatGPTCodexService.shared
     @ObservedObject private var claudeAgentService = ClaudeAgentService.shared
     @ObservedObject private var copilotService = CopilotService.shared
@@ -186,10 +188,6 @@ struct AISettingsView: View {
             }
 
             Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 2)
         .task {
@@ -250,17 +248,15 @@ struct AISettingsView: View {
     // MARK: - Apple Intelligence
 
     private var appleIntelligenceSection: some View {
-        let availability = SystemOnDeviceLanguageModel().availability
-        return Section {
+        Section {
             Toggle("Use for inline suggestions and query actions", isOn: $settings.useAppleIntelligence)
-                .disabled(!availability.isAvailable && !settings.useAppleIntelligence)
+                .disabled(!appleIntelligence.isAvailable && !settings.useAppleIntelligence)
         } header: {
             Text(AppleIntelligenceAvailability.displayName)
         } footer: {
-            Text(Self.appleIntelligenceFooter(availability))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(Self.appleIntelligenceFooter(appleIntelligence))
         }
+        .onAppear { appleIntelligence = SystemOnDeviceLanguageModel().availability }
     }
 
     private static func appleIntelligenceFooter(_ availability: AppleIntelligenceAvailability) -> String {

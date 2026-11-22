@@ -19,6 +19,7 @@ struct ProfilesSettingsView: View {
     @State private var isAddingSSHProfile = false
 
     @State private var connectionCounts: [UUID: Int] = [:]
+    @State private var hasLoaded = false
 
     var body: some View {
         Form {
@@ -26,7 +27,9 @@ struct ProfilesSettingsView: View {
             sshSection
         }
         .formStyle(.grouped)
-        .onAppear(perform: reload)
+        // Load once, not on every re-add: reload() synchronously decodes the whole connections file
+        // on the main actor. The change notifications below keep the list fresh after that.
+        .onAppear { if !hasLoaded { hasLoaded = true; reload() } }
         /// The Settings window is kept alive between openings, so a profile created from a
         /// connection window has to reach this list while it is already on screen.
         .onReceive(NotificationCenter.default.publisher(for: .credentialProfilesDidChange)) { _ in reload() }
@@ -159,9 +162,6 @@ struct ProfilesSettingsView: View {
                 Text(usedByLabel(usedBy))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
             }
             .contentShape(Rectangle())
         }

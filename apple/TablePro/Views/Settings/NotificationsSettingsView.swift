@@ -54,7 +54,11 @@ struct NotificationsSettingsView: View {
         guard seconds >= 60 else {
             return String(format: String(localized: "%lld seconds"), seconds)
         }
-        return String(format: String(localized: "%lld minutes"), seconds / 60)
+        let minutes = seconds / 60
+        if minutes == 1 {
+            return String(localized: "1 minute")
+        }
+        return String(format: String(localized: "%lld minutes"), minutes)
     }
 
     private static func openSystemSettings() {
