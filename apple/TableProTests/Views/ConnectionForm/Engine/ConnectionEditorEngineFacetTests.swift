@@ -71,14 +71,15 @@ struct ConnectionEditorEngineFacetTests {
         #expect(!layout.contains(.builtIn(.password)))
     }
 
-    @Test("AI rows follow the AI setting, Local only follows Sync")
+    @Test("AI Policy is always shown, AI rules follow the AI setting, Local only follows Sync")
     func contextDrivenSections() {
         let mysql = traits(.mysql)
         let draft = ConnectionDraft.new(type: .mysql, traits: mysql)
         var context = EditorContext()
         var layout = ConnectionEditorEngine.layout(draft, mysql, context)
         #expect(layout.contains(.builtIn(.externalAccess)))
-        #expect(!layout.contains(.builtIn(.aiPolicy)))
+        #expect(layout.contains(.builtIn(.aiPolicy)))
+        #expect(!layout.contains(.builtIn(.aiRules)))
         #expect(!layout.contains(.builtIn(.localOnly)))
         context.aiEnabled = true
         context.syncEnabled = true

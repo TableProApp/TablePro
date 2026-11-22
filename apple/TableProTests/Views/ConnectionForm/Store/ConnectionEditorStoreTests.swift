@@ -208,7 +208,7 @@ struct ConnectionEditorStoreTests {
         let fixture = try ConnectionEditorStoreFixture()
         let profile = SSHProfile(name: "Bastion", host: "bastion.example.com", username: "ops")
         #expect(fixture.sshProfiles.addProfile(profile))
-        #expect(fixture.sshProfiles.saveSSHPassword("profile-secret", for: profile.id))
+        fixture.sshProfiles.saveSSHPassword("profile-secret", for: profile.id)
         var connection = postgres()
         connection.sshProfileId = profile.id
         connection.sshTunnelMode = .profile(id: profile.id, snapshot: profile.toSSHConfiguration())

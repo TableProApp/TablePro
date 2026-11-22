@@ -17,7 +17,7 @@ final class WindowOpenerTests: XCTestCase {
         openedRequests = []
         openedSettingsPanes = []
         WindowOpener.shared.setWelcomePresenter {}
-        WindowOpener.shared.setConnectionFormPresenter { [weak self] request in
+        WindowOpener.shared.setConnectionFormPresenter { [weak self] request, _ in
             self?.openedRequests.append(request)
         }
         WindowOpener.shared.setIntegrationsActivityPresenter {}
@@ -138,7 +138,7 @@ final class WindowOpenerTests: XCTestCase {
         opener.openConnectionForm(editing: connectionId)
         XCTAssertTrue(opened.isEmpty, "No presenter yet, so the call has to wait")
 
-        opener.setConnectionFormPresenter { opened.append($0) }
+        opener.setConnectionFormPresenter { request, _ in opened.append(request) }
 
         XCTAssertEqual(opened, [.edit(connectionId: connectionId)])
     }
@@ -154,7 +154,7 @@ final class WindowOpenerTests: XCTestCase {
         opener.setWelcomePresenter {}
         XCTAssertTrue(opened.isEmpty, "The connection form still has no presenter")
 
-        opener.setConnectionFormPresenter { opened.append($0) }
+        opener.setConnectionFormPresenter { request, _ in opened.append(request) }
 
         XCTAssertEqual(opened, [.edit(connectionId: connectionId)])
     }

@@ -202,7 +202,7 @@ extension ConnectionEditorStore {
                 }
                 endRun(context, testId: testId, state: .succeeded(ConnectionTestSuccess(
                     typeName: context.typeName,
-                    serverVersion: nil,
+                    serverVersion: result.serverVersion,
                     elapsedMilliseconds: milliseconds,
                     warning: result.warning
                 )))

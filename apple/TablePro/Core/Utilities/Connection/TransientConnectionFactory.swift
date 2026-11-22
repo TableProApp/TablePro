@@ -36,11 +36,6 @@ internal enum TransientConnectionFactory {
             color = ConnectionURLParser.connectionColor(fromHex: hex)
         }
 
-        var tagIds: [UUID] = []
-        if let envName = parsed.envTag, let resolved = ConnectionURLParser.tagId(fromEnvName: envName) {
-            tagIds = [resolved]
-        }
-
         let resolvedSafeMode = parsed.safeModeLevel.flatMap(SafeModeLevel.from(urlInteger:)) ?? .silent
 
         var connection = DatabaseConnection(
@@ -53,7 +48,6 @@ internal enum TransientConnectionFactory {
             sshConfig: sshConfig,
             sslConfig: sslConfig,
             color: color,
-            tagIds: tagIds,
             safeModeLevel: resolvedSafeMode,
             mongoAuthSource: parsed.authSource,
             mongoUseSrv: parsed.useSrv,
@@ -72,6 +66,9 @@ internal enum TransientConnectionFactory {
         // A link is a definition from outside: only keys the catalog knows, and selectors stay for the consent prompt.
         let linkFields = ConnectionFieldCatalog.portable(parsed.additionalFields, keepingLocalCredentials: true)
         connection.additionalFields.merge(linkFields) { _, imported in imported }
+        if let environment = parsed.environment {
+            connection.additionalFields[ConnectionEnvironment.fieldKey] = environment.rawValue
+        }
 
         // The same field mapping as Import from URL, so an opened link reads legacy UUIDs the way its sender set and
         // its secrets sit where the driver and the backup tools read them. The connection is never saved.

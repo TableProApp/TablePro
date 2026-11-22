@@ -498,12 +498,13 @@ extension ConnectionEditorEngine {
         var sections = [
             SectionLayout(id: "externalClients", title: String(localized: "External Clients"), footer: nil, rows: [.builtIn(.externalAccess)])
         ]
+        // AI Policy also governs MCP clients, so it stays reachable while AI features are off.
+        var aiRows: [EditorRow] = [.builtIn(.aiPolicy)]
+        if context.aiEnabled, !draft.ai.alwaysAllowedTools.isEmpty {
+            aiRows.append(.builtIn(.alwaysAllowedTools))
+        }
+        sections.append(SectionLayout(id: "ai", title: String(localized: "AI"), footer: nil, rows: aiRows))
         if context.aiEnabled {
-            var rows: [EditorRow] = [.builtIn(.aiPolicy)]
-            if !draft.ai.alwaysAllowedTools.isEmpty {
-                rows.append(.builtIn(.alwaysAllowedTools))
-            }
-            sections.append(SectionLayout(id: "ai", title: String(localized: "AI"), footer: nil, rows: rows))
             sections.append(SectionLayout(
                 id: "aiRules",
                 title: String(localized: "AI Rules"),
