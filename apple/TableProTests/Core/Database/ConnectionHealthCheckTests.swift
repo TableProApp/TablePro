@@ -1,12 +1,3 @@
-//
-//  ConnectionHealthCheckTests.swift
-//  TableProTests
-//
-//  The setting behind #2700: how often TablePro talks to a database nobody is using, and the
-//  freshness rule that lets it stop talking without the app losing track of whether a connection
-//  still works.
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -43,9 +34,7 @@ struct ConnectionHealthCheckTests {
         #expect(decoded.connectionHealthCheck == .every30Seconds)
     }
 
-    /// Settings sync between devices, so a newer TablePro can write an interval this build has no
-    /// case for. Decoding that as the enum throws, which would take the whole of General down with
-    /// it and reset every other setting the user had.
+    // A newer Mac can sync an interval this build has no case for; throwing would reset all of General.
     @Test("an interval from a newer version falls back instead of failing the whole decode")
     func unknownIntervalFallsBack() throws {
         let json = Data(#"{"startupBehavior":"reopenLast","connectionHealthCheck":600,"queryTimeoutSeconds":90}"#.utf8)
@@ -74,5 +63,10 @@ struct ConnectionHealthCheckTests {
         #expect(cases.count == 4)
         #expect(Set(cases.map(\.id)).count == cases.count)
         #expect(cases.allSatisfy { !$0.title.isEmpty })
+    }
+
+    @Test("stored values keep their raw values, so synced settings still decode")
+    func rawValuesAreStable() {
+        #expect(ConnectionHealthCheck.allCases.map(\.rawValue) == [0, 30, 300, 900])
     }
 }

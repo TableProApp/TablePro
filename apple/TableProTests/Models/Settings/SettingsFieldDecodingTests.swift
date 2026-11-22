@@ -1,8 +1,3 @@
-//
-//  SettingsFieldDecodingTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -29,6 +24,20 @@ struct SettingsFieldDecodingTests {
         let settings = try decode(GeneralSettings.self, #"{"queryTimeoutSeconds":120}"#)
         #expect(settings.startupBehavior == GeneralSettings.default.startupBehavior)
         #expect(settings.queryTimeoutSeconds == 120)
+    }
+
+    @Test("A query timeout out of range is clamped on load, so the pop-up always has its item")
+    func queryTimeoutIsClamped() throws {
+        let range = DatabaseConnection.queryTimeoutSecondsRange
+
+        let negative = try decode(GeneralSettings.self, #"{"queryTimeoutSeconds":-5}"#)
+        #expect(negative.queryTimeoutSeconds == range.lowerBound)
+
+        let tooLong = try decode(GeneralSettings.self, #"{"queryTimeoutSeconds":\#(range.upperBound + 1)}"#)
+        #expect(tooLong.queryTimeoutSeconds == range.upperBound)
+
+        let inRange = try decode(GeneralSettings.self, #"{"queryTimeoutSeconds":3600}"#)
+        #expect(inRange.queryTimeoutSeconds == 3_600)
     }
 
     @Test("A bad Editor value falls back alone")
@@ -263,5 +272,33 @@ struct AISettingsProviderDecodingTests {
         #expect(loaded.enabled == false)
         #expect(loaded.providers.map(\.id) == [keptID])
         #expect(loaded.activeProviderID == keptID)
+    }
+}
+
+struct GeneralSettingsQueryTimeoutTests {
+    @Test("The standard list is offered as is when the stored value is on it or is no limit")
+    func standardChoices() {
+        let standard = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
+        #expect(GeneralSettings.standardQueryTimeouts == standard)
+        #expect(GeneralSettings.queryTimeoutChoices(including: 60) == standard)
+        #expect(GeneralSettings.queryTimeoutChoices(including: 0) == standard)
+    }
+
+    @Test("A custom stored value is merged into the list in order")
+    func customValueIsMerged() {
+        let choices = GeneralSettings.queryTimeoutChoices(including: 45)
+        #expect(choices == [10, 20, 30, 40, 45, 50, 60, 90, 120, 180, 300, 600])
+
+        let long = GeneralSettings.queryTimeoutChoices(including: 3_600)
+        #expect(long.last == 3_600)
+        #expect(long.filter { $0 == 3_600 }.count == 1)
+    }
+
+    @Test(
+        "Titles are whole-word durations",
+        arguments: [(1, "1 second"), (300, "5 minutes"), (90, "1 minute, 30 seconds"), (3_600, "1 hour")]
+    )
+    func titles(seconds: Int, expected: String) {
+        #expect(GeneralSettings.queryTimeoutTitle(seconds, locale: Locale(identifier: "en_US")) == expected)
     }
 }
