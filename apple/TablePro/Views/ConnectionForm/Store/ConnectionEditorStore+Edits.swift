@@ -212,7 +212,7 @@ extension ConnectionEditorStore {
         return SSHProfile(
             name: "",
             host: ssh.host,
-            port: Int(ssh.port),
+            port: ConnectionEditorEngine.parsePort(ssh.port),
             username: ssh.username,
             authMethod: ssh.authMethod,
             privateKeyPath: ssh.privateKeyPath,

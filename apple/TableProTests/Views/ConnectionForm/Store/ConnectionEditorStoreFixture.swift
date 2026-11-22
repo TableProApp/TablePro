@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProConnectionLibrary
 
 @testable import TablePro
 
@@ -71,6 +72,8 @@ final class ConnectionEditorStoreFixture {
     let recents: RecentConnectionsStore
     let listPreferences: ConnectionListPreferences
     let services: AppServices
+    let envVarApprovals: ConnectionApprovalStore
+    let localCredentialApprovals: ConnectionApprovalStore
 
     init() throws {
         directory = FileManager.default.temporaryDirectory
@@ -92,6 +95,16 @@ final class ConnectionEditorStoreFixture {
             fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
             connectionStorage: storage
+        )
+        let sshProfiles = sshProfiles
+        let dialed: @MainActor (DatabaseConnection) -> ConnectionDestination = { connection in
+            sshProfiles.refreshingLinkedProfile(connection).destination
+        }
+        envVarApprovals = ConnectionApprovalStore(
+            kind: .envVarReferences, defaults: defaults, savedConnections: { [] }, dialedDestination: dialed
+        )
+        localCredentialApprovals = ConnectionApprovalStore(
+            kind: .localCredentials, defaults: defaults, savedConnections: { [] }, dialedDestination: dialed
         )
         recents = RecentConnectionsStore(defaults: defaults, appEvents: events)
         listPreferences = ConnectionListPreferences(defaults: defaults, appEvents: events)
@@ -143,7 +156,8 @@ final class ConnectionEditorStoreFixture {
             services: services,
             recentConnections: recents,
             listPreferences: listPreferences,
-            managedPolicy: NoManagedPolicy()
+            managedPolicy: NoManagedPolicy(),
+            approvalStores: [envVarApprovals, localCredentialApprovals]
         )
     }
 

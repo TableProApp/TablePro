@@ -39,6 +39,10 @@ extension ConnectionEditorEngine {
         let draft = normalized(draft, traits)
         let secretIds = secretFieldIds(traits, originalTraits: originalTraits)
         var fields = draft.fieldValues.filter { !secretIds.contains($0.key) }
+        // Validation reads a number field trimmed, so the driver gets the number it approved.
+        for field in traits.fields where field.fieldType.integerEntryRange != nil {
+            fields[field.id] = fields[field.id].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        }
 
         let forwardSocket = draft.sshForwardUnixSocketPath.trimmingCharacters(in: .whitespaces)
         if draft.transport == .ssh, !forwardSocket.isEmpty {

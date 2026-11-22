@@ -185,7 +185,7 @@ struct SQLCodeFieldThemeTests {
             for (language, row) in fields {
                 let (fixture, window, textView) = try connectionEditorField(language, row: row)
                 #expect(textView.backgroundColor === NSColor.textBackgroundColor)
-                #expect(textView.enclosingScrollView?.borderType == .bezelBorder)
+                #expect(textView.enclosingScrollView?.borderType == .noBorder)
 
                 try ThemeTestFixture.withEverySlotOverridden {
                     #expect(ThemeTestFixture.hex(textView.backgroundColor) == "#FF00FF")

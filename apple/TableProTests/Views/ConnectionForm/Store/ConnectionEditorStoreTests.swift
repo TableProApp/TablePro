@@ -185,6 +185,135 @@ struct ConnectionEditorStoreTests {
         #expect(saved.host == "replica.example.com")
     }
 
+    @Test("A destination changed elsewhere while the editor is open is not approved by an unrelated Save")
+    func concurrentDestinationIsNotApproved() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        var connection = postgres()
+        connection.username = "$DB_USER"
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+
+        var elsewhere = try #require(fixture.storage.loadConnection(id: connection.id))
+        elsewhere.host = "db.attacker.example"
+        fixture.seed([elsewhere])
+
+        store.update { $0.name = "Renamed" }
+        _ = try store.save().get()
+        let saved = try #require(fixture.storage.loadConnection(id: connection.id))
+        #expect(saved.host == "db.attacker.example")
+        #expect(!fixture.envVarApprovals.isApproved(saved))
+    }
+
+    @Test("A variable reference added elsewhere while the editor is open is not approved by an unrelated Save")
+    func concurrentReferenceIsNotApproved() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        var connection = postgres()
+        connection.username = "$DB_USER"
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+
+        var elsewhere = try #require(fixture.storage.loadConnection(id: connection.id))
+        elsewhere.username = "$DB_USER$SECRET"
+        fixture.seed([elsewhere])
+
+        store.update { $0.name = "Renamed" }
+        _ = try store.save().get()
+        let saved = try #require(fixture.storage.loadConnection(id: connection.id))
+        #expect(saved.username == "$DB_USER$SECRET")
+        #expect(!fixture.envVarApprovals.isApproved(saved))
+    }
+
+    @Test("Saving a host change made in the editor approves the destination it shows")
+    func ownDestinationIsApproved() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        var connection = postgres()
+        connection.username = "$DB_USER"
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+
+        store.update { $0.host = "db2.example.com" }
+        _ = try store.save().get()
+        let saved = try #require(fixture.storage.loadConnection(id: connection.id))
+        #expect(saved.host == "db2.example.com")
+        #expect(fixture.envVarApprovals.isApproved(saved))
+    }
+
+    @Test("A SOCKS proxy turned on elsewhere keeps its password through an unrelated Save")
+    func concurrentSOCKSKeepsItsPassword() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = postgres()
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+
+        var elsewhere = try #require(fixture.storage.loadConnection(id: connection.id))
+        elsewhere.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy.example.com", port: 1_080, username: "ops"))
+        fixture.seed([elsewhere])
+        fixture.storage.saveSOCKSProxyPassword("proxy-secret", for: connection.id)
+
+        store.update { $0.name = "Renamed" }
+        _ = try store.save().get()
+        let saved = try #require(fixture.storage.loadConnection(id: connection.id))
+        #expect(saved.socksProxyMode == elsewhere.socksProxyMode)
+        #expect(fixture.storage.loadSOCKSProxyPassword(for: connection.id) == "proxy-secret")
+    }
+
+    @Test("Turning the SOCKS proxy off in the editor deletes its password")
+    func turningSOCKSOffDeletesItsPassword() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        var connection = postgres()
+        connection.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy.example.com", port: 1_080, username: "ops"))
+        fixture.seed([connection])
+        fixture.storage.saveSOCKSProxyPassword("proxy-secret", for: connection.id)
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        #expect(store.draft.transport == .socksProxy)
+
+        store.update { $0.selectTransport(nil) }
+        _ = try store.save().get()
+        let saved = try #require(fixture.storage.loadConnection(id: connection.id))
+        #expect(saved.socksProxyMode == .disabled)
+        #expect(fixture.storage.loadSOCKSProxyPassword(for: connection.id) == nil)
+    }
+
+    @Test("A password stored elsewhere after prompting was turned off survives an unrelated Save")
+    func concurrentPromptOffKeepsThePassword() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        var connection = postgres()
+        connection.promptForPassword = true
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        #expect(store.draft.credentials.promptsForPassword)
+
+        var elsewhere = try #require(fixture.storage.loadConnection(id: connection.id))
+        elsewhere.promptForPassword = false
+        fixture.seed([elsewhere])
+        fixture.storage.savePassword("stored-elsewhere", for: connection.id)
+
+        store.update { $0.name = "Renamed" }
+        _ = try store.save().get()
+        let saved = try #require(fixture.storage.loadConnection(id: connection.id))
+        #expect(!saved.promptForPassword)
+        #expect(fixture.storage.loadPassword(for: connection.id) == "stored-elsewhere")
+    }
+
+    @Test("After a Save whose record write failed, changing a password back to its loaded value still writes it")
+    func failedSaveForgetsLoadedSecrets() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = postgres()
+        fixture.seed([connection])
+        fixture.storage.savePassword("first", for: connection.id)
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+
+        store.update { $0.credentials.password = "second" }
+        try fixture.makeLibraryReadOnly(true)
+        #expect(store.save() == .failure(.recordWriteFailed))
+        #expect(fixture.storage.loadPassword(for: connection.id) == "second")
+
+        try fixture.makeLibraryReadOnly(false)
+        store.update { $0.credentials.password = "first" }
+        _ = try store.save().get()
+        #expect(fixture.storage.loadPassword(for: connection.id) == "first")
+    }
+
     @Test("A connection deleted elsewhere turns the editor into the missing state")
     func deletionElsewhereShowsMissing() throws {
         let fixture = try ConnectionEditorStoreFixture()
@@ -223,6 +352,18 @@ struct ConnectionEditorStoreTests {
         #expect(id == profileId)
         #expect(snapshot.host == "bastion")
         #expect(fixture.storage.loadSSHPassword(for: connection.id) == "tunnel-secret")
+    }
+
+    @Test("Save SSH as Profile reads the port the way validation does")
+    func sshProfileFromInlineTrimsThePort() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        store.update {
+            $0.selectTransport(.ssh)
+            $0.ssh.host = "bastion.example.com"
+            $0.ssh.port = " 2222 "
+        }
+        #expect(store.sshProfileFromInline().port == 2_222)
     }
 
     @Test("A profile deleted in Settings while the editor is open is adopted inline with its password")

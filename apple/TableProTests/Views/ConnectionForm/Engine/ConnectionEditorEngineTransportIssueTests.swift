@@ -266,4 +266,94 @@ struct ConnectionEditorEngineTransportIssueTests {
         #expect(traits(.postgresql).defaultUnixSocketPath == "/var/run/postgresql/.s.PGSQL.5432")
         #expect(traits(.clickhouse).defaultUnixSocketPath == nil)
     }
+
+    // MARK: - One port parser
+
+    @Test("A padded SSH port passes validation and is the port Test and Save dial")
+    func paddedSSHPortIsDialed() {
+        var draft = draft(.postgresql, transport: .ssh)
+        draft.ssh.host = "bastion.example.com"
+        draft.ssh.port = " 2222 "
+        #expect(messages(draft, on: .sshPort).isEmpty)
+        #expect(draft.ssh.inlineConfiguration(enabled: true).port == 2_222)
+        let edits = ConnectionEditorEngine.edits(draft, traits(.postgresql), originalTraits: nil, EditorContext())
+        #expect(edits.sshConfig.port == 2_222)
+
+        draft.ssh.port = "   "
+        #expect(messages(draft, on: .sshPort).isEmpty)
+        #expect(draft.ssh.inlineConfiguration(enabled: true).port == nil)
+    }
+
+    @Test("A padded Cloudflare local port passes validation and is the port the tunnel binds")
+    func paddedCloudflarePortIsUsed() {
+        var draft = draft(.postgresql, transport: .cloudflare)
+        draft.cloudflare.accessHostname = "db.example.com"
+        draft.cloudflare.automaticPort = false
+        draft.cloudflare.localPort = " 5433 "
+        #expect(messages(draft, on: .cloudflareLocalPort).isEmpty)
+        #expect(draft.cloudflare.configuration.localPort == 5_433)
+    }
+
+    @Test("A padded Cloud SQL local port passes validation and is the port the proxy binds")
+    func paddedCloudSQLPortIsUsed() {
+        var draft = draft(.postgresql, transport: .cloudSQLProxy)
+        draft.cloudSQLProxy.instanceConnectionName = "p:r:i"
+        draft.cloudSQLProxy.automaticPort = false
+        draft.cloudSQLProxy.localPort = " 5434 "
+        #expect(messages(draft, on: .cloudSQLLocalPort).isEmpty)
+        #expect(draft.cloudSQLProxy.configuration.localPort == 5_434)
+    }
+
+    @Test("A padded SOCKS port passes validation and is the port the proxy dials")
+    func paddedSOCKSPortIsUsed() {
+        var draft = draft(.postgresql, transport: .socksProxy)
+        draft.socksProxy.host = "proxy.example.com"
+        draft.socksProxy.port = " 1081 "
+        #expect(messages(draft, on: .socksPort).isEmpty)
+        #expect(draft.socksProxy.configuration.port == 1_081)
+    }
+
+    @Test("A padded database port passes validation and is the port saved")
+    func paddedDatabasePortIsSaved() {
+        var draft = draft(.postgresql, transport: nil)
+        draft.portText = " 6543 "
+        #expect(ConnectionEditorEngine.issues(draft, traits(.postgresql), EditorContext()).allSatisfy { $0.row != .builtIn(.port) })
+        #expect(ConnectionEditorEngine.edits(draft, traits(.postgresql), originalTraits: nil, EditorContext()).port == 6_543)
+    }
+
+    @Test("A jump host port outside 1 to 65535 blocks Save on that hop")
+    func jumpHostPortRange() {
+        var draft = draft(.postgresql, transport: .ssh)
+        draft.ssh.host = "bastion.example.com"
+        let hop = SSHJumpHost(host: "jump.example.com", port: 70_000, username: "ops")
+        draft.ssh.jumpHosts = [hop]
+        let issues = transportIssues(draft).filter { $0.row == .builtIn(.jumpHost(hop.id)) }
+        #expect(issues.map { $0.message } == [ConnectionEditorEngine.portRangeMessage])
+        #expect(issues.allSatisfy { $0.blocksSave })
+
+        draft.ssh.jumpHosts[0].port = 0
+        #expect(!transportIssues(draft).filter { $0.row == .builtIn(.jumpHost(hop.id)) }.isEmpty)
+
+        draft.ssh.jumpHosts[0].port = 2_222
+        #expect(transportIssues(draft).isEmpty)
+    }
+
+    @Test("A server port field takes the same range as Port, and a padded one is saved trimmed")
+    func serverEndpointPortField() {
+        let duckdb = traits(.duckdb)
+        var draft = ConnectionDraft.new(type: .duckdb, traits: duckdb)
+        draft.fieldValues["duckdbMode"] = "remote"
+        draft.fieldValues["duckdbHost"] = "quack.example.com"
+        draft.fieldValues["duckdbToken"] = "token"
+        draft.fieldValues["duckdbAlias"] = "remotedb"
+        let row = EditorRow.plugin(fieldID: "duckdbPort")
+
+        draft.fieldValues["duckdbPort"] = "70000"
+        #expect(ConnectionEditorEngine.issues(draft, duckdb, EditorContext()).contains { $0.row == row })
+
+        draft.fieldValues["duckdbPort"] = " 9495 "
+        #expect(!ConnectionEditorEngine.issues(draft, duckdb, EditorContext()).contains { $0.row == row })
+        let fields = ConnectionEditorEngine.edits(draft, duckdb, originalTraits: nil, EditorContext()).additionalFields
+        #expect(fields["duckdbPort"] == "9495")
+    }
 }

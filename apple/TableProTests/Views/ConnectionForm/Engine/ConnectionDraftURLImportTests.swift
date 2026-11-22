@@ -71,6 +71,43 @@ struct ConnectionDraftURLImportTests {
         #expect(draft.host == "db2.example.com")
     }
 
+    @Test("A paste into a saved etcd connection keeps its TLS verification, and a stricter URL still raises it")
+    func existingEtcdKeepsTLSVerification() throws {
+        let etcd = traits(.etcd)
+        var draft = ConnectionDraft.new(type: .etcd, traits: etcd)
+        draft.fieldValues["etcdTlsMode"] = "VerifyIdentity"
+        draft.apply(try parse("etcd://etcd2.example.com:2379"), traits: etcd, policy: .existingConnection)
+        #expect(draft.fieldValues["etcdTlsMode"] == "VerifyIdentity")
+        #expect(draft.host == "etcd2.example.com")
+
+        draft.fieldValues["etcdTlsMode"] = "Required"
+        draft.apply(try parse("etcds://etcd2.example.com:2379?sslmode=verify-full"), traits: etcd, policy: .existingConnection)
+        #expect(draft.fieldValues["etcdTlsMode"] == "VerifyIdentity")
+
+        var fresh = ConnectionDraft.new(type: .etcd, traits: etcd)
+        fresh.fieldValues["etcdTlsMode"] = "VerifyIdentity"
+        fresh.apply(try parse("etcd://etcd2.example.com:2379"), traits: etcd, policy: .newConnection)
+        #expect(fresh.fieldValues["etcdTlsMode"] == "Disabled")
+    }
+
+    @Test("A paste into a saved DuckDB connection keeps its pinned certificate")
+    func existingDuckDBKeepsPin() throws {
+        let duckdb = traits(.duckdb)
+        var draft = ConnectionDraft.new(type: .duckdb, traits: duckdb)
+        draft.fieldValues["duckdbMode"] = "remote"
+        draft.fieldValues["duckdbHost"] = "quack.example.com"
+        draft.fieldValues["duckdbSSLMode"] = "verifyFingerprint"
+        draft.fieldValues["duckdbCertificateFingerprint"] = "AB:CD:EF"
+
+        for url in ["quack://quack2.example.com:9494/remotedb", "quack://quack2.example.com:9494/remotedb?sslmode=verify-full"] {
+            var pasted = draft
+            pasted.apply(try parse(url), traits: duckdb, policy: .existingConnection)
+            #expect(pasted.fieldValues["duckdbSSLMode"] == "verifyFingerprint", "\(url)")
+            #expect(pasted.fieldValues["duckdbCertificateFingerprint"] == "AB:CD:EF", "\(url)")
+            #expect(pasted.fieldValues["duckdbHost"] == "quack2.example.com", "\(url)")
+        }
+    }
+
     @Test("A paste into a saved connection adds no raw driver options")
     func existingConnectionGetsNoRawOptions() throws {
         let mongo = traits(.mongodb)

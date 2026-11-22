@@ -9,6 +9,7 @@ import TableProSSHConfig
 
 enum JumpHostField: Hashable {
     case host
+    case port
     case keyFile
 }
 
@@ -31,6 +32,7 @@ extension ConnectionEditorStore {
         guard let hop = draft.ssh.jumpHosts.first(where: { $0.id == id }) else { return nil }
         if hop.host.isEmpty { return .host }
         if hop.authMethod == .privateKey, hop.privateKeyPath.isEmpty { return .keyFile }
+        if let port = hop.port, !ConnectionEditorEngine.portRange.contains(port) { return .port }
         return nil
     }
 }

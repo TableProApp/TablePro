@@ -108,6 +108,9 @@ extension ConnectionEditorEngine {
                 }
                 if let rangeIssue = field.rangeIssue(in: draft.fieldValues[field.id] ?? "") {
                     pending.append(PendingIssue(row: row, message: rangeIssue))
+                } else if field.id == traits.serverEndpointFields?.portFieldId,
+                          let portIssue = portIssue(draft.fieldValues[field.id] ?? "") {
+                    pending.append(PendingIssue(row: row, message: portIssue))
                 }
             case .loadableExtensions:
                 let extensions = (try? LoadableExtensionList.decode(draft.fieldValues[field.id])) ?? []
@@ -206,14 +209,21 @@ extension ConnectionEditorEngine {
                     fallbackRow: .builtIn(.sshConfigHost)
                 ))
             }
-            if !draft.ssh.port.isEmpty, parsePort(draft.ssh.port) == nil {
-                pending.append(PendingIssue(row: .builtIn(.sshPort), message: portRangeMessage))
+            if let issue = portIssue(draft.ssh.port) {
+                pending.append(PendingIssue(row: .builtIn(.sshPort), message: issue))
             }
-            for (index, jumpHost) in draft.ssh.jumpHosts.enumerated() where !jumpHost.isValid {
+            for (index, jumpHost) in draft.ssh.jumpHosts.enumerated() {
                 let number = Int64(index + 1)
-                let message = jumpHost.host.isEmpty
-                    ? String(format: String(localized: "Enter the address of jump host %lld."), number)
-                    : String(format: String(localized: "Choose a key file for jump host %lld."), number)
+                let message: String
+                if jumpHost.host.isEmpty {
+                    message = String(format: String(localized: "Enter the address of jump host %lld."), number)
+                } else if !jumpHost.isValid {
+                    message = String(format: String(localized: "Choose a key file for jump host %lld."), number)
+                } else if let port = jumpHost.port, !portRange.contains(port) {
+                    message = portRangeMessage
+                } else {
+                    continue
+                }
                 pending.append(PendingIssue(row: .builtIn(.jumpHost(jumpHost.id)), message: message))
             }
         case .unresolvedProfile:

@@ -37,6 +37,19 @@ struct SecretWritePlan: Equatable, Sendable {
     func writes(of item: Item) -> String? {
         writes.first { $0.item == item }?.value
     }
+
+    enum Disposition: Equatable {
+        case untouched
+        case write(String)
+        case delete
+    }
+
+    // A delete after the record runs last, and a write cancels a staged delete of the same key.
+    func disposition(of item: Item) -> Disposition {
+        if deletesAfterRecord.contains(item) { return .delete }
+        if let value = writes(of: item) { return .write(value) }
+        return stagedDeletes.contains(item) ? .delete : .untouched
+    }
 }
 
 extension ConnectionEditorEngine {
@@ -119,6 +132,74 @@ extension ConnectionEditorEngine {
             plan.stagedDeletes.append(.socksPassword)
         }
         return plan
+    }
+
+    // Save onto a stored record. The draft's own plan deletes every secret its settings leave out, and those settings
+    // may be stale: a delete stands only where this editor changed the secret or what owns it since `baseline`, and
+    // the merged record keeps no use for it.
+    static func secretPlan(
+        _ draft: ConnectionDraft,
+        _ traits: ConnectionTypeTraits,
+        originalTraits: ConnectionTypeTraits?,
+        _ context: EditorContext,
+        since baseline: ConnectionDraft,
+        mergedInto merged: DatabaseConnection
+    ) -> SecretWritePlan {
+        let mine = secretPlan(draft, traits, originalTraits: originalTraits, context)
+        let baselineTraits = baseline.type == traits.type ? traits : originalTraits ?? traits
+        let before = secretPlan(baseline, baselineTraits, originalTraits: originalTraits, context)
+        let draft = normalized(draft, traits)
+        func stands(_ item: SecretWritePlan.Item) -> Bool {
+            guard mine.disposition(of: item) != before.disposition(of: item) else { return false }
+            return secretValue(item, in: draft).isEmpty || !record(merged, uses: item)
+        }
+        var plan = mine
+        plan.stagedDeletes = mine.stagedDeletes.filter(stands)
+        plan.deletesAfterRecord = mine.deletesAfterRecord.filter(stands)
+        return plan
+    }
+
+    static func secretValue(_ item: SecretWritePlan.Item, in draft: ConnectionDraft) -> String {
+        switch item {
+        case .password: return draft.credentials.password
+        case .sshPassword: return draft.ssh.password
+        case .sshKeyPassphrase: return draft.ssh.keyPassphrase
+        case .totpSecret: return draft.ssh.totpSecret
+        case .sslClientKeyPassphrase: return draft.ssl.clientKeyPassphrase
+        case .cloudflareTokenId: return draft.cloudflare.serviceTokenId
+        case .cloudflareTokenSecret: return draft.cloudflare.serviceTokenSecret
+        case .cloudSQLServiceAccountKey: return draft.cloudSQLProxy.serviceAccountKeyJSON
+        case .socksPassword: return draft.socksProxy.password
+        case .pluginField(let fieldId): return draft.fieldValues[fieldId] ?? ""
+        }
+    }
+
+    // Whether a stored record still has a place for the secret, whatever value it holds.
+    static func record(_ record: DatabaseConnection, uses item: SecretWritePlan.Item) -> Bool {
+        switch item {
+        case .password:
+            return record.credentialMode.profileId == nil && !record.promptForPassword
+        case .pluginField:
+            return record.credentialMode.profileId == nil
+        case .sshPassword, .sshKeyPassphrase, .totpSecret:
+            guard case .inline(let config) = record.sshTunnelMode else { return false }
+            switch item {
+            case .sshPassword: return config.authMethod == .password || config.authMethod == .keyboardInteractive
+            case .sshKeyPassphrase: return config.authMethod == .privateKey
+            default: return config.totpMode == .autoGenerate
+            }
+        case .sslClientKeyPassphrase:
+            return !record.sslConfig.clientKeyPath.trimmingCharacters(in: .whitespaces).isEmpty
+        case .cloudflareTokenId, .cloudflareTokenSecret:
+            guard case .inline(let config) = record.cloudflareTunnelMode else { return false }
+            return config.authMethod == .serviceToken
+        case .cloudSQLServiceAccountKey:
+            guard case .inline(let config) = record.cloudSQLProxyMode else { return false }
+            return config.authMode == .serviceAccountKey
+        case .socksPassword:
+            guard case .inline = record.socksProxyMode else { return false }
+            return true
+        }
     }
 
     // A profile this Mac cannot resolve keeps its link and every secret: nothing here may convert or clear it.

@@ -168,10 +168,27 @@ extension ConnectionDraft {
         if let serviceName = parsed.oracleServiceName, !serviceName.isEmpty {
             fieldValues["oracleServiceName"] = serviceName
         }
-        let refused = ConnectionFormEdits.appManagedAdditionalFieldIDs
+        var refused = ConnectionFormEdits.appManagedAdditionalFieldIDs
+        if !isNew {
+            refused.formUnion(driverTLSFieldIdsKept(against: parsed, traits: traits))
+        }
         for (fieldId, value) in parsed.additionalFields where !refused.contains(fieldId) {
             fieldValues[fieldId] = value
         }
+    }
+
+    // A driver's own TLS mode, and the fields shown only for one of its modes (a CA file, a pinned fingerprint), change
+    // only when the URL asks for a stricter mode.
+    private func driverTLSFieldIdsKept(against parsed: ParsedConnectionURL, traits: ConnectionTypeTraits) -> Set<String> {
+        var kept: Set<String> = []
+        for field in traits.fields where DriverTLSMode.isModeField(field) {
+            let current = DriverTLSMode.strictness(of: ConnectionEditorEngine.value(of: field, in: self))
+            let pasted = parsed.additionalFields[field.id].flatMap(DriverTLSMode.strictness(of:))
+            if let current, let pasted, pasted > current { continue }
+            kept.insert(field.id)
+            kept.formUnion(traits.fields.filter { $0.visibleWhen?.fieldId == field.id }.map(\.id))
+        }
+        return kept
     }
 
     private mutating func applyEngineFields(_ parsed: ParsedConnectionURL, traits: ConnectionTypeTraits) {
@@ -247,5 +264,26 @@ extension ConnectionDraft {
             note(traits.field(key)?.label ?? key, true)
         }
         return changes
+    }
+}
+
+// PluginKit has no marker for a TLS field, so a driver's TLS mode is the dropdown whose every option is named for an SSL
+// mode, as etcd's and DuckDB's are. A pinned certificate trusts one key only, so it ranks above Verify Identity.
+enum DriverTLSMode {
+    static func strictness(of value: String) -> Int? {
+        switch value.lowercased().filter(\.isLetter) {
+        case "disabled", "disable", "off": return 0
+        case "automatic", "auto", "allow", "prefer", "preferred": return 1
+        case "required", "require": return 2
+        case "verifyca": return 3
+        case "verifyidentity", "verifyfull": return 4
+        case "verifyfingerprint": return 5
+        default: return nil
+        }
+    }
+
+    static func isModeField(_ field: ConnectionField) -> Bool {
+        guard case .dropdown(let options) = field.fieldType, !options.isEmpty else { return false }
+        return options.allSatisfy { strictness(of: $0.value) != nil }
     }
 }

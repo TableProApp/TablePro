@@ -44,6 +44,7 @@ extension ConnectionEditorStore {
             loadedSecrets = reads.loaded
             draft = ConnectionDraft.loaded(from: record, secrets: secrets, traits: traits)
             baseline = draft
+            loadedRecord = record
             baselineEdits = ConnectionEditorEngine.edits(draft, traits, originalTraits: originalTraits, context)
             dirtyBaseline = dirtyFingerprint()
         }

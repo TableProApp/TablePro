@@ -59,8 +59,9 @@ private struct SSHAndProxiesJumpHostSection: View {
             .onEditorFocusRequest(row, store: store, perform: focusMissingField)
 
             TextField(text: portText, prompt: Text(verbatim: "22")) {
-                Text(String(localized: "Port"))
+                label(String(localized: "Port"), for: .port)
             }
+            .focused($focusedField, equals: .port)
             .accessibilityIdentifier("\(identifier)-port")
 
             TextField(text: jumpHost.username, prompt: Text(verbatim: "admin")) {

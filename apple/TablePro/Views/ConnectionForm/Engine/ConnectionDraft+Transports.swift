@@ -49,7 +49,7 @@ struct SSHDraft: Equatable, Sendable {
         SSHConfiguration(
             enabled: enabled,
             host: host,
-            port: Int(port),
+            port: ConnectionEditorEngine.parsePort(port),
             username: username,
             authMethod: authMethod,
             privateKeyPath: privateKeyPath,
@@ -99,7 +99,7 @@ struct CloudflareDraft: Equatable, Sendable {
     var configuration: CloudflareConfiguration {
         CloudflareConfiguration(
             accessHostname: accessHostname.trimmingCharacters(in: .whitespacesAndNewlines),
-            localPort: automaticPort ? nil : Int(localPort),
+            localPort: automaticPort ? nil : ConnectionEditorEngine.parsePort(localPort),
             authMethod: authMethod,
             exposeToLAN: exposeToLAN,
             binaryPath: binaryPath.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -132,7 +132,7 @@ struct CloudSQLProxyDraft: Equatable, Sendable {
             authMode: authMode,
             useIAMAuth: useIAMAuth,
             usePrivateIP: usePrivateIP,
-            localPort: automaticPort ? nil : Int(localPort),
+            localPort: automaticPort ? nil : ConnectionEditorEngine.parsePort(localPort),
             binaryPath: binaryPath.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
@@ -161,7 +161,7 @@ struct SOCKSProxyDraft: Equatable, Sendable {
     var configuration: SOCKSProxyConfiguration {
         SOCKSProxyConfiguration(
             host: host.trimmingCharacters(in: .whitespacesAndNewlines),
-            port: Int(port.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1_080,
+            port: ConnectionEditorEngine.parsePort(port) ?? 1_080,
             username: username.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }

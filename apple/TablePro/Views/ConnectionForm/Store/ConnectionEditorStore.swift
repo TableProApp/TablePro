@@ -49,6 +49,7 @@ final class ConnectionEditorStore: ObservableObject {
     let listPreferences: ConnectionListPreferences
     let cloudSQLProxyDownload: CloudSQLProxyDownload
     let managedPolicy: any ManagedPolicyReading
+    let approvalStores: [ConnectionApprovalStore]
 
     // Written only through update(_:), the edit methods and the binding helpers, which keep everything below in step.
     @Published var draft: ConnectionDraft
@@ -87,6 +88,7 @@ final class ConnectionEditorStore: ObservableObject {
     // Fixed at load: the merge's base. A connectionUpdated event never moves it.
     var baseline: ConnectionDraft
     var baselineEdits: ConnectionFormEdits?
+    var loadedRecord: DatabaseConnection?
     var originalTraits: ConnectionTypeTraits?
     var dirtyBaseline: ConnectionEditorEngine.TestFingerprint?
 
@@ -119,13 +121,15 @@ final class ConnectionEditorStore: ObservableObject {
         recentConnections: RecentConnectionsStore = .shared,
         listPreferences: ConnectionListPreferences = .shared,
         cloudSQLProxyDownload: CloudSQLProxyDownload = .shared,
-        managedPolicy: any ManagedPolicyReading = ManagedPolicyReader.shared
+        managedPolicy: any ManagedPolicyReading = ManagedPolicyReader.shared,
+        approvalStores: [ConnectionApprovalStore] = ConnectionApprovalStore.all
     ) {
         self.services = services
         self.recentConnections = recentConnections
         self.listPreferences = listPreferences
         self.cloudSQLProxyDownload = cloudSQLProxyDownload
         self.managedPolicy = managedPolicy
+        self.approvalStores = approvalStores
 
         let initialType: DatabaseType
         switch request {

@@ -44,21 +44,22 @@ extension ConnectionEditorStore {
     @discardableResult
     func save(connect: Bool = false) -> Result<DatabaseConnection, ConnectionEditorSaveError> {
         revealAllIssues()
-        let result = performSave()
-        switch result {
-        case .success(let record):
+        switch performSave() {
+        case .success(let saved):
             saveError = nil
-            finishSave(record, connect: connect)
+            finishSave(saved.record, reviewed: saved.reviewed, connect: connect)
+            return .success(saved.record)
         case .failure(let error):
             saveError = error
             if case .invalid(let issue) = error {
                 focus(on: issue)
             }
+            return .failure(error)
         }
-        return result
     }
 
-    private func performSave() -> Result<DatabaseConnection, ConnectionEditorSaveError> {
+    // `reviewed` is the record as this window showed it: the draft's edits over the record it loaded.
+    private func performSave() -> Result<(record: DatabaseConnection, reviewed: DatabaseConnection), ConnectionEditorSaveError> {
         if let issue = firstBlockingIssue {
             return .failure(.invalid(issue))
         }
@@ -74,18 +75,25 @@ extension ConnectionEditorStore {
         let saving = ConnectionEditorEngine.normalized(draft, traits)
         let edits = ConnectionEditorEngine.edits(saving, traits, originalTraits: originalTraits, context)
         var record: DatabaseConnection
+        let reviewed: DatabaseConnection
+        let plan: SecretWritePlan
         if let existingIndex {
             let fresh = connections[existingIndex]
             record = edits.applied(to: fresh, since: baselineEdits)
             if fresh.groupId != record.groupId {
                 record.sortOrder = ConnectionStorage.nextSortOrder(in: connections, groupId: record.groupId)
             }
+            reviewed = edits.applied(to: loadedRecord ?? fresh, since: baselineEdits)
+            plan = ConnectionEditorEngine.secretPlan(
+                saving, traits, originalTraits: originalTraits, context, since: baseline, mergedInto: record
+            )
         } else {
             record = edits.applied(to: DatabaseConnection(id: connectionId, name: ""))
             record.sortOrder = ConnectionStorage.nextSortOrder(in: connections, groupId: record.groupId)
+            reviewed = record
+            plan = ConnectionEditorEngine.secretPlan(saving, traits, originalTraits: originalTraits, context)
         }
 
-        let plan = ConnectionEditorEngine.secretPlan(saving, traits, originalTraits: originalTraits, context)
         let staged = storage.stagingSecretEdits(
             for: connectionId,
             deviceOnly: !record.participatesInSync,
@@ -99,6 +107,8 @@ extension ConnectionEditorStore {
                 deleteSecret(item, for: connectionId)
             }
         }
+        // The Keychain may hold this attempt's values now, whether or not the record saves.
+        loadedSecrets = [:]
         guard !staged.writeFailed else {
             if existingIndex == nil {
                 removeEverySecret(for: connectionId)
@@ -122,15 +132,16 @@ extension ConnectionEditorStore {
         for item in plan.deletesAfterRecord {
             deleteSecret(item, for: connectionId)
         }
-        return .success(record)
+        return .success((record, reviewed))
     }
 
-    private func finishSave(_ record: DatabaseConnection, connect: Bool) {
-        approveSavedDefinition(record)
+    private func finishSave(_ record: DatabaseConnection, reviewed: DatabaseConnection, connect: Bool) {
+        approveSavedDefinition(record, reviewed: reviewed)
         if !record.localOnly {
             services.syncTracker.markDirty(.connection, id: record.id.uuidString)
         }
         baseline = draft
+        loadedRecord = record
         baselineEdits = ConnectionEditorEngine.edits(draft, traits, originalTraits: originalTraits, context)
         dirtyBaseline = dirtyFingerprint()
         hasUnsavedChanges = false
@@ -142,11 +153,12 @@ extension ConnectionEditorStore {
         }
     }
 
-    // A save is the person's word that this Mac's references and sign-in go where the form shows.
-    private func approveSavedDefinition(_ connection: DatabaseConnection) {
+    // A save is the person's word for what the form showed: a destination or reference another writer added while it
+    // was open still asks at connect.
+    private func approveSavedDefinition(_ connection: DatabaseConnection, reviewed: DatabaseConnection) {
         LoadableExtensionApprovalStore.shared.approve(editedExtensions, for: connection.id)
-        for store in ConnectionApprovalStore.all {
-            store.approve(connection)
+        for store in approvalStores {
+            store.approve(connection, asReviewed: reviewed)
         }
     }
 
