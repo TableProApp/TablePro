@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSSHConfig
 import Testing
 
 @testable import TablePro
@@ -56,6 +57,71 @@ struct ConnectionEditorStoreTransportTests {
         store.selectEndpoint(.localSocket)
 
         #expect(store.testState == .idle)
+    }
+
+    // MARK: - Two stored transports
+
+    // An older build could store SSH and SOCKS together; the editor shows SSH.
+    private func seedSSHAndSOCKS(_ fixture: ConnectionEditorStoreFixture) -> DatabaseConnection {
+        var connection = DatabaseConnection(
+            name: "Legacy", host: "db.internal", port: 5_432, database: "orders", username: "app", type: .postgresql
+        )
+        let ssh = SSHConfiguration(enabled: true, host: "bastion.example.com")
+        connection.sshConfig = ssh
+        connection.sshTunnelMode = .inline(ssh)
+        connection.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy.example.com", port: 1_080, username: ""))
+        fixture.seed([connection])
+        return connection
+    }
+
+    @Test("A record stored with SSH and SOCKS saves a rename with SSH alone, as the editor shows")
+    func twoStoredTransportsSaveAsShown() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = seedSSHAndSOCKS(fixture)
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        #expect(store.draft.transport == .ssh)
+
+        store.update { $0.name = "Renamed" }
+        _ = try store.save().get()
+
+        let saved = try #require(fixture.storage.loadConnection(id: connection.id))
+        #expect(saved.name == "Renamed")
+        #expect(saved.sshTunnelMode == connection.sshTunnelMode)
+        #expect(saved.socksProxyMode == .disabled)
+        #expect(saved.activeTunnelKind == .ssh)
+    }
+
+    @Test("Test dials a record stored with SSH and SOCKS through SSH, as the editor shows")
+    func twoStoredTransportsTestThroughSSH() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = seedSSHAndSOCKS(fixture)
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+
+        let tested = store.testRecord(testId: UUID())
+
+        #expect(tested.socksProxyMode == .disabled)
+        #expect(tested.activeTunnelKind == .ssh)
+    }
+
+    @Test("A switch to SOCKS made elsewhere on a record stored with SSH and SOCKS survives a rename")
+    func concurrentSwitchOnTwoStoredTransportsWins() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = seedSSHAndSOCKS(fixture)
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+
+        var elsewhere = try #require(fixture.storage.loadConnection(id: connection.id))
+        elsewhere.sshTunnelMode = .disabled
+        elsewhere.sshConfig.enabled = false
+        fixture.seed([elsewhere])
+
+        store.update { $0.name = "Renamed" }
+        _ = try store.save().get()
+
+        let saved = try #require(fixture.storage.loadConnection(id: connection.id))
+        #expect(saved.name == "Renamed")
+        #expect(saved.sshTunnelMode == .disabled)
+        #expect(saved.socksProxyMode == connection.socksProxyMode)
+        #expect(saved.activeTunnelKind == .socksProxy)
     }
 
     // MARK: - Host list over a tunnel

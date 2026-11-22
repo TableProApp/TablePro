@@ -113,6 +113,7 @@ final class ConnectionEditorStore: ObservableObject {
     weak var window: NSWindow?
     weak var undoManager: UndoManager?
     var dismissAction: (() -> Void)?
+    var connectAction: (DatabaseConnection) -> Void = { ConnectionEditorStore.connectToDatabase($0) }
 
     var storage: ConnectionStorage { services.connectionStorage }
 

@@ -253,8 +253,8 @@ final class ConnectionEditorWindowController: NSWindowController, NSWindowDelega
     func resolveClose(_ choice: ConnectionEditorCloseGuard.Choice) {
         switch choice {
         case .save:
-            // Closes through dismissAction only when the save lands; a failure keeps the window and says why.
-            commit()
+            // Never connects, as Cmd+S: the person asked to save and close. A failed save keeps the window and says why.
+            save()
         case .dontSave:
             close()
         case .cancel:

@@ -133,17 +133,14 @@ extension ConnectionDraft {
         traits: ConnectionTypeTraits,
         sshConfigEntries: [SSHConfigEntry]
     ) {
-        var sshEnabled = false
         switch connection.sshTunnelMode {
         case .disabled:
             break
         case .inline(let config):
-            sshEnabled = true
             ssh.populateFields(from: config, configEntries: sshConfigEntries)
             ssh.remoteFilePath = config.remoteFilePath
             ssh.remoteFileAccess = config.remoteFileAccess
         case .profile(let id, let snapshot):
-            sshEnabled = true
             ssh.profileId = id
             ssh.profileSnapshot = snapshot
             ssh.populateFields(from: snapshot, configEntries: sshConfigEntries)
@@ -156,47 +153,36 @@ extension ConnectionDraft {
         ssh.storedPasswordState = secrets.sshPasswordState
         ssh.storedKeyPassphraseState = secrets.sshKeyPassphraseState
 
-        var cloudflareEnabled = false
         if case .inline(let config) = connection.cloudflareTunnelMode {
-            cloudflareEnabled = true
             cloudflare.populateFields(from: config)
         }
         cloudflare.serviceTokenId = secrets.cloudflareTokenId ?? ""
         cloudflare.serviceTokenSecret = secrets.cloudflareTokenSecret ?? ""
 
-        var cloudSQLEnabled = false
         if case .inline(let config) = connection.cloudSQLProxyMode {
-            cloudSQLEnabled = true
             cloudSQLProxy.populateFields(from: config)
         }
         cloudSQLProxy.serviceAccountKeyJSON = secrets.cloudSQLServiceAccountKey ?? ""
 
-        var socksEnabled = false
         if case .inline(let config) = connection.socksProxyMode {
-            socksEnabled = true
             socksProxy.host = config.host
             socksProxy.port = String(config.port)
             socksProxy.username = config.username
         }
         socksProxy.password = secrets.socksPassword ?? ""
 
-        var tunnelCommandEnabled = false
         if case .inline(let config) = connection.tunnelCommandMode {
-            tunnelCommandEnabled = true
             tunnelCommand.config = config
         }
 
-        // An older build could store two transports; the first one wins, as the connect path reads it.
-        if sshEnabled {
+        // An older build could store two transports; the editor shows the first, and Save and Test keep only that one.
+        switch connection.switchedOnTransports.first {
+        case .ssh:
             transport = traits.supportsRemoteDatabaseFile ? .remoteFile : .ssh
-        } else if cloudflareEnabled {
-            transport = .cloudflare
-        } else if cloudSQLEnabled {
-            transport = .cloudSQLProxy
-        } else if socksEnabled {
-            transport = .socksProxy
-        } else if tunnelCommandEnabled {
-            transport = .tunnelCommand
+        case let kind?:
+            transport = kind
+        case nil:
+            break
         }
 
         let socketPath = MySQLLocalSocket.path(in: connection.additionalFields)

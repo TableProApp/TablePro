@@ -282,6 +282,63 @@ struct ConnectionFormEditsMergeTests {
         #expect(result.enabledTunnelKinds == [.ssh])
     }
 
+    // An older build could store SSH and SOCKS together; the editor's load shows SSH alone.
+    private static func storedWithTwoTransports() -> (stored: DatabaseConnection, shown: DatabaseConnection) {
+        var stored = base()
+        let ssh = SSHConfiguration(enabled: true, host: "bastion")
+        stored.sshConfig = ssh
+        stored.sshTunnelMode = .inline(ssh)
+        stored.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "proxy", port: 1_080, username: ""))
+        var shown = stored
+        shown.socksProxyMode = .disabled
+        return (stored, shown)
+    }
+
+    @Test("A record stored with two transports keeps only the one the editor shows through an unrelated edit")
+    func twoStoredTransportsKeepTheShownOne() {
+        let (stored, shown) = Self.storedWithTwoTransports()
+        var edited = shown
+        edited.name = "Renamed"
+
+        let result = Self.edits(edited).applied(to: stored, since: Self.edits(shown))
+
+        #expect(result.name == "Renamed")
+        #expect(result.sshTunnelMode == stored.sshTunnelMode)
+        #expect(result.socksProxyMode == .disabled)
+        #expect(result.enabledTunnelKinds == [.ssh])
+    }
+
+    @Test("An SSH edit on a record stored with two transports lands")
+    func sshEditOnTwoStoredTransportsLands() {
+        let (stored, shown) = Self.storedWithTwoTransports()
+        var edited = shown
+        let ssh = SSHConfiguration(enabled: true, host: "bastion-2")
+        edited.sshConfig = ssh
+        edited.sshTunnelMode = .inline(ssh)
+
+        let result = Self.edits(edited).applied(to: stored, since: Self.edits(shown))
+
+        #expect(result.sshTunnelMode == edited.sshTunnelMode)
+        #expect(result.enabledTunnelKinds == [.ssh])
+    }
+
+    @Test("A switch another writer made on a record stored with two transports wins over an unrelated edit")
+    func concurrentSwitchFromTwoStoredTransportsWins() {
+        let (stored, shown) = Self.storedWithTwoTransports()
+        var fresh = stored
+        fresh.sshTunnelMode = .disabled
+        fresh.sshConfig.enabled = false
+        var edited = shown
+        edited.name = "Renamed"
+
+        let result = Self.edits(edited).applied(to: fresh, since: Self.edits(shown))
+
+        #expect(result.name == "Renamed")
+        #expect(result.sshTunnelMode == .disabled)
+        #expect(result.socksProxyMode == stored.socksProxyMode)
+        #expect(result.enabledTunnelKinds == [.socksProxy])
+    }
+
     @Test("Without a baseline the merge is the plain apply")
     func noBaselineIsPlainApply() {
         let base = Self.base()

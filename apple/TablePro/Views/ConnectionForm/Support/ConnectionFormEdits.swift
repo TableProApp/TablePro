@@ -133,10 +133,11 @@ struct ConnectionFormEdits: Equatable {
         merge(\.localOnly)
 
         // One transport at a time: a switch made here replaces the stored transports whole, and a switch another
-        // writer made stays whole, so a merge never turns on two.
-        if Self.switchedOnTransports(mine) != Self.switchedOnTransports(theirs) {
+        // writer made stays whole. Another writer's switch is read from the transport the load shows, since a record
+        // an older build stored with two shows only the first.
+        if mine.switchedOnTransports != theirs.switchedOnTransports {
             result.takeTransports(from: mine)
-        } else if Self.switchedOnTransports(fresh) == Self.switchedOnTransports(theirs) {
+        } else if fresh.switchedOnTransports.first == theirs.switchedOnTransports.first {
             merge(\.cloudflareTunnelMode)
             merge(\.cloudSQLProxyMode)
             merge(\.socksProxyMode)
@@ -150,6 +151,8 @@ struct ConnectionFormEdits: Equatable {
                 result.sshTunnelMode = mine.sshTunnelMode
             }
         }
+        // So Save and Test use the transport the editor shows, never two at once, which would connect directly.
+        result.keepOnlyFirstTransport()
 
         for key in Set(mine.additionalFields.keys).union(theirs.additionalFields.keys)
             where mine.additionalFields[key] != theirs.additionalFields[key] {
@@ -158,17 +161,6 @@ struct ConnectionFormEdits: Equatable {
 
         result.aiAlwaysAllowedTools.subtract(revokedAIAlwaysAllowedTools)
         return result
-    }
-
-    // The SSH trio counts once, whether it forwards a port or opens a remote file.
-    private static func switchedOnTransports(_ connection: DatabaseConnection) -> Set<ConnectionTunnelKind> {
-        var kinds: Set<ConnectionTunnelKind> = []
-        if connection.sshTunnelMode != .disabled { kinds.insert(.ssh) }
-        if connection.isCloudflareEnabled { kinds.insert(.cloudflare) }
-        if connection.isCloudSQLProxyEnabled { kinds.insert(.cloudSQLProxy) }
-        if connection.isSOCKSProxyEnabled { kinds.insert(.socksProxy) }
-        if connection.isTunnelCommandEnabled { kinds.insert(.tunnelCommand) }
-        return kinds
     }
 
     private func mergedAdditionalFields(onto existing: [String: String]) -> [String: String] {
@@ -183,7 +175,34 @@ struct ConnectionFormEdits: Equatable {
     }
 }
 
+extension DatabaseConnection {
+    // The SSH trio counts once, whether it forwards a port or opens a remote file. In the order the editor's load picks
+    // from, since an older build could store more than one.
+    var switchedOnTransports: [ConnectionTunnelKind] {
+        var kinds: [ConnectionTunnelKind] = []
+        if sshTunnelMode != .disabled { kinds.append(.ssh) }
+        if isCloudflareEnabled { kinds.append(.cloudflare) }
+        if isCloudSQLProxyEnabled { kinds.append(.cloudSQLProxy) }
+        if isSOCKSProxyEnabled { kinds.append(.socksProxy) }
+        if isTunnelCommandEnabled { kinds.append(.tunnelCommand) }
+        return kinds
+    }
+}
+
 private extension DatabaseConnection {
+    // SSH sorts first, so it is never one of those turned off.
+    mutating func keepOnlyFirstTransport() {
+        for kind in switchedOnTransports.dropFirst() {
+            switch kind {
+            case .cloudflare: cloudflareTunnelMode = .disabled
+            case .cloudSQLProxy: cloudSQLProxyMode = .disabled
+            case .socksProxy: socksProxyMode = .disabled
+            case .tunnelCommand: tunnelCommandMode = .disabled
+            case .ssh, .remoteFile, .remoteDatabaseSession: break
+            }
+        }
+    }
+
     mutating func takeTransports(from other: DatabaseConnection) {
         sshConfig = other.sshConfig
         sshProfileId = other.sshProfileId

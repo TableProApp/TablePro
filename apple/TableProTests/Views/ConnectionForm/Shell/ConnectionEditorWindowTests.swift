@@ -382,6 +382,30 @@ struct ConnectionEditorWindowTests {
         #expect(fixture.storage.loadConnection(id: connection.id)?.host == "replica.example.com")
     }
 
+    @Test("Save in the close question stores a new connection without connecting, which Save & Connect does")
+    func closeSaveDoesNotConnect() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        var connected: [UUID] = []
+
+        let closing = makeController(fixture, .new(type: .postgresql, parsedURL: nil))
+        closing.store.connectAction = { connected.append($0.id) }
+        closing.store.update { $0.name = "Orders" }
+        guard case .askToSave = closing.closeVerdict else {
+            Issue.record("Expected the close to ask")
+            return
+        }
+        closing.resolveClose(.save)
+        #expect(closing.store.isClosing)
+        #expect(fixture.storage.loadConnection(id: closing.store.connectionId) != nil)
+        #expect(connected.isEmpty)
+
+        let committing = makeController(fixture, .new(type: .postgresql, parsedURL: nil))
+        committing.store.connectAction = { connected.append($0.id) }
+        committing.store.update { $0.name = "Invoices" }
+        committing.commit()
+        #expect(connected == [committing.store.connectionId])
+    }
+
     @Test("An invalid field is not an alert: Save already shows it in place")
     func saveErrorAlerts() {
         let issue = FieldIssue(facet: .general, row: .builtIn(.port), message: "Port", severity: .error)

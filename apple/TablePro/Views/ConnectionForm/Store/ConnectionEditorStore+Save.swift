@@ -149,7 +149,7 @@ extension ConnectionEditorStore {
         dismissAction?()
         services.appEvents.connectionUpdated.send(record.id)
         if connect {
-            connectToDatabase(record)
+            connectAction(record)
         }
     }
 
@@ -224,7 +224,7 @@ extension ConnectionEditorStore {
 
     // MARK: - Connect
 
-    func connectToDatabase(_ connection: DatabaseConnection) {
+    static func connectToDatabase(_ connection: DatabaseConnection) {
         Task {
             do {
                 try await TabRouter.shared.route(.openConnection(connection.id))
