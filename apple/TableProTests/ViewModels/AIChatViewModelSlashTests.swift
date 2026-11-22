@@ -118,6 +118,36 @@ struct AIChatViewModelSlashTests {
         #expect(firstUserTurn?.plainText == "/summarize last week's orders")
     }
 
+    @Test("A custom command picked from the menu runs even when a built-in shares its name")
+    func pickedCustomCommandWinsOverBuiltIn() async throws {
+        let vm = AIChatViewModel()
+        vm.customSlashCommandNamed = { _ in nil }
+        vm.composedCustomCommand = CustomSlashCommand(name: "help", promptTemplate: "Custom {{body}}")
+        vm.inputText = "/help orders"
+
+        vm.sendMessage()
+
+        #expect(vm.composedCustomCommand == nil)
+        try await waitUntil {
+            vm.messages.contains { turn in turn.plainText == "Custom orders" }
+        }
+        #expect(!vm.messages.contains { turn in turn.plainText.contains("Available commands") })
+    }
+
+    @Test("A picked custom command no longer applies once the composer names another command")
+    func pickedCustomCommandDropsWhenRenamed() {
+        let vm = AIChatViewModel()
+        vm.customSlashCommandNamed = { _ in nil }
+        vm.composedCustomCommand = CustomSlashCommand(name: "summarize", promptTemplate: "Custom {{body}}")
+        vm.inputText = "/help"
+
+        vm.sendMessage()
+
+        #expect(vm.composedCustomCommand == nil)
+        let assistant = vm.messages.last { turn in turn.role == .assistant }
+        #expect(assistant?.plainText.contains("Available commands") == true)
+    }
+
     @Test("Typing a built-in name runs the built-in even when a custom command shares it")
     func typedBuiltInWinsOverCustom() {
         let vm = AIChatViewModel()

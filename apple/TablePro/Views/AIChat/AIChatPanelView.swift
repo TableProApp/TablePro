@@ -495,6 +495,7 @@ struct AIChatPanelView: View {
         switch CustomSlashCommandPick.resolve(command, draft: viewModel.inputText) {
         case .compose(let text):
             viewModel.inputText = text
+            viewModel.composedCustomCommand = command
         case .run:
             updateContext()
             Task { await viewModel.runCustomSlashCommand(command) }
