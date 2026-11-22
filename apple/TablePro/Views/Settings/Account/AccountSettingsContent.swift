@@ -1,8 +1,3 @@
-//
-//  AccountSettingsContent.swift
-//  TablePro
-//
-
 import Foundation
 
 // What Settings > Account shows for one account state (clients.md, Settings > Account).
@@ -81,6 +76,14 @@ internal struct AccountSettingsContent: Equatable {
         let isExpired: Bool
     }
 
+    enum VerificationState: Equatable {
+        case verified(at: Date, until: Date)
+        case offlineFile(until: Date)
+        case expired(on: Date)
+        case offlineFileExpired(on: Date)
+        case notVerified
+    }
+
     static let expiryWarning: TimeInterval = 3 * 24 * 60 * 60
 
     let identity: Identity
@@ -89,6 +92,7 @@ internal struct AccountSettingsContent: Equatable {
     let plans: [PlanRow]
     let isFree: Bool
     let showsDevices: Bool
+    let showsTeams: Bool
     let devices: [DeviceRow]?
     let teams: [TeamRow]?
     let verification: Verification?
@@ -119,6 +123,7 @@ internal struct AccountSettingsContent: Equatable {
             plans: plans,
             isFree: showsPlan && !isDeviceLimit && entitlement != nil && plans.isEmpty,
             showsDevices: state.isSignedIn,
+            showsTeams: state.isSignedIn,
             devices: state.isSignedIn ? devices.map { deviceRows($0, machineID: machineID, now: now) } : nil,
             teams: state.isSignedIn ? profile.map { teamRows($0, configuration: configuration) } : nil,
             verification: entitlement.map {
@@ -132,6 +137,21 @@ internal struct AccountSettingsContent: Equatable {
             canRefresh: state.isSignedIn || hasLegacyLicense,
             machineID: machineID
         )
+    }
+
+    var verificationState: VerificationState? {
+        guard let verification else { return canRefresh ? .notVerified : nil }
+        switch (verification.isOfflineFile, verification.isExpired) {
+        case (false, false): return .verified(at: verification.verifiedAt, until: verification.validUntil)
+        case (true, false): return .offlineFile(until: verification.validUntil)
+        case (false, true): return .expired(on: verification.validUntil)
+        case (true, true): return .offlineFileExpired(on: verification.validUntil)
+        }
+    }
+
+    // A notice with Try Again already runs the check the verification row's Refresh would.
+    var offersRetry: Bool {
+        notices.contains { LicensePresentation.action(for: $0) == .retryValidation }
     }
 
     // Without GET /v2/me, so a team plan's payment notice offers no billing link here.
@@ -268,6 +288,12 @@ internal struct AccountSettingsContent: Equatable {
 
 // The pane, the gates and Welcome read a state in the same words.
 extension AccountSettingsContent.Notice {
+    // A canceling plan is the person's own choice, so it informs rather than warns.
+    var isInformational: Bool {
+        if case .canceling = self { return true }
+        return false
+    }
+
     var title: String {
         switch self {
         case .deviceLimit:

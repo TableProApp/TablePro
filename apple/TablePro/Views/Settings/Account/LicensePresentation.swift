@@ -1,8 +1,3 @@
-//
-//  LicensePresentation.swift
-//  TablePro
-//
-
 import Foundation
 
 internal enum LicenseNoticeAction: Equatable {
@@ -86,7 +81,7 @@ internal enum LicensePresentation {
     // plan stays in the pane: the person chose it, and the pane shows the date it ends.
     static func welcomeLine(state: AccountState, configuration: AccountConfiguration, now: Date) -> LicenseNotice? {
         let notices = AccountSettingsContent.notices(state: state, configuration: configuration, now: now)
-        if let first = notices.first(where: { !$0.isCanceling }) {
+        if let first = notices.first(where: { !$0.isInformational }) {
             return notice(first)
         }
         guard !state.isSignedIn, state.legacy == nil else { return nil }
@@ -118,12 +113,5 @@ internal enum LicensePresentation {
     static func checkFailureMessage(_ refresh: EntitlementRefreshState) -> String? {
         guard case .failed(let error) = refresh else { return nil }
         return error.friendlyDescription
-    }
-}
-
-private extension AccountSettingsContent.Notice {
-    var isCanceling: Bool {
-        if case .canceling = self { return true }
-        return false
     }
 }
