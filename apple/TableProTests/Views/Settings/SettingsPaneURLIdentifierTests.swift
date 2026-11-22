@@ -134,6 +134,7 @@ struct SettingsPaneURLIdentifierTests {
         #expect(SettingsPage.sqlFormatting.drillIdentifier == "settings-drill-sql-formatting")
         #expect(SettingsPage.commandLineTool.pageIdentifier == "settings-page-command-line-tool")
         #expect(SettingsRoute.page(.mcpTokens).settingsDrillIdentifier == "settings-drill-tokens")
+        #expect(SettingsRoute.page(.mcpApprovals).settingsDrillIdentifier == "settings-drill-approvals")
         #expect(SettingsRoute.plugin(id: "com.tablepro.postgresql").settingsDrillIdentifier == nil)
     }
 }

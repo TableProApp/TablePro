@@ -16,8 +16,10 @@ struct LicenseNoticeActionButton: View {
         case .purchase, .upgrade, .renew:
             Link(action.title, destination: SupportLinks.pricing(referrer))
                 .countsUpgradeClicks(from: referrer)
-        case .openAccountSettings:
-            Button(action.title) { WindowOpener.shared.openSettings(tab: .account) }
+        case .openAccountSettings(let page):
+            Button(action.title) {
+                WindowOpener.shared.openSettings(page.map(SettingsLocation.init(page:)) ?? .root(.account))
+            }
         case .retryValidation:
             HStack(spacing: 6) {
                 Button(action.title) {
@@ -99,8 +101,8 @@ extension LicenseNoticeAction {
         case .purchase, .upgrade, .renew:
             Telemetry.shared.upgradeClicked(from: referrer)
             WebPageOpener.open(SupportLinks.pricing(referrer), scope: .https)
-        case .openAccountSettings:
-            WindowOpener.shared.openSettings(tab: .account)
+        case .openAccountSettings(let page):
+            WindowOpener.shared.openSettings(page.map(SettingsLocation.init(page:)) ?? .root(.account))
         case .retryValidation:
             WindowOpener.shared.openSettings(tab: .account)
             Task { await AccountServices.shared.checkNow() }

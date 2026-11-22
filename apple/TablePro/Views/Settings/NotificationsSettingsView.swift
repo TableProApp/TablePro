@@ -40,6 +40,8 @@ struct NotificationsSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-pane-notifications")
         .task(id: visit.count) {
             await permission.refresh()
         }

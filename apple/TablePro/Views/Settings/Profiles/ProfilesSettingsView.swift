@@ -29,6 +29,8 @@ struct ProfilesSettingsView: View {
             sshSection
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-pane-profiles")
         .sheet(item: $editor) { route in
             switch route {
             case .newCredential:

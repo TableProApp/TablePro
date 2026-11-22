@@ -6,7 +6,8 @@ internal enum LicenseNoticeAction: Equatable {
     case upgrade
     case renew
     case retryValidation
-    case openAccountSettings
+    // nil opens the Account pane itself.
+    case openAccountSettings(page: SettingsPage?)
 
     var title: String {
         switch self {
@@ -55,7 +56,7 @@ internal enum LicensePresentation {
                 return LicenseNotice(
                     title: String(localized: "Your plan is in use on 3 other devices"),
                     message: String(localized: "Remove one in Settings to use your plan on this Mac."),
-                    action: .openAccountSettings
+                    action: .openAccountSettings(page: .accountDevices)
                 )
             }
             return LicenseNotice(title: feature.paidPlanRequirement, message: feature.featureDescription, action: .upgrade)
@@ -103,8 +104,12 @@ internal enum LicensePresentation {
         switch notice {
         case .expiringSoon(_, false), .expired(_, false), .verificationFailed:
             return .retryValidation
-        case .deviceLimit, .paymentProblem, .expiringSoon(_, true), .expired(_, true):
-            return .openAccountSettings
+        case .deviceLimit:
+            return .openAccountSettings(page: .accountDevices)
+        case .expiringSoon(_, true), .expired(_, true):
+            return .openAccountSettings(page: .accountOffline)
+        case .paymentProblem:
+            return .openAccountSettings(page: nil)
         case .canceling:
             return nil
         }

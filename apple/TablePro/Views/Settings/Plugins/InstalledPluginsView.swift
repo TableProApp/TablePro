@@ -94,6 +94,8 @@ struct InstalledPluginsView: View {
             }
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-pane-plugins")
     }
 
     @ViewBuilder private var dropHighlight: some View {

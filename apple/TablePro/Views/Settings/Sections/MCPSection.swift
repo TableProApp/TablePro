@@ -63,20 +63,14 @@ struct MCPSection: View {
             .pickerStyle(.menu)
             .accessibilityIdentifier("mcp-approval-picker")
 
-            NavigationLink(value: SettingsRoute.page(.mcpApprovals)) {
-                LabeledContent {
-                    if let approvalsValue {
-                        Text(approvalsValue)
-                            .foregroundStyle(.secondary)
-                    }
-                } label: {
-                    Text("Approved connections")
-                    if settings.connectionApproval != .oncePerConnection {
-                        Text("Used only with Ask Once for Each Connection.")
-                    }
-                }
-            }
-            .accessibilityIdentifier(SettingsPage.mcpApprovals.drillIdentifier)
+            SettingsDrillRow(
+                route: SettingsRoute.page(.mcpApprovals),
+                title: "Approved connections",
+                value: approvalsValue,
+                subtitle: settings.connectionApproval != .oncePerConnection
+                    ? "Used only with Ask Once for Each Connection."
+                    : nil
+            )
 
             SettingsDrillRow(route: SettingsRoute.page(.mcpTokens), title: "Tokens", value: tokensValue)
 

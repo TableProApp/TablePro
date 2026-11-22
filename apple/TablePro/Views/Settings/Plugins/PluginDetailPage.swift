@@ -70,6 +70,8 @@ struct PluginDetailPage: View {
             }
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-page-plugin")
         .task(id: entry.id) {
             loaded = await PluginLoadedInstance.load(entry, manager: model.manager)
         }

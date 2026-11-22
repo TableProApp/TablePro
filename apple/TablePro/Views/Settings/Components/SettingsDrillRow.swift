@@ -7,21 +7,35 @@ protocol SettingsDrillIdentifying {
 struct SettingsDrillRow<Route: Hashable>: View {
     private let route: Route
     private let title: Text
+    private let subtitle: LocalizedStringKey?
     private let value: String?
     private let identifier: String?
 
-    init(route: Route, title: LocalizedStringKey, value: String? = nil, identifier: String? = nil) {
-        self.init(route: route, titleText: Text(title), value: value, identifier: identifier)
+    init(
+        route: Route,
+        title: LocalizedStringKey,
+        value: String? = nil,
+        subtitle: LocalizedStringKey? = nil,
+        identifier: String? = nil
+    ) {
+        self.init(route: route, titleText: Text(title), value: value, subtitle: subtitle, identifier: identifier)
     }
 
     @_disfavoredOverload
-    init<Title: StringProtocol>(route: Route, title: Title, value: String? = nil, identifier: String? = nil) {
-        self.init(route: route, titleText: Text(title), value: value, identifier: identifier)
+    init<Title: StringProtocol>(
+        route: Route,
+        title: Title,
+        value: String? = nil,
+        subtitle: LocalizedStringKey? = nil,
+        identifier: String? = nil
+    ) {
+        self.init(route: route, titleText: Text(title), value: value, subtitle: subtitle, identifier: identifier)
     }
 
-    private init(route: Route, titleText: Text, value: String?, identifier: String?) {
+    private init(route: Route, titleText: Text, value: String?, subtitle: LocalizedStringKey?, identifier: String?) {
         self.route = route
         self.title = titleText
+        self.subtitle = subtitle
         self.value = value
         // Route stays any Hashable for NavigationLink, so the page id comes from a route that adopts the protocol.
         self.identifier = identifier ?? (route as? any SettingsDrillIdentifying)?.settingsDrillIdentifier
@@ -36,6 +50,9 @@ struct SettingsDrillRow<Route: Hashable>: View {
                 }
             } label: {
                 title
+                if let subtitle {
+                    Text(subtitle)
+                }
             }
         }
         .accessibilityIdentifier(identifier ?? "")

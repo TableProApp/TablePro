@@ -77,6 +77,8 @@ struct RejectedPluginDetailPage: View {
             }
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-page-rejected-plugin")
     }
 
     private var location: String {

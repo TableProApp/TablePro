@@ -132,6 +132,8 @@ struct AISettingsView: View {
             privacySection
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-pane-ai")
         .task(id: visit.count) {
             appleIntelligence = SystemOnDeviceLanguageModel().availability
         }

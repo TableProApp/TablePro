@@ -82,6 +82,8 @@ struct SyncSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-pane-sync")
     }
 
     private func noticeRow(_ notice: SyncNotice) -> some View {
