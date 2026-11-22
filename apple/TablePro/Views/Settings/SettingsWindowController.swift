@@ -112,10 +112,6 @@ internal final class SettingsSplitViewController: NSSplitViewController {
         let detail = NSHostingController(rootView: SettingsDetailView(model: model, registryClient: registryClient))
         // A split item's hosting controller fixes its fitting size as a required minimum unless this is cleared.
         detail.sizingOptions = []
-        // Bridge the detail's NavigationStack toolbar (back button, title) into the window toolbar.
-        if #available(macOS 14.0, *) {
-            detail.sceneBridgingOptions = [.toolbars]
-        }
         let detailItem = NSSplitViewItem(viewController: detail)
         detailItem.minimumThickness = Self.detailMinWidth
         detailItem.holdingPriority = NSLayoutConstraint.Priority(260) // below dragThatCannotResizeWindow (490)
@@ -171,25 +167,31 @@ private struct SettingsSidebarView: View {
     }
 
     fileprivate var body: some View {
-        List(selection: selectionBinding) {
-            ForEach(SettingsNavigation.sections, id: \.id) { section in
-                let panes = visiblePanes(in: section)
-                if !panes.isEmpty {
-                    Section {
-                        ForEach(panes, id: \.self) { pane in
-                            Label {
-                                Text(pane.title)
-                            } icon: {
-                                SettingsRowIcon(systemName: pane.symbol, tint: pane.tint)
+        VStack(spacing: 0) {
+            NativeSearchField(text: $model.searchText, placeholder: String(localized: "Search"))
+                .padding(.horizontal, 10)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
+
+            List(selection: selectionBinding) {
+                ForEach(SettingsNavigation.sections, id: \.id) { section in
+                    let panes = visiblePanes(in: section)
+                    if !panes.isEmpty {
+                        Section {
+                            ForEach(panes, id: \.self) { pane in
+                                Label {
+                                    Text(pane.title)
+                                } icon: {
+                                    SettingsRowIcon(systemName: pane.symbol, tint: pane.tint)
+                                }
+                                .tag(Optional(pane))
                             }
-                            .tag(Optional(pane))
                         }
                     }
                 }
             }
+            .listStyle(.sidebar)
         }
-        .listStyle(.sidebar)
-        .searchable(text: $model.searchText, placement: .sidebar, prompt: Text("Search"))
     }
 
     private func visiblePanes(in section: SettingsSection) -> [SettingsPane] {
@@ -211,7 +213,6 @@ private struct SettingsDetailView: View {
 }
 
 private struct SettingsPaneStack: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
     fileprivate let pane: SettingsPane
     fileprivate let registryClient: RegistryClient
     @State private var path = NavigationPath()
@@ -221,10 +222,6 @@ private struct SettingsPaneStack: View {
             SettingsPaneContent(pane: pane, registryClient: registryClient, path: $path)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .navigationTitle(pane.title)
-                .navigationDestination(for: SettingsSubpage.self) { subpage in
-                    SettingsSubpageView(settingsManager: settingsManager, subpage: subpage)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
         }
     }
 }
@@ -261,7 +258,7 @@ private struct SettingsSubpageView: View {
             Form { DataRewindSection(settings: $settingsManager.history) }
                 .formStyle(.grouped)
         case .whatSyncs:
-            Form { SyncCategoriesSection() }
+            Form { SyncCategoriesSection(settingsManager: settingsManager) }
                 .formStyle(.grouped)
         }
     }
@@ -281,6 +278,14 @@ private struct SettingsPaneContent: View {
     }
 
     fileprivate var body: some View {
+        paneContent
+            .navigationDestination(for: SettingsSubpage.self) { subpage in
+                SettingsSubpageView(settingsManager: settingsManager, subpage: subpage)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+    }
+
+    @ViewBuilder private var paneContent: some View {
         switch pane {
         case .general:
             GeneralSettingsView(

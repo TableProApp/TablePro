@@ -7,10 +7,6 @@ struct GeneralSettingsView: View {
 
     @State private var showResetConfirmation = false
 
-    // The UI language is fixed until a relaunch, so the prompt compares against the language in
-    // effect when Settings first opened this run, not against per-view state the pane rebuild resets.
-    @MainActor private static let launchLanguage = AppSettingsManager.shared.general.language
-
     var body: some View {
         Form {
             Picker("Language:", selection: $settings.language) {
@@ -19,7 +15,7 @@ struct GeneralSettingsView: View {
                 }
             }
 
-            if settings.language != Self.launchLanguage {
+            if settings.language != LanguageLaunchState.language {
                 LabeledContent {
                     Button(String(localized: "Relaunch")) {
                         UpdateCenter.shared.relaunch()

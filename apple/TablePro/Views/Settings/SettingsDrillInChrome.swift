@@ -5,9 +5,9 @@
 
 import SwiftUI
 
-// Title and a Back control for any page pushed onto a Settings pane's NavigationStack. The back
-// button rides the window toolbar on macOS 14+ (the detail hosting controller bridges toolbars);
-// macOS 13 cannot bridge it, so an inline bar carries the same button there.
+// Title and a Back control for any page pushed onto a Settings pane's NavigationStack. The control
+// sits at the top of the detail column (like System Settings), not in the window toolbar, so it
+// never overlaps the sidebar.
 private struct SettingsDrillInChrome: ViewModifier {
     @Environment(\.dismiss) private var dismiss
     let title: String
@@ -15,30 +15,28 @@ private struct SettingsDrillInChrome: ViewModifier {
     func body(content: Content) -> some View {
         content
             .navigationTitle(title)
-            .toolbar {
-                ToolbarItem(placement: .navigation) { backButton }
-            }
             .safeAreaInset(edge: .top, spacing: 0) {
-                if #unavailable(macOS 14.0) {
-                    HStack {
-                        backButton
-                        Spacer()
+                HStack(spacing: 6) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.backward")
+                            .fontWeight(.semibold)
+                            .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.bar)
-                }
-            }
-    }
+                    .buttonStyle(.borderless)
+                    .help(String(localized: "Back"))
+                    .accessibilityLabel(String(localized: "Back"))
 
-    private var backButton: some View {
-        Button {
-            dismiss()
-        } label: {
-            Image(systemName: "chevron.backward")
-        }
-        .help(String(localized: "Back"))
-        .accessibilityLabel(String(localized: "Back"))
+                    Text(title)
+                        .font(.headline)
+
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(.bar)
+            }
     }
 }
 

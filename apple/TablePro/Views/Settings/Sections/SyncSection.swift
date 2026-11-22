@@ -83,7 +83,7 @@ struct SyncSection: View {
 
 // The sync-category toggles, shown on the What Syncs drill-in.
 struct SyncCategoriesSection: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject var settingsManager: AppSettingsManager
 
     var body: some View {
         Section("Sync Categories") {

@@ -46177,6 +46177,9 @@
         }
       }
     },
+    "Command Line Tool" : {
+
+    },
     "Command line tool failed: %@" : {
       "localizations" : {
         "fr" : {
@@ -109647,6 +109650,9 @@
         }
       }
     },
+    "Manage Themes" : {
+
+    },
     "Manage…" : {
 
     },
@@ -172051,6 +172057,9 @@
         }
       }
     },
+    "Sidebar & Tabs" : {
+
+    },
     "Sidebar as List" : {
       "localizations" : {
         "fr" : {
@@ -175998,6 +176007,9 @@
           }
         }
       }
+    },
+    "SQL Formatting" : {
+
     },
     "SQL Functions" : {
       "localizations" : {
@@ -220925,6 +220937,9 @@
           }
         }
       }
+    },
+    "What Syncs" : {
+
     },
     "What the check looks for, with its threshold" : {
 
