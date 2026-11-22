@@ -4,10 +4,11 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
 
-// An AppKit window, so the app needs no SwiftUI Settings scene.
+// An AppKit window, so the app needs no SwiftUI Settings scene (which would rewrite NSApp.mainMenu).
 @MainActor
 internal final class SettingsWindowController: NSWindowController {
     private static var shared: SettingsWindowController?
@@ -15,14 +16,14 @@ internal final class SettingsWindowController: NSWindowController {
     internal static func present(pane: SettingsPane? = nil) {
         let controller = shared ?? SettingsWindowController()
         shared = controller
-        controller.paneController?.select(pane)
+        controller.split?.navigate(to: pane)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
         AppActivationPolicyController.shared.activate()
     }
 
-    private var paneController: SettingsPaneTabViewController? {
-        contentViewController as? SettingsPaneTabViewController
+    private var split: SettingsSplitViewController? {
+        contentViewController as? SettingsSplitViewController
     }
 
     // A defaulted parameter would let `SettingsWindowController()` resolve to the inherited `init()`, which builds no window.
@@ -31,105 +32,190 @@ internal final class SettingsWindowController: NSWindowController {
     }
 
     internal convenience init(registryClient: RegistryClient) {
-        let panes = SettingsPaneTabViewController(registryClient: registryClient)
+        let split = SettingsSplitViewController(registryClient: registryClient)
 
-        // NSWindow(contentViewController:) binds the title to the panes controller's, so nothing writes window.title.
-        let window = NSWindow(contentViewController: panes)
+        // NSWindow(contentViewController:) binds the title to the split controller's, which mirrors the selected row.
+        let window = NSWindow(contentViewController: split)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.settings)
         window.keepsKeyViewLoopCurrent()
         window.styleMask = [.titled, .closable, .resizable]
-        window.toolbarStyle = .preference
         window.isRestorable = false
-        window.contentMinSize = SettingsPaneTabViewController.paneSize
-        window.setContentSize(SettingsPaneTabViewController.paneSize)
+        window.contentMinSize = SettingsSplitViewController.minimumContentSize
+        window.setContentSize(SettingsSplitViewController.minimumContentSize)
         window.applyAutosaveName(WindowIdentifier.settings)
-        // contentMinSize only limits a drag, so a frame saved before the window had a minimum is grown back here.
         window.setContentSize(
             NSSize(
-                width: max(window.contentLayoutRect.width, SettingsPaneTabViewController.paneSize.width),
-                height: max(window.contentLayoutRect.height, SettingsPaneTabViewController.paneSize.height)
+                width: max(window.contentLayoutRect.width, SettingsSplitViewController.minimumContentSize.width),
+                height: max(window.contentLayoutRect.height, SettingsSplitViewController.minimumContentSize.height)
             )
         )
         self.init(window: window)
     }
 }
 
-internal final class SettingsPaneTabViewController: NSTabViewController {
-    // Fits twelve items in a .preference toolbar; at 720 the last one hides behind an overflow chevron.
-    internal static let paneSize = NSSize(width: 800, height: 500)
-    internal static let paneOrder: [SettingsPane] = SettingsPane.allCases
+// The sidebar list + detail pane. Replaces the twelve-item .preference toolbar; a scrolling
+// sidebar has no item cap, and the detail hosts a NavigationStack so a row can push sub-pages.
+internal final class SettingsSplitViewController: NSSplitViewController {
+    internal static let minimumContentSize = NSSize(width: 775, height: 520)
+    private static let sidebarMinWidth: CGFloat = 204
+    private static let sidebarMaxWidth: CGFloat = 280
+    private static let detailMinWidth: CGFloat = 560
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SettingsWindow")
 
+    internal let model: SettingsNavigationModel
     private let registryClient: RegistryClient
+    private var cancellables: Set<AnyCancellable> = []
 
     internal init(registryClient: RegistryClient = .shared) {
         self.registryClient = registryClient
+        self.model = SettingsNavigationModel(initial: Self.persistedPane)
         super.init(nibName: nil, bundle: nil)
+        title = model.selection.title
     }
 
     internal required init?(coder: NSCoder) {
-        fatalError("SettingsPaneTabViewController does not support NSCoder init")
+        fatalError("SettingsSplitViewController does not support NSCoder init")
     }
 
-    private var persistedPane: SettingsPane {
+    private static var persistedPane: SettingsPane {
         let stored = AppStorageEnvironment.shared.defaults.string(forKey: PreferenceKeys.selectedSettingsPane.name)
-        guard let stored, let pane = SettingsPane(rawValue: stored) else { return .general }
+        guard let stored, let pane = SettingsPane(rawValue: stored) else { return SettingsNavigation.defaultPane }
         return pane
     }
 
-    internal func select(_ pane: SettingsPane?) {
-        // Before macOS 14, reading view loads it, which is all loadViewIfNeeded() does.
-        if #available(macOS 14.0, *) {
-            loadViewIfNeeded()
-        } else {
-            _ = view
-        }
-        let wanted = pane ?? persistedPane
-        guard let index = Self.paneOrder.firstIndex(of: wanted) else {
-            Self.logger.error("Settings pane \(wanted.rawValue, privacy: .public) has no tab and cannot be shown")
-            return
-        }
-        selectedTabViewItemIndex = index
+    // A user click persists as the new last-used pane; a programmatic jump (openSettings, deep link)
+    // navigates without clobbering it.
+    internal func navigate(to pane: SettingsPane?) {
+        _ = view // loads the view on every supported macOS, which attaches the selection observer
+        model.applyProgrammatic(pane ?? Self.persistedPane)
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        tabStyle = .toolbar
-        // Adding the first item selects and persists .general, so the saved pane is read before any item exists.
-        let restored = persistedPane
-        for pane in Self.paneOrder {
-            addTabViewItem(makeTabViewItem(for: pane))
-        }
-        select(restored)
+
+        let sidebar = NSHostingController(rootView: SettingsSidebarView(model: model))
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+        sidebarItem.minimumThickness = Self.sidebarMinWidth
+        sidebarItem.maximumThickness = Self.sidebarMaxWidth
+        sidebarItem.canCollapse = false
+        addSplitViewItem(sidebarItem)
+
+        let detail = NSHostingController(rootView: SettingsDetailView(model: model, registryClient: registryClient))
+        // A split item's hosting controller fixes its fitting size as a required minimum unless this is cleared.
+        detail.sizingOptions = []
+        let detailItem = NSSplitViewItem(viewController: detail)
+        detailItem.minimumThickness = Self.detailMinWidth
+        detailItem.holdingPriority = NSLayoutConstraint.Priority(260) // below dragThatCannotResizeWindow (490)
+        addSplitViewItem(detailItem)
+
+        model.$selection
+            .removeDuplicates()
+            .sink { [weak self] pane in
+                self?.title = pane.title
+                self?.persistUserSelection(pane)
+            }
+            .store(in: &cancellables)
     }
 
-    override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
-        super.tabView(tabView, didSelect: tabViewItem)
-        guard let identifier = tabViewItem?.identifier as? String,
-              let pane = SettingsPane(rawValue: identifier) else { return }
+    private func persistUserSelection(_ pane: SettingsPane) {
+        guard !model.isApplyingProgrammatic else { return }
         AppStorageEnvironment.shared.defaults.set(pane.rawValue, forKey: PreferenceKeys.selectedSettingsPane.name)
     }
+}
 
-    private func makeTabViewItem(for pane: SettingsPane) -> NSTabViewItem {
-        let content = SettingsPaneContent(pane: pane, registryClient: registryClient)
-            .frame(
-                minWidth: Self.paneSize.width,
-                maxWidth: .infinity,
-                minHeight: Self.paneSize.height,
-                maxHeight: .infinity
-            )
-            .environment(\.appServices, .live)
-        let hosting = NSHostingController(rootView: content)
-        // The window owns the minimum size; the title still reaches it, as NSTabViewController mirrors the selected child's.
-        hosting.sizingOptions = []
-        hosting.title = pane.title
+@MainActor
+internal final class SettingsNavigationModel: ObservableObject {
+    @Published internal var selection: SettingsPane
+    @Published internal var searchText: String = ""
+    internal private(set) var isApplyingProgrammatic = false
 
-        let item = NSTabViewItem(viewController: hosting)
-        item.label = pane.title
-        item.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: pane.title)
-        item.identifier = pane.rawValue
-        return item
+    internal init(initial: SettingsPane) {
+        self.selection = initial
+    }
+
+    // From the sidebar list: the user picked a row, so it becomes the last-used pane.
+    internal func userSelect(_ pane: SettingsPane) {
+        isApplyingProgrammatic = false
+        selection = pane
+    }
+
+    // From openSettings / a deep link: show the pane but do not rewrite the last-used pane.
+    internal func applyProgrammatic(_ pane: SettingsPane) {
+        isApplyingProgrammatic = true
+        selection = pane
+        isApplyingProgrammatic = false
+    }
+}
+
+private struct SettingsSidebarView: View {
+    @ObservedObject fileprivate var model: SettingsNavigationModel
+
+    private var selectionBinding: Binding<SettingsPane?> {
+        Binding(
+            get: { model.selection },
+            set: { if let pane = $0 { model.userSelect(pane) } }
+        )
+    }
+
+    fileprivate var body: some View {
+        List(selection: selectionBinding) {
+            ForEach(SettingsNavigation.sections, id: \.id) { section in
+                let panes = visiblePanes(in: section)
+                if !panes.isEmpty {
+                    Section {
+                        ForEach(panes, id: \.self) { pane in
+                            Label(pane.title, systemImage: pane.symbol)
+                                .tag(Optional(pane))
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .searchable(text: $model.searchText, placement: .sidebar, prompt: Text("Search"))
+    }
+
+    private func visiblePanes(in section: SettingsSection) -> [SettingsPane] {
+        let matches = Set(SettingsNavigation.panes(matching: model.searchText))
+        return section.panes.filter(matches.contains)
+    }
+}
+
+private struct SettingsDetailView: View {
+    @ObservedObject fileprivate var model: SettingsNavigationModel
+    fileprivate let registryClient: RegistryClient
+
+    fileprivate var body: some View {
+        NavigationStack {
+            SettingsPaneContent(pane: model.selection, registryClient: registryClient)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationDestination(for: SettingsSubpage.self) { subpage in
+                    SettingsSubpageView(subpage: subpage)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+        }
+        // Each pane owns its own navigation depth; switching panes resets any pushed sub-page.
+        .id(model.selection)
+        .environment(\.appServices, .live)
+    }
+}
+
+// A pushed drill-in page. Back button and title come from the NavigationStack.
+private struct SettingsSubpageView: View {
+    fileprivate let subpage: SettingsSubpage
+
+    fileprivate var body: some View {
+        Form {
+            switch subpage {
+            case .softwareUpdate:
+                SoftwareUpdateSection(updater: SoftwareUpdater.shared, updates: .shared)
+            case .commandLine:
+                CommandLineToolSection()
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(subpage.title)
     }
 }
 
@@ -149,10 +235,15 @@ private struct SettingsPaneContent: View {
         case .general:
             GeneralSettingsView(
                 settings: $settingsManager.general,
-                tabSettings: $settingsManager.tabs,
-                updater: SoftwareUpdater.shared,
                 onResetAll: { settingsManager.resetToDefaults() }
             )
+        case .sidebar:
+            SidebarTabsSettingsView(
+                settings: $settingsManager.general,
+                tabSettings: $settingsManager.tabs
+            )
+        case .connections:
+            ConnectionsSettingsView(settings: $settingsManager.general)
         case .appearance:
             AppearanceSettingsView(settings: $settingsManager.appearance)
         case .editor:

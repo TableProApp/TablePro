@@ -6,11 +6,13 @@
 import SwiftUI
 
 enum SettingsPane: String, CaseIterable {
-    case general, appearance, editor, data, keyboard, profiles, notifications, ai, mcp, plugins, sync, account
+    case general, sidebar, connections, appearance, editor, data, keyboard, profiles, notifications, ai, mcp, plugins, sync, account
 
     var title: String {
         switch self {
         case .general: String(localized: "General")
+        case .sidebar: String(localized: "Sidebar & Tabs")
+        case .connections: String(localized: "Connections")
         case .appearance: String(localized: "Appearance")
         case .editor: String(localized: "Editor")
         case .data: String(localized: "Data")
@@ -31,6 +33,8 @@ enum SettingsPane: String, CaseIterable {
     var symbol: String {
         switch self {
         case .general: "gearshape"
+        case .sidebar: "sidebar.left"
+        case .connections: "cable.connector"
         case .appearance: "paintbrush"
         case .editor: "doc.text"
         case .data: "tablecells"

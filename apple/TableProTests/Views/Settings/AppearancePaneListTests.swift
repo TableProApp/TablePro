@@ -43,7 +43,8 @@ struct AppearancePaneListTests {
     }
 
     private static func hostPane() throws -> HostedPane {
-        let paneSize = SettingsPaneTabViewController.paneSize
+        // The size of the Settings detail pane that hosts the Appearance view.
+        let paneSize = NSSize(width: 560, height: 480)
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: paneSize),
             styleMask: [.titled],

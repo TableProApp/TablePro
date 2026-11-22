@@ -10,6 +10,8 @@ struct SettingsPaneURLIdentifierTests {
     // Published at docs.tablepro.app/developers/url-scheme. Changing a value breaks links in other apps.
     private static let published: [SettingsPane: String] = [
         .general: "general",
+        .sidebar: "sidebar",
+        .connections: "connections",
         .appearance: "appearance",
         .editor: "editor",
         .data: "data",

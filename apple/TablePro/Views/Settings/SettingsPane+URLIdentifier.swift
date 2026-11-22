@@ -11,6 +11,8 @@ internal extension SettingsPane {
     var urlIdentifier: String {
         switch self {
         case .general: "general"
+        case .sidebar: "sidebar"
+        case .connections: "connections"
         case .appearance: "appearance"
         case .editor: "editor"
         case .data: "data"
@@ -28,6 +30,8 @@ internal extension SettingsPane {
     init?(urlIdentifier: String) {
         switch urlIdentifier {
         case "general": self = .general
+        case "sidebar": self = .sidebar
+        case "connections": self = .connections
         case "appearance": self = .appearance
         case "editor": self = .editor
         case "data": self = .data
