@@ -2227,6 +2227,9 @@
         }
       }
     },
+    "Actual Plan" : {
+
+    },
     "Add" : {
       "localizations" : {
         "ko" : {
@@ -9605,6 +9608,9 @@
           }
         }
       }
+    },
+    "Estimated Plan" : {
+
     },
     "Europe and Africa" : {
       "extractionState" : "manual",
@@ -17252,6 +17258,9 @@
           }
         }
       }
+    },
+    "Oracle 11g has no identity columns, so a column cannot be auto-increment." : {
+
     },
     "Oracle returned no definition for view '%@'." : {
 

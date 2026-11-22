@@ -5,28 +5,8 @@ import TableProPluginKit
 import TableProSQLGrammar
 
 // ClickHouse, Cloudflare D1, DuckDB, MongoDB and SQLite run their Mac plugin whole, so an export asks that plugin what
-// the Mac's `ExportDataSourceAdapter` asks it. MongoDB takes no rows from a file, as on the Mac (D9).
-nonisolated extension PluginBackedDriver: MobileTransferEngine {
-    func makeExportCatalog(context: MobileTransferContext) async throws -> any MobileExportCatalog {
-        PluginTransferCatalog(
-            driver: self,
-            databaseTypeId: context.databaseType.rawValue,
-            groupsByDatabase: context.databaseType == .clickhouse,
-            listsBySchema: context.databaseType == .duckdb,
-            switchesDatabase: context.databaseType == .mongodb,
-            openedDatabase: context.database?.nilIfEmpty ?? currentDatabase
-        )
-    }
-
-    func makeWriteDialect(context: MobileTransferContext) async throws -> any MobileWriteDialect {
-        guard context.databaseType != .mongodb else {
-            throw MobileTransferRefusal(reason: String(
-                format: String(localized: "%@ cannot take rows from a file."), context.databaseType.mobileDisplayName
-            ))
-        }
-        return PluginWriteDialect(plugin: plugin, databaseTypeId: context.databaseType.rawValue)
-    }
-}
+// the Mac's `ExportDataSourceAdapter` asks it (`PluginBackedDriver.makeExportCatalog`).
+nonisolated extension PluginBackedDriver: MobileTransferEngine {}
 
 // `groupsByDatabase`: ClickHouse's tree names each database, as the Mac's does; D1 and MongoDB are flat, so an object
 // carries no container. `listsBySchema`: DuckDB lists a macro of every schema when asked for none, so each listing

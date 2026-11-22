@@ -9,7 +9,7 @@ import TableProOracleCore
 import TableProPluginKit
 
 // A schema is what this driver lists as a database, so a table's scope is `.table(database: owner, schema: nil, ...)`.
-extension OraclePluginDriver: PluginPrincipalManagement {
+nonisolated extension OraclePluginDriver: PluginPrincipalManagement {
     var supportsRoleMembership: Bool { true }
     var supportsGrantableScopeSearch: Bool { true }
 

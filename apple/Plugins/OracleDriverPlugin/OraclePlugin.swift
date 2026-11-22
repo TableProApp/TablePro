@@ -10,7 +10,7 @@ import TableProOracleCore
 import TableProPluginKit
 import TableProSQLVocabulary
 
-final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnosticProvider {
+nonisolated final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, Sendable {
     static let pluginName = "Oracle Driver"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Oracle Database support via OracleNIO"
@@ -176,7 +176,7 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     }
 }
 
-private extension SQLOperatorDescriptor {
+nonisolated private extension SQLOperatorDescriptor {
     init?(vocabulary entry: SQLEngineVocabulary.Operator) {
         guard let category = Category(rawValue: entry.category),
               let placement = Placement(rawValue: entry.placement) else { return nil }
@@ -190,14 +190,17 @@ private extension SQLOperatorDescriptor {
     }
 }
 
-final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+nonisolated final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     let config: DriverConnectionConfig
     private(set) var core: OracleCoreConnection?
     // Read by statement generation on any thread while a connect or a schema switch writes it.
     private let sessionSchema = OSAllocatedUnfairLock<String?>(initialState: nil)
     private var _serverVersion: String?
     let principalState = OSAllocatedUnfairLock(initialState: OraclePrincipalState())
+    #if !os(iOS)
+    // The routine debugger runs on the Mac only.
     let debugState = OSAllocatedUnfairLock(initialState: OracleDebugState())
+    #endif
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "OraclePluginDriver")
 
@@ -259,6 +262,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             try await connection.connect()
             self.core = connection
 
+            // iOS never reads the output back, and an unread `ENABLE(NULL)` buffer grows with every line printed.
+            #if !os(iOS)
             do {
                 try await connection.withConnectDeadline(deadline) {
                     try await connection.captureServerOutput()
@@ -267,6 +272,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 try continueConnecting(afterOptionalProbeFailure: error, on: connection)
                 Self.logger.warning("DBMS_OUTPUT could not be enabled for this session: \(LogRedaction.publicDescription(of: error), privacy: .public) \(String(describing: error), privacy: .private)")
             }
+            #endif
 
             if let result = try await optionalConnectQuery(
                 OracleSchemaQueries.currentSchema,
@@ -489,7 +495,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         // The collector needs one row past the cap to tell a full result from a truncated one.
         let cap = max(rowCap, 1)
         let result = try await PluginBoundedStream.collect(
-            rowStream(query: query, rowBudget: cap < Int.max ? cap + 1 : nil),
+            rowStream(query: query, rowsPerBatch: OracleRowBatcher.batchRows, rowBudget: cap < Int.max ? cap + 1 : nil),
             rowCap: cap,
             startedAt: Date()
         )
@@ -498,14 +504,24 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        rowStream(query: query, rowBudget: nil)
+        rowStream(query: query, rowsPerBatch: OracleRowBatcher.batchRows, rowBudget: nil)
     }
 
-    private func rowStream(query: String, rowBudget: Int?) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    // Each row on its own as it is read, for a reader that shows rows as they arrive and cuts every value for display
+    // (the iOS grid), so no batch of rows is held whole.
+    func streamEachRow(query: String, rowBudget: Int?) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        rowStream(query: query, rowsPerBatch: 1, rowBudget: rowBudget)
+    }
+
+    private func rowStream(
+        query: String,
+        rowsPerBatch: Int,
+        rowBudget: Int?
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let core else {
             return AsyncThrowingStream { $0.finish(throwing: OraclePluginError(core: .notConnected)) }
         }
-        let batching = OracleRowBatcher(rowsPerBatch: OracleRowBatcher.batchRows, rowBudget: rowBudget)
+        let batching = OracleRowBatcher(rowsPerBatch: rowsPerBatch, rowBudget: rowBudget)
 
         return PluginRowStream.makeBounded { continuation, abort in
             // A plain `Task {}` is not a child of this one, so only the explicit cancel on abort stops oracle-nio.

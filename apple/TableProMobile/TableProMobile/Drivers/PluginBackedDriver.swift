@@ -12,7 +12,7 @@ nonisolated class PluginBackedDriver: DatabaseDriver, CatalogQuerying, ExportRow
 
     let plugin: any PluginDatabaseDriver
     let dialedHosts: [String]
-    private let queryTimeoutSeconds: Int?
+    let queryTimeoutSeconds: Int?
     private let readsOnly: @Sendable (String) -> Bool
     private let provesReads: Bool
     private let cancelsRunningRequest: (@Sendable () -> Void)?
@@ -328,6 +328,29 @@ nonisolated class PluginBackedDriver: DatabaseDriver, CatalogQuerying, ExportRow
 
     func foreignKeyCheckStatements(enabled: Bool) -> [String] {
         (enabled ? plugin.foreignKeyEnableStatements() : plugin.foreignKeyDisableStatements()) ?? []
+    }
+
+    // What the Mac's `ExportDataSourceAdapter` asks the plugin. Declared here so Oracle, whose export reads through its
+    // plugin's own catalog, answers with that.
+    func makeExportCatalog(context: MobileTransferContext) async throws -> any MobileExportCatalog {
+        PluginTransferCatalog(
+            driver: self,
+            databaseTypeId: context.databaseType.rawValue,
+            groupsByDatabase: context.databaseType == .clickhouse,
+            listsBySchema: context.databaseType == .duckdb,
+            switchesDatabase: context.databaseType == .mongodb,
+            openedDatabase: context.database?.nilIfEmpty ?? currentDatabase
+        )
+    }
+
+    // MongoDB takes no rows from a file, as on the Mac (D9).
+    func makeWriteDialect(context: MobileTransferContext) async throws -> any MobileWriteDialect {
+        guard context.databaseType != .mongodb else {
+            throw MobileTransferRefusal(reason: String(
+                format: String(localized: "%@ cannot take rows from a file."), context.databaseType.mobileDisplayName
+            ))
+        }
+        return PluginWriteDialect(plugin: plugin, databaseTypeId: context.databaseType.rawValue)
     }
 
     // MARK: - Transactions

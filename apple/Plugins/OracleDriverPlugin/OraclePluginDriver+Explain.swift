@@ -7,7 +7,7 @@ import Foundation
 import TableProOracleCore
 import TableProPluginKit
 
-extension OraclePluginDriver {
+nonisolated extension OraclePluginDriver {
     func explainPlan(statement: String, variantId: String) async throws -> PluginQueryResult {
         guard let core else { throw OraclePluginError(core: .notConnected) }
         let startTime = Date()

@@ -225,7 +225,15 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         case .mssql:
             return MSSQLDriver(connection: connection, password: password)
         case .oracle:
-            return OracleDriver(connection: connection, password: password, serverName: preTunnelHost)
+            // The stored mode as it is: this device keeps no certificate file for Oracle, and the form shows none.
+            let ssl = DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
+            return OracleBackedDriver(
+                oracle: OraclePluginDriver(config: pluginConfig(
+                    for: connection, password: password, ssl: ssl, preTunnelHost: preTunnelHost
+                )),
+                dialedHosts: [connection.host],
+                queryTimeoutSeconds: connection.queryTimeoutSeconds
+            )
         case .clickhouse:
             return PluginRowWritingDriver(
                 plugin: ClickHousePluginDriver(config: pluginConfig(

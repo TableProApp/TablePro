@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-extension OraclePluginDriver {
+nonisolated extension OraclePluginDriver {
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
         try await exportCatalog.fetchRoutines(schema: schema)
     }

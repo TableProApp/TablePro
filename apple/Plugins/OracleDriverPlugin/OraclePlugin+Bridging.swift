@@ -4,9 +4,9 @@ import OSLog
 import TableProOracleCore
 import TableProPluginKit
 
-private let bridgingLogger = Logger(subsystem: "com.TablePro.OracleDriver", category: "OracleBridging")
+nonisolated private let bridgingLogger = Logger(subsystem: "com.TablePro.OracleDriver", category: "OracleBridging")
 
-struct OraclePluginError: Error, PluginDriverError {
+nonisolated struct OraclePluginError: Error, PluginDriverError {
     let core: OracleCoreError
 
     var pluginErrorMessage: String {
@@ -14,7 +14,7 @@ struct OraclePluginError: Error, PluginDriverError {
     }
 }
 
-extension OracleCoreError {
+nonisolated extension OracleCoreError {
     var asPluginError: Error {
         if case .tlsHandshakeFailed(let kind, let serverMessage) = self {
             return kind.sslHandshakeError(serverMessage: serverMessage)
@@ -23,7 +23,7 @@ extension OracleCoreError {
     }
 }
 
-extension OracleTLSFailureKind {
+nonisolated extension OracleTLSFailureKind {
     func sslHandshakeError(serverMessage: String) -> SSLHandshakeError {
         switch self {
         case .clientCertRequired: return .clientCertRequired(serverMessage: serverMessage)
@@ -34,7 +34,7 @@ extension OracleTLSFailureKind {
     }
 }
 
-extension OracleRawResult {
+nonisolated extension OracleRawResult {
     func toPluginResult(executionTime: TimeInterval) -> PluginQueryResult {
         let names = columns.map(\.name)
         let typeNames = columns.map(\.typeName)
@@ -50,7 +50,7 @@ extension OracleRawResult {
     }
 }
 
-extension SSLConfiguration {
+nonisolated extension SSLConfiguration {
     func oracleTLSDescription(serverName: String?) -> OracleTLSDescription {
         OracleTLSDescription(
             mode: Self.oracleMode(for: mode),
