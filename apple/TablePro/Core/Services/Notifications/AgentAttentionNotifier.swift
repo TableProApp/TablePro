@@ -114,6 +114,7 @@ internal final class AgentAttentionNotifier {
             content.subtitle = subtitle
         }
         content.body = body
+        content.sound = .default
         content.categoryIdentifier = Self.categoryId
         content.threadIdentifier = session.connectionId.uuidString
         content.userInfo = [
@@ -149,8 +150,8 @@ internal final class AgentAttentionNotifier {
 
 extension AgentAttentionNotifier: NotificationHandling {
     internal func presentationOptions(for notification: UNNotification) -> UNNotificationPresentationOptions {
-        guard let session = session(from: notification.request.content.userInfo) else { return [.banner, .list] }
-        return isOnScreen(session) ? [] : [.banner, .list]
+        guard let session = session(from: notification.request.content.userInfo) else { return [.banner, .list, .sound] }
+        return isOnScreen(session) ? [] : [.banner, .list, .sound]
     }
 
     internal func handle(_ response: UNNotificationResponse) {
