@@ -217,16 +217,21 @@ internal class UITestCase: XCTestCase {
     }
 
     // A fixed step can carry a row past a short list, so each scroll centres the element. It posts inside the
-    // container because a window's own scroll lands on its title bar.
+    // container because a window's own scroll lands on its title bar. `isHittable` hit-tests the element's
+    // centre, and outside the container that asks whichever app is on screen there, which can stall for seconds.
     internal func scrollUntilHittable(_ element: XCUIElement, in container: XCUIElement, timeout: TimeInterval) -> Bool {
         let deadline = Date(timeIntervalSinceNow: timeout)
         guard element.waitToExist(timeout: timeout) else { return false }
-        while !(element.exists && element.isHittable) {
-            guard Date() < deadline, container.exists, element.exists else { return false }
-            container.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-                .scroll(byDeltaX: 0, deltaY: container.frame.midY - element.frame.midY)
+        while container.exists, element.exists {
+            let visible = container.frame
+            let target = element.frame
+            if visible.contains(CGPoint(x: target.midX, y: target.midY)), element.isHittable { return true }
+            guard Date() < deadline else { return false }
+            // A frame XCUITest cannot read is CGRect.null, at infinity; the clamp keeps the step finite.
+            let offset = min(max(visible.midY - target.midY, -visible.height), visible.height)
+            container.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).scroll(byDeltaX: 0, deltaY: offset)
         }
-        return true
+        return false
     }
 
     // A grid enters the tree before its query returns, and a coordinate taken off an empty frame posts

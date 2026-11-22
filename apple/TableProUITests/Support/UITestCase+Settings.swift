@@ -24,7 +24,8 @@ extension UITestCase {
         row.click()
         guard let page else { return }
         let drill = settings.descendants(matching: .any).matching(identifier: "settings-drill-\(page)").firstMatch
-        XCTAssertTrue(scrollUntilHittable(drill, in: settings, timeout: 10), "The \(pane) pane must link to \(page)")
+        let content = settings.descendants(matching: .any).matching(identifier: "settings-pane-\(pane)").firstMatch
+        XCTAssertTrue(scrollUntilHittable(drill, in: content, timeout: 10), "The \(pane) pane must link to \(page)")
         drill.click()
     }
 
