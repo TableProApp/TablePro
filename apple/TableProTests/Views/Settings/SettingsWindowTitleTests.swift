@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 @testable import TablePro
 import TableProTestSupport
 import Testing
@@ -69,6 +70,64 @@ extension GlobalStateSuites {
 
         private static func toolbarIdentifiers(of window: NSWindow) -> [NSToolbarItem.Identifier] {
             window.toolbar?.items.map { $0.itemIdentifier } ?? []
+        }
+
+        private static func attribute(_ name: String, of element: AXUIElement) -> CFTypeRef? {
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+            return value
+        }
+
+        private static func element(_ identifier: String, under element: AXUIElement) -> AXUIElement? {
+            if attribute(kAXIdentifierAttribute, of: element) as? String == identifier {
+                return element
+            }
+            for child in attribute(kAXChildrenAttribute, of: element) as? [AXUIElement] ?? [] {
+                if let match = Self.element(identifier, under: child) {
+                    return match
+                }
+            }
+            return nil
+        }
+
+        private static func settingsElement(_ identifier: String) -> AXUIElement? {
+            let windows = attribute(kAXWindowsAttribute, of: AXUIElementCreateApplication(getpid())) as? [AXUIElement] ?? []
+            guard let window = windows.first(where: { attribute(kAXIdentifierAttribute, of: $0) as? String == WindowIdentifier.settings }) else {
+                return nil
+            }
+            return element(identifier, under: window)
+        }
+
+        private static func axValue(_ name: String, of element: AXUIElement) -> AXValue? {
+            guard let raw = attribute(name, of: element), CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
+            return unsafeDowncast(raw, to: AXValue.self)
+        }
+
+        // In AX screen coordinates, y down from the top of the primary screen, as an AX client hit-tests.
+        private static func center(of element: AXUIElement) throws -> CGPoint {
+            let positionValue = try #require(axValue(kAXPositionAttribute, of: element))
+            let sizeValue = try #require(axValue(kAXSizeAttribute, of: element))
+            var position = CGPoint.zero
+            var size = CGSize.zero
+            let readPosition = AXValueGetValue(positionValue, .cgPoint, &position)
+            let readSize = AXValueGetValue(sizeValue, .cgSize, &size)
+            try #require(readPosition && readSize)
+            return CGPoint(x: position.x + size.width / 2, y: position.y + size.height / 2)
+        }
+
+        // What VoiceOver and XCUITest's isHittable get at a point, with its ancestors' identifiers.
+        private static func identifiersHit(at point: CGPoint) -> [String] {
+            var hit: AXUIElement?
+            guard AXUIElementCopyElementAtPosition(AXUIElementCreateApplication(getpid()), Float(point.x), Float(point.y), &hit) == .success else {
+                return []
+            }
+            var identifiers: [String] = []
+            var current = hit
+            while let element = current {
+                identifiers.append(attribute(kAXIdentifierAttribute, of: element) as? String ?? "")
+                current = attribute(kAXParentAttribute, of: element).map { unsafeDowncast($0, to: AXUIElement.self) }
+            }
+            return identifiers
         }
 
         @Test("The sidebar order is every pane exactly once")
@@ -308,6 +367,27 @@ extension GlobalStateSuites {
             controller.windowWillClose(Notification(name: NSWindow.willCloseNotification))
             #expect(!split.model.canGoBack)
             try await waitUntil { split.detail.host(for: .editor) == nil }
+            await host.tearDown()
+        }
+
+        // A hidden host above the shown one took the hit test, which came back as the split view.
+        @Test("A pane shown again answers an accessibility hit test at its row")
+        func reshownPaneAnswersAccessibilityHitTests() async throws {
+            let host = try Host()
+            let (controller, window) = try host.makeController()
+            controller.prepareToShow(.root(.general))
+            window.orderFront(nil)
+            let split = controller.split
+
+            split.model.select(.editor)
+            split.model.select(.general)
+            window.layoutIfNeeded()
+
+            let identifier = SettingsPage.commandLineTool.drillIdentifier
+            try await waitUntil { Self.settingsElement(identifier) != nil }
+            let row = try #require(Self.settingsElement(identifier))
+            let center = try Self.center(of: row)
+            #expect(Self.identifiersHit(at: center).contains(identifier))
             await host.tearDown()
         }
 

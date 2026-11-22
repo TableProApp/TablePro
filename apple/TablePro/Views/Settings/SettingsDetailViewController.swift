@@ -44,6 +44,8 @@ internal final class SettingsDetailViewController: NSViewController {
         host.view.frame = view.bounds
         host.view.autoresizingMask = [.width, .height]
         host.view.isHidden = false
+        // AX hit testing stops at the topmost subview under a point even when it is hidden. A reorder never leaves the window.
+        view.addSubview(host.view, positioned: .above, relativeTo: nil)
         shownPane = pane
         // A show before the window is key counts when it becomes key, so opening counts once.
         if view.window?.isKeyWindow == true {
