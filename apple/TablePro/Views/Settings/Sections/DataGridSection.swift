@@ -176,11 +176,12 @@ struct DataGridSection: View {
     }
 
     static func rowsTitle(_ count: Int) -> String {
-        String(localized: "\(count) rows")
+        String(AttributedString(localized: "^[\(count) row](inflect: true)").characters)
     }
 
     static func exactCountTitle(_ threshold: Int) -> String {
-        threshold == Int.max ? String(localized: "Always") : String(localized: "Under \(threshold) rows")
+        guard threshold != Int.max else { return String(localized: "Always") }
+        return String(AttributedString(localized: "Under ^[\(threshold) row](inflect: true)").characters)
     }
 
     static func resultSetsKeptTitle(_ count: Int) -> String {

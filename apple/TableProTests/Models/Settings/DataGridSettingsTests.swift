@@ -198,6 +198,14 @@ struct DataPaneChoiceTests {
         #expect(DataGridSection.exactCountTitle(100_000).contains(SettingsFormat.count(100_000)))
         #expect(DataGridSection.exactCountTitle(Int.max) == String(localized: "Always"))
     }
+
+    @Test("A row count of one reads in the singular")
+    func rowTitlesAgreeWithTheCount() {
+        #expect(DataGridSection.rowsTitle(1) == "1 row")
+        #expect(DataGridSection.rowsTitle(2) == "2 rows")
+        #expect(DataGridSection.exactCountTitle(1) == "Under 1 row")
+        #expect(DataGridSection.exactCountTitle(2) == "Under 2 rows")
+    }
 }
 
 @MainActor

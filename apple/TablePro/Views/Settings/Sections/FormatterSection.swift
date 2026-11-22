@@ -199,7 +199,9 @@ struct SQLFormattingPage: View {
 
     // A tab counts as indent width columns when a line's width is measured.
     private func indentWidthTitle(_ width: Int) -> Text {
-        settings.rules.indentStyle == .tabs ? Text("\(width) columns") : Text("\(width) spaces")
+        settings.rules.indentStyle == .tabs
+            ? Text("^[\(width) column](inflect: true)")
+            : Text("^[\(width) space](inflect: true)")
     }
 
     private var keywordCasePicker: some View {
@@ -225,11 +227,11 @@ struct SQLFormattingPage: View {
             Text("One item per line").tag(0)
             Divider()
             ForEach(widths.fixed, id: \.self) { width in
-                Text("\(width) characters").tag(width)
+                Text("^[\(width) character](inflect: true)").tag(width)
             }
             if let extra = widths.extra {
                 Divider()
-                Text("\(extra) characters").tag(extra)
+                Text("^[\(extra) character](inflect: true)").tag(extra)
             }
         } label: {
             Text("Line width")

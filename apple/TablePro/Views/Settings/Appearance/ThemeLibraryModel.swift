@@ -88,7 +88,7 @@ internal struct ThemeImportReport: Equatable {
         }
         let title = imported.isEmpty
             ? String(localized: "No Themes Imported")
-            : String(format: String(localized: "Imported %lld Themes"), imported.count)
+            : String(AttributedString(localized: "Imported ^[\(imported.count) Theme](inflect: true)").characters)
         return ThemeLibraryAlert(title: title, message: lines.joined(separator: "\n"))
     }
 }

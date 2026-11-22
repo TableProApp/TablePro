@@ -57,7 +57,7 @@ struct EditorSettingsView: View {
 
                 Picker("Tab width", selection: Self.tabWidthBinding($editor.value)) {
                     SettingsChoiceItems(Self.tabWidths, including: editor.value.clampedTabWidth) { width in
-                        Text("\(width) spaces")
+                        Text("^[\(width) space](inflect: true)")
                     }
                 }
                 .accessibilityIdentifier("editor-tab-width")

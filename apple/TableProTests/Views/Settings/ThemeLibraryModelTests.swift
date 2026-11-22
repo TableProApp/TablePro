@@ -170,6 +170,22 @@ struct ThemeLibraryModelTests {
         #expect(library.customThemes.map(\.name) == ["Ocean", "Paper"])
     }
 
+    @Test("One imported theme beside a failure reads in the singular")
+    func importOneFileBesideAFailure() throws {
+        let fixture = try Fixture()
+        let library = fixture.makeLibrary()
+        let good = try fixture.writeIncoming(
+            "Ocean.json",
+            contents: ThemeFileFormat.encode(Fixture.theme("user.11111111", "Ocean"))
+        )
+        let broken = try fixture.writeIncoming("Monokai.json", contents: Data("not json".utf8))
+
+        let report = library.importThemes(from: [good, broken], undoManager: nil)
+
+        #expect(report.imported.count == 1)
+        #expect(library.alert?.title == "Imported 1 Theme")
+    }
+
     @Test("A single file that fails names itself in the alert title")
     func singleFailedImport() throws {
         let fixture = try Fixture()
