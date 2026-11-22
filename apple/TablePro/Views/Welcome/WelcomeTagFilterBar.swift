@@ -44,7 +44,7 @@ internal final class WelcomeTagFilterBar: NSView {
         ])
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
-        setAccessibilityLabel(String(localized: "Tag Filters"))
+        setAccessibilityLabel(String(localized: "Filter by Tag"))
         setAccessibilityIdentifier("welcome-tag-filter-bar")
     }
 
@@ -79,7 +79,7 @@ internal final class WelcomeTagFilterBar: NSView {
         button.imagePosition = .imageLeading
         button.lineBreakMode = .byTruncatingTail
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        button.toolTip = String(format: String(localized: "Stop filtering by %@"), tag.name)
+        button.toolTip = String(localized: "Remove Filter")
         tagIdsByButton[ObjectIdentifier(button)] = tag.id
         return button
     }
