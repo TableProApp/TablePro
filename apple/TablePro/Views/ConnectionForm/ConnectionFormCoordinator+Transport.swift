@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// The form's transport selection, in the same vocabulary the connect path reads.
 ///
@@ -132,5 +133,34 @@ extension ConnectionFormCoordinator {
     func normalizeTransport() {
         let current = transport
         transport = availableTransports.contains(current) ? current : nil
+    }
+
+    /// The Network disclosure opens on load when the connection already carries a transport or an
+    /// SSL choice the user made, so editing an SSH or TLS connection never hides the thing being
+    /// edited. A type default (every Postgres requires TLS) is not user config, so it stays closed.
+    var networkIsConfigured: Bool {
+        transport != nil
+            || ssl.origin != .typeDefault
+            || !ssl.caCertPath.isEmpty
+            || !ssl.clientCertPath.isEmpty
+            || !ssl.clientKeyPath.isEmpty
+    }
+
+    var networkHasIssue: Bool {
+        !ConnectionFormTab.network.validationIssues(for: self).isEmpty
+    }
+
+    /// One line under the collapsed Network header: the transport, and SSL when it is on.
+    var networkSummary: String {
+        let base = transport?.displayName ?? ConnectionTunnelKind.directDisplayName
+        guard showsSSL, ssl.mode != .disabled else { return base }
+        return String(format: String(localized: "%@ · SSL"), base)
+    }
+
+    var appearanceIsCustomized: Bool {
+        customization.color != .none
+            || customization.iconName != nil
+            || !customization.tagIds.isEmpty
+            || customization.groupId != nil
     }
 }
