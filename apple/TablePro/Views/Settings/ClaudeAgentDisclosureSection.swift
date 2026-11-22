@@ -1,8 +1,3 @@
-//
-//  ClaudeAgentDisclosureSection.swift
-//  TablePro
-//
-
 import SwiftUI
 
 struct ClaudeAgentDisclosureSection: View {
@@ -10,22 +5,19 @@ struct ClaudeAgentDisclosureSection: View {
         Section {
             ForEach(ClaudeAgentDisclosure.notes) { note in
                 Label {
-                    Text(note.text)
-                        .font(.callout)
+                    Text(verbatim: note.text)
                         .foregroundStyle(note.severity == .caution ? Color.primary : Color.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } icon: {
                     Image(systemName: note.severity.symbolName)
                         .foregroundStyle(note.severity == .caution ? Color.orange : Color.secondary)
+                        .accessibilityHidden(true)
                 }
                 .accessibilityElement(children: .combine)
             }
+            SettingsHelpRow(ClaudeAgentDisclosure.supportedAlternative)
         } header: {
             Text("Tradeoffs")
-        } footer: {
-            Text(ClaudeAgentDisclosure.supportedAlternative)
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 }

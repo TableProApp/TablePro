@@ -1,11 +1,3 @@
-//
-//  SQLEditorCoordinator.swift
-//  TablePro
-//
-//  TextViewCoordinator for the TableProEditorKit-based SQL editor.
-//  Handles find panel workarounds and horizontal scrolling fix.
-//
-
 import AppKit
 import Combine
 import os
@@ -15,15 +7,11 @@ import TableProPluginKit
 import TableProSQLGrammar
 import TableProTextEngine
 
-/// Coordinator for the SQL editor — manages find panel, horizontal scrolling, and scroll-to-match
 @MainActor
 final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextViewDelegate {
-    // MARK: - Properties
-
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SQLEditorCoordinator")
 
-    /// Above this document length inline AI features are suspended, at the same cutoff where syntax highlighting stops,
-    /// so a large document does not copy its whole contents to the assistant on every keystroke.
+    // Above this length inline AI is suspended, like highlighting, so a large document is not sent on every keystroke.
     private static let languageServiceLengthLimit = EditorHighlighting.maxHighlightableCharacters
 
     weak var controller: TextViewController?
@@ -33,7 +21,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         clock: diagnosticsClock
     )
     private let statementRunController = StatementRunController()
-    /// Shared schema provider for inline AI suggestions (avoids duplicate schema fetches)
     var schemaProvider: SQLSchemaProvider?
     var databaseScope: DatabaseScope?
     private let inlineAccessGate: AIConnectionAccessGate = .live
@@ -47,15 +34,14 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private var aiSettingsCancellable: AnyCancellable?
     private var connectionAccessCancellable: AnyCancellable?
     private var lastInlineSourceKind: InlineSuggestionSourceKind = .off
-    /// Debounce work item for frame-change notification to avoid
-    /// triggering syntax highlight viewport recalculation on every keystroke.
+    // Debounced so a keystroke does not recompute the highlight viewport.
     private var frameChangeTask: Task<Void, Never>?
     private var isUppercasing = false
     private var wasEditorFocused = false
     private var didDestroy = false
     private var focusClaimPending = false
 
-    /// One way. `destroy()` runs when the editor is dismantled, which it never comes back from.
+    // One way: destroy() runs when the editor is dismantled, which it never comes back from.
     var isDestroyed: Bool { didDestroy }
 
     private var hasInstalledEditorServices = false
@@ -80,12 +66,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         focusClaimPending = true
     }
 
-    /// Latches a saved selection to apply once, the moment the editor is in a window.
-    ///
-    /// The caller sets this from `body`, which runs many times before the text view exists, so the
-    /// setter is idempotent and the value is consumed exactly once in `installEditorServices`.
-    /// Pushing it through the SwiftUI cursor binding instead would fight live typing, because the
-    /// binding is written on every selection change the user makes.
+    // Set from body many times before the text view exists, so it latches once; the cursor binding would fight live typing.
     func scheduleCursorRestore(_ range: NSRange) {
         guard !hasInstalledEditorServices else { return }
         cursorRestorePending = range
@@ -93,16 +74,13 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
 
     private var foldRestorePending: [Range<Int>]?
 
-    /// Collapsed folds are replayed once, the same way the cursor is, because the fold state the editor reports back
-    /// is written on every collapse the user makes.
+    // Replayed once, like the cursor, because the fold state reported back is written on every collapse.
     func scheduleFoldRestore(_ ranges: [Range<Int>]) {
         guard !hasInstalledEditorServices, !ranges.isEmpty else { return }
         foldRestorePending = ranges
     }
 
-    /// Query tabs share one editor, so a tab switch replays the incoming tab's collapsed regions over a document the
-    /// editor has just been handed. The outgoing tab's folds are already gone: replacing the document drops them,
-    /// which is what keeps this from having to clear anything and from reporting a collapse the reader never made.
+    // Replacing the document already dropped the outgoing tab's folds, so nothing is cleared or reported here.
     func repointFolds(to ranges: [Range<Int>]?) {
         guard let controller else {
             foldRestorePending = ranges
@@ -126,7 +104,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         vimEngine.restoreDocumentMarks(marks)
     }
 
-    /// Vim mode for UI observation
     @Published private(set) var vimMode: VimMode = .normal
     private var vimEngine: VimEngine?
     // Vim is installed once the editor is in a window, so marks restored before that wait here.
@@ -149,18 +126,14 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     var tabID: UUID?
     var connectionId: UUID?
     var sourceFileURL: URL?
-    /// The connection's execution grammar, which `SQLEditorController` sets from the live session.
+    // SQLEditorController sets this from the live session.
     private(set) var sessionGrammar: SQLLexicalGrammar?
 
     var lexicalGrammar: SQLLexicalGrammar {
         sessionGrammar ?? (databaseType ?? .mysql).lexicalGrammar
     }
 
-    /// Whether the editor text view is currently the first responder.
-    /// Used to guard cursor propagation — when the find panel highlights
-    /// a match it changes the selection programmatically, and propagating
-    /// that to SwiftUI triggers a re-render that disrupts the find panel's
-    /// @FocusState.
+    // Guards cursor propagation: a find-panel highlight that reached SwiftUI would re-render and break its focus.
     var isEditorFirstResponder: Bool {
         guard let textView = controller?.textView else { return false }
         return textView.window?.firstResponder === textView
@@ -177,8 +150,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         frameChangeTask?.cancel()
         frameChangeTask = nil
     }
-
-    // MARK: - TextViewCoordinator
 
     func prepareCoordinator(controller: TextViewController) {
         self.controller = controller
@@ -379,8 +350,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         cleanupMonitors()
     }
 
-    // MARK: - AI Context Menu
-
     private func installFoldPreview(controller: TextViewController) {
         foldPreview.language = PluginManager.shared
             .editorLanguage(for: databaseType ?? .mysql)
@@ -398,7 +367,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         statementRunController.install(on: controller)
     }
 
-    /// Moves the run controls and diagnostics to `grammar`, as a connect, a reconnect or a `SET` changes it.
     func setSessionGrammar(_ grammar: SQLLexicalGrammar) {
         guard grammar != sessionGrammar else { return }
         sessionGrammar = grammar
@@ -413,31 +381,23 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         )
     }
 
-    /// Turns the run controls off for the length of a query, because a tab runs one at a time.
+    // A tab runs one query at a time.
     func setStatementRunControlsEnabled(_ isEnabled: Bool) {
         statementRunController.setEnabled(isEnabled, in: controller)
     }
 
-    /// Follows the Settings toggle, so turning the band off also stops resolving the caret's statement for it.
+    // Turning the band off also stops resolving the caret's statement for it.
     func setStatementHighlightEnabled(_ isEnabled: Bool) {
         guard statementRunController.isHighlightEnabled != isEnabled else { return }
         statementRunController.isHighlightEnabled = isEnabled
         statementRunController.refreshHighlight(in: controller)
     }
 
-    /// Moves the caret to the neighbouring statement.
     func moveCursorToStatement(_ direction: StatementNavigationDirection) {
         statementRunController.moveCursor(direction, in: controller)
     }
 
-    /// Takes the reader to the statement a result came from.
-    ///
-    /// Resolved here rather than by the caller because the anchor has to be matched against the text this editor is
-    /// showing, which the tab's binding can lag behind by a keystroke. A statement that has since been edited away
-    /// resolves to nothing and the caret stays where it is, which is the right answer: there is nowhere to go.
-    ///
-    /// Reports whether it moved, so the caller can retire the request either way and a statement that is gone does
-    /// not leave one pending forever.
+    // Matched against the text this editor shows, which the tab's binding can lag; an edited-away statement resolves to nothing.
     @discardableResult
     func jumpToStatement(_ anchor: StatementAnchor) -> Bool {
         guard let controller, let textView = controller.textView else { return false }
@@ -452,13 +412,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         return true
     }
 
-    /// Runs the statement the caret is in, then moves the caret to the next one.
-    ///
-    /// Both halves go through this one editor. Reading the SQL here and executing it somewhere else would let the two
-    /// name different editors: a window hosts a workspace per connection and their editors all stay registered, so a
-    /// command that resolves its text through the window and its execution through the selected workspace can send
-    /// one connection's statement to another connection's database. `onRunStatement` is the same callback the gutter
-    /// control uses, and the view binds it to the coordinator that owns this editor.
+    // Reading and running through this one editor keeps one connection's statement out of another connection's database.
     func runStatementAtCursorAndAdvance() {
         guard let statement = statementRunController.statementAtCursor(in: controller),
               let run = onRunStatement else {
@@ -521,7 +475,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         controller?.unfoldAll()
     }
 
-    /// Whether the fold containing the cursor is collapsed. `nil` when the cursor is not inside a fold.
+    // nil when the cursor is not inside a fold.
     func foldStateAtCursor() -> Bool? {
         controller?.foldStateAtCursor()
     }
@@ -584,8 +538,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             window: window
         )
     }
-
-    // MARK: - Inline Suggestion Manager
 
     private func installInlineSuggestionManager(controller: TextViewController) {
         let manager = InlineSuggestionManager()
@@ -690,7 +642,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             databaseName: databaseName,
             databaseType: databaseType,
             grammar: lexicalGrammar,
-            budget: max(AppSettingsManager.shared.ai.maxSchemaTables, 0)
+            budget: AppSettingsManager.shared.ai.clampedMaxSchemaTables
         )
     }
 
@@ -707,8 +659,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             appleIntelligenceInlineSource = nil
         }
     }
-
-    // MARK: - Key Bindings
 
     private func applyKeyBindings(controller: TextViewController) {
         let keyBindings = AppSettingsManager.shared.editor.keyBindings
@@ -732,8 +682,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         emacsKeyInterceptor?.uninstall()
         emacsKeyInterceptor = nil
     }
-
-    // MARK: - Vim Mode
 
     private func installVimKeyInterceptor(controller: TextViewController) {
         guard let textView = controller.textView else { return }
@@ -787,15 +735,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         vimMode = .normal
     }
 
-    /// Takes Vim out of the editor without touching `vimMode`, which is what teardown needs.
-    ///
-    /// `destroy()` runs from `dismantleNSViewController`, and when the editor goes because its
-    /// `NSHostingView` is deallocated, SwiftUI calls that while `GraphHost.invalidate()` holds exclusive
-    /// access to the host. A `@Published` write there reaches a view in the same host, whose subscriber
-    /// asks that host for a transaction, and Swift aborts with "Fatal access conflict detected". That
-    /// shipped as a crash on switching away from a query tab on macOS 26, where the write happened even
-    /// with Vim mode off because `@Published` notifies on every assignment. Nothing reads the mode of an
-    /// editor that is being destroyed.
+    // No @Published write during teardown: it ran inside GraphHost.invalidate() and aborted with an access conflict.
     private func removeVimKeyInterceptor() {
         vimKeyInterceptor?.uninstall()
         vimCursorManager?.uninstall()
@@ -804,14 +744,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         vimEngine = nil
     }
 
-    // MARK: - Menu Escape Routing
-
-    /// Called by `EditorEventRouter.handleEscapeFromMenu()` when the "Clear Selection" menu item is
-    /// chosen with the pointer, which is the only way that item fires: an unmodified Escape is
-    /// never dispatched as a key equivalent and reaches the editor's own key chain instead.
-    /// Dismisses an open completion popup, hands the keystroke to Vim when it is mid-command, and
-    /// restores first responder and the caret when this editor was the focused surface. Returns
-    /// whether the editor consumed the escape so the menu skips its cancelOperation fallback.
+    // The Clear Selection item fires only from a pointer click; returns whether the editor consumed the escape.
     @discardableResult
     func handleEscapeFromMenu() -> Bool {
         let wasFocused = wasEditorFocused
@@ -829,14 +762,11 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         vimKeyInterceptor?.handleEscapeFromExternalSource() ?? false
     }
 
-    /// Restores editor focus after another view in the same window took it.
     private func reclaimFirstResponder() {
         guard let controller, let textView = controller.textView, let window = textView.window,
               window.firstResponder !== textView else { return }
         _ = window.makeFirstResponder(textView)
     }
-
-    // MARK: - First Responder Tracking
 
     func checkFirstResponderChange() {
         let focused = isEditorFirstResponder
@@ -851,8 +781,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             vimCursorManager?.pauseBlink()
         }
     }
-
-    // MARK: - Editor Settings Observer
 
     private func installEditorSettingsObserver(controller: TextViewController) {
         editorSettingsCancellable = AppEvents.shared.editorSettingsChanged
@@ -884,13 +812,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         lastInlineSourceKind = kind
     }
 
-    // MARK: - Keyword Case
-
-    /// Rewrites the keyword just completed by a word boundary to the configured case.
-    ///
-    /// Only the two absolute `SQLKeywordCase` values rewrite what the user typed. Under either
-    /// `matchTyped` value this does nothing, so an accepted lowercase completion is not flipped
-    /// back to uppercase by the next space.
+    // Only the two absolute SQLKeywordCase values rewrite typed text, so matchTyped never flips an accepted completion.
     private func uppercaseKeywordIfNeeded(textView: TextView, range: NSRange, string: String) {
         let keywordCase = AppSettingsManager.shared.editor.keywordCase
         guard !isUppercasing,
@@ -933,8 +855,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             self.isUppercasing = false
         }
     }
-
-    // MARK: - Find Panel
 
     func showFindPanel() {
         controller?.showFindPanel()

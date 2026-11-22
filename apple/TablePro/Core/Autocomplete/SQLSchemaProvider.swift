@@ -7,8 +7,7 @@ import TableProSQLGrammar
 actor SQLSchemaProvider {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLSchemaProvider")
 
-    /// The cache's capacity in tables, and the largest schema one bulk column read fills: reading
-    /// every column and keeping a fraction is the waste the preload exists to avoid.
+    // Also the largest schema one bulk column read fills: reading every column to keep a fraction is waste.
     static let maxCachedTables = 300
 
     // A column list belongs to a table, spelled as the catalog spells its schema and name: an engine can keep apart
@@ -59,10 +58,10 @@ actor SQLSchemaProvider {
         enum Outcome { case loaded, skipped, failed }
     }
 
-    /// Each state keeps the table-list generation it answered, so a later list reads it as stale.
+    // Each state keeps the table-list generation it answered, so a later list reads it as stale.
     private var columnPreload: ColumnPreload = .idle
     private var tableListGeneration = 0
-    /// Until a query editor asks, a no-reference completion never starts a bulk read.
+    // Until a query editor asks, a no-reference completion never starts a bulk read.
     private var hasEditorDemand = false
 
     struct ColumnMetadataSource: Sendable {
@@ -94,9 +93,7 @@ actor SQLSchemaProvider {
     private var fieldPathCache: [ColumnCacheKey: [PluginFieldPath]] = [:]
     private var fieldPathTasks: [ColumnCacheKey: Task<[PluginFieldPath], Never>] = [:]
 
-    /// Another schema's tables, fetched when a statement names that schema and a dot. They are
-    /// held apart from `tables`, which the scope's owner writes and every unqualified reader
-    /// trusts, so completing `attendance.` cannot make `timesheet` an answer for a bare name.
+    // Kept apart from tables, so completing attendance. cannot make timesheet an answer for a bare name.
     private var onDemandSchemaTables: [CatalogName: [TableInfo]] = [:]
     private var onDemandSchemaTableTasks: [CatalogName: Task<[TableInfo]?, Never>] = [:]
 
@@ -124,24 +121,21 @@ actor SQLSchemaProvider {
     private let metadataSource: ColumnMetadataSource?
     private var connectionInfo: DatabaseConnection?
 
-    /// The database this provider describes. A provider is per scope, so it can be a database the
-    /// sidebar is not browsing, and the AI schema context must name the one the tables came from.
+    // A provider is per scope, so this can be a database the sidebar is not browsing.
     private var scopeDatabase: String?
 
     init(metadataSource: ColumnMetadataSource? = nil) {
         self.metadataSource = metadataSource
     }
 
-    // MARK: - Public API
-
-    /// Concurrent callers await the same in-flight Task instead of firing duplicate queries.
+    // Concurrent callers await the same in-flight Task instead of firing duplicate queries.
     func loadSchema(using driver: DatabaseDriver, connection: DatabaseConnection? = nil) async {
         if let existing = loadTask {
             Self.logger.debug("[schema] loadSchema awaiting existing in-flight task")
             let t0 = Date()
             if let connection { self.connectionInfo = connection }
             await existing.value
-            Self.logger.debug("[schema] loadSchema coalesced — awaited existing task ms=\(Int(Date().timeIntervalSince(t0) * 1_000)) tableCount=\(self.tables.count)")
+            Self.logger.debug("[schema] loadSchema coalesced, awaited existing task ms=\(Int(Date().timeIntervalSince(t0) * 1_000)) tableCount=\(self.tables.count)")
             return
         }
 
@@ -312,8 +306,7 @@ actor SQLSchemaProvider {
         })
     }
 
-    /// A lookup that names no schema reads the schema an unqualified fetch targets, which is the one
-    /// the column preload fills, so `orders` and `public.orders` on PostgreSQL share one entry.
+    // An unqualified lookup reads the schema the preload fills, so orders and public.orders share one entry.
     private func cacheKey(table: String, schema: String?) -> ColumnCacheKey {
         if let listed = listedSpelling(ofTable: table, schema: schema) { return cacheKey(listed) }
         return ColumnCacheKey(
@@ -333,8 +326,7 @@ actor SQLSchemaProvider {
         return schema == CatalogName(key.isTyped ? Self.folded(defaultSchema) : schemaSpelling(defaultSchema) ?? defaultSchema)
     }
 
-    /// A table outside the default schema keeps its schema, so two cached tables of one name never
-    /// offer the same `orders.id` for columns of two different tables.
+    // A table outside the default schema keeps its schema, so two tables of one name never share orders.id.
     private func fallbackTableLabel(for key: ColumnCacheKey, listed: ListedName?) -> String {
         let name = listed?.name ?? key.name.text
         guard let schema = key.schema, !isDefaultSchema(key) else { return name }
@@ -348,8 +340,7 @@ actor SQLSchemaProvider {
         return [.statement(schema.text, quoted: false), table]
     }
 
-    /// The schema a table can be named in without its schema: the engine's implicit schema when it
-    /// has one, otherwise the schema the driver was on when this scope loaded.
+    // The engine's implicit schema when it has one, otherwise the schema the driver was on when this scope loaded.
     func getDefaultSchema() -> String? {
         connectionInfo?.type.implicitSchemaName ?? eagerLoadSchema
     }
@@ -416,7 +407,7 @@ actor SQLSchemaProvider {
         staleRereadsStarted.subtract(keys)
     }
 
-    /// Reads nothing. The next editor request or no-reference completion refills it.
+    // Reads nothing: the next editor request or no-reference completion refills it.
     func clearColumnCache() {
         if case .running(_, let task) = columnPreload { task.cancel() }
         columnPreload = .idle
@@ -432,23 +423,19 @@ actor SQLSchemaProvider {
         fieldPathTasks.removeAll()
     }
 
-    // MARK: - Column Preload
-
-    /// Only a query editor's `prepare` calls this. It joins a read in flight and retries a failed one.
+    // Only a query editor's prepare calls this. It joins a read in flight and retries a failed one.
     func requestColumnPreload() {
         hasEditorDemand = true
         startColumnPreloadIfStale(retryingFailure: true)
     }
 
-    /// Reads again for a table list written after a preload had served the previous one.
     func renewColumnPreload() {
         guard case .settled(let generation, .loaded) = columnPreload,
               generation != tableListGeneration else { return }
         startColumnPreloadIfStale(retryingFailure: false)
     }
 
-    /// The bulk read covers one schema while `tables` holds every expanded one. Zero means the list
-    /// names other schemas only, so a read sized by it would be a guess.
+    // The bulk read covers one schema; zero means the list names other schemas only, so its size is unknown.
     private var eagerLoadTableCount: Int {
         tables.filter { isInEagerLoadSchema($0) }.count
     }
@@ -510,7 +497,7 @@ actor SQLSchemaProvider {
         columnPreload = .running(generation: generation, task: task)
     }
 
-    /// The pooled lease ignores cancellation, so a superseded read still completes and is stopped here.
+    // The pooled lease ignores cancellation, so a superseded read still completes and is stopped here.
     private func commitColumnPreload(_ result: Result<[CatalogName: [ColumnInfo]], any Error>, generation: Int) {
         guard case .running(let running, _) = columnPreload, running == generation else { return }
         switch result {
@@ -526,8 +513,7 @@ actor SQLSchemaProvider {
         }
     }
 
-    /// A request the previous list had not served yet is served against this one. A settled preload
-    /// waits for the next request.
+    // A request the previous list had not served is served against this one; a settled preload waits.
     private func noteTableListWritten() {
         tableListGeneration &+= 1
         unqualifiedTableItems = nil
@@ -546,8 +532,7 @@ actor SQLSchemaProvider {
         }
     }
 
-    /// In the schema's own table order, so the tables kept under the cache limit are the same every
-    /// run. Only a table listed in the preload schema takes an entry from the read.
+    // In the schema's own order, so the tables kept under the cache limit are the same every run.
     private func populateColumnCache(_ allColumns: [CatalogName: [ColumnInfo]]) {
         var pending = allColumns
         // A read that spells a listed table otherwise, by case alone, still fills it when neither side has another
@@ -588,8 +573,6 @@ actor SQLSchemaProvider {
         columnReads[key] = name
         columnAccessOrder.append(key)
     }
-
-    // MARK: - Column Catalog
 
     // Compared by bytes, like the catalog it names.
     private struct ListedName: Hashable {
@@ -724,9 +707,7 @@ actor SQLSchemaProvider {
         return nil
     }
 
-    /// `tables` is every table the scope's owner loaded, which for the browse scope includes each
-    /// schema the sidebar has expanded. A bare name only reaches the schema unqualified names
-    /// resolve in, so only its tables may be offered or matched without their schema.
+    // tables includes every schema the sidebar expanded, but a bare name only reaches the unqualified one.
     private var tablesResolvableUnqualified: [TableInfo] {
         guard let defaultSchema = getDefaultSchema(), !defaultSchema.isEmpty else { return tables }
         let spelling = schemaSpelling(defaultSchema)
@@ -735,8 +716,6 @@ actor SQLSchemaProvider {
             return CatalogName.same(schemaSpelling(tableSchema), spelling)
         }
     }
-
-    // MARK: - AI Schema Context
 
     // The tables the statement at the cursor reads take the column budget first.
     func buildSchemaContextForAI(settings: AISettings, editorText: String? = nil, cursorOffset: Int = 0) async -> String? {
@@ -756,8 +735,9 @@ actor SQLSchemaProvider {
             return (resolvedName, quote, lang, langName, sessionGrammar)
         }
 
+        let budget = settings.clampedMaxSchemaTables
         var listedTables = tables
-        if let editorText, editorLanguage == .sql, listedTables.count > settings.maxSchemaTables {
+        if let editorText, editorLanguage == .sql, listedTables.count > budget {
             let statement = SQLStatementScanner.statementAtCursor(
                 in: editorText,
                 cursorPosition: cursorOffset,
@@ -775,11 +755,11 @@ actor SQLSchemaProvider {
 
         var schemaTables: [AISchemaTable] = []
         schemaTables.reserveCapacity(listedTables.count)
-        for table in listedTables.prefix(settings.maxSchemaTables) {
+        for table in listedTables.prefix(budget) {
             let columns = await getColumns(for: table.name, schema: table.schema)
             schemaTables.append(AISchemaTable(table: table, columns: columns))
         }
-        schemaTables += listedTables.dropFirst(settings.maxSchemaTables).map { AISchemaTable(table: $0) }
+        schemaTables += listedTables.dropFirst(budget).map { AISchemaTable(table: $0) }
 
         return AISchemaContext.buildSystemPrompt(
             databaseType: dbType,
@@ -794,8 +774,6 @@ actor SQLSchemaProvider {
             queryLanguageName: queryLanguageName
         )
     }
-
-    // MARK: - Completion Items
 
     func tableCompletionItems() async -> [SQLCompletionItem] {
         let defaultSchema = getDefaultSchema()
@@ -916,8 +894,7 @@ actor SQLSchemaProvider {
         }
     }
 
-    /// Dotted field paths for a document-store collection, cached per collection.
-    /// Concurrent callers await the same sample instead of firing duplicate queries.
+    // Concurrent callers await the same sample instead of firing duplicate queries.
     func fieldPaths(for tableName: String, sampleSize: Int = 50) async -> [PluginFieldPath] {
         let key = cacheKey(table: tableName, schema: nil)
         if let cached = fieldPathCache[key] { return cached }
@@ -940,8 +917,7 @@ actor SQLSchemaProvider {
         return paths
     }
 
-    /// Reads only the column cache, because completion runs per keystroke and must not add a fetch.
-    /// Until the preload or this statement's column completion has read the table, it offers nothing.
+    // Reads only the column cache: completion runs per keystroke and must not add a fetch.
     func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] {
         let name = column.lowercased()
         let candidates = references.isEmpty

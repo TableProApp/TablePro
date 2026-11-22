@@ -121,7 +121,7 @@ extension AIChatViewModel {
         let scope = schemaCacheScope
         let schema = browsedSchema(connId)
         let settings = services.appSettings.ai
-        let tablesToFetch = Array(orderedTables().prefix(settings.maxSchemaTables))
+        let tablesToFetch = Array(orderedTables().prefix(settings.clampedMaxSchemaTables))
         guard !tablesToFetch.isEmpty else { return }
 
         await withTaskGroup(of: (String, [ColumnInfo]).self) { group in
@@ -208,7 +208,7 @@ extension AIChatViewModel {
         let section = AISchemaContext.buildSchemaSection(
             tables: schemaTables(),
             defaultSchema: connection.flatMap { defaultSchema(for: $0) },
-            maxTables: settings.maxSchemaTables,
+            maxTables: settings.clampedMaxSchemaTables,
             identifierQuote: identifierQuote
         )
         return section.isEmpty ? nil : section
@@ -232,7 +232,7 @@ extension AIChatViewModel {
             question: question,
             queryReferences: editorQueryReferences(),
             defaultSchema: connection.flatMap { defaultSchema(for: $0) },
-            maxTables: services.appSettings.ai.maxSchemaTables
+            maxTables: services.appSettings.ai.clampedMaxSchemaTables
         )
         guard input.tables.count > input.maxTables else { return }
         let scope = schemaCacheScope
@@ -257,7 +257,7 @@ extension AIChatViewModel {
     private func loadEveryColumnForRanking() async {
         guard let connection else { return }
         let tableCount = tables.count
-        guard tableCount > services.appSettings.ai.maxSchemaTables,
+        guard tableCount > services.appSettings.ai.clampedMaxSchemaTables,
               tableCount <= SQLSchemaProvider.maxCachedTables,
               bulkColumnReadTableCount != tableCount
         else { return }

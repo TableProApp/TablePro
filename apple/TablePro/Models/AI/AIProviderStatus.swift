@@ -1,12 +1,6 @@
-//
-//  AIProviderStatus.swift
-//  TablePro
-//
-
 import Foundation
 
-// One answer to "can this provider answer right now", read by the Settings row, the provider sheet
-// and the chat panel, so they never disagree.
+// One answer to "can this provider answer right now", so the Settings row, the provider page and the chat panel agree.
 internal enum AIProviderStatus: Equatable, Sendable {
     case checking
     case ready(detail: String?)
@@ -17,6 +11,7 @@ internal enum AIProviderStatus: Equatable, Sendable {
     case needsUpdate(version: String)
     case failed(message: String)
     case notConfigured
+    case notStarted
 
     internal var isReady: Bool {
         if case .ready = self { return true }
@@ -34,13 +29,14 @@ internal enum AIProviderStatus: Equatable, Sendable {
         case .needsUpdate(let version): String(format: String(localized: "Claude Code %@ is too old"), version)
         case .failed(let message): message
         case .notConfigured: String(localized: "Not configured")
+        case .notStarted: String(localized: "Not started")
         }
     }
 
     // Only a state the user has to fix carries a symbol; a working or busy provider shows none.
     internal var severity: NoticeSeverity? {
         switch self {
-        case .checking, .ready, .signingIn: nil
+        case .checking, .ready, .signingIn, .notStarted: nil
         case .failed: .error
         case .needsAPIKey, .needsSignIn, .needsInstall, .needsUpdate, .notConfigured: .warning
         }
@@ -51,7 +47,8 @@ internal enum AIProviderStatus: Equatable, Sendable {
         hasAPIKey: Bool,
         oauthState: OAuthAuthState?,
         serviceError: String?,
-        claudeAgent: ClaudeAgentService.InstallState
+        claudeAgent: ClaudeAgentService.InstallState,
+        serviceStopped: Bool = false
     ) -> AIProviderStatus {
         switch provider.authStyle {
         case .apiKey:
@@ -61,8 +58,8 @@ internal enum AIProviderStatus: Equatable, Sendable {
             return endpointStatus(provider.endpoint.isEmpty ? provider.defaultEndpoint : provider.endpoint)
         case .oauth:
             if let serviceError, !serviceError.isEmpty { return .failed(message: serviceError) }
-            // No state yet: the sign-in lives in a service that has not answered.
-            guard let oauthState else { return .checking }
+            // No state yet: the sign-in lives in a service that has not answered, or has not been started.
+            guard let oauthState else { return serviceStopped ? .notStarted : .checking }
             switch oauthState {
             case .signedIn(let identity):
                 return .ready(detail: identity.isEmpty
