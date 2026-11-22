@@ -83,13 +83,22 @@ def option(name):
 stage = Path(args[-1])
 appcast = stage / "appcast.xml"
 text = content(appcast.read_text())
-if os.environ.get("FAKE_PRUNE"):
+archives = sorted(stage.glob("*.tar.xz"))
+with open(os.environ["FAKE_LOG"], "a") as log:
+    log.write(json.dumps(["staged", *[archive.name for archive in archives]]) + "\n")
+# Sparkle 2.10's Unarchive.swift refuses a second archive of the same bundle version.
+if len(archives) > 1:
+    print("Duplicate updates are not supported. Found archives '" + archives[0].name + "' and '"
+          + archives[1].name + "' which contain the same bundle version.")
+    sys.exit(1)
+pruned = os.environ.get("FAKE_PRUNE", "")
+if pruned == "1" or any(("-" + arch + ".tar.xz") in archives[0].name for arch in pruned.split(",") if arch):
     appcast.write_text(signed(text, key))
     print("Wrote 0 new updates")
     sys.exit(0)
-# One item per staged archive, arch read from the name, gated when the slice is arm64-only.
+# One item for the staged archive, arch read from the name, gated when the slice is arm64-only.
 blocks = []
-for archive in sorted(stage.glob("*.tar.xz")):
+for archive in archives:
     base = archive.name[:-len(".tar.xz")]
     rest = base[len("TablePro-"):]
     arch, short = None, rest
@@ -118,7 +127,7 @@ for archive in sorted(stage.glob("*.tar.xz")):
     blocks.append("\n".join(lines))
 index = text.index("<item>") if "<item>" in text else text.index("</channel>")
 text = text[:index] + "\n".join(blocks) + "\n" + text[index:]
-appcast.write_text(text if os.environ.get("FAKE_UNSIGNED_FEED") else signed(text, key))
+appcast.write_text(signed(text, key))
 print("Wrote " + str(len(blocks)) + " new updates")
 '''
 
@@ -146,7 +155,7 @@ if "--verify" in args:
         print("Error: failed to pass signing verification.")
         sys.exit(1)
     sys.exit(0)
-path.write_text(signed(text, key))
+path.write_text(signed(text, "another-key" if os.environ.get("FAKE_BAD_FEED_SIGNATURE") else key))
 print("<!-- Updated signature inside appcast.xml -->")
 '''
 
@@ -246,6 +255,44 @@ class FeedRulesTests(unittest.TestCase):
             item(820001, "0.82.0-beta.1", "beta", url=stray)))
         self.assertEqual(feed.new_item_problems(extra, release, base), [
             f"appcast.xml has an unexpected beta enclosure for 0.82.0-beta.1 (820001) at {stray}"])
+
+    def test_the_arm64_item_comes_first(self):
+        release = version.parse_tag("v0.82.0")
+        base = "https://example.com/"
+        swapped = feed.parse_items(appcast(
+            item(820099, "0.82.0", url=base + feed.archive_name(release, "x86_64")),
+            item(820099, "0.82.0", url=base + feed.archive_name(release, "arm64"), hardware="arm64")))
+        self.assertEqual(feed.new_item_problems(swapped, release, base), [
+            "0.82.0's items run x86_64, arm64, not arm64, x86_64; Sparkle takes the first of two equal versions, "
+            "so Apple silicon would install the Intel build"])
+
+    def test_pairs_the_arm64_item_before_the_x86_64_one(self):
+        release = version.parse_tag("v0.82.0")
+        intel = appcast(item(820099, "0.82.0", url="https://example.com/x86_64"), item(140, "0.81.0"),
+                        item(139, "0.80.0"))
+        arm = appcast(item(820099, "0.82.0", url="https://example.com/arm64", hardware="arm64"), item(140, "0.81.0"))
+        paired = feed.parse_items(feed.pair_items(intel, arm, release))
+        self.assertEqual([(each.short_version, each.url, each.hardware_requirements) for each in paired], [
+            ("0.82.0", "https://example.com/arm64", "arm64"),
+            ("0.82.0", "https://example.com/x86_64", None),
+            ("0.81.0", "https://example.com/TablePro-0.81.0.tar.xz", None),
+            ("0.80.0", "https://example.com/TablePro-0.80.0.tar.xz", None)])
+        indented = SEED.replace("        <item>\n            <title>0.81.0",
+                                "        " + item(820099, "0.82.0", url="https://example.com/x86_64")
+                                + "\n        <item>\n            <title>0.81.0").encode()
+        self.assertIn(b"arm64\" length=\"10\" sparkle:edSignature=\"c2ln\"/>\n</item>\n        <item>\n"
+                      b"<sparkle:version>820099", feed.pair_items(indented, arm, release))
+
+    def test_pairing_follows_the_x86_64_run(self):
+        release = version.parse_tag("v0.82.0")
+        arm = appcast(item(820099, "0.82.0", hardware="arm64"))
+        intel = appcast(item(820099, "0.82.0"))
+        self.assertIsNone(feed.pair_items(appcast(item(140, "0.81.0")), arm, release))
+        with self.assertRaisesRegex(feed.FeedError, r"generate_appcast wrote 0 arm64 and 1 x86_64 items for 0.82.0 "
+                                                    r"\(820099\), not one each"):
+            feed.pair_items(intel, appcast(item(140, "0.81.0")), release)
+        with self.assertRaisesRegex(feed.FeedError, "wrote 2 arm64 and 1 x86_64 items"):
+            feed.pair_items(intel, appcast(item(820099, "0.82.0"), item(820099, "0.82.0")), release)
 
     def test_a_new_item_with_no_signature_names_the_key(self):
         release = version.parse_tag("v0.82.0")
@@ -415,16 +462,23 @@ class FeedSiteTests(unittest.TestCase):
         self.publish("v0.82.0-beta.1")
         changed, messages = self.add("v0.82.0-beta.1")
         self.assertTrue(changed)
-        (generate,) = self.calls("generate_appcast")
-        self.assertEqual(generate[-1], f"stdin={KEY}")
-        (signing,) = self.signings()
+        self.assertEqual(self.calls("staged"), [["TablePro-0.82.0-beta.1-arm64.tar.xz"],
+                                                ["TablePro-0.82.0-beta.1-x86_64.tar.xz"]])
+        generates = self.calls("generate_appcast")
+        self.assertEqual(len(generates), 2)
+        feed_signing, signing = self.signings()
+        self.assertEqual(feed_signing[:2], ["--ed-key-file", "-"])
+        self.assertEqual(Path(feed_signing[2]).name, "appcast.xml")
+        self.assertEqual(feed_signing[-1], f"stdin={KEY}")
         self.assertEqual(signing[:3], ["-p", "--ed-key-file", "-"])
         self.assertEqual(Path(signing[3]).name, "v3.json")
         self.assertEqual(signing[-1], f"stdin={MANIFEST_KEY}")
         self.assert_manifest_is_signed()
-        self.assertIn("--channel", generate)
-        self.assertNotIn("--critical-update-version", generate)
-        self.assertNotIn("--phased-rollout-interval", generate)
+        for generate in generates:
+            self.assertEqual(generate[-1], f"stdin={KEY}")
+            self.assertIn("--channel", generate)
+            self.assertNotIn("--critical-update-version", generate)
+            self.assertNotIn("--phased-rollout-interval", generate)
         verified = [call[3] for call in self.calls("gh") if call[:2] == ["release", "verify-asset"]]
         self.assertEqual([Path(path).name for path in verified], [
             "TablePro-0.82.0-beta.1-arm64.tar.xz", "TablePro-0.82.0-beta.1-x86_64.tar.xz",
@@ -436,10 +490,9 @@ class FeedSiteTests(unittest.TestCase):
         items = feed.parse_items(published.encode())
         self.assertEqual([(each.short_version, each.channel) for each in items],
                          [("0.82.0-beta.1", "beta"), ("0.82.0-beta.1", "beta"), ("0.81.0", None), ("0.80.0", None)])
-        betas = [each for each in items if each.short_version == "0.82.0-beta.1"]
-        self.assertEqual({Path(each.url).name: each.hardware_requirements for each in betas}, {
-            "TablePro-0.82.0-beta.1-arm64.tar.xz": "arm64",
-            "TablePro-0.82.0-beta.1-x86_64.tar.xz": None})
+        self.assertEqual([(Path(each.url).name, each.hardware_requirements) for each in items[:2]], [
+            ("TablePro-0.82.0-beta.1-arm64.tar.xz", "arm64"),
+            ("TablePro-0.82.0-beta.1-x86_64.tar.xz", None)])
         manifest = json.loads(self.published("plugins/v3.json"))
         self.assertGreaterEqual(manifest["serial"], started)
         self.assertEqual([plugin["id"] for plugin in manifest["plugins"]],
@@ -455,15 +508,15 @@ class FeedSiteTests(unittest.TestCase):
     def test_a_stable_carries_the_critical_build_and_phases(self):
         self.publish("v0.82.0")
         self.add("v0.82.0")
-        (generate,) = self.calls("generate_appcast")
-        self.assertEqual(generate[generate.index("--phased-rollout-interval") + 1], "21600")
-        self.assertEqual(generate[generate.index("--critical-update-version") + 1], "140")
+        for generate in self.calls("generate_appcast"):
+            self.assertEqual(generate[generate.index("--phased-rollout-interval") + 1], "21600")
+            self.assertEqual(generate[generate.index("--critical-update-version") + 1], "140")
 
     def test_a_critical_stable_is_critical_below_its_own_build(self):
         self.publish("v0.82.0")
         self.add("v0.82.0", critical=True)
-        (generate,) = self.calls("generate_appcast")
-        self.assertEqual(generate[generate.index("--critical-update-version") + 1], "820099")
+        for generate in self.calls("generate_appcast"):
+            self.assertEqual(generate[generate.index("--critical-update-version") + 1], "820099")
 
     def test_a_critical_beta_is_refused(self):
         with self.assertRaisesRegex(feed.FeedError, "a beta is never critical"):
@@ -478,7 +531,7 @@ class FeedSiteTests(unittest.TestCase):
         self.assertFalse(changed)
         self.assertEqual(self.files(), written)
         self.assertEqual(len(self.signings()), signings)
-        self.assertEqual(len(self.calls("generate_appcast")), 1)
+        self.assertEqual(len(self.calls("generate_appcast")), 2)
         self.assertIn("appcast.xml already has 0.82.0-beta.1 (820001)", messages)
 
     def test_an_archive_of_another_build_is_refused(self):
@@ -489,14 +542,28 @@ class FeedSiteTests(unittest.TestCase):
         self.assertEqual(self.calls("generate_appcast"), [])
         self.assertEqual(self.files(), written)
 
-    def test_an_item_sparkle_prunes_on_arrival_leaves_the_appcast_alone(self):
+    def assert_pruned_on_arrival(self, pruned):
         self.publish("v0.79.1")
-        with mock.patch.dict(os.environ, {"FAKE_PRUNE": "1"}):
+        with mock.patch.dict(os.environ, {"FAKE_PRUNE": pruned}):
             changed, messages = self.add("v0.79.1")
         self.assertTrue(changed)
         self.assertEqual(self.published("appcast.xml"), fake_signed(SEED))
         self.assertIn("generate_appcast keeps newer items on 0.79.1's branch, so appcast.xml stays as it is", messages)
         self.assertEqual(len(json.loads(self.published("plugins/v3.json"))["plugins"]), 2)
+
+    def test_an_item_sparkle_prunes_on_arrival_leaves_the_appcast_alone(self):
+        self.assert_pruned_on_arrival("1")
+
+    def test_an_x86_64_item_sparkle_prunes_leaves_the_appcast_alone(self):
+        self.assert_pruned_on_arrival("x86_64")
+
+    def test_an_arm64_item_missing_beside_the_x86_64_one_writes_nothing(self):
+        self.publish("v0.82.0-beta.1")
+        written = self.files()
+        with mock.patch.dict(os.environ, {"FAKE_PRUNE": "arm64"}):
+            with self.assertRaisesRegex(feed.FeedError, "generate_appcast wrote 0 arm64 and 1 x86_64 items"):
+                self.add("v0.82.0-beta.1")
+        self.assertEqual(self.files(), written)
 
     def test_a_new_item_with_no_signature_writes_nothing(self):
         self.publish("v0.82.0-beta.1")
@@ -506,10 +573,10 @@ class FeedSiteTests(unittest.TestCase):
                 self.add("v0.82.0-beta.1")
         self.assertEqual(self.files(), written)
 
-    def test_an_unsigned_feed_from_generate_appcast_writes_nothing(self):
+    def test_a_paired_feed_whose_signature_fails_writes_nothing(self):
         self.publish("v0.82.0-beta.1")
         written = self.files()
-        with mock.patch.dict(os.environ, {"FAKE_UNSIGNED_FEED": "1"}):
+        with mock.patch.dict(os.environ, {"FAKE_BAD_FEED_SIGNATURE": "1"}):
             with self.assertRaisesRegex(feed.FeedError, "fails its checks, so nothing was written:\n  sign_update failed"):
                 self.add("v0.82.0-beta.1")
         self.assertEqual(self.files(), written)

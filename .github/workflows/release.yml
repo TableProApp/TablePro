@@ -89,8 +89,8 @@ jobs:
     needs: verify
     runs-on: xcode-27
     environment: signing
-    # Each arch builds alone: the universal archive took 138 minutes for v0.84.0-beta.1 and swapped a
-    # 7 GB runner; a single arch stays well under this, and the two run in parallel.
+    # One arch per leg, the two in parallel. The universal archive, both arches in one job, took 138 minutes
+    # for v0.84.0-beta.1; signing and two notarizations come on top.
     timeout-minutes: 240
     strategy:
       fail-fast: false

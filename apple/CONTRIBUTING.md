@@ -61,7 +61,7 @@ xcodebuild build -project TablePro.xcodeproj -scheme AllPlugins -destination 'pl
 
 ### A Release build
 
-`scripts/release/build.sh` builds the app and the registry plugins the way a tag does, universal, into `build/release/`; `package.sh` writes the assets to `dist/`. The nightly's Release Build job runs the same:
+`scripts/release/build.sh` builds the app and the registry plugins the way a tag does: the app once per arch into `build/release/<arch>/`, the plugins universal into `build/release/plugins`; `package.sh` writes the assets to `dist/`. The nightly's Release Build job runs the same:
 
 ```bash
 export VERSION=0.0.0-dev BUILD=9999999

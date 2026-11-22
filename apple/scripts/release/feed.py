@@ -35,7 +35,8 @@ PUBLIC_KEY_SCRIPT = Path(__file__).resolve().with_name("ed25519-public-key.swift
 CHANGELOG_URL = "https://docs.tablepro.app/changelog"
 PHASED_ROLLOUT_SECONDS = 21600
 INTEGER = re.compile(r"[0-9]+")
-# arm64 first; its item is gated by sparkle:hardwareRequirements, the x86_64 item is the Intel fallback.
+# Sparkle takes the first of two items with the same version, so the gated arm64 item goes first and the
+# ungated x86_64 item is what an Intel Mac falls back to.
 ARCHES = ("arm64", "x86_64")
 
 
@@ -143,6 +144,10 @@ def new_item_problems(items: List[Item], release: version.Version, url_base: str
         if not item.signature:
             problems.append(f"{release}'s {arch} enclosure has no sparkle:edSignature; "
                             "SPARKLE_PRIVATE_KEY does not match the archive's SUPublicEDKey")
+    order = [expected[item.url] for item in found if item.url in expected]
+    if sorted(order) == sorted(ARCHES) and order != list(ARCHES):
+        problems.append(f"{release}'s items run {', '.join(order)}, not {', '.join(ARCHES)}; Sparkle takes the "
+                        "first of two equal versions, so Apple silicon would install the Intel build")
     return problems
 
 
@@ -150,7 +155,7 @@ def _text(element: minidom.Element) -> str:
     return "".join(node.data for node in element.childNodes if node.nodeType == node.TEXT_NODE).strip()
 
 
-def remove_items(data: bytes, short_version: str) -> Tuple[bytes, int]:
+def _channel(data: bytes) -> Tuple[minidom.Document, minidom.Element]:
     try:
         document = minidom.parseString(data)
     except ExpatError as error:
@@ -158,14 +163,45 @@ def remove_items(data: bytes, short_version: str) -> Tuple[bytes, int]:
     channels = document.getElementsByTagName("channel")
     if not channels:
         raise FeedError(f"{APPCAST} has no rss channel")
-    channel = channels[0]
-    doomed = [node for node in channel.childNodes
-              if node.nodeType == node.ELEMENT_NODE and node.tagName == "item"
-              and any(_text(each) == short_version
-                      for each in node.getElementsByTagNameNS(SPARKLE_NAMESPACE, "shortVersionString"))]
+    return document, channels[0]
+
+
+def _item_nodes(channel: minidom.Element, matches: Callable[[str, str], bool]) -> List[minidom.Element]:
+    def value(node: minidom.Element, name: str) -> str:
+        return " ".join(_text(each) for each in node.getElementsByTagNameNS(SPARKLE_NAMESPACE, name))
+    return [node for node in channel.childNodes
+            if node.nodeType == node.ELEMENT_NODE and node.tagName == "item"
+            and matches(value(node, "shortVersionString"), value(node, "version"))]
+
+
+def remove_items(data: bytes, short_version: str) -> Tuple[bytes, int]:
+    document, channel = _channel(data)
+    doomed = _item_nodes(channel, lambda short, build: short == short_version)
     for item in doomed:
         channel.removeChild(item)
     return document.toxml(encoding="utf-8", standalone=True), len(doomed)
+
+
+# generate_appcast refuses two archives of one bundle version, so each arch gets its own run over the same feed.
+# The x86_64 run's feed is kept, since it prunes exactly as the universal feed did, and the arm64 run's item goes in
+# just before the x86_64 one. None when Sparkle's per-branch limit left the release out.
+def pair_items(intel: bytes, arm: bytes, release: version.Version) -> Optional[bytes]:
+    def ours(short: str, build: str) -> bool:
+        return short == str(release) and build == str(release.build)
+    document, channel = _channel(intel)
+    intel_items = _item_nodes(channel, ours)
+    arm_items = _item_nodes(_channel(arm)[1], ours)
+    if not intel_items:
+        return None
+    if len(intel_items) != 1 or len(arm_items) != 1:
+        raise FeedError(f"generate_appcast wrote {len(arm_items)} arm64 and {len(intel_items)} x86_64 items for "
+                        f"{release} ({release.build}), not one each")
+    target = intel_items[0]
+    spacing = target.previousSibling
+    channel.insertBefore(document.importNode(arm_items[0], True), target)
+    if spacing is not None and spacing.nodeType == spacing.TEXT_NODE:
+        channel.insertBefore(document.createTextNode(spacing.data), target)
+    return document.toxml(encoding="utf-8", standalone=True)
 
 
 def appcast_has(items: List[Item], release: version.Version) -> bool:
@@ -358,29 +394,33 @@ def add(root: Path, site: Path, tag: str, notes: Path, critical: bool, tools: Pa
             log(releases.verify(tag, downloads / name))
         entries = registry.describe(downloads, str(release), release.build, kit, metadata)
 
-        stage = Path(scratch) / "stage"
-        stage.mkdir()
+        staged_appcast = Path(scratch) / APPCAST
         new_appcast = False
         if has_item:
             log(f"{APPCAST} already has {release} ({release.build})")
         else:
-            for arch in ARCHES:
-                archive = archive_name(release, arch)
-                check_archive(downloads / archive, release)
-                (downloads / archive).rename(stage / archive)
-                # generate_appcast matches release notes by the archive's base name, so each per-arch
-                # item embeds the same notes.
-                shutil.copy2(notes, stage / release_notes_name(release, arch))
-            shutil.copy2(appcast, stage / APPCAST)
             critical_build = release.build if critical else None
             if critical_build is None and not release.is_beta:
                 critical_build = carried_critical(items)
-            arguments = appcast_arguments(stage, tag, release, critical_build, repository)
-            log(_tool(tools, "generate_appcast", key, *arguments, run=run))
-            staged = parse_items((stage / APPCAST).read_bytes())
-            if appcast_has(staged, release):
-                _refuse(new_item_problems(staged, release, url_base)
-                        + verify_signature(stage / APPCAST, key, tools, run))
+            generated = {}
+            for arch in ARCHES:
+                archive = archive_name(release, arch)
+                check_archive(downloads / archive, release)
+                stage = Path(scratch) / f"stage-{arch}"
+                stage.mkdir()
+                (downloads / archive).rename(stage / archive)
+                # generate_appcast embeds the notes whose name matches the archive's.
+                shutil.copy2(notes, stage / release_notes_name(release, arch))
+                shutil.copy2(appcast, stage / APPCAST)
+                arguments = appcast_arguments(stage, tag, release, critical_build, repository)
+                log(_tool(tools, "generate_appcast", key, *arguments, run=run))
+                generated[arch] = (stage / APPCAST).read_bytes()
+            paired = pair_items(generated["x86_64"], generated["arm64"], release)
+            if paired is not None:
+                staged_appcast.write_bytes(paired)
+                log(sign(staged_appcast, key, tools, run))
+                _refuse(new_item_problems(parse_items(paired), release, url_base)
+                        + verify_signature(staged_appcast, key, tools, run))
                 new_appcast = True
             else:
                 # The archive matched the tag, so only Sparkle's per-branch limit left it out.
@@ -389,7 +429,7 @@ def add(root: Path, site: Path, tag: str, notes: Path, critical: bool, tools: Pa
             path, entries, release.channel, url_base, metadata["retainFromPluginKit"], log), manifest_key, tools, run,
             sign_unsigned_manifest)
         if new_appcast:
-            shutil.copy2(stage / APPCAST, appcast)
+            shutil.copy2(staged_appcast, appcast)
         if manifest is not None:
             _publish_manifest(site, *manifest)
     return new_appcast or manifest is not None
