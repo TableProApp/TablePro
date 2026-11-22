@@ -1,8 +1,3 @@
-//
-//  SidebarTabsSettingsView.swift
-//  TablePro
-//
-
 import SwiftUI
 
 struct SidebarTabsSettingsView: View {
@@ -10,64 +5,76 @@ struct SidebarTabsSettingsView: View {
     @Binding var tabSettings: TabSettings
 
     @AppStorage(SidebarPersistenceKey.defaultLayout, store: AppStorageEnvironment.shared.defaults)
-    private var defaultSidebarLayout: SidebarLayout = .flat
+    private var defaultSidebarLayout: SidebarLayout = .fallback
 
     var body: some View {
         Form {
-            Section("Tabs") {
-                Toggle("Enable preview tabs", isOn: $tabSettings.enablePreviewTabs)
-                    .help("Single-clicking a table opens a temporary tab that gets replaced on next click.")
-            }
-
             Section("Sidebar") {
-                Toggle("Show connections", isOn: $settings.showWorkspaceRail)
-                    .help("Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it.")
+                Toggle(isOn: $settings.showWorkspaceRail) {
+                    Text("Show connections")
+                    Text("A strip on the window's leading edge with each open connection and database. It appears once more than one is open.")
+                }
+                .accessibilityIdentifier("show-connections-toggle")
 
                 Toggle("Show recent tables", isOn: $settings.showRecentTables)
-                    .help("Adds a Recent section at the top of the Tables sidebar with the last tables you opened per connection and database.")
+                    .accessibilityIdentifier("show-recent-tables-toggle")
 
-                Toggle("Show object icons", isOn: $settings.showObjectIcons)
-                    .help("Shows a type icon before each object name in the sidebar. Turn it off for a plain list of names.")
+                Picker(selection: $defaultSidebarLayout) {
+                    Text("List").tag(SidebarLayout.flat)
+                    Text("Tree").tag(SidebarLayout.tree)
+                } label: {
+                    Text("Default layout")
+                    Text("Used when a connection opens, unless you picked a layout for it from the View menu. For servers with a database tree.")
+                }
+                .accessibilityIdentifier("sidebar-default-layout-picker")
+            }
 
-                Toggle("Show object comments", isOn: $settings.showObjectComments)
-                    .help("Shows database object comments next to tables in the sidebar and in grid column headers.")
+            // Same set and order as the sidebar's View Options menu, so the two map one to one.
+            Section("Objects") {
+                Toggle("Show icons", isOn: $settings.showObjectIcons)
+                    .accessibilityIdentifier("show-object-icons-toggle")
 
-                Toggle("Show system databases and schemas", isOn: $settings.showSystemContainers)
-                    .accessibilityIdentifier("show-system-containers-toggle")
-                    .help(String(localized: """
-                        Lists system databases such as mysql and information_schema, and system schemas, \
-                        in the sidebar tree and the database filter. Switchers always list them.
-                        """))
+                Toggle(isOn: $settings.showObjectComments) {
+                    Text("Show comments")
+                    Text("In the sidebar, the inspector and data grid column header tooltips.")
+                }
+                .accessibilityIdentifier("show-object-comments-toggle")
+
+                Toggle(isOn: $settings.showSystemContainers) {
+                    Text("Show system databases and schemas")
+                    Text("Such as mysql and information_schema, in the sidebar and its database filter. The database switcher always lists them.")
+                }
+                .accessibilityIdentifier("show-system-containers-toggle")
 
                 Toggle("Show partitions", isOn: $settings.showPartitions)
                     .accessibilityIdentifier("show-partitions-toggle")
-                    .help(String(localized: """
-                        Lists a partitioned table's partitions under it in the sidebar, with how many \
-                        it holds. Turn it off to keep partitioned tables as single rows.
-                        """))
 
-                Picker("Row size:", selection: $settings.sidebarRowSize) {
+                Picker(selection: $settings.sidebarRowSize) {
                     ForEach(SidebarRowSizePreference.allCases, id: \.self) { size in
                         Text(size.title).tag(size)
                     }
+                } label: {
+                    Text("Row size")
+                    Text("Match System follows Sidebar icon size in System Settings.")
                 }
-                .help(String(localized: """
-                    Match System follows Sidebar icon size in System Settings > Appearance. \
-                    Choose a size to fit more objects on screen than the rest of the system shows.
-                    """))
+                .accessibilityIdentifier("sidebar-row-size-picker")
+            }
 
-                Picker("Default layout for new connections:", selection: $defaultSidebarLayout) {
-                    Text("List").tag(SidebarLayout.flat)
-                    Text("Tree").tag(SidebarLayout.tree)
+            Section("Tabs") {
+                Toggle(isOn: $tabSettings.enablePreviewTabs) {
+                    Text("Enable preview tabs")
+                    Text("Clicking a table opens it in a preview tab that the next click reuses. Double-click a table or press Return to keep its tab.")
                 }
-                .help(String(localized: "Layout for new connections on servers that support a database tree. Switch the current connection from the View menu."))
+                .accessibilityIdentifier("preview-tabs-toggle")
             }
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-pane-sidebar")
     }
 }
 
 #Preview {
     SidebarTabsSettingsView(settings: .constant(.default), tabSettings: .constant(.default))
-        .frame(width: 520, height: 500)
+        .frame(width: 520, height: 760)
 }

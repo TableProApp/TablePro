@@ -16,12 +16,13 @@ internal struct SidebarTabsSettingsEntry: View {
     }
 }
 
+// No SettingsPage has Sidebar & Tabs as its parent, so nothing reaches this.
 internal struct SidebarTabsSettingsPageEntry: View {
     internal let route: SettingsRoute
     internal let context: SettingsPaneContext
 
     internal var body: some View {
-        SettingsPagePlaceholder(title: context.navigation.title(for: route))
+        EmptyView()
     }
 }
 
