@@ -1,11 +1,7 @@
-//
-//  SettingsView.swift
-//  TablePro
-//
-
 import Foundation
 
-enum SettingsPane: String, CaseIterable {
+// The rawValue is the stored last-used pane, so it never follows a title.
+enum SettingsPane: String, CaseIterable, Sendable {
     case general, sidebar, connections, appearance, editor, data, keyboard, profiles, notifications, ai, mcp, plugins, sync, account
 
     var title: String {
@@ -21,11 +17,8 @@ enum SettingsPane: String, CaseIterable {
         case .notifications: String(localized: "Notifications")
         case .ai: String(localized: "AI")
         case .mcp: "MCP"
-        // The rawValue and the URL id stay "plugins": they are the stored pane and a published link.
         case .plugins: String(localized: "Extensions")
-        case .sync: String(localized: "Sync")
-        /// The stored rawValue stays "account": it is the tab item identifier and the pane the
-        /// window restores, so renaming it would silently reset everyone's last-used pane.
+        case .sync: String(localized: "iCloud Sync")
         case .account: String(localized: "Account")
         }
     }
@@ -34,17 +27,17 @@ enum SettingsPane: String, CaseIterable {
         switch self {
         case .general: "gearshape"
         case .sidebar: "sidebar.left"
-        case .connections: "cable.connector"
-        case .appearance: "paintbrush"
-        case .editor: "doc.text"
+        case .connections: "cylinder.split.1x2"
+        case .appearance: "circle.lefthalf.filled"
+        case .editor: "square.and.pencil"
         case .data: "tablecells"
         case .keyboard: "keyboard"
         case .profiles: "person.badge.key"
         case .notifications: "bell"
         case .ai: "sparkles"
-        case .mcp: "network"
+        case .mcp: "point.3.connected.trianglepath.dotted"
         case .plugins: "puzzlepiece.extension"
-        case .sync: "arrow.triangle.2.circlepath"
+        case .sync: "icloud"
         case .account: "person.crop.circle"
         }
     }

@@ -72,14 +72,14 @@ internal final class SettingsSplitViewController: NSSplitViewController {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SettingsWindow")
 
-    internal let model: SettingsNavigationModel
+    internal let model: LegacySettingsNavigationModel
     internal let toolbarController: SettingsWindowToolbar
     private let registryClient: RegistryClient
     private var cancellables: Set<AnyCancellable> = []
 
     internal init(registryClient: RegistryClient = .shared) {
         self.registryClient = registryClient
-        let model = SettingsNavigationModel(initial: Self.persistedPane)
+        let model = LegacySettingsNavigationModel(initial: Self.persistedPane)
         self.model = model
         self.toolbarController = SettingsWindowToolbar(model: model)
         super.init(nibName: nil, bundle: nil)
@@ -134,8 +134,9 @@ internal final class SettingsSplitViewController: NSSplitViewController {
     }
 }
 
+// Goes away with this shell once it moves to SettingsNavigationModel.
 @MainActor
-internal final class SettingsNavigationModel: ObservableObject {
+internal final class LegacySettingsNavigationModel: ObservableObject {
     @Published internal var selection: SettingsPane
     // The detail's NavigationStack path, owned here so the window toolbar can read depth and drive Back.
     @Published internal var path = NavigationPath()
@@ -177,7 +178,7 @@ internal final class SettingsNavigationModel: ObservableObject {
 }
 
 private struct SettingsSidebarView: View {
-    @ObservedObject fileprivate var model: SettingsNavigationModel
+    @ObservedObject fileprivate var model: LegacySettingsNavigationModel
     // Search lives here, not on the nav model, so typing re-renders only the sidebar list and never
     // the detail pane or the toolbar.
     @State private var searchText = ""
@@ -223,7 +224,7 @@ private struct SettingsSidebarView: View {
 }
 
 private struct SettingsDetailView: View {
-    @ObservedObject fileprivate var model: SettingsNavigationModel
+    @ObservedObject fileprivate var model: LegacySettingsNavigationModel
     fileprivate let registryClient: RegistryClient
 
     fileprivate var body: some View {
@@ -235,7 +236,7 @@ private struct SettingsDetailView: View {
 }
 
 private struct SettingsPaneStack: View {
-    @ObservedObject fileprivate var model: SettingsNavigationModel
+    @ObservedObject fileprivate var model: LegacySettingsNavigationModel
     fileprivate let pane: SettingsPane
     fileprivate let registryClient: RegistryClient
 

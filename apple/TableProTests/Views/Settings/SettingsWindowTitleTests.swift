@@ -133,7 +133,7 @@ extension GlobalStateSuites {
         // and a pane switch pops back to the pane's own title.
         @Test("Back enablement and title track the detail stack depth")
         func backEnablementTracksDepth() {
-            let model = SettingsNavigationModel(initial: .appearance)
+            let model = LegacySettingsNavigationModel(initial: .appearance)
             #expect(!model.canGoBack)
             #expect(model.currentTitle == SettingsPane.appearance.title)
 

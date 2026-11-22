@@ -1,13 +1,7 @@
-//
-//  SettingsPane+URLIdentifier.swift
-//  TablePro
-//
-
 import Foundation
 
-/// The ids in `tablepro://settings/<id>` links. They are public and documented, so they never
-/// follow a pane's title or rawValue.
-internal extension SettingsPane {
+// Published ids of tablepro://settings/<id> links, so they never follow a title or rawValue.
+extension SettingsPane {
     var urlIdentifier: String {
         switch self {
         case .general: "general"
@@ -28,22 +22,7 @@ internal extension SettingsPane {
     }
 
     init?(urlIdentifier: String) {
-        switch urlIdentifier {
-        case "general": self = .general
-        case "sidebar": self = .sidebar
-        case "connections": self = .connections
-        case "appearance": self = .appearance
-        case "editor": self = .editor
-        case "data": self = .data
-        case "keyboard": self = .keyboard
-        case "profiles": self = .profiles
-        case "notifications": self = .notifications
-        case "ai": self = .ai
-        case "mcp": self = .mcp
-        case "plugins": self = .plugins
-        case "sync": self = .sync
-        case "license": self = .account
-        default: return nil
-        }
+        guard let pane = Self.allCases.first(where: { $0.urlIdentifier == urlIdentifier }) else { return nil }
+        self = pane
     }
 }

@@ -15,12 +15,12 @@ internal final class SettingsWindowToolbar: NSObject, NSToolbarDelegate {
     private static let backForward = NSToolbarItem.Identifier("com.TablePro.settings.backForward")
     private static let pageTitle = NSToolbarItem.Identifier("com.TablePro.settings.title")
 
-    private let model: SettingsNavigationModel
+    private let model: LegacySettingsNavigationModel
     private weak var backItem: NSToolbarItem?
     private weak var titleField: NSTextField?
     private var cancellable: AnyCancellable?
 
-    internal init(model: SettingsNavigationModel) {
+    internal init(model: LegacySettingsNavigationModel) {
         self.model = model
         super.init()
         cancellable = model.objectWillChange.sink { [weak self] in
