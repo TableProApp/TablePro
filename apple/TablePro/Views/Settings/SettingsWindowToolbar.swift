@@ -1,48 +1,87 @@
-//
-//  SettingsWindowToolbar.swift
-//  TablePro
-//
-
 import AppKit
-import Combine
 
-// The System Settings toolbar: a back/forward navigation group pinned to the leading edge of the
-// detail region, then the current page title in bold. AppKit draws the sidebar/detail tracking
-// separator. Forward stays disabled (a NavigationStack is back-only), which matches the reference's
-// idle state. No centered window title.
+// Back and Forward as one navigational group, so AppKit draws the window title right after it
+// (System Settings). A pane that filters its own list gets a search item at the trailing edge.
 @MainActor
 internal final class SettingsWindowToolbar: NSObject, NSToolbarDelegate {
-    private static let backForward = NSToolbarItem.Identifier("com.TablePro.settings.backForward")
-    private static let pageTitle = NSToolbarItem.Identifier("com.TablePro.settings.title")
+    internal static let navigationIdentifier = NSToolbarItem.Identifier("com.TablePro.settings.backForward")
+    internal static let keyboardSearchIdentifier = NSToolbarItem.Identifier("com.TablePro.settings.keyboardSearch")
+    internal static let extensionsFilterIdentifier = NSToolbarItem.Identifier("com.TablePro.settings.extensionsFilter")
+    private static let filterWidth: CGFloat = 180
 
-    private let model: LegacySettingsNavigationModel
-    private weak var backItem: NSToolbarItem?
-    private weak var titleField: NSTextField?
-    private var cancellable: AnyCancellable?
+    internal var onBack: (() -> Void)?
+    internal var onForward: (() -> Void)?
 
-    internal init(model: LegacySettingsNavigationModel) {
-        self.model = model
-        super.init()
-        cancellable = model.objectWillChange.sink { [weak self] in
-            // objectWillChange fires before the value updates; read it on the next runloop turn.
-            Task { @MainActor in self?.sync() }
-        }
-    }
+    private weak var toolbar: NSToolbar?
+    private weak var navigationGroup: NSToolbarItemGroup?
+    private var canGoBack = false
+    private var canGoForward = false
+    private var filterPane: SettingsPane?
+    private var filter: SettingsPaneFilter?
 
     internal func makeToolbar() -> NSToolbar {
-        let toolbar = NSToolbar(identifier: "com.TablePro.settings.toolbar")
+        // AppKit mirrors an insert or remove into every toolbar sharing the identifier, and a closed
+        // window's toolbar can outlive it with a different item count, which throws.
+        let toolbar = NSToolbar(identifier: "com.TablePro.settings.toolbar.\(UUID().uuidString)")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
+        toolbar.autosavesConfiguration = false
+        if #available(macOS 15.0, *) {
+            toolbar.allowsDisplayModeCustomization = false
+        }
+        self.toolbar = toolbar
         return toolbar
     }
 
+    internal var isBackEnabled: Bool {
+        navigationGroup?.subitems.first?.isEnabled ?? canGoBack
+    }
+
+    internal var isForwardEnabled: Bool {
+        navigationGroup?.subitems.last?.isEnabled ?? canGoForward
+    }
+
+    internal func update(canGoBack: Bool, canGoForward: Bool) {
+        self.canGoBack = canGoBack
+        self.canGoForward = canGoForward
+        applyNavigationState()
+    }
+
+    // Inserted and removed by identifier, only when the wanted item differs, so a navigation never flickers it.
+    internal func showFilter(for pane: SettingsPane, filter: SettingsPaneFilter?) {
+        let wanted = filter == nil ? nil : Self.filterIdentifier(for: pane)
+        filterPane = wanted == nil ? nil : pane
+        self.filter = wanted == nil ? nil : filter
+        guard let toolbar else { return }
+        for (index, item) in toolbar.items.enumerated().reversed()
+            where Self.isFilterIdentifier(item.itemIdentifier) && item.itemIdentifier != wanted {
+            toolbar.removeItem(at: index)
+        }
+        guard let wanted else { return }
+        if let item = toolbar.items.first(where: { $0.itemIdentifier == wanted }) as? NSSearchToolbarItem {
+            syncField(item.searchField)
+        } else {
+            toolbar.insertItem(withItemIdentifier: wanted, at: toolbar.items.count)
+        }
+    }
+
+    // Returns false when the current pane has no filter, so Find falls back to the sidebar search.
+    internal func focusFilter() -> Bool {
+        guard let filterPane,
+              let identifier = Self.filterIdentifier(for: filterPane),
+              let item = toolbar?.items.first(where: { $0.itemIdentifier == identifier }) as? NSSearchToolbarItem
+        else { return false }
+        item.beginSearchInteraction()
+        return true
+    }
+
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.sidebarTrackingSeparator, Self.backForward, Self.pageTitle, .flexibleSpace]
+        [.sidebarTrackingSeparator, Self.navigationIdentifier, .flexibleSpace]
     }
 
     internal func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
+        toolbarDefaultItemIdentifiers(toolbar) + [Self.keyboardSearchIdentifier, Self.extensionsFilterIdentifier]
     }
 
     internal func toolbar(
@@ -51,58 +90,117 @@ internal final class SettingsWindowToolbar: NSObject, NSToolbarDelegate {
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch identifier {
-        case Self.backForward:
-            let back = chevron(id: "com.TablePro.settings.back", symbol: "chevron.backward", label: String(localized: "Back"))
-            back.target = self
-            back.action = #selector(goBack(_:))
-            back.isEnabled = model.canGoBack
-            backItem = back
-
-            let forward = chevron(id: "com.TablePro.settings.forward", symbol: "chevron.forward", label: String(localized: "Forward"))
-            forward.isEnabled = false
-
-            // isNavigational pins the pair to the leading edge of the detail region (Finder/Safari/System Settings).
-            let group = NSToolbarItemGroup(itemIdentifier: identifier)
-            group.label = String(localized: "Navigation")
-            group.paletteLabel = String(localized: "Navigation")
-            group.subitems = [back, forward]
-            group.isNavigational = true
-            return group
-
-        case Self.pageTitle:
-            let item = NSToolbarItem(itemIdentifier: identifier)
-            let field = NSTextField(labelWithString: model.currentTitle)
-            field.font = .systemFont(ofSize: NSFont.systemFontSize + 1, weight: .bold)
-            field.lineBreakMode = .byTruncatingTail
-            field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            item.view = field
-            item.visibilityPriority = .high
-            titleField = field
-            return item
-
+        case Self.navigationIdentifier:
+            return makeNavigationGroup()
+        case Self.keyboardSearchIdentifier:
+            return makeFilterItem(
+                identifier: identifier,
+                placeholder: String(localized: "Search Shortcuts"),
+                accessibilityIdentifier: "shortcut-search"
+            )
+        case Self.extensionsFilterIdentifier:
+            return makeFilterItem(
+                identifier: identifier,
+                placeholder: String(localized: "Filter"),
+                accessibilityIdentifier: "extensions-filter"
+            )
         default:
             return nil
         }
     }
 
-    private func chevron(id: String, symbol: String, label: String) -> NSToolbarItem {
-        let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier(id))
-        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-        item.label = label
-        item.paletteLabel = label
-        item.isBordered = true
-        // Enablement is driven by canGoBack; without this AppKit auto-enables Back because its
-        // target responds to the action, so it would never dim at a pane root.
-        item.autovalidates = false
+    private func makeNavigationGroup() -> NSToolbarItemGroup {
+        let back = String(localized: "Back")
+        let forward = String(localized: "Forward")
+        let images = [
+            NSImage(systemSymbolName: "chevron.backward", accessibilityDescription: back),
+            NSImage(systemSymbolName: "chevron.forward", accessibilityDescription: forward),
+        ].compactMap { $0 }
+        let group = NSToolbarItemGroup(
+            itemIdentifier: Self.navigationIdentifier,
+            images: images,
+            selectionMode: .momentary,
+            labels: [back, forward],
+            target: self,
+            action: #selector(navigate(_:))
+        )
+        group.isNavigational = true
+        group.label = String(localized: "Navigation")
+        group.paletteLabel = String(localized: "Navigation")
+        // Enablement comes from history; autovalidation would enable both because the target answers the action.
+        group.autovalidates = false
+        for item in group.subitems {
+            item.autovalidates = false
+        }
+        navigationGroup = group
+        applyNavigationState()
+        return group
+    }
+
+    private func applyNavigationState() {
+        guard let subitems = navigationGroup?.subitems, subitems.count == 2 else { return }
+        subitems[0].isEnabled = canGoBack
+        subitems[1].isEnabled = canGoForward
+        subitems[0].toolTip = Self.toolTip(String(localized: "Back"), action: .navigateBack)
+        subitems[1].toolTip = Self.toolTip(String(localized: "Forward"), action: .navigateForward)
+    }
+
+    private static func toolTip(_ title: String, action: ShortcutAction) -> String {
+        guard let key = AppSettingsManager.shared.keyboard.shortcut(for: action) else { return title }
+        return String(format: String(localized: "%@ (%@)"), title, key.displayString)
+    }
+
+    @objc private func navigate(_ sender: Any?) {
+        guard let group = sender as? NSToolbarItemGroup else { return }
+        switch group.selectedIndex {
+        case 0: onBack?()
+        case 1: onForward?()
+        default: break
+        }
+    }
+
+    private func makeFilterItem(
+        identifier: NSToolbarItem.Identifier,
+        placeholder: String,
+        accessibilityIdentifier: String
+    ) -> NSSearchToolbarItem {
+        let field = NSSearchField()
+        field.placeholderString = placeholder
+        field.sendsSearchStringImmediately = true
+        field.target = self
+        field.action = #selector(filterChanged(_:))
+        field.setAccessibilityIdentifier(accessibilityIdentifier)
+        field.widthAnchor.constraint(lessThanOrEqualToConstant: Self.filterWidth).isActive = true
+        syncField(field)
+
+        let item = NSSearchToolbarItem(itemIdentifier: identifier)
+        item.searchField = field
+        item.preferredWidthForSearchField = Self.filterWidth
+        item.label = placeholder
         return item
     }
 
-    private func sync() {
-        titleField?.stringValue = model.currentTitle
-        backItem?.isEnabled = model.canGoBack
+    private func syncField(_ field: NSSearchField) {
+        let query = filter?.query ?? ""
+        if field.stringValue != query {
+            field.stringValue = query
+        }
     }
 
-    @objc private func goBack(_ sender: Any?) {
-        model.goBack()
+    @objc private func filterChanged(_ sender: NSSearchField) {
+        guard let filter, filter.query != sender.stringValue else { return }
+        filter.query = sender.stringValue
+    }
+
+    private static func filterIdentifier(for pane: SettingsPane) -> NSToolbarItem.Identifier? {
+        switch pane {
+        case .keyboard: keyboardSearchIdentifier
+        case .plugins: extensionsFilterIdentifier
+        default: nil
+        }
+    }
+
+    private static func isFilterIdentifier(_ identifier: NSToolbarItem.Identifier) -> Bool {
+        identifier == keyboardSearchIdentifier || identifier == extensionsFilterIdentifier
     }
 }

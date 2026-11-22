@@ -76,7 +76,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowOpener.shared.setWelcomePresenter { WelcomeWindowController.present() }
         WindowOpener.shared.setConnectionFormPresenter { ConnectionFormWindowController.present($0) }
         WindowOpener.shared.setIntegrationsActivityPresenter { IntegrationsActivityWindowController.present() }
-        WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present(pane: $0) }
+        WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present($0) }
         KeyRepeatFilter.shared.install()
         TableClickFocus.shared.install()
         RecentTabSwitcherController.installEditorKeyClaim()

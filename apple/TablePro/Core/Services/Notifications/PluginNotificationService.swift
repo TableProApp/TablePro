@@ -132,6 +132,7 @@ final class PluginNotificationService {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
+        content.sound = .default
         content.categoryIdentifier = Self.updateFailedCategoryId
         if let pluginId {
             content.userInfo = [Self.pluginIdKey: pluginId]
@@ -165,7 +166,7 @@ final class PluginNotificationService {
 
 extension PluginNotificationService: NotificationHandling {
     func presentationOptions(for notification: UNNotification) -> UNNotificationPresentationOptions {
-        [.banner, .list]
+        [.banner, .list, .sound]
     }
 
     func handle(_ response: UNNotificationResponse) {
@@ -173,7 +174,6 @@ extension PluginNotificationService: NotificationHandling {
         guard action == Self.openPluginSettingsActionId || action == UNNotificationDefaultActionIdentifier
         else { return }
         let pluginId = response.notification.request.content.userInfo[Self.pluginIdKey] as? String
-        PluginsSettingsNavigation.shared.reveal(pluginId: pluginId)
-        WindowOpener.shared.openSettings(tab: .plugins)
+        WindowOpener.shared.openSettings(revealingPlugin: pluginId)
     }
 }

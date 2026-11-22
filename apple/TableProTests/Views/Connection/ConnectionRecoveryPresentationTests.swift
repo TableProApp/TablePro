@@ -1,11 +1,3 @@
-//
-//  ConnectionRecoveryPresentationTests.swift
-//  TableProTests
-//
-//  The inline failure pane is where a reporter looked for the way to their Plugins window and
-//  found only Try Again, which repeats a connect that cannot succeed.
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -57,26 +49,16 @@ struct ConnectionRecoveryPresentationTests {
         )
     }
 
-    @Test("A request to show a plugin is answered once")
-    func navigationRequestIsConsumedOnce() {
-        let navigation = PluginsSettingsNavigation()
-        navigation.reveal(pluginId: "com.TablePro.SQLiteDriver")
+    @Test("Opening plugin settings asks Settings to reveal the plugin the failure names, or the first one to update")
+    func openPluginSettingsRevealsThePlugin() {
+        let opener = WindowOpener()
+        var requests: [SettingsRequest] = []
+        opener.setSettingsPresenter { requests.append($0) }
+        let connection = TestFixtures.makeConnection()
 
-        #expect(navigation.consumePendingRequest()?.pluginId == "com.TablePro.SQLiteDriver")
-        #expect(navigation.consumePendingRequest() == nil)
-        #expect(navigation.pendingRequest == nil)
-    }
+        ConnectionRecoveryPerformer.perform(.openPluginSettings(pluginId: "com.TablePro.SQLiteDriver"), for: connection, opener: opener)
+        ConnectionRecoveryPerformer.perform(.openPluginSettings(pluginId: nil), for: connection, opener: opener)
 
-    @Test("Asking twice for the same plugin is two requests, so the list reselects it")
-    func repeatedRequestsAreDistinct() {
-        let navigation = PluginsSettingsNavigation()
-        navigation.reveal(pluginId: "p")
-        let first = navigation.consumePendingRequest()
-        navigation.reveal(pluginId: "p")
-        let second = navigation.consumePendingRequest()
-
-        #expect(first != nil)
-        #expect(second != nil)
-        #expect(first != second)
+        #expect(requests == [.revealPlugin("com.TablePro.SQLiteDriver"), .revealPlugin(nil)])
     }
 }
