@@ -308,14 +308,11 @@ extension QueryClassifier {
             return worstRequest { firebaseClassification($0, databaseType: databaseType) }
         case .bigtable:
             return worstRequest(bigtableClassification)
-        case .bigQuery, .spanner:
-            // SQL engines, but the app builds a grid browse/search/count as an opaque tagged request the
-            // driver renders into a SELECT at execution. The tag only reads; nil lets real SQL fall through
-            // to SQLStatementClassifier. Tags mirror the driver query builders and
-            // ExternalStatementGate.driverRequestMarkers.
-            return sqlBrowseSentinel(sql) ? .safe : nil
         default:
-            return nil
+            // BigQuery and Spanner get their grid browse as a tagged request the driver renders into a SELECT.
+            // The check is engine-blind: a tag is a prefix plus base64, which no engine can run as a write,
+            // and nil lets real SQL fall through to SQLStatementClassifier.
+            return sqlBrowseSentinel(sql) ? .safe : nil
         }
     }
 
