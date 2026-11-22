@@ -68,13 +68,13 @@ struct OptionsPaneView: View {
             }
             .help(connectTimeoutHelp)
 
-            LabeledContent(String(localized: "Query timeout")) {
+            LabeledContent {
                 HStack(spacing: 4) {
                     TextField(
                         String(localized: "Query timeout"),
                         value: $coordinator.customization.queryTimeoutSeconds,
                         format: .number.grouping(.never),
-                        prompt: Text(verbatim: queryTimeoutPlaceholder)
+                        prompt: Text(verbatim: Self.queryTimeoutPlaceholder(globalSeconds: globalQueryTimeoutSeconds))
                     )
                     .labelsHidden()
                     .frame(width: 100)
@@ -83,8 +83,10 @@ struct OptionsPaneView: View {
                     Text(String(localized: "seconds"))
                         .foregroundStyle(.secondary)
                 }
+            } label: {
+                Text(String(localized: "Query timeout"))
+                Text(verbatim: Self.queryTimeoutInheritance(globalSeconds: globalQueryTimeoutSeconds))
             }
-            .help(queryTimeoutHelp)
         } header: {
             Text(String(localized: "Timeouts"))
         } footer: {
@@ -116,28 +118,33 @@ struct OptionsPaneView: View {
         )
     }
 
-    private var queryTimeoutPlaceholder: String {
-        String(
-            format: String(localized: "Global (%d)"),
-            settingsManager.general.queryTimeoutSeconds
+    private var globalQueryTimeoutSeconds: Int { settingsManager.general.queryTimeoutSeconds }
+
+    // The field is 100 points wide beside a "seconds" label, so words go in the subtitle and the prompt stays short.
+    nonisolated static func queryTimeoutPlaceholder(globalSeconds: Int) -> String {
+        let seconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: nil,
+            globalSeconds: globalSeconds
         )
+        guard seconds > 0 else { return String(localized: "No limit") }
+        return String(format: String(localized: "Global (%d)"), seconds)
     }
 
-    private var queryTimeoutHelp: String {
-        let globalQueryTimeoutSeconds = settingsManager.general.queryTimeoutSeconds
-        guard globalQueryTimeoutSeconds > 0 else {
-            return String(localized: """
-                Leave blank to use the global setting, which has no limit. \
-                This setting applies only to database drivers that support it.
-                """)
-        }
-        return String(
-            format: String(localized: """
-                Leave blank to use the global %d-second timeout. \
-                This setting applies only to database drivers that support it.
-                """),
-            globalQueryTimeoutSeconds
+    nonisolated static func queryTimeoutInheritance(
+        globalSeconds: Int,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        let seconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
+            configuredSeconds: nil,
+            globalSeconds: globalSeconds
         )
+        guard seconds > 0 else {
+            return String(localized: "Leave blank to use Settings > Connections: no limit.")
+        }
+        let duration = Duration.seconds(seconds).formatted(
+            .units(allowed: [.hours, .minutes, .seconds], width: .wide).locale(locale)
+        )
+        return String(format: String(localized: "Leave blank to use Settings > Connections: %@."), duration)
     }
 
     // MARK: - Binary values
@@ -356,15 +363,16 @@ struct OptionsPaneView: View {
             safeModeRow
             Toggle(String(localized: "Manual Commit"), isOn: $coordinator.effectiveManualCommit)
                 .disabled(!coordinator.isManualCommitAvailable)
-            if aiIsEnabled {
-                Picker(String(localized: "AI Policy"), selection: $coordinator.advanced.aiPolicy) {
-                    Text(String(localized: "Use Default"))
-                        .tag(AIConnectionPolicy?.none as AIConnectionPolicy?)
-                    ForEach(AIConnectionPolicy.allCases) { policy in
-                        Text(policy.displayName)
-                            .tag(AIConnectionPolicy?.some(policy) as AIConnectionPolicy?)
-                    }
+            // MCP enforces the policy whether or not AI features are on, so it stays editable.
+            Picker(String(localized: "AI Policy"), selection: $coordinator.advanced.aiPolicy) {
+                Text(String(localized: "Use Default"))
+                    .tag(AIConnectionPolicy?.none as AIConnectionPolicy?)
+                ForEach(AIConnectionPolicy.allCases) { policy in
+                    Text(policy.displayName)
+                        .tag(AIConnectionPolicy?.some(policy) as AIConnectionPolicy?)
                 }
+            }
+            if aiIsEnabled {
                 ForEach(coordinator.advanced.aiAlwaysAllowedTools, id: \.self) { tool in
                     alwaysAllowedRow(tool)
                 }
@@ -420,15 +428,10 @@ struct OptionsPaneView: View {
             } else {
                 Text(ManualCommit.unavailableExplanation)
             }
-            if aiIsEnabled {
-                // swiftlint:disable:next line_length
-                Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
-                if !coordinator.advanced.aiAlwaysAllowedTools.isEmpty {
-                    Text(String(localized: "Always Allow on an assistant tool card adds the tool here. Forget makes its next call ask again."))
-                }
-            } else {
-                // swiftlint:disable:next line_length
-                Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope."))
+            // swiftlint:disable:next line_length
+            Text(String(localized: "AI Policy applies to AI features and MCP clients. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
+            if aiIsEnabled, !coordinator.advanced.aiAlwaysAllowedTools.isEmpty {
+                Text(String(localized: "Always Allow on an assistant tool card adds the tool here. Forget makes its next call ask again."))
             }
             if coordinator.advanced.externalAccess == .readOnly {
                 Text(
