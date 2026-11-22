@@ -1,13 +1,5 @@
-//
-//  AIChatPanelView.swift
-//  TablePro
-//
-//  AI chat panel view - right-side panel for conversing with AI about database queries.
-//
-
 import SwiftUI
 
-/// AI chat panel displayed alongside the main editor content
 struct AIChatPanelView: View {
     @ObservedObject private var slashCommandStorage = CustomSlashCommandStorage.shared
 
@@ -18,15 +10,14 @@ struct AIChatPanelView: View {
     var editorSnapshot: (() -> AssistantEditorSnapshot)?
 
     @ObservedObject var viewModel: AIChatViewModel
-    /// Fills its column in the trailing pane, and takes a reading measure in the window's content
-    /// column, where filling it would run a line the whole width of the window.
+    // A reading measure in the window's content column, where filling it would run a line the whole window wide.
     var contentWidth: ChatContentWidth = .pane
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var aiSettings = AppSettingsManager.shared.aiSlice
     @ObservedObject private var copilotService = CopilotService.shared
     @StateObject private var mentionState = MentionPopoverState()
 
     private var hasConfiguredProvider: Bool {
-        settingsManager.ai.hasActiveProvider
+        aiSettings.value.hasActiveProvider
     }
 
     // Only a card a turn still waits on may take Return and Escape.
@@ -75,7 +66,7 @@ struct AIChatPanelView: View {
             viewModel.connection = connection
         }
         .task(id: ModelListTrigger(
-            sources: settingsManager.ai.providers.map(AIModelListSource.init(config:)),
+            sources: aiSettings.value.providers.map(AIModelListSource.init(config:)),
             savedRevision: viewModel.providerSettingsRevision,
             isCopilotRunning: copilotService.status == .running
         )) {
@@ -98,8 +89,6 @@ struct AIChatPanelView: View {
             Text(String(localized: "Your database schema and query data will be sent to the AI provider for analysis. Allow for this connection?"))
         }
     }
-
-    // MARK: - Empty States
 
     private var emptyState: some View {
         EmptyStateView(
@@ -148,8 +137,6 @@ struct AIChatPanelView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Error Banner
-
     private func errorBanner(_ message: String) -> some View {
         PaneNoticeBar(
             severity: .warning,
@@ -175,8 +162,6 @@ struct AIChatPanelView: View {
         .paneBarBackground()
     }
 
-    // MARK: - Input Area
-
     private var inputArea: some View {
         VStack(spacing: 0) {
             Divider()
@@ -191,7 +176,7 @@ struct AIChatPanelView: View {
                 }
 
                 let acceptsImages = viewModel.activeProviderSupportsImages
-                let highlightEnabled = settingsManager.ai.composerHighlightEnabled
+                let highlightEnabled = aiSettings.value.composerHighlightEnabled
                 ChatComposerDraftReader(draft: viewModel.composerDraft) { text in
                     composer(text: text, acceptsImages: acceptsImages, highlightEnabled: highlightEnabled)
                 }
@@ -205,14 +190,13 @@ struct AIChatPanelView: View {
                     sendOrStopButton
                 }
             }
-            /// Capped before the padding, the way the transcript above it is, so the composer's
-            /// leading edge lines up with the first character of the conversation.
+            // Capped before the padding, so the composer's leading edge lines up with the transcript's first character.
             .chatColumn(contentWidth)
             .padding(8)
         }
     }
 
-    /// Built by the draft reader on each keystroke, so it takes what it shows rather than looking it up again.
+    // Built by the draft reader on each keystroke, so it takes what it shows rather than looking it up again.
     private func composer(text: Binding<String>, acceptsImages: Bool, highlightEnabled: Bool) -> some View {
         ChatComposerView(
             text: text,
@@ -241,7 +225,7 @@ struct AIChatPanelView: View {
             },
             highlightEnabled: highlightEnabled,
             onToggleHighlight: {
-                settingsManager.ai.composerHighlightEnabled.toggle()
+                aiSettings.value.composerHighlightEnabled.toggle()
             }
         )
     }
@@ -260,16 +244,8 @@ struct AIChatPanelView: View {
     }
 
     private var modeMenu: some View {
-        let binding = Binding<AIChatMode>(
-            get: { settingsManager.ai.chatMode },
-            set: { newValue in
-                var settings = settingsManager.ai
-                settings.chatMode = newValue
-                settingsManager.ai = settings
-            }
-        )
-        return Menu {
-            Picker(String(localized: "Mode"), selection: binding) {
+        Menu {
+            Picker(String(localized: "Mode"), selection: $aiSettings.value.chatMode) {
                 ForEach(AIChatMode.allCases) { mode in
                     Label(mode.displayName, systemImage: mode.symbolName)
                         .tag(mode)
@@ -279,8 +255,8 @@ struct AIChatPanelView: View {
             .labelsHidden()
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: settingsManager.ai.chatMode.symbolName)
-                Text(settingsManager.ai.chatMode.displayName)
+                Image(systemName: aiSettings.value.chatMode.symbolName)
+                Text(aiSettings.value.chatMode.displayName)
                     .lineLimit(1)
             }
             .font(.caption)
@@ -289,7 +265,7 @@ struct AIChatPanelView: View {
         .menuStyle(.button)
         .buttonStyle(.borderless)
         .fixedSize()
-        .help(settingsManager.ai.chatMode.helpText)
+        .help(aiSettings.value.chatMode.helpText)
     }
 
     @ViewBuilder
@@ -325,11 +301,11 @@ struct AIChatPanelView: View {
     // No frame and no .fixedSize(): a 44-character model name held a fixed-size button at 339 pt, 85 pt past a 240 pt pane (macOS 27).
     @ViewBuilder
     private var modelPicker: some View {
-        let providers = settingsManager.ai.providers
+        let providers = aiSettings.value.providers
         if providers.isEmpty {
             EmptyView()
         } else {
-            let activeProvider = settingsManager.ai.activeProvider
+            let activeProvider = aiSettings.value.activeProvider
             let selectedProviderId = viewModel.selectedProviderId ?? activeProvider?.id
             let selectedProvider = providers.first(where: { $0.id == selectedProviderId }) ?? activeProvider
             let resolvedModel = viewModel.selectedModel ?? selectedProvider?.model ?? ""
@@ -435,8 +411,7 @@ struct AIChatPanelView: View {
                 Section(String(localized: "Custom")) {
                     ForEach(customCommands) { command in
                         Button {
-                            updateContext()
-                            Task { await viewModel.runCustomSlashCommand(command) }
+                            pick(command)
                         } label: {
                             if command.description.isEmpty {
                                 Text("/\(command.name)")
@@ -509,8 +484,6 @@ struct AIChatPanelView: View {
         }
     }
 
-    // MARK: - Helpers
-
     private func updateContext() {
         let live = editorSnapshot?()
         viewModel.currentQuery = live.map(\.currentQuery) ?? currentQuery
@@ -518,6 +491,15 @@ struct AIChatPanelView: View {
         viewModel.editorTarget = live.map(\.target) ?? editorTarget
     }
 
+    private func pick(_ command: CustomSlashCommand) {
+        switch CustomSlashCommandPick.resolve(command, draft: viewModel.inputText) {
+        case .compose(let text):
+            viewModel.inputText = text
+        case .run:
+            updateContext()
+            Task { await viewModel.runCustomSlashCommand(command) }
+        }
+    }
 
     private func updateMentionState(text: String, caret: Int) {
         guard let match = MentionDetector.detect(in: text, caret: caret) else {
@@ -597,4 +579,22 @@ private struct ModelListTrigger: Equatable {
     let sources: [AIModelListSource]
     let savedRevision: Int
     let isCopilotRunning: Bool
+}
+
+enum CustomSlashCommandPick: Equatable {
+    case run
+    case compose(String)
+
+    // A template that reads `{{body}}` would run on an empty body, so the command waits in the composer for it.
+    static func resolve(_ command: CustomSlashCommand, draft: String) -> Self {
+        guard command.promptTemplate.contains(CustomSlashCommandVariable.body.placeholder) else { return .run }
+        let body: String
+        if let invocation = SlashCommand.invocation(in: draft),
+           invocation.name.caseInsensitiveCompare(command.name) == .orderedSame {
+            body = invocation.body
+        } else {
+            body = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return .compose("/\(command.name) " + body)
+    }
 }
