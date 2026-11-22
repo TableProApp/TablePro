@@ -6,8 +6,7 @@
 import SwiftUI
 import TableProPluginKit
 
-/// An enum's labels, a composite's fields or a domain's checks, as they will be after the queue
-/// runs. Each row says what the queue does to it.
+// Members as they will be after the queue runs; each row says what the queue does to it.
 struct UserTypeMembersPane: View {
     @ObservedObject var model: UserTypeEditorModel
     let draft: UserTypeDraft
@@ -41,32 +40,31 @@ struct UserTypeMembersPane: View {
                 .width(min: 120, ideal: 180)
             }
             .accessibilityIdentifier("user-type-labels")
-            Divider()
-            HStack(spacing: 8) {
-                Button {
-                    present(.addLabel)
-                } label: {
-                    Label(String(localized: "Add Label"), systemImage: "plus")
-                        .labelStyle(.iconOnly)
-                }
-                .help(String(localized: "Add Label"))
+            ListBar {
+                ListBarButton(
+                    label: String(localized: "Add Label"),
+                    systemImage: "plus",
+                    identifier: "user-type-add-label",
+                    action: { present(.addLabel) }
+                )
                 .disabled(isDisabled || !model.support.addLabel)
-                .accessibilityIdentifier("user-type-add-label")
-                Button(String(localized: "Rename…")) {
-                    if let label = selectedLabel { present(.renameLabel(label.name)) }
+                HStack(spacing: 8) {
+                    Button(String(localized: "Rename…")) {
+                        if let label = selectedLabel { present(.renameLabel(label.name)) }
+                    }
+                    .disabled(isDisabled || selectedLabel == nil || !model.support.renameLabel)
+                    .help(model.support.renameLabel
+                        ? String(localized: "Rename the selected label")
+                        : String(localized: "This server cannot rename a label."))
+                    Text("A label cannot be removed or moved once it exists.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .padding(.vertical, 4)
                 }
-                .disabled(isDisabled || selectedLabel == nil || !model.support.renameLabel)
-                .help(model.support.renameLabel
-                    ? String(localized: "Rename the selected label")
-                    : String(localized: "This server cannot rename a label."))
-                Text("A label cannot be removed or moved once it exists.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                Spacer()
+                .controlSize(.small)
+                .padding(.horizontal, 8)
             }
-            .controlSize(.small)
-            .padding(8)
         }
     }
 
@@ -91,8 +89,7 @@ struct UserTypeMembersPane: View {
                 .width(min: 120, ideal: 180)
             }
             .accessibilityIdentifier("user-type-fields")
-            Divider()
-            HStack(spacing: 8) {
+            ListBar {
                 AddRemoveControlGroup(
                     addLabel: String(localized: "Add Field"),
                     removeLabel: String(localized: "Drop Field"),
@@ -107,10 +104,9 @@ struct UserTypeMembersPane: View {
                     if let field = selectedField { present(.editField(name: field.name, type: field.type)) }
                 }
                 .disabled(isDisabled || !canEditSelectedField)
-                Spacer()
+                .controlSize(.small)
+                .padding(.horizontal, 8)
             }
-            .controlSize(.small)
-            .padding(8)
         }
     }
 
@@ -128,7 +124,7 @@ struct UserTypeMembersPane: View {
         selectedField != nil && (model.support.renameField || model.support.changeFieldType)
     }
 
-    /// A field this queue added is taken back by removing its addition, not by queuing a drop.
+    // A field this queue added is taken back by removing its addition, not by queuing a drop.
     private func removeSelectedField() {
         guard let field = selectedField else { return }
         if case .added(let changeId) = field.origin {
@@ -168,8 +164,7 @@ struct UserTypeMembersPane: View {
                 .width(min: 120, ideal: 180)
             }
             .accessibilityIdentifier("user-type-constraints")
-            Divider()
-            HStack(spacing: 8) {
+            ListBar {
                 AddRemoveControlGroup(
                     addLabel: String(localized: "Add Check"),
                     removeLabel: String(localized: "Drop Constraint"),
@@ -185,10 +180,9 @@ struct UserTypeMembersPane: View {
                 }
                 .disabled(isDisabled || !canValidateSelectedConstraint)
                 .help(String(localized: "Check the values already stored against the selected constraint"))
-                Spacer()
+                .controlSize(.small)
+                .padding(.horizontal, 8)
             }
-            .controlSize(.small)
-            .padding(8)
         }
     }
 

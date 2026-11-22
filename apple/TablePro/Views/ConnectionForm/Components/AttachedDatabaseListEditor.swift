@@ -6,7 +6,7 @@
 import AppKit
 import SwiftUI
 
-/// Built like the Extensions list below it, so the two lists in Options behave the same.
+// Built like the Extensions list below it, so the two lists in Options behave the same.
 struct AttachedDatabaseListEditor: View {
     @Binding var value: String
     let databaseType: DatabaseType
@@ -53,38 +53,28 @@ struct AttachedDatabaseListEditor: View {
             if model.rows.isEmpty {
                 Text("No Attached Databases")
                     .foregroundStyle(.secondary)
-                    .padding(.bottom, buttonBarHeight)
+                    .padding(.bottom, ListBarMetrics.height)
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                Divider()
-                HStack(spacing: 0) {
-                    AddRemoveControlGroup(
-                        addLabel: String(localized: "Attach Database…"),
-                        removeLabel: String(localized: "Remove Attached Database"),
-                        canRemove: !selection.isEmpty,
-                        addIdentifier: "connection-attached-databases-add",
-                        removeIdentifier: "connection-attached-databases-remove",
-                        onAdd: { chooseFiles() },
-                        onRemove: { removeSelection() }
-                    )
-                    Spacer()
-                }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-            }
-            .background(.bar)
+        .listBar {
+            AddRemoveControlGroup(
+                addLabel: String(localized: "Attach Database…"),
+                removeLabel: String(localized: "Remove Attached Database"),
+                canRemove: !selection.isEmpty,
+                addIdentifier: "connection-attached-databases-add",
+                removeIdentifier: "connection-attached-databases-remove",
+                onAdd: { chooseFiles() },
+                onRemove: { removeSelection() }
+            )
         }
     }
 
     private let rowHeight: CGFloat = 26
-    private let buttonBarHeight: CGFloat = 32
 
     private var listHeight: CGFloat {
         // No cap: a List in a grouped Form never scrolls, so it shows every row and the Form scrolls.
         let rows = CGFloat(max(model.rows.count, 2))
-        return rows * rowHeight + buttonBarHeight + 8
+        return rows * rowHeight + ListBarMetrics.height + 8
     }
 
     private func nameBinding(for id: UUID) -> Binding<String> {

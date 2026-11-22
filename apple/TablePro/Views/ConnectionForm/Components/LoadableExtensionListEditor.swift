@@ -7,12 +7,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The ordered list of SQLite extension libraries a connection loads, edited in place.
-///
-/// Built like the other lists in this form: a bordered list with the add and remove pair beneath
-/// it, rows reordered by dragging or with the Move Up and Move Down accessibility actions, and
-/// Delete removing the selection. Add opens a file panel, the only way a row is created; once it
-/// exists, its path and entry point are edited in place.
+// Add opens a file panel, the only way a row is created; a row's path and entry point are then edited in place.
 struct LoadableExtensionListEditor: View {
     @Binding var value: String
 
@@ -58,38 +53,28 @@ struct LoadableExtensionListEditor: View {
             if model.rows.isEmpty {
                 Text("No Extensions")
                     .foregroundStyle(.secondary)
-                    .padding(.bottom, buttonBarHeight)
+                    .padding(.bottom, ListBarMetrics.height)
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                Divider()
-                HStack(spacing: 0) {
-                    AddRemoveControlGroup(
-                        addLabel: String(localized: "Add Extension…"),
-                        removeLabel: String(localized: "Remove Extension"),
-                        canRemove: !selection.isEmpty,
-                        addIdentifier: "connection-extensions-add",
-                        removeIdentifier: "connection-extensions-remove",
-                        onAdd: { chooseFiles() },
-                        onRemove: { removeSelection() }
-                    )
-                    Spacer()
-                }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-            }
-            .background(.bar)
+        .listBar {
+            AddRemoveControlGroup(
+                addLabel: String(localized: "Add Extension…"),
+                removeLabel: String(localized: "Remove Extension"),
+                canRemove: !selection.isEmpty,
+                addIdentifier: "connection-extensions-add",
+                removeIdentifier: "connection-extensions-remove",
+                onAdd: { chooseFiles() },
+                onRemove: { removeSelection() }
+            )
         }
     }
 
     private let rowHeight: CGFloat = 26
-    private let buttonBarHeight: CGFloat = 32
 
     private var listHeight: CGFloat {
         // No cap: a List in a grouped Form never scrolls, so it shows every row and the Form scrolls.
         let rows = CGFloat(max(model.rows.count, 2))
-        return rows * rowHeight + buttonBarHeight + 8
+        return rows * rowHeight + ListBarMetrics.height + 8
     }
 
     private func pathBinding(for id: UUID) -> Binding<String> {
@@ -203,8 +188,7 @@ private struct LoadableExtensionRowView: View {
     }
 }
 
-/// Refuses a file that is not a Mach-O library before it reaches the list. The panel's content types
-/// only dim other files, and `.so` has no type of its own, so the choice is checked here as well.
+// The panel's content types only dim other files, and .so has no type of its own, so the choice is checked here too.
 private final class LoadableExtensionPanelValidator: NSObject, NSOpenSavePanelDelegate {
     static let contentTypes: [UTType] = [
         UTType(filenameExtension: "dylib"),
