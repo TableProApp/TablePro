@@ -159,6 +159,39 @@ struct QueryExecutorTests {
         #expect(values == nil)
     }
 
+    @Test("A numeric CHECK list offers no picker")
+    func parseSQLiteCheckNumericList() {
+        let ddl = "CREATE TABLE t (level INTEGER CHECK (level IN (1, 2, 3)))"
+        #expect(QuerySqlParser.parseSQLiteCheckConstraintValues(createSQL: ddl, columnName: "level") == nil)
+    }
+
+    @Test("A list mixing strings and numbers offers no picker")
+    func parseSQLiteCheckMixedList() {
+        let ddl = "CREATE TABLE t (level TEXT CHECK (level IN ('a', 2)))"
+        #expect(QuerySqlParser.parseSQLiteCheckConstraintValues(createSQL: ddl, columnName: "level") == nil)
+    }
+
+    @Test("A bare NULL in the list is skipped", arguments: [
+        "CHECK (status IN ('a', 'b', NULL))",
+        "CHECK (status IN (NULL, 'a', 'b'))",
+    ])
+    func parseSQLiteCheckSkipsNull(check: String) {
+        let ddl = "CREATE TABLE t (status TEXT \(check))"
+        #expect(QuerySqlParser.parseSQLiteCheckConstraintValues(createSQL: ddl, columnName: "status") == ["a", "b"])
+    }
+
+    @Test("A cast after each literal still reads, as CockroachDB stores the list")
+    func parseSQLiteCheckCastLiterals() {
+        let ddl = "CREATE TABLE t (status STRING CHECK (status IN ('a':::STRING, 'b':::STRING)))"
+        #expect(QuerySqlParser.parseSQLiteCheckConstraintValues(createSQL: ddl, columnName: "status") == ["a", "b"])
+    }
+
+    @Test("A doubled quote is one quote in the value")
+    func parseSQLiteCheckDoubledQuote() {
+        let ddl = "CREATE TABLE t (name TEXT CHECK (name IN ('it''s', 'b')))"
+        #expect(QuerySqlParser.parseSQLiteCheckConstraintValues(createSQL: ddl, columnName: "name") == ["it's", "b"])
+    }
+
     // MARK: - DDL detection
 
     @Test("isDDLStatement recognizes CREATE/DROP/ALTER/TRUNCATE/RENAME")

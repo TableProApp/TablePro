@@ -650,6 +650,10 @@ extension PluginManager {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.binaryLengthFunction
     }
 
+    func readsCheckListsFromDDL(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.readsCheckListsFromDDL ?? true
+    }
+
     func supportsPrincipalConnectionLimit(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsPrincipalConnectionLimit ?? true

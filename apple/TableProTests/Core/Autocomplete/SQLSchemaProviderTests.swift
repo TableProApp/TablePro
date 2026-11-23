@@ -356,7 +356,14 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         return concurrentRefreshAvailabilityToReturn
     }
 
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    var tableDDLToReturn: [String: String] = [:]
+    private(set) var fetchTableDDLCallCount = 0
+
+    func fetchTableDDL(table: String, schema: String?) async throws -> String {
+        fetchTableDDLCallCount += 1
+        return tableDDLToReturn[table] ?? ""
+    }
+
     func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
 
     var tableCommentToReturn: String?

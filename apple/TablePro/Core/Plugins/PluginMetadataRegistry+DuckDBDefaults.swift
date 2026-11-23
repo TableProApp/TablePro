@@ -54,6 +54,7 @@ extension PluginMetadataRegistry {
                     serverEndpointFields: ServerEndpointFields(hostFieldId: "duckdbHost", portFieldId: "duckdbPort"),
                     fieldsRequiringDriverSupport: ["duckdbSSLMode"],
                     newDatabaseFileExtensions: ["duckdb", "ddb"],
+                    readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
