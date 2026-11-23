@@ -1062,6 +1062,7 @@ extension DatabaseManager {
     /// what it is connecting to.
     internal func registerPendingSession(_ connection: DatabaseConnection) {
         guard activeSessions[connection.id] == nil else { return }
+        TransientConnectionLedger().recordIfTransient(connection, library: connectionStorage)
         let queryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
             configuredSeconds: connection.queryTimeoutSeconds,
             globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds

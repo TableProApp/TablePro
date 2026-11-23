@@ -76,6 +76,8 @@ PATHS = [
 DEFAULT_PATHS = [name for name in PATHS if name not in OPTIONAL_PATHS]
 
 LAUNCH_DONE = re.compile(r"^\s+firstFramePresented\s+([0-9.]+)", re.M)
+# One line per finished table load, written to standard error under TABLEPRO_TABLE_LOAD_TRACE.
+TABLE_LOAD_PREFIX = "tableload "
 TAB_SWITCH = re.compile(
     r"^tabswitch #\d+ trigger=(\w+) rows=(\w+) outcome=(\w+) totalMs=([0-9.]+)", re.M
 )
@@ -388,18 +390,6 @@ class Sandbox:
             shutil.rmtree(self.path)
         shutil.copytree(self.template, self.path)
 
-    def history(self):
-        path = self.path / "TablePro" / "TableLoadHistory.jsonl"
-        if not path.exists():
-            return []
-        records = []
-        for line in path.read_text().splitlines():
-            try:
-                records.append(json.loads(line))
-            except ValueError:
-                continue
-        return records
-
     def delete_defaults(self):
         subprocess.run(["defaults", "delete", defaults_suite(self.path)], capture_output=True)
 
@@ -422,6 +412,7 @@ class RunningApp:
             "TABLEPRO_UI_TEST_SANDBOX": str(self.sandbox.path),
             "TABLEPRO_LAUNCH_TRACE": "1",
             "TABLEPRO_TAB_SWITCH_TRACE": "1",
+            "TABLEPRO_TABLE_LOAD_TRACE": "1",
         })
         binary = self.app / "Contents" / "MacOS" / "TablePro"
         self.log_file = open(self.log_path, "w")
@@ -552,12 +543,19 @@ def restore_sandbox(work, databases):
     return sandbox
 
 
-def completed_loads(sandbox, database_type, row_bucket=None):
-    return [
-        record for record in sandbox.history()
-        if record.get("databaseTypeId") == database_type and record.get("outcome") == "completed"
-        and (row_bucket is None or record.get("rowBucket") == row_bucket)
-    ]
+def completed_loads(running, database_type, row_bucket=None):
+    loads = []
+    for line in running.output().splitlines():
+        if not line.startswith(TABLE_LOAD_PREFIX):
+            continue
+        try:
+            record = json.loads(line[len(TABLE_LOAD_PREFIX):])
+        except ValueError:
+            continue
+        if record.get("databaseTypeId") == database_type and record.get("outcome") == "completed" \
+                and (row_bucket is None or record.get("rowBucket") == row_bucket):
+            loads.append(record)
+    return loads
 
 
 def table_samples(app, sandbox, work, runs, database_type, path_name, table="bench_rows", row_bucket="101-1000"):
@@ -567,10 +565,10 @@ def table_samples(app, sandbox, work, runs, database_type, path_name, table="ben
         # A restored tab loads once its window is key.
         running.bring_forward()
         running.wait_for("the restored tab to load",
-                         lambda: completed_loads(sandbox, database_type) or None, timeout=60)
+                         lambda: completed_loads(running, database_type) or None, timeout=60)
         time.sleep(1)
         for index in range(runs + 1):
-            before = len(completed_loads(sandbox, database_type, row_bucket))
+            before = len(completed_loads(running, database_type, row_bucket))
             running.keystroke("o", ("command", "shift"))
             time.sleep(0.8)
             running.keystroke(table)
@@ -578,7 +576,7 @@ def table_samples(app, sandbox, work, runs, database_type, path_name, table="ben
             running.keystroke(36)
             loads = running.wait_for(
                 "%s to load" % table,
-                lambda: (completed_loads(sandbox, database_type, row_bucket)[before:] or None),
+                lambda: (completed_loads(running, database_type, row_bucket)[before:] or None),
                 timeout=60,
             )
             value = float(loads[0]["totalMs"])
@@ -608,7 +606,7 @@ def footprint_samples(app, sandbox, work, runs, database_type, path_name):
         running.launch_ms()
         running.bring_forward()
         running.wait_for("the restored tab to load",
-                         lambda: completed_loads(sandbox, database_type) or None, timeout=60)
+                         lambda: completed_loads(running, database_type) or None, timeout=60)
         time.sleep(1)
         for index in range(runs + 1):
             footprint = running.footprint_mb()
@@ -627,7 +625,7 @@ def switch_samples(app, sandbox, work, runs, wanted):
         running.launch_ms()
         running.bring_forward()
         running.wait_for("the first tab to load",
-                         lambda: completed_loads(sandbox, "SQLite") or None, timeout=60)
+                         lambda: completed_loads(running, "SQLite") or None, timeout=60)
         time.sleep(1)
 
         def press(key, modifiers):

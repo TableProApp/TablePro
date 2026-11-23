@@ -97,7 +97,18 @@ enum PostgreSQLActivityCatalog: Equatable, Sendable {
         case .procpid:
             return """
                 SELECT procpid AS pid, usename, datname,
-                       CASE
+                       \(Self.procpidState),
+                       \(Self.duration),
+                       \(Self.procpidQuery)
+                FROM pg_catalog.pg_stat_activity
+                WHERE procpid OPERATOR(pg_catalog.<>) pg_catalog.pg_backend_pid()
+                ORDER BY query_start NULLS LAST
+                """
+        }
+    }
+
+    private static let procpidState = """
+        CASE
                            WHEN current_query OPERATOR(pg_catalog.=) '<IDLE>' THEN 'idle'
                            WHEN current_query OPERATOR(pg_catalog.=) '<IDLE> in transaction' THEN 'idle in transaction'
                            WHEN current_query OPERATOR(pg_catalog.=) '<IDLE> in transaction (aborted)'
@@ -106,15 +117,84 @@ enum PostgreSQLActivityCatalog: Equatable, Sendable {
                            WHEN current_query OPERATOR(pg_catalog.=) '<insufficient privilege>' THEN NULL
                            WHEN current_query OPERATOR(pg_catalog.=) '<command string not found>' THEN NULL
                            ELSE 'active'
-                       END AS state,
-                       \(Self.duration),
-                       CASE WHEN \(Self.isAny("current_query", of: Self.idleSentinels)) THEN ''
+                       END AS state
+        """
+
+    private static var procpidQuery: String {
+        """
+        CASE WHEN \(isAny("current_query", of: idleSentinels)) THEN ''
                             ELSE pg_catalog.left(current_query, 1000)
                        END AS query
+        """
+    }
+
+    private static let slowerThanASecond =
+        "(pg_catalog.now() OPERATOR(pg_catalog.-) query_start) OPERATOR(pg_catalog.>) INTERVAL '1 second'"
+
+    /// One read of `pg_stat_activity` that the sessions, slow queries, connection count and active
+    /// count are all drawn from, in place of four. It lists every row any of the four would read, with
+    /// flags for each one's filter: `is_own` for this connection, which only the connection count
+    /// includes; `is_client` for what the sessions list and the connection count read; `is_active`
+    /// and `is_slow` for the two that look at running statements, of any backend type.
+    var activityQuery: String {
+        let flags = """
+            CASE WHEN \(ownPidColumn) OPERATOR(pg_catalog.=) pg_catalog.pg_backend_pid() THEN 1 ELSE 0 END AS is_own,
+                       \(clientFlag) AS is_client,
+                       CASE WHEN \(activeCondition) THEN 1 ELSE 0 END AS is_active,
+                       CASE WHEN \(activeCondition) AND \(Self.slowerThanASecond) THEN 1 ELSE 0 END AS is_slow
+            """
+        switch self {
+        case .current:
+            return """
+                SELECT pid, usename, datname, state,
+                       \(Self.duration),
+                       pg_catalog.left(query, 1000) AS query,
+                       \(flags)
                 FROM pg_catalog.pg_stat_activity
-                WHERE procpid OPERATOR(pg_catalog.<>) pg_catalog.pg_backend_pid()
+                WHERE backend_type OPERATOR(pg_catalog.=) 'client backend' OR state OPERATOR(pg_catalog.=) 'active'
                 ORDER BY query_start NULLS LAST
                 """
+        case .withoutBackendType:
+            return """
+                SELECT pid, usename, datname, state,
+                       \(Self.duration),
+                       pg_catalog.left(query, 1000) AS query,
+                       \(flags)
+                FROM pg_catalog.pg_stat_activity
+                ORDER BY query_start NULLS LAST
+                """
+        case .procpid:
+            return """
+                SELECT procpid AS pid, usename, datname,
+                       \(Self.procpidState),
+                       \(Self.duration),
+                       \(Self.procpidQuery),
+                       \(flags)
+                FROM pg_catalog.pg_stat_activity
+                ORDER BY query_start NULLS LAST
+                """
+        }
+    }
+
+    private var ownPidColumn: String {
+        self == .procpid ? "procpid" : "pid"
+    }
+
+    private var clientFlag: String {
+        switch self {
+        case .current:
+            return "CASE WHEN backend_type OPERATOR(pg_catalog.=) 'client backend' THEN 1 ELSE 0 END"
+        case .withoutBackendType, .procpid:
+            return "1"
+        }
+    }
+
+    private var activeCondition: String {
+        switch self {
+        case .current, .withoutBackendType:
+            return "state OPERATOR(pg_catalog.=) 'active'"
+        case .procpid:
+            return "NOT \(Self.isAny("current_query", of: Self.hiddenSentinels))"
         }
     }
 

@@ -55,15 +55,15 @@ internal enum FeatureTipsBootstrap {
 @MainActor
 internal enum FeatureTipSignals {
     static func sidebarTableOpened() {
-        donate(OpenQuicklyTip.sidebarTableOpened)
+        donate(OpenQuicklyTip.sidebarTableOpened, for: OpenQuicklyTip(), enough: nil)
     }
 
     static func previewTabReplaced() {
-        donate(KeepTableOpenTip.previewTabReplaced)
+        donate(KeepTableOpenTip.previewTabReplaced, for: KeepTableOpenTip(), enough: nil)
     }
 
     static func editorQueryRan() {
-        donate(FindPastQueriesTip.editorQueryRan)
+        donate(FindPastQueriesTip.editorQueryRan, for: FindPastQueriesTip(), enough: FindPastQueriesTip.queryRunsCounted)
     }
 
     static func tableKeptOpen() {
@@ -78,8 +78,11 @@ internal enum FeatureTipSignals {
         invalidate(FindPastQueriesTip())
     }
 
-    private static func donate(_ event: Tips.Event<Tips.EmptyDonation>) {
+    // Each donation is a write to the tips store, so one that no rule can count is not sent.
+    private static func donate(_ event: Tips.Event<Tips.EmptyDonation>, for tip: some Tip, enough: Int?) {
         guard FeatureTipsBootstrap.plan != nil else { return }
+        let donations = enough == nil ? 0 : event.donations.count
+        guard FeatureTipDonation.isNeeded(status: tip.status, donations: donations, enough: enough) else { return }
         event.sendDonation()
     }
 

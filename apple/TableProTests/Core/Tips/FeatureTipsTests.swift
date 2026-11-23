@@ -5,6 +5,7 @@
 
 import Foundation
 import Testing
+import TipKit
 
 @testable import TablePro
 
@@ -95,5 +96,31 @@ struct FeatureTipCopyTests {
     func withoutShortcut() {
         #expect(FeatureTipCopy.openQuicklyMessage(shortcut: nil).contains("Open Quickly…"))
         #expect(FeatureTipCopy.findPastQueriesMessage(shortcut: "").contains("Show Query History"))
+    }
+}
+
+@available(macOS 14.0, *)
+struct FeatureTipDonationTests {
+    @Test("An invalidated tip needs no donation")
+    func invalidatedNeedsNone() {
+        #expect(!FeatureTipDonation.isNeeded(status: .invalidated(.actionPerformed), donations: 0, enough: 10))
+        #expect(!FeatureTipDonation.isNeeded(status: .invalidated(.displayCountExceeded), donations: 0, enough: nil))
+    }
+
+    @Test("A pending tip with nine of ten donations needs one more")
+    func nineOfTenNeedsOne() {
+        #expect(FeatureTipDonation.isNeeded(status: .pending, donations: 9, enough: 10))
+    }
+
+    @Test("Ten of ten donations need no more")
+    func tenOfTenNeedsNone() {
+        #expect(!FeatureTipDonation.isNeeded(status: .pending, donations: 10, enough: 10))
+        #expect(!FeatureTipDonation.isNeeded(status: .available, donations: 12, enough: 10))
+    }
+
+    @Test("A tip whose rule has a window needs donations until it is invalidated")
+    func windowedTipAlwaysNeeds() {
+        #expect(FeatureTipDonation.isNeeded(status: .pending, donations: 500, enough: nil))
+        #expect(FeatureTipDonation.isNeeded(status: .available, donations: 500, enough: nil))
     }
 }

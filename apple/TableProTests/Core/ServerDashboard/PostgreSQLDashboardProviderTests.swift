@@ -151,10 +151,15 @@ struct PostgreSQLDashboardProviderTests {
             asked.append(sql)
             return .empty
         }
+        var plan = DashboardFetchPlan()
+        _ = await provider.fetchSnapshot(plan: &plan, now: .now, readsEveryMetric: true) { sql in
+            asked.append(sql)
+            throw QueryFailure()
+        }
         for catalog in [PostgreSQLActivityCatalog.current, .withoutBackendType, .procpid] {
             asked += [
                 catalog.sessionsQuery, catalog.connectionCountQuery,
-                catalog.activeQueryCountQuery, catalog.slowQueriesQuery
+                catalog.activeQueryCountQuery, catalog.slowQueriesQuery, catalog.activityQuery
             ]
         }
         asked += [provider.killSessionSQL(processId: "42") ?? "", provider.cancelQuerySQL(processId: "42") ?? ""]
@@ -220,5 +225,185 @@ struct PostgreSQLDashboardProviderTests {
         #expect(session.state == "active")
         #expect(session.durationSeconds == 3)
         #expect(session.query == "SELECT pg_sleep(12)")
+    }
+
+    // MARK: - Snapshot
+
+    private static let activityColumns = [
+        "pid", "usename", "datname", "state", "duration_secs", "query", "is_own", "is_client", "is_active", "is_slow"
+    ]
+
+    // The dashboard's own connection, an idle client, a slow client, a client that just started, a walsender and a
+    // parallel worker. The single queries would read: 4 connections (own included), 3 sessions, 4 active and 2 slow.
+    private static let activityRows: [[String?]] = [
+        ["100", "me", "app", "active", "0", "SELECT ...", "1", "1", "1", "0"],
+        ["101", "app", "app", "idle", "40", "COMMIT", "0", "1", "0", "0"],
+        ["102", "app", "app", "active", "12", "SELECT pg_sleep(20)", "0", "1", "1", "1"],
+        ["103", "app", "app", "active", "0", "SELECT 1", "0", "1", "1", "0"],
+        ["104", "replicator", nil, "active", "900", "", "0", "0", "1", "1"],
+        ["105", "app", "app", "active", "0", "SELECT 1", "0", "0", "1", "0"],
+    ]
+
+    private final class Recorder: @unchecked Sendable {
+        var asked: [String] = []
+        var refusesCombined = false
+        var refusesEverything = false
+    }
+
+    private func execute(_ recorder: Recorder) -> (String) async throws -> QueryResult {
+        { [self] sql in
+            recorder.asked.append(sql)
+            if recorder.refusesEverything { throw QueryFailure() }
+            if sql.contains("is_own") {
+                if recorder.refusesCombined { throw QueryFailure() }
+                return result(columns: Self.activityColumns, rows: Self.activityRows)
+            }
+            if sql.hasPrefix("SELECT (") {
+                if recorder.refusesCombined { throw QueryFailure() }
+                return result(columns: ["cache_hit", "uptime"], rows: [["99.5", "3 days 02:00:00"]])
+            }
+            if sql.contains("pg_database_size") {
+                return result(columns: ["size"], rows: [["42 MB"]])
+            }
+            if sql.contains("blks_hit") {
+                return result(columns: ["value"], rows: [["99.5"]])
+            }
+            if sql.contains("pg_postmaster_start_time") {
+                return result(columns: ["value"], rows: [["3 days 02:00:00"]])
+            }
+            if sql.contains("SELECT pid") {
+                return result(
+                    columns: ["pid", "usename", "datname", "state", "duration_secs", "query"],
+                    rows: [["101", "app", "app", "idle", "40", "COMMIT"]]
+                )
+            }
+            return result(columns: ["count"], rows: [["4"]])
+        }
+    }
+
+    @Test("A snapshot draws sessions, slow queries and both counts from one read, as the single queries filter")
+    func snapshotMatchesTheSingleQueries() async throws {
+        let provider = PostgreSQLDashboardProvider(activityCatalog: .current)
+        let recorder = Recorder()
+        var plan = DashboardFetchPlan()
+        let snapshot = await provider.fetchSnapshot(plan: &plan, now: .now, readsEveryMetric: false, execute: execute(recorder))
+
+        let sessions = try #require(try snapshot.sessions?.get())
+        #expect(sessions.map { $0.id } == ["101", "102", "103"])
+        let slow = try #require(try snapshot.slowQueries?.get())
+        #expect(slow.map { $0.query } == ["SELECT pg_sleep(20)", ""])
+        let metrics = try #require(try snapshot.metrics?.get())
+        #expect(metrics.map { $0.id } == ["connections", "cache_hit", "db_size", "uptime", "active_queries"])
+        let values = Dictionary(uniqueKeysWithValues: metrics.map { ($0.id, $0.value) })
+        #expect(values["connections"] == "4")
+        #expect(values["active_queries"] == "4")
+        #expect(values["cache_hit"] == "99.5")
+        #expect(values["uptime"] == "3 days 02:00:00")
+        #expect(values["db_size"] == "42 MB")
+        #expect(recorder.asked.count == 3)
+    }
+
+    @Test("The database size is read once a minute and on Refresh Now, and keeps its value in between")
+    func sizeIsReadOnceAMinute() async throws {
+        let provider = PostgreSQLDashboardProvider(activityCatalog: .current)
+        let recorder = Recorder()
+        var plan = DashboardFetchPlan()
+        let start = ContinuousClock.now
+
+        _ = await provider.fetchSnapshot(plan: &plan, now: start, readsEveryMetric: false, execute: execute(recorder))
+        #expect(recorder.asked.count == 3)
+
+        recorder.asked = []
+        let later = await provider.fetchSnapshot(
+            plan: &plan, now: start + .seconds(30), readsEveryMetric: false, execute: execute(recorder)
+        )
+        #expect(recorder.asked.count == 2)
+        #expect(!recorder.asked.contains { $0.contains("pg_database_size") })
+        let metrics = try #require(try later.metrics?.get())
+        #expect(metrics.first { $0.id == "db_size" }?.value == "42 MB")
+
+        recorder.asked = []
+        _ = await provider.fetchSnapshot(
+            plan: &plan, now: start + .seconds(31), readsEveryMetric: true, execute: execute(recorder)
+        )
+        #expect(recorder.asked.contains { $0.contains("pg_database_size") })
+
+        recorder.asked = []
+        _ = await provider.fetchSnapshot(
+            plan: &plan, now: start + .seconds(61), readsEveryMetric: false, execute: execute(recorder)
+        )
+        #expect(!recorder.asked.contains { $0.contains("pg_database_size") })
+
+        recorder.asked = []
+        _ = await provider.fetchSnapshot(
+            plan: &plan, now: start + .seconds(92), readsEveryMetric: false, execute: execute(recorder)
+        )
+        #expect(recorder.asked.contains { $0.contains("pg_database_size") })
+    }
+
+    @Test("A refused combined read falls back to the singles, and the next refresh sends only the singles")
+    func refusedCombinedReadIsRemembered() async throws {
+        let provider = PostgreSQLDashboardProvider(activityCatalog: .current)
+        let recorder = Recorder()
+        recorder.refusesCombined = true
+        var plan = DashboardFetchPlan()
+        let start = ContinuousClock.now
+
+        let first = await provider.fetchSnapshot(plan: &plan, now: start, readsEveryMetric: false, execute: execute(recorder))
+        #expect(try first.sessions?.get().map { $0.id } == ["101"])
+        #expect(try first.metrics?.get().count == 5)
+        #expect(plan.combinedActivityRefused)
+        #expect(plan.combinedSummaryRefused)
+
+        recorder.asked = []
+        _ = await provider.fetchSnapshot(
+            plan: &plan, now: start + .seconds(5), readsEveryMetric: false, execute: execute(recorder)
+        )
+        #expect(!recorder.asked.contains { $0.contains("is_own") || $0.hasPrefix("SELECT (") })
+        #expect(recorder.asked.count == 6)
+
+        var fresh = DashboardFetchPlan()
+        recorder.asked = []
+        recorder.refusesCombined = false
+        _ = await provider.fetchSnapshot(plan: &fresh, now: start + .seconds(10), readsEveryMetric: false, execute: execute(recorder))
+        #expect(recorder.asked.first?.contains("is_own") == true)
+        #expect(!fresh.combinedActivityRefused)
+    }
+
+    @Test("A read that fails everywhere is not remembered as a refusal")
+    func failingServerIsNotARefusal() async {
+        let provider = PostgreSQLDashboardProvider(activityCatalog: .current)
+        let recorder = Recorder()
+        recorder.refusesEverything = true
+        var plan = DashboardFetchPlan()
+        let snapshot = await provider.fetchSnapshot(plan: &plan, now: .now, readsEveryMetric: false, execute: execute(recorder))
+
+        #expect(!plan.combinedActivityRefused)
+        #expect(!plan.combinedSummaryRefused)
+        if case .failure = snapshot.sessions {} else { Issue.record("sessions should fail") }
+        if case .failure = snapshot.metrics {} else { Issue.record("metrics should fail") }
+    }
+
+    @Test("CockroachDB refreshes in one statement")
+    func cockroachSnapshotIsOneStatement() async throws {
+        let provider = PostgreSQLDashboardProvider(activityCatalog: .current, metricSet: .activityOnly)
+        let recorder = Recorder()
+        var plan = DashboardFetchPlan()
+        let snapshot = await provider.fetchSnapshot(plan: &plan, now: .now, readsEveryMetric: true, execute: execute(recorder))
+
+        #expect(recorder.asked.count == 1)
+        #expect(try snapshot.metrics?.get().map { $0.id } == ["connections", "active_queries"])
+    }
+
+    @Test("The combined reads for older servers name only the columns they have")
+    func combinedReadsFollowTheCatalog() {
+        for catalog in [PostgreSQLActivityCatalog.withoutBackendType, .procpid] {
+            #expect(!catalog.activityQuery.contains("backend_type"))
+        }
+        let procpid = PostgreSQLActivityCatalog.procpid.activityQuery
+        #expect(procpid.contains("SELECT procpid AS pid"))
+        #expect(!procpid.contains("left(query"))
+        #expect(!procpid.contains("state OPERATOR"))
+        #expect(procpid.contains("'<command string not found>'"))
     }
 }

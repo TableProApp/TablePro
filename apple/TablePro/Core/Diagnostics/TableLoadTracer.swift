@@ -9,11 +9,13 @@ import os
 /// mislead the user are logged at error level and are always captured. Every trace is also
 /// an Instruments interval under Points of Interest.
 ///
-/// Both of those are live only, so a finished trace is additionally summarized to `sink`, which
-/// keeps a bounded local history an intermittent slowdown can be looked at in after the fact.
+/// A finished trace is also summarized to `sink` when one is set: the shared tracer has one only when
+/// `TABLEPRO_TABLE_LOAD_TRACE=1`, for a benchmark reading standard error.
 @MainActor
 internal final class TableLoadTracer {
-    internal static let shared = TableLoadTracer(sink: TableLoadHistoryStore.shared)
+    internal static let shared = TableLoadTracer(
+        sink: ProcessInfo.processInfo.environment["TABLEPRO_TABLE_LOAD_TRACE"] == "1" ? TableLoadStandardErrorSink() : nil
+    )
 
     private struct Interval {
         let id: OSSignpostID
@@ -24,14 +26,14 @@ internal final class TableLoadTracer {
 
     private let logger = Logger(subsystem: "com.TablePro", category: "TableLoad")
     private let signposter = OSSignposter(subsystem: "com.TablePro", category: .pointsOfInterest)
-    private let sink: any TableLoadSummarySink
+    private let sink: (any TableLoadSummarySink)?
     private var recorder = TableLoadTraceRecorder()
     private var intervals: [Int: Interval] = [:]
     private var handoffs: [String: ContinuousClock.Instant] = [:]
     private var applyScope: TableLoadTraceToken?
     private let clock = ContinuousClock()
 
-    internal init(sink: any TableLoadSummarySink) {
+    internal init(sink: (any TableLoadSummarySink)?) {
         self.sink = sink
     }
 
@@ -102,13 +104,12 @@ internal final class TableLoadTracer {
         }
     }
 
-    /// Stamped on the main actor because the version strings are resolved once per process and the
-    /// timestamp costs nothing, then handed over. The sink never blocks: everything it does with the
-    /// record happens after this returns.
+    /// Drained with no sink too, or the recorder would keep every summary. Stamped on the main actor
+    /// because the version strings are resolved once per process and the timestamp costs nothing.
     private func drainCompletedTraces() {
         closeEvictedIntervals()
         let summaries = recorder.takeCompletedSummaries()
-        guard !summaries.isEmpty else { return }
+        guard let sink, !summaries.isEmpty else { return }
         let stamp = TableLoadRuntimeStamp.current
         let recordedAt = Date()
         for summary in summaries {
@@ -166,7 +167,7 @@ internal final class TableLoadTracer {
         recorder.setResultMetrics(metrics, token: token)
     }
 
-    /// `detail` is written to the log and the signpost but never to the history. It is where an
+    /// `detail` is written to the log and the signpost but never to the summary. It is where an
     /// error's Swift type name still reaches a developer reading `log stream`, while the recorded
     /// outcome stays a closed set an external report can group by.
     internal func finish(token: TableLoadTraceToken, outcome: TableLoadOutcome, detail: String? = nil) {

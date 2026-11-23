@@ -53,6 +53,52 @@ private struct LossyTab: Decodable {
 internal struct TabDiskWrittenState {
     var stateDigest: SHA256.Digest?
     var sidecars = TabQueryOverflowStore.WrittenSidecars()
+    // The last input that reached the disk, set only after a write that worked or one the state digest skipped.
+    var input: TabDiskInput?
+}
+
+// A save's input split in two: the state with every query emptied, which is small to encode, and the
+// query texts, compared by their bytes. `String ==` is canonical equivalence, so an NFC query edited to
+// its NFD form would compare equal and never be saved. An untouched tab shares its storage with the
+// last save, so its query compares by address without reading it.
+internal struct TabDiskInput {
+    let stateDigest: SHA256.Digest
+    let queries: [String]
+
+    init(_ state: TabDiskState, encoder: JSONEncoder) throws {
+        let emptied = state.tabs.map { tab -> PersistedTab in
+            var copy = tab
+            copy.query = ""
+            return copy
+        }
+        let shape = TabDiskState(
+            tabs: emptied,
+            selectedTabId: state.selectedTabId,
+            lastActiveDatabase: state.lastActiveDatabase,
+            lastActiveSchema: state.lastActiveSchema
+        )
+        stateDigest = SHA256.hash(data: try encoder.encode(shape))
+        queries = state.tabs.map(\.query)
+    }
+
+    func matches(_ other: TabDiskInput) -> Bool {
+        guard stateDigest == other.stateDigest, queries.count == other.queries.count else { return false }
+        return zip(queries, other.queries).allSatisfy { Self.sameBytes($0, $1) }
+    }
+
+    static func sameBytes(_ lhs: String, _ rhs: String) -> Bool {
+        let contiguous = lhs.utf8.withContiguousStorageIfAvailable { left in
+            rhs.utf8.withContiguousStorageIfAvailable { right -> Bool in
+                guard left.count == right.count else { return false }
+                guard let leftBase = left.baseAddress, let rightBase = right.baseAddress else { return true }
+                return leftBase == rightBase || memcmp(leftBase, rightBase, left.count) == 0
+            }
+        }
+        if let contiguous, let result = contiguous {
+            return result
+        }
+        return lhs.utf8.elementsEqual(rhs.utf8)
+    }
 }
 
 private final class TabDiskConnectionWriteGate: @unchecked Sendable {
@@ -173,6 +219,22 @@ internal actor TabDiskActor {
         encoder: JSONEncoder,
         written: inout TabDiskWrittenState
     ) throws {
+        let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
+        let input = try TabDiskInput(
+            TabDiskState(
+                tabs: tabs,
+                selectedTabId: selectedTabId,
+                lastActiveDatabase: lastActiveDatabase,
+                lastActiveSchema: lastActiveSchema
+            ),
+            encoder: encoder
+        )
+        if let last = written.input, last.matches(input),
+           filesPresent(stateFile: fileURL, sidecars: written.sidecars, directory: directory) {
+            return
+        }
+        written.input = nil
+
         let state = TabDiskState(
             tabs: TabQueryOverflowStore.externalize(
                 tabs,
@@ -186,12 +248,27 @@ internal actor TabDiskActor {
         )
         let data = try encoder.encode(state)
         let digest = SHA256.hash(data: data)
-        let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
-        if digest == written.stateDigest, FileManager.default.fileExists(atPath: fileURL.path) {
-            return
+        if digest != written.stateDigest || !FileManager.default.fileExists(atPath: fileURL.path) {
+            try data.write(to: fileURL, options: .atomic)
+            written.stateDigest = digest
         }
-        try data.write(to: fileURL, options: .atomic)
-        written.stateDigest = digest
+        // A sidecar that failed left its query inline, so the next save tries the sidecar again.
+        if !written.sidecars.lastWriteFailed {
+            written.input = input
+        }
+    }
+
+    // A file removed behind the store is written again by an unchanged save.
+    nonisolated private static func filesPresent(
+        stateFile: URL,
+        sidecars: TabQueryOverflowStore.WrittenSidecars,
+        directory: URL
+    ) -> Bool {
+        guard FileManager.default.fileExists(atPath: stateFile.path) else { return false }
+        let overflowDirectory = TabQueryOverflowStore.directory(inside: directory)
+        return (sidecars.keptByLastPrune ?? []).allSatisfy {
+            FileManager.default.fileExists(atPath: overflowDirectory.appendingPathComponent($0).path)
+        }
     }
 
     internal func load(connectionId: UUID) -> TabDiskState? {
@@ -206,6 +283,7 @@ internal actor TabDiskActor {
                 let data = try Data(contentsOf: fileURL)
                 let state = try decoder.decode(TabDiskState.self, from: data)
                 written.stateDigest = SHA256.hash(data: data)
+                written.input = nil
                 return TabDiskState(
                     tabs: TabQueryOverflowStore.inline(
                         state.tabs,
@@ -286,6 +364,8 @@ internal actor TabDiskActor {
                     encoder: makeEncoder(),
                     written: &written
                 )
+                // A closed window saves here too, so its text is not held after it.
+                written.input = nil
             }
         } catch {
             logger.fault("saveSync failed for \(connectionId): \(error.localizedDescription)")

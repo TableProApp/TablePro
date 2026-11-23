@@ -170,4 +170,86 @@ struct TabDiskUnchangedSaveTests {
         let loaded = await TabDiskActor.shared.load(connectionId: connectionId)
         #expect(loaded?.tabs.map(\.title) == ["Renamed"])
     }
+
+    @Test("A query edited from its NFC form to its NFD form is saved")
+    func canonicallyEqualEditIsSaved() async throws {
+        let connectionId = UUID()
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        let tabId = UUID()
+        let composed = "SELECT 'caf\u{E9}'"
+        let decomposed = "SELECT 'cafe\u{301}'"
+        #expect(composed == decomposed)
+
+        try await save([tab(id: tabId, title: "One", query: composed)], connectionId: connectionId)
+        try await save([tab(id: tabId, title: "One", query: decomposed)], connectionId: connectionId)
+
+        let loaded = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(loaded?.tabs.first.map { Array($0.query.utf8) } == Array(decomposed.utf8))
+    }
+
+    @Test("A moved caret alone is saved")
+    func movedCaretIsSaved() async throws {
+        let connectionId = UUID()
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        var first = tab(title: "One", query: "SELECT 1")
+        first.cursorOffset = 2
+        try await save([first], connectionId: connectionId)
+        let written = try fileNumber(stateURL(connectionId))
+
+        first.cursorOffset = 5
+        try await save([first], connectionId: connectionId)
+
+        #expect(try fileNumber(stateURL(connectionId)) != written)
+        let loaded = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(loaded?.tabs.first?.cursorOffset == 5)
+    }
+
+    @Test("After the quit-time save an unchanged save still leaves the file alone")
+    func unchangedSaveAfterSyncSaveKeepsTheFile() async throws {
+        let connectionId = UUID()
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        let tabs = [tab(title: "One", query: "SELECT 1")]
+
+        TabDiskActor.saveSync(connectionId: connectionId, tabs: tabs, selectedTabId: tabs.first?.id)
+        let written = try fileNumber(stateURL(connectionId))
+        try await save(tabs, connectionId: connectionId)
+
+        #expect(try fileNumber(stateURL(connectionId)) == written)
+    }
+
+    @Test("A save that failed is tried again by the same save")
+    func failedSaveIsTriedAgain() async throws {
+        let connectionId = UUID()
+        let url = stateURL(connectionId)
+        defer {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: url.path)
+            TabDiskActor.clearSync(connectionId: connectionId)
+        }
+        let tabId = UUID()
+        try await save([tab(id: tabId, title: "One", query: "SELECT 1")], connectionId: connectionId)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: url.path)
+
+        let renamed = [tab(id: tabId, title: "Renamed", query: "SELECT 1")]
+        await #expect(throws: (any Error).self) { try await save(renamed, connectionId: connectionId) }
+
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: url.path)
+        try await save(renamed, connectionId: connectionId)
+        let loaded = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(loaded?.tabs.map(\.title) == ["Renamed"])
+    }
+
+    @Test("Byte comparison tells canonically equal queries apart and matches shared storage")
+    func byteComparison() {
+        let query = String(repeating: "SELECT 1;\n", count: 1_000)
+        let copy = query
+        #expect(TabDiskInput.sameBytes(query, copy))
+        var unshared = query
+        unshared.append(";")
+        unshared.removeLast()
+        #expect(TabDiskInput.sameBytes(query, unshared))
+        #expect(!TabDiskInput.sameBytes("caf\u{E9}", "cafe\u{301}"))
+        #expect(!TabDiskInput.sameBytes(query, query + " "))
+        #expect(TabDiskInput.sameBytes("", ""))
+        #expect(TabDiskInput.sameBytes(NSString(string: "SELECT 2") as String, "SELECT 2"))
+    }
 }
