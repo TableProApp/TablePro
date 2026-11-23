@@ -6,18 +6,12 @@
 import Foundation
 import TableProPluginKit
 
-/// A connection that sets a field the loaded driver does not know yet.
-///
-/// A registry plugin updates after the app, at the next launch and only when updating is on, so an
-/// app can run with a driver built before one of its settings existed. That driver connects as if the
-/// field held its default, and for a security setting the default can be weaker than the user's
-/// choice. A tunnel to the type's server fields is refused too: those settings are what secure the
-/// forwarded hop, and an older DuckDB driver sends the token over plain HTTP to the loopback forward,
-/// which the bastion carries on unencrypted. Only the fields a type's curated entry names are checked:
-/// an unknown field elsewhere is just ignored, as it always was.
+// A registry plugin can be older than the app, and it reads a field or option it does not know as the default, which
+// can be weaker than the user's choice. Only the fields a type's curated entry names are checked.
 struct DriverSettingNotSupportedError: Error, LocalizedError, Equatable {
     enum Setting: Equatable {
         case field(label: String)
+        case option(label: String, option: String)
         case tunnel
     }
 
@@ -31,23 +25,58 @@ struct DriverSettingNotSupportedError: Error, LocalizedError, Equatable {
         guard let curated = PluginMetadataRegistry.shared.curatedSnapshot(for: connection.type) else { return nil }
         let required = curated.capabilities.fieldsRequiringDriverSupport
         guard !required.isEmpty else { return nil }
-        let declared = Set(pluginType.additionalConnectionFields.map(\.id))
-        guard required.contains(where: { !declared.contains($0) }) else { return nil }
         let typeName = connection.type.displayName
+        let curatedFields = curated.connection.additionalConnectionFields
+        let pluginFields = pluginType.additionalConnectionFields
+        if let setting = unofferedOption(in: connection, required: required, curatedFields: curatedFields, pluginFields: pluginFields) {
+            return DriverSettingNotSupportedError(setting: setting, typeName: typeName)
+        }
+        let declared = Set(pluginFields.map(\.id))
+        guard required.contains(where: { !declared.contains($0) }) else { return nil }
+        // The missing fields secure the forwarded hop: an older DuckDB driver sends its token in plain HTTP to the loopback.
         let tunneled = !connection.enabledTunnelKinds.isEmpty || connection.preTunnelHost != nil
         if connection.activeServerEndpointFields != nil, tunneled {
             return DriverSettingNotSupportedError(setting: .tunnel, typeName: typeName)
         }
-        let curatedFields = curated.connection.additionalConnectionFields
         for fieldId in required where !declared.contains(fieldId) {
             guard let field = curatedFields.first(where: { $0.id == fieldId }),
-                  curatedFields.isVisible(field, forValues: connection.additionalFields)
+                  chosenValue(of: field, in: connection, among: curatedFields) != nil
             else { continue }
-            let value = (connection.additionalFields[fieldId] ?? "").trimmingCharacters(in: .whitespaces)
-            guard !value.isEmpty, value != (field.defaultValue ?? "") else { continue }
             return DriverSettingNotSupportedError(setting: .field(label: field.label), typeName: typeName)
         }
         return nil
+    }
+
+    // A driver that declares the dropdown but not the chosen option opens another one: an older DuckDB driver opens a
+    // MotherDuck row as a local file.
+    private static func unofferedOption(
+        in connection: DatabaseConnection,
+        required: [String],
+        curatedFields: [ConnectionField],
+        pluginFields: [ConnectionField]
+    ) -> Setting? {
+        for fieldId in required {
+            guard let field = curatedFields.first(where: { $0.id == fieldId }),
+                  case .dropdown(let curatedOptions) = field.fieldType,
+                  case .dropdown(let offered)? = pluginFields.first(where: { $0.id == fieldId })?.fieldType,
+                  let value = chosenValue(of: field, in: connection, among: curatedFields),
+                  !offered.contains(where: { $0.value == value })
+            else { continue }
+            let option = curatedOptions.first { $0.value == value }?.label ?? value
+            return .option(label: field.label, option: option)
+        }
+        return nil
+    }
+
+    private static func chosenValue(
+        of field: ConnectionField,
+        in connection: DatabaseConnection,
+        among fields: [ConnectionField]
+    ) -> String? {
+        guard fields.isVisible(field, forValues: connection.additionalFields) else { return nil }
+        let value = (connection.additionalFields[field.id] ?? "").trimmingCharacters(in: .whitespaces)
+        guard !value.isEmpty, value != (field.defaultValue ?? "") else { return nil }
+        return value
     }
 
     var errorDescription: String? {
@@ -61,6 +90,18 @@ struct DriverSettingNotSupportedError: Error, LocalizedError, Equatable {
                         """
                 ),
                 label,
+                typeName
+            )
+        case .option(let label, let option):
+            return String(
+                format: String(
+                    localized: """
+                        This connection sets %1$@ to %2$@, which the installed %3$@ driver does not support yet. \
+                        Update the database driver in Settings > Extensions, then connect again.
+                        """
+                ),
+                label,
+                option,
                 typeName
             )
         case .tunnel:

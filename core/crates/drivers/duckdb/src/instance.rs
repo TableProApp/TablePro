@@ -311,6 +311,13 @@ fn attached(open: &HashMap<FileIdentity, Opened>, id: FileIdentity, except: Opti
     })
 }
 
+// An error names the path as the statement wrote it; the checks use it as DuckDB opens it, links resolved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AttachTarget {
+    pub(crate) asked: PathBuf,
+    pub(crate) opened: PathBuf,
+}
+
 /// Run `attach`, an ATTACH on `link` that may open any of `targets`,
 /// unless a database in this process has one of them open, as its own
 /// file or attached to it: DuckDB would make a second database on it,
@@ -322,14 +329,14 @@ fn attached(open: &HashMap<FileIdentity, Opened>, id: FileIdentity, except: Opti
 /// and no tab attaches it, in between.
 pub(crate) fn attach_unless_open<T>(
     link: &Link,
-    targets: &[PathBuf],
+    targets: &[AttachTarget],
     attach: impl FnOnce() -> Result<T, DriverError>,
 ) -> Result<T, DriverError> {
     let _opening = tablepro_core::opening_file_blocking();
     let open = OPEN.lock().unwrap_or_else(PoisonError::into_inner);
     let own = link.instance.id;
     let own_paths = open.get(&own).map(database_paths).unwrap_or_default();
-    let in_use = targets.iter().any(|target| {
+    let in_use = targets.iter().map(|target| &target.opened).any(|target| {
         let Some(id) = FileIdentity::of(target) else {
             return false;
         };
@@ -352,9 +359,11 @@ pub(crate) fn attach_unless_open<T>(
     // it, until something wrote to it.
     if let Some(target) = targets
         .iter()
-        .find(|target| std::fs::metadata(target).is_ok_and(|metadata| !metadata.is_file()))
+        .find(|target| std::fs::metadata(&target.opened).is_ok_and(|metadata| !metadata.is_file()))
     {
-        return Err(DriverError::NotADatabase { path: target.clone() });
+        return Err(DriverError::NotADatabase {
+            path: target.asked.clone(),
+        });
     }
     let result = attach()?;
     // `ATTACH IF NOT EXISTS` under an alias already taken opens nothing,
@@ -367,7 +376,7 @@ pub(crate) fn attach_unless_open<T>(
         .filter_map(|path| FileIdentity::of(Path::new(path)))
         .collect();
     let mut claims = Vec::with_capacity(targets.len());
-    for target in targets {
+    for target in targets.iter().map(|target| &target.opened) {
         if FileIdentity::of(target).is_some_and(|id| listed.contains(&id)) {
             claims.extend(tablepro_core::claim_file(target, ENGINE)?);
         }

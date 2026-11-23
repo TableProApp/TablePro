@@ -108,6 +108,45 @@ struct ConnectionDraftURLImportTests {
         }
     }
 
+    @Test("Import from a quack URL fills the DuckDB Remote fields, and the form's defaults stand for a port or alias left out")
+    func quackImportFillsRemoteFields() throws {
+        let duckdb = traits(.duckdb)
+        var draft = ConnectionDraft.new(type: .duckdb, traits: duckdb)
+        draft.apply(try parse("quack://quack.example.com:9500/analytics"), traits: duckdb, policy: .newConnection)
+        #expect(draft.fieldValues["duckdbMode"] == "remote")
+        #expect(draft.fieldValues["duckdbHost"] == "quack.example.com")
+        #expect(draft.fieldValues["duckdbPort"] == "9500")
+        #expect(draft.fieldValues["duckdbAlias"] == "analytics")
+
+        var bare = ConnectionDraft.new(type: .duckdb, traits: duckdb)
+        bare.apply(try parse("quack://quack.example.com"), traits: duckdb, policy: .newConnection)
+        let port = try #require(duckdb.field("duckdbPort"))
+        let alias = try #require(duckdb.field("duckdbAlias"))
+        #expect(bare.fieldValues["duckdbMode"] == "remote")
+        #expect(ConnectionEditorEngine.value(of: port, in: bare) == "9494")
+        #expect(ConnectionEditorEngine.value(of: alias, in: bare) == "remotedb")
+    }
+
+    @Test("Import from an md: string opens MotherDuck on that database, not Local File")
+    func motherDuckImportFillsMotherDuckFields() throws {
+        let duckdb = traits(.duckdb)
+        var draft = ConnectionDraft.new(type: .duckdb, traits: duckdb)
+        draft.apply(try parse("md:my_db"), traits: duckdb, policy: .newConnection)
+        #expect(draft.fieldValues["duckdbMode"] == "motherduck")
+        #expect(draft.fieldValues["duckdbMotherDuckDatabase"] == "my_db")
+        #expect(draft.fieldValues["duckdbFilePath"] == nil)
+    }
+
+    @Test("Import from a duckdb file URL opens Local File on that path")
+    func duckDBFileImportFillsLocalFields() throws {
+        let duckdb = traits(.duckdb)
+        var draft = ConnectionDraft.new(type: .duckdb, traits: duckdb)
+        draft.apply(try parse("duckdb:///path/to/analytics.duckdb"), traits: duckdb, policy: .newConnection)
+        #expect(draft.fieldValues["duckdbMode"] == "local")
+        #expect(draft.fieldValues["duckdbFilePath"] == "/path/to/analytics.duckdb")
+        #expect(draft.fieldValues["duckdbHost"] == nil)
+    }
+
     @Test("A paste into a saved connection adds no raw driver options")
     func existingConnectionGetsNoRawOptions() throws {
         let mongo = traits(.mongodb)

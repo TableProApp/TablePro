@@ -25,9 +25,9 @@ set -euo pipefail
 #
 # Usage:
 #   scripts/build-duckdb-ios.sh [duckdb-version]
-#   DUCKDB_VERSION=v2.0.0 BUILD_JOBS=3 scripts/build-duckdb-ios.sh
+#   DUCKDB_VERSION=v2.0.1 BUILD_JOBS=3 scripts/build-duckdb-ios.sh
 
-DUCKDB_VERSION="${1:-${DUCKDB_VERSION:-v2.0.0}}"
+DUCKDB_VERSION="${1:-${DUCKDB_VERSION:-v2.0.1}}"
 DEPLOYMENT_TARGET="${DEPLOYMENT_TARGET:-15.0}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

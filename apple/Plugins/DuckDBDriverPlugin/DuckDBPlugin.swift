@@ -36,7 +36,7 @@ nonisolated final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     // never dials, and every connection saved before it stores Disabled while Quack uses HTTPS.
     static let supportsSSL = false
     // The app forwards duckdbHost and duckdbPort and rewrites them to the loopback, so every tunnel kind
-    // carries a Remote connection. Local File dials nothing, and the app offers none there.
+    // carries a Remote connection. Local File and MotherDuck have no host field, and the app offers none there.
     static let supportsSSH = true
     // DuckDB has no switch for foreign key checks: `PRAGMA foreign_keys=OFF` is accepted and changes
     // nothing, so a Drop prompt offering to ignore them would add no statement.
@@ -50,7 +50,8 @@ nonisolated final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             defaultValue: "local",
             fieldType: .dropdown(options: [
                 ConnectionField.DropdownOption(value: "local", label: String(localized: "Local File")),
-                ConnectionField.DropdownOption(value: "remote", label: String(localized: "Remote (Quack, experimental)"))
+                ConnectionField.DropdownOption(value: "remote", label: String(localized: "Remote (Quack, experimental)")),
+                ConnectionField.DropdownOption(value: "motherduck", label: "MotherDuck")
             ]),
             section: .authentication
         ),
@@ -125,6 +126,23 @@ nonisolated final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             section: .authentication,
             visibleWhen: FieldVisibilityRule(fieldId: "duckdbSSLMode", values: [QuackSSLMode.verifyFingerprint.rawValue])
         ),
+        // Not Token: a hidden field keeps its value across a mode switch, which would send a Quack token here.
+        ConnectionField(
+            id: "duckdbMotherDuckToken",
+            label: String(localized: "Access Token"),
+            required: true,
+            fieldType: .secure,
+            section: .authentication,
+            hidesPassword: true,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["motherduck"])
+        ),
+        ConnectionField(
+            id: "duckdbMotherDuckDatabase",
+            label: String(localized: "Database"),
+            placeholder: String(localized: "All databases"),
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["motherduck"])
+        ),
         /// Named for what it does to the file rather than to TablePro, to keep it apart from
         /// Safe Mode's own Read-Only level: that one is a policy this app applies to itself and
         /// can be changed while connected, this one is how the file is opened and is fixed for
@@ -145,7 +163,7 @@ nonisolated final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             section: .advanced,
             visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"])
         ),
-        .attachedDatabases(visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"]))
+        .attachedDatabases(visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local", "motherduck"]))
     ]
     static let fileExtensions: [String] = DuckDBFileKinds.all
     static let brandColorHex = "#FFD900"
@@ -350,8 +368,12 @@ nonisolated final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     // MARK: - Connection
 
+    private var mode: DuckDBConnectionMode? {
+        DuckDBConnectionMode(fieldValue: config.additionalFields[DuckDBConnectionMode.fieldId])
+    }
+
     private var isRemoteMode: Bool {
-        config.additionalFields["duckdbMode"] == "remote"
+        mode == .remote
     }
 
     private var remoteAlias: String? {
@@ -366,10 +388,18 @@ nonisolated final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sen
     }
 
     func connect() async throws {
-        if isRemoteMode {
-            try await connectRemote()
-        } else {
+        switch mode {
+        case .local:
             try await connectLocal()
+        case .remote:
+            try await connectRemote()
+        case .motherDuck:
+            try await connectMotherDuck()
+        case nil:
+            throw DuckDBPluginError.connectionFailed(String(localized: """
+                This connection uses a Connection Type this version of the DuckDB plugin does not have. \
+                Update the DuckDB plugin.
+                """))
         }
     }
 
@@ -508,6 +538,113 @@ nonisolated final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sen
         }
     }
 
+    private func connectMotherDuck() async throws {
+        let plan: MotherDuckConnectPlan
+        do {
+            plan = try MotherDuckConnectPlan(MotherDuckConnectRequest(
+                token: config.additionalFields["duckdbMotherDuckToken"] ?? "",
+                database: config.additionalFields["duckdbMotherDuckDatabase"] ?? ""
+            ))
+        } catch {
+            throw Self.motherDuckConnectFailure(error)
+        }
+        let attempt = DuckDBConnectAttempt(
+            additionalFields: config.additionalFields,
+            interrupt: { [liveConnection] in liveConnection.interrupt() }
+        )
+        let timeoutTask = Task.detached { [attempt] in
+            do {
+                try await ContinuousClock().sleep(until: attempt.deadline)
+            } catch {
+                return
+            }
+            attempt.expire()
+        }
+
+        // As in `connectRemote`: nothing upstream closes a driver whose connect failed.
+        do {
+            try await withTaskCancellationHandler(
+                operation: {
+                    try attempt.check()
+                    try await connectionActor.open(spec: DuckDBOpenSpec(
+                        path: ":memory:", accessMode: .readWrite, allowsPersistentSecrets: false
+                    ))
+                    try attempt.check()
+                    try await enableExtensionAutoloading(during: attempt)
+                    try await QuackExtensionLoader.load(MotherDuckConnectPlan.extensionName) { statement in
+                        try await executeRemoteConnectStatement(statement, during: attempt)
+                    }
+                    for statement in plan.settingStatements {
+                        try await executeRemoteConnectStatement(statement, during: attempt)
+                    }
+                    try await executeRemoteConnectStatement(
+                        MotherDuckConnectPlan.connectionTimeoutStatement(
+                            remaining: ContinuousClock.now.duration(to: attempt.deadline)
+                        ),
+                        during: attempt
+                    )
+                    try await executeRemoteConnectStatement(plan.attachStatement, during: attempt)
+                    let position = try await motherDuckPosition(plan, during: attempt)
+                    try attempt.finish {
+                        stateLock.withLock {
+                            _currentDatabase = position.catalog
+                            _currentSchema = position.schema
+                        }
+                    }
+                },
+                onCancel: {
+                    attempt.cancel()
+                }
+            )
+        } catch {
+            timeoutTask.cancel()
+            let attemptError = attempt.stop()
+            resetCurrentPosition()
+            await connectionActor.close()
+            if attemptError is DuckDBConnectAttemptError {
+                throw DuckDBPluginError.connectionFailed(MotherDuckConnectError.timedOut.localizedDescription)
+            }
+            if let attemptError { throw attemptError }
+            throw Self.motherDuckConnectFailure(error)
+        }
+        timeoutTask.cancel()
+        // After the catalog is current, so a file that fails to attach is a warning, as on a Local File connection.
+        await attachConfiguredDatabases(readOnly: false)
+    }
+
+    // An ATTACH from an in-memory DuckDB leaves the session on memory.
+    private func motherDuckPosition(
+        _ plan: MotherDuckConnectPlan,
+        during attempt: DuckDBConnectAttempt
+    ) async throws -> (catalog: String, schema: String) {
+        if plan.database == nil {
+            do {
+                try await executeRemoteConnectStatement(MotherDuckConnectPlan.useDefaultStatement, during: attempt)
+                let position = try await readPosition()
+                if let named = position.catalog, let catalog = await canonicalCatalogName(matching: named) {
+                    return (catalog, position.schema ?? "main")
+                }
+            } catch {
+                try attempt.check()
+                Self.logger.warning("MotherDuck's default database could not be used: \(error.localizedDescription)")
+            }
+        }
+        let result = try await connectionActor.executeQuery(MotherDuckConnectPlan.motherDuckCatalogsQuery)
+        try attempt.check()
+        let catalogs = result.rows.compactMap { $0[safe: 0]?.asText }
+        guard let catalog = plan.catalogToUse(among: catalogs) else {
+            throw MotherDuckConnectError.noDatabase(name: plan.database)
+        }
+        try await executeRemoteConnectStatement(DuckDBSchemaQueries.useDatabase(catalog), during: attempt)
+        let landedSchema = try? await readPosition().schema
+        return (catalog, landedSchema.flatMap { $0 } ?? "main")
+    }
+
+    private static func motherDuckConnectFailure(_ error: any Error) -> any Error {
+        guard let classified = MotherDuckConnectErrorClassifier.classify(error) else { return error }
+        return DuckDBPluginError.connectionFailed(classified.localizedDescription)
+    }
+
     /// curl's TLS texts name no field, and one of them mentions an SSH key, so they are replaced by
     /// messages that name the SSL Mode, CA Certificate or Certificate Fingerprint to change.
     private static func remoteConnectFailure(_ error: any Error, tunneled: Bool) -> any Error {
@@ -634,10 +771,10 @@ nonisolated final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sen
     // MARK: - Idle file-lock release
 
     /// Only a file-backed DuckDB database holds a lock worth giving up. `:memory:`, which the
-    /// remote Quack mode opens, holds none and is destroyed by a close, and the Parquet, CSV and
+    /// Quack and MotherDuck modes open, holds none and is destroyed by a close, and the Parquet, CSV and
     /// JSON readers are never written back to.
     private var canReleaseFile: Bool {
-        guard !isRemoteMode else { return false }
+        guard mode == .local else { return false }
         return DuckDBAccessMode.carriesAccessMode(path: resolvedFilePath)
     }
 
@@ -1145,7 +1282,8 @@ nonisolated final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sen
         if let remoteAlias {
             return [remoteAlias]
         }
-        let result = try await execute(query: DuckDBSchemaQueries.listDatabases)
+        let query = mode == .motherDuck ? DuckDBSchemaQueries.listMotherDuckSessionDatabases : DuckDBSchemaQueries.listDatabases
+        let result = try await execute(query: query)
         return result.rows.compactMap { row in
             row[safe: 0]?.asText
         }

@@ -128,4 +128,73 @@ struct DatabaseURLConnectionMatchTests {
         #expect(DatabaseURLConnectionMatch.matches(saved: legacy, parsed: link))
         #expect(!DatabaseURLConnectionMatch.matches(saved: remote, parsed: link))
     }
+
+    @Test("A DuckDB file link never opens a MotherDuck row through the file path it kept from Local File")
+    func duckDBFileLinkSkipsAHiddenFileField() throws {
+        let motherDuck = DatabaseConnection(
+            name: "MotherDuck", database: "", type: .duckdb,
+            additionalFields: [
+                "duckdbMode": "motherduck",
+                "duckdbMotherDuckDatabase": "my_db",
+                "duckdbFilePath": "/path/to/analytics.duckdb"
+            ]
+        )
+        #expect(!DatabaseURLConnectionMatch.matches(saved: motherDuck, parsed: try parsed("duckdb:///path/to/analytics.duckdb")))
+    }
+
+    private func quackRow(_ fields: [String: String] = [:]) -> DatabaseConnection {
+        DatabaseConnection(
+            name: "Quack", database: "", type: .duckdb,
+            additionalFields: [
+                "duckdbMode": "remote",
+                "duckdbHost": "quack.internal",
+                "duckdbPort": "9500",
+                "duckdbAlias": "analytics",
+                "duckdbSSLMode": "verifyIdentity"
+            ].merging(fields) { _, field in field }
+        )
+    }
+
+    @Test("A quack link opens the saved Quack row with its server and alias, at its port or none, whatever TLS it asks", arguments: [
+        "quack://quack.internal:9500/analytics",
+        "quack://quack.internal:9500/analytics?sslmode=disable",
+        "quack://quack.internal/analytics"
+    ])
+    func quackLinkMatchesItsServerFields(url: String) throws {
+        #expect(DatabaseURLConnectionMatch.matches(saved: quackRow(), parsed: try parsed(url)))
+    }
+
+    @Test("A quack link naming another server, port or alias opens no saved Quack row", arguments: [
+        "quack://other.internal:9500/analytics",
+        "quack://quack.internal:9501/analytics",
+        "quack://quack.internal:9500/other",
+        "quack://quack.internal:9500",
+        "quack://quack.internal:9494/analytics"
+    ])
+    func quackLinkSkipsAnotherServer(url: String) throws {
+        #expect(!DatabaseURLConnectionMatch.matches(saved: quackRow(), parsed: try parsed(url)))
+    }
+
+    @Test("A quack link that names the default port opens a Quack row on the default port")
+    func quackLinkWithTheDefaultPortMatchesTheDefault() throws {
+        let row = quackRow(["duckdbPort": ""])
+        #expect(DatabaseURLConnectionMatch.matches(saved: row, parsed: try parsed("quack://quack.internal:9494/analytics")))
+    }
+
+    @Test("A quack link with no alias opens a Quack row that kept the default one")
+    func quackLinkWithoutAliasMatchesTheDefault() throws {
+        let row = quackRow(["duckdbAlias": ""])
+        #expect(DatabaseURLConnectionMatch.matches(saved: row, parsed: try parsed("quack://quack.internal:9500")))
+        #expect(DatabaseURLConnectionMatch.matches(saved: row, parsed: try parsed("quack://quack.internal:9500/remotedb")))
+    }
+
+    @Test("A quack link never opens a Local File or MotherDuck row, even one whose placeholder host is the link's")
+    func quackLinkSkipsRowsThatDialNoServer() throws {
+        let link = try parsed("quack://localhost")
+        let local = DatabaseConnection(name: "Local", database: "", type: .duckdb, additionalFields: ["duckdbMode": "local"])
+        let motherDuck = DatabaseConnection(name: "MotherDuck", database: "", type: .duckdb, additionalFields: ["duckdbMode": "motherduck"])
+        #expect(local.host == "localhost")
+        #expect(!DatabaseURLConnectionMatch.matches(saved: local, parsed: link))
+        #expect(!DatabaseURLConnectionMatch.matches(saved: motherDuck, parsed: link))
+    }
 }

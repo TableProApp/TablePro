@@ -1,7 +1,7 @@
 import Foundation
 
 public enum QuackExtensionLoader {
-    /// LOAD first, because an installed extension loads with no network. Only when that fails does INSTALL
+    /// LOAD first, because an installed extension loads without a download. Only when that fails does INSTALL
     /// run, then LOAD again. When both fail the INSTALL error is the one reported: the second LOAD says
     /// 'Install it first using "INSTALL quack"', a command that has just run, while INSTALL names the
     /// cause, such as "Failed to download extension" with no route to the extension repository (measured
@@ -15,7 +15,15 @@ public enum QuackExtensionLoader {
             return
         } catch is CancellationError {
             throw CancellationError()
-        } catch {}
+        } catch {
+            // DuckDB found the file and ran it, and its init threw: an INSTALL keeps the same file, and a second
+            // LOAD fails the same way. The motherduck extension's init calls api.motherduck.com, so each LOAD costs
+            // about 10 s with no route there (measured on DuckDB v2.0.1).
+            let text = error.localizedDescription
+            if text.contains("Initialization function"), text.contains("threw an exception") {
+                throw QuackConnectError.extensionNotLoaded(name: name, detail: text)
+            }
+        }
 
         var installFailure: (any Error)?
         do {

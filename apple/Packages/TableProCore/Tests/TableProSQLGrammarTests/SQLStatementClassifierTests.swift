@@ -176,6 +176,97 @@ struct SQLStatementClassifierTests {
         #expect(Self.tier(sql, engine) == .safe)
     }
 
+    @Test("A MotherDuck md_ or __md_ call is a write on DuckDB, a listing one too", arguments: [
+        "SELECT * FROM md_create_database('x')",
+        "FROM __md_force_detach('x', true)",
+        "SELECT * FROM md_list_databases()",
+        "SELECT * FROM MD_UPDATE_DATABASE_SHARE('s')",
+    ])
+    func motherDuckCallWrites(sql: String) {
+        #expect(Self.tier(sql, "DuckDB") == .write)
+    }
+
+    @Test("A MotherDuck drop or delete call is destructive on DuckDB, called or selected from", arguments: [
+        "CALL md_drop_database('prod')",
+        "SELECT * FROM md_drop_database('prod')",
+        "CALL md_delete_dive('d')",
+        "SELECT * FROM MD_DELETE_DIVE('d')",
+    ])
+    func motherDuckDropIsDestructive(sql: String) {
+        #expect(Self.tier(sql, "DuckDB") == .destructive)
+    }
+
+    @Test("A drop-like column, or the call off DuckDB, is not destructive")
+    func motherDuckDropLookalikesAreNotDestructive() {
+        #expect(Self.tier("SELECT md_drop_x FROM t", "DuckDB") == .safe)
+        #expect(Self.tier("SELECT * FROM md_drop_database('prod')", "PostgreSQL") == .safe)
+        #expect(Self.tier("CALL md_drop_database('prod')", "PostgreSQL") == .write)
+        #expect(Self.tier("EXPLAIN SELECT * FROM md_drop_database('prod')", "DuckDB") == .safe)
+    }
+
+    @Test("A column list a CTE or an alias declares on DuckDB is not a call", arguments: [
+        "WITH query(n) AS (VALUES (1)) SELECT n FROM query",
+        "WITH glob(n) AS (VALUES (1)) SELECT n FROM glob",
+        "WITH md_drop_report(n) AS (VALUES (1)) SELECT n FROM md_drop_report",
+        "WITH report(n) AS (VALUES (1)) SELECT n FROM report",
+        "SELECT * FROM range(3) AS md_drop(a)",
+        "WITH RECURSIVE md_t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM md_t WHERE n < 3) SELECT * FROM md_t",
+        "WITH md_drop_m(n) AS MATERIALIZED (SELECT 1) SELECT n FROM md_drop_m",
+        "WITH a AS (SELECT 1), md_drop_b(n) AS NOT MATERIALIZED (SELECT 2) SELECT n FROM md_drop_b",
+    ])
+    func declaredColumnListIsNotACall(sql: String) {
+        #expect(Self.classify(sql, "DuckDB") == .safe)
+    }
+
+    @Test("A declared column list hides no call beside it")
+    func declaredColumnListHidesNoCall() {
+        let body = Self.classify("WITH md_x(n) AS (SELECT * FROM md_drop_database('p')) SELECT n FROM md_x", "DuckDB")
+        #expect(body.tier == .destructive)
+        #expect(body.reachesFilesystemOrExecutesCode)
+        let fromList = "SELECT * FROM f() AS (a int), dblink('c', 'DELETE FROM t') AS (n int)"
+        #expect(Self.tier(fromList, "PostgreSQL") == .write)
+        #expect(Self.tier("WITH nextval(n) AS (SELECT 1) SELECT n FROM nextval", "PostgreSQL") == .safe)
+        let clickHouse = Self.classify("CREATE TABLE t AS remote('127.0.0.1', db.t)", "ClickHouse")
+        #expect(clickHouse.reachesFilesystemOrExecutesCode)
+    }
+
+    @Test("A DuckDB CALL of a built-in that is not MotherDuck's stays a plain write", arguments: [
+        "CALL dbgen(sf => 0.01)",
+        "CALL pragma_version()",
+    ])
+    func duckDBCallOfBuiltInStaysAWrite(sql: String) {
+        #expect(Self.classify(sql, "DuckDB") == .write)
+    }
+
+    @Test("A MotherDuck token reader, pragma or model call reaches outside on DuckDB", arguments: [
+        "FROM get_md_token()",
+        "CALL get_md_token()",
+        "SELECT * FROM \"get_md_token\"()",
+        "PRAGMA print_md_token",
+        "PRAGMA \"print_md_token\"",
+        "pragma MD_CONNECT",
+        "PRAGMA prompt_query('top customers')",
+        "PRAGMA __duck_panic",
+        "SELECT prompt('x')",
+        "SELECT embedding(body) FROM notes",
+        "FROM prompt_sql('x')",
+        "SELECT * FROM md_list_files('s3://bucket')",
+        "CALL md_create_flight('f', 'x')",
+        "CALL md_run_flight('f')",
+        "SELECT * FROM md_list_databases()",
+    ])
+    func motherDuckReachesOutside(sql: String) {
+        #expect(Self.classify(sql, "DuckDB").reachesFilesystemOrExecutesCode)
+    }
+
+    @Test("MotherDuck's names stay names off DuckDB and outside a call or pragma")
+    func motherDuckNamesStayNames() {
+        #expect(!Self.classify("SELECT prompt_query FROM t", "PostgreSQL").reachesFilesystemOrExecutesCode)
+        #expect(Self.classify("SELECT prompt_query, md_total FROM t", "DuckDB") == .safe)
+        #expect(!Self.classify("PRAGMA table_info('orders')", "DuckDB").reachesFilesystemOrExecutesCode)
+        #expect(Self.tier("SELECT * FROM md_drop_database('x')", "PostgreSQL") == .safe)
+    }
+
     @Test("An extension function that runs SQL, changes a job or a chunk, or stops a worker is a write", arguments: [
         "SELECT pg_background_launch('SELECT 1')",
         "SELECT * FROM pg_background_run_query_v2('SELECT 1') AS r(n int)",

@@ -76,9 +76,9 @@ struct ParsedConnectionURL {
         return typeName
     }
 
-    // A quack:// URL always has a host; a duckdb:// file URL never does.
+    // A quack:// URL always has a host; a duckdb:// file URL never does, nor does an md: MotherDuck string.
     var namesDatabaseFile: Bool {
-        host.isEmpty && ConnectionURLParser.opensDatabaseFile(type)
+        host.isEmpty && ConnectionURLParser.opensDatabaseFile(type) && additionalFields["duckdbMode"] != "motherduck"
     }
 }
 
@@ -120,6 +120,7 @@ struct ConnectionURLParser {
             return .failure(.emptyString)
         }
 
+        if let motherDuck = parseMotherDuck(trimmed) { return motherDuck }
         guard let schemeEnd = trimmed.range(of: "://") else {
             return .failure(.invalidURL)
         }
@@ -257,6 +258,7 @@ struct ConnectionURLParser {
             multiHost: nil,
             additionalFields: tls.additionalFields.merging(endpoint.socketFields) { _, socket in socket }
                 .merging(catalogPath.fields) { current, _ in current }
+                .merging(quackFields(type: dbType, host: endpoint.host, port: rawPort, alias: database)) { current, _ in current }
         ))
     }
 
@@ -332,6 +334,24 @@ struct ConnectionURLParser {
         }
         let schema = decode(String(path[path.index(after: slash)...]))
         return (decode(String(path[..<slash])), schema.isEmpty ? [:] : ["trinoSchema": schema])
+    }
+
+    // Only quack:// reaches here for DuckDB. Its driver reads the server from these fields and never the built-in host
+    // or database, so a link opens the same server the form would; an alias left out is the one the form starts with.
+    // The port as the URL wrote it, the default included: a link that names 9494 must not match a row on 9500.
+    private static func quackFields(type: DatabaseType, host: String, port: Int?, alias: String) -> [String: String] {
+        guard type == .duckdb else { return [:] }
+        var fields = ["duckdbMode": "remote", "duckdbHost": host]
+        if let port {
+            fields["duckdbPort"] = String(port)
+        }
+        let defaultAlias = PluginMetadataRegistry.shared.snapshot(for: type)?.connection.additionalConnectionFields
+            .first { $0.id == "duckdbAlias" }?.defaultValue ?? ""
+        let resolvedAlias = alias.isEmpty ? defaultAlias : alias
+        if !resolvedAlias.isEmpty {
+            fields["duckdbAlias"] = resolvedAlias
+        }
+        return fields
     }
 
     private typealias Endpoint = (host: String, socketFields: [String: String], port: Int?)
@@ -585,6 +605,7 @@ struct ConnectionURLParser {
 
         let ext = parseSSHQueryString(queryString, dbType: dbType)
         let sslMode = ext.resolvedSSLMode(for: dbType, port: port ?? dbType.defaultPort)
+        let explicitPort = port
         port = significantPort(port, for: dbType, sslMode: sslMode)
         let tls = ImportedTLS(sslMode: sslMode, disablesTLS: ext.disablesTLS, sslFingerprint: ext.sslFingerprint, type: dbType)
         let catalogPath = databasePath(database, type: dbType, percentEncoded: true)
@@ -643,6 +664,7 @@ struct ConnectionURLParser {
             mongoQueryParams: ext.mongoQueryParams,
             multiHost: nil,
             additionalFields: tls.additionalFields.merging(catalogPath.fields) { current, _ in current }
+                .merging(quackFields(type: dbType, host: host, port: explicitPort, alias: database)) { current, _ in current }
         ))
     }
 

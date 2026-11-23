@@ -143,10 +143,8 @@ public struct QuackConnectPlan: Sendable, Equatable {
         "CREATE OR REPLACE TEMPORARY SECRET \(secretName) (TYPE quack, TOKEN \(SQLQuoting.stringLiteral(token)))"
     }
 
-    /// ATTACH keeps the token in the catalog it creates, so the secret is dropped as soon as ATTACH
-    /// returns. Left in place, a later `ATTACH` in the editor or from an AI client found it by scope and
-    /// sent this server's token to the host it named, and a scope does not stop that: DuckDB matches a
-    /// scope as a prefix, so `quack:localhost:5000` also reaches `quack:localhost:50000` (both measured).
+    // ATTACH keeps the token in its catalog. Left in place, the unscoped secret goes with any later quack ATTACH
+    // from the editor or an AI client, to whatever host that names.
     static let dropSecretStatement = "DROP TEMPORARY SECRET \(secretName)"
 
     static func attachStatement(host: String, port: Int, alias: String, options: [String]) -> String {

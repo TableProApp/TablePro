@@ -133,7 +133,7 @@ libsqlite3-sys = "0.40.0"
 # DuckDB 2.0, compiled from the sources the crate ships, since only Ubuntu
 # 26.10 packages libduckdb (docs/decisions/0031-duckdb-2.md). json and
 # parquet are linked in, since extensions are never downloaded.
-duckdb = { version = "~1.20000.1", default-features = false, features = ["bundled", "json", "parquet"] }
+duckdb = { version = "~1.20001.0", default-features = false, features = ["bundled", "json", "parquet"] }
 num-bigint = { version = "0.4", default-features = false, features = ["std"] }
 proptest = "1.11"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }

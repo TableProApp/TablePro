@@ -130,10 +130,8 @@ struct PluginMetadataSnapshot: Sendable {
         // forwarding and rewriting the built-in endpoint there.
         var serverEndpointFields: ServerEndpointFields?
 
-        // Fields a driver older than this app ignores to the user's cost. A connection that sets one
-        // away from its default, while it is in use, is refused when the loaded driver does not
-        // declare it: DuckDB's SSL Mode read by a driver from before it existed would connect as
-        // Automatic, which is plain HTTP on a loopback host, however the user set it.
+        // Fields an older driver ignores to the user's cost, so a connection that sets one is refused when the driver
+        // lacks the field or the chosen dropdown option (DriverSettingNotSupportedError).
         var fieldsRequiringDriverSupport: [String] = []
 
         // The extensions a new database file can be named with, the first one preferred. Empty

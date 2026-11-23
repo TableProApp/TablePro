@@ -52,7 +52,7 @@ extension PluginMetadataRegistry {
                     supportsConnectionPooling: false,
                     localFilePathField: .additionalField("duckdbFilePath"),
                     serverEndpointFields: ServerEndpointFields(hostFieldId: "duckdbHost", portFieldId: "duckdbPort"),
-                    fieldsRequiringDriverSupport: ["duckdbSSLMode"],
+                    fieldsRequiringDriverSupport: ["duckdbMode", "duckdbSSLMode"],
                     newDatabaseFileExtensions: ["duckdb", "ddb"],
                     readOnlyEnforcement: .sessionDefault
                 ),

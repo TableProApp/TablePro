@@ -20886,6 +20886,10 @@
         }
       }
     },
+    "Access Token is required. Create one in MotherDuck's settings, under Access Tokens." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Access uses your ChatGPT subscription (Plus, Pro, Business, or Enterprise) and follows OpenAI's terms. This is an unofficial interface that may change." : {
       "localizations" : {
         "fr" : {
@@ -26321,6 +26325,10 @@
           }
         }
       }
+    },
+    "All databases" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "All Environments" : {
       "localizations" : {
@@ -54914,6 +54922,10 @@
         }
       }
     },
+    "Connecting to MotherDuck timed out." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Connecting to the remote DuckDB database timed out." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -78860,6 +78872,10 @@
       "generatesSymbol" : false
     },
     "DuckDB could not load its %@ extension." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "DuckDB could not load its MotherDuck extension. The first connection downloads it from extensions.duckdb.org and ext.motherduck.com, and every connection checks api.motherduck.com." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -127352,6 +127368,22 @@
           }
         }
       }
+    },
+    "MotherDuck attached no database for this Access Token." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "MotherDuck attached no database named %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "MotherDuck did not accept the Access Token. Check that it is complete and has not expired or been revoked." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "MotherDuck does not accept the DuckDB version this plugin uses yet. The connection works once MotherDuck supports that version." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Mount" : {
 
@@ -205875,6 +205907,10 @@
     "TablePro could not reach %@ to see whether it offers TLS. Check that the server is running and reachable, then try again." : {
 
     },
+    "TablePro could not reach MotherDuck. Check the network connection, then connect again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro could not reach the SAP HANA server within %lld seconds." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -210704,6 +210740,10 @@
         }
       }
     },
+    "The Access Token contains a control character. Copy it again from MotherDuck." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The action of foreign key %@ cannot be written as SQL." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -213439,6 +213479,10 @@
     },
     "The database may be left partly restored." : {
 
+    },
+    "The database name %@ cannot contain ?, # or a control character." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The database name is longer than the 128 bytes FreeTDS takes." : {
       "extractionState" : "manual",
@@ -224324,6 +224368,9 @@
         }
       }
     },
+    "This connection sets %1$@ to %2$@, which the installed %3$@ driver does not support yet. Update the database driver in Settings > Extensions, then connect again." : {
+
+    },
     "This connection sets %1$@, which the installed %2$@ driver does not support yet. Update the database driver in Settings > Extensions, then connect again." : {
 
     },
@@ -224342,6 +224389,10 @@
           }
         }
       }
+    },
+    "This connection uses a Connection Type this version of the DuckDB plugin does not have. Update the DuckDB plugin." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This connection uses a credential profile that isn't on this Mac." : {
       "localizations" : {

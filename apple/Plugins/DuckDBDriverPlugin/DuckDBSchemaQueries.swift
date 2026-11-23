@@ -27,6 +27,14 @@ nonisolated enum DuckDBSchemaQueries {
         ORDER BY database_name
         """
 
+    // The in-memory instance's memory catalog and MotherDuck's md_information_schema hold none of the account's data.
+    static let listMotherDuckSessionDatabases = """
+        SELECT database_name
+        FROM duckdb_databases()
+        WHERE internal = false AND database_name <> 'memory' AND type <> 'motherduck_info'
+        ORDER BY database_name
+        """
+
     // Where `USE` landed, read without `current_database()` or `current_schema()`.
     static let currentPosition = """
         SELECT name, value
