@@ -28,6 +28,7 @@ struct SettingsPaneURLIdentifierTests {
         .linkedFolders: "connections/linked-folders",
         .trustedLinks: "connections/trusted-links",
         .sqlFormatting: "editor/sql-formatting",
+        .filters: "data/filters",
         .queryHistory: "data/query-history",
         .dataRewind: "data/data-rewind",
         .slashCommands: "ai/slash-commands",

@@ -35,7 +35,7 @@ extension DataFileController: FilterPanelActions {
     }
 
     func openFilterSettings() {
-        WindowOpener.shared.openSettings(tab: .data)
+        WindowOpener.shared.openSettings(SettingsLocation(page: .filters))
     }
 
     func addBlankFilter(columnName: String) {

@@ -20,6 +20,8 @@ internal struct DataSettingsPageEntry: View {
 
     internal var body: some View {
         switch route {
+        case .page(.filters):
+            FilterSettingsPage()
         case .page(.queryHistory):
             QueryHistorySettingsPage(history: context.settings.historySlice, context: context)
         case .page(.dataRewind):

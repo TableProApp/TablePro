@@ -7,6 +7,7 @@ enum SettingsPage: CaseIterable, Hashable, Sendable {
     case linkedFolders
     case trustedLinks
     case sqlFormatting
+    case filters
     case queryHistory
     case dataRewind
     case slashCommands
@@ -23,7 +24,7 @@ enum SettingsPage: CaseIterable, Hashable, Sendable {
         case .manageThemes: .appearance
         case .linkedFolders, .trustedLinks: .connections
         case .sqlFormatting: .editor
-        case .queryHistory, .dataRewind: .data
+        case .filters, .queryHistory, .dataRewind: .data
         case .slashCommands: .ai
         case .mcpApprovals, .mcpTokens: .mcp
         case .accountFeatures, .accountDevices, .accountTeams, .accountOffline: .account
@@ -38,6 +39,7 @@ enum SettingsPage: CaseIterable, Hashable, Sendable {
         case .linkedFolders: String(localized: "Linked Folders")
         case .trustedLinks: String(localized: "Trusted Links")
         case .sqlFormatting: String(localized: "SQL Formatting")
+        case .filters: String(localized: "Filters")
         case .queryHistory: String(localized: "Query History")
         case .dataRewind: String(localized: "Data Rewind")
         case .slashCommands: String(localized: "Slash Commands")
@@ -59,6 +61,7 @@ enum SettingsPage: CaseIterable, Hashable, Sendable {
         case .linkedFolders: "linked-folders"
         case .trustedLinks: "trusted-links"
         case .sqlFormatting: "sql-formatting"
+        case .filters: "filters"
         case .queryHistory: "query-history"
         case .dataRewind: "data-rewind"
         case .slashCommands: "slash-commands"

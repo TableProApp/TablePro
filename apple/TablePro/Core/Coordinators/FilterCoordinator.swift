@@ -585,7 +585,7 @@ extension FilterCoordinator: FilterPanelActions {
     }
 
     func openFilterSettings() {
-        WindowOpener.shared.openSettings(tab: .data)
+        WindowOpener.shared.openSettings(SettingsLocation(page: .filters))
     }
 }
 

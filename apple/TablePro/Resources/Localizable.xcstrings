@@ -130974,6 +130974,9 @@
         }
       }
     },
+    "New Rows" : {
+
+    },
     "New Seed" : {
 
     },
@@ -169171,6 +169174,9 @@
           }
         }
       }
+    },
+    "Reopening a Table" : {
+
     },
     "Reopening a table brings its filter rows back unapplied. Press Apply to run them." : {
       "localizations" : {
