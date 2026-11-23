@@ -10,6 +10,9 @@ import Testing
 
 @MainActor
 struct QuickSwitcherCatalogStoreTests {
+    // One browse scope per case, so a lookup misses only on the field the case changes.
+    private let browsedConnectionId = UUID()
+
     private func version(
         schemaGeneration: Int = 1,
         isRefreshing: Bool = false,
@@ -20,7 +23,7 @@ struct QuickSwitcherCatalogStoreTests {
         sessionEpoch: Int = 0
     ) -> QuickSwitcherCatalogStore.Version {
         QuickSwitcherCatalogStore.Version(
-            browseScope: DatabaseScope(connectionId: UUID(), database: "app", schema: "public"),
+            browseScope: DatabaseScope(connectionId: browsedConnectionId, database: "app", schema: "public"),
             schemaGeneration: schemaGeneration,
             isRefreshing: isRefreshing,
             databaseFilter: databaseFilter,
@@ -46,63 +49,115 @@ struct QuickSwitcherCatalogStoreTests {
         )
     }
 
+    private func database(_ name: String) -> QuickSwitcherItem {
+        QuickSwitcherItem(frecencyKey: QuickSwitcherFrecencyKey.database(name), name: name, kind: .database, subtitle: "")
+    }
+
+    private func history(_ query: String) -> QuickSwitcherItem {
+        QuickSwitcherItem(
+            frecencyKey: QuickSwitcherFrecencyKey.queryHistory(query),
+            name: query,
+            kind: .queryHistory,
+            subtitle: "",
+            payload: query
+        )
+    }
+
     @Test("An unchanged version serves the stored catalog")
     func unchangedVersionHits() {
         let store = QuickSwitcherCatalogStore()
         let id = UUID()
         let key = version()
-        store.store([table("users")], for: id, version: key)
-        #expect(store.catalog(for: id, version: key)?.map(\.name) == ["users"])
+        store.storeContainers([table("users")], for: id, version: key)
+        #expect(store.containers(for: id, version: key)?.map(\.name) == ["users"])
     }
 
     @Test("A moved schema generation misses")
     func movedSchemaGenerationMisses() {
         let store = QuickSwitcherCatalogStore()
         let id = UUID()
-        store.store([table("users")], for: id, version: version(schemaGeneration: 1))
-        #expect(store.catalog(for: id, version: version(schemaGeneration: 2)) == nil)
+        store.storeContainers([table("users")], for: id, version: version(schemaGeneration: 1))
+        #expect(store.containers(for: id, version: version(schemaGeneration: 2)) == nil)
     }
 
     @Test("A changed database filter misses")
     func changedDatabaseFilterMisses() {
         let store = QuickSwitcherCatalogStore()
         let id = UUID()
-        store.store([table("users")], for: id, version: version(databaseFilter: ["app"]))
-        #expect(store.catalog(for: id, version: version(databaseFilter: ["app", "analytics"])) == nil)
+        store.storeContainers([table("users")], for: id, version: version(databaseFilter: ["app"]))
+        #expect(store.containers(for: id, version: version(databaseFilter: ["app", "analytics"])) == nil)
     }
 
     @Test("A changed schema filter misses")
     func changedSchemaFilterMisses() {
         let store = QuickSwitcherCatalogStore()
         let id = UUID()
-        store.store([table("users")], for: id, version: version(schemaFilter: ["sales"]))
-        #expect(store.catalog(for: id, version: version(schemaFilter: ["sales", "hr"])) == nil)
+        store.storeContainers([table("users")], for: id, version: version(schemaFilter: ["sales"]))
+        #expect(store.containers(for: id, version: version(schemaFilter: ["sales", "hr"])) == nil)
     }
 
     /// Favorites and query history change without the browse scope or the schema moving, so the
-    /// revision is the only thing that can invalidate the catalog for them.
-    @Test("A bumped content revision misses")
-    func bumpedContentRevisionMisses() {
+    /// revision is the only thing that can invalidate them.
+    @Test("A bumped content revision misses the saved queries and history")
+    func bumpedContentRevisionMissesContent() {
         let store = QuickSwitcherCatalogStore()
         let id = UUID()
-        store.store([table("users")], for: id, version: version(contentRevision: 0))
-        #expect(store.catalog(for: id, version: version(contentRevision: 1)) == nil)
+        store.storeContent([history("select 1")], for: id, version: version(contentRevision: 0))
+        #expect(store.content(for: id, version: version(contentRevision: 1)) == nil)
+    }
+
+    /// Opening a table records history, and that must not make the next open read the database
+    /// and schema lists again.
+    @Test("A bumped content revision keeps the containers")
+    func bumpedContentRevisionKeepsContainers() {
+        let store = QuickSwitcherCatalogStore()
+        let id = UUID()
+        store.storeContainers([database("app")], for: id, version: version(contentRevision: 0))
+        #expect(store.containers(for: id, version: version(contentRevision: 1))?.map(\.name) == ["app"])
+    }
+
+    @Test("A recorded history entry keeps the containers and misses the history")
+    func recordedHistoryKeepsContainers() {
+        let store = QuickSwitcherCatalogStore()
+        let id = UUID()
+        let before = version(contentRevision: store.contentRevision(for: id))
+        store.storeContainers([database("app")], for: id, version: before)
+        store.storeContent([history("select 1")], for: id, version: before)
+
+        AppEvents.shared.queryHistoryDidUpdate.send(id)
+
+        let after = version(contentRevision: store.contentRevision(for: id))
+        #expect(store.containers(for: id, version: after)?.map(\.name) == ["app"])
+        #expect(store.content(for: id, version: after) == nil)
+    }
+
+    @Test("A dropped database misses the containers and keeps the history")
+    func droppedDatabaseKeepsContent() {
+        let store = QuickSwitcherCatalogStore()
+        let id = UUID()
+        let before = version(containerNames: ["database:app", "database:reporting_old"])
+        store.storeContainers([database("app"), database("reporting_old")], for: id, version: before)
+        store.storeContent([history("select 1")], for: id, version: before)
+
+        let after = version(containerNames: ["database:app"])
+        #expect(store.containers(for: id, version: after) == nil)
+        #expect(store.content(for: id, version: after)?.map(\.payload) == ["select 1"])
     }
 
     @Test("A refreshing schema is a different version")
     func refreshingSchemaMisses() {
         let store = QuickSwitcherCatalogStore()
         let id = UUID()
-        store.store([table("users")], for: id, version: version(isRefreshing: false))
-        #expect(store.catalog(for: id, version: version(isRefreshing: true)) == nil)
+        store.storeContainers([table("users")], for: id, version: version(isRefreshing: false))
+        #expect(store.containers(for: id, version: version(isRefreshing: true)) == nil)
     }
 
     @Test("Another connection does not read this one's catalog")
     func otherConnectionMisses() {
         let store = QuickSwitcherCatalogStore()
         let key = version()
-        store.store([table("users")], for: UUID(), version: key)
-        #expect(store.catalog(for: UUID(), version: key) == nil)
+        store.storeContainers([table("users")], for: UUID(), version: key)
+        #expect(store.containers(for: UUID(), version: key) == nil)
     }
 
     /// The reason the flag cannot be cached: the tabs move while none of the version's inputs do.
@@ -111,25 +166,43 @@ struct QuickSwitcherCatalogStoreTests {
         let store = QuickSwitcherCatalogStore()
         let id = UUID()
         let key = version()
-        store.store([table("users", isOpen: true)], for: id, version: key)
-        #expect(store.catalog(for: id, version: key)?.first?.isOpenInTab == false)
+        store.storeContainers([table("users", isOpen: true)], for: id, version: key)
+        #expect(store.containers(for: id, version: key)?.first?.isOpenInTab == false)
     }
 
     /// The publishers send a nil connection id when the change was not scoped to one, and every
     /// connection the store knows about has to notice it, including one that has a cached catalog
     /// but has never had a revision recorded.
-    @Test("An unscoped content change invalidates every cached connection")
+    @Test("An unscoped content change invalidates the history of every cached connection")
     func unscopedContentChangeInvalidatesAll() {
         let store = QuickSwitcherCatalogStore()
         let first = UUID()
         let second = UUID()
-        store.store([table("users")], for: first, version: version(contentRevision: 0))
-        store.store([table("orders")], for: second, version: version(contentRevision: 0))
+        store.storeContent([history("select 1")], for: first, version: version(contentRevision: 0))
+        store.storeContent([history("select 2")], for: second, version: version(contentRevision: 0))
 
         AppEvents.shared.sqlFavoritesDidUpdate.send(nil)
 
         #expect(store.contentRevision(for: first) == 1)
         #expect(store.contentRevision(for: second) == 1)
+        #expect(store.content(for: first, version: version(contentRevision: 1)) == nil)
+        #expect(store.content(for: second, version: version(contentRevision: 1)) == nil)
+    }
+
+    @Test("An unscoped content change keeps the containers of every cached connection")
+    func unscopedContentChangeKeepsContainers() {
+        let store = QuickSwitcherCatalogStore()
+        let first = UUID()
+        let second = UUID()
+        store.storeContainers([database("app")], for: first, version: version(contentRevision: 0))
+        store.storeContainers([database("shop")], for: second, version: version(contentRevision: 0))
+
+        AppEvents.shared.sqlFavoritesDidUpdate.send(nil)
+
+        #expect(store.contentRevision(for: first) == 1)
+        #expect(store.contentRevision(for: second) == 1)
+        #expect(store.containers(for: first, version: version(contentRevision: 1))?.map(\.name) == ["app"])
+        #expect(store.containers(for: second, version: version(contentRevision: 1))?.map(\.name) == ["shop"])
     }
 
     @Test("A scoped content change invalidates only that connection")
@@ -137,8 +210,8 @@ struct QuickSwitcherCatalogStoreTests {
         let store = QuickSwitcherCatalogStore()
         let target = UUID()
         let other = UUID()
-        store.store([table("users")], for: target, version: version(contentRevision: 0))
-        store.store([table("orders")], for: other, version: version(contentRevision: 0))
+        store.storeContainers([table("users")], for: target, version: version(contentRevision: 0))
+        store.storeContainers([table("orders")], for: other, version: version(contentRevision: 0))
 
         AppEvents.shared.queryHistoryDidUpdate.send(target)
 
@@ -151,9 +224,11 @@ struct QuickSwitcherCatalogStoreTests {
         let store = QuickSwitcherCatalogStore()
         let id = UUID()
         let key = version()
-        store.store([table("users")], for: id, version: key)
+        store.storeContainers([table("users")], for: id, version: key)
+        store.storeContent([history("select 1")], for: id, version: key)
         store.removeConnection(id)
-        #expect(store.catalog(for: id, version: key) == nil)
+        #expect(store.containers(for: id, version: key) == nil)
+        #expect(store.content(for: id, version: key) == nil)
     }
 
     // MARK: - Container mutations
@@ -164,24 +239,24 @@ struct QuickSwitcherCatalogStoreTests {
     func droppedDatabaseMisses() {
         let store = QuickSwitcherCatalogStore()
         let id = UUID()
-        store.store([table("users")], for: id, version: version(containerNames: ["database:app", "database:reporting_old"]))
-        #expect(store.catalog(for: id, version: version(containerNames: ["database:app"])) == nil)
+        store.storeContainers([table("users")], for: id, version: version(containerNames: ["database:app", "database:reporting_old"]))
+        #expect(store.containers(for: id, version: version(containerNames: ["database:app"])) == nil)
     }
 
     @Test("A created database misses")
     func createdDatabaseMisses() {
         let store = QuickSwitcherCatalogStore()
         let id = UUID()
-        store.store([table("users")], for: id, version: version(containerNames: ["database:app"]))
-        #expect(store.catalog(for: id, version: version(containerNames: ["database:app", "database:staging"])) == nil)
+        store.storeContainers([table("users")], for: id, version: version(containerNames: ["database:app"]))
+        #expect(store.containers(for: id, version: version(containerNames: ["database:app", "database:staging"])) == nil)
     }
 
     @Test("A dropped schema misses")
     func droppedSchemaMisses() {
         let store = QuickSwitcherCatalogStore()
         let id = UUID()
-        store.store([table("users")], for: id, version: version(containerNames: ["database:app", "schema:public", "schema:analytics"]))
-        #expect(store.catalog(for: id, version: version(containerNames: ["database:app", "schema:public"])) == nil)
+        store.storeContainers([table("users")], for: id, version: version(containerNames: ["database:app", "schema:public", "schema:analytics"]))
+        #expect(store.containers(for: id, version: version(containerNames: ["database:app", "schema:public"])) == nil)
     }
 
     /// The names are namespaced so dropping a database and creating a schema of the same name is
@@ -190,8 +265,8 @@ struct QuickSwitcherCatalogStoreTests {
     func databaseAndSchemaNamesDoNotCollide() {
         let store = QuickSwitcherCatalogStore()
         let id = UUID()
-        store.store([table("users")], for: id, version: version(containerNames: ["database:reporting"]))
-        #expect(store.catalog(for: id, version: version(containerNames: ["schema:reporting"])) == nil)
+        store.storeContainers([table("users")], for: id, version: version(containerNames: ["database:reporting"]))
+        #expect(store.containers(for: id, version: version(containerNames: ["schema:reporting"])) == nil)
     }
 
     // MARK: - Session epoch
@@ -206,11 +281,13 @@ struct QuickSwitcherCatalogStoreTests {
         let beforeDisconnect = version(sessionEpoch: store.sessionEpoch(for: id))
 
         store.removeConnection(id)
-        store.store([table("stale")], for: id, version: beforeDisconnect)
+        store.storeContainers([table("stale")], for: id, version: beforeDisconnect)
+        store.storeContent([history("select stale")], for: id, version: beforeDisconnect)
 
         let afterReconnect = version(sessionEpoch: store.sessionEpoch(for: id))
         #expect(afterReconnect != beforeDisconnect)
-        #expect(store.catalog(for: id, version: afterReconnect) == nil)
+        #expect(store.containers(for: id, version: afterReconnect) == nil)
+        #expect(store.content(for: id, version: afterReconnect) == nil)
     }
 
     @Test("The session epoch survives removal so it keeps advancing")
@@ -230,8 +307,8 @@ struct QuickSwitcherCatalogStoreTests {
         let kept = UUID()
         let dropped = UUID()
         let key = version()
-        store.store([table("users")], for: kept, version: key)
+        store.storeContainers([table("users")], for: kept, version: key)
         store.removeConnection(dropped)
-        #expect(store.catalog(for: kept, version: key)?.map(\.name) == ["users"])
+        #expect(store.containers(for: kept, version: key)?.map(\.name) == ["users"])
     }
 }
