@@ -177,10 +177,6 @@ struct PluginMetadataSnapshot: Sendable {
         // server rewrites the clause into another shape, or where the driver fills `allowedValues` itself.
         var readsCheckListsFromDDL: Bool = true
 
-        // Whether an UPDATE leaves a table's row count as it was unless a trigger on the table fires. False where it can
-        // delete or hide rows by itself: SQLite's `ON CONFLICT REPLACE`, a Cassandra row with no row marker.
-        var updatesKeepRowCount: Bool = false
-
         var readOnlyEnforcement: ReadOnlyEnforcement = .loginPrivileges
 
         // The driver is what refuses a destructive or server-code effect for an external caller, because the host
@@ -868,7 +864,6 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true,
                 binaryLengthFunction: existingSnapshot?.capabilities.binaryLengthFunction,
                 readsCheckListsFromDDL: existingSnapshot?.capabilities.readsCheckListsFromDDL ?? true,
-                updatesKeepRowCount: existingSnapshot?.capabilities.updatesKeepRowCount ?? false,
                 readOnlyEnforcement: existingSnapshot?.capabilities.readOnlyEnforcement ?? .loginPrivileges,
                 statementPolicyInDriver: existingSnapshot?.capabilities.statementPolicyInDriver ?? false,
                 dataCommands: existingSnapshot?.capabilities.dataCommands

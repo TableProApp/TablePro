@@ -251,7 +251,6 @@ extension PluginMetadataRegistry {
                     browsingRequiresSelectedDatabase: true,
                     binaryLengthFunction: "OCTET_LENGTH",
                     readsCheckListsFromDDL: false,
-                    updatesKeepRowCount: true,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -325,7 +324,6 @@ extension PluginMetadataRegistry {
                     browsingRequiresSelectedDatabase: true,
                     binaryLengthFunction: "OCTET_LENGTH",
                     readsCheckListsFromDDL: false,
-                    updatesKeepRowCount: true,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -405,7 +403,6 @@ extension PluginMetadataRegistry {
                     defaultSSLMode: .preferred,
                     verifiesServerWithSystemTrust: true,
                     readsCheckListsFromDDL: false,
-                    updatesKeepRowCount: true,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -619,7 +616,6 @@ extension PluginMetadataRegistry {
                     defaultSSLMode: .disabled,
                     supportsConnectionPooling: false,
                     readsCheckListsFromDDL: false,
-                    updatesKeepRowCount: true,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(

@@ -23,15 +23,9 @@ enum SavedRowsCountEffect: Equatable {
     }
 
     // `triggers` is nil when the list for the save's scope is not loaded, or the engine lists none.
-    static func effect(
-        of plan: DataWritePlan,
-        on tab: Tab,
-        threshold: Int,
-        updatesKeepRowCount: Bool,
-        triggers: [TriggerInfo]?
-    ) -> Self {
+    static func effect(of plan: DataWritePlan, on tab: Tab, threshold: Int, triggers: [TriggerInfo]?) -> Self {
         guard !tab.narrowsRows, !tab.showsTruncatedTable else { return .retire }
-        if updatesKeepRowCount, keepsRowCount(plan, tableName: tab.tableName, schemaName: tab.schemaName, triggers: triggers) {
+        if keepsRowCount(plan, tableName: tab.tableName, schemaName: tab.schemaName, triggers: triggers) {
             return .keep
         }
         if let total = tab.totalRowCount, total >= threshold { return .estimate }

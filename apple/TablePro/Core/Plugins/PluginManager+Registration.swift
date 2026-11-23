@@ -654,10 +654,6 @@ extension PluginManager {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.readsCheckListsFromDDL ?? true
     }
 
-    func updatesKeepRowCount(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.updatesKeepRowCount ?? false
-    }
-
     func supportsPrincipalConnectionLimit(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsPrincipalConnectionLimit ?? true
