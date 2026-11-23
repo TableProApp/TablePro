@@ -104,10 +104,12 @@ private final class WelcomeLibraryFixture {
 @MainActor
 private final class RecordingOutline: WelcomeOutlineControlling {
     var focusRequests: [Bool] = []
+    var onFocus: (() -> Void)?
     var outlineUndoManager: UndoManager? { nil }
     func beginRename(_ row: LibraryRowID) {}
     func focusList(selectFirstRow: Bool) {
         focusRequests.append(selectFirstRow)
+        onFocus?()
     }
 }
 
@@ -235,6 +237,70 @@ struct WelcomeToolbarTests {
         #expect(!controller.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:))))
 
         #expect(outline.focusRequests == [true])
+    }
+
+    @Test("Return acts on everything typed, even while the search debounce is still pending")
+    func returnActsOnTheWholeQuery() throws {
+        let viewModel = fixture.viewModel
+        let outline = RecordingOutline()
+        viewModel.outlineController = outline
+        var namesAtFocus: [String] = []
+        outline.onFocus = {
+            namesAtFocus = viewModel.outline.connectionIds(in: .connections).compactMap { viewModel.connectionsById[$0]?.name }
+        }
+        let field = try #require(try item(.welcomeSearch) as? NSSearchToolbarItem).searchField
+
+        // "g" rebuilds at once and keeps Beta (PostgreSQL) and Gamma; "ga" waits for the debounce.
+        viewModel.searchText = "g"
+        viewModel.searchText = "ga"
+        #expect(controller.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:))))
+
+        #expect(namesAtFocus == ["Gamma"])
+    }
+}
+
+@MainActor
+struct WelcomeOutlineFocusTests {
+    private let fixture: WelcomeLibraryFixture
+
+    init() throws {
+        fixture = try WelcomeLibraryFixture()
+    }
+
+    @Test("Picking the first row reads the current outline, not the one SwiftUI has yet to hand over")
+    func focusPicksFromTheCurrentOutline() throws {
+        let viewModel = fixture.viewModel
+        let outlineView = WelcomeNSOutlineView()
+        let scrollView = SidebarOutlineScaffold.makeScrollView(
+            outlineView: outlineView,
+            configuration: SidebarOutlineScaffold.Configuration(
+                columnIdentifier: "WelcomeConnectionColumn",
+                allowsMultipleSelection: true,
+                rowSizePreference: .matchSystem,
+                style: .inset
+            )
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = scrollView
+        defer { window.orderOut(nil) }
+        let coordinator = WelcomeOutlineCoordinator(viewModel: viewModel)
+        outlineView.dataSource = coordinator
+        outlineView.delegate = coordinator
+        coordinator.attach(outlineView: outlineView)
+        let beta = try #require(viewModel.connections.first { $0.name == "Beta" })
+
+        // Only Beta's name holds a "b"; the outline view still lists all three until a revision reaches it.
+        viewModel.searchText = "b"
+        viewModel.submitSearch()
+
+        #expect(coordinator.selectedRows() == [.connection(beta.id, section: .connections)])
+        #expect(window.firstResponder === outlineView)
     }
 }
 
