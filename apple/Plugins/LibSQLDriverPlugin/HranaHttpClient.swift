@@ -9,30 +9,8 @@ import TableProPluginKit
 
 // MARK: - Hrana Protocol Types
 
-enum HranaValue: Decodable {
-    case null
-    case integer(String)
-    case float(Double)
-    case text(String)
-    case blob(Data)
-
-    var stringValue: String? {
-        switch self {
-        case .null:
-            return nil
-        case .integer(let s):
-            return s
-        case .float(let d):
-            if d.isFinite && d == d.rounded() && abs(d) <= 9_007_199_254_740_992 {
-                return String(Int64(d))
-            }
-            return String(d)
-        case .text(let s):
-            return s
-        case .blob(let data):
-            return data.map { String(format: "%02x", $0) }.joined()
-        }
-    }
+struct HranaValue: Decodable {
+    let cell: PluginCellValue
 
     private enum CodingKeys: String, CodingKey {
         case type, value, base64
@@ -44,25 +22,25 @@ enum HranaValue: Decodable {
 
         switch type {
         case "null":
-            self = .null
-        case "integer":
-            let value = try container.decode(String.self, forKey: .value)
-            self = .integer(value)
+            cell = .null
+        case "integer", "text":
+            cell = .text(try container.decode(String.self, forKey: .value))
         case "float":
             let value = try container.decode(Double.self, forKey: .value)
-            self = .float(value)
-        case "text":
-            let value = try container.decode(String.self, forKey: .value)
-            self = .text(value)
-        case "blob":
-            let base64String = try container.decode(String.self, forKey: .base64)
-            guard let data = Data(base64Encoded: base64String) else {
-                self = .blob(Data())
-                return
+            if value.isFinite && value == value.rounded() && abs(value) <= 9_007_199_254_740_992 {
+                cell = .text(String(Int64(value)))
+            } else {
+                cell = .text(String(value))
             }
-            self = .blob(data)
+        case "blob":
+            let encoded = try container.decode(String.self, forKey: .base64)
+            // Hrana omits the padding Foundation needs; a cell that still will not decode is kept
+            // empty rather than failing the whole result.
+            let padding = (4 - encoded.utf8.count % 4) % 4
+            let padded = encoded + String(repeating: "=", count: padding)
+            cell = .bytes(Data(base64Encoded: padded) ?? Data())
         default:
-            self = .null
+            cell = .null
         }
     }
 }
@@ -264,7 +242,10 @@ final class HranaHttpClient: @unchecked Sendable {
 
     static func pipelineRequestBody(statements: [HranaStatement]) throws -> Data {
         let pipeline = HranaPipelineRequest(requests: statements.map { HranaExecuteRequest(stmt: $0) })
-        return try JSONEncoder().encode(pipeline)
+        // The server borrows the Base64 field from the JSON and rejects a slash it needs to unescape.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
+        return try encoder.encode(pipeline)
     }
 
     // MARK: - Private Helpers
