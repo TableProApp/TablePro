@@ -417,11 +417,10 @@ extension RowEditingCoordinator {
         )
         guard let savedTabIndex = reloadIndex else { return }
 
-        // A retired total lets the reload's count replace a count the save made stale; a kept one sends no count at all.
-        let effect = savedRowsCountEffect(of: plan, onTabAt: savedTabIndex, truncatedTables: truncatedTables)
+        // A retired total lets the reload's count replace a count the save made stale.
+        let effect = savedRowsCountEffect(onTabAt: savedTabIndex, truncatedTables: truncatedTables)
         parent.tabManager.mutate(at: savedTabIndex) { tab in
             switch effect {
-            case .keep: break
             case .estimate: tab.pagination.keepTotalAsEstimate()
             case .retire: tab.pagination.retireDerivedRowCount()
             }
@@ -429,35 +428,16 @@ extension RowEditingCoordinator {
         parent.reloadActiveResult(onTab: parent.tabManager.tabs[savedTabIndex].id)
     }
 
-    private func savedRowsCountEffect(
-        of plan: DataWritePlan,
-        onTabAt index: Int,
-        truncatedTables: Set<DatabaseTreeTableRef>
-    ) -> SavedRowsCountEffect {
+    private func savedRowsCountEffect(onTabAt index: Int, truncatedTables: Set<DatabaseTreeTableRef>) -> SavedRowsCountEffect {
         let tab = parent.tabManager.tabs[index]
         return SavedRowsCountEffect.effect(
-            of: plan,
             on: SavedRowsCountEffect.Tab(
-                tableName: tab.tableContext.tableName,
-                schemaName: plan.scope.schema ?? tab.tableContext.schemaName,
                 narrowsRows: tab.filterState.narrowsRows(browseSearchIsSupported: parent.filterCoordinator.usesBrowseSearch),
                 showsTruncatedTable: self.tab(at: index, shows: truncatedTables),
                 totalRowCount: tab.pagination.totalRowCount
             ),
-            threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan,
-            triggers: loadedTriggers(for: plan.scope)
+            threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan
         )
-    }
-
-    // Only a list read for this scope in the catalog on screen, refreshed since the window last came back to it.
-    private func loadedTriggers(for scope: DatabaseScope) -> [TriggerInfo]? {
-        let schemaService = parent.services.schemaService
-        let connectionId = parent.connectionId
-        guard let loaded = schemaService.loadedScope(for: connectionId),
-              loaded.database == scope.database, loaded.schema == scope.schema,
-              schemaService.isCatalogCurrent(for: connectionId)
-        else { return nil }
-        return schemaService.triggersLoadState(for: connectionId).value
     }
 
     // The saving tab reloads itself and is left out.
