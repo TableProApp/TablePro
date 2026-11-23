@@ -68,7 +68,6 @@ final class ServerDashboardViewModel: ObservableObject {
     private let services: AppServices
     private var providerServerVersion: String?
     private var hasAdoptedServerVersion = false
-    private var fetchPlan = DashboardFetchPlan()
 
     // MARK: - Computed Properties
 
@@ -178,26 +177,18 @@ final class ServerDashboardViewModel: ObservableObject {
             for: databaseType, serverVersion: serverVersion
         ) else { return }
         provider = resolved
-        fetchPlan = DashboardFetchPlan()
     }
 
     func refreshNow() async {
         await refresh(forcingTiles: true)
     }
 
-    // Off the user's session, as every metadata read is: a query the user runs no longer holds a
-    // refresh, a slow size read no longer holds the user's query, and inside the user's transaction
-    // `now()` would be the transaction's start. The session's own connection then shows in the list.
-    // An embedded engine stays on its session driver through the same route.
-    // One scope for the whole refresh, so a database switch mid-refresh never mixes two databases' numbers.
     private static func readExecutor(
-        scope: DatabaseScope,
+        connectionId: UUID,
         services: AppServices
     ) -> @MainActor (String) async throws -> QueryResult {
-        { [scope, services] query in
-            try await services.databaseManager.withMetadataRead(scope: scope) { driver in
-                try await driver.executeCatalogRead(query: query)
-            }
+        { [connectionId, services] query in
+            try await liveDriver(connectionId: connectionId, services: services).executeCatalogRead(query: query)
         }
     }
 
@@ -235,6 +226,13 @@ final class ServerDashboardViewModel: ObservableObject {
         }
     }
 
+    private static func liveDriver(connectionId: UUID, services: AppServices) throws -> DatabaseDriver {
+        guard let driver = services.databaseManager.driver(for: connectionId) else {
+            throw DatabaseError.connectionFailed(String(localized: "No active connection"))
+        }
+        return driver
+    }
+
     private func refresh(forcingTiles: Bool) async {
         guard !isRefreshing else { return }
         guard provider != nil else {
@@ -249,56 +247,45 @@ final class ServerDashboardViewModel: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
 
-        guard let scope = services.databaseManager.browseScope(for: connectionId) else { return }
-        let execute = Self.readExecutor(scope: scope, services: services)
-
-        var plan = fetchPlan
-        plan.readsIn(database: scope.database)
-        let snapshot = await provider.fetchSnapshot(
-            plan: &plan,
-            now: ContinuousClock.now,
-            readsEveryMetric: forcingTiles,
-            execute: execute
-        )
-        fetchPlan = plan
+        let execute = Self.readExecutor(connectionId: connectionId, services: services)
 
         var newPanelErrors: [DashboardPanel: String] = [:]
 
-        switch snapshot.sessions {
-        case .success(var fetched):
-            fetched.sort(using: sessionSortOrder)
-            if fetched != sessions {
-                sessions = fetched
+        if provider.supportedPanels.contains(.activeSessions) {
+            do {
+                var fetched = try await provider.fetchSessions(execute: execute)
+                fetched.sort(using: sessionSortOrder)
+                if fetched != sessions {
+                    sessions = fetched
+                }
+            } catch {
+                Self.logger.warning("Failed to fetch sessions: \(error.localizedDescription)")
+                newPanelErrors[.activeSessions] = error.localizedDescription
             }
-        case .failure(let error):
-            Self.logger.warning("Failed to fetch sessions: \(error.localizedDescription)")
-            newPanelErrors[.activeSessions] = error.localizedDescription
-        case nil:
-            break
         }
 
-        switch snapshot.metrics {
-        case .success(let fetched):
-            if fetched != metrics {
-                metrics = fetched
+        if provider.supportedPanels.contains(.serverMetrics) {
+            do {
+                let fetched = try await provider.fetchMetrics(execute: execute)
+                if fetched != metrics {
+                    metrics = fetched
+                }
+            } catch {
+                Self.logger.warning("Failed to fetch metrics: \(error.localizedDescription)")
+                newPanelErrors[.serverMetrics] = error.localizedDescription
             }
-        case .failure(let error):
-            Self.logger.warning("Failed to fetch metrics: \(error.localizedDescription)")
-            newPanelErrors[.serverMetrics] = error.localizedDescription
-        case nil:
-            break
         }
 
-        switch snapshot.slowQueries {
-        case .success(let fetched):
-            if !fetched.elementsEqual(slowQueries, by: { $0.hasSameContent(as: $1) }) {
-                slowQueries = fetched
+        if provider.supportedPanels.contains(.slowQueries) {
+            do {
+                let fetched = try await provider.fetchSlowQueries(execute: execute)
+                if !fetched.elementsEqual(slowQueries, by: { $0.hasSameContent(as: $1) }) {
+                    slowQueries = fetched
+                }
+            } catch {
+                Self.logger.warning("Failed to fetch slow queries: \(error.localizedDescription)")
+                newPanelErrors[.slowQueries] = error.localizedDescription
             }
-        case .failure(let error):
-            Self.logger.warning("Failed to fetch slow queries: \(error.localizedDescription)")
-            newPanelErrors[.slowQueries] = error.localizedDescription
-        case nil:
-            break
         }
 
         if panelErrors != newPanelErrors {
@@ -309,23 +296,6 @@ final class ServerDashboardViewModel: ObservableObject {
     }
 
     // MARK: - Kill Session
-
-    // The list now holds the session the query tabs run on, so a cancel or terminate aimed at its
-    // running statement goes over a connection of its own. Where the metadata route is the session
-    // itself (server scope, an embedded engine), a turn there would wait for that statement.
-    private func runSessionAction(_ sql: String) async throws {
-        let manager = services.databaseManager
-        if let scope = manager.browseScope(for: connectionId), manager.metadataRoute(for: scope).isPooled {
-            try await manager.withMetadataDriver(scope: scope) { driver in
-                _ = try await driver.execute(query: sql)
-            }
-            return
-        }
-        guard let driver = manager.driver(for: connectionId) else {
-            throw DatabaseError.connectionFailed(String(localized: "No active connection"))
-        }
-        _ = try await driver.execute(query: sql)
-    }
 
     func confirmKillSession(_ session: DashboardSession) {
         pendingKillSession = session
@@ -351,7 +321,12 @@ final class ServerDashboardViewModel: ObservableObject {
         guard let sql = provider?.killSessionSQL(processId: processId) else { return }
 
         do {
-            try await runSessionAction(sql)
+            guard let driver = services.databaseManager.driver(for: connectionId) else {
+                throw DatabaseError.connectionFailed(
+                    String(localized: "No active connection")
+                )
+            }
+            _ = try await driver.execute(query: sql)
             Self.logger.info("Killed session \(processId)")
             await refresh(forcingTiles: false)
         } catch {
@@ -386,7 +361,12 @@ final class ServerDashboardViewModel: ObservableObject {
         guard let sql = provider?.cancelQuerySQL(processId: processId) else { return }
 
         do {
-            try await runSessionAction(sql)
+            guard let driver = services.databaseManager.driver(for: connectionId) else {
+                throw DatabaseError.connectionFailed(
+                    String(localized: "No active connection")
+                )
+            }
+            _ = try await driver.execute(query: sql)
             Self.logger.info("Cancelled query for process \(processId)")
             await refresh(forcingTiles: false)
         } catch {
