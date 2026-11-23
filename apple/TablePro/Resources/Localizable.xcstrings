@@ -163542,6 +163542,9 @@
         }
       }
     },
+    "Schema %@ cannot scope SQL on this connection: switching schema does not change where names resolve. Leave schema out and qualify names." : {
+
+    },
     "Schema %lld could not be read from the Schema Registry. %@ Showing the stored bytes." : {
       "localizations" : {
         "en" : {
@@ -193390,6 +193393,9 @@
       }
     },
     "The connection is reconnecting. Try again once it is back." : {
+
+    },
+    "The connection moved to another database or schema after this call was approved, so it did not run. Propose it again to run it where the connection is now." : {
 
     },
     "The connection names no Schema Registry URL. Add one in the connection's settings." : {

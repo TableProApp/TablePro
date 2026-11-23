@@ -34,6 +34,8 @@ public protocol DriverPlugin: TableProPlugin {
     static var supportsSchemaEditing: Bool { get }
     static var supportsDatabaseSwitching: Bool { get }
     static var supportsSchemaSwitching: Bool { get }
+    // False when `switchSchema` only records the browsed schema and the server still resolves unqualified names elsewhere.
+    static var schemaSwitchScopesUnqualifiedNames: Bool { get }
     static var supportsImport: Bool { get }
     static var supportsExport: Bool { get }
     static var supportsHealthMonitor: Bool { get }
@@ -140,6 +142,7 @@ public extension DriverPlugin {
     static var supportsSchemaEditing: Bool { true }
     static var supportsDatabaseSwitching: Bool { true }
     static var supportsSchemaSwitching: Bool { false }
+    static var schemaSwitchScopesUnqualifiedNames: Bool { false }
     static var supportsImport: Bool { true }
     static var supportsExport: Bool { true }
     static var supportsHealthMonitor: Bool { true }

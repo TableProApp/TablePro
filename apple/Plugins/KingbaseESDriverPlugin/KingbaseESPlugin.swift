@@ -40,6 +40,7 @@ final class KingbaseESPlugin: NSObject, TableProPlugin, DriverPlugin {
     ]
 
     static let supportsSchemaSwitching = PostgreSQLPlugin.supportsSchemaSwitching
+    static let schemaSwitchScopesUnqualifiedNames = PostgreSQLPlugin.schemaSwitchScopesUnqualifiedNames
     static let postConnectActions = PostgreSQLPlugin.postConnectActions
     static let explainVariants = PostgreSQLPlugin.explainVariants
     static let databaseGroupingStrategy = PostgreSQLPlugin.databaseGroupingStrategy

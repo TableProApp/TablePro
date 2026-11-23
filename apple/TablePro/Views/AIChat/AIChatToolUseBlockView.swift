@@ -109,17 +109,15 @@ struct AIChatToolUseBlockView: View {
         return String(localized: "Confirmed each time.")
     }
 
-    /// Where the statement will run.
-    ///
-    /// The card used to print the model's whole input, which happened to include the `database` it
-    /// named. Showing the statement alone read better and hid the one field most able to surprise:
-    /// a model can name a database the user is not looking at, and an explicit Run pre-clears the
-    /// execution gate, whose own dialog names only the connection. So the target is spelled out
-    /// here, and the full input stays one click away.
+    // An explicit Run pre-clears the gate, whose dialog names only the connection, so the card names where the call
+    // runs: the scope resolved when the card was drawn, which the call is bound to.
     private var targetDescription: String {
         var parts: [String] = []
         if let connectionName { parts.append(connectionName) }
-        if case .object(let fields) = block.input {
+        if let sessionId, let shown = ToolApprovalCenter.shared.shownScope(sessionId: sessionId, toolUseId: block.id) {
+            if !shown.isServerScoped { parts.append(shown.database) }
+            if let schema = shown.schema, !schema.isEmpty { parts.append(schema) }
+        } else if case .object(let fields) = block.input {
             if case .string(let database)? = fields["database"], !database.isEmpty {
                 parts.append(database)
             }

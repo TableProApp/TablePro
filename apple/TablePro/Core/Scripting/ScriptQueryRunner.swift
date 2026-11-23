@@ -101,7 +101,7 @@ internal enum ScriptQueryRunner {
         // Before anything connects: a script asking for rows is not consent to load extensions.
         try await ScriptConnectGate.authorizeConnect(connectionId: request.connectionId)
 
-        let scope = try await bridge.resolveScope(
+        let scope = try await bridge.resolveStatementScope(
             connectionId: request.connectionId,
             database: request.database,
             schema: request.schema

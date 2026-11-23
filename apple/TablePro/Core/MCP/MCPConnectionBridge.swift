@@ -90,6 +90,10 @@ public actor MCPConnectionBridge {
         try await access.resolveScope(connectionId: connectionId, database: database, schema: schema)
     }
 
+    func resolveStatementScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
+        try await access.resolveStatementScope(connectionId: connectionId, database: database, schema: schema)
+    }
+
     func switchDatabase(connectionId: UUID, database: String) async throws -> JsonValue {
         try await access.switchDatabase(connectionId: connectionId, database: database)
         return .object([

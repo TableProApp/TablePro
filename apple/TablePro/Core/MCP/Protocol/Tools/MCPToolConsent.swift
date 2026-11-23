@@ -1,5 +1,7 @@
+import CryptoKit
 import Foundation
 import TableProMCP
+import TableProPluginKit
 
 enum MCPConsentOutcome: Sendable, Equatable {
     case nativeAlert
@@ -13,10 +15,13 @@ enum MCPConsentOutcome: Sendable, Equatable {
 enum MCPToolConsent {
     static let method = "tools/call"
 
+    // `target` is `target(of:)` for the operation the form shows. The arguments alone do not fix it: a name left out
+    // resolves to whatever the session browses when the answer comes back.
     static func resolve(
         key: String,
         message: String,
         detail: String?,
+        target: String,
         context: MCPRequestContext,
         clock: Date = Date()
     ) throws -> MCPConsentOutcome {
@@ -25,12 +30,14 @@ enum MCPToolConsent {
         }
 
         let digest = MCPRequestState.digest(ofParams: context.params)
+        let ask = Question(key: key, message: message, detail: detail, target: target, digest: digest)
         guard let presented = MCPInputResponses.requestState(in: context.params) else {
-            throw try inputRequired(key: key, message: message, detail: detail, context: context, digest: digest, now: clock)
+            throw try inputRequired(ask, context: context, now: clock)
         }
 
+        let sealed: JsonValue
         do {
-            _ = try MCPRequestState.open(
+            sealed = try MCPRequestState.open(
                 presented,
                 principal: context.principal,
                 method: method,
@@ -41,8 +48,13 @@ enum MCPToolConsent {
             throw MCPProtocolError.invalidParams(detail: error.detail)
         }
 
+        // An answer about another connection, database, schema or statement is not an answer about this one.
+        guard sealed["consent"]?.stringValue == key, sealed["target"]?.stringValue == target else {
+            throw try inputRequired(ask, context: context, now: clock)
+        }
+
         guard let response = MCPInputResponses.elicitation(named: key, in: context.params) else {
-            throw try inputRequired(key: key, message: message, detail: detail, context: context, digest: digest, now: clock)
+            throw try inputRequired(ask, context: context, now: clock)
         }
 
         guard response.isAccepted, response.bool("approved") ?? true else {
@@ -53,23 +65,59 @@ enum MCPToolConsent {
         return .preApproved
     }
 
-    private static func inputRequired(
-        key: String,
-        message: String,
-        detail: String?,
-        context: MCPRequestContext,
-        digest: String,
-        now: Date
-    ) throws -> MCPInputRequired {
+    // A digest of where and what the operation runs, sealed into the signed state so the client cannot change it.
+    static func target(of operation: PendingOperation) -> String {
+        let fields: JsonValue = .object([
+            "connection": .string(operation.scope.connectionId.uuidString),
+            "database": .string(operation.scope.database),
+            "schema": operation.scope.schema.map(JsonValue.string) ?? .null,
+            "kind": .string(String(describing: operation.kind)),
+            "unit": .string(String(describing: operation.unit)),
+            "statements": .array(operation.statements.map { statement in
+                .object([
+                    "sql": .string(statement.sql),
+                    "parameters": .array(statement.parameters.map(encoded))
+                ])
+            }),
+            "shown": .array(operation.displayStatements.map(JsonValue.string))
+        ])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(fields) else { return UUID().uuidString }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    // One target for several operations shown together, in the order they were shown.
+    static func target(covering targets: [String]) -> String {
+        SHA256.hash(data: Data(targets.joined(separator: "\n").utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func encoded(_ value: PluginCellValue) -> JsonValue {
+        switch value {
+        case .null: return .null
+        case .text(let text): return .object(["text": .string(text)])
+        case .bytes(let data): return .object(["bytes": .string(data.base64EncodedString())])
+        }
+    }
+
+    private struct Question {
+        let key: String
+        let message: String
+        let detail: String?
+        let target: String
+        let digest: String
+    }
+
+    private static func inputRequired(_ ask: Question, context: MCPRequestContext, now: Date) throws -> MCPInputRequired {
         let state = try MCPRequestState.seal(
-            .object(["consent": .string(key)]),
+            .object(["consent": .string(ask.key), "target": .string(ask.target)]),
             principal: context.principal,
             method: method,
-            paramsDigest: digest,
+            paramsDigest: ask.digest,
             expiresAt: now.addingTimeInterval(MCPRequestState.defaultLifetime)
         )
         return MCPInputRequired(
-            inputRequests: [MCPElicitationRequest.approval(key: key, message: message, detail: detail)],
+            inputRequests: [MCPElicitationRequest.approval(key: ask.key, message: ask.message, detail: ask.detail)],
             requestState: state
         )
     }

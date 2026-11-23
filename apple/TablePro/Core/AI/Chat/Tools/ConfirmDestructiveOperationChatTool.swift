@@ -82,7 +82,8 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
         // A script holds each result set to this, as execute_query does; 0 would keep one row on SQL Server.
         let maxRows = MCPLimitResolver.resolveMaxRows(requested: nil, settings: mcpSettings)
-        let scope = try await context.bridge.resolveScope(
+        let scope = try await ChatToolTarget.runScope(
+            context: context,
             connectionId: connectionId,
             database: database,
             schema: schema

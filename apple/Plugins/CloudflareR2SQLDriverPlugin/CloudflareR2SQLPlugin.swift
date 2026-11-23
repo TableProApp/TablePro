@@ -36,6 +36,7 @@ final class CloudflareR2SQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsModifyPrimaryKey = false
     static let supportsDatabaseSwitching = false
     static let supportsSchemaSwitching = true
+    static let schemaSwitchScopesUnqualifiedNames = false
     static let supportsHealthMonitor = false
     static let supportsQueryProgress = false
     static let databaseGroupingStrategy: GroupingStrategy = .hierarchicalSchema

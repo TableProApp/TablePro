@@ -228,45 +228,84 @@ internal actor DatabaseAccessBridge {
     }
 
     internal func resolveScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
+        try await resolveScope(connectionId: connectionId, database: database, schema: schema, runsStatements: false)
+    }
+
+    // For SQL the caller wrote, which resolves its unqualified names wherever the session's schema switch puts them.
+    internal func resolveStatementScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
+        try await resolveScope(connectionId: connectionId, database: database, schema: schema, runsStatements: true)
+    }
+
+    private func resolveScope(
+        connectionId: UUID,
+        database: String?,
+        schema: String?,
+        runsStatements: Bool
+    ) async throws -> DatabaseScope {
         let manager = await databaseManager
         try await ensureConnected(connectionId)
         return try await MainActor.run {
-            guard let scope = manager.resolvedScope(
-                database: database,
-                schema: schema,
-                for: connectionId
-            ) else {
-                throw DatabaseAccessError.invalidArgument(
-                    String(localized: "No database to run against. Pass a database name.")
-                )
-            }
-            try Self.refuseUnreachable(scope, manager: manager)
-            return scope
+            try Self.scope(
+                database: database, schema: schema, for: connectionId, runsStatements: runsStatements, manager: manager
+            )
         }
     }
 
-    // Pinning skips a container the engine cannot switch to, so the call would run where the session already is while
-    // the caller, and an approval card, name the other one.
+    // Only the parts execution honors, so an approval built from it never names a part the call does not run in.
     @MainActor
-    private static func refuseUnreachable(_ scope: DatabaseScope, manager: DatabaseManager) throws {
-        guard let session = manager.session(for: scope.connectionId) else { return }
+    internal static func scope(
+        database: String?,
+        schema: String?,
+        for connectionId: UUID,
+        runsStatements: Bool,
+        manager: DatabaseManager
+    ) throws -> DatabaseScope {
+        guard let scope = manager.resolvedScope(database: database, schema: schema, for: connectionId) else {
+            throw DatabaseAccessError.invalidArgument(
+                String(localized: "No database to run against. Pass a database name.")
+            )
+        }
+        if let refusal = refusal(for: scope, manager: manager) {
+            throw DatabaseAccessError.invalidArgument(refusal)
+        }
+        guard runsStatements, let session = manager.session(for: connectionId),
+              !manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: session.connection.type)
+        else { return scope }
+        // A schema switch here leaves unqualified names where they were, whatever the session's label says, so the
+        // statement runs unqualified and no schema is named for it.
+        if let named = schema, !named.isEmpty {
+            throw DatabaseAccessError.invalidArgument(String(
+                format: String(
+                    localized: "Schema %@ cannot scope SQL on this connection: switching schema does not change where names resolve. Leave schema out and qualify names."
+                ),
+                named
+            ))
+        }
+        return DatabaseScope(connectionId: scope.connectionId, database: scope.database, schema: nil)
+    }
+
+    // Pinning skips a container the engine cannot switch to, so the call would run where the session already is while
+    // the caller, and an approval, name another.
+    @MainActor
+    private static func refusal(for scope: DatabaseScope, manager: DatabaseManager) -> String? {
+        guard let session = manager.session(for: scope.connectionId) else { return nil }
         let databaseType = session.connection.type
         let current = session.resolvedBrowseDatabase
         if !scope.isServerScoped, scope.database != current,
            !manager.pluginManager.supportsDatabaseSwitching(for: databaseType) {
-            throw DatabaseAccessError.invalidArgument(String(
+            return String(
                 format: String(localized: "This connection cannot run against database %1$@, only its own: %2$@. Leave database out or pass %2$@."),
                 scope.database,
                 current
-            ))
+            )
         }
-        if let schema = scope.schema, schema != session.browseSchema,
-           !manager.pluginManager.supportsSchemaSwitching(for: databaseType) {
-            throw DatabaseAccessError.invalidArgument(String(
-                format: String(localized: "This connection has no schema to switch to, so it cannot run against schema %@. Leave schema out."),
-                schema
-            ))
-        }
+        guard let schema = scope.schema, schema != session.browseSchema,
+              !manager.pluginManager.supportsSchemaSwitching(for: databaseType)
+        else { return nil }
+        return String(
+            format: String(localized: "This connection has no schema to switch to, so it cannot run against schema %@. Leave schema out."),
+            schema
+        )
     }
 
     internal func switchDatabase(connectionId: UUID, database: String) async throws {

@@ -47,6 +47,7 @@ final class Neo4jPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = true
+    static let schemaSwitchScopesUnqualifiedNames = false
     static let databaseGroupingStrategy: GroupingStrategy = .bySchema
     static let defaultGroupName = "neo4j"
     static let defaultSchemaName = Neo4jEntityKind.node.schemaName

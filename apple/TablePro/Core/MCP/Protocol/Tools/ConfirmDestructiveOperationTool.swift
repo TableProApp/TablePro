@@ -68,7 +68,7 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
         let timeoutSeconds = try MCPLimitResolver.resolveTimeoutSeconds(arguments, settings: settings)
         // A script holds each result set to this, as execute_query does; 0 would keep one row on SQL Server.
         let maxRows = settings.effectiveDefaultRowLimit
-        let scope = try await MCPScopeArguments.resolve(
+        let scope = try await MCPScopeArguments.resolveForStatements(
             arguments,
             connectionId: connectionId,
             services: services
