@@ -249,6 +249,13 @@ internal actor DatabaseAccessBridge {
         try await resolveScope(connectionId: connectionId, database: database, schema: schema, use: .appSQL)
     }
 
+    // Work on the server itself names no database. It connects first like every other scope, so an approval built on
+    // it holds the connect the work runs on.
+    internal func resolveServerScope(connectionId: UUID) async throws -> DatabaseScope {
+        try await ensureConnected(connectionId)
+        return DatabaseScope(connectionId: connectionId, database: "", schema: nil)
+    }
+
     private func resolveScope(
         connectionId: UUID,
         database: String?,

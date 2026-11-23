@@ -36,6 +36,16 @@ private final class SchemaWideMaintenanceDriver: PluginDriverStub, @unchecked Se
     }
 }
 
+// Approves after the connection reconnected under the person still deciding.
+private struct ReconnectingWhileAskedGate: ExecutionGate {
+    let connectionId: UUID
+
+    func authorize(_ request: OperationRequest) async -> OperationDecision {
+        try? await DatabaseManager.shared.reconnectSession(connectionId)
+        return await AlwaysAllowGate().authorize(request)
+    }
+}
+
 extension GlobalStateSuites {
     @MainActor
     struct MCPApprovedOperationTests {
@@ -306,6 +316,56 @@ extension GlobalStateSuites {
             let request = try #require(await gate.requests.first)
             #expect(request.scope?.schema == nil)
             #expect(driver.received == ["REINDEX"])
+        }
+
+        // MARK: - create_database
+
+        // Saved and not connected: the tool connects it through the SQL Server stand-in plugin.
+        private func disconnectedRig(gate: (UUID) -> any ExecutionGate) -> WritePolicyRig {
+            FakeMSSQLPluginRegistration.registerIfNeeded()
+            let connection = WritePolicyRig.connection(
+                type: .mssql, externalAccess: .readWrite, aiPolicy: .alwaysAllow, safeMode: .silent
+            )
+            let rig = WritePolicyRig(
+                connection: connection, prompts: WritePolicyPrompts(.approveAll), live: true, executionGate: gate(connection.id)
+            )
+            DatabaseManager.shared.removeSession(for: connection.id)
+            return rig
+        }
+
+        private func tearDownConnected(_ rig: WritePolicyRig) async {
+            let id = rig.connection.id
+            await DatabaseManager.shared.stopHealthMonitor(for: id)
+            DatabaseManager.shared.driver(for: id)?.disconnect()
+            FakeMSSQLPlugin.clearDatabasesCreated(on: id)
+            rig.tearDown()
+        }
+
+        @Test("create_database on a saved connection that is not connected yet is approved and runs")
+        func createDatabaseOnADisconnectedConnectionRuns() async throws {
+            let rig = disconnectedRig { _ in AlwaysAllowGate() }
+
+            let result = try await handle(
+                CreateDatabaseTool.name, ["name": .string("reports")], on: rig, scopes: MCPScope.fullAccessSet
+            )
+
+            #expect(result.payload["isError"]?.boolValue != true, "\(Self.errorText(result))")
+            #expect(FakeMSSQLPlugin.databasesCreated(on: rig.connection.id) == ["reports"])
+            await tearDownConnected(rig)
+        }
+
+        @Test("create_database approved before the connection reconnected is refused on the new connection")
+        func createDatabaseAfterAReconnectIsRefused() async throws {
+            let rig = disconnectedRig { ReconnectingWhileAskedGate(connectionId: $0) }
+
+            let result = try await handle(
+                CreateDatabaseTool.name, ["name": .string("reports")], on: rig, scopes: MCPScope.fullAccessSet
+            )
+
+            #expect(result.payload["isError"]?.boolValue == true)
+            #expect(Self.errorText(result).contains("The connection changed after this was approved"))
+            #expect(FakeMSSQLPlugin.databasesCreated(on: rig.connection.id).isEmpty)
+            await tearDownConnected(rig)
         }
 
         // MARK: - insert_rows
