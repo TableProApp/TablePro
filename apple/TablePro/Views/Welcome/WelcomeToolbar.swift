@@ -225,7 +225,7 @@ internal final class WelcomeToolbarController: NSObject, NSToolbarDelegate, NSSe
 
     internal func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
-        viewModel.focusList(selectFirstRow: true)
+        viewModel.submitSearch()
         return true
     }
 
