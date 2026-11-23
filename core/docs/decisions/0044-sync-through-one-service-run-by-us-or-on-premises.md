@@ -1,11 +1,11 @@
 # 0044: Sync goes through one TablePro service, run by us or entirely on a customer's servers
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-11-24
 
 ## Context
 
-Phase 7 of `ROADMAP.md` (D-01) adds a TablePro sync service on every platform, with iCloud kept beside it on macOS. T-01 asks for the data model, field-by-field conflict rules, end-to-end secrets with key recovery, whether query history syncs, and iCloud beside the service. On 2026-11-24 the maintainer decided three things. One sync service in tablepro-cloud runs as our SaaS and ships to customers as a self-hosted deploy, with no enterprise fork. The first self-hosted release covers macOS, iOS, Linux and Windows together. Everything syncs from that release, passwords end to end encrypted and query history included, and an admin can turn password or history sync off.
+Phase 7 of `ROADMAP.md` (D-01) adds a TablePro sync service on every platform, with iCloud kept beside it on macOS. T-01 asks for the data model, field-by-field conflict rules, end-to-end secrets with key recovery, whether query history syncs, and iCloud beside the service. On 2026-11-24 the maintainer decided that one sync service in tablepro-cloud runs as our SaaS and ships to customers as a self-hosted deploy, with no enterprise fork. macOS ships first, after a preview, and iOS, Linux and Windows follow as each is ready. Everything syncs, passwords end to end encrypted and query history included, and an admin can turn password or history sync off.
 
 What exists today:
 
@@ -29,7 +29,7 @@ What exists today:
 
 ## Decision
 
-Team Library's store becomes one record store with personal, history and team scopes, reached through `/v2/sync`. The same tablepro-cloud binary runs it as our SaaS and, under a self-hosted profile, entirely on a customer's servers: their IdP, their Postgres and an offline TablePro license, with no call to tablepro.app. One Rust crate, `tablepro-sync`, is the client for all four apps. macOS and iOS reach it, and the account stack, through TableProFFI. Passwords and other secrets sync end to end encrypted. Every key object is signed back to a key the person or their teammates confirmed, so a server cannot substitute keys. An external audit of the scheme gates the first self-hosted release. Query history syncs, encrypted the same way. On a self-hosted install the admin can turn password or history sync off, and the server enforces it. On macOS and iOS each device picks Off, iCloud or TablePro Sync for personal data.
+Team Library's store becomes one record store with personal, history and team scopes, reached through `/v2/sync`. The same tablepro-cloud binary runs it as our SaaS and, under a self-hosted profile, entirely on a customer's servers: their IdP, their Postgres and an offline TablePro license, with no call to tablepro.app. One Rust crate, `tablepro-sync`, is the client for all four apps. macOS and iOS reach it, and the account stack, through TableProFFI. macOS ships first, then iOS, Linux and Windows as each is ready. Passwords and other secrets sync end to end encrypted. Every key object is signed back to a key the person or their teammates confirmed, so a server cannot substitute keys. An internal adversarial security review of the scheme gates the first self-hosted release. Query history syncs, encrypted the same way, and the server keeps it until the person deletes it. On a self-hosted install the admin can turn password or history sync off, and the server enforces it. On macOS and iOS each device picks Off, iCloud or TablePro Sync for personal data.
 
 ## How it works
 
@@ -41,10 +41,10 @@ Team Library's store becomes one record store with personal, history and team sc
   - It leaves out billing, redeem, education, newsletter, campaign, stats, analytics, etl, the legacy v1 adapter, share links, the staff admin app and impersonation, SES, Turnstile, PostHog, Crisp and the watchdog.
   - The entitlement `iss` and the access token `aud` come from the configured API origin. The entitlement `aud` stays `tablepro-app`. Problem `type` URIs stay `https://api.tablepro.app/problems/...`. They are identifiers (RFC 9457), fixed in the OpenAPI document both clients are generated from.
   - **Client address.** The self-hosted profile must state one of three modes, and a missing setting fails the start: `none` (the socket peer), X-Forwarded-For with trusted CIDRs (chi's `ClientIPFromXFF`), or a single-IP header with trusted CIDRs (chi's `ClientIPFromHeader`). Without it, every client behind a load balancer would share one rate-limit bucket. SaaS keeps `CF-Connecting-IP`. A session's country comes from `CF-IPCountry` only under the SaaS profile; a self-hosted session records none.
-  - `tablepro-cloud bootstrap` creates the one team an install holds and prints a one-time owner claim code that expires within an hour. The first OIDC sign-in that redeems it becomes the owner. `tablepro-cloud license install` loads the license into the database. All three steps are audited.
+  - `tablepro-cloud bootstrap` creates the install's first team and prints a one-time owner claim code that expires within an hour. The first OIDC sign-in that redeems it becomes the owner of the install and of that team. The install's owner and admins create more teams in the portal, and whoever creates a team owns it. `tablepro-cloud license install` loads the license into the database. Each of these steps is audited.
 - **Packaging.**
-  - One multi-arch OCI image on a base pinned by digest.
-  - It is signed with cosign under a key held in a KMS. The key's fingerprint is published in the subscription terms and in the docs repository, not only beside the image, so an air-gapped site verifies offline.
+  - One multi-arch OCI image on a base pinned by digest, in a public registry. Anyone can pull it; the license is the gate.
+  - It is signed with cosign under the key in Licensing, Key custody. The key's fingerprint is published in the subscription terms and in the docs repository, not only beside the image, so an air-gapped site verifies offline.
   - An SBOM (SPDX) and SLSA provenance are attached to the image digest with `cosign attest`. Third-party notices ship in the image.
   - Two reference deploys. tablepro-cloud's `docs/design` holds their files:
     - Compose: `migrate up`, then `serve`.
@@ -96,8 +96,8 @@ Team Library's store becomes one record store with personal, history and team sc
 
 Under `/v2`, OAuth scope `app`, clients generated from the OpenAPI document as in 0016. Errors are RFC 9457 problem details; a 429 carries `Retry-After`.
 
-- **`GET /v2/sync/scopes`** lists the scopes the account reads. For each, it gives the role, horizon and epoch. It also gives the limits, the server version, the server's capabilities, the idempotency key retention, the poll interval and the install's policies. Its `ETag` covers the horizons and policies, with `Cache-Control: private, max-age=<interval>` (RFC 9111), so an idle poll is a 304.
-- **`GET /v2/sync/scopes/{id}/changes?cursor=&limit=`** pulls as the library does: without a cursor, a paged snapshot up to a high-water mark, then changes in revision order, tombstones included. The cursor is opaque and carries the scope's epoch. A malformed cursor, one from another epoch, or one behind the horizon gets 422 `cursor_expired`. The client then takes a fresh snapshot and lays its dirty set over it. A new epoch also refills the server (Restore).
+- **`GET /v2/sync/scopes`** lists the scopes the account reads. For each, it gives the role, the epoch and the horizon, which is the scope's highest revision. It also gives the limits, the server version, the server's capabilities, the idempotency key retention, the poll interval and the install's policies. Its `ETag` covers the epochs, horizons and policies, with `Cache-Control: private, max-age=<interval>` (RFC 9111), so an idle poll is a 304.
+- **`GET /v2/sync/scopes/{id}/changes?cursor=&limit=`** pulls as the library does: without a cursor, a paged snapshot up to a high-water mark, then changes in revision order, tombstones included. The cursor is opaque and carries the scope's epoch. A malformed cursor, one from another epoch, or one past the horizon gets 422 `cursor_expired`. The client then takes a fresh snapshot and lays its dirty set over it. A new epoch also refills the server (Restore).
 - **`POST /v2/sync/scopes/{id}/changes`** carries up to 500 `{kind, record_id, op: patch|delete, base_version, patch}`.
   - `patch` is the RFC 7396 merge patch from the client's base to its record, applied only when `base_version` is the stored version. An empty patch never leaves the client.
   - Each change answers `applied` (with its version), `conflict` (with the stored record) or `rejected` (with a code such as `secret_key`, `too_large`, `bad_kind`, `policy`).
@@ -113,7 +113,7 @@ Under `/v2`, OAuth scope `app`, clients generated from the OpenAPI document as i
   - A point-in-time restore rolls the revision sequence back and loses every write after the restore point.
   - The restore runbook runs `tablepro-cloud sync new-epoch`. It gives every scope a new epoch and records the scope's highest revision as `epoch_revision`.
   - A client that meets a new epoch takes the snapshot. It then pushes, as patches on the snapshot's versions, every record whose base copy carries a revision above `epoch_revision`, deletions included, along with its dirty set. Then it adopts the epoch. Devices refill what the server lost, and equal values from two devices are no conflict, as a CloudKit client re-uploads after losing a zone.
-  - The horizon check catches a restore whose runbook step was missed, but only once new writes pass the old cursors.
+  - Nothing detects a restore on its own. The horizon check catches one whose runbook step was missed, since old cursors are past the restored horizon, until new writes pass them.
   - Shipped Macs on the library facade only resnapshot, so a write acknowledged to them after the restore point is lost.
 
 ### Conflict rules
@@ -134,14 +134,14 @@ The client merges; the server only versions. `cloudkit::merge` covers group fiel
 
 - **Personal scope:** the twelve kinds the Mac syncs through iCloud, under the names above, and `secret_envelope`. A platform with no UI for a kind still stores it and sends it back unchanged.
 - **History scope:** one per account. Each run the app records becomes one `history_entry`, whose fields are an envelope under the account key, since history holds literal SQL with data values. Pushes are batched, never one per run.
-  - Retention is a horizon. The server drops entries older than its retention (90 days by default) and raises the scope's horizon, so a cursor behind it gets `cursor_expired`. Clients drop the same entries locally.
-- **Team scope:** the library's connection, folder and query, and the team's `secret_envelope`. Team Catalog on the service is a team-scope kind that T-07 defines, never a second way to share.
+  - The server keeps every entry until the person deletes it, with no retention limit. A device's own history limit prunes only its local copy and pushes no deletion.
+- **Team scope:** the library's connection, folder and query, and the team's `secret_envelope`. Team Catalog stays a shared folder, such as a Git repository or a shared drive, and is not a service kind; Team Library is how the service shares.
 - **Settings** sync between devices of one platform. An option crosses platforms only once two platforms share it, through a registry in the core that starts empty.
 - **Never:** per-device view state (sort mode, the Recent switch, the recent count), `passwordSource` commands and files, tunnel commands, and any secret outside an envelope.
 
 ### Policies
 
-- **Self-hosted:** two install-wide settings, `passwordSync` and `historySync`, on by default. The owner or an admin sets them in the portal, and each change is audited.
+- **Self-hosted:** two install-wide settings, `passwordSync` and `historySync`, on by default. The install's owner or an admin sets them in the portal, and each change is audited.
   - Off, the server answers a push of `secret_envelope` or `history_entry` with `rejected` (`policy`) in every scope, and tombstones the existing ones.
   - Devices keep what they hold locally, so a password stays usable on each device that has it.
 - **SaaS:** a team's `passwordSync` governs `secret_envelope` in that team's scope only. Personal and history scopes belong to their account, and no team governs them, since one account can be in several teams.
@@ -201,20 +201,20 @@ Values a device moves into the service with count as approved on that device.
 - **Removing a member** makes a new, signed version of each team key, sealed to the remaining members, and re-encrypts the team's envelopes. The app lists the database credentials to rotate.
 - **Recovery.** A person who loses every device and the recovery key loses their personal secrets. Team secrets come back once an admin seals the team key to their new keys.
 - **iCloud Keychain.** With TablePro Sync and password sync on, a secret is a device-only Keychain item plus its envelope. iCloud Keychain sync applies only with the iCloud provider, or when password sync is off. A managed device turns it off with `ICloudSyncAllowed`.
-- **Audit.** T-05 folds into the first self-hosted release. Its threat model and an external audit cover the key hierarchy, the signed objects and their checks, the fingerprints, device and member removal, and the envelope. The threat model names three attacks: a server that seals keys it knows, swaps public keys, or replays old key versions. The audit passing gates the release.
+- **Release gate.** A threat model and an internal adversarial security review cover the key hierarchy, the signed objects and their checks, the fingerprints, device and member removal, and the envelope. The review is a Codex review plus independent Claude reviewers, run with the RFC 9180 vectors and our own known-answer vectors (Tests). The threat model names three attacks: a server that seals keys it knows, swaps public keys, or replays old key versions. The review passing gates the first self-hosted release.
 
 ### Sign-in and SSO
 
 - **The server signs people in through the customer's IdP:** OIDC authorization code with PKCE through coreos/go-oidc, requesting a refresh token (`offline_access`).
   - A self-hosted identity is keyed by (`iss`, `sub`), the only stable identifier OpenID Connect Core section 5.7 grants. `account_identities` gains the provider `oidc` and stores the issuer.
   - Email is contact data only. It never links an identity and never grants a role.
-  - The first sign-in creates the account and takes a seat while one is free. The IdP's assignment decides who may sign in. The owner is the first sign-in that redeems the bootstrap claim code.
-  - An optional group claim maps to admin, matched by group id and never by display name. It is checked on every sign-in and every upstream revalidation, so leaving the group removes admin.
+  - The first sign-in creates the account and takes a seat while one is free. The IdP's assignment decides who may sign in.
+  - An optional group claim maps to the install's admin role, matched by group id and never by display name. It is checked on every sign-in and every upstream revalidation, so leaving the group removes admin.
   - A SAML or LDAP directory goes through a broker the customer runs, such as Keycloak or Dex.
 - **Deprovisioning.**
   - The server stores the IdP's refresh token under the existing `crypt` keyring, as the Apple column is stored. It checks the token upstream when an app refreshes, at most once per `UPSTREAM_REVALIDATE` (1 hour by default). A failure revokes the token family.
   - With access tokens at 15 minutes, access ends about 75 minutes after an IdP disable.
-  - An IdP that returns no refresh token limits the session to `SESSION_MAX_AGE`, configurable up to one working day.
+  - A session lasts at most `SESSION_MAX_AGE`: 7 days by default, and one working day when the IdP returns no refresh token, since nothing then checks the person upstream.
   - A removal by the owner or an admin revokes at once.
   - A member whose upstream check failed keeps their seat until an admin removes them, and the portal lists such members.
   - Data already on a device stays there.
@@ -228,15 +228,19 @@ Values a device moves into the service with count as approved on that device.
 ### Licensing
 
 - **The self-hosted server** ships as a binary under commercial subscription terms, with its notices, SBOM and provenance.
-- **The license** is a JWS compact JWT with `typ` `license+jwt`, signed with EdDSA over Ed25519 (RFC 7515, 7519, 8037) through go-jose.
+- **The license** is a JWS compact JWT with `typ` `license+jwt`, signed with EdDSA over Ed25519 (RFC 7515, 7519, 8037) through go-jose, with an opaque signer that calls AWS KMS.
   - It is verified offline against TablePro license keys compiled into the server and the apps, picked by `kid` (the RFC 7638 thumbprint).
   - Claims: `iss`; `aud` `["tablepro-cloud", "tablepro-app"]`; `sub` (the license id, which our records map to the customer); `iat`; `nbf`; `exp`; `jti`; `license_type` (`trial` or `paid`); `seats`; `features`; and `origin`, the customer's https API origin, which must equal the configured one.
   - No customer name and no device count.
-- **The license signing key** signs licenses only. It lives in an HSM or a KMS key that supports Ed25519, or in an offline signing step, and never in the SaaS's credentials directory. Our admin records a license request, audited, and a person signs it. Every app and server build carries two license public keys, current and next, so the key can rotate, plus a list of revoked `kid` values that ships with updates.
-- **Seats** are a hard cap. A self-hosted license has no device cap: seats are the unit, and every device, iOS included, is on the device list for approval and removal.
+- **Key custody.** The license signing key and the cosign key are two AWS KMS keys, each used for nothing else. The SaaS's role cannot sign with either.
+  - The license key has the spec `ECC_NIST_EDWARDS25519` and signs with `ED25519_SHA_512` over the raw JWS signing input, which KMS takes up to 4096 bytes. KMS signs Ed25519, so the license stays EdDSA.
+  - The cosign key is `ECC_NIST_P256` (ECDSA P-256), since sigstore's AWS KMS signer, which cosign uses, offers RSA and the NIST curves but not Ed25519.
+  - Our admin records a license request, audited, and a person signs it.
+  - Every app and server build carries two license public keys, current and next, so the key can rotate, plus a list of revoked `kid` values that ships with updates.
+- **Seats** are a hard cap, pooled across every team on the install: an account takes one seat however many teams it is in. A self-hosted license has no device cap: seats are the unit, and every device, iOS included, is on the device list for approval and removal. On the SaaS, an iOS device counts toward the account's 3-device cap like any other.
 - **Expiry** shows a banner 30 days ahead and gives 30 days' grace. After that, a push is refused with `license_expired`. Pulls and administration keep working, so each device can still export, and nothing is deleted.
 - **A trial** is the same file with `license_type: trial`; the paid file replaces it in place. No phone-home, online activation or usage report.
-- **Features.** A new code, `service_sync`, gates personal and history sync on the service in both deploys. `team_library` and a seat gate the team scope. The server checks them on every sync call; the app's gate only shapes the UI. iOS verifies no entitlement, as today.
+- **Features.** A new code, `service_sync`, gates personal and history sync on the service in both deploys. `team_library` and a seat gate the team scope. A seat carries the Pro features too, as a Team seat does. The server checks them on every sync call; the app's gate only shapes the UI. iOS verifies no entitlement, as today.
 - **How an app trusts a customer's server.**
   - Release keys stay compiled in. Configuration says only where the server is, never which key to trust.
   - After sign-in, the app reads the license from `GET /v2/license`, verifies it with a license key it ships, and checks `typ`, `aud`, `origin` and `exp`.
@@ -263,7 +267,8 @@ One set of policy names on every platform. A value counts only when the OS marks
 | macOS | A configuration profile for `com.TablePro`, keys `com.TablePro.policy.<key>` beside `ManagedPolicy` | `objectIsForced(forKey:)` |
 | iOS | `com.apple.configuration.managed`, with an AppConfig specfile | Always; only the OS writes it |
 | Windows | `HKLM\SOFTWARE\Policies\TablePro\TablePro`, then its `HKCU` mirror, with ADMX and ADML that use text boxes | The value is under `Policies` |
-| Linux | `/etc/tablepro/policy.json` | The file and `/etc/tablepro` are owned by uid 0 and writable by neither group nor others, and the file opens with `O_NOFOLLOW`. Otherwise it is ignored and the reason logged. Flatpak builds read no policy. |
+| Linux | `/etc/tablepro/policy.json` | The file and `/etc/tablepro` are owned by uid 0 and writable by neither group nor others, and the file opens with `O_NOFOLLOW`. Otherwise it is ignored and the reason logged. |
+| Linux Flatpak | The same file through the unmaintained extension `app.tablepro.TablePro.Policy` (version `1`, `no-autodownload`), mounted at `/app/etc/tablepro`. The admin links `/var/lib/flatpak/extension/app.tablepro.TablePro.Policy/<arch>/1` to `/etc/tablepro`, as Chromium on Flathub takes policies; Firefox's `org.mozilla.firefox.systemconfig` works the same way | As above, except that the owner must not be the person's uid, since a root-owned file shows as the overflow uid inside the sandbox. Flatpak looks in `$XDG_DATA_HOME/flatpak/extension` first, so a person's own copy hides the system one; the rule refuses that copy and the reason is logged |
 
 - The core picks the server: a forced value, else the person's choice, else production. It requires https, with http only for loopback in development builds, and runs the discovery. Each host only reads its channel and passes the raw values in.
 - TLS uses the OS trust store on every platform. The Flatpak build is tested in its sandbox with an enterprise root before release.
@@ -320,19 +325,20 @@ One set of policy names on every platform. A value counts only when the OS marks
 - A policy, configuration or environment value in a release build that adds entitlement keys, license keys, client ids or redirects.
 - Certificate pinning, an app CA store or a self-signed switch.
 - Custom crypto, RSA, a master password or SRP, a key server, admin escrow of personal secrets, server-side secret-manager access, MLS, per-item keys, or a browser client.
+- A third-party audit of the end-to-end scheme.
 - Phone-home licensing, online activation, telemetry from a self-hosted server, obfuscation, seat true-up, a server self-updater, Helm, an operator, or clustering before a buyer needs one.
 - A metrics endpoint before a buyer asks, and mail from the self-hosted deploy before a flow needs it.
 
 ## Consequences
 
-- **Phase 7 changes.** T-05 folds into the first self-hosted release, and T-06 adds query history. T-04 to T-08 gain iOS boxes, and an iOS account item is added.
+- **Phase 7 changes.** It runs now as its own lane, ahead of the D-06 order. T-05 folds into the first self-hosted release, and T-06 adds query history. T-04 to T-08 gain iOS boxes, and an iOS account item is added.
 - **0010 gains two slices.**
-  - An account slice, ordered before the first preview. Through it, the Mac and iOS use `tablepro-account` via TableProFFI, and the Swift account code is deleted.
+  - An account slice, ordered before the macOS preview. Through it, the Mac and iOS use `tablepro-account` via TableProFFI, and the Swift account code is deleted.
   - A slice for SSH profiles, credential profiles, favourites and table folders.
-- **What sets the release date:** the Mac and iOS moving onto the core, the audit, and Windows D-04.
+- **Release order.** macOS ships first, after a preview. Its date rests on the Mac's slices of 0010 and the security review. iOS, Linux and Windows follow as each is ready, and Windows D-04 gates only the Windows release.
 - **This amends 0016.** Release builds take their server from policy or the person, admit a server's keys only through a license, and check `iss` and `typ`.
 - **Shipped Macs** push the team kinds through the facade by rebuilding each item from their own models, so those kinds' fields stay as they are until T-08 moves the Mac onto the core client.
-- **Per-device passwords** remain only where password sync is off. A person approves on each device any approval-required change made on another.
+- **Per-device passwords** remain only where password sync is off. A person approves on each device any approval-required change made on another, their own edits included.
 - **Teammates confirm a person's identity key again** after that person removes a device or recovers.
 - **A modified server holding a valid license** can give out more seats than it carries. The subscription terms cover that, as for every offline license.
 - **A removed member** keeps what their devices already hold. Only rotating a database password revokes what they read.
@@ -341,6 +347,7 @@ One set of policy names on every platform. A value counts only when the OS marks
   - In tablepro-cloud: `product.md`, `SECURITY.md` and the design docs.
   - Also `monetization-roadmap.md`. Its line 72 sells Team and Enterprise as services on our servers, and its R4 Enterprise items (domain sign-in, SAML and SCIM through WorkOS) sit behind our OAuth server. A self-hosted deploy sells a proprietary server under a license file, and WorkOS stays on the SaaS.
   - The docs site.
+  - None of them says a third party verified the end-to-end scheme.
 
 ## Alternatives considered
 
@@ -362,4 +369,5 @@ One set of policy names on every platform. A value counts only when the OS marks
 - **The server's key named in the license (RFC 7800 `cnf`).** Every key rotation would need a new license, and a trial could not be issued before the install.
 - **Email codes and passkeys on the self-hosted deploy.** An SMTP adapter and a second set of accounts beside the IdP the customer already runs.
 - **Team policies over personal scopes on the SaaS.** One account can be in several teams, so any team's admin could refuse or delete that person's own data.
+- **`--filesystem=host-etc` for the Flatpak's policy.** It exposes the host's whole `/etc`, at `/run/host/etc`, to read one file. Granting `/etc/tablepro` alone does nothing, since Flatpak reserves `/etc`, and Flathub never grants `finish-args-reserved-etc`. The extension adds no permission.
 - **Cross-platform settings from the start.** The platforms share no option today, so the registry would only map names nobody shares.
