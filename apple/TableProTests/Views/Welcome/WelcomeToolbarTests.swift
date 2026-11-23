@@ -250,12 +250,12 @@ struct WelcomeToolbarTests {
         }
         let field = try #require(try item(.welcomeSearch) as? NSSearchToolbarItem).searchField
 
-        // The first character rebuilds at once and matches every row; the second waits for the debounce.
-        viewModel.searchText = "a"
-        viewModel.searchText = "al"
+        // "g" rebuilds at once and keeps Beta (PostgreSQL) and Gamma; "ga" waits for the debounce.
+        viewModel.searchText = "g"
+        viewModel.searchText = "ga"
         #expect(controller.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:))))
 
-        #expect(namesAtFocus == ["Alpha"])
+        #expect(namesAtFocus == ["Gamma"])
     }
 }
 
@@ -295,7 +295,7 @@ struct WelcomeOutlineFocusTests {
         coordinator.attach(outlineView: outlineView)
         let beta = try #require(viewModel.connections.first { $0.name == "Beta" })
 
-        // Only Beta matches; the outline view still lists all three until a revision reaches it.
+        // Only Beta's name holds a "b"; the outline view still lists all three until a revision reaches it.
         viewModel.searchText = "b"
         viewModel.submitSearch()
 
