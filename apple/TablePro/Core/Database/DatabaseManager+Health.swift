@@ -169,6 +169,7 @@ extension DatabaseManager {
                     session.cachedPassword = cachedPassword
                 }
             }
+            followReconnectedDatabase(result.openedDatabase, for: connectionId)
             markSessionLive(connectionId)
             AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connectionId))
             return .success
@@ -549,6 +550,7 @@ extension DatabaseManager {
                     session.cachedPassword = cachedPassword
                 }
             }
+            followReconnectedDatabase(openedDatabase, for: sessionId)
             markSessionLive(sessionId)
 
             await startHealthMonitor(for: sessionId)

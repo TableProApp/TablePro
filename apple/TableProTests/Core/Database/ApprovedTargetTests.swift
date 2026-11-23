@@ -62,11 +62,30 @@ private final class CachedTargetDriver: PluginDriverStub, @unchecked Sendable {
 private final class OpenedFileDriver: PluginDriverStub, @unchecked Sendable {
     private let opened: String?
 
+    private static let counts = OSAllocatedUnfairLock<[String]>(initialState: [])
+
+    // The database each exact count ran in, as its driver reported it.
+    static var countedIn: [String] { counts.withLock { $0 } }
+
+    static func forgetCounts() {
+        counts.withLock { $0 = [] }
+    }
+
     init(opened: String?) {
         self.opened = opened
     }
 
     var currentDatabase: String? { opened }
+
+    func fetchExactRowCount(
+        table: String,
+        schema: String?,
+        queryFilters: [PluginQueryFilter],
+        logicMode: String
+    ) async throws -> Int? {
+        Self.counts.withLock { $0.append(opened ?? "") }
+        return 1
+    }
 }
 
 private final class OpenedFilePlugin: NSObject, TableProPlugin, DriverPlugin {
@@ -883,5 +902,59 @@ struct ApprovedTargetTests {
 
         #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
         #expect(!replacing.events.contains { $0.hasPrefix("DATABASE") || $0.hasPrefix("DELETE") })
+    }
+
+    // The browse cursor still named a.sqlite after the reconnect, and a catalog approval took its database from it.
+    @Test("count_rows after a reconnect from a.sqlite to b.sqlite names b.sqlite and counts b.sqlite")
+    func countRowsAfterAReconnectNamesTheReopenedDatabase() async throws {
+        try await withOpenedFilePlugin {
+            OpenedFileDriver.forgetCounts()
+            let connection = TestFixtures.makeConnection(database: "data.sqlite", type: .sqlite)
+            defer { DatabaseManager.shared.removeSession(for: connection.id) }
+            let bridge = DatabaseAccessBridge()
+
+            OpenedFilePlugin.opens("a.sqlite")
+            try await DatabaseManager.shared.ensureConnected(connection)
+            OpenedFilePlugin.opens("b.sqlite")
+            try await DatabaseManager.shared.reconnectSession(connection.id)
+            let scope = try await bridge.resolveScope(connectionId: connection.id, database: nil, schema: nil)
+            let operation = try await ApprovedOperationFixture.approve(
+                [], scope: scope, databaseType: .sqlite, kind: .readQuery
+            )
+            _ = try await bridge.countRows(operation, table: "orders", filters: [], logicMode: .and, exact: true)
+
+            #expect(scope.database == "b.sqlite")
+            #expect(OpenedFileDriver.countedIn == [scope.database])
+            #expect(DatabaseManager.shared.session(for: connection.id)?.browseDatabase == "b.sqlite")
+        }
+    }
+
+    // A pooled connection dials the configuration again, which now opens another file, or one whose driver says nothing.
+    @Test(
+        "A count approved for b.sqlite is refused when the pooled driver it leases reports another database or none",
+        arguments: ["c.sqlite", nil] as [String?]
+    )
+    func catalogApprovalHoldsToTheLeasedDriversReport(reported: String?) async throws {
+        try await withOpenedFilePlugin {
+            OpenedFileDriver.forgetCounts()
+            let connection = TestFixtures.makeConnection(database: "data.sqlite", type: .sqlite)
+            defer { DatabaseManager.shared.removeSession(for: connection.id) }
+            let bridge = DatabaseAccessBridge()
+
+            OpenedFilePlugin.opens("b.sqlite")
+            try await DatabaseManager.shared.ensureConnected(connection)
+            let scope = try await bridge.resolveScope(connectionId: connection.id, database: nil, schema: nil)
+            let operation = try await ApprovedOperationFixture.approve(
+                [], scope: scope, databaseType: .sqlite, kind: .readQuery
+            )
+            OpenedFilePlugin.opens(reported)
+            let error = await #expect(throws: DatabaseAccessError.self) {
+                _ = try await bridge.countRows(operation, table: "orders", filters: [], logicMode: .and, exact: true)
+            }
+
+            #expect(scope.database == "b.sqlite")
+            #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
+            #expect(OpenedFileDriver.countedIn.isEmpty)
+        }
     }
 }

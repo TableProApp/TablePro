@@ -282,6 +282,18 @@ extension DatabaseManager {
         return openedDatabase
     }
 
+    // A fixed engine's reconnect can open another database than the one browsed, as a project or path resolved again
+    // does. The cursor follows it the way a switch moves it, so the window never shows one database under another's name.
+    internal func followReconnectedDatabase(_ opened: String?, for connectionId: UUID) {
+        guard let opened, let session = activeSessions[connectionId],
+              !pluginManager.supportsDatabaseSwitching(for: session.connection.type),
+              session.resolvedBrowseDatabase != opened
+        else { return }
+        updateSession(connectionId) { $0.browseDatabase = opened }
+        showBrowsedCatalog(connectionId)
+        AppEvents.shared.browseContainerChanged.send(connectionId)
+    }
+
     private func prepareConnectingSession(for connection: DatabaseConnection) -> Int {
         let queryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
             configuredSeconds: connection.queryTimeoutSeconds,

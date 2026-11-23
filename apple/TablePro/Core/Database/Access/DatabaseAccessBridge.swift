@@ -295,12 +295,18 @@ internal actor DatabaseAccessBridge {
             throw DatabaseAccessError.invalidArgument(refusal)
         }
         let scope = try executingScope(resolved, manager: manager)
-        guard use != .catalog, let session = manager.session(for: connectionId) else { return scope }
+        guard let session = manager.session(for: connectionId) else { return scope }
         let databaseType = session.connection.type
-        // A fixed engine reaches only the database its driver reported, so with no report the call names none.
+        // A fixed engine reaches only the database its driver reported, for SQL and the catalog alike, whatever the
+        // browse cursor shows, so with no report the call names none.
         let runsIn = manager.pluginManager.supportsDatabaseSwitching(for: databaseType)
             ? scope.database
             : session.openedDatabase ?? ""
+        guard use != .catalog else {
+            return runsIn == scope.database
+                ? scope
+                : DatabaseScope(connectionId: scope.connectionId, database: runsIn, schema: scope.schema)
+        }
         guard use == .callerSQL, !manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: databaseType) else {
             return DatabaseScope(connectionId: scope.connectionId, database: runsIn, schema: scope.schema)
         }
@@ -742,7 +748,9 @@ internal actor DatabaseAccessBridge {
             sessionWork: .statements,
             admit: Self.admission(scope, as: .statement, generation: operation.driverGeneration, manager: manager)
         ) { driver -> (affected: Int, notice: String?) in
-            try await Self.requireApproved(scope, as: .statement, generation: operation.driverGeneration, manager: manager)
+            try await Self.requireApproved(
+                scope, as: .statement, generation: operation.driverGeneration, manager: manager, leased: driver
+            )
             reach.mark()
             // The hold and savepoint execute_query gets, so a Manual Commit insert waits for Commit too.
             let ran = try await agentGuard.running(
@@ -802,7 +810,9 @@ internal actor DatabaseAccessBridge {
             sessionWork: .independent,
             admit: Self.admission(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
         ) { driver -> (count: Int?, isApproximate: Bool) in
-            try await Self.requireApproved(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
+            try await Self.requireApproved(
+                scope, as: .catalog, generation: operation.driverGeneration, manager: manager, leased: driver
+            )
             reach.mark()
             if exact {
                 let value = try await driver.fetchExactRowCount(
@@ -850,7 +860,9 @@ internal actor DatabaseAccessBridge {
             sessionWork: .statements,
             admit: Self.admission(scope, as: .statement, generation: operation.driverGeneration, manager: manager)
         ) { driver in
-            try await Self.requireApproved(scope, as: .statement, generation: operation.driverGeneration, manager: manager)
+            try await Self.requireApproved(
+                scope, as: .statement, generation: operation.driverGeneration, manager: manager, leased: driver
+            )
             reach.mark()
             switch action {
             case "begin":
@@ -877,7 +889,9 @@ internal actor DatabaseAccessBridge {
         let connectionId = operation.scope.connectionId
         let (driver, _) = try await resolveDriver(connectionId)
         let manager = await databaseManager
-        try await Self.requireApproved(operation.scope, as: .server, generation: operation.driverGeneration, manager: manager)
+        try await Self.requireApproved(
+            operation.scope, as: .server, generation: operation.driverGeneration, manager: manager, leased: driver
+        )
         try await manager.trackOperation(sessionId: connectionId) {
             try await driver.createDatabase(CreateDatabaseRequest(name: name, values: options))
         }
@@ -891,10 +905,11 @@ internal actor DatabaseAccessBridge {
         try await ensureConnected(connectionId)
         // Checked on the turn that closes the dropped database's connections, so a stale approval closes none, ends no
         // transaction open on them, and no reconnect lands between the check and the close.
-        let admit = Self.admission(operation.scope, as: .server, generation: operation.driverGeneration, manager: manager)
         let driver = try await MainActor.run { () throws -> DatabaseDriver in
-            try admit()
             guard let driver = manager.driver(for: connectionId) else { throw DatabaseAccessError.notConnected(connectionId) }
+            try Self.admission(
+                operation.scope, as: .server, generation: operation.driverGeneration, manager: manager, leased: driver
+            )()
             MetadataConnectionPool.shared.closeAll(connectionId: connectionId, database: name)
             manager.sessionLanes.close(database: name, for: connectionId)
             return driver
@@ -918,7 +933,9 @@ internal actor DatabaseAccessBridge {
             cancellation: .protectedWrite,
             admit: Self.admission(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
         ) { driver in
-            try await Self.requireApproved(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
+            try await Self.requireApproved(
+                scope, as: .catalog, generation: operation.driverGeneration, manager: manager, leased: driver
+            )
             try await driver.dropSchema(name: name)
         }
         CatalogChangeService.post(
@@ -962,7 +979,9 @@ internal actor DatabaseAccessBridge {
             cancellation: .protectedWrite,
             admit: Self.admission(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
         ) { driver in
-            try await Self.requireApproved(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
+            try await Self.requireApproved(
+                scope, as: .catalog, generation: operation.driverGeneration, manager: manager, leased: driver
+            )
             reach.mark()
             try await before(driver, ownsConnection)
             return try await DataWriteExecutor.run(plan, commitMode: .automatic, on: driver, context: context)
@@ -1007,7 +1026,9 @@ internal actor DatabaseAccessBridge {
         // An aborted transaction refuses everything but a rollback, the SET included, and runs no name to misroute.
         let admit = Self.admission(scope, as: .statement, generation: approvedGeneration, manager: manager)
         let pinned: @Sendable (DatabaseDriver) async throws -> Output = { driver in
-            try await Self.requireApproved(scope, as: .statement, generation: approvedGeneration, manager: manager)
+            try await Self.requireApproved(
+                scope, as: .statement, generation: approvedGeneration, manager: manager, leased: driver
+            )
             if let approvedSchema, let switchable = driver as? SchemaSwitchable,
                await driver.sessionTransactionState() != .abortedTransaction {
                 try await switchable.switchSchema(to: approvedSchema)

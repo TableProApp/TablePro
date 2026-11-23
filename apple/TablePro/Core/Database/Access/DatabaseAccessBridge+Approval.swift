@@ -31,28 +31,36 @@ extension DatabaseAccessBridge {
         case server
     }
 
-    // A reconnect or a replaced session since the approval runs nothing. A fixed engine is never pinned, so a database
-    // the approval took from its driver's report has to be the one it reports still. A switching engine pins a named
-    // database, and nothing pins none, so a driver a pin, a switch or a statement moved to a database since an approval
-    // naming none would take the work there; where a statement may have moved it is unknown, and refused too.
+    // A reconnect or a replaced session since the approval runs nothing. A fixed engine is never pinned, so the database
+    // an approval took from its driver's report has to be the one the session records, and once a driver is leased,
+    // the one that driver reports: a pooled connection dials the configuration again, which can now resolve elsewhere.
+    // A switching engine pins a named database, and nothing pins none, so a driver a pin, a switch or a statement moved
+    // to a database since an approval naming none would take the work there; where a statement may have moved it is
+    // unknown, and refused too.
     nonisolated static func requireApproved(
         _ scope: DatabaseScope,
         as kind: ApprovedScopeKind,
         generation: UUID?,
-        manager: DatabaseManager
+        manager: DatabaseManager,
+        leased driver: DatabaseDriver? = nil
     ) async throws {
-        try await MainActor.run { try admission(scope, as: kind, generation: generation, manager: manager)() }
+        try await MainActor.run {
+            try admission(scope, as: kind, generation: generation, manager: manager, leased: driver)()
+        }
     }
 
-    // The same check for a lease to run before it touches the connection; the body checks again after the pin.
+    // The same check for a lease to run before it touches the connection; the body checks again with the driver it got.
     nonisolated static func admission(
         _ scope: DatabaseScope,
         as kind: ApprovedScopeKind,
         generation: UUID?,
-        manager: DatabaseManager
+        manager: DatabaseManager,
+        leased driver: DatabaseDriver? = nil
     ) -> ScopedDriverAdmission {
         {
-            if let refusal = approvalRefusal(scope, as: kind, generation: generation, manager: manager) { throw refusal }
+            if let refusal = approvalRefusal(scope, as: kind, generation: generation, manager: manager, leased: driver) {
+                throw refusal
+            }
         }
     }
 
@@ -61,20 +69,22 @@ extension DatabaseAccessBridge {
         _ scope: DatabaseScope,
         as kind: ApprovedScopeKind,
         generation: UUID?,
-        manager: DatabaseManager
+        manager: DatabaseManager,
+        leased driver: DatabaseDriver?
     ) -> DatabaseAccessError? {
         guard let session = manager.session(for: scope.connectionId), session.driverGeneration == generation else {
             return connectionChanged
         }
-        switch (kind, manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type)) {
-        case (.statement, false), (.server, false):
-            let holds = scope.namedDatabase.map { $0 == session.openedDatabase } ?? true
-            return holds ? nil : connectionChanged
-        case (.statement, true), (.catalog, true):
+        guard manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type) else {
+            let reported = driver.map(ConnectionSession.openedDatabase(reportedBy:)) ?? session.openedDatabase
+            return scope.namedDatabase == reported ? nil : connectionChanged
+        }
+        switch kind {
+        case .statement, .catalog:
             guard scope.namedDatabase == nil else { return nil }
             guard let executing = manager.executionDatabase(for: scope.connectionId) else { return databaseUnknown }
             return executing.isEmpty ? nil : connectionChanged
-        case (.catalog, false), (.server, true):
+        case .server:
             return nil
         }
     }

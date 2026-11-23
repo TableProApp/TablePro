@@ -23,12 +23,13 @@ struct SessionTransactionTrackerTests {
         var connection = TestFixtures.makeConnection(database: database, type: type)
         connection.commitMode = commitMode
         let driver = TransactionScriptedDriver()
+        // A driver that reports its database, as SQLite's does, and what a connect captures from it.
+        driver.reportedDatabase = database
         var session = ConnectionSession(
             connection: connection,
             driver: PluginDriverAdapter(connection: connection, pluginDriver: driver)
         )
         session.browseDatabase = database
-        // What a connect captures from a driver that reports its database, as SQLite's does.
         session.openedDatabase = database
         session.status = .connected
         DatabaseManager.shared.injectSession(session, for: connection.id)
@@ -757,6 +758,15 @@ private final class TransactionScriptedDriver: PluginDriverStub, @unchecked Send
     }
 
     var statements: [String] { lock.withLock { sent } }
+
+    private var reported: String?
+
+    var reportedDatabase: String? {
+        get { lock.withLock { reported } }
+        set { lock.withLock { reported = newValue } }
+    }
+
+    var currentDatabase: String? { reportedDatabase }
 
     var failsNextStatementAborting: Bool {
         get { lock.withLock { abortsNext } }
