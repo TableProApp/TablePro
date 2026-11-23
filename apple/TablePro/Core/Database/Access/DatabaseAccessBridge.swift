@@ -294,7 +294,7 @@ internal actor DatabaseAccessBridge {
         if let refusal = databaseRefusal(named: database, for: resolved, manager: manager) {
             throw DatabaseAccessError.invalidArgument(refusal)
         }
-        let scope = executingScope(resolved, manager: manager)
+        let scope = try executingScope(resolved, manager: manager)
         guard use != .catalog, let session = manager.session(for: connectionId) else { return scope }
         let databaseType = session.connection.type
         // A fixed engine reaches only the database its driver reported, so with no report the call names none.
@@ -318,13 +318,14 @@ internal actor DatabaseAccessBridge {
     }
 
     // With no database browsed, a switching engine's driver still executes wherever a pin last moved it, so a scope
-    // naming none names that database and is pinned to it.
+    // naming none names that database and is pinned to it. Where a statement may have moved it, nothing can be named.
     @MainActor
-    private static func executingScope(_ scope: DatabaseScope, manager: DatabaseManager) -> DatabaseScope {
+    private static func executingScope(_ scope: DatabaseScope, manager: DatabaseManager) throws -> DatabaseScope {
         guard scope.isServerScoped, let session = manager.session(for: scope.connectionId),
-              manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type),
-              let executing = manager.executionDatabase(for: scope.connectionId), !executing.isEmpty
+              manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type)
         else { return scope }
+        guard let executing = manager.executionDatabase(for: scope.connectionId) else { throw databaseUnknown }
+        guard !executing.isEmpty else { return scope }
         return DatabaseScope(connectionId: scope.connectionId, database: executing, schema: scope.schema)
     }
 
@@ -457,6 +458,10 @@ internal actor DatabaseAccessBridge {
         .forbidden(String(localized: "The connection changed after this was approved, so nothing ran. Ask again."))
     }
 
+    static var databaseUnknown: DatabaseAccessError {
+        .invalidArgument(String(localized: "A statement may have moved this connection to another database. Pass database."))
+    }
+
     // Read by whoever builds an approval, so the approval holds only on the connect its scope was resolved on.
     internal func driverGeneration(of connectionId: UUID) async -> UUID? {
         let manager = await databaseManager
@@ -475,28 +480,31 @@ internal actor DatabaseAccessBridge {
 
     // A reconnect or a replaced session since the approval runs nothing. A fixed engine is never pinned, so a database
     // the approval took from its driver's report has to be the one it reports still. A switching engine pins a named
-    // database, and nothing pins none, so a driver a pin or a switch moved to a database since an approval naming none
-    // would take the work there.
+    // database, and nothing pins none, so a driver a pin, a switch or a statement moved to a database since an approval
+    // naming none would take the work there; where a statement may have moved it is unknown, and refused too.
     nonisolated static func requireApproved(
         _ scope: DatabaseScope,
         as kind: ApprovedScopeKind,
         generation: UUID?,
         manager: DatabaseManager
     ) async throws {
-        let unchanged = await MainActor.run { () -> Bool in
+        let refusal = await MainActor.run { () -> DatabaseAccessError? in
             guard let session = manager.session(for: scope.connectionId), session.driverGeneration == generation else {
-                return false
+                return connectionChanged
             }
             switch (kind, manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type)) {
             case (.statement, false), (.server, false):
-                return scope.namedDatabase.map { $0 == session.openedDatabase } ?? true
+                let holds = scope.namedDatabase.map { $0 == session.openedDatabase } ?? true
+                return holds ? nil : connectionChanged
             case (.statement, true), (.catalog, true):
-                return scope.namedDatabase != nil || (manager.executionDatabase(for: scope.connectionId) ?? "").isEmpty
+                guard scope.namedDatabase == nil else { return nil }
+                guard let executing = manager.executionDatabase(for: scope.connectionId) else { return databaseUnknown }
+                return executing.isEmpty ? nil : connectionChanged
             case (.catalog, false), (.server, true):
-                return true
+                return nil
             }
         }
-        guard unchanged else { throw connectionChanged }
+        if let refusal { throw refusal }
     }
 
     // MARK: - Run

@@ -318,6 +318,34 @@ extension GlobalStateSuites {
             #expect(driver.received == ["REINDEX"])
         }
 
+        // MARK: - A statement that moves the connection
+
+        @Test("After USE production, a DELETE naming no database never runs, and one naming production does")
+        func deleteAfterAUseNeedsADatabase() async throws {
+            var connection = WritePolicyRig.connection(
+                type: .mysql, externalAccess: .readWrite, aiPolicy: .alwaysAllow, safeMode: .silent
+            )
+            connection.database = ""
+            let rig = WritePolicyRig(connection: connection, prompts: WritePolicyPrompts(.approveAll), live: true)
+            defer { rig.tearDown() }
+            let delete = "DELETE FROM orders WHERE id = 1"
+
+            let use = try await handle(ExecuteQueryTool.name, ["query": .string("USE production")], on: rig)
+            let unnamed = try await handle(ExecuteQueryTool.name, ["query": .string(delete)], on: rig)
+
+            #expect(use.payload["isError"]?.boolValue != true, "\(Self.errorText(use))")
+            #expect(unnamed.payload["isError"]?.boolValue == true)
+            #expect(Self.errorText(unnamed).contains("Pass database"))
+            #expect(!rig.driver.received.contains(delete))
+
+            let named = try await handle(
+                ExecuteQueryTool.name, ["query": .string(delete), "database": .string("production")], on: rig
+            )
+
+            #expect(named.payload["isError"]?.boolValue != true, "\(Self.errorText(named))")
+            #expect(rig.driver.received.contains(delete))
+        }
+
         // MARK: - create_database
 
         private func elicitedMessage(

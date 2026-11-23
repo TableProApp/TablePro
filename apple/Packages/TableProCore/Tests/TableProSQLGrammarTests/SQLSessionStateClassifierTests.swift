@@ -406,4 +406,36 @@ struct SQLSessionStateClassifierTests {
     func quickCheckKeepsEveryRule(sql: String, dialect: SQLSessionDialect) {
         #expect(SQLSessionStateQuickCheck.mayChangeSession(sql, dialect: dialect))
     }
+
+    // MARK: - Current database
+
+    private func movesDatabase(_ sql: String, _ dialect: SQLSessionDialect) -> Bool {
+        SQLSessionStateClassifier.mayChangeDatabase(
+            ofStatements: [sql], dialect: dialect, grammar: Self.grammar(Self.engines[dialect] ?? "")
+        )
+    }
+
+    @Test("USE moves a MySQL or SQL Server session to another database, in any spelling the server reads", arguments: [
+        ("USE production", SQLSessionDialect.mySQL),
+        ("use `production`;", .mySQL),
+        ("SELECT 1; USE production", .mySQL),
+        ("/*!40000 USE production */", .mySQL),
+        ("\\u production", .mySQL),
+        ("USE [production]", .sqlServer),
+        ("SELECT 1\nUSE production", .sqlServer),
+    ])
+    func useMovesTheDatabase(sql: String, dialect: SQLSessionDialect) {
+        #expect(movesDatabase(sql, dialect))
+    }
+
+    @Test("A statement that only names a database, or an engine whose session cannot move, moves nothing", arguments: [
+        ("SELECT * FROM production.orders", SQLSessionDialect.mySQL),
+        ("SELECT 'use production'", .mySQL),
+        ("DELETE FROM orders WHERE user_id = 1", .mySQL),
+        ("USE production", .postgres),
+        ("USE production", .sqlite),
+    ])
+    func otherStatementsMoveNothing(sql: String, dialect: SQLSessionDialect) {
+        #expect(!movesDatabase(sql, dialect))
+    }
 }

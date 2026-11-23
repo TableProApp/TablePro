@@ -13,6 +13,7 @@ private final class CachedTargetDriver: PluginDriverStub, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [String] = []
     private var state: PluginSessionTransactionState = .idle
+    private var reported: String?
 
     var events: [String] { lock.withLock { recorded } }
 
@@ -22,6 +23,13 @@ private final class CachedTargetDriver: PluginDriverStub, @unchecked Sendable {
     }
 
     func sessionTransactionState() async -> PluginSessionTransactionState { transactionState }
+
+    var reportedDatabase: String? {
+        get { lock.withLock { reported } }
+        set { lock.withLock { reported = newValue } }
+    }
+
+    var currentDatabase: String? { reportedDatabase }
 
     var supportsSchemas: Bool { true }
     var currentSchema: String? { "public" }
@@ -464,5 +472,38 @@ struct ApprovedTargetTests {
         #expect(scope.isServerScoped)
         #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
         #expect(!driver.events.contains { $0.hasPrefix("DELETE") })
+    }
+
+    @Test("A DELETE approved naming no database is refused once a USE may have moved the connection")
+    func useAfterANoDatabaseApprovalRefuses() async throws {
+        let (id, driver) = session(.mysql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DELETE FROM orders WHERE id = 1", maxRows: 10)
+        let operation = try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .mysql)
+
+        _ = try await bridge.runStatement(scope: scope, query: "USE production", maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.databaseUnknown.message)
+        #expect(!driver.events.contains { $0.hasPrefix("DELETE") })
+    }
+
+    @Test("After a USE on a driver that reports its database, a scope naming none names the database it reports")
+    func reportedDatabaseAnswersAfterAUse() async throws {
+        let (id, driver) = session(.mysql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let unnamed = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+
+        driver.reportedDatabase = "staging"
+        _ = try await bridge.runStatement(scope: unnamed, query: "USE staging", maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+
+        #expect(unnamed.isServerScoped)
+        #expect(scope.database == "staging")
     }
 }

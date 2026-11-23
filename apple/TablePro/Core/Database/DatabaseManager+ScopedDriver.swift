@@ -37,10 +37,11 @@ private enum TableReadTurn: Sendable {
     case moved(ScopedDriverRoute)
 }
 
-// Weak and compared by identity: a reconnect's driver is not the one a pin moved.
+// Weak and compared by identity: a reconnect's driver is not the one a pin moved. A nil database is unknown: a
+// statement may have moved the driver where no pin can see.
 internal struct ExecutionPosition {
     weak var driver: AnyObject?
-    let database: String
+    let database: String?
 }
 
 extension DatabaseManager {
@@ -821,17 +822,17 @@ extension DatabaseManager {
         try await schemaDriver.switchSchemaIfNeeded(to: schema)
     }
 
-    // Where the session's driver executes. A pin moves it without moving the browse cursor; one no pin has moved is
-    // where its connect, restore or switch put it, which is the browse cursor.
+    // Where the session's driver executes, nil when unknown. A pin moves it without moving the browse cursor; one no pin
+    // or statement has moved is where its connect, restore or switch put it, which is the browse cursor. After a
+    // statement that may have moved it, a driver that reports its database answers.
     func executionDatabase(for connectionId: UUID) -> String? {
         guard let session = activeSessions[connectionId] else { return nil }
-        if let position = executionPositions[connectionId], let driver = session.driver, position.driver === driver {
-            return position.database
-        }
-        return session.resolvedBrowseDatabase
+        guard let position = executionPositions[connectionId], let driver = session.driver, position.driver === driver
+        else { return session.resolvedBrowseDatabase }
+        return position.database ?? (driver as? DatabaseReporting)?.currentDatabase
     }
 
-    func noteExecutionDatabase(_ database: String, on driver: DatabaseDriver, for connectionId: UUID) {
+    func noteExecutionDatabase(_ database: String?, on driver: DatabaseDriver, for connectionId: UUID) {
         guard activeSessions[connectionId]?.driver === driver else { return }
         executionPositions[connectionId] = ExecutionPosition(driver: driver, database: database)
     }

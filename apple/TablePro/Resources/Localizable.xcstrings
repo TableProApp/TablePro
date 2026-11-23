@@ -17754,6 +17754,9 @@
     "A statement is still running in the transaction, so it cannot be committed now." : {
 
     },
+    "A statement may have moved this connection to another database. Pass database." : {
+
+    },
     "A statement on '%1$@' matched %2$d rows instead of %3$d, so nothing was saved." : {
       "localizations" : {
         "fr" : {
