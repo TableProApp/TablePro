@@ -761,6 +761,15 @@ struct TableRows: Sendable {
         policy: MaskingPolicy, table: String?
     ) -> DocumentExportSnapshot? {
         guard let documents, documents.count == count else { return nil }
+        // Nothing can mask a field, so each document is kept as read instead of rebuilt field by field.
+        guard !masks.isEmpty || !policy.isEmpty else {
+            return DocumentExportSnapshot(
+                document: documents[index],
+                values: values,
+                absentColumns: clamp(absent, toCount: columns.count),
+                maskedFields: []
+            )
+        }
         return DocumentExportSnapshot(
             document: ExportDocumentMasking.document(
                 documents[index], columns: columns, masks: masks, policy: policy, table: table, row: rawValues

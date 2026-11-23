@@ -6,16 +6,18 @@
 import CryptoKit
 import Foundation
 import TableProPluginKit
+import TableProTabularIO
+import TableProWireIO
 import Testing
+import zlib
 
 struct XLSXWriterStreamingTests {
     private static let columns = ["id", "name", "score", "blob", "note"]
     private static let columnTypeNames = ["int4", "text", "float8", "bytea", "varchar(8)"]
 
-    // SHA-256 of the workbook below; every flush threshold has to produce it.
+    // SHA-256 of the workbook below as the stored ZIP TablePro wrote before sheets were deflated; every flush
+    // threshold has to produce entries that rebuild it.
     private static let workbookDigest = "0e3615d4591e87affd46978b977d3122f9cf93f459873835a08080ae9048f333"
-
-    private static let closingTags = "</sheetData></worksheet>".utf8.count
 
     private func temporaryURL(_ name: String) -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("xlsx-streaming-\(UUID().uuidString)-\(name)")
@@ -50,8 +52,56 @@ struct XLSXWriterStreamingTests {
         try writer.finishSheet()
     }
 
+    // The stored ZIP the writer used to write, rebuilt from the deflated workbook's entries: same order, same
+    // headers, method 0.
+    private func storedArchive(of contents: XLSXArchiveContents) -> Data {
+        func uint16(_ value: Int) -> [UInt8] { [UInt8(value & 0xFF), UInt8(value >> 8 & 0xFF)] }
+        func uint32(_ value: UInt32) -> [UInt8] { (0..<4).map { UInt8(value >> (8 * $0) & 0xFF) } }
+        var archive = Data()
+        var directory = Data()
+        for entry in contents.entries {
+            let path = Array(entry.path.utf8)
+            let crc = crc32(of: entry.bytes)
+            let size = uint32(UInt32(entry.bytes.count))
+            let offset = UInt32(archive.count)
+            archive.append(contentsOf: [0x50, 0x4B, 0x03, 0x04] + uint16(10) + uint16(0) + uint16(0) + uint16(0) + uint16(0))
+            archive.append(contentsOf: uint32(crc) + size + size + uint16(path.count) + uint16(0) + path)
+            archive.append(entry.bytes)
+            directory.append(contentsOf: [0x50, 0x4B, 0x01, 0x02] + uint16(20) + uint16(10) + uint16(0) + uint16(0))
+            directory.append(contentsOf: uint16(0) + uint16(0) + uint32(crc) + size + size + uint16(path.count))
+            directory.append(contentsOf: uint16(0) + uint16(0) + uint16(0) + uint16(0) + uint32(0) + uint32(offset) + path)
+        }
+        let directoryOffset = UInt32(archive.count)
+        archive.append(directory)
+        archive.append(contentsOf: [0x50, 0x4B, 0x05, 0x06] + uint16(0) + uint16(0))
+        archive.append(contentsOf: uint16(contents.entries.count) + uint16(contents.entries.count))
+        archive.append(contentsOf: uint32(UInt32(directory.count)) + uint32(directoryOffset) + uint16(0))
+        return archive
+    }
+
+    private func crc32(of data: Data) -> UInt32 {
+        data.withUnsafeBytes { buffer in
+            guard let base = buffer.baseAddress, !buffer.isEmpty else { return 0 }
+            return UInt32(zlib.crc32(0, base.assumingMemoryBound(to: UInt8.self), uInt(buffer.count)))
+        }
+    }
+
+    // Each local header's CRC-32 (offset 14) and method (offset 8), read from the file itself.
+    private func localHeaders(of data: Data) throws -> [String: (method: UInt16, crc: UInt32)] {
+        let archive = try ZipArchive(bytes: data)
+        let bytes = [UInt8](data)
+        var headers: [String: (method: UInt16, crc: UInt32)] = [:]
+        for entry in archive.entries.values {
+            let start = entry.localHeaderOffset
+            let method = UInt16(bytes[start + 8]) | UInt16(bytes[start + 9]) << 8
+            let crc = (0..<4).reduce(UInt32(0)) { $0 | UInt32(bytes[start + 14 + $1]) << (8 * $1) }
+            headers[entry.path] = (method, crc)
+        }
+        return headers
+    }
+
     @Test(
-        "The workbook keeps every byte it had when sheets were built in memory",
+        "The workbook keeps every byte it had when sheets were stored, in deflated entries",
         arguments: [0, 64, XLSXWriter.defaultFlushThreshold]
     )
     func workbookBytesAreUnchanged(flushThreshold: Int) async throws {
@@ -63,28 +113,85 @@ struct XLSXWriterStreamingTests {
         try buildWorkbook(writer)
         try await writer.write(to: destination)
 
-        let digest = SHA256.hash(data: try Data(contentsOf: destination)).map { String(format: "%02x", $0) }.joined()
+        let contents = try XLSXArchiveContents(contentsOf: destination)
+        let digest = SHA256.hash(data: storedArchive(of: contents)).map { String(format: "%02x", $0) }.joined()
         #expect(digest == Self.workbookDigest)
     }
 
-    @Test("A sheet holds at most one flush of XML in memory while its rows arrive")
+    @Test("Every entry is deflated, and its header's CRC is the CRC of what it inflates to")
+    func entriesAreDeflatedWithTheirCRC() async throws {
+        let destination = temporaryURL("workbook.xlsx")
+        defer { try? FileManager.default.removeItem(at: destination) }
+        let writer = XLSXWriter()
+        try buildWorkbook(writer)
+        try await writer.write(to: destination)
+
+        let data = try Data(contentsOf: destination)
+        let contents = try XLSXArchiveContents(data)
+        let headers = try localHeaders(of: data)
+        #expect(contents.entries.first?.path == "[Content_Types].xml")
+        #expect(contents.entries.count == 9)
+        for entry in contents.entries {
+            #expect(entry.method == ZipArchive.deflateMethod, "\(entry.path)")
+            #expect(headers[entry.path]?.method == ZipArchive.deflateMethod, "\(entry.path)")
+            #expect(headers[entry.path]?.crc == crc32(of: entry.bytes), "\(entry.path)")
+        }
+        let emptySheet = try contents.xml(of: "xl/worksheets/sheet4.xml")
+        #expect(emptySheet.hasSuffix("<sheetData></sheetData></worksheet>"))
+    }
+
+    @Test("A sheet's XML reaches its file, deflated, while its rows arrive")
     func sheetXMLReachesItsFileAsRowsArrive() throws {
         let parts = temporaryURL("parts")
         let threshold = 4_096
         let writer = XLSXWriter(partsDirectory: parts, flushThreshold: threshold)
         try writer.beginSheet(name: "t", columns: ["a", "b"], includeHeader: true, convertNullToEmpty: true)
-        try writer.addRows((1...10_000).map { [.text(String($0)), .text("value \($0)")] }, convertNullToEmpty: true)
+        try writer.addRows((1...50_000).map { [.text(String($0)), .text("value \($0)")] }, convertNullToEmpty: true)
 
         let sheet = parts.appendingPathComponent("sheet1.xml")
         let writtenBeforeFinishing = try fileSize(sheet)
         try writer.finishSheet()
         let sheetSize = try fileSize(sheet)
 
+        // zlib holds back at most a block of output, which this sheet's size dwarfs.
         #expect(sheetSize > 100 * threshold)
-        #expect(sheetSize - writtenBeforeFinishing < threshold + Self.closingTags)
+        #expect(sheetSize - writtenBeforeFinishing < sheetSize / 4)
     }
 
-    @Test("A workbook past the ZIP size limit fails while its rows are still arriving")
+    @Test("A sheet of one long value repeated reads back under the import's expansion limit")
+    func repetitiveSheetPassesTheImportGuard() async throws {
+        let destination = temporaryURL("repeated.xlsx")
+        defer { try? FileManager.default.removeItem(at: destination) }
+        let writer = XLSXWriter()
+        try writer.beginSheet(name: "t", columns: ["v"], includeHeader: true, convertNullToEmpty: true)
+        let row: [PluginCellValue] = [.text(String(repeating: "x", count: 64 * 1_024))]
+        for _ in 0..<13 {
+            try writer.addRows(Array(repeating: row, count: 100), convertNullToEmpty: true)
+        }
+        try writer.finishSheet()
+        try await writer.write(to: destination)
+
+        let archive = try ZipArchive(contentsOf: destination)
+        let entry = try #require(archive.entry(named: "xl/worksheets/sheet1.xml"))
+        #expect(entry.uncompressedSize > 80 << 20)
+        let produced = try archive.withReader(for: entry, budget: .standard) { reader in
+            let buffer = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: 1 << 20)
+            defer { buffer.deallocate() }
+            var total = 0
+            while true {
+                let count = try reader.read(into: buffer)
+                guard count > 0 else { break }
+                total += count
+            }
+            return total
+        }
+        #expect(produced == entry.uncompressedSize)
+
+        let sheet = try XLSXImportSheet.read(at: destination, hasHeaderRow: true, isCancelled: { false })
+        #expect(sheet.rowCount == 1_300)
+    }
+
+    @Test("A sheet past the ZIP size limit fails while its rows are still arriving")
     func oversizedWorkbookFailsEarly() throws {
         let writer = XLSXWriter(flushThreshold: 0, maximumArchiveSize: 20_000)
         try writer.beginSheet(name: "t", columns: ["a"], includeHeader: false, convertNullToEmpty: true)

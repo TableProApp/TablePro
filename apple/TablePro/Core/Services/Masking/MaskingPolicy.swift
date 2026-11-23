@@ -21,6 +21,7 @@ struct MaskingPolicy: Equatable, Sendable {
     // The first rule that matches wins. Without a table, as for most query results, a `table.column`
     // pattern matches by its column part alone, so an unknown source masks more rather than less.
     func style(table: String?, column: String, typeName: String?) -> MaskingStyle? {
+        guard !rules.isEmpty else { return nil }
         for rule in rules where Self.matches(rule, table: table, column: column, typeName: typeName) {
             return rule.style
         }

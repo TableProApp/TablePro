@@ -5,11 +5,12 @@
 
 import Foundation
 import os
+import TableProGzip
 import TableProPluginKit
 import zlib
 
-// Each sheet's XML goes to its own file as rows arrive, and `write(to:)` copies those files into a
-// stored ZIP, so no sheet is ever held in memory whole. Strings are inline (`t="inlineStr"`), so
+// Each sheet's XML is deflated into its own file as rows arrive, and `write(to:)` copies those files
+// into the ZIP, so no sheet is ever held in memory whole. Strings are inline (`t="inlineStr"`), so
 // there is no shared string table to grow with the data either.
 nonisolated final class XLSXWriter {
     static let defaultFlushThreshold = 1 << 20
@@ -36,9 +37,10 @@ nonisolated final class XLSXWriter {
     private static let maximumSheetNameLength = 31
     private var takenSheetNames: Set<String> = []
 
-    private var columnLetterCache: [String] = []
+    private var columnLetterCache: [[UInt8]] = []
 
     private var currentRowNumber: Int = 0
+    private var rowDigits: [UInt8] = []
 
     enum CellValue: Equatable {
         case string(String)
@@ -56,7 +58,8 @@ nonisolated final class XLSXWriter {
     private let bitsAreStrings: Bool
 
     // A sheet holds at most `flushThreshold` bytes plus one row in memory before they go to its file.
-    // `maximumArchiveSize` is the ZIP's 4 GB offset limit, checked as the sheets grow.
+    // `maximumArchiveSize` is the ZIP's 4 GB limit on a sheet's XML and on the archive's offsets,
+    // checked as the sheets grow.
     init(
         databaseTypeId: String = "",
         partsDirectory: URL? = nil,
@@ -99,22 +102,28 @@ nonisolated final class XLSXWriter {
         currentColumnNumbers = columnTypeNames.map { ColumnNumbers(typeName: $0, bitsAreStrings: bitsAreStrings) }
         currentRowNumber = 0
 
-        let maxCols = max(columns.count, columnLetterCache.count)
-        if maxCols > columnLetterCache.count {
-            for i in columnLetterCache.count..<maxCols {
-                columnLetterCache.append(columnLetter(i))
-            }
+        while columnLetterCache.count < columns.count {
+            columnLetterCache.append(XLSXRowEncoder.columnLetters(columnLetterCache.count))
         }
 
-        let part = try XLSXSheetPart(name: sheetName, fileURL: try partURL(forSheet: sheets.count + 1))
+        let part = try XLSXSheetPart(
+            name: sheetName,
+            fileURL: try partURL(forSheet: sheets.count + 1),
+            bufferCapacity: flushThreshold
+        )
         sheets.append(part)
         sheetBytesInArchive += ZipBuilder.localHeaderSize(path: Self.sheetPath(sheets.count))
-        part.pending.appendUTF8("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n")
-        part.pending.appendUTF8("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>")
+        part.pending.append(contentsOf: XLSXRowEncoder.xmlDeclaration)
+        part.pending.append(contentsOf: XLSXRowEncoder.worksheetOpen)
 
         if includeHeader {
-            let headerCells: [CellValue] = columns.map { .string($0) }
-            appendRow(headerCells, isHeader: true, to: &part.pending)
+            beginRow(in: part)
+            for (index, name) in columns.enumerated() {
+                XLSXRowEncoder.appendStringCell(
+                    name, column: columnLetterCache[index], rowDigits: rowDigits, isHeader: true, to: &part.pending
+                )
+            }
+            XLSXRowEncoder.appendRowClose(to: &part.pending)
         }
         try flush(part)
     }
@@ -124,23 +133,45 @@ nonisolated final class XLSXWriter {
         guard let part = sheets.last, part.isOpen else { return }
 
         for row in rows {
-            autoreleasepool {
-                let cellRow: [CellValue] = row.enumerated().map { index, value -> CellValue in
-                    switch value {
-                    case .null:
-                        return convertNullToEmpty ? .empty : .string("NULL")
-                    case .bytes(let data):
-                        // Zero bytes are `0x`, as in CSV: an empty cell reads back as NULL.
-                        return .string("0x" + PluginHexText.uppercase(data))
-                    case .text(let val):
-                        let numbers = index < currentColumnNumbers.count ? currentColumnNumbers[index] : .untyped
-                        return Self.cell(forText: val, numbers: numbers)
-                    }
-                }
-                appendRow(cellRow, isHeader: false, to: &part.pending)
+            beginRow(in: part)
+            while columnLetterCache.count < row.count {
+                columnLetterCache.append(XLSXRowEncoder.columnLetters(columnLetterCache.count))
             }
+            for (index, value) in row.enumerated() {
+                let cell: CellValue
+                switch value {
+                case .null:
+                    cell = convertNullToEmpty ? .empty : .string("NULL")
+                case .bytes(let data):
+                    // Zero bytes are `0x`, as in CSV: an empty cell reads back as NULL.
+                    cell = .string("0x" + PluginHexText.uppercase(data))
+                case .text(let text):
+                    let numbers = index < currentColumnNumbers.count ? currentColumnNumbers[index] : .untyped
+                    cell = Self.cell(forText: text, numbers: numbers)
+                }
+                switch cell {
+                case .string(let text):
+                    XLSXRowEncoder.appendStringCell(
+                        text, column: columnLetterCache[index], rowDigits: rowDigits, isHeader: false,
+                        to: &part.pending
+                    )
+                case .number(let literal):
+                    XLSXRowEncoder.appendNumberCell(
+                        literal, column: columnLetterCache[index], rowDigits: rowDigits, to: &part.pending
+                    )
+                case .empty:
+                    break
+                }
+            }
+            XLSXRowEncoder.appendRowClose(to: &part.pending)
             try flush(part)
         }
+    }
+
+    private func beginRow(in part: XLSXSheetPart) {
+        currentRowNumber += 1
+        XLSXRowEncoder.decimalDigits(of: currentRowNumber, into: &rowDigits)
+        XLSXRowEncoder.appendRowOpen(rowDigits: rowDigits, to: &part.pending)
     }
 
     // A text column writes text whatever its values look like. A numeric column writes a number
@@ -148,8 +179,11 @@ nonisolated final class XLSXWriter {
     // for a plain decimal of at most 15 digits, so ids, codes and padded values stay text.
     static func cell(forText text: String, numbers: ColumnNumbers) -> CellValue {
         guard !text.isEmpty else { return .empty }
-        guard numbers != .text,
-              !hasPaddingZero(text),
+        guard numbers != .text else { return .string(text) }
+        if let digits = PlainDecimal.digits(of: text) {
+            return cell(forPlainDecimal: text, digits: digits, numbers: numbers)
+        }
+        guard !hasPaddingZero(text),
               let literal = JsonNumberNormalizer.numberLiteral(from: text),
               let value = Double(literal), value.isFinite else {
             return .string(text)
@@ -165,6 +199,23 @@ nonisolated final class XLSXWriter {
             let isPlain = literal == text && !literal.contains("e")
             let digitCount = literal.filter { $0.isNumber }.count
             return isPlain && digitCount <= maximumExactDigits ? .number(literal) : .string(text)
+        @unknown default:
+            return .string(text)
+        }
+    }
+
+    // A plain decimal is already its own number literal, finite and without padding, so the rules
+    // above reduce to digit counts.
+    private static func cell(forPlainDecimal text: String, digits: PlainDecimal, numbers: ColumnNumbers) -> CellValue {
+        switch numbers {
+        case .text:
+            return .string(text)
+        case .approximate:
+            return .number(text)
+        case .exact:
+            return digits.significant <= maximumExactDigits ? .number(text) : .string(text)
+        case .untyped:
+            return digits.total <= maximumExactDigits ? .number(text) : .string(text)
         @unknown default:
             return .string(text)
         }
@@ -186,7 +237,7 @@ nonisolated final class XLSXWriter {
 
     func finishSheet() throws {
         guard let part = sheets.last, part.isOpen else { return }
-        part.pending.appendUTF8("</sheetData></worksheet>")
+        part.pending.append(contentsOf: XLSXRowEncoder.worksheetClose)
         try closeSheet(part)
     }
 
@@ -212,10 +263,12 @@ nonisolated final class XLSXWriter {
         if let part = sheets.last, part.isOpen {
             try closeSheet(part)
         }
-        let entries = archiveEntries()
+        let entries = try archiveEntries()
         let maximumSize = maximumArchiveSize
         let archive = Task.detached(priority: .userInitiated) {
-            var meter = ZipBuilder.Meter(progress: progress, totalBytes: entries.reduce(0) { $0 + $1.size })
+            var meter = ZipBuilder.Meter(
+                progress: progress, totalBytes: entries.reduce(0) { $0 + $1.compressedSize }
+            )
             try ZipBuilder.write(entries, to: url, maximumSize: maximumSize, meter: &meter)
         }
         // A detached task inherits no cancellation, so the caller's is handed on to the copy.
@@ -226,20 +279,22 @@ nonisolated final class XLSXWriter {
         }
     }
 
-    private func archiveEntries() -> [ZipFileEntry] {
+    // `[Content_Types].xml` goes first: it lists the sheets, and type sniffers read the first entry.
+    private func archiveEntries() throws -> [ZipFileEntry] {
         var entries: [ZipFileEntry] = []
 
-        entries.append(ZipFileEntry(path: "[Content_Types].xml", data: contentTypesXML()))
-        entries.append(ZipFileEntry(path: "_rels/.rels", data: relsXML()))
-        entries.append(ZipFileEntry(path: "xl/workbook.xml", data: workbookXML()))
-        entries.append(ZipFileEntry(path: "xl/_rels/workbook.xml.rels", data: workbookRelsXML()))
-        entries.append(ZipFileEntry(path: "xl/styles.xml", data: stylesXML()))
+        entries.append(try ZipFileEntry(path: "[Content_Types].xml", data: contentTypesXML()))
+        entries.append(try ZipFileEntry(path: "_rels/.rels", data: relsXML()))
+        entries.append(try ZipFileEntry(path: "xl/workbook.xml", data: workbookXML()))
+        entries.append(try ZipFileEntry(path: "xl/_rels/workbook.xml.rels", data: workbookRelsXML()))
+        entries.append(try ZipFileEntry(path: "xl/styles.xml", data: stylesXML()))
 
         for (index, sheet) in sheets.enumerated() {
             entries.append(ZipFileEntry(
                 path: Self.sheetPath(index + 1),
                 file: sheet.fileURL,
-                size: sheet.byteCount,
+                compressedSize: sheet.compressedCount,
+                uncompressedSize: sheet.uncompressedCount,
                 crc: sheet.crc
             ))
         }
@@ -304,55 +359,24 @@ nonisolated final class XLSXWriter {
 
     private func flush(_ part: XLSXSheetPart) throws {
         guard part.pending.count >= flushThreshold else { return }
-        try account(writtenBytes: part.writePending())
+        try account(writtenBytes: part.writePending(), by: part)
     }
 
     private func closeSheet(_ part: XLSXSheetPart) throws {
-        try account(writtenBytes: part.close())
+        try account(writtenBytes: part.close(), by: part)
     }
 
-    // The sheets alone already past the limit means `write(to:)` would refuse the archive, so the
-    // export stops now instead of after reading every remaining row.
-    private func account(writtenBytes: Int) throws {
+    // A sheet's XML past the limit, or the sheets alone already past it in the archive, means
+    // `write(to:)` would refuse the archive, so the export stops now instead of after reading every
+    // remaining row.
+    private func account(writtenBytes: Int, by part: XLSXSheetPart) throws {
         sheetBytesInArchive += writtenBytes
-        guard sheetBytesInArchive <= maximumArchiveSize else { throw ZipBuilder.ZipError.fileTooLarge }
+        guard part.uncompressedCount <= maximumArchiveSize, sheetBytesInArchive <= maximumArchiveSize else {
+            throw ZipBuilder.ZipError.fileTooLarge
+        }
     }
 
     // MARK: - Row XML Generation
-
-    private func appendRow(_ cells: [CellValue], isHeader: Bool, to data: inout Data) {
-        currentRowNumber += 1
-        let rowNum = currentRowNumber
-
-        data.appendUTF8("<row r=\"\(rowNum)\">")
-
-        for (colIndex, cell) in cells.enumerated() {
-            let colLetter = colIndex < columnLetterCache.count
-                ? columnLetterCache[colIndex]
-                : columnLetter(colIndex)
-            let cellRef = "\(colLetter)\(rowNum)"
-
-            switch cell {
-            case .string(let value):
-                let space = Self.keepsOuterWhitespace(value) ? " xml:space=\"preserve\"" : ""
-                if isHeader {
-                    data.appendUTF8("<c r=\"\(cellRef)\" t=\"inlineStr\" s=\"1\"><is><t\(space)>")
-                } else {
-                    data.appendUTF8("<c r=\"\(cellRef)\" t=\"inlineStr\"><is><t\(space)>")
-                }
-                data.appendXMLEscaped(value)
-                data.appendUTF8("</t></is></c>")
-            case .number(let value):
-                data.appendUTF8("<c r=\"\(cellRef)\"><v>")
-                data.appendXMLEscaped(value)
-                data.appendUTF8("</v></c>")
-            case .empty:
-                break
-            }
-        }
-
-        data.appendUTF8("</row>")
-    }
 
     // Excel trims a `<t>`'s outer whitespace without it; XlsxWriter's `_xml_inline_string` adds it only in this case.
     static func keepsOuterWhitespace(_ text: String) -> Bool {
@@ -434,18 +458,6 @@ nonisolated final class XLSXWriter {
 
     // MARK: - Helpers
 
-    private func columnLetter(_ index: Int) -> String {
-        var result = ""
-        var n = index
-        repeat {
-            if let scalar = UnicodeScalar(65 + (n % 26)) {
-                result = String(scalar) + result
-            }
-            n = n / 26 - 1
-        } while n >= 0
-        return result
-    }
-
     private func unusedSheetName(for requestedName: String) -> String {
         let base = sanitizeSheetName(requestedName)
         var candidate = base
@@ -485,79 +497,83 @@ nonisolated private extension Data {
     }
 
     mutating func appendXMLEscaped(_ text: String) {
-        for byte in text.utf8 {
-            switch byte {
-            case 0x26: // &
-                append(contentsOf: [0x26, 0x61, 0x6D, 0x70, 0x3B]) // &amp;
-            case 0x3C: // <
-                append(contentsOf: [0x26, 0x6C, 0x74, 0x3B]) // &lt;
-            case 0x3E: // >
-                append(contentsOf: [0x26, 0x67, 0x74, 0x3B]) // &gt;
-            case 0x22: // "
-                append(contentsOf: [0x26, 0x71, 0x75, 0x6F, 0x74, 0x3B]) // &quot;
-            case 0x27: // '
-                append(contentsOf: [0x26, 0x61, 0x70, 0x6F, 0x73, 0x3B]) // &apos;
-            case 0x0D: // A raw CR reads back as LF under XML end-of-line handling
-                append(contentsOf: [0x26, 0x23, 0x31, 0x33, 0x3B]) // &#13;
-            case 0x09, 0x0A: // Tab and LF are allowed in XML 1.0
-                append(byte)
-            case 0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F: // Illegal XML 1.0 control chars
-                break // Strip silently
-            default:
-                append(byte)
-            }
-        }
+        var escaped: [UInt8] = []
+        XLSXRowEncoder.appendXMLEscaped(text, to: &escaped)
+        append(contentsOf: escaped)
     }
 }
 
 // MARK: - Sheet Part
 
+// Level 1: TablePro's own import refuses an entry that inflates past 250 to 1 (`DecompressionBudget.standard`),
+// and zlib's level 1 stays under it on any input, where the default level packs one repeated byte about 620 to 1.
+private let sheetDeflateLevel = GzipDeflater.Level.fastest
+
 nonisolated private final class XLSXSheetPart {
     let name: String
     let fileURL: URL
-    var pending = Data()
+    var pending: [UInt8] = []
     private var handle: FileHandle?
-    private(set) var byteCount = 0
+    private var deflater: GzipDeflater?
+    private(set) var uncompressedCount = 0
+    private(set) var compressedCount = 0
     private(set) var crc: UInt32 = 0
 
     var isOpen: Bool { handle != nil }
 
-    init(name: String, fileURL: URL) throws {
+    init(name: String, fileURL: URL, bufferCapacity: Int) throws {
         self.name = name
         self.fileURL = fileURL
         guard FileManager.default.createFile(atPath: fileURL.path(percentEncoded: false), contents: nil) else {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSURLErrorKey: fileURL])
         }
         handle = try FileHandle(forWritingTo: fileURL)
+        deflater = try GzipDeflater(container: .raw, level: sheetDeflateLevel)
+        pending.reserveCapacity(bufferCapacity + 64 * 1_024)
     }
 
+    // Returns the compressed bytes that reached the file.
     func writePending() throws -> Int {
-        guard let handle, !pending.isEmpty else { return 0 }
-        try handle.write(contentsOf: pending)
-        crc = ZipBuilder.crc32(of: pending, continuing: crc)
-        let written = pending.count
-        byteCount += written
+        guard let handle, let deflater, !pending.isEmpty else { return 0 }
+        var written = 0
+        try pending.withUnsafeBytes { raw in
+            crc = ZipBuilder.crc32(of: raw, continuing: crc)
+            try deflater.deflate(raw) { chunk in
+                try handle.write(contentsOf: chunk)
+                written += chunk.count
+            }
+        }
+        uncompressedCount += pending.count
+        compressedCount += written
         pending.removeAll(keepingCapacity: true)
         return written
     }
 
     func close() throws -> Int {
-        guard let handle else { return 0 }
-        let written = try writePending()
+        guard let handle, let deflater else { return 0 }
+        let pendingWritten = try writePending()
+        var finishWritten = 0
+        try deflater.finish { chunk in
+            try handle.write(contentsOf: chunk)
+            finishWritten += chunk.count
+        }
+        compressedCount += finishWritten
         self.handle = nil
+        self.deflater = nil
         try handle.close()
-        return written
+        return pendingWritten + finishWritten
     }
 
     func closeWithoutWriting() {
         try? handle?.close()
         handle = nil
+        deflater = nil
     }
 }
 
 // MARK: - ZIP File Builder
 
-// A stored (uncompressed) ZIP, written entry by entry. A sheet's bytes are copied from its file.
+// A deflated ZIP (method 8), written entry by entry. A sheet's bytes are copied from its file, already deflated.
 nonisolated private struct ZipFileEntry {
     enum Contents {
         case data(Data)
@@ -566,20 +582,28 @@ nonisolated private struct ZipFileEntry {
 
     let path: String
     let contents: Contents
-    let size: Int
+    let compressedSize: Int
+    let uncompressedSize: Int
     let crc: UInt32
 
-    init(path: String, data: Data) {
+    init(path: String, data: Data) throws {
         self.path = path
-        contents = .data(data)
-        size = data.count
-        crc = ZipBuilder.crc32(of: data)
+        var compressed = Data()
+        let deflater = try GzipDeflater(container: .raw, level: sheetDeflateLevel)
+        let sink: (UnsafeRawBufferPointer) throws -> Void = { compressed.append($0.assumingMemoryBound(to: UInt8.self)) }
+        try data.withUnsafeBytes { try deflater.deflate($0, into: sink) }
+        try deflater.finish(into: sink)
+        contents = .data(compressed)
+        compressedSize = compressed.count
+        uncompressedSize = data.count
+        crc = data.withUnsafeBytes { ZipBuilder.crc32(of: $0) }
     }
 
-    init(path: String, file: URL, size: Int, crc: UInt32) {
+    init(path: String, file: URL, compressedSize: Int, uncompressedSize: Int, crc: UInt32) {
         self.path = path
         contents = .file(file)
-        self.size = size
+        self.compressedSize = compressedSize
+        self.uncompressedSize = uncompressedSize
         self.crc = crc
     }
 }
@@ -600,6 +624,9 @@ nonisolated private enum ZipBuilder {
     }
 
     private static let copyChunkSize = 1 << 20
+    // 2.0 is the version that reads deflate, method 8 (APPNOTE 4.4.3).
+    private static let versionNeeded: UInt16 = 20
+    private static let deflateMethod: UInt16 = 8
 
     // The copy reads no rows, so it checks Stop and reports its bytes itself: iOS expires a background task that stalls.
     struct Meter {
@@ -643,11 +670,11 @@ nonisolated private enum ZipBuilder {
         offsets.reserveCapacity(entries.count)
         var offset = 0
         for entry in entries {
-            guard offset <= maximumSize, entry.size <= maximumSize else {
+            guard offset <= maximumSize, entry.compressedSize <= maximumSize, entry.uncompressedSize <= maximumSize else {
                 throw ZipError.fileTooLarge
             }
             offsets.append(offset)
-            offset += localHeaderSize(path: entry.path) + entry.size
+            offset += localHeaderSize(path: entry.path) + entry.compressedSize
         }
         guard offset <= maximumSize else {
             throw ZipError.fileTooLarge
@@ -667,14 +694,14 @@ nonisolated private enum ZipBuilder {
 
                 var header = Data()
                 header.append(contentsOf: [0x50, 0x4B, 0x03, 0x04])
-                header.appendUInt16(10)
+                header.appendUInt16(versionNeeded)
                 header.appendUInt16(0)
-                header.appendUInt16(0)
+                header.appendUInt16(deflateMethod)
                 header.appendUInt16(0)
                 header.appendUInt16(0)
                 header.appendUInt32(entry.crc)
-                header.appendUInt32(UInt32(entry.size))
-                header.appendUInt32(UInt32(entry.size))
+                header.appendUInt32(UInt32(entry.compressedSize))
+                header.appendUInt32(UInt32(entry.uncompressedSize))
                 header.appendUInt16(UInt16(pathData.count))
                 header.appendUInt16(0)
                 header.append(pathData)
@@ -682,15 +709,15 @@ nonisolated private enum ZipBuilder {
                 try writeContents(of: entry, to: handle, meter: &meter)
 
                 centralDirectory.append(contentsOf: [0x50, 0x4B, 0x01, 0x02])
-                centralDirectory.appendUInt16(20)
-                centralDirectory.appendUInt16(10)
+                centralDirectory.appendUInt16(versionNeeded)
+                centralDirectory.appendUInt16(versionNeeded)
                 centralDirectory.appendUInt16(0)
-                centralDirectory.appendUInt16(0)
+                centralDirectory.appendUInt16(deflateMethod)
                 centralDirectory.appendUInt16(0)
                 centralDirectory.appendUInt16(0)
                 centralDirectory.appendUInt32(entry.crc)
-                centralDirectory.appendUInt32(UInt32(entry.size))
-                centralDirectory.appendUInt32(UInt32(entry.size))
+                centralDirectory.appendUInt32(UInt32(entry.compressedSize))
+                centralDirectory.appendUInt32(UInt32(entry.uncompressedSize))
                 centralDirectory.appendUInt16(UInt16(pathData.count))
                 centralDirectory.appendUInt16(0)
                 centralDirectory.appendUInt16(0)
@@ -744,17 +771,15 @@ nonisolated private enum ZipBuilder {
                 meter.didWrite(chunk.count)
             }
             // The header already promised this size and CRC.
-            guard copied == entry.size else {
+            guard copied == entry.compressedSize else {
                 throw CocoaError(.fileReadCorruptFile, userInfo: [NSURLErrorKey: url])
             }
         }
     }
 
-    static func crc32(of data: Data, continuing crc: UInt32 = 0) -> UInt32 {
-        data.withUnsafeBytes { buffer in
-            guard let ptr = buffer.baseAddress, !buffer.isEmpty else { return crc }
-            return UInt32(zlib.crc32(uLong(crc), ptr.assumingMemoryBound(to: UInt8.self), uInt(buffer.count)))
-        }
+    static func crc32(of buffer: UnsafeRawBufferPointer, continuing crc: UInt32 = 0) -> UInt32 {
+        guard let pointer = buffer.baseAddress, !buffer.isEmpty else { return crc }
+        return UInt32(zlib.crc32(uLong(crc), pointer.assumingMemoryBound(to: UInt8.self), uInt(buffer.count)))
     }
 }
 

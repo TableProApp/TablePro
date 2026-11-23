@@ -50,12 +50,13 @@ nonisolated final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, 
             progress.setCurrentTable(table.qualifiedName, index: index + 1)
 
             var isFirstBatch = true
-            var rowBatch: [[PluginCellValue]] = []
             var columns: [String] = []
             var columnTypeNames: [String] = []
             var sheetRows = XLSXSheetRows(limit: Self.maxRowsPerSheet, headerRowCount: options.includeHeaderRow ? 1 : 0)
 
-            func writeBatch() throws {
+            // Each batch is written as it arrives: the stream already bounds a batch by rows and bytes, and the
+            // writer keeps at most one flush of XML, so holding rows here would only add to both.
+            func writeBatch(_ rowBatch: [[PluginCellValue]]) throws {
                 for chunk in sheetRows.chunks(of: rowBatch.count) {
                     if chunk.startsNewSheet {
                         try writer.continueSheet(
@@ -74,7 +75,6 @@ nonisolated final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, 
                 for _ in 0..<rowBatch.count {
                     progress.incrementRow()
                 }
-                rowBatch.removeAll(keepingCapacity: true)
             }
 
             let stream = dataSource.streamRows(for: table)
@@ -95,18 +95,12 @@ nonisolated final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, 
                     sheetRows = XLSXSheetRows(limit: Self.maxRowsPerSheet, headerRowCount: options.includeHeaderRow ? 1 : 0)
                     isFirstBatch = false
                 case .rows(let rows):
-                    rowBatch.append(contentsOf: rows)
-                    if rowBatch.count >= 5_000 {
-                        try writeBatch()
-                    }
+                    try writeBatch(rows)
                 }
             }
 
-            // The stream's own checks end with its last element, and the batch left over can be 4,999 rows.
+            // The stream's own checks end with its last element.
             try progress.checkCancellation()
-            if !rowBatch.isEmpty {
-                try writeBatch()
-            }
 
             if !isFirstBatch {
                 try writer.finishSheet()

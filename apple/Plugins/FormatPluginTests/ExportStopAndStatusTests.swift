@@ -148,13 +148,21 @@ struct ExportStopAndStatusTests {
     func xlsxStoppedDuringArchive() async throws {
         let writer = XLSXWriter()
         try writer.beginSheet(name: "t", columns: ["v"], includeHeader: false, convertNullToEmpty: true)
-        let row: [PluginCellValue] = [.text(String(repeating: "x", count: 64 * 1_024))]
-        try writer.addRows(Array(repeating: row, count: 96), convertNullToEmpty: true)
+        // Seeded random base64 barely deflates: 160 cells of 64 KiB make about 7.75 MiB of sheet in the archive.
+        var state: UInt64 = 0x5EED_0C0F
+        let rows: [[PluginCellValue]] = (0..<160).map { _ in
+            let bytes = (0..<(48 * 1_024)).map { _ -> UInt8 in
+                state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+                return UInt8(truncatingIfNeeded: state >> 33)
+            }
+            return [.text(Data(bytes).base64EncodedString())]
+        }
+        try writer.addRows(rows, convertNullToEmpty: true)
         try writer.finishSheet()
 
         let nsProgress = Progress(totalUnitCount: 1)
         let progress = PluginExportProgress(progress: nsProgress)
-        // The first status arrives once 4 MiB of the 6 MiB sheet are copied, so the stop lands mid-copy.
+        // The first status arrives once 4 MiB of the deflated sheet are copied, so the stop lands mid-copy.
         let observation = nsProgress.observe(\.localizedAdditionalDescription) { observed, _ in
             if observed.localizedAdditionalDescription?.isEmpty == false { observed.cancel() }
         }

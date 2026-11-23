@@ -23,6 +23,9 @@ nonisolated final class MongoScriptCursor {
 
     private var materialised: MongoScriptDocumentBatch?
     private var position = 0
+    // The drained read's `isTruncated`, set once every document has been handed out. The host keeps up to 64 cursors
+    // a connection, so a drained one lets go of its documents' text and answers from this alone.
+    private var drainedIsTruncated: Bool?
 
     init(
         handle: Int,
@@ -67,12 +70,10 @@ nonisolated final class MongoScriptCursor {
 
     /// Documents the script has not consumed yet, materialising on the first ask.
     func remaining(loader: (MongoScriptCursor) throws -> MongoScriptDocumentBatch) throws -> MongoScriptDocumentBatch {
+        if let drainedIsTruncated { return MongoScriptDocumentBatch(json: [], isTruncated: drainedIsTruncated) }
         let batch = try materialise(loader: loader)
-        guard position < batch.json.count else {
-            return MongoScriptDocumentBatch(json: [], isTruncated: batch.isTruncated)
-        }
-        let rest = Array(batch.json[position...])
-        position = batch.json.count
+        let rest = position < batch.json.count ? Array(batch.json[position...]) : []
+        markExhausted(batch)
         return MongoScriptDocumentBatch(json: rest, isTruncated: batch.isTruncated)
     }
 
@@ -80,17 +81,20 @@ nonisolated final class MongoScriptCursor {
         size: Int,
         loader: (MongoScriptCursor) throws -> MongoScriptDocumentBatch
     ) throws -> (batch: MongoScriptDocumentBatch, done: Bool) {
+        if let drainedIsTruncated { return (MongoScriptDocumentBatch(json: [], isTruncated: drainedIsTruncated), true) }
         let batch = try materialise(loader: loader)
-        guard position < batch.json.count else {
-            return (MongoScriptDocumentBatch(json: [], isTruncated: batch.isTruncated), true)
-        }
         let end = min(position + max(size, 1), batch.json.count)
-        let slice = Array(batch.json[position ..< end])
+        let slice = position < end ? Array(batch.json[position ..< end]) : []
         position = end
-        return (
-            MongoScriptDocumentBatch(json: slice, isTruncated: batch.isTruncated),
-            position >= batch.json.count
-        )
+        let done = position >= batch.json.count
+        if done { markExhausted(batch) }
+        return (MongoScriptDocumentBatch(json: slice, isTruncated: batch.isTruncated), done)
+    }
+
+    private func markExhausted(_ batch: MongoScriptDocumentBatch) {
+        drainedIsTruncated = batch.isTruncated
+        materialised = nil
+        position = 0
     }
 
     func close() {
