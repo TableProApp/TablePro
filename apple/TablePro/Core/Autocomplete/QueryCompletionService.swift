@@ -14,11 +14,24 @@ struct QueryCompletionSession {
     var candidatesTruncated = false
 }
 
+// The caret's statement as the editor's index found it on the same text, and the grammar that split it.
+struct QueryStatementHint: Equatable {
+    let range: NSRange
+    let grammar: SQLLexicalGrammar
+}
+
 @MainActor
 protocol QueryCompletionService: AnyObject {
     var triggerCharacters: Set<String> { get }
+    // The grammar a statement hint has to be split with; nil when the service reads no statement.
+    var statementGrammar: SQLLexicalGrammar? { get }
 
-    func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession?
+    func completions(
+        in text: NSString,
+        at offset: Int,
+        statement: QueryStatementHint?,
+        isManualTrigger: Bool
+    ) async -> QueryCompletionSession?
     func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem]
     func tokenStart(in text: NSString, endingAt offset: Int) -> Int
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)])
