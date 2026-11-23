@@ -94,6 +94,10 @@ public actor MCPConnectionBridge {
         try await access.resolveStatementScope(connectionId: connectionId, database: database, schema: schema)
     }
 
+    func resolveAppStatementScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
+        try await access.resolveAppStatementScope(connectionId: connectionId, database: database, schema: schema)
+    }
+
     func driverGeneration(of connectionId: UUID) async -> UUID? {
         await access.driverGeneration(of: connectionId)
     }

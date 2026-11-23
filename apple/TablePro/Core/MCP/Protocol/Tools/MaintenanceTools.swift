@@ -159,7 +159,7 @@ public struct RunMaintenanceTool: MCPToolImplementation {
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
         /// Resolved before the statements, because the schema it carries is what qualifies the target
         /// and its kind is what says whether the operation applies at all.
-        let scope = try await MCPScopeArguments.resolve(
+        let scope = try await MCPScopeArguments.resolveForAppStatements(
             arguments,
             connectionId: connectionId,
             services: services
@@ -316,7 +316,7 @@ public struct TransactionControlTool: MCPToolImplementation {
         // No statement to grade: BEGIN means JavaScript to a MongoDB classifier, so the kind decides.
         try MCPStatementGate.classify(kind: .writeQuery, meta: meta, allowsDestructive: false, context: context)
 
-        let scope = try await MCPScopeArguments.resolve(
+        let scope = try await MCPScopeArguments.resolveForAppStatements(
             arguments,
             connectionId: connectionId,
             services: services

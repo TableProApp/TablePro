@@ -166,6 +166,76 @@ extension GlobalStateSuites {
             #expect(rig.driver.received.isEmpty)
         }
 
+        // Oracle's driver reports no database, so the statement names none, yet it still runs in the schema it names.
+        @Test("On Oracle the confirmation names the schema the DROP runs in, with no database")
+        func oracleConfirmationNamesTheSchema() async throws {
+            let sheet = StubConfirming(answer: false)
+            let rig = rig(type: .oracle, safeMode: .alert, executionGate: confirmingGate(sheet, level: .alert))
+            defer { rig.tearDown() }
+
+            _ = try await handle(
+                ConfirmDestructiveOperationTool.name,
+                ["query": .string("DROP TABLE orders"), "schema": .string("HR")],
+                on: rig,
+                scopes: MCPScope.fullAccessSet
+            )
+
+            let request = try #require(sheet.lastRequest)
+            #expect(request.scope?.schema == "HR")
+            #expect(OperationConfirmationPrompt.subtitle(of: request).contains("HR"))
+            #expect(rig.driver.received.isEmpty)
+        }
+
+        @Test("On Oracle the elicited approval names the schema the DROP runs in")
+        func oracleElicitationNamesTheSchema() async throws {
+            let rig = rig(type: .oracle, safeMode: .alert, executionGate: RequestRecordingGate(allows: false))
+            defer { rig.tearDown() }
+            let arguments: JsonValue = .object([
+                "connection_id": .string(rig.connection.id.uuidString),
+                "query": .string("DROP TABLE orders"),
+                "schema": .string("HR")
+            ])
+            let params = MCPToolTestHarness.toolCallParams(name: ConfirmDestructiveOperationTool.name, arguments: arguments)
+            let context = MCPToolTestHarness.context(
+                params: params,
+                principal: MCPToolTestHarness.principal(scopes: MCPScope.fullAccessSet),
+                clientCapabilities: MCPToolTestHarness.elicitingClient()
+            )
+
+            do {
+                _ = try await ConfirmDestructiveOperationTool().call(
+                    arguments: arguments,
+                    context: context,
+                    services: MCPToolServices(
+                        connectionBridge: MCPConnectionBridge(),
+                        authPolicy: rig.authPolicy,
+                        settingsProvider: { MCPSettings() },
+                        queryHistoryManager: ToolTestQueryHistoryStore()
+                    )
+                )
+                Issue.record("Expected the approval to be elicited")
+            } catch let signal as MCPInputRequired {
+                #expect(signal.inputRequests.first?.message.contains("'HR'") == true)
+            }
+            #expect(rig.driver.received.isEmpty)
+        }
+
+        @Test("stop_server_session on Oracle, saved with a service name its driver never reports, runs")
+        func oracleStopServerSessionRuns() async throws {
+            let rig = rig(type: .oracle, safeMode: .silent)
+            defer { rig.tearDown() }
+
+            let result = try await handle(
+                StopServerSessionTool.name,
+                ["process_id": .string("12,34"), "mode": .string("kill")],
+                on: rig
+            )
+
+            #expect(rig.connection.database == "matrix")
+            #expect(result.payload["isError"]?.boolValue != true, "\(Self.errorText(result))")
+            #expect(rig.driver.received.contains { $0.contains("KILL SESSION '12,34'") })
+        }
+
         // MARK: - insert_rows
 
         @Test("insert_rows shows each row with its values, and runs the statement it showed")

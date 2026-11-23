@@ -227,27 +227,38 @@ internal actor DatabaseAccessBridge {
         }
     }
 
-    internal func resolveScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
-        try await resolveScope(connectionId: connectionId, database: database, schema: schema, runsStatements: false)
+    // What runs in a scope decides which parts of it the approval may name.
+    internal enum ScopeUse: Sendable {
+        // A catalog read, or work a pooled connection runs at the database it names.
+        case catalog
+        // SQL the caller wrote, which resolves its unqualified names wherever the session's schema switch puts them.
+        case callerSQL
+        // SQL the app writes with the schema in every name, run on the session's own connection.
+        case appSQL
     }
 
-    // For SQL the caller wrote, which resolves its unqualified names wherever the session's schema switch puts them.
+    internal func resolveScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
+        try await resolveScope(connectionId: connectionId, database: database, schema: schema, use: .catalog)
+    }
+
     internal func resolveStatementScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
-        try await resolveScope(connectionId: connectionId, database: database, schema: schema, runsStatements: true)
+        try await resolveScope(connectionId: connectionId, database: database, schema: schema, use: .callerSQL)
+    }
+
+    internal func resolveAppStatementScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
+        try await resolveScope(connectionId: connectionId, database: database, schema: schema, use: .appSQL)
     }
 
     private func resolveScope(
         connectionId: UUID,
         database: String?,
         schema: String?,
-        runsStatements: Bool
+        use: ScopeUse
     ) async throws -> DatabaseScope {
         let manager = await databaseManager
         try await ensureConnected(connectionId)
         return try await MainActor.run {
-            try Self.scope(
-                database: database, schema: schema, for: connectionId, runsStatements: runsStatements, manager: manager
-            )
+            try Self.scope(database: database, schema: schema, for: connectionId, use: use, manager: manager)
         }
     }
 
@@ -257,7 +268,7 @@ internal actor DatabaseAccessBridge {
         database: String?,
         schema: String?,
         for connectionId: UUID,
-        runsStatements: Bool,
+        use: ScopeUse,
         manager: DatabaseManager
     ) throws -> DatabaseScope {
         guard let scope = manager.resolvedScope(database: database, schema: schema, for: connectionId) else {
@@ -268,13 +279,13 @@ internal actor DatabaseAccessBridge {
         if let refusal = databaseRefusal(named: database, for: scope, manager: manager) {
             throw DatabaseAccessError.invalidArgument(refusal)
         }
-        guard runsStatements, let session = manager.session(for: connectionId) else { return scope }
+        guard use != .catalog, let session = manager.session(for: connectionId) else { return scope }
         let databaseType = session.connection.type
         // A fixed engine reaches only the database its driver reported, so with no report the call names none.
         let runsIn = manager.pluginManager.supportsDatabaseSwitching(for: databaseType)
             ? scope.database
             : session.openedDatabase ?? ""
-        guard !manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: databaseType) else {
+        guard use == .callerSQL, !manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: databaseType) else {
             return DatabaseScope(connectionId: scope.connectionId, database: runsIn, schema: scope.schema)
         }
         // A schema switch here leaves unqualified names where they were, whatever the session's label says, so the
@@ -966,10 +977,9 @@ internal actor DatabaseAccessBridge {
         let (approvedSchema, fixedDatabase) = await MainActor.run { () -> (String?, String?) in
             guard let session = manager.session(for: connectionId) else { return (nil, nil) }
             let type = session.connection.type
-            let pinsDatabase = scope.isServerScoped || manager.pluginManager.supportsDatabaseSwitching(for: type)
             return (
                 manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: type) ? scope.schema : nil,
-                pinsDatabase ? nil : scope.database
+                manager.pluginManager.supportsDatabaseSwitching(for: type) ? nil : scope.namedDatabase
             )
         }
         // The pin trusts the driver's cached schema, which a SET search_path in the same session leaves stale.

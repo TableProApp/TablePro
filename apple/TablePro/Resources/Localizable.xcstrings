@@ -24097,6 +24097,9 @@
     "Allow %1$@ on '%2$@', database '%3$@'?" : {
 
     },
+    "Allow %1$@ on '%2$@', schema '%3$@'?" : {
+
+    },
     "Allow AI Access" : {
       "localizations" : {
         "fr" : {
@@ -164807,6 +164810,9 @@
       }
     },
     "Schema, on engines that have one" : {
+
+    },
+    "Schema: %@" : {
 
     },
     "Schemas" : {

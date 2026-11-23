@@ -254,25 +254,34 @@ enum MCPStatementGate {
         )
     }
 
+    // Each part execution honors is named on its own: a schema with no database named still runs there.
     static func consentMessage(operationLabel: String, connectionName: String, scope: DatabaseScope) -> String {
-        guard !scope.isServerScoped else {
+        switch (scope.namedDatabase, scope.schema) {
+        case (nil, nil):
             return String(format: String(localized: "Allow %@ on '%@'?"), operationLabel, connectionName)
-        }
-        guard let schema = scope.schema else {
+        case (let database?, nil):
             return String(
                 format: String(localized: "Allow %1$@ on '%2$@', database '%3$@'?"),
                 operationLabel,
                 connectionName,
-                scope.database
+                database
+            )
+        case (nil, let schema?):
+            return String(
+                format: String(localized: "Allow %1$@ on '%2$@', schema '%3$@'?"),
+                operationLabel,
+                connectionName,
+                schema
+            )
+        case (let database?, let schema?):
+            return String(
+                format: String(localized: "Allow %1$@ on '%2$@', database '%3$@', schema '%4$@'?"),
+                operationLabel,
+                connectionName,
+                database,
+                schema
             )
         }
-        return String(
-            format: String(localized: "Allow %1$@ on '%2$@', database '%3$@', schema '%4$@'?"),
-            operationLabel,
-            connectionName,
-            scope.database,
-            schema
-        )
     }
 
     // The only text the client shows beside its Approve control, so it keeps its line breaks. The cap is sized for

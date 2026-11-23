@@ -54,7 +54,7 @@ extension AIChatViewModel {
                 database: ChatToolArgumentDecoder.optionalString(block.input, key: "database"),
                 schema: ChatToolArgumentDecoder.optionalString(block.input, key: "schema"),
                 for: connectionId,
-                runsStatements: true,
+                use: .callerSQL,
                 manager: services.databaseManager
             )
             let generation = services.databaseManager.session(for: connectionId)?.driverGeneration

@@ -115,7 +115,7 @@ struct AIChatToolUseBlockView: View {
         var parts: [String] = []
         if let connectionName { parts.append(connectionName) }
         if let sessionId, let shown = ToolApprovalCenter.shared.shownScope(sessionId: sessionId, toolUseId: block.id) {
-            if !shown.isServerScoped { parts.append(shown.database) }
+            if let database = shown.namedDatabase { parts.append(database) }
             if let schema = shown.schema, !schema.isEmpty { parts.append(schema) }
         } else if case .object(let fields) = block.input {
             if case .string(let database)? = fields["database"], !database.isEmpty {

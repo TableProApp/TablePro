@@ -38,6 +38,19 @@ enum MCPScopeArguments {
         )
     }
 
+    // For SQL the app writes with the schema in each name, approved and then run on the session's connection.
+    static func resolveForAppStatements(
+        _ arguments: JsonValue,
+        connectionId: UUID,
+        services: MCPToolServices
+    ) async throws -> DatabaseScope {
+        try await services.connectionBridge.resolveAppStatementScope(
+            connectionId: connectionId,
+            database: try MCPArgumentDecoder.optionalString(arguments, key: "database"),
+            schema: try namedSchema(arguments)
+        )
+    }
+
     static func namedSchema(_ arguments: JsonValue) throws -> String? {
         guard let schema = try MCPArgumentDecoder.optionalString(arguments, key: "schema"), !schema.isEmpty else {
             return nil
