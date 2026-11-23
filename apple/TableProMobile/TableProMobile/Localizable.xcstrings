@@ -2164,6 +2164,9 @@
         }
       }
     },
+    "Access Token" : {
+
+    },
     "Access Token is required. Create one in MotherDuck's settings, under Access Tokens." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -3018,6 +3021,9 @@
           }
         }
       }
+    },
+    "All databases" : {
+
     },
     "All filter conditions will be removed." : {
       "localizations" : {
@@ -28169,6 +28175,9 @@
 
     },
     "This connection switched database with USE, which reconnecting would undo." : {
+
+    },
+    "This connection uses a Connection Type this version of the DuckDB plugin does not have. Update the DuckDB plugin." : {
 
     },
     "This connection uses a socket on a Mac and cannot be opened on iPhone or iPad." : {
