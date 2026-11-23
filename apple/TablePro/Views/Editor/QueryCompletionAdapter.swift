@@ -48,6 +48,8 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
 
     private var service: QueryCompletionService
     private var configuration: Configuration?
+    // The caret's statement from the index the editor keeps, read on the request's own text.
+    var statementLocator: (@MainActor (_ text: String, _ offset: Int, _ storage: NSTextStorage) -> QueryStatementHint?)?
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
     private var session: Session?
 
@@ -122,16 +124,21 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         guard !textView.textView.hasMarkedText() else { return nil }
 
         let liveCursorPosition = textView.cursorPositions.first ?? cursorPosition
-        // A copy: the storage string keeps changing during the request, and the response names the prefix it ranked.
-        let text = NSString(string: textView.textView.textStorage?.string ?? "")
+        // Bridging makes an immutable copy that shares the storage's buffer: the storage keeps changing during the
+        // request, and the response names the prefix it ranked.
+        let storage = textView.textView.textStorage
+        let snapshot = storage?.string ?? ""
+        let text = snapshot as NSString
         let offset = liveCursorPosition.range.location
         guard offset >= 0, offset <= text.length else { return nil }
 
         let localStart = service.tokenStart(in: text, endingAt: offset)
+        let statement = storage.flatMap { statementLocator?(snapshot, offset, $0) }
 
         guard let result = await service.completions(
             in: text,
             at: offset,
+            statement: statement,
             isManualTrigger: isManualTrigger
         ), !Task.isCancelled else {
             return nil

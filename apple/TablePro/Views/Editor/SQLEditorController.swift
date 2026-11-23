@@ -86,6 +86,9 @@ final class SQLEditorController {
         observeEditorSettings()
         observeVimMode()
         observeSessionChanges()
+        completionAdapter.statementLocator = { [weak coordinator] text, offset, storage in
+            coordinator?.maintainedStatement(at: offset, in: text, storage: storage)
+        }
         configureCompletion()
         setupFavoritesObserver()
         subscribeToCompletionRevision()

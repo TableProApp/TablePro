@@ -397,6 +397,32 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         statementRunController.moveCursor(direction, in: controller)
     }
 
+    // Nil unless this editor holds exactly `text` and splits it the way the caller does, so the answer is a fresh scan's.
+    func indexedStatement(
+        at cursor: Int,
+        in text: String,
+        model: QueryStatementModel,
+        grammar: SQLLexicalGrammar
+    ) -> SQLStatementScanner.LocatedStatement? {
+        guard hasInstalledEditorServices, !isDestroyed,
+              statementRunController.statementModel == model, statementRunController.grammar == grammar,
+              let storage = controller?.textView?.textStorage else {
+            return nil
+        }
+        let snapshot = storage.string
+        guard (snapshot as NSString).isEqual(to: text) else { return nil }
+        return statementRunController.statement(at: cursor, in: snapshot, storage: storage)
+    }
+
+    func maintainedStatement(at offset: Int, in text: String, storage: NSTextStorage) -> QueryStatementHint? {
+        guard hasInstalledEditorServices, !isDestroyed,
+              storage === controller?.textView?.textStorage,
+              let found = statementRunController.maintainedStatement(at: offset, in: text, storage: storage) else {
+            return nil
+        }
+        return QueryStatementHint(range: found.statement.range, grammar: found.grammar)
+    }
+
     // Matched against the text this editor shows, which the tab's binding can lag; an edited-away statement resolves to nothing.
     @discardableResult
     func jumpToStatement(_ anchor: StatementAnchor) -> Bool {

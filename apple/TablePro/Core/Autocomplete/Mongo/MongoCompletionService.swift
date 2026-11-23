@@ -45,7 +45,13 @@ final class MongoCompletionService: QueryCompletionService {
         filter(items, prefix: prefix)
     }
 
-    func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession? {
+    func completions(
+        in text: NSString,
+        at offset: Int,
+        statement: QueryStatementHint?,
+        isManualTrigger: Bool
+    ) async -> QueryCompletionSession? {
+        _ = statement
         // A cut would start the scan inside whatever string or comment it fell in, so the scan reads the whole text.
         let context = await MongoContextAnalyzer.analyze(text as String, cursor: offset)
 

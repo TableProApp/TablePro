@@ -15,6 +15,7 @@ extension FindPanelViewModel {
     /// Matches are searched for again after the edit rather than shifted by hand: a pattern can stop or start matching
     /// around the replacement, and a stored range past the end of the text is a crash in the text storage.
     func replace() {
+        refreshMatchesIfStale()
         guard let target, canReplace,
               let index = currentFindMatchIndex, findMatches.indices.contains(index) else {
             return
@@ -52,6 +53,8 @@ extension FindPanelViewModel {
     /// match is replaced once, so text a replacement inserts is never searched again.
     func replaceAll() {
         guard let target, canReplace else { return }
+        // All searches the text it edits, so matches the panel never showed need no search of their own.
+        staleMatchesCaret = nil
 
         let text = target.textView.string
         let replacements = searchResults().map {
