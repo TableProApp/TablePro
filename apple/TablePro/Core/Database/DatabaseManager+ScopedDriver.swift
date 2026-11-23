@@ -825,15 +825,22 @@ extension DatabaseManager {
 
     // Where the session's driver executes, nil when unknown. A pin moves it without moving the browse cursor; one the
     // host has not moved is where its connect, restore or switch put it, which is the browse cursor. Once a text it sent
-    // may have moved it, startup SQL included, only a driver that reports its database can say where.
+    // may have moved it, startup SQL included, only a driver that reports its database can say where. So too for a
+    // driver that names its database on each request and was placed in none: the server's default for the user
+    // answers, which another statement or client can change.
     func executionDatabase(for connectionId: UUID) -> String? {
         guard let session = activeSessions[connectionId] else { return nil }
         guard let driver = session.driver else { return session.resolvedBrowseDatabase }
         let position = executionPositions[connectionId].flatMap { $0.driver === driver ? $0 : nil }
+        let reported = (driver as? DatabaseReporting)?.currentDatabase
         guard driver.databaseMoves > (position?.moves ?? 0) else {
-            return position?.database ?? session.resolvedBrowseDatabase
+            let placed = position?.database ?? session.resolvedBrowseDatabase
+            guard placed.isEmpty, !pluginManager.statementsCanSwitchDatabase(for: session.connection.type) else {
+                return placed
+            }
+            return reported
         }
-        return (driver as? DatabaseReporting)?.currentDatabase
+        return reported
     }
 
     func noteExecutionDatabase(_ database: String, on driver: DatabaseDriver, for connectionId: UUID) {

@@ -481,6 +481,20 @@ struct SQLSessionStateClassifierTests {
         #expect(!movesDatabase("SELECT * FROM #orders\nDECLARE @n int = 1\nIF @n > 0 PRINT 'x'", .sqlServer))
     }
 
+    @Test("A T-SQL move word in a literal, a quoted name or a comment moves nothing", arguments: [
+        "SELECT N'use'", "SELECT [exec]", "-- use x", "SELECT \"execute\" FROM t /* sp_executesql */",
+    ])
+    func tsqlMoveWordOutsideCodeMovesNothing(sql: String) {
+        #expect(!movesDatabase(sql, .sqlServer))
+    }
+
+    @Test("A T-SQL move word read as code moves, and one behind a literal or comment that never closes is not ruled out", arguments: [
+        "USE x", "EXEC p", "SELECT 1 EXEC p", "SELECT 'unclosed USE x", "SELECT 1 /* USE x",
+    ])
+    func tsqlMoveWordAsCodeMoves(sql: String) {
+        #expect(movesDatabase(sql, .sqlServer))
+    }
+
     @Test("A transaction's BEGIN, or a word that only contains a trigger, moves nothing", arguments: [
         ("BEGIN", SQLSessionDialect.mySQL),
         ("SELECT executed_at, CASE WHEN id > 1 THEN 1 END FROM users", .mySQL),

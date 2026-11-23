@@ -539,8 +539,8 @@ extension SQLSessionStateClassifier {
     // An explained subject that opens a statement of its own rather than naming a table or a query.
     private static let mySQLStatementWords: Set<String> = ["USE", "CALL", "EXECUTE", "DO", "HANDLER", "LOAD", "PREPARE"]
 
-    // T-SQL runs a batch's statements with no `;` between them, so these count anywhere in one. A batch that opens
-    // with a word not listed below calls a procedure by its name, or is read as one.
+    // T-SQL runs a batch's statements with no `;` between them, so these count anywhere in one as code. A batch that
+    // opens with a word not listed below calls a procedure by its name, or is read as one.
     private static let sqlServerMoveWords: Set<String> = ["USE", "EXEC", "EXECUTE", "SP_EXECUTESQL"]
     private static let sqlServerStayHeads: Set<String> = [
         "SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "MERGE", "CREATE", "ALTER", "DROP", "TRUNCATE", "DECLARE", "SET",
@@ -551,7 +551,8 @@ extension SQLSessionStateClassifier {
 
     // Whether the statements may leave the session in another database, which a host that pins its own driver cannot
     // see. Only MySQL's and SQL Server's sessions move, and only a statement known to stay is ruled out. Text it cannot
-    // read whole, too long or with more executable-comment versions than the reader takes, is not ruled out.
+    // read whole, too long, with more executable-comment versions than the reader takes, or with a T-SQL move word
+    // behind a literal or comment that never closes, is not ruled out.
     public static func mayChangeDatabase(
         ofStatements statements: [String],
         dialect: SQLSessionDialect,
@@ -560,8 +561,10 @@ extension SQLSessionStateClassifier {
         guard dialect == .mySQL || dialect == .sqlServer else { return false }
         return statements.contains { text in
             guard (text as NSString).length <= classifiedPrefixLength else { return true }
-            if dialect == .sqlServer, holdsWord(of: sqlServerMoveWords, in: text) { return true }
-            if opensWithStayHead(text, dialect: dialect) { return false }
+            // A move word spelled anywhere only costs the full read, whose tokens leave out literals and comments.
+            let spellsMoveWord = dialect == .sqlServer && holdsWord(of: sqlServerMoveWords, in: text)
+            if spellsMoveWord, leavesSpanOpen(text, grammar: grammar) { return true }
+            if !spellsMoveWord, opensWithStayHead(text, dialect: dialect) { return false }
             return SQLStatementClassifier.statements(of: text, grammar: grammar).contains { statement in
                 guard let readings = SQLExecutableCommentReadings.texts(of: statement, grammar: grammar) else { return true }
                 return Array(readings).contains { reading in
@@ -637,6 +640,20 @@ extension SQLSessionStateClassifier {
 
     private static func isWordUnit(_ unit: UInt16) -> Bool {
         (0x30...0x39).contains(unit) || (0x41...0x5A).contains(unit) || (0x61...0x7A).contains(unit) || unit == 0x5F
+    }
+
+    private static func leavesSpanOpen(_ text: String, grammar: SQLLexicalGrammar) -> Bool {
+        let units = text as NSString
+        var index = 0
+        while index < units.length {
+            guard let span = SQLNonCodeSpan.span(at: index, in: units, grammar: grammar) else {
+                index += 1
+                continue
+            }
+            if !span.isTerminated { return true }
+            index = max(span.end, index + 1)
+        }
+        return false
     }
 }
 

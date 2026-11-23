@@ -459,7 +459,7 @@ internal actor DatabaseAccessBridge {
     }
 
     static var databaseUnknown: DatabaseAccessError {
-        .invalidArgument(String(localized: "A statement may have moved this connection to another database. Pass database."))
+        .invalidArgument(String(localized: "TablePro cannot tell which database this connection runs in. Pass database."))
     }
 
     // Read by whoever builds an approval, so the approval holds only on the connect its scope was resolved on.

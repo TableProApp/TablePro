@@ -622,9 +622,10 @@ struct ApprovedTargetTests {
         #expect(!driver.events.contains { $0.hasPrefix("DELETE") })
     }
 
-    // The real driver, not connected: a statement it sends cannot move a database each request names.
-    @Test("ClickHouse with no database runs SELECT 1, then a call naming none still resolves")
-    func clickHouseAnswersWithItsRequestDatabase() async throws {
+    // The real driver, not connected, so it never read the user's default: SELECT 1 moves nothing, and the server's
+    // default, which ALTER USER can change, is not a database a call can be approved for.
+    @Test("ClickHouse with no database and none read at connect runs SELECT 1, then refuses a call naming none")
+    func clickHouseWithNoReadDefaultRefuses() async throws {
         let plugin = try BundledPlugin.driver("ClickHouseDriver").init()
         let connection = TestFixtures.makeConnection(database: "", type: .clickhouse)
         let pluginDriver = plugin.createDriver(config: DriverConnectionConfig(
@@ -640,12 +641,34 @@ struct ApprovedTargetTests {
         let sessionDriver = try #require(DatabaseManager.shared.driver(for: connection.id))
 
         _ = try? await sessionDriver.execute(query: "SELECT 1")
-        let scope = try await DatabaseAccessBridge().resolveStatementScope(
-            connectionId: connection.id, database: nil, schema: nil
-        )
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await DatabaseAccessBridge().resolveStatementScope(connectionId: connection.id, database: nil, schema: nil)
+        }
 
         #expect(sessionDriver.databaseMoves == 0)
-        #expect(scope.isServerScoped)
+        #expect(error?.message == DatabaseAccessBridge.databaseUnknown.message)
+    }
+
+    // The driver reports the default its connect read and names it on every request, so ALTER USER cannot move it.
+    @Test("ClickHouse with no database pins a pending TRUNCATE to the default read at connect, after ALTER USER")
+    func clickHouseReadDefaultPinsAPendingTruncate() async throws {
+        let (id, driver) = session(.clickhouse, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        driver.reportedDatabase = "analytics"
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "TRUNCATE TABLE orders", maxRows: 10)
+        let operation = try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .clickhouse)
+
+        _ = try await bridge.runStatement(
+            scope: scope, query: "ALTER USER u DEFAULT DATABASE production", maxRows: 10, timeoutSeconds: 30, cancellation: nil
+        )
+        _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+
+        #expect(scope.database == "analytics")
+        let pinned = try #require(driver.events.lastIndex(of: "DATABASE analytics"))
+        let truncated = try #require(driver.events.firstIndex(of: "TRUNCATE TABLE orders"))
+        #expect(pinned < truncated)
     }
 
     @Test("On MariaDB a DELETE approved naming no database is refused after SET STATEMENT ... FOR USE production")
@@ -672,16 +695,30 @@ struct ApprovedTargetTests {
         #expect(!driver.events.contains { $0.hasPrefix("DELETE") })
     }
 
-    @Test("Neo4j with no database runs RETURN 1, then a call naming none resolves")
+    // The driver reports the home database its connect read, as the Neo4j plugin does.
+    @Test("Neo4j with no database runs RETURN 1, then a call naming none resolves to the home database")
     func neo4jStatementLeavesTheDatabaseKnown() async throws {
-        let (id, _) = session(.neo4j, database: "")
+        let (id, driver) = session(.neo4j, database: "")
         defer { DatabaseManager.shared.removeSession(for: id) }
+        driver.reportedDatabase = "neo4j"
         let sessionDriver = try #require(DatabaseManager.shared.driver(for: id))
 
         _ = try await sessionDriver.execute(query: "RETURN 1")
         let scope = try await DatabaseAccessBridge().resolveStatementScope(connectionId: id, database: nil, schema: nil)
 
         #expect(sessionDriver.databaseMoves == 0)
-        #expect(scope.isServerScoped)
+        #expect(scope.database == "neo4j")
+    }
+
+    @Test("Neo4j with no database and no home database read refuses a call naming none")
+    func neo4jWithNoReadHomeDatabaseRefuses() async throws {
+        let (id, _) = session(.neo4j, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await DatabaseAccessBridge().resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.databaseUnknown.message)
     }
 }

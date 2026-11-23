@@ -20,7 +20,7 @@ nonisolated final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin
     static let databaseDisplayName = "ClickHouse"
     static let iconName = "clickhouse-icon"
     static let defaultPort = 8123
-    // Each HTTP request names its own database and keeps no session, so no statement moves it.
+    // Each HTTP request names its own database and keeps no session, so no statement moves it. The connect names one.
     static let statementsCanSwitchDatabase = false
     // The trust delegate evaluates the pre-tunnel host through a forward.
     static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
@@ -327,6 +327,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
         report(.preparingSession)
         let profile: ClickHouseServerProfile
+        let startingDatabase: String?
         do {
             let settings = try await probe(ClickHouseServerProfile.settingsProbeQuery, deadline: deadline)
             let catalog = try await probe(ClickHouseServerProfile.catalogProbeQuery, deadline: deadline)
@@ -335,6 +336,11 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                 settings: settings.map { (columns: $0.columns, rows: $0.rows) },
                 catalogRow: catalog?.rows.first
             )
+            // A request naming no database runs in the user's default, which `ALTER USER ... DEFAULT DATABASE` moves,
+            // so the connect names the one it starts in on every request after it. Unread, nothing is reported.
+            startingDatabase = lock.withLock({ _currentDatabase.isEmpty })
+                ? try await probe("SELECT currentDatabase()", deadline: deadline)?.rows.first?.first?.asText
+                : nil
         } catch {
             disconnect()
             throw error
@@ -342,6 +348,9 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         lock.withLock {
             _serverVersion = versionText
             _serverProfile = profile
+            if let startingDatabase, !startingDatabase.isEmpty, _currentDatabase.isEmpty {
+                _currentDatabase = startingDatabase
+            }
         }
 
         Self.logger.debug("Connected to ClickHouse at \(self.config.host):\(self.config.port)")
@@ -563,6 +572,11 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
     }
 
     // MARK: - Database Switching
+
+    var currentDatabase: String? {
+        let database = lock.withLock { _currentDatabase }
+        return database.isEmpty ? nil : database
+    }
 
     func switchDatabase(to database: String) async throws {
         lock.withLock { _currentDatabase = database }
