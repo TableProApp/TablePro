@@ -427,6 +427,12 @@ struct PaginationState: Equatable {
         settledRowCountScope = nil
     }
 
+    // Marked approximate on purpose: a large table's count may have moved, and a capped recount would only blank it.
+    mutating func keepTotalAsEstimate() {
+        isApproximateRowCount = totalRowCount != nil
+        settledRowCountScope = nil
+    }
+
     mutating func reset() {
         currentPage = 1
         currentOffset = 0
