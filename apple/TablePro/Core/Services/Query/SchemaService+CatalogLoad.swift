@@ -25,8 +25,9 @@ extension SchemaService {
             return
         }
         if PluginManager.shared.databaseGroupingStrategy(for: connection.type) == .hierarchicalSchema {
-            _ = try await provider.withMetadataDriver(scope: scope) { [self] driver in
-                await runLoad(connectionId: connectionId, driver: driver, connection: connection, scope: scope)
+            try await provider.withMetadataDriver(scope: scope) { [self] driver in
+                guard await needsLoad(connectionId, scope: scope) else { return }
+                _ = await runLoad(connectionId: connectionId, driver: driver, connection: connection, scope: scope)
             }
             await afterTables?()
             return
@@ -35,7 +36,9 @@ extension SchemaService {
         defer {
             if let started { endRefresh(connectionId, generation: started.generation) }
         }
-        let run = try await provider.withMetadataDriver(scope: scope) { [self] driver -> LoadRun in
+        // A load queued for the same lease finds the catalog the one ahead of it committed.
+        let leased = try await provider.withMetadataDriver(scope: scope) { [self] driver -> LoadRun? in
+            guard await needsLoad(connectionId, scope: scope) else { return nil }
             var run = await beginLoad(connectionId: connectionId, driver: driver, connection: connection, scope: scope)
             let tables: Result<[TableInfo], any Error>
             do {
@@ -45,6 +48,10 @@ extension SchemaService {
             }
             run.tablesCommitted = await commitTables(tables, of: run, facts: CatalogDriverFacts(driver))
             return run
+        }
+        guard let run = leased else {
+            await afterTables?()
+            return
         }
         started = run
         guard let committed = run.tablesCommitted else { return }

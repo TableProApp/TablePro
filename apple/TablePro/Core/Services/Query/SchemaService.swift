@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 @MainActor
 final class SchemaService: ObservableObject {

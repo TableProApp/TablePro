@@ -14,6 +14,11 @@ import Testing
 
 private struct LeaseRefused: Error {}
 
+@MainActor
+private final class CallCount {
+    var value = 0
+}
+
 private final class CatalogOrderDriver: PluginDriverStub, @unchecked Sendable {
     private let lock = NSLock()
     private var log: [String] = []
@@ -190,6 +195,25 @@ struct SchemaLeasingLoadTests {
 
         #expect(synced)
         #expect(provider.leases == leases)
+    }
+
+    @Test("A load queued behind another for the same catalog reads nothing and still syncs completion")
+    func queuedLoadReadsTheCatalogOnce() async throws {
+        let service = SchemaService()
+        let provider = makeProvider()
+        let tables = AsyncGate()
+        plugin.hold("tables", on: tables)
+        let syncs = CallCount()
+
+        async let first: Void = load(service, from: provider)
+        try await waitUntil { plugin.reads.contains("tables") }
+        async let second: Void = load(service, from: provider) { syncs.value += 1 }
+        try await waitUntil { provider.leases == 2 }
+        await tables.open()
+        _ = try await (first, second)
+
+        #expect(plugin.reads == ["tables", "routines", "triggers"])
+        #expect(syncs.value == 1)
     }
 
     @Test("A tables lease that cannot be had throws and leaves the catalog untouched")
