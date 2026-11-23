@@ -45,34 +45,23 @@ public class ViewReuseQueue<View: NSView, Key: Hashable> {
         usedViews[key]
     }
 
-    /// Removes a view for the given key and enqueues it for reuse.
-    /// - Parameter key: The key for the view to reuse.
-    public func enqueueView(forKey key: Key) {
-        guard let view = usedViews[key] else { return }
-        if queuedViews.count < usedViews.count {
-            queuedViews.append(view)
-            view.frame = .zero
-            view.isHidden = true
-        } else {
-            view.removeFromSuperviewWithoutNeedingDisplay()
-        }
-        usedViews.removeValue(forKey: key)
-    }
-
-    /// Enqueues all views not in the given set.
-    /// - Parameter outsideSet: The keys who's views should not be enqueued for reuse.
+    // A queued view stays a hidden subview, so the queue keeps no more views than the pass left in use. Bounded by
+    // the views in use while they are still being released, a pass that drops most of them kept half.
     public func enqueueViews(notInSet keys: Set<Key>) {
-        // Get all keys that are currently in "use" but not in the given set, and enqueue them for reuse.
-        for key in Set(usedViews.keys).subtracting(keys) {
-            enqueueView(forKey: key)
+        let released = usedViews.keys.filter { !keys.contains($0) }
+        let capacity = usedViews.count - released.count
+        for key in released {
+            guard let view = usedViews.removeValue(forKey: key) else { continue }
+            if queuedViews.count < capacity {
+                queuedViews.append(view)
+                view.frame = .zero
+                view.isHidden = true
+            } else {
+                view.removeFromSuperviewWithoutNeedingDisplay()
+            }
         }
-    }
-
-    /// Enqueues all views keyed by the given set.
-    /// - Parameter keys: The keys for all the views that should be enqueued.
-    public func enqueueViews(in keys: Set<Key>) {
-        for key in keys {
-            enqueueView(forKey: key)
+        while queuedViews.count > capacity, let view = queuedViews.popLast() {
+            view.removeFromSuperviewWithoutNeedingDisplay()
         }
     }
 
