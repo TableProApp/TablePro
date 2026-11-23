@@ -27,7 +27,8 @@ internal enum ConnectionRecoveryPerformer {
         case .openPluginSettings(let pluginId):
             opener.openSettings(revealingPlugin: pluginId)
         case .editConnection:
-            opener.openConnectionForm(editing: connection.id)
+            // A connect refused over its own settings (an SSL mode the driver lacks, an extension) shows as an issue there.
+            opener.openConnectionForm(editing: connection.id, facet: .firstIssue)
         case .openLocalNetworkSettings:
             guard let url = localNetworkSettingsURL else { return }
             NSWorkspace.shared.open(url)

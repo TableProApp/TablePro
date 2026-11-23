@@ -10,9 +10,11 @@ internal struct ConnectionTestResult: Equatable, Sendable {
     let succeeded: Bool
     /// The warning the server sent with the login, such as an Oracle password in its grace period.
     let warning: String?
+    let serverVersion: String?
 
-    init(succeeded: Bool, warning: String? = nil) {
+    init(succeeded: Bool, warning: String? = nil, serverVersion: String? = nil) {
         self.succeeded = succeeded
         self.warning = succeeded ? warning : nil
+        self.serverVersion = succeeded ? serverVersion : nil
     }
 }

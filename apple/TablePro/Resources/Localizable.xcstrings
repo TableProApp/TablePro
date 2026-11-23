@@ -1079,6 +1079,9 @@
     "“%@” is used more than once." : {
 
     },
+    "“%@” isn’t a library." : {
+
+    },
     "“%@” isn't a port or a range of ports, such as 4000-4999." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -1636,6 +1639,9 @@
           }
         }
       }
+    },
+    "“%1$@” isn’t a database %2$@ can open." : {
+
     },
     "“%1$@” refers to “%2$@”, which is not in the file" : {
       "extractionState" : "manual",
@@ -3484,6 +3490,9 @@
           }
         }
       }
+    },
+    "%@ doesn't work through a tunnel." : {
+
     },
     "%@ duplicate rows" : {
       "localizations" : {
@@ -12891,6 +12900,9 @@
         }
       }
     },
+    "^[%lld Attached Database](inflect: true)" : {
+
+    },
     "^[%lld change](inflect: true)" : {
 
     },
@@ -12990,6 +13002,9 @@
         }
       }
     },
+    "^[%lld Extension](inflect: true)" : {
+
+    },
     "^[%lld finding](inflect: true)" : {
 
     },
@@ -12997,6 +13012,9 @@
 
     },
     "^[%lld ignored finding](inflect: true) hidden." : {
+
+    },
+    "^[%lld Jump Host](inflect: true)" : {
 
     },
     "^[%lld line](inflect: true)" : {
@@ -13094,6 +13112,9 @@
           }
         }
       }
+    },
+    "^[%lld Rule](inflect: true)" : {
+
     },
     "^[%lld space](inflect: true)" : {
 
@@ -15687,6 +15708,10 @@
     },
     "A check needs an expression." : {
 
+    },
+    "A client certificate needs its client key. In the connection's SSL/TLS settings, choose the client key, or clear the client certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A client certificate needs its client key. On the connection's Network tab, choose the client key, or clear the client certificate." : {
       "extractionState" : "manual",
@@ -18329,6 +18354,9 @@
         }
       }
     },
+    "Absolute, or relative to the SSH account's home directory." : {
+
+    },
     "Absolute, or relative to the SSH account's home directory. `~` works." : {
       "localizations" : {
         "fr" : {
@@ -20067,6 +20095,9 @@
 
     },
     "Add a saved query to watch its result here." : {
+
+    },
+    "Add a service account key." : {
 
     },
     "Add an AI provider in Settings > AI first." : {
@@ -22267,6 +22298,9 @@
           }
         }
       }
+    },
+    "AI & MCP" : {
+
     },
     "AI access is disabled for this connection" : {
       "localizations" : {
@@ -28727,6 +28761,9 @@
     "As stored" : {
 
     },
+    "As Stored" : {
+
+    },
     "As written" : {
 
     },
@@ -29077,6 +29114,9 @@
           }
         }
       }
+    },
+    "Ask for the password every time" : {
+
     },
     "Ask Once for Each Connection" : {
       "localizations" : {
@@ -32687,6 +32727,9 @@
     "Binary File" : {
 
     },
+    "Binary Value Limit" : {
+
+    },
     "Binary values limit must be between 1 and 1,048,576 KB." : {
 
     },
@@ -34916,6 +34959,9 @@
         }
       }
     },
+    "Cancel Test" : {
+
+    },
     "Cancel the running query for session %@?" : {
 
     },
@@ -36701,6 +36747,9 @@
         }
       }
     },
+    "Change Database Type" : {
+
+    },
     "Change field “%1$@” to %2$@" : {
 
     },
@@ -37659,6 +37708,9 @@
         }
       }
     },
+    "Changing to %@ removes:" : {
+
+    },
     "Changing which rows are shown will discard all unsaved changes." : {
       "localizations" : {
         "fr" : {
@@ -38481,6 +38533,9 @@
         }
       }
     },
+    "Check the host and port, and that the server is running and reachable from this Mac." : {
+
+    },
     "Check the keys the block writes before running it again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -38551,6 +38606,12 @@
     "Check the server and your network, then try again." : {
 
     },
+    "Check the settings in SSH & Proxies." : {
+
+    },
+    "Check the SSL mode and certificates in SSL/TLS." : {
+
+    },
     "Check the tunnel host and your network, then try again." : {
       "localizations" : {
         "fr" : {
@@ -38590,6 +38651,9 @@
           }
         }
       }
+    },
+    "Check the username and password." : {
+
     },
     "Check the values already stored" : {
 
@@ -38934,6 +38998,9 @@
         }
       }
     },
+    "Choose a CA certificate." : {
+
+    },
     "Choose a certificate or key file" : {
       "localizations" : {
         "fr" : {
@@ -39039,6 +39106,9 @@
           }
         }
       }
+    },
+    "Choose a database file." : {
+
     },
     "Choose a database or bucket first." : {
       "extractionState" : "manual",
@@ -39169,6 +39239,9 @@
           }
         }
       }
+    },
+    "Choose a key file for jump host %lld." : {
+
     },
     "Choose a location to save the diagram as %@." : {
 
@@ -40141,6 +40214,9 @@
         }
       }
     },
+    "Choose Port Automatically" : {
+
+    },
     "Choose Schema" : {
 
     },
@@ -40156,6 +40232,10 @@
     "Choose the base type." : {
 
     },
+    "Choose the client certificate and key in the connection's SSL/TLS settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Choose the client certificate and key on the connection's Network tab." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -40167,6 +40247,9 @@
           }
         }
       }
+    },
+    "Choose the client key." : {
+
     },
     "Choose the columns shown beside each key" : {
       "localizations" : {
@@ -40208,6 +40291,9 @@
         }
       }
     },
+    "Choose the database file to attach as “%@”." : {
+
+    },
     "Choose the database files to attach each time this connection opens." : {
 
     },
@@ -40244,6 +40330,9 @@
           }
         }
       }
+    },
+    "Choose the SQLite extension library to load in its place." : {
+
     },
     "Choose Type" : {
       "extractionState" : "stale",
@@ -43718,6 +43807,9 @@
         }
       }
     },
+    "cloud-sql-proxy not found. Install it with “brew install cloud-sql-proxy”, download it, or choose the binary." : {
+
+    },
     "cloud-sql-proxy was not found. Install it with “brew install cloud-sql-proxy”, or download it in the Cloud SQL Auth Proxy settings." : {
       "localizations" : {
         "fr" : {
@@ -44044,6 +44136,9 @@
           }
         }
       }
+    },
+    "cloudflared not found. Install it with “brew install cloudflared”, or choose the binary." : {
+
     },
     "cloudflared sign-in did not complete. Check the hostname and your Cloudflare Access app, then try again." : {
 
@@ -46530,6 +46625,9 @@
         }
       }
     },
+    "Commands to run after connecting. One per line or separated by semicolons." : {
+
+    },
     "Commas" : {
 
     },
@@ -48709,6 +48807,9 @@
         }
       }
     },
+    "Connect over Private IP" : {
+
+    },
     "Connect Securely" : {
       "localizations" : {
         "fr" : {
@@ -48758,6 +48859,9 @@
           }
         }
       }
+    },
+    "Connect Timeout" : {
+
     },
     "Connect Timeout (seconds)" : {
       "extractionState" : "stale",
@@ -48992,6 +49096,9 @@
         }
       }
     },
+    "Connect Via" : {
+
+    },
     "connected" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -49156,6 +49263,12 @@
           }
         }
       }
+    },
+    "Connected to %1$@ %2$@ in %3$lld ms" : {
+
+    },
+    "Connected to %1$@ in %2$lld ms" : {
+
     },
     "Connected with a warning" : {
 
@@ -49659,6 +49772,9 @@
           }
         }
       }
+    },
+    "Connection failed" : {
+
     },
     "Connection Failed" : {
       "localizations" : {
@@ -50165,6 +50281,9 @@
           }
         }
       }
+    },
+    "Connection Settings" : {
+
     },
     "Connection status" : {
       "comment" : "Toolbar item tooltip for the status section of the toolbar.",
@@ -51070,10 +51189,19 @@
         }
       }
     },
+    "Connects straight to the host and port set in General." : {
+
+    },
     "Connects through the socket file on the General tab." : {
 
     },
+    "Connects through the socket file set in General." : {
+
+    },
     "Connects through the socket on the General tab. PostgreSQL sends no SSL over a socket, which stays on this Mac." : {
+
+    },
+    "Connects through the socket set in General. PostgreSQL sends no SSL over a socket, which stays on this Mac." : {
 
     },
     "Connects to %@. The port names the socket file in the folder." : {
@@ -52315,6 +52443,9 @@
 
     },
     "Copy as UPDATE Statements" : {
+
+    },
+    "Copy as URL" : {
 
     },
     "COPY at line %@: %@ lines sent" : {
@@ -53965,6 +54096,10 @@
     },
     "Copying objects to %@" : {
 
+    },
+    "Correct the Key Passphrase in the connection's SSL/TLS settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Correct the Key Passphrase on the connection's Network tab." : {
       "extractionState" : "manual",
@@ -58133,6 +58268,9 @@
         }
       }
     },
+    "Credential Profile" : {
+
+    },
     "Credential Profiles" : {
       "localizations" : {
         "fr" : {
@@ -58800,6 +58938,9 @@
     "Current Statement" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Current type" : {
+
     },
     "Current value" : {
       "localizations" : {
@@ -63870,6 +64011,9 @@
         }
       }
     },
+    "Delete “%@”…" : {
+
+    },
     "Delete /%@" : {
       "localizations" : {
         "fr" : {
@@ -64305,6 +64449,9 @@
           }
         }
       }
+    },
+    "Delete Failed" : {
+
     },
     "Delete Favorite?" : {
       "localizations" : {
@@ -65022,6 +65169,9 @@
           }
         }
       }
+    },
+    "Delete the tag “%@”?" : {
+
     },
     "Delete Theme" : {
       "extractionState" : "stale",
@@ -66493,6 +66643,9 @@
         }
       }
     },
+    "Detected: %@" : {
+
+    },
     "Development" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -66534,6 +66687,9 @@
           }
         }
       }
+    },
+    "Development environment" : {
+
     },
     "Device" : {
       "extractionState" : "manual",
@@ -68194,6 +68350,9 @@
         }
       }
     },
+    "Do you want to save the changes to “%@”?" : {
+
+    },
     "Document" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -68704,6 +68863,9 @@
           }
         }
       }
+    },
+    "Download" : {
+
     },
     "Download and install updates automatically" : {
       "localizations" : {
@@ -74067,6 +74229,18 @@
         }
       }
     },
+    "Encrypts the connection and checks that a trusted certificate authority signed the server certificate." : {
+
+    },
+    "Encrypts the connection and checks the server certificate and that it names the host." : {
+
+    },
+    "Encrypts the connection when the server offers TLS, and connects without it otherwise." : {
+
+    },
+    "Encrypts the connection without checking the server certificate." : {
+
+    },
     "Endpoint" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -74339,6 +74513,12 @@
     "Engines that match type names by exact case, such as ClickHouse, keep the case you typed." : {
 
     },
+    "Enter %1$@ to %2$@ KB." : {
+
+    },
+    "Enter %1$@ to %2$@ seconds." : {
+
+    },
     "Enter a _key for the new row. Bigtable has no generated keys." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -74463,10 +74643,23 @@
         }
       }
     },
+    "Enter a number from %@ to %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Enter a number from %1$@ to %2$@."
+          }
+        }
+      }
+    },
     "Enter a number of rows from 1 to %@." : {
 
     },
     "Enter a pattern for %@." : {
+
+    },
+    "Enter a port from 1 to 65535." : {
 
     },
     "Enter a Project ID, or use a service account key that names one." : {
@@ -74593,6 +74786,9 @@
         }
       }
     },
+    "Enter an SSH host." : {
+
+    },
     "Enter at least one value for %@." : {
 
     },
@@ -74695,6 +74891,9 @@
           }
         }
       }
+    },
+    "Enter it as project:region:instance." : {
+
     },
     "Enter one document. There is more text after its closing }." : {
       "extractionState" : "manual",
@@ -74807,6 +75006,15 @@
         }
       }
     },
+    "Enter the Access hostname." : {
+
+    },
+    "Enter the address of jump host %lld." : {
+
+    },
+    "Enter the client ID and secret." : {
+
+    },
     "Enter the code %@ in the browser to finish signing in to Microsoft Entra ID. The code is on your clipboard." : {
       "localizations" : {
         "fr" : {
@@ -74907,6 +75115,13 @@
           }
         }
       }
+    },
+    "Enter the file's path on the server." : {
+
+    },
+    "Enter the Key Passphrase in the connection's SSL/TLS settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Enter the Key Passphrase on the connection's Network tab." : {
       "extractionState" : "manual",
@@ -75033,6 +75248,9 @@
           }
         }
       }
+    },
+    "Enter the proxy host." : {
+
     },
     "Enter the SAP HANA host name." : {
       "extractionState" : "manual",
@@ -77589,6 +77807,9 @@
           }
         }
       }
+    },
+    "Executable Path" : {
+
     },
     "Execute" : {
       "localizations" : {
@@ -80880,6 +81101,9 @@
         }
       }
     },
+    "Expose to Local Network" : {
+
+    },
     "Expression" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -84144,6 +84368,9 @@
         }
       }
     },
+    "File Path is unused. The connection opens the file on the SSH server chosen in Location." : {
+
+    },
     "File path or paste JSON" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -84389,6 +84616,9 @@
           }
         }
       }
+    },
+    "Filled from the URL: %@." : {
+
     },
     "Film" : {
       "extractionState" : "manual",
@@ -87336,6 +87566,9 @@
 
     },
     "Forget %1$@ for %2$@" : {
+
+    },
+    "Forget a tool to be asked before it runs again." : {
 
     },
     "Forget All" : {
@@ -91579,6 +91812,12 @@
         }
       }
     },
+    "Hide passphrase" : {
+
+    },
+    "Hide password" : {
+
+    },
     "Hide Query History" : {
       "localizations" : {
         "fr" : {
@@ -91668,6 +91907,9 @@
           }
         }
       }
+    },
+    "Hide secret" : {
+
     },
     "Hide Sidebar" : {
       "localizations" : {
@@ -92452,6 +92694,9 @@
     "Host and Port" : {
 
     },
+    "Host and Port are unused. The SSH tunnel forwards to the socket path set in SSH & Proxies." : {
+
+    },
     "Host and Port are unused. The SSH tunnel forwards to the socket path set on the Network tab." : {
       "localizations" : {
         "fr" : {
@@ -93095,6 +93340,9 @@
         }
       }
     },
+    "How matching values are hidden" : {
+
+    },
     "How plans, devices and offline files work." : {
 
     },
@@ -93622,6 +93870,9 @@
           }
         }
       }
+    },
+    "Identifier Case" : {
+
     },
     "Identity" : {
       "localizations" : {
@@ -95626,6 +95877,9 @@
         }
       }
     },
+    "In Keychain" : {
+
+    },
     "in list" : {
       "localizations" : {
         "fr" : {
@@ -95677,6 +95931,22 @@
           }
         }
       }
+    },
+    "In the connection's SSL/TLS settings, check that the Key under Client Certificates is a valid PEM private key." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "In the connection's SSL/TLS settings, choose the server's CA certificate under Verify Identity or Verify CA. Required (skip verify) also connects, but does not check the certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "In the connection's SSL/TLS settings, set SSL Mode to Disabled." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "In the connection's SSL/TLS settings, set SSL Mode to Verify Identity, or to Required to skip the certificate check." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "In the sidebar, the inspector and data grid column header tooltips." : {
 
@@ -98782,6 +99052,9 @@
         }
       }
     },
+    "Instance Connection Name" : {
+
+    },
     "Instance connection name must be project:region:instance" : {
       "localizations" : {
         "fr" : {
@@ -100469,6 +100742,9 @@
 
     },
     "It expires on %@. Create a new one in your account and import it." : {
+
+    },
+    "It is removed from ^[%lld connection](inflect: true). This cannot be undone." : {
 
     },
     "It is used by “%@” in %@, which will have no shortcut." : {
@@ -105891,6 +106167,9 @@
         }
       }
     },
+    "Limits what MCP clients, scripts and shortcuts can do with this connection, whatever their token allows." : {
+
+    },
     "Line" : {
       "localizations" : {
         "fr" : {
@@ -108992,6 +109271,9 @@
         }
       }
     },
+    "Local environment" : {
+
+    },
     "Local File" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -109117,6 +109399,9 @@
         }
       }
     },
+    "Local Only" : {
+
+    },
     "Local only, not synced to iCloud" : {
       "localizations" : {
         "fr" : {
@@ -109196,6 +109481,9 @@
           }
         }
       }
+    },
+    "Local Port" : {
+
     },
     "Local port must be between 1 and 65535" : {
       "localizations" : {
@@ -111311,7 +111599,13 @@
     "Match System follows Sidebar icon size in System Settings." : {
 
     },
+    "Match the pattern against column names or column types" : {
+
+    },
     "Match what I type" : {
+
+    },
+    "Match What I Type" : {
 
     },
     "Match what I type, otherwise lowercase" : {
@@ -112465,6 +112759,9 @@
           }
         }
       }
+    },
+    "Maximum time to open the database. Leave blank to use the %d-second default." : {
+
     },
     "Maximum time to wait for a query to complete. Set to 0 for no limit. Applied to new connections." : {
       "localizations" : {
@@ -114922,6 +115219,9 @@
     "Moon" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "More" : {
+
     },
     "More tables follow. Pass LastEvaluatedTableName as ExclusiveStartTableName." : {
       "extractionState" : "manual",
@@ -118312,6 +118612,9 @@
         }
       }
     },
+    "New Profile…" : {
+
+    },
     "New Query" : {
       "localizations" : {
         "fr" : {
@@ -121605,6 +121908,9 @@
         }
       }
     },
+    "No Jump Hosts" : {
+
+    },
     "No Kerberos ticket was found." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -121844,6 +122150,9 @@
       }
     },
     "No longer in the team library" : {
+
+    },
+    "No Masking Rules" : {
 
     },
     "No matches" : {
@@ -123880,6 +124189,9 @@
           }
         }
       }
+    },
+    "No saved connection uses it. This cannot be undone." : {
+
     },
     "No saved connection with ID \"%@\"." : {
       "localizations" : {
@@ -133267,6 +133579,9 @@
         }
       }
     },
+    "Opens the database file set in General, on this Mac. For a file on another computer, choose Remote Server over SSH." : {
+
+    },
     "Opens the Pro plan details in your browser." : {
       "localizations" : {
         "fr" : {
@@ -137326,6 +137641,9 @@
         }
       }
     },
+    "Paste Connection URL" : {
+
+    },
     "Paste the JSON below and save" : {
       "localizations" : {
         "fr" : {
@@ -139906,6 +140224,9 @@
         }
       }
     },
+    "Policy" : {
+
+    },
     "Port" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -140727,6 +141048,12 @@
           }
         }
       }
+    },
+    "Preferred tries TLS first and connects without it when the server offers none. Use Required for AWS RDS, Cloud SQL, Heroku, Supabase and Neon." : {
+
+    },
+    "Preferred tries TLS first and connects without it when the TLS handshake fails. Use Required for Cloud SQL and Azure Database for MySQL, which refuse an unencrypted connection." : {
+
     },
     "Preferred tries TLS first, falls back to plain." : {
 
@@ -143223,6 +143550,9 @@
         }
       }
     },
+    "Production environment" : {
+
+    },
     "Production reader" : {
       "localizations" : {
         "fr" : {
@@ -143677,6 +144007,9 @@
         }
       }
     },
+    "Prompt for API Token" : {
+
+    },
     "Prompt for password" : {
       "localizations" : {
         "fr" : {
@@ -143716,6 +144049,9 @@
           }
         }
       }
+    },
+    "Prompt for Password" : {
+
     },
     "Prompt template" : {
       "localizations" : {
@@ -146049,6 +146385,9 @@
           }
         }
       }
+    },
+    "Query Timeout" : {
+
     },
     "Query timeout applies only to database drivers that support it. Use 0 for no limit. Reconnect to apply changes." : {
       "localizations" : {
@@ -151349,6 +151688,9 @@
           }
         }
       }
+    },
+    "Remote Server over SSH" : {
+
     },
     "Remote SQLite session disconnected." : {
 
@@ -161656,6 +161998,9 @@
         }
       }
     },
+    "Save API Token" : {
+
+    },
     "Save As" : {
       "localizations" : {
         "fr" : {
@@ -162258,6 +162603,9 @@
           }
         }
       }
+    },
+    "Save Password" : {
+
     },
     "Save replaces the whole document with this text. A field you remove is removed, and _id cannot change." : {
       "localizations" : {
@@ -168338,6 +168686,9 @@
         }
       }
     },
+    "Server not reachable" : {
+
+    },
     "Server output" : {
       "localizations" : {
         "fr" : {
@@ -169741,6 +170092,9 @@
         }
       }
     },
+    "Sets when the assistant and MCP clients may read this connection." : {
+
+    },
     "Settings" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -169787,6 +170141,9 @@
 
     },
     "Settings sections" : {
+
+    },
+    "Settings the new type can't use are listed before anything changes." : {
 
     },
     "Settings:" : {
@@ -173280,6 +173637,9 @@
         }
       }
     },
+    "Shows the setting to fix" : {
+
+    },
     "Shows the version and Check for Updates under the app icon. An available update is shown either way." : {
       "localizations" : {
         "fr" : {
@@ -174109,6 +174469,9 @@
         }
       }
     },
+    "Sign-in failed" : {
+
+    },
     "Sign-in timed out" : {
       "localizations" : {
         "fr" : {
@@ -174487,6 +174850,9 @@
         }
       }
     },
+    "Signing In…" : {
+
+    },
     "Signing out" : {
 
     },
@@ -174561,6 +174927,9 @@
           }
         }
       }
+    },
+    "Signs in with this Mac's Application Default Credentials, from “gcloud auth application-default login” or GOOGLE_APPLICATION_CREDENTIALS." : {
+
     },
     "Signs in with your account" : {
 
@@ -177936,6 +178305,9 @@
         }
       }
     },
+    "SSH & Proxies" : {
+
+    },
     "SSH Agent" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -179130,6 +179502,9 @@
         }
       }
     },
+    "SSL/TLS settings" : {
+
+    },
     "SSO portal returned HTTP %lld for profile \"%@\"." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -179276,6 +179651,9 @@
       }
     },
     "Staging" : {
+
+    },
+    "Staging environment" : {
 
     },
     "Stale Statistics" : {
@@ -179604,6 +179982,9 @@
           }
         }
       }
+    },
+    "Startup" : {
+
     },
     "Startup Commands" : {
       "localizations" : {
@@ -186761,6 +187142,9 @@
         }
       }
     },
+    "TablePro can’t open “%@”." : {
+
+    },
     "TablePro can't pass any value of type %2$@ to %1$@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -186864,6 +187248,9 @@
     "TablePro compiles it again with debug information (PLSQL_OPTIMIZE_LEVEL=1) and keeps its other settings. Compiling commits." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "TablePro connects through the jump hosts in order, then the SSH server. A jump host signs in with a key file or the SSH agent." : {
+
     },
     "TablePro connects to the first broker over a tunnel. Partitions led by other brokers cannot be read." : {
       "localizations" : {
@@ -187058,6 +187445,9 @@
       }
     },
     "TablePro could not read the saved token. Type it to test." : {
+
+    },
+    "TablePro could not read the SSH profiles on this Mac." : {
 
     },
     "TablePro could not read the Table Health history: %@" : {
@@ -187833,6 +188223,9 @@
           }
         }
       }
+    },
+    "TablePro opens database files, SQL files, data files, connection shares and plugins." : {
+
     },
     "TablePro reads .tablepro files saved without a passphrase from these folders. Their connections appear read only in the sidebar." : {
 
@@ -192071,6 +192464,9 @@
     "The changes are in an open transaction on this connection. Commit or roll it back yourself." : {
 
     },
+    "The changes to “%@” can't be saved yet." : {
+
+    },
     "The changes were edited while the save was checking other tables. Save again to include them." : {
 
     },
@@ -192901,6 +193297,9 @@
           }
         }
       }
+    },
+    "The connection is not encrypted." : {
+
     },
     "The connection is not open." : {
       "localizations" : {
@@ -200059,6 +200458,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The SSH profile this connection uses isn't on this Mac." : {
+
+    },
     "The SSH profile this connection uses now points to another server. Click Reconnect in its window to use it." : {
 
     },
@@ -200299,6 +200701,9 @@
           }
         }
       }
+    },
+    "The SSH server needs python3." : {
+
     },
     "The SSH server would not forward the socket %@. Check that the path exists on the server and that sshd allows socket forwarding (AllowStreamLocalForwarding). (%@)" : {
       "localizations" : {
@@ -201855,6 +202260,9 @@
           }
         }
       }
+    },
+    "The URL matches this connection." : {
+
     },
     "The user cancelled this operation." : {
       "localizations" : {
@@ -203496,6 +203904,9 @@
         }
       }
     },
+    "This connection has not been saved yet." : {
+
+    },
     "This connection has open HANDLER cursors, which reconnecting would close." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -205027,6 +205438,9 @@
     "This driver cannot send rows to COPY FROM STDIN." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "This driver doesn't support %@." : {
+
     },
     "This driver has no TLS fallback. Preferred forces TLS, same as Required." : {
       "localizations" : {
@@ -207658,6 +208072,9 @@
           }
         }
       }
+    },
+    "This profile isn't on this Mac." : {
+
     },
     "This profile will be permanently deleted." : {
       "localizations" : {
@@ -210637,6 +211054,9 @@
           }
         }
       }
+    },
+    "TLS handshake failed" : {
+
     },
     "TLS handshake failed: %@" : {
       "extractionState" : "manual",
@@ -215224,6 +215644,9 @@
         }
       }
     },
+    "Unix Socket" : {
+
+    },
     "Unix Timestamp (milliseconds)" : {
       "localizations" : {
         "fr" : {
@@ -218284,6 +218707,9 @@
         }
       }
     },
+    "Use IAM Database Authentication" : {
+
+    },
     "Use Key" : {
 
     },
@@ -220650,6 +221076,14 @@
           }
         }
       }
+    },
+    "Verify CA needs a CA certificate. In the connection's SSL/TLS settings, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Verify CA needs a CA certificate. In the etcd section of the connection's Advanced settings, choose the CA Certificate that signed the server's certificate, or set TLS Mode to Verify Identity." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Verify CA needs a CA certificate. In the etcd section of the Options tab, choose the CA Certificate that signed the server's certificate, or set TLS Mode to Verify Identity." : {
       "extractionState" : "manual",
@@ -224882,6 +225316,9 @@
           }
         }
       }
+    },
+    "With IAM, the username in General is the IAM principal, such as a user email or name@project.iam, and no password is sent." : {
+
     },
     "With Increase Contrast on, the window uses the system background." : {
 

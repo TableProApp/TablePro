@@ -13,6 +13,7 @@ struct ConnectionTagEditor: View {
     @Binding var tagIds: [UUID]
     @State private var allTags: [ConnectionTag] = []
     @State private var showingCreateSheet = false
+    @State private var pendingDeletion: TagDeletion?
 
     private let tagStorage = TagStorage.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionTagEditor")
@@ -37,6 +38,23 @@ struct ConnectionTagEditor: View {
                 try tagStorage.addTag(tag)
                 allTags = tagStorage.loadTags()
                 toggleOn(tag.id)
+            }
+        }
+        .alert(
+            pendingDeletion.map { String(format: String(localized: "Delete the tag “%@”?"), $0.tag.name) } ?? "",
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            presenting: pendingDeletion
+        ) { deletion in
+            Button(String(localized: "Delete"), role: .destructive) { deleteTag(deletion.tag) }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: { deletion in
+            if deletion.connectionCount > 0 {
+                Text("It is removed from ^[\(deletion.connectionCount) connection](inflect: true). This cannot be undone.")
+            } else {
+                Text("No saved connection uses it. This cannot be undone.")
             }
         }
     }
@@ -102,9 +120,9 @@ struct ConnectionTagEditor: View {
                 Menu("Manage Tags") {
                     ForEach(allTags.filter { !$0.isPreset }) { tag in
                         Button(role: .destructive) {
-                            deleteTag(tag)
+                            confirmDeletion(of: tag)
                         } label: {
-                            Label("Delete \"\(tag.name)\"", systemImage: "trash")
+                            Label("Delete “\(tag.name)”…", systemImage: "trash")
                         }
                     }
                 }
@@ -138,6 +156,12 @@ struct ConnectionTagEditor: View {
         tagIds = ids
     }
 
+    // The tag goes from every connection at once and Cancel in the editor cannot bring it back.
+    private func confirmDeletion(of tag: ConnectionTag) {
+        let count = ConnectionStorage.shared.loadConnections().filter { $0.tagIds.contains(tag.id) }.count
+        pendingDeletion = TagDeletion(tag: tag, connectionCount: count)
+    }
+
     private func deleteTag(_ tag: ConnectionTag) {
         tagIds = tagIds.filter { $0 != tag.id }
         tagStorage.deleteTag(tag, clearingFrom: .shared)
@@ -154,6 +178,11 @@ struct ConnectionTagEditor: View {
     }
 }
 
+private struct TagDeletion {
+    let tag: ConnectionTag
+    let connectionCount: Int
+}
+
 // MARK: - Create Tag Sheet
 
 private struct CreateTagSheet: View {
@@ -161,9 +190,7 @@ private struct CreateTagSheet: View {
     @State private var tagName: String = ""
     @State private var tagColor: ConnectionColor = .gray
     @State private var errorMessage: String?
-    /// Throwing, because the library refuses a name it already holds. A sheet that dismissed on the
-    /// attempt applied the tag that was already there, with its colour rather than the one just
-    /// picked, and said nothing about the difference.
+    // Throws on a name the library holds, so the sheet stays open instead of applying the old tag's colour.
     let onSave: (String, ConnectionColor) throws -> Void
 
     var body: some View {

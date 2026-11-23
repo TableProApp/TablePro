@@ -3,13 +3,9 @@
 //  TablePro
 //
 
-import Foundation
+import SwiftUI
 
-/// A connection's deployment environment, shown on the identity row so production stands apart from
-/// a scratch database at a glance.
-///
-/// Stored as the app-managed `additionalFields["environment"]` key, so it rides the connection's
-/// existing synced field set rather than a new CloudKit field.
+// Stored as the app-managed `additionalFields["environment"]` key, so it syncs with the existing field set.
 enum ConnectionEnvironment: String, CaseIterable, Identifiable, Sendable {
     case none
     case production
@@ -18,6 +14,11 @@ enum ConnectionEnvironment: String, CaseIterable, Identifiable, Sendable {
     case local
 
     static let fieldKey = "environment"
+
+    // A value from a newer release, or a hand-edited file, shows as no environment.
+    static func stored(in fields: [String: String]?) -> ConnectionEnvironment {
+        fields?[fieldKey].flatMap(ConnectionEnvironment.init(rawValue:)) ?? .none
+    }
 
     var id: String { rawValue }
 
@@ -31,14 +32,34 @@ enum ConnectionEnvironment: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// An SF Symbol, never a bare coloured dot: the platform's own vocabulary for status.
+    // Production avoids the triangle: a row's failed status and missing driver already draw it.
     var symbolName: String? {
         switch self {
         case .none: return nil
-        case .production: return "exclamationmark.triangle.fill"
+        case .production: return "flame.fill"
         case .staging: return "testtube.2"
         case .development: return "hammer.fill"
         case .local: return "laptopcomputer"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .production: return .red
+        case .staging: return .orange
+        case .development: return .green
+        case .local, .none: return .secondary
+        }
+    }
+
+    // "Local" alone would read like the row's "Local only" sync flag.
+    var accessibilityName: String? {
+        switch self {
+        case .none: return nil
+        case .production: return String(localized: "Production environment")
+        case .staging: return String(localized: "Staging environment")
+        case .development: return String(localized: "Development environment")
+        case .local: return String(localized: "Local environment")
         }
     }
 }

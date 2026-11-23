@@ -3,7 +3,7 @@ import SwiftUI
 import TableProSSHConfig
 import TableProSSHTransport
 
-// Server, Authentication, Two-Factor and Jump Hosts sections, shared by the SSH profile editor and the connection form.
+// The SSH profile editor's Server, Authentication, Two-Factor and Jump Hosts sections.
 struct SSHServerFields: View {
     @Binding var draft: SSHServerDraft
     let configEntries: [SSHConfigEntry]

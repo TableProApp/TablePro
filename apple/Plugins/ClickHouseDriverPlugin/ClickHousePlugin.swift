@@ -140,11 +140,11 @@ nonisolated struct ClickHouseError: Error, PluginDriverError {
 
     static let notConnected = ClickHouseError(message: String(localized: "Not connected to database"))
     static let verifyCaNeedsCertificate = ClickHouseError(message: String(localized: """
-        Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed \
+        Verify CA needs a CA certificate. In the connection's SSL/TLS settings, choose the CA certificate that signed \
         the server's certificate, or set SSL Mode to Verify Identity.
         """))
     static let clientCertificateNeedsKey = ClickHouseError(message: String(localized: """
-        A client certificate needs its client key. On the connection's Network tab, choose the client key, or \
+        A client certificate needs its client key. In the connection's SSL/TLS settings, choose the client key, or \
         clear the client certificate.
         """))
 

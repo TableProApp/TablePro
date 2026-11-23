@@ -125,14 +125,15 @@ struct ConnectionFormEditsTests {
 
     @Test("The form's edits carry what Forget took off the list")
     @MainActor
-    func coordinatorCarriesForgottenTools() {
-        let coordinator = ConnectionFormCoordinator(connectionId: nil)
-        coordinator.advanced.load(from: populatedConnection())
+    func draftCarriesForgottenTools() {
+        let mysql = ConnectionTypeTraits.live(for: .mysql, pluginManager: .shared)
+        var draft = ConnectionDraft.loaded(from: populatedConnection(), secrets: .none, traits: mysql)
 
-        coordinator.advanced.forgetAlwaysAllowed("run_query")
-        let saved = coordinator.buildEdits().applied(to: populatedConnection())
+        draft.forgetAlwaysAllowed("run_query")
+        let edits = ConnectionEditorEngine.edits(draft, mysql, originalTraits: mysql, EditorContext())
+        let saved = edits.applied(to: populatedConnection())
 
-        #expect(coordinator.buildEdits().revokedAIAlwaysAllowedTools == ["run_query"])
+        #expect(edits.revokedAIAlwaysAllowedTools == ["run_query"])
         #expect(saved.aiAlwaysAllowedTools == ["list_tables"])
     }
 
@@ -173,12 +174,12 @@ struct ConnectionFormEditsTests {
     func keepsAnUndrawableIconThroughLoadAndSave() {
         var original = populatedConnection()
         original.iconName = "made.up.symbol"
-        let customization = CustomizationPaneViewModel()
+        let mysql = ConnectionTypeTraits.live(for: .mysql, pluginManager: .shared)
 
-        customization.load(from: original)
-        let result = edits(iconName: customization.iconName).applied(to: original)
+        let draft = ConnectionDraft.loaded(from: original, secrets: .none, traits: mysql)
+        let result = ConnectionEditorEngine.edits(draft, mysql, originalTraits: mysql, EditorContext()).applied(to: original)
 
-        #expect(customization.iconName == "made.up.symbol")
+        #expect(draft.appearance.iconName == "made.up.symbol")
         #expect(result.iconName == "made.up.symbol")
     }
 
@@ -294,16 +295,16 @@ struct ConnectionFormEditsTests {
     func environmentRoundTrips() {
         var stored = populatedConnection()
         stored.additionalFields[ConnectionEnvironment.fieldKey] = "production"
-        let coordinator = ConnectionFormCoordinator(connectionId: nil)
-        coordinator.customization.load(from: stored)
-        #expect(coordinator.customization.environment == .production)
+        let mysql = ConnectionTypeTraits.live(for: .mysql, pluginManager: .shared)
+        var draft = ConnectionDraft.loaded(from: stored, secrets: .none, traits: mysql)
+        #expect(draft.environment == .production)
 
-        coordinator.customization.environment = .staging
-        let saved = coordinator.buildEdits().applied(to: stored)
+        draft.setEnvironment(.staging)
+        let saved = ConnectionEditorEngine.edits(draft, mysql, originalTraits: mysql, EditorContext()).applied(to: stored)
         #expect(saved.additionalFields[ConnectionEnvironment.fieldKey] == "staging")
 
-        coordinator.customization.environment = .none
-        let cleared = coordinator.buildEdits().applied(to: saved)
+        draft.setEnvironment(.none)
+        let cleared = ConnectionEditorEngine.edits(draft, mysql, originalTraits: mysql, EditorContext()).applied(to: saved)
         #expect(cleared.additionalFields[ConnectionEnvironment.fieldKey] == nil)
     }
 

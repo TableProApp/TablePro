@@ -4,33 +4,61 @@ import Testing
 
 @testable import TablePro
 
-// A secret that came out of a Keychain must ask for authentication before the Show toggle reveals it.
+// A secret that came out of a Keychain must ask for authentication before the Show button reveals it.
 struct SSHSecretRevealProvenanceTests {
     @Test func profileSecretsStayProtectedAfterSwitchingToInline() {
-        var state = SSHTunnelFormState()
-        state.enabled = true
-        state.profileId = UUID()
-        state.adoptProfileSecrets(password: "hunter2", keyPassphrase: "phrase", totpSecret: "JBSWY3DP")
+        var draft = ConnectionDraft(type: .postgresql)
+        draft.transport = .ssh
+        draft.ssh.profileId = UUID()
+        draft.ssh.adoptKeychainSecrets(password: "hunter2", keyPassphrase: "phrase", totpSecret: "JBSWY3DP")
 
-        state.profileId = nil
+        draft.selectSSHProfile(nil, profiles: [])
 
-        #expect(state.savedSecrets == [.password, .keyPassphrase, .totpSecret])
+        #expect(draft.ssh.password == "hunter2")
+        #expect(draft.ssh.keyPassphrase == "phrase")
+        #expect(draft.ssh.totpSecret == "JBSWY3DP")
+        #expect(draft.ssh.savedSecrets == [.password, .keyPassphrase, .totpSecret])
     }
 
     @Test func emptyProfileSecretsAreNotProtected() {
-        var state = SSHTunnelFormState()
-        state.adoptProfileSecrets(password: "hunter2", keyPassphrase: "", totpSecret: "")
+        var ssh = SSHDraft()
+        ssh.adoptKeychainSecrets(password: "hunter2", keyPassphrase: "", totpSecret: nil)
 
-        #expect(state.savedSecrets == [.password])
+        #expect(ssh.savedSecrets == [.password])
     }
 
-    @Test func disablingTheTunnelDropsProfileProvenance() {
-        var state = SSHTunnelFormState()
-        state.adoptProfileSecrets(password: "hunter2", keyPassphrase: "phrase", totpSecret: "JBSWY3DP")
+    // The old form cleared its fields with the tunnel; this one keeps them, so the guard stays with them.
+    @Test func turningTheTransportOffKeepsTheValuesProtected() {
+        var draft = ConnectionDraft(type: .postgresql)
+        draft.transport = .ssh
+        draft.ssh.adoptKeychainSecrets(password: "hunter2", keyPassphrase: "phrase", totpSecret: "JBSWY3DP")
 
-        state.disable()
+        draft.selectTransport(nil)
+        draft.selectTransport(.ssh)
 
-        #expect(state.savedSecrets.isEmpty)
+        #expect(draft.ssh.password == "hunter2")
+        #expect(draft.ssh.savedSecrets == [.password, .keyPassphrase, .totpSecret])
+    }
+
+    @Test func retypingTheConnectionKeepsTheValuesProtected() {
+        let mysql = ConnectionTypeTraits(type: .mysql)
+        let mariadb = ConnectionTypeTraits(type: .mariadb)
+        var draft = ConnectionDraft(type: .mysql)
+        draft.ssh.adoptKeychainSecrets(password: "hunter2", keyPassphrase: nil, totpSecret: nil)
+
+        draft.retype(to: mariadb, from: mysql)
+
+        #expect(draft.ssh.password == "hunter2")
+        #expect(draft.ssh.savedSecrets == [.password])
+    }
+
+    @Test func secretsTypedHereAreNotProtected() {
+        var ssh = SSHDraft()
+        ssh.password = "typed"
+        ssh.keyPassphrase = "typed"
+        ssh.totpSecret = "JBSWY3DP"
+
+        #expect(ssh.savedSecrets.isEmpty)
     }
 
     @Test func filledSecretsNamesOnlyNonEmptyValues() {

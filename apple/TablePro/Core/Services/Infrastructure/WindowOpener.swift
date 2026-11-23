@@ -16,7 +16,7 @@ internal final class WindowOpener: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WindowOpener")
 
     private var openWelcomeAction: (() -> Void)?
-    private var openConnectionFormAction: ((ConnectionFormRequest) -> Void)?
+    private var openConnectionFormAction: ((ConnectionFormRequest, ConnectionEditorFacetChoice?) -> Void)?
     private var openIntegrationsActivityAction: (() -> Void)?
     private var openSettingsAction: ((SettingsRequest) -> Void)?
     private var stagedDraftId: UUID?
@@ -60,10 +60,10 @@ internal final class WindowOpener: ObservableObject {
         }
     }
 
-    internal func openConnectionForm(editing connectionId: UUID) {
+    internal func openConnectionForm(editing connectionId: UUID, facet: ConnectionEditorFacetChoice? = nil) {
         perform { opener in
             guard let present = opener.openConnectionFormAction else { return false }
-            present(.edit(connectionId: connectionId))
+            present(.edit(connectionId: connectionId), facet)
             return true
         }
     }
@@ -86,7 +86,7 @@ internal final class WindowOpener: ObservableObject {
         stagedDraftId = nil
         perform { opener in
             guard let present = opener.openConnectionFormAction else { return false }
-            present(.create(draftId: draftId))
+            present(.create(draftId: draftId), nil)
             return true
         }
     }
@@ -118,7 +118,7 @@ internal final class WindowOpener: ObservableObject {
         drainPendingCalls()
     }
 
-    internal func setConnectionFormPresenter(_ present: @escaping (ConnectionFormRequest) -> Void) {
+    internal func setConnectionFormPresenter(_ present: @escaping (ConnectionFormRequest, ConnectionEditorFacetChoice?) -> Void) {
         openConnectionFormAction = present
         drainPendingCalls()
     }

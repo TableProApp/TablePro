@@ -61,4 +61,18 @@ struct ConnectionRecoveryPresentationTests {
 
         #expect(requests == [.revealPlugin("com.TablePro.SQLiteDriver"), .revealPlugin(nil)])
     }
+
+    @Test("Edit Connection opens the editor on its first issue, through the opener it was handed")
+    func editConnectionOpensOnTheFirstIssue() {
+        let opener = WindowOpener()
+        var opened: [(ConnectionFormRequest, ConnectionEditorFacetChoice?)] = []
+        opener.setConnectionFormPresenter { opened.append(($0, $1)) }
+        let connection = TestFixtures.makeConnection()
+
+        ConnectionRecoveryPerformer.perform(.editConnection, for: connection, opener: opener)
+
+        #expect(opened.count == 1)
+        #expect(opened.first?.0 == .edit(connectionId: connection.id))
+        #expect(opened.first?.1 == .firstIssue)
+    }
 }

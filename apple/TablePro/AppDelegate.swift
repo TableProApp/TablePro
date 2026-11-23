@@ -74,7 +74,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSWindow.allowsAutomaticWindowTabbing = true
         WindowOpener.shared.setWelcomePresenter { WelcomeWindowController.present() }
-        WindowOpener.shared.setConnectionFormPresenter { ConnectionFormWindowController.present($0) }
+        WindowOpener.shared.setConnectionFormPresenter { ConnectionEditorWindowController.present($0, facet: $1) }
         WindowOpener.shared.setIntegrationsActivityPresenter { IntegrationsActivityWindowController.present() }
         WindowOpener.shared.setSettingsPresenter { SettingsWindowController.present($0) }
         KeyRepeatFilter.shared.install()
@@ -178,7 +178,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let plan = QuitApproval.approve() else {
+        // The connection editors first: their Cancel keeps the app open before anything else is asked or stopped.
+        guard ConnectionEditorWindowController.prepareToTerminate(), let plan = QuitApproval.approve() else {
             AppRelauncher.shared.terminationWasCancelled()
             return .terminateCancel
         }
@@ -203,6 +204,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        ConnectionEditorWindowController.closeAllForTermination()
         SessionRecoveryTracker.saveOnQuit()
         // Synchronously: an actor hop at terminate may never run, which lost a killed session's last turn.
         AgentSessionRegistry.shared.persistSynchronouslyForTermination()

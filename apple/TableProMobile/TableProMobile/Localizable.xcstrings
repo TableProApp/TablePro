@@ -1639,6 +1639,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A client certificate needs its client key. In the connection's SSL/TLS settings, choose the client key, or clear the client certificate." : {
+
+    },
     "A client certificate needs its client key. On the connection's Network tab, choose the client key, or clear the client certificate." : {
 
     },
@@ -5173,6 +5176,10 @@
         }
       }
     },
+    "Choose the client certificate and key in the connection's SSL/TLS settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Choose the client certificate and key on the connection's Network tab." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -6879,6 +6886,10 @@
           }
         }
       }
+    },
+    "Correct the Key Passphrase in the connection's SSL/TLS settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Correct the Key Passphrase on the connection's Network tab." : {
       "extractionState" : "manual",
@@ -9452,6 +9463,10 @@
           }
         }
       }
+    },
+    "Enter the Key Passphrase in the connection's SSL/TLS settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Enter the Key Passphrase on the connection's Network tab." : {
       "extractionState" : "manual",
@@ -12603,6 +12618,22 @@
           }
         }
       }
+    },
+    "In the connection's SSL/TLS settings, check that the Key under Client Certificates is a valid PEM private key." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "In the connection's SSL/TLS settings, choose the server's CA certificate under Verify Identity or Verify CA. Required (skip verify) also connects, but does not check the certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "In the connection's SSL/TLS settings, set SSL Mode to Disabled." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "In the connection's SSL/TLS settings, set SSL Mode to Verify Identity, or to Required to skip the certificate check." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "In-Memory Database" : {
       "localizations" : {
@@ -30641,6 +30672,9 @@
     "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Verify CA needs a CA certificate. In the connection's SSL/TLS settings, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
+
     },
     "Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
 
