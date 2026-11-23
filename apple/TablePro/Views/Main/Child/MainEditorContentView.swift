@@ -824,38 +824,18 @@ struct MainEditorContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // Configuration is applied outside the update pass: the model publishes when it changes.
-    @ViewBuilder
     private func dataGridView(tab: QueryTab) -> some View {
-        let model = displayedGridModel(for: tab)
-        let configuration = coordinator.gridConfiguration(for: tab)
-        let highlightRules = coordinator.highlightRules(for: tab)
-        DataGridView(model: model)
-            .id(tab.id)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .onAppear {
-                model.configuration = configuration
-                focusGridIfRequested(model)
-            }
-            .onChange(of: configuration) { model.configuration = $0 }
-            .onChange(of: highlightRules) { _ in
-                model.display.cache.clearHighlights()
-                model.repaintAllRows()
-            }
+        DataTabGrid(
+            coordinator: coordinator,
+            model: displayedGridModel(for: tab),
+            presentation: coordinator.gridPresentation(for: tab)
+        )
     }
 
     private func displayedGridModel(for tab: QueryTab) -> DataGridModel {
         let model = coordinator.gridModel(forTab: tab.id)
         coordinator.prepareGridModelForDisplay(forTab: tab.id)
         return model
-    }
-
-    // An explicit open asks for the keyboard; the grid is in its window once this turn ends.
-    private func focusGridIfRequested(_ model: DataGridModel) {
-        guard coordinator.consumePendingGridFocus() else { return }
-        Task { @MainActor in
-            model.focus()
-        }
     }
 
     private func resolvedTableRows(for tab: QueryTab) -> TableRows {

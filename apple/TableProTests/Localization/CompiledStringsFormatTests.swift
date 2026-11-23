@@ -7,32 +7,33 @@ import Foundation
 import Testing
 
 /// `STRINGS_FILE_OUTPUT_ENCODING` decides what the strings-catalog compiler writes into each
-/// `.lproj`. The default, UTF-16 XML, costs about 1.9 MB across the shipped languages over the
-/// binary property list that `CFBundle` reads natively, and the two are indistinguishable at
-/// runtime: every lookup resolves the same, so dropping the setting from `Configs/Base.xcconfig`
-/// would put the weight back without a single visible symptom.
+/// `.lproj`. Linked against the macOS 27.0 SDK, `CFBundle` loads a binary property list one key at
+/// a time, parsing the whole table again for each key it has not seen: 25 ms of main thread at
+/// launch in English, 49 ms in French. An XML table is parsed once and kept. UTF-8 is the smallest XML form; the UTF-16 default costs
+/// about 1.9 MB more across the shipped languages. Every lookup resolves the same in all three
+/// forms, so a changed setting in `Configs/Base.xcconfig` shows no symptom but the time and size.
 struct CompiledStringsFormatTests {
-    @Test("Every shipped language compiles to a binary property list")
-    func everyLanguageIsBinary() throws {
+    @Test("Every shipped language compiles to a UTF-8 XML property list")
+    func everyLanguageIsUTF8XML() throws {
         let tables = try Self.compiledStringsTables()
         #expect(!tables.isEmpty, "The app bundle carries no compiled .strings tables to check")
 
         let offenders = try tables.compactMap { url -> String? in
+            let data = try Data(contentsOf: url)
             var format = PropertyListSerialization.PropertyListFormat.binary
-            _ = try PropertyListSerialization.propertyList(
-                from: try Data(contentsOf: url),
-                options: [],
-                format: &format
-            )
-            guard format != .binary else { return nil }
+            _ = try PropertyListSerialization.propertyList(from: data, options: [], format: &format)
+            let isUTF8XML = format == .xml
+                && data.starts(with: Data("<?xml".utf8))
+                && String(data: data, encoding: .utf8) != nil
+            guard !isUTF8XML else { return nil }
             return "\(url.deletingLastPathComponent().lastPathComponent)/\(url.lastPathComponent)"
         }
 
         #expect(
             offenders.isEmpty,
             """
-            A compiled .strings table is not a binary property list. Restore \
-            STRINGS_FILE_OUTPUT_ENCODING = binary in Configs/Base.xcconfig.
+            A compiled .strings table is not a UTF-8 XML property list. Restore \
+            STRINGS_FILE_OUTPUT_ENCODING[sdk=macosx*] = UTF-8 in Configs/Base.xcconfig.
             \(offenders.joined(separator: "\n"))
             """
         )

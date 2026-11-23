@@ -1,8 +1,3 @@
-//
-//  MultiRowEditState.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
 import TableProPluginKit
@@ -475,10 +470,11 @@ final class MultiRowEditState: ObservableObject {
 
     private static func resolvePendingValue(_ value: String?, original: String?, isJson: Bool) -> String? {
         if isJson, let value, !value.isEmpty {
-            if let original, JsonReindenter.normalize(original) == JsonReindenter.normalize(value) {
+            let compact = JsonReindenter.normalize(value)
+            if let original, JsonReindenter.normalize(original) == compact {
                 return nil
             }
-            return JsonReindenter.staged(value, keepingLayoutOf: original)
+            return JsonReindenter.staged(value, compact: compact, keepingLayoutOf: original)
         }
         if value == original || (original == nil && value == "") {
             return nil

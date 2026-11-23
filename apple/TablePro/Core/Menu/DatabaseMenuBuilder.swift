@@ -332,7 +332,7 @@ enum DatabaseMenuBuilder {
 
     // Validation shows it under Manual Commit, which it shares an action with so it always validates as disabled.
     private static func manualCommitFootnote(_ text: String, identifier: NSUserInterfaceItemIdentifier) -> NSMenuItem {
-        let item = MenuFootnote.item(text)
+        let item = MenuFootnote.unwrappedItem(text)
         item.action = #selector(MainSplitViewController.toggleManualCommit(_:))
         item.identifier = identifier
         item.isHidden = true

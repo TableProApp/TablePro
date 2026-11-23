@@ -62,7 +62,7 @@ internal final class EditorTabItemView: NSView {
         fatalError("EditorTabItemView does not support NSCoder init")
     }
 
-    override internal var isFlipped: Bool { true }
+    override nonisolated internal var isFlipped: Bool { true }
     override internal var mouseDownCanMoveWindow: Bool { false }
 
     // HIG: people expect to act on a tab in an inactive window without bringing it forward first.

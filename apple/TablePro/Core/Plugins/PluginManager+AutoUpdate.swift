@@ -69,12 +69,13 @@ extension PluginManager {
     }
 
     func runRegistryUpdatePass(
-        registryClient: RegistryClient = .shared,
+        registryClient: @autoclosure () -> RegistryClient = RegistryClient.shared,
         appBuild: Int = Bundle.main.buildNumber
     ) async -> RegistryUpdatePassResult {
         let targets = registryUpdateTargets(appBuild: appBuild)
         guard !targets.isEmpty else { return .finished }
-        guard let manifest = await registryClient.fetchWaitingForConnectivity() else {
+        // Resolved only once there is work: the shared client opens its URL cache, and the pass runs before the first window.
+        guard let manifest = await registryClient().fetchWaitingForConnectivity() else {
             Self.logger.warning("Plugin update pass deferred: the plugin manifest is unavailable")
             return .retry
         }
