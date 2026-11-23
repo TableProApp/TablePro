@@ -1,5 +1,6 @@
 import Foundation
 @testable import TableProMobile
+import TableProPluginKit
 import Testing
 
 struct MongoDBReadMemoryTests {
