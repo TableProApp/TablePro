@@ -20,6 +20,15 @@ struct DataTabGridEntry {
     let store: QueryTabGridStateStore
     var lastUsed: Int
     var displayInputs: DataTabDisplayInputs?
+    // Every switch hands over a new presentation, so only rules that differ from these repaint.
+    var appliedHighlightRules: [HighlightRule]
+}
+
+// What the data tab's body computes for a tab's grid, named by the tab so it never reaches another tab's model.
+struct DataTabGridPresentation: Equatable {
+    let tabId: UUID
+    let configuration: DataGridConfiguration
+    let highlightRules: [HighlightRule]
 }
 
 // What decided a model's formatted text, which nothing invalidates while the grid is unmounted.
@@ -41,7 +50,8 @@ extension MainContentCoordinator {
             return model
         }
         let store = QueryTabGridStateStore(tabId: tabId, coordinator: self)
-        let configuration = tabManager.tabs.first { $0.id == tabId }.map(gridConfiguration(for:)) ?? DataGridConfiguration()
+        let tab = tabManager.tabs.first { $0.id == tabId }
+        let configuration = tab.map(gridConfiguration(for:)) ?? DataGridConfiguration()
         let model = DataGridModel(store: store, configuration: configuration, selectionSummary: selectionSummary)
         let adapter = DataTabGridAdapter(tabId: tabId, coordinator: self)
         adapter.attach(model)
@@ -52,7 +62,8 @@ extension MainContentCoordinator {
             adapter: adapter,
             store: store,
             lastUsed: displayStateClock,
-            displayInputs: currentDisplayInputs
+            displayInputs: currentDisplayInputs,
+            appliedHighlightRules: tab.map(highlightRules(for:)) ?? []
         )
         model.reloadRows()
         return model
@@ -185,6 +196,19 @@ extension MainContentCoordinator {
         )
         configuration.commands = gridCommands(for: tab, isSelected: isSelected, isEditable: isEditable)
         return configuration
+    }
+
+    func gridPresentation(for tab: QueryTab) -> DataTabGridPresentation {
+        DataTabGridPresentation(tabId: tab.id, configuration: gridConfiguration(for: tab), highlightRules: highlightRules(for: tab))
+    }
+
+    func applyGridPresentation(_ presentation: DataTabGridPresentation) {
+        guard let entry = dataGridEntries[presentation.tabId] else { return }
+        entry.model.configuration = presentation.configuration
+        guard entry.appliedHighlightRules != presentation.highlightRules else { return }
+        dataGridEntries[presentation.tabId]?.appliedHighlightRules = presentation.highlightRules
+        entry.model.display.cache.clearHighlights()
+        entry.model.repaintAllRows()
     }
 
     private func gridCommands(for tab: QueryTab, isSelected: Bool, isEditable: Bool) -> Set<DataGridCommand> {
