@@ -25,7 +25,7 @@ struct CachedColumnOrderTests {
             }
         )
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         for table in tables {
             _ = await provider.getColumns(for: table.name, schema: table.schema)

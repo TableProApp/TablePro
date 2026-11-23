@@ -151,7 +151,7 @@ extension VimEngine {
             recordVisualSelection(linewise: isLinewise, in: buffer)
             if sel.length > 0 {
                 writeToActiveRegister(text: buffer.string(in: sel), linewise: isLinewise, asDelete: true)
-                buffer.replaceCharacters(in: sel, with: "")
+                replace(sel, with: "", in: buffer)
             }
             setMode(.normal)
             return true
@@ -175,10 +175,10 @@ extension VimEngine {
                         && sel.location + sel.length - 1 < buffer.length
                         && buffer.character(at: sel.location + sel.length - 1) == 0x0A
                         ? NSRange(location: sel.location, length: sel.length - 1) : sel
-                    buffer.replaceCharacters(in: trimmed, with: "")
+                    replace(trimmed, with: "", in: buffer)
                     buffer.setSelectedRange(NSRange(location: sel.location, length: 0))
                 } else {
-                    buffer.replaceCharacters(in: sel, with: "")
+                    replace(sel, with: "", in: buffer)
                 }
             }
             setMode(.insert)
@@ -261,7 +261,7 @@ extension VimEngine {
         case .toggleCase: transformed = toggleCaseTransform(original)
         default: return
         }
-        buffer.replaceCharacters(in: sel, with: transformed)
+        replace(sel, with: transformed, in: buffer)
         buffer.setSelectedRange(NSRange(location: sel.location, length: 0))
         setMode(.normal)
     }
@@ -280,7 +280,7 @@ extension VimEngine {
             }
             offset = characterEnd(at: offset, in: buffer)
         }
-        buffer.replaceCharacters(in: sel, with: replacement)
+        replace(sel, with: replacement, in: buffer)
         buffer.setSelectedRange(NSRange(location: sel.location, length: 0))
         setMode(.normal)
     }
@@ -291,7 +291,7 @@ extension VimEngine {
         let text = activePasteRegister().text
         guard sel.length > 0 else { setMode(.normal); return }
         let replaced = buffer.string(in: sel)
-        buffer.replaceCharacters(in: sel, with: text)
+        replace(sel, with: text, in: buffer)
         if !keepingRegister {
             writeToActiveRegister(text: replaced, linewise: linewise, asDelete: true)
         }

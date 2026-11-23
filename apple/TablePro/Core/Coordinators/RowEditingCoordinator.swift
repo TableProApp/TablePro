@@ -296,18 +296,80 @@ final class RowEditingCoordinator: ObservableObject {
         )
     }
 
+    // A claimed execution or a landing save replaces the rows, which clears anything staged on them meanwhile.
+    func holdInspectorRows(tabId: UUID, columnIndex: Int, rowIDs: [RowID]) -> InspectorDetachedTarget? {
+        guard !rowIDs.isEmpty, parent.tabManager.tabs.contains(where: { $0.id == tabId }),
+              !isSaving(tabId: tabId), !parent.tabExecution.isExecuting(tabId) else { return nil }
+        let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
+        guard tableRows.columns.indices.contains(columnIndex) else { return nil }
+        let changeManager = parent.changeManager(forTab: tabId)
+        var rowsAsRead: [[PluginCellValue]] = []
+        rowsAsRead.reserveCapacity(rowIDs.count)
+        for rowID in rowIDs {
+            guard let storageRow = tableRows.index(of: rowID), !changeManager.isRowDeleted(rowID) else { return nil }
+            // As read, so staged edits keep the hold; an inserted row's id names it alone.
+            let current = Array(tableRows.rows[storageRow].values)
+            rowsAsRead.append(
+                rowID.isInserted ? [] : changeManager.pending.imageAsRead(ofRow: rowID, current: current, absentColumns: []).row
+            )
+        }
+        return InspectorDetachedTarget(
+            tabId: tabId,
+            columnIndex: columnIndex,
+            columnName: tableRows.columns[columnIndex],
+            rowIDs: rowIDs,
+            rowsAsRead: rowsAsRead
+        )
+    }
+
+    // Read from the target's own tab: the selected one may be another table with other column types.
+    func stageDetachedInspectorEdit(_ text: String, to target: InspectorDetachedTarget) {
+        let tableRows = parent.tabSessionRegistry.tableRows(for: target.tabId)
+        let columnIndex = target.columnIndex
+        let value: PluginCellValue
+        let isExpression: Bool
+        if let typed = CellEntry.typed(
+            text,
+            columnType: tableRows.editingColumnType(at: columnIndex),
+            databaseType: parent.connection.type,
+            writer: parent.changeManager(forTab: target.tabId).cellWriterSupport
+        ) {
+            value = typed.value
+            isExpression = typed.isExpression
+        } else if let entered = tableRows.enteredValue(text, forColumn: columnIndex) {
+            value = entered
+            isExpression = false
+        } else {
+            return
+        }
+        // A value window commits per keystroke like its field, so its typing folds into one undo step the same way.
+        stageInspectorEdits(
+            valuesByRow: Dictionary(target.rowIDs.map { ($0, value) }, uniquingKeysWith: { first, _ in first }),
+            columnIndex: columnIndex,
+            continuity: .typing,
+            expressionRowIDs: isExpression ? Set(target.rowIDs) : [],
+            inTab: target.tabId
+        )
+    }
+
     private func stageInspectorEdits(
         valuesByRow: [RowID: PluginCellValue],
         columnIndex: Int,
         continuity: FieldEditContinuity,
         removingFieldFrom removedRowIDs: Set<RowID> = [],
-        expressionRowIDs: Set<RowID> = []
+        expressionRowIDs: Set<RowID> = [],
+        inTab targetTabId: UUID? = nil
     ) {
         if continuity == .discrete {
             endInspectorEditRun()
         }
-        guard !parent.isSavingSelectedTab,
-              let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex, !valuesByRow.isEmpty else { return }
+        let located: (tab: QueryTab, index: Int)?
+        if let targetTabId {
+            located = parent.tabManager.tabs.firstIndex { $0.id == targetTabId }.map { (parent.tabManager.tabs[$0], $0) }
+        } else {
+            located = parent.tabManager.selectedTabAndIndex
+        }
+        guard let (tab, tabIndex) = located, !isSaving(tabId: tab.id), !valuesByRow.isEmpty else { return }
         let tabId = tab.id
         let changeManager = parent.changeManager(forTab: tabId)
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
@@ -504,3 +566,5 @@ final class RowEditingCoordinator: ObservableObject {
         }
     }
 }
+
+extension RowEditingCoordinator: InspectorDetachedStaging {}

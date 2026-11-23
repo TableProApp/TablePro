@@ -139,7 +139,7 @@ extension VimEngine {
         }
         let replacement = formatNumber(match.value + delta, hex: match.isHex, hexUppercase: match.hexUppercase)
         let range = NSRange(location: match.start, length: match.end - match.start)
-        buffer.replaceCharacters(in: range, with: replacement)
+        replace(range, with: replacement, in: buffer)
         let newEnd = match.start + (replacement as NSString).length
         buffer.setSelectedRange(NSRange(location: max(match.start, newEnd - 1), length: 0))
     }

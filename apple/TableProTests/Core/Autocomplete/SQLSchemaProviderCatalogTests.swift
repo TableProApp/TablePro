@@ -14,7 +14,7 @@ struct SQLSchemaProviderCatalogTests {
     }
 
     private static func seeded(_ driver: MockDatabaseDriver, tables: [TableInfo] = [users]) async -> SQLSchemaProvider {
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("db", tables: tables, driver: driver)
         await provider.seedColumnCatalog()
         await provider.waitForEagerColumnLoad()
@@ -58,7 +58,7 @@ struct SQLSchemaProviderCatalogTests {
     func incompleteBulkReadIsNotAnswered() async {
         let driver = Self.completeDriver()
         driver.bulkColumnReadIsComplete = false
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("db", tables: [Self.users], driver: driver)
         await provider.seedColumnCatalog()
         await provider.waitForEagerColumnLoad()

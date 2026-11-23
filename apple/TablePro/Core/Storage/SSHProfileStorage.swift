@@ -96,7 +96,7 @@ final class SSHProfileStorage {
         profiles[index] = profile
         guard saveProfiles(profiles) else { return false }
         // Best effort: a connection whose snapshot was not rewritten is resolved against the profile at connect time.
-        if !refreshLinkedConnections(with: profile) {
+        if !refreshLinkedConnections(with: profile, byUser: true) {
             Self.logger.error("Saved SSH profile \(profile.id.uuidString, privacy: .public) but could not update the connections linked to it")
         }
         return true
@@ -109,7 +109,7 @@ final class SSHProfileStorage {
         // The stored record, not the caller's copy: unlinking writes its configuration into every linked connection.
         let current = profiles.first { $0.id == profile.id } ?? profile
         profiles.removeAll { $0.id == profile.id }
-        guard unlinkConnections(fromProfile: current) else { return false }
+        guard unlinkConnections(fromProfile: current, byUser: true) else { return false }
         guard saveProfiles(profiles) else { return false }
         syncTracker.markDeleted(.sshProfile, id: profile.id.uuidString)
 
@@ -123,7 +123,7 @@ final class SSHProfileStorage {
 
     // A linked connection tunnels through its stored snapshot, so an edited profile has to be written into each one.
     @discardableResult
-    func refreshLinkedConnections(with profile: SSHProfile, byUser: Bool = true) -> Bool {
+    func refreshLinkedConnections(with profile: SSHProfile, byUser: Bool) -> Bool {
         let storage = connectionStorageProvider()
         let linked = Set(
             storage.loadConnections()
@@ -144,8 +144,9 @@ final class SSHProfileStorage {
     }
 
     // The tunnel comes from the profile as it stands, never a stale snapshot, or new credentials reach the old server.
+    // `byUser` false (a sync pull) never signs connections.json, which may hold a command nobody here approved.
     @discardableResult
-    func unlinkConnections(fromProfile profile: SSHProfile) -> Bool {
+    func unlinkConnections(fromProfile profile: SSHProfile, byUser: Bool) -> Bool {
         let storage = connectionStorageProvider()
         // An unreadable library may hold connections that use this profile, and they would be left pointing at nothing.
         guard !storage.isLibraryUnreadable else {
@@ -164,7 +165,7 @@ final class SSHProfileStorage {
             return false
         }
 
-        let converted = storage.mutateConnections(ids: Set(linked.map { $0.id })) { connection in
+        let converted = storage.mutateConnections(ids: Set(linked.map { $0.id }), byUser: byUser) { connection in
             let current = profile.applied(to: connection)
             guard case .profile(_, let config) = current.sshTunnelMode else { return }
             connection = current

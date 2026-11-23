@@ -17,10 +17,6 @@ import TableProUtilities
 extension MainContentCommandActions {
     nonisolated private static let fileLogger = Logger(subsystem: "com.TablePro", category: "MainContentCommandActions")
 
-    func saveFileToSourceURL() {
-        Task { await saveSelectedFileAwaiting() }
-    }
-
     @discardableResult
     func saveSelectedFileAwaiting() async -> Bool {
         guard let tab = coordinator?.tabManager.selectedTab,

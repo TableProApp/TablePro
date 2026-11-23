@@ -405,8 +405,8 @@ extension ERDiagramViewModel {
         let kind = kind(of: table)
         coordinator?.openTableTab(
             table,
-            schema: schemaName,
-            database: databaseName,
+            schema: scope?.schema ?? schemaName,
+            database: scope?.database ?? databaseName,
             showStructure: showStructure,
             isView: !kind.allowsRowEditing,
             objectType: kind,

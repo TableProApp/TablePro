@@ -100,12 +100,23 @@ struct CatalogChangeTests {
 }
 
 @MainActor
+private final class StandingBox {
+    var standing: SessionTransactionTracker.Standing = .none
+}
+
+@MainActor
 struct CatalogChangeServiceTests {
     private func makeService(
         target: RecordingCatalogTarget,
-        isLive: @escaping @MainActor (UUID) -> Bool = { _ in true }
+        isLive: @escaping @MainActor (UUID) -> Bool = { _ in true },
+        standing: StandingBox = StandingBox()
     ) -> CatalogChangeService {
-        CatalogChangeService(targets: [target], isSessionLive: isLive)
+        CatalogChangeService(targets: [target], isSessionLive: isLive, standing: { _ in standing.standing })
+    }
+
+    private func run(_ sql: String, on connectionId: UUID, _ service: CatalogChangeService) async {
+        service.record(.statementsRan(connectionId: connectionId, statements: [sql], databaseType: .postgresql))
+        await service.waitUntilIdle(connectionId: connectionId)
     }
 
     @Test("changes are accepted while connected or switching databases, and dropped otherwise")
@@ -213,18 +224,151 @@ struct CatalogChangeServiceTests {
         #expect(target.changes.last == CatalogChange(connectionId: connectionId, database: "shop", kinds: [.tables, .routines]))
     }
 
-    @Test("every transaction end refreshes objects and schemas, whichever driver ran the change")
-    func transactionEndRefreshesObjectsAndSchemas() async {
+    @Test("a transaction end with nothing changed inside it refreshes nothing, typed or from the bar")
+    func transactionEndWithNothingChangedRefreshesNothing() async {
+        let target = RecordingCatalogTarget()
+        let box = StandingBox()
+        let service = makeService(target: target, standing: box)
+        let connectionId = UUID()
+
+        box.standing = .held
+        await run("UPDATE orders SET total = 1 WHERE id = 7", on: connectionId, service)
+        box.standing = .none
+        await run("COMMIT", on: connectionId, service)
+        service.record(.transactionEnded(connectionId: connectionId))
+        await service.waitUntilIdle(connectionId: connectionId)
+
+        #expect(target.changes.isEmpty)
+    }
+
+    @Test("a COMMIT refreshes the tables a CREATE TABLE inside its transaction added")
+    func commitRefreshesDefinitionsMadeInsideTheTransaction() async {
+        let target = RecordingCatalogTarget()
+        let box = StandingBox()
+        let service = makeService(target: target, standing: box)
+        let connectionId = UUID()
+
+        box.standing = .held
+        await run("CREATE TABLE audit (id int)", on: connectionId, service)
+        box.standing = .none
+        await run("COMMIT", on: connectionId, service)
+        await run("COMMIT", on: connectionId, service)
+
+        let created = target.changes.first?.kinds
+        #expect(created?.contains(.tables) == true)
+        #expect(target.changes.map(\.kinds) == [created, created])
+    }
+
+    @Test("a function outside the Read-Only list called inside a transaction refreshes objects and schemas at its end")
+    func unlistedFunctionInsideTransactionRefreshesAtTheEnd() async {
+        let target = RecordingCatalogTarget()
+        let box = StandingBox()
+        let service = makeService(target: target, standing: box)
+        let connectionId = UUID()
+
+        box.standing = .held
+        await run("SELECT make_partition('orders')", on: connectionId, service)
+        #expect(target.changes.isEmpty)
+        box.standing = .none
+        await run("COMMIT", on: connectionId, service)
+
+        #expect(target.changes.map(\.kinds) == [[.objects, .schemas]])
+    }
+
+    @Test("a run that calls an unlisted function and commits in one go refreshes objects and schemas")
+    func functionCallCommittedInOneRunRefreshes() async {
         let target = RecordingCatalogTarget()
         let service = makeService(target: target)
         let connectionId = UUID()
 
-        service.record(.transactionEnded(connectionId: connectionId))
+        service.record(.statementsRan(
+            connectionId: connectionId,
+            statements: ["BEGIN", "SELECT make_partition('orders')", "COMMIT"],
+            databaseType: .postgresql
+        ))
         await service.waitUntilIdle(connectionId: connectionId)
-        service.record(.statementsRan(connectionId: connectionId, statements: ["COMMIT"], databaseType: .postgresql))
+
+        #expect(target.changes.map(\.kinds) == [[.objects, .schemas]])
+    }
+
+    @Test("a COMMIT on one lane while another still holds a transaction refreshes and keeps what that one changed")
+    func commitOnOneLaneKeepsAnotherLanesChanges() async {
+        let target = RecordingCatalogTarget()
+        let box = StandingBox()
+        let service = makeService(target: target, standing: box)
+        let connectionId = UUID()
+
+        box.standing = .held
+        await run("CREATE TABLE audit (id int)", on: connectionId, service)
+        await run("COMMIT", on: connectionId, service)
+        box.standing = .none
+        await run("ROLLBACK", on: connectionId, service)
+        await run("ROLLBACK", on: connectionId, service)
+
+        let created = target.changes.first?.kinds
+        #expect(created?.contains(.tables) == true)
+        #expect(target.changes.map(\.kinds) == [created, created, created])
+    }
+
+    @Test("a transaction end on a connection that cannot say whether it holds one refreshes objects and schemas")
+    func unknownStandingRefreshesAtEveryEnd() async {
+        let target = RecordingCatalogTarget()
+        let box = StandingBox()
+        let service = makeService(target: target, standing: box)
+        let connectionId = UUID()
+        box.standing = .unknown
+
+        await run("COMMIT", on: connectionId, service)
+        service.record(.transactionEnded(connectionId: connectionId))
         await service.waitUntilIdle(connectionId: connectionId)
 
         #expect(target.changes.map(\.kinds) == [[.objects, .schemas], [.objects, .schemas]])
+    }
+
+    @Test("the transaction bar's end refreshes what changed inside the transaction")
+    func barEndRefreshesWhatChanged() async {
+        let target = RecordingCatalogTarget()
+        let box = StandingBox()
+        let service = makeService(target: target, standing: box)
+        let connectionId = UUID()
+
+        box.standing = .held
+        await run("CREATE FUNCTION f() RETURNS int AS 'SELECT 1' LANGUAGE sql", on: connectionId, service)
+        box.standing = .none
+        service.record(.transactionEnded(connectionId: connectionId))
+        await service.waitUntilIdle(connectionId: connectionId)
+
+        #expect(target.changes.count == 2)
+        #expect(target.changes.last?.kinds == target.changes.first?.kinds)
+    }
+
+    @Test("a ROLLBACK refreshes what an app-run edit inside the user's transaction changed")
+    func rollbackRefreshesAnAppEditMadeInsideTheTransaction() async {
+        let target = RecordingCatalogTarget()
+        let box = StandingBox()
+        let service = makeService(target: target, standing: box)
+        let connectionId = UUID()
+
+        box.standing = .held
+        service.record(.changed(CatalogChange(connectionId: connectionId, database: "shop", kinds: .tables)))
+        await service.waitUntilIdle(connectionId: connectionId)
+        box.standing = .none
+        await run("ROLLBACK", on: connectionId, service)
+
+        #expect(target.changes.map(\.kinds) == [.tables, .tables])
+    }
+
+    @Test("an app-run edit outside a transaction leaves nothing for a later COMMIT")
+    func appEditOutsideTransactionLeavesNothingForCommit() async {
+        let target = RecordingCatalogTarget()
+        let service = makeService(target: target)
+        let connectionId = UUID()
+
+        service.record(.changed(CatalogChange(connectionId: connectionId, database: "shop", kinds: .tables)))
+        await service.waitUntilIdle(connectionId: connectionId)
+        await run("COMMIT", on: connectionId, service)
+
+        #expect(target.changes.map(\.kinds) == [.tables])
     }
 
     @Test("rolling back to a savepoint refreshes nothing")

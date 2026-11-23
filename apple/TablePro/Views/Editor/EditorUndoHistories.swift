@@ -3,15 +3,17 @@
 //  TablePro
 //
 
-import Foundation
+import AppKit
 import TableProEditorKit
 
-// What a query tab leaves in the shared editor while another tab is shown. Both parts are offsets into `text`, so
-// they come back only while the tab still holds that text.
+// What a query tab leaves in the shared editor while another tab is shown. Every part is a place in `text`, so it
+// comes back only while the tab still holds that text.
 struct EditorTabHistory {
     let text: String
     let undo: EditorUndoHistory?
     let vimMarks: VimDocumentMarks?
+    let selection: [NSRange]
+    let scrollPosition: CGPoint
 }
 
 @MainActor

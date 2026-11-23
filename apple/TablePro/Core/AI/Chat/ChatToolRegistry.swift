@@ -84,6 +84,12 @@ final class ChatToolRegistry {
         allTools(for: mode).map(\.spec)
     }
 
+    // An outside server's tool is `.readOnly` only so every mode offers it; it may write anything.
+    func onlyReads(toolName: String) -> Bool {
+        guard let tool = tools[toolName], !(tool is MCPRemoteToolAdapter) else { return false }
+        return tool.mode == .readOnly
+    }
+
     func requiresApproval(toolName: String) -> Bool {
         guard let tool = tools[toolName] else { return true }
         return tool.mode.requiresApproval

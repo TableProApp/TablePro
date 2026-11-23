@@ -147,6 +147,7 @@ extension MainContentView {
     func updateSidebarEditState() {
         // A selection change, refresh or undo rebuilds the fields, so the typed run ends here, not in another row's step.
         coordinator.endInspectorEditRun()
+        trailingPaneState.inspector.editState.detachedStager = coordinator.rowEditingCoordinator
         // A structure definition is edited by the structure inspector, not the row fields.
         switch gridSelectionOwner {
         case .schemaGrid, .none:
@@ -163,8 +164,8 @@ extension MainContentView {
             clearSidebarEditState()
             return
         }
-        // Nothing reads the rows off screen, and the copy grows with rows times columns. The handlers
-        // below still follow the tab, so a value window never stages into whatever tab is selected.
+        // Nothing reads the rows off screen, and the copy grows with rows times columns. A value window holds its own
+        // tab and records through the stager, so releasing them strands none of its typing.
         if trailingPaneState.inspector.isOnScreen {
             configureSidebarRows(tab: tab, model: model)
         } else {
@@ -214,16 +215,6 @@ extension MainContentView {
         editState.onFieldRemoved = { [weak coordinator] columnIndex, rowIDs in
             coordinator?.stageInspectorFieldRemoval(columnIndex: columnIndex, rowIDs: rowIDs)
         }
-        editState.onDetachedFieldChanged = { [weak coordinator] columnIndex, newValue, rowIDs, isExpression in
-            // A value window commits per keystroke like its field, so its typing folds into one undo step the same way.
-            coordinator?.rowEditingCoordinator.stageInspectorFieldEdit(
-                columnIndex: columnIndex,
-                value: newValue,
-                rowIDs: rowIDs,
-                continuity: .typing,
-                isExpression: isExpression
-            )
-        }
     }
 
     private func configureSidebarRows(tab: QueryTab, model: DataGridModel) {
@@ -255,6 +246,7 @@ extension MainContentView {
             }
         }
         trailingPaneState.inspector.editState.configure(
+            tabId: tab.id,
             rowIDs: selectedRows.map(\.id),
             allRows: stringRows,
             absentCells: selectedRows.map { tableRows.absentColumns(of: $0.id) },
@@ -316,6 +308,5 @@ extension MainContentView {
         trailingPaneState.inspector.editState.onFieldValuesChanged = nil
         trailingPaneState.inspector.editState.onFieldReverted = nil
         trailingPaneState.inspector.editState.onFieldRemoved = nil
-        trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
     }
 }

@@ -42,10 +42,18 @@ internal final class SessionTransactionTracker: ObservableObject {
         var state: State
     }
 
+    internal enum Standing: Equatable, Sendable {
+        case none
+        case held
+        // An engine that never answers, or a read that timed out.
+        case unknown
+    }
+
     // Whether a lane's driver ever answered with a definite state; a timed-out read keeps an earlier yes.
     private struct Reader {
         weak var driver: AnyObject?
         var answers: Bool
+        var lastAnswered: Bool
     }
 
     @Published private(set) var holds: [Key: Hold] = [:]
@@ -125,6 +133,17 @@ internal final class SessionTransactionTracker: ObservableObject {
         }
     }
 
+    internal func standing(of connectionId: UUID) -> Standing {
+        if holds.values.contains(where: { $0.connectionId == connectionId }) { return .held }
+        let unsure = readers.contains { key, reader in
+            guard key.connectionId == connectionId, !reader.lastAnswered,
+                  let driver = reader.driver as? DatabaseDriver
+            else { return false }
+            return isLive(key, driver)
+        }
+        return unsure ? .unknown : .none
+    }
+
     // True once the live driver of a lane the container runs on has only ever answered `.unknown`.
     internal func cannotReportState(connectionId: UUID, container: String) -> Bool {
         readers.contains { key, reader in
@@ -158,9 +177,10 @@ internal final class SessionTransactionTracker: ObservableObject {
     private func noteReader(_ driver: DatabaseDriver, answered: Bool, for key: Key) {
         if let reader = readers[key], reader.driver === driver {
             if answered { readers[key]?.answers = true }
+            readers[key]?.lastAnswered = answered
             return
         }
-        readers[key] = Reader(driver: driver, answers: answered)
+        readers[key] = Reader(driver: driver, answers: answered, lastAnswered: answered)
     }
 
     /// Drops every hold whose connection is not the lane's live one any more: a disconnect, a

@@ -103,9 +103,10 @@ extension MainContentCoordinator {
             requestGridFocus()
         }
 
-        // In-place navigation would retarget the selected tab, and a pinned or named one is never retargeted.
-        let keepsSelectedTab = navigationModel == .inPlace
-            && (tabManager.selectedTab?.isPinned == true || tabManager.selectedTab?.isNamedByUser == true)
+        // In-place navigation would retarget the selected tab, so it keeps one that is pinned, named or holds work.
+        let keepsSelectedTab = navigationModel == .inPlace && tabManager.selectedTab.map { tab in
+            tab.isPinned || tab.isNamedByUser || selectedTabResistsRetarget(tab)
+        } == true
         if tabManager.tabs.isEmpty || keepsSelectedTab {
             let didOpen = addFirstTableTab(
                 tableName: tableName,
@@ -419,16 +420,19 @@ extension MainContentCoordinator {
     /// only be followed from a grid and the row the reader clicked is in that grid.
     var isActiveTabReusable: Bool {
         guard let tab = tabManager.selectedTab, !tab.isPinned else { return false }
-        if selectedTabHoldsProtectedContent { return false }
-        if selectedTabFilterState.hasAppliedFilters
-            || tab.hasUserActiveSort
-            || tab.display.hasPinnedResults {
-            return false
-        }
+        if selectedTabResistsRetarget(tab) { return false }
         if tab.tabType == .createTable { return true }
         if tab.isPreview { return true }
         if tab.tabType == .query { return true }
         return false
+    }
+
+    // Retargeting drops the tab's work, filters, sort and pinned results, so both reuse paths ask this first.
+    private func selectedTabResistsRetarget(_ tab: QueryTab) -> Bool {
+        selectedTabHoldsProtectedContent
+            || selectedTabFilterState.hasAppliedFilters
+            || tab.hasUserActiveSort
+            || tab.display.hasPinnedResults
     }
 
     func promotePreviewTab() {
@@ -490,6 +494,16 @@ extension MainContentCoordinator {
 
     // MARK: - Database Switching
 
+    private func keepsShownCatalog() -> Bool {
+        let schemaService = services.schemaService
+        guard schemaService.hasLoadedContent(for: connectionId),
+              schemaService.isCatalogCurrent(for: connectionId),
+              let scope = services.databaseManager.browseScope(for: connectionId),
+              schemaService.loadedScope(for: connectionId) == scope
+        else { return false }
+        return SchemaProviderRegistry.shared.isPopulated(scope)
+    }
+
     /// Moves the browse cursor: what the sidebar lists and which database a new tab
     /// opens in. It never retargets an open tab. Once it lands, the window shows that database's
     /// entry, unless a newer move from this window has been asked for since.
@@ -507,7 +521,11 @@ extension MainContentCoordinator {
 
             await SchemaService.shared.prepareForReload(connectionId: connectionId)
 
-            await refreshTables(currentDatabaseOnly: true)
+            if keepsShownCatalog() {
+                pruneStaleSidebarState()
+            } else {
+                await refreshTables(currentDatabaseOnly: true)
+            }
             syncSidebarObjectSelection()
             return true
         } catch {

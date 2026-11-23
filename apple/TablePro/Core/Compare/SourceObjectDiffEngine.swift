@@ -45,32 +45,53 @@ internal struct SourceObjectDiffEngine {
 
     internal func compare(
         source: [RoutineSourceRead],
-        target: [RoutineSourceRead]
+        target: [RoutineSourceRead],
+        sourceSchema: String? = nil,
+        targetSchema: String? = nil
     ) -> [CompareObjectResult] {
         let targetByKey = Dictionary(
-            target.map { (matchKey(for: $0), $0) },
+            target.map { (matchKey(for: $0, listedIn: targetSchema), $0) },
             uniquingKeysWith: { first, _ in first }
         )
         var handled: Set<String> = []
         var results: [CompareObjectResult] = []
 
         for read in source {
-            let key = matchKey(for: read)
+            let key = matchKey(for: read, listedIn: sourceSchema)
             handled.insert(key)
-            results.append(result(identifiedBy: read, source: read, target: targetByKey[key]))
+            let target = targetByKey[key]
+            results.append(result(
+                identifiedBy: read,
+                source: read,
+                target: target,
+                scriptRefusal: scriptRefusal(for: read, into: target?.schema ?? targetSchema)
+            ))
         }
 
-        for read in target where !handled.contains(matchKey(for: read)) {
+        for read in target where !handled.contains(matchKey(for: read, listedIn: targetSchema)) {
             results.append(result(identifiedBy: read, source: nil, target: read))
         }
 
         return results
     }
 
+    // The definition is the source's own text and can name the schema it was read from, so it is never run into another.
+    private func scriptRefusal(for source: RoutineSourceRead, into targetSchema: String?) -> String? {
+        guard let sourceSchema = source.schema, let targetSchema, !sourceSchema.isEmpty, !targetSchema.isEmpty,
+              options.matchKey(sourceSchema) != options.matchKey(targetSchema) else { return nil }
+        return String(
+            format: String(
+                localized: "%1$@ is compared but not scripted, because its definition was read from %2$@ and can name that schema rather than %3$@."
+            ),
+            source.name, sourceSchema, targetSchema
+        )
+    }
+
     private func result(
         identifiedBy read: RoutineSourceRead,
         source: RoutineSourceRead?,
-        target: RoutineSourceRead?
+        target: RoutineSourceRead?,
+        scriptRefusal: String? = nil
     ) -> CompareObjectResult {
         let sourceDefect = source.flatMap { SourceDefinitionDefect.of($0, sentAs: sourceScriptText) }
         let targetDefect = target.flatMap { SourceDefinitionDefect.of($0, sentAs: targetScriptText) }
@@ -79,26 +100,29 @@ internal struct SourceObjectDiffEngine {
             ?? targetDefect.map { $0.reason(on: .target) }
             ?? indexes.failure
         let definitionMatches = comparisonError == nil && definitionsMatch(source: source, target: target)
+        let resolvedStatus = status(
+            source: source,
+            target: target,
+            comparable: comparisonError == nil,
+            definitionMatches: definitionMatches,
+            indexes: indexes
+        )
+        let scriptRefusal = resolvedStatus == .identical ? nil : scriptRefusal
         return CompareObjectResult(
             identity: CompareObjectIdentity(
                 kind: read.kind, schema: read.schema, name: read.name, signature: read.signature
             ),
-            status: status(
-                source: source,
-                target: target,
-                comparable: comparisonError == nil,
-                definitionMatches: definitionMatches,
-                indexes: indexes
-            ),
+            status: resolvedStatus,
             changes: comparisonError == nil ? indexes.changes : [],
             sourceDefinition: source.map(displayedLines) ?? [],
             targetDefinition: target.map(displayedLines) ?? [],
-            notes: comparisonError == nil ? indexes.notes : [],
+            notes: comparisonError == nil ? (scriptRefusal.map { [$0] } ?? []) + indexes.notes : [],
             comparisonError: comparisonError,
             sourceIndexes: indexes.source,
             targetIndexes: indexes.target,
             definitionMatches: definitionMatches,
-            sourceCreationScope: source?.creationScope
+            sourceCreationScope: source?.creationScope,
+            scriptRefusal: scriptRefusal
         )
     }
 
@@ -170,11 +194,11 @@ internal struct SourceObjectDiffEngine {
         return SqlNormalizer.lines(read.source)
     }
 
-    private func matchKey(for read: RoutineSourceRead) -> String {
-        let name = options.ignoreIdentifierCase ? read.name.lowercased() : read.name
-        let schema = options.ignoreIdentifierCase ? (read.schema ?? "").lowercased() : (read.schema ?? "")
+    // Keyed as a table is, so the schema each side was listed from drops out and `dbo.v` pairs with `staging.v`.
+    private func matchKey(for read: RoutineSourceRead, listedIn listedSchema: String?) -> String {
+        let qualified = options.matchKey(name: read.name, schema: read.schema, listedIn: listedSchema)
         let signature = (read.signature ?? "").replacingOccurrences(of: " ", with: "").lowercased()
-        return "\(read.kind.rawValue)|\(schema)|\(name)|\(signature)"
+        return "\(read.kind.rawValue)|\(qualified)|\(signature)"
     }
 
     // Cut before folding: a folded line comment swallows the body, and Oracle stores `END` without its `;` INVALID.
