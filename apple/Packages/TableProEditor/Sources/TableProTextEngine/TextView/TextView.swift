@@ -370,7 +370,8 @@ open class TextView: NSView, NSTextContent {
 
         editorUndoManager = CEUndoManager(textView: self)
 
-        layoutManager.layoutLines()
+        // Unhosted, `visibleRect` is infinite, so the default band would be the whole document.
+        layoutManager.layoutLines(in: bounds)
         setUpDragGesture()
     }
 

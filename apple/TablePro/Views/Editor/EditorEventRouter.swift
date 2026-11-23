@@ -5,6 +5,7 @@
 
 @preconcurrency import AppKit
 import TableProEditorKit
+import TableProSQLGrammar
 import TableProTextEngine
 
 @MainActor
@@ -171,6 +172,26 @@ internal final class EditorEventRouter {
             if controller.replaceTextAsOneEdit(in: range, with: string) { return true }
         }
         return false
+    }
+
+    // Several editors can be registered for one tab; the one holding exactly `text` answers.
+    internal func statement(
+        at cursor: Int,
+        in text: String,
+        forTab tabId: UUID,
+        connectionId: UUID,
+        model: QueryStatementModel,
+        grammar: SQLLexicalGrammar
+    ) -> SQLStatementScanner.LocatedStatement? {
+        for ref in editors.values {
+            guard let coordinator = ref.coordinator,
+                  coordinator.tabID == tabId, coordinator.connectionId == connectionId,
+                  let statement = coordinator.indexedStatement(at: cursor, in: text, model: model, grammar: grammar) else {
+                continue
+            }
+            return statement
+        }
+        return nil
     }
 
     // Clear Selection chosen with the pointer: AppKit never sends a bare Escape as a key equivalent (measured, macOS 26).

@@ -13,10 +13,11 @@ extension FindPanelViewModel {
     /// Performs a find operation on the find target and updates both the ``findMatches`` array and the emphasis
     /// manager's emphases.
     func find() {
+        staleMatchesCaret = nil
         findMatches = searchResults().map(\.range)
 
         // Find the nearest match to the current cursor position
-        currentFindMatchIndex = getNearestEmphasisIndex(matchRanges: findMatches)
+        currentFindMatchIndex = getNearestEmphasisIndex(matchRanges: findMatches, caret: caretLocation)
 
         // Only add emphasis layers if the find panel is focused
         if isFocused {
@@ -28,8 +29,36 @@ extension FindPanelViewModel {
     /// so the stored matches would otherwise point into text that is gone.
     func documentDidReplace() {
         clearMatchEmphases()
+        if defersSearch, !findText.isEmpty {
+            staleMatchesCaret = StaleMatchesCaret(location: caretLocation)
+            return
+        }
+        staleMatchesCaret = nil
         findMatches = searchResults().map(\.range)
-        currentFindMatchIndex = getNearestEmphasisIndex(matchRanges: findMatches)
+        currentFindMatchIndex = getNearestEmphasisIndex(matchRanges: findMatches, caret: caretLocation)
+    }
+
+    func findAfterEdit() {
+        if defersSearch {
+            staleMatchesCaret = StaleMatchesCaret(location: caretLocation)
+        } else {
+            find()
+        }
+    }
+
+    func refreshMatchesIfStale() {
+        guard let stale = staleMatchesCaret else { return }
+        staleMatchesCaret = nil
+        findMatches = searchResults().map(\.range)
+        currentFindMatchIndex = getNearestEmphasisIndex(matchRanges: findMatches, caret: stale.location)
+    }
+
+    private var defersSearch: Bool {
+        !isShowingFindPanel && !isFocused
+    }
+
+    private var caretLocation: Int? {
+        target?.cursorPositions.first?.range.location
     }
 
     /// The find text's matches in the document as it is now. Empty when there is no target, no find text, or a
@@ -81,13 +110,12 @@ extension FindPanelViewModel {
 
     // MARK: - Get Nearest Emphasis Index
 
-    private func getNearestEmphasisIndex(matchRanges: [NSRange]) -> Int? {
+    private func getNearestEmphasisIndex(matchRanges: [NSRange], caret: Int?) -> Int? {
         // order the array as follows
         // Found: 1 -> 2 -> 3 -> 4
         // Cursor:       |
         // Result: 3 -> 4 -> 1 -> 2
-        guard let cursorPosition = target?.cursorPositions.first else { return nil }
-        let start = cursorPosition.range.location
+        guard let start = caret else { return nil }
 
         var left = 0
         var right = matchRanges.count - 1

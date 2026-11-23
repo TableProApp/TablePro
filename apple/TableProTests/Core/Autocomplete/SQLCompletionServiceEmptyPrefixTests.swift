@@ -41,7 +41,7 @@ struct SQLCompletionServiceEmptyPrefixTests {
     @Test("A PostgreSQL cast opens the type list with nothing typed")
     func castTargetOpensOnAnEmptyPrefix() async {
         let text = "SELECT id::" as NSString
-        let session = await Self.makeService().completions(in: text, at: text.length, isManualTrigger: false)
+        let session = await Self.makeService().completions(in: text, at: text.length, statement: nil, isManualTrigger: false)
 
         #expect(session != nil)
         #expect(session?.items.contains { $0.label == "jsonb" } == true)
@@ -51,7 +51,7 @@ struct SQLCompletionServiceEmptyPrefixTests {
     @Test("A partly typed cast still completes")
     func castTargetCompletesATypedPrefix() async {
         let text = "SELECT id::js" as NSString
-        let session = await Self.makeService().completions(in: text, at: text.length, isManualTrigger: false)
+        let session = await Self.makeService().completions(in: text, at: text.length, statement: nil, isManualTrigger: false)
 
         #expect(session?.items.first?.label == "jsonb")
     }
@@ -69,10 +69,10 @@ struct SQLCompletionServiceEmptyPrefixTests {
         let text = query as NSString
         let service = Self.makeService()
 
-        let automatic = await service.completions(in: text, at: text.length, isManualTrigger: false)
+        let automatic = await service.completions(in: text, at: text.length, statement: nil, isManualTrigger: false)
         #expect(automatic == nil)
 
-        let manual = await service.completions(in: text, at: text.length, isManualTrigger: true)
+        let manual = await service.completions(in: text, at: text.length, statement: nil, isManualTrigger: true)
         #expect(manual != nil)
     }
 
@@ -80,7 +80,7 @@ struct SQLCompletionServiceEmptyPrefixTests {
     @Test("FROM still opens with nothing typed")
     func fromOpensOnAnEmptyPrefix() async {
         let text = "SELECT * FROM " as NSString
-        let session = await Self.makeService().completions(in: text, at: text.length, isManualTrigger: false)
+        let session = await Self.makeService().completions(in: text, at: text.length, statement: nil, isManualTrigger: false)
 
         #expect(session != nil)
     }
