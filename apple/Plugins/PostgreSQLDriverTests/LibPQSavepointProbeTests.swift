@@ -89,7 +89,7 @@ struct LibPQSavepointProbeTests {
         defer { driver.disconnect() }
 
         _ = try await driver.execute(query: "BEGIN")
-        _ = try await driver.executeUserQuery(query: Self.events, rowCap: 10, parameters: nil)
+        _ = try await driver.executeBoundedQuery(query: Self.events, rowCap: 10)
 
         let sent = server.queries
         #expect(sent.contains("SAVEPOINT \(LibPQCappedCursorRead.cursorName)"))

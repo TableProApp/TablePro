@@ -10,7 +10,6 @@ import Foundation
 import os
 import TableProPluginKit
 import TableProPostgreSQLCore
-import TableProSQLGrammar
 
 final class LibPQDriverCore: @unchecked Sendable {
     private let config: DriverConnectionConfig
@@ -552,10 +551,9 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
-    // Chosen by the text alone, before the statement reaches the connection's queue: whether the session is in a block
-    // is read there, where nothing queued ahead can still change it. A read a cursor could hold that calls only built-in
-    // functions stops at the cap. Any other runs to its end and keeps only the rows the cap needs: an `INSERT ...
-    // RETURNING` writes every row, and a cancel would roll back what a function the user wrote has written.
+    // Runs to its end and decodes only the rows the cap needs. A cancel at the cap would roll back what the statement
+    // writes through a function, a view or `RETURNING`, so stopping at the source waits for a read the engine holds
+    // read-only.
     func executeCappedUserQuery(
         query: String,
         rowCap: Int,
@@ -565,23 +563,12 @@ final class LibPQDriverCore: @unchecked Sendable {
         let startTime = Date()
         let keeping = LibPQReadBound.keepLimit(rowCap: rowCap)
         let result: LibPQPluginQueryResult
-        if LibPQCappedCursorRead.cursorBody(of: query) != nil, !Self.callsUnlistedFunction(query) {
-            result = try await pqConn.boundedQuery(query, parameters: parameters ?? [], rowCap: rowCap)
-        } else if let parameters {
+        if let parameters {
             result = try await pqConn.executeParameterizedQuery(query, parameters: parameters, keeping: keeping)
         } else {
             result = try await pqConn.executeSingleStatement(query, keeping: keeping, probesBeforeBlock: true)
         }
         return Self.answer(result, since: startTime)
-    }
-
-    private static func callsUnlistedFunction(_ query: String) -> Bool {
-        SQLReadOnlyFunctionCalls.callsUnlistedFunction(
-            query,
-            databaseTypeId: PostgreSQLPlugin.databaseTypeId,
-            readings: SQLLexicalReadings.resolve(databaseTypeId: PostgreSQLPlugin.databaseTypeId, declared: nil, session: nil),
-            typeNames: PostgreSQLPlugin.sqlDialect?.dataTypes ?? []
-        )
     }
 
     func streamRows(

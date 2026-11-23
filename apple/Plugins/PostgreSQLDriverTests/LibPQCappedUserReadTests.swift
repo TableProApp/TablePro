@@ -7,8 +7,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-// A scripted server sends every row at once and, where the answer says so, holds the statement until a cancel arrives,
-// so a read that does not stop and cancel at its cap ends only when the server gives up waiting.
+// A capped user read runs to its end and decodes only the cap and the row past it: a cancel would roll back what the
+// statement writes through a function, a view or RETURNING.
 @Suite(.timeLimit(.minutes(1)))
 struct LibPQCappedUserReadTests {
     private static let events = "SELECT * FROM events WHERE id > $1"
@@ -40,11 +40,9 @@ struct LibPQCappedUserReadTests {
         return driver
     }
 
-    @Test("A capped read with parameters keeps the cap, cancels the rest and sends its parameters")
-    func parametersStopAtTheCap() async throws {
-        let server = try Self.server(answering: [
-            Self.events: .init(columns: Self.columns, rows: Self.rows(50), waitsForCancel: true),
-        ])
+    @Test("A capped read with parameters keeps the cap, sends its parameters and no cancel")
+    func parametersKeepTheCap() async throws {
+        let server = try Self.server(answering: [Self.events: .init(columns: Self.columns, rows: Self.rows(50))])
         defer { server.close() }
         server.start()
         let driver = try await Self.connectedDriver(to: server)
@@ -54,7 +52,7 @@ struct LibPQCappedUserReadTests {
 
         #expect(result.rows == [[.text("0")], [.text("1")], [.text("2")]])
         #expect(result.isTruncated)
-        #expect(server.cancelRequests == 1)
+        #expect(server.cancelRequests == 0)
         #expect(server.boundParameters.last == ["0"])
         #expect(!server.queries.contains { $0.hasPrefix("DECLARE") })
     }
@@ -146,9 +144,13 @@ struct LibPQCappedUserReadTests {
         #expect(server.cancelRequests == 0)
     }
 
-    @Test("Without a server cancel a capped read with parameters is drained and keeps the cap")
-    func suppressedCancelDrains() async throws {
-        let server = try Self.server(answering: [Self.events: .init(columns: Self.columns, rows: Self.rows(50))])
+    // The editor's bounded read drains instead of cancelling inside the user's block or with cancels off.
+    @Test("A bounded read drained without a cancel fails on an error past its cap")
+    func drainedBoundedReadFailsOnALaterError() async throws {
+        let failure = LibPQScriptedServer.Failure(sqlState: "22012", message: "division by zero")
+        let server = try Self.server(answering: [
+            Self.plainEvents: .init(columns: Self.columns, rows: Self.rows(50), failureAfterRows: failure),
+        ])
         defer { server.close() }
         server.start()
         let connection = LibPQPluginConnection(
@@ -163,19 +165,16 @@ struct LibPQCappedUserReadTests {
         try await connection.finishConnecting()
         defer { connection.disconnect() }
 
-        let result = try await connection.boundedQuery(Self.events, parameters: [.text("0")], rowCap: 3)
-
-        #expect(result.rows.count == 3)
-        #expect(result.isTruncated)
+        await #expect(throws: (any Error).self) {
+            _ = try await connection.boundedQuery(Self.plainEvents, rowCap: 3)
+        }
         #expect(server.cancelRequests == 0)
     }
 
     // Share Result reads a truncated result again through this call.
-    @Test("A capped read with no parameters stops at the cap with one cancel")
-    func plainCappedReadCancels() async throws {
-        let server = try Self.server(answering: [
-            Self.plainEvents: .init(columns: Self.columns, rows: Self.rows(50), waitsForCancel: true),
-        ])
+    @Test("A capped read with no parameters keeps the cap and sends no cancel")
+    func plainCappedReadKeepsTheCap() async throws {
+        let server = try Self.server(answering: [Self.plainEvents: .init(columns: Self.columns, rows: Self.rows(50))])
         defer { server.close() }
         server.start()
         let driver = try await Self.connectedDriver(to: server)
@@ -185,7 +184,7 @@ struct LibPQCappedUserReadTests {
 
         #expect(result.rows.count == 3)
         #expect(result.isTruncated)
-        #expect(server.cancelRequests == 1)
+        #expect(server.cancelRequests == 0)
         #expect(server.parsedStatements.last == Self.plainEvents)
     }
 }

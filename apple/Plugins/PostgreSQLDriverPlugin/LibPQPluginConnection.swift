@@ -1012,15 +1012,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
-    // A parameter list, even an empty one, sends the statement on the extended protocol, which refuses a second one.
-    func boundedQuery(_ query: String, parameters: [PluginCellValue]? = nil, rowCap: Int) async throws -> LibPQPluginQueryResult {
+    func boundedQuery(_ query: String, rowCap: Int) async throws -> LibPQPluginQueryResult {
         let queryToRun = String(query)
-        let params = parameters
         let cap = max(rowCap, 1)
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
-            return try boundedQuerySync(queryToRun, parameters: params, rowCap: cap)
+            return try boundedQuerySync(queryToRun, rowCap: cap)
         }
     }
 
@@ -1295,11 +1293,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // Reads at most `rowCap` rows, plus one to tell "exactly `rowCap`" from "more", then stops the server producing
     // the rest. The stop is not an optimization: libpq drains an abandoned result inside the next `PQexec`, and the
     // backend holds its snapshot until it has written the whole result to the client.
-    private func boundedQuerySync(
-        _ query: String,
-        parameters: [PluginCellValue]?,
-        rowCap: Int
-    ) throws -> LibPQPluginQueryResult {
+    private func boundedQuerySync(_ query: String, rowCap: Int) throws -> LibPQPluginQueryResult {
         let conn = connectionHandle
 
         guard !isShuttingDown, let conn else {
@@ -1315,8 +1309,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let sentAt = Date()
 
         // A cancel inside a transaction block aborts the block the user opened, so there the statement is read
-        // through a cursor, and where it cannot be the connection is drained instead. A cursor cannot carry
-        // parameters, so a statement with any is drained there, decoding no row past the cap.
+        // through a cursor, and where it cannot be the connection is drained instead.
         let cancelsOutput = cancelsAbandonedOutput(conn)
         let suppressCancel = !cancelsOutput
         finishAbandonedResults(conn, cancellingOutput: cancelsOutput)
@@ -1324,25 +1317,15 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         // A Stop during the cursor's own round trip is spent there, so it is followed by a check before the user's
         // statement goes out.
-        if parameters?.isEmpty ?? true,
-           let plan = cappedCursorPlan(for: query, rowCap: rowCap, conn: conn),
+        if let plan = cappedCursorPlan(for: query, rowCap: rowCap, conn: conn),
            let read = try cappedCursorRead(plan, rowCap: rowCap, conn: conn, generation: generation, sentAt: sentAt) {
             return read
         }
         if cancellationGate.isCancelled(generation) { throw CancellationError() }
 
         let localQuery = String(query)
-        let sendOk: Int32
-        if let parameters {
-            sendOk = try LibPQParameterBuffers.with(parameters) { values, lengths, formats in
-                localQuery.withCString { queryPtr in
-                    PQsendQueryParams(conn, queryPtr, Int32(parameters.count), nil, values, lengths, formats, 0)
-                }
-            }
-        } else {
-            sendOk = localQuery.withCString { queryPtr in
-                PQsendQuery(conn, queryPtr)
-            }
+        let sendOk = localQuery.withCString { queryPtr in
+            PQsendQuery(conn, queryPtr)
         }
         guard sendOk != 0 else {
             throw lostConnection(getError(from: conn), on: conn, sent: false)
