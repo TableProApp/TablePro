@@ -1,6 +1,6 @@
 # 0044: Sync goes through one TablePro service, run by us or entirely on a customer's servers
 
-- **Status**: Accepted
+- **Status**: Accepted; the license types and the calls to tablepro.app amended by 0045
 - **Date**: 2026-11-24
 
 ## Context
