@@ -58,10 +58,11 @@ COMPILATION_CACHE_ENABLE_CACHING = YES
 SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited)
 SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=macosx27*] = $(inherited) SDK_MACOS_27
 STRING_CATALOG_GENERATE_SYMBOLS = YES
-// CFBundle parses a binary table again, filtered to one key, for every key it has not seen yet:
-// 23 ms of main thread at launch for the menu bar alone. An XML table is parsed once and kept.
-// UTF-8 is 0.24 MB bigger than binary over the shipped languages, against 1.9 MB for the UTF-16
-// default. iOS keeps binary.
+// Linked against the macOS 27.0 SDK that CI builds with, CFBundle parses a binary table again,
+// filtered to one key, for every key it has not seen yet: 25 ms of main thread at launch in English
+// and 49 ms in French. An XML table is parsed once and kept. A build on the 27.2 SDK showed no such
+// cost for binary, so measure again when CI moves to it. UTF-8 is 0.26 MB bigger than binary over
+// the shipped languages, against 1.9 MB for the UTF-16 default. iOS keeps binary.
 STRINGS_FILE_OUTPUT_ENCODING = binary
 STRINGS_FILE_OUTPUT_ENCODING[sdk=macosx*] = UTF-8
 SWIFT_VERSION = 6.0

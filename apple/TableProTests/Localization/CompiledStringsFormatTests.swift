@@ -7,9 +7,9 @@ import Foundation
 import Testing
 
 /// `STRINGS_FILE_OUTPUT_ENCODING` decides what the strings-catalog compiler writes into each
-/// `.lproj`. `CFBundle` loads a binary property list one key at a time, parsing the whole table
-/// again for each key it has not seen, which cost 23 ms of main thread in the menu bar at launch.
-/// An XML table is parsed once and kept. UTF-8 is the smallest XML form; the UTF-16 default costs
+/// `.lproj`. Linked against the macOS 27.0 SDK, `CFBundle` loads a binary property list one key at
+/// a time, parsing the whole table again for each key it has not seen: 25 ms of main thread at
+/// launch in English, 49 ms in French. An XML table is parsed once and kept. UTF-8 is the smallest XML form; the UTF-16 default costs
 /// about 1.9 MB more across the shipped languages. Every lookup resolves the same in all three
 /// forms, so a changed setting in `Configs/Base.xcconfig` shows no symptom but the time and size.
 struct CompiledStringsFormatTests {
