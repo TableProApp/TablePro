@@ -457,16 +457,22 @@ struct PluginRegistryUpdatePassTests {
 
     // MARK: - The pass
 
-    @Test("No targets means no manifest fetch")
+    @Test("No targets means no manifest fetch, and the registry client is never resolved")
     func noTargetsNoFetch() async throws {
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let registry = try OfflineRegistry()
+        var resolutions = 0
+        func resolve() -> RegistryClient {
+            resolutions += 1
+            return registry.client
+        }
 
-        let result = await fixture.manager.runRegistryUpdatePass(registryClient: registry.client, appBuild: 20)
+        let result = await fixture.manager.runRegistryUpdatePass(registryClient: resolve(), appBuild: 20)
 
         #expect(result == .finished)
         #expect(registry.requestCount == 0)
+        #expect(resolutions == 0)
     }
 
     @Test("Try Again repairs a rejected plugin as soon as the registry answers")
