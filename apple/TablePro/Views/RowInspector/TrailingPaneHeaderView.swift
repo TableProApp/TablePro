@@ -1,26 +1,11 @@
-//
-//  TrailingPaneHeaderView.swift
-//  TablePro
-//
-
 import SwiftUI
 
-/// One height for the header on every surface, so switching surface moves nothing beneath it.
-///
-/// Fixed rather than grown from padding, because the leading slot is a picker on one surface and a
-/// title on another and the two are not the same height: measured on macOS 27, the small segmented
-/// control is 20pt and a headline 18pt, beside a menu whose hit target is 22pt. Grown from its
-/// content, the header changed height with the surface, which is the jump this view exists to remove.
+// Fixed, not grown from content: the picker, a headline and the menu differ in height, and the header jumped with the surface.
 internal enum TrailingPaneHeaderMetrics {
     internal static let height: CGFloat = 30
 }
 
-/// The trailing pane's header, drawn by each surface at its own top.
-///
-/// A picker between the surfaces the user may choose, or the surface's name where there is nothing to
-/// choose, and one menu of that surface's commands. `TrailingPaneHeaderModel` decides all of it, so
-/// the three surfaces cannot draw it three ways again; this view only draws what the model says, and
-/// each surface supplies the commands in the menu sections the model names.
+// `TrailingPaneHeaderModel` decides the picker, title and menu, so the three surfaces cannot draw it three ways.
 internal struct TrailingPaneHeaderView<MenuSectionContent: View>: View {
     private let surface: TrailingPaneSurface
     private let contentMode: ConnectionWorkspaceContentMode
@@ -29,14 +14,10 @@ internal struct TrailingPaneHeaderView<MenuSectionContent: View>: View {
     private let hasContent: Bool
     private let menuSection: (TrailingPaneMenuSection) -> MenuSectionContent
 
-    /// Read live rather than captured when the pane was built. Turning the assistant off changes
-    /// nothing the pane's render key holds while browsing, so a captured value would go on offering
-    /// the assistant's segment over a pane that can no longer draw it.
-    @ObservedObject private var settings = AppSettingsManager.shared
+    // Live: turning the assistant off changes nothing the pane's render key holds while browsing.
+    @ObservedObject private var aiSettings = AppSettingsManager.shared.aiSlice
 
-    /// `paneState` is nil for the result column, whose surface the mode chose, and for a connection
-    /// whose session went and took its pane state with it. Either way there is no stored surface to
-    /// write, so the header names its surface instead of offering a picker that could not answer.
+    // `paneState` is nil for the result column and for a session that went; there is no stored surface to write.
     internal init(
         surface: TrailingPaneSurface,
         contentMode: ConnectionWorkspaceContentMode,
@@ -57,7 +38,7 @@ internal struct TrailingPaneHeaderView<MenuSectionContent: View>: View {
         TrailingPaneHeaderModel(
             surface: surface,
             contentMode: contentMode,
-            isAIEnabled: settings.ai.enabled,
+            isAIEnabled: aiSettings.value.enabled,
             inspectorRendering: inspectorRendering,
             hasContent: hasContent
         )
@@ -91,18 +72,7 @@ internal struct TrailingPaneHeaderView<MenuSectionContent: View>: View {
         }
     }
 
-    /// The ellipsis draws no text, so the only name VoiceOver has for this control is the one the
-    /// accessibility modifiers give it, and it takes all three of them.
-    ///
-    /// Measured on macOS 27, naming it through the label does not work in any arrangement. A `Label`
-    /// whose title `.labelStyle(.iconOnly)` has resolved away carries no name, whichever view the
-    /// style sits on, and `.accessibilityLabel` inside the label closure, which is how
-    /// `ResultSetMenu` names a pull-down that also draws text, does not reach this one either.
-    /// `.accessibilityLabel` on the `Menu` alone is likewise ignored. In all three the control falls
-    /// back to AppKit's own name for an unnamed pull-down, which reads "More" locally and the empty
-    /// string on the CI runner. Only `.accessibilityElement` publishes the name, and it has to be
-    /// `.contain`: `.ignore` names the button and then takes the menu's own items out of the tree
-    /// with it, so nothing can reach Fields, JSON or any other command in it.
+    // Only `.accessibilityElement(children: .contain)` publishes the name here; label-based naming is ignored on macOS 27.
     private func menu(_ model: TrailingPaneHeaderModel) -> some View {
         Menu {
             ForEach(Array(model.menuSections.enumerated()), id: \.element) { index, section in
@@ -132,8 +102,7 @@ internal struct TrailingPaneHeaderView<MenuSectionContent: View>: View {
     }
 }
 
-/// The surface picker, observing the connection's pane state itself so that the segment it draws is
-/// the surface the controller parents next rather than the one the pane was built with.
+// Observes the pane state itself, so the segment is the surface the controller parents next.
 private struct TrailingPaneSurfacePicker: View {
     @ObservedObject var state: TrailingPaneState
     let segments: [TrailingPaneSurface]
@@ -152,10 +121,7 @@ private struct TrailingPaneSurfacePicker: View {
         .accessibilityIdentifier("trailing-pane-surface")
     }
 
-    /// The segment's name travels in the symbol image's own description. Measured on macOS 27, a
-    /// segmented picker names each segment from the image it was handed and never reads
-    /// `.accessibilityLabel` on the view, so `Image(systemName:)` published "info" and "sparkle" to
-    /// VoiceOver whatever label it carried. The image is the same template at the same size.
+    // A segmented picker names each segment from its image and never reads `.accessibilityLabel`.
     private static func symbol(for segment: TrailingPaneSurface) -> Image {
         guard let image = NSImage(
             systemSymbolName: segment.symbolName,
@@ -166,11 +132,7 @@ private struct TrailingPaneSurfacePicker: View {
         return Image(nsImage: image)
     }
 
-    /// Writes the stored surface and nothing else. A segment is a choice the user made, so it is
-    /// remembered for the connection, which a suggestion such as a grid click never is. The controller
-    /// watches the state of the connection on screen and parents the new surface on the next turn of
-    /// the run loop, so the view whose segment was clicked leaves the window after its action has
-    /// returned rather than from inside it.
+    // Writes the stored surface only; the controller parents it a turn later, after this action returns.
     private var selection: Binding<TrailingPaneSurface> {
         Binding(
             get: { state.surface },

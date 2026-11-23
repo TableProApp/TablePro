@@ -1,8 +1,3 @@
-//
-//  ChatComposerTextView.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -75,18 +70,9 @@ struct ChatComposerTextView: NSViewRepresentable {
             scrollView.noteFocusRingMaskChanged()
         }
 
-        // Replacing the string outright while an input method has marked text cancels the
-        // composition. Routing through shouldChangeText/didChangeText also keeps the undo
-        // stack and the delegate notifications intact.
+        // Replacing the string under marked text cancels the input method's composition.
         if textView.string != text, !textView.hasMarkedText() {
-            let selected = textView.selectedRange()
-            let full = NSRange(location: 0, length: (textView.string as NSString).length)
-            if textView.shouldChangeText(in: full, replacementString: text) {
-                textView.textStorage?.replaceCharacters(in: full, with: text)
-                textView.didChangeText()
-            }
-            let clampedLocation = min(selected.location, (text as NSString).length)
-            textView.setSelectedRange(NSRange(location: clampedLocation, length: 0))
+            textView.replaceAll(with: text)
         }
 
         textView.placeholder = placeholder
@@ -198,11 +184,7 @@ struct ChatComposerTextView: NSViewRepresentable {
 }
 
 final class ChatComposerNSTextView: NSTextView {
-    /// The placeholder is painted in `draw(_:)`, which the accessibility tree never sees, so the
-    /// only thing that names this field to VoiceOver is the value set here. Keeping the two
-    /// together means no assignment path can leave the field nameless: guarding the call at one
-    /// caller is what left it unset since #2097, because `makeNSView` had already stored the same
-    /// string and the caller's comparison was never true again.
+    // draw(_:) paints the placeholder where VoiceOver never looks, so this setter is the only thing that names the field.
     var placeholder: String = "" {
         didSet {
             guard oldValue != placeholder else { return }
@@ -282,10 +264,7 @@ final class ChatComposerNSTextView: NSTextView {
         return resigned
     }
 
-    /// Measured on macOS 27: unparenting the pane moves the window's first responder away without
-    /// ever sending `resignFirstResponder` here, so focus has to be re-read from the window rather
-    /// than waited for. Switching the trailing pane away and back otherwise left the composer
-    /// believing it still held focus, and the highlight painted over a field that did not.
+    // Measured on macOS 27: unparenting the pane moves first responder away without resignFirstResponder.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         onFocusChange?(window?.firstResponder === self)
@@ -314,6 +293,21 @@ final class ChatComposerNSTextView: NSTextView {
     override func didChangeText() {
         super.didChangeText()
         onSizeChange?()
+    }
+
+    // Through shouldChangeText and didChangeText, so undo and the delegate see the edit.
+    func replaceAll(with text: String) {
+        let selected = selectedRange()
+        let oldLength = (string as NSString).length
+        let full = NSRange(location: 0, length: oldLength)
+        if shouldChangeText(in: full, replacementString: text) {
+            textStorage?.replaceCharacters(in: full, with: text)
+            didChangeText()
+        }
+        let newLength = (string as NSString).length
+        // A caret at the old end, an empty composer included, follows the text, so typing after a slash pick lands after "/name ".
+        let caret = selected.location >= oldLength ? newLength : min(selected.location, newLength)
+        setSelectedRange(NSRange(location: caret, length: 0))
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -359,10 +353,7 @@ final class ChatComposerNSTextView: NSTextView {
         }
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL],
            let fileURL = urls.first(where: { (try? $0.resourceValues(forKeys: [.contentTypeKey]))?.contentType?.conforms(to: .image) ?? false }) {
-            /// Identifying the file and reading it are separate answers. Folding the read into the
-            /// same `if let` made an unreadable image (an iCloud file still in the cloud, a network
-            /// volume that went away) fall through to `super.paste`, which pastes its path as text
-            /// into the prompt. The user asked for the picture and silently got a file URL.
+            // A separate read, so an unreadable image reports a failure instead of falling through to pasting its path.
             do {
                 let data = try Data(contentsOf: fileURL)
                 let uti = (try? fileURL.resourceValues(forKeys: [.contentTypeKey]))?.contentType?.identifier
@@ -412,13 +403,7 @@ final class ChatComposerScrollView: NSScrollView {
         return scrollView
     }
 
-    /// The composer's rounded surface is drawn by SwiftUI, so AppKit has to be told the shape to
-    /// wrap; left to itself it rings the square bounds. This is the shape `ShortcutRecorderNSView`
-    /// uses for the same job, and the radius is the one the SwiftUI background reads.
-    ///
-    /// The document view carries the focus, but the ring belongs on the scroll view: measured on
-    /// macOS 27, `focusRingType` on the text view never produces a `drawFocusRingMask` call, while
-    /// on the scroll view it does, `.noBorder` included.
+    // SwiftUI draws the rounded surface, so AppKit needs its shape; on macOS 27 only the scroll view, not the text view, gets drawFocusRingMask.
     override func drawFocusRingMask() {
         NSBezierPath(
             roundedRect: bounds,
@@ -429,8 +414,7 @@ final class ChatComposerScrollView: NSScrollView {
 
     override var focusRingMaskBounds: NSRect { bounds }
 
-    /// The mask is derived from `bounds`, and the composer grows from one line to five as the user
-    /// types, so the cached ring has to be invalidated with the size that produced it.
+    // The composer grows as the user types, and the cached ring keeps the size that produced it.
     override func setFrameSize(_ newSize: NSSize) {
         let changed = newSize != frame.size
         super.setFrameSize(newSize)

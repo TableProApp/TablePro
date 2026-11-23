@@ -1,8 +1,3 @@
-//
-//  AccountSettingsContentTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -355,5 +350,78 @@ struct AccountSettingsContentTests {
         #expect(AccountCodes.systemName(platform: "macos", osVersion: "26.1") == "macOS 26.1")
         #expect(AccountCodes.systemName(platform: "linux", osVersion: "") == "Linux")
         #expect(AccountCodes.systemName(platform: "windows", osVersion: "11") == "11")
+    }
+
+    @Test("The verification row reads the last check, an offline file or an expiry, and waits for a first check")
+    func verificationStates() {
+        let issuedAt = Self.now.addingTimeInterval(-2 * 60 * 60)
+        let validUntil = Self.now.addingTimeInterval(14 * Self.day)
+        let expiredAt = Self.now.addingTimeInterval(-Self.day)
+        let lapsed = Self.entitlement(issuedAt: Self.now.addingTimeInterval(-15 * Self.day), expiresAt: expiredAt)
+
+        let verified = Self.make(AccountState(isSignedIn: true, entitlement: Self.entitlement(), refresh: .succeeded(Self.now)))
+        #expect(verified.verificationState == .verified(at: issuedAt, until: validUntil))
+
+        let offline = Self.make(AccountState(entitlement: Self.entitlement(isOffline: true)))
+        #expect(offline.verificationState == .offlineFile(until: validUntil))
+
+        let expired = Self.make(AccountState(isSignedIn: true, entitlement: lapsed, refresh: .failed(.network("offline"))))
+        #expect(expired.verificationState == .expired(on: expiredAt))
+
+        let offlineExpired = Self.make(AccountState(entitlement: Self.entitlement(
+            issuedAt: Self.now.addingTimeInterval(-15 * Self.day), expiresAt: expiredAt, isOffline: true
+        )))
+        #expect(offlineExpired.verificationState == .offlineFileExpired(on: expiredAt))
+
+        #expect(Self.make(AccountState(isSignedIn: true)).verificationState == .notVerified)
+        #expect(Self.make(AccountState()).verificationState == nil)
+    }
+
+    @Test("A notice that already offers Try Again hides the verification row's Refresh")
+    func retryNoticeReplacesRefresh() {
+        let failed = Self.make(AccountState(isSignedIn: true, refresh: .failed(.network("offline"))))
+        #expect(failed.offersRetry)
+
+        let expiringOffline = Self.make(AccountState(entitlement: Self.entitlement(
+            expiresAt: Self.now.addingTimeInterval(Self.day), isOffline: true
+        )))
+        #expect(!expiringOffline.offersRetry)
+
+        let healthy = Self.make(AccountState(isSignedIn: true, entitlement: Self.entitlement(), refresh: .succeeded(Self.now)))
+        #expect(!healthy.offersRetry)
+    }
+
+    @Test("Devices and Teams are shown while signed in, even before they load; an offline file shows neither")
+    func signedInPages() {
+        let signedIn = Self.make(AccountState(isSignedIn: true, entitlement: Self.entitlement(), refresh: .succeeded(Self.now)))
+        #expect(signedIn.showsDevices)
+        #expect(signedIn.showsTeams)
+        #expect(signedIn.teams == nil)
+
+        let offline = Self.make(AccountState(entitlement: Self.entitlement(isOffline: true)))
+        #expect(!offline.showsDevices)
+        #expect(!offline.showsTeams)
+    }
+
+    @Test("Only a canceling plan informs; every other notice warns")
+    func noticeSeverity() throws {
+        let canceling = Self.make(AccountState(
+            isSignedIn: true,
+            entitlement: Self.entitlement([Self.license(source: "subscription", status: "canceling", endsAt: Self.now)]),
+            refresh: .succeeded(Self.now)
+        ))
+        #expect(try #require(canceling.notices.first).isInformational)
+        #expect(!AccountSettingsContent.Notice.deviceLimit.isInformational)
+        #expect(!AccountSettingsContent.Notice.verificationFailed(message: nil).isInformational)
+    }
+
+    @Test("This Mac's row says so and reads as seen now; another device keeps its last check")
+    func deviceDetail() {
+        let lastSeen = Date().addingTimeInterval(-3 * Self.day)
+        let thisMac = AccountDeviceText.detail(system: "macOS 27.0", lastSeenAt: lastSeen, isThisMac: true)
+        #expect(thisMac == AccountDeviceText.detail(system: "This Mac · macOS 27.0", lastSeenAt: Date()))
+
+        let other = AccountDeviceText.detail(system: "macOS 15.1", lastSeenAt: lastSeen, isThisMac: false)
+        #expect(other == AccountDeviceText.detail(system: "macOS 15.1", lastSeenAt: lastSeen))
     }
 }

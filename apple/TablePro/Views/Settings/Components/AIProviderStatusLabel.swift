@@ -1,8 +1,3 @@
-//
-//  AIProviderStatusLabel.swift
-//  TablePro
-//
-
 import SwiftUI
 
 internal struct AIProviderStatusLabel: View {
@@ -12,19 +7,21 @@ internal struct AIProviderStatusLabel: View {
     var body: some View {
         switch status {
         case .checking, .signingIn:
-            HStack(spacing: 6) {
-                ProgressView()
-                    .controlSize(.small)
-                Text(status.title)
+            Label {
+                Text(verbatim: status.title)
                     .foregroundStyle(.secondary)
+            } icon: {
+                ProgressView()
+                    .controlSize(.mini)
+                    .accessibilityHidden(true)
             }
         default:
             if let severity = status.severity {
                 NoticeLabel(status.title, severity: severity)
-            } else if showsReadySymbol {
+            } else if showsReadySymbol, status.isReady {
                 NoticeLabel(status.title, severity: .success)
             } else {
-                Text(status.title)
+                Text(verbatim: status.title)
                     .foregroundStyle(.secondary)
             }
         }

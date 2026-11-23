@@ -43,6 +43,10 @@ struct ParsedConnectionURL {
     let multiHost: String?
     let additionalFields: [String: String]
 
+    var environment: ConnectionEnvironment? {
+        envTag.flatMap(ConnectionURLParser.environment(named:))
+    }
+
     var localSocketPath: String? {
         MySQLLocalSocket.path(in: additionalFields)
     }
@@ -1051,8 +1055,19 @@ struct ConnectionURLParser {
         return bestColor
     }
 
-    @MainActor internal static func tagId(fromEnvName name: String) -> UUID? {
-        let tags = TagStorage.shared.loadTags()
-        return tags.first(where: { $0.name.lowercased() == name.lowercased() })?.id
+    // `env=` names the connection's environment; a name that is none of them leaves it unset.
+    internal static func environment(named name: String) -> ConnectionEnvironment? {
+        switch name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "production", "prod":
+            return .production
+        case "staging", "stage":
+            return .staging
+        case "development", "dev":
+            return .development
+        case "local":
+            return .local
+        default:
+            return nil
+        }
     }
 }

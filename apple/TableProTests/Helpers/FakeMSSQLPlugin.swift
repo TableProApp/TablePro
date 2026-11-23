@@ -80,6 +80,7 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     private static let connectFailures = OSAllocatedUnfairLock<[String: ConnectFailure]>(initialState: [:])
     private static let connectHolds = OSAllocatedUnfairLock<[String: FakeMSSQLConnectHold]>(initialState: [:])
     private static let connectWarnings = OSAllocatedUnfairLock<[String: String]>(initialState: [:])
+    private static let serverVersions = OSAllocatedUnfairLock<[String: String]>(initialState: [:])
     private static let createdDriverConfigurations = OSAllocatedUnfairLock<[String: [CreatedDriverConfiguration]]>(
         initialState: [:]
     )
@@ -99,6 +100,15 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static func clearConnectWarning(for connectionId: UUID) {
         _ = connectWarnings.withLock { $0.removeValue(forKey: connectionId.uuidString) }
+    }
+
+    // Reported while connected and forgotten on disconnect, as libpq's driver does.
+    static func reportServerVersion(for connectionId: UUID, version: String) {
+        serverVersions.withLock { $0[connectionId.uuidString] = version }
+    }
+
+    static func clearServerVersion(for connectionId: UUID) {
+        _ = serverVersions.withLock { $0.removeValue(forKey: connectionId.uuidString) }
     }
 
     static func holdConnect(for connectionId: UUID) -> FakeMSSQLConnectHold {
@@ -136,8 +146,9 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             $0[connectionId]?.append(createdConfiguration)
         }
         let connectWarning = Self.connectWarnings.withLock { $0[connectionId] }
+        let serverVersion = Self.serverVersions.withLock { $0[connectionId] }
         guard let failure = Self.connectFailures.withLock({ $0[connectionId] }) else {
-            return FakeMSSQLPluginDriver(connectHold: connectHold, connectWarning: connectWarning)
+            return FakeMSSQLPluginDriver(connectHold: connectHold, connectWarning: connectWarning, serverVersion: serverVersion)
         }
         return FakeMSSQLPluginDriver(
             connectFailure: failure.error,
@@ -166,19 +177,24 @@ final class FakeMSSQLPluginDriver: PluginDriverStub, @unchecked Sendable {
     private let connectWarning: String?
     private let queryTimeoutValues = OSAllocatedUnfairLock<[Int]>(initialState: [])
     private let reportedWarning = OSAllocatedUnfairLock<String?>(initialState: nil)
+    private let signInServerVersion: String?
+    private let connectedServerVersion = OSAllocatedUnfairLock<String?>(initialState: nil)
 
     var connectionWarning: String? { reportedWarning.withLock { $0 } }
+    var serverVersion: String? { connectedServerVersion.withLock { $0 } }
 
     init(
         connectFailure: (any Error & Sendable)? = nil,
         connectDelay: Duration = .zero,
         connectHold: FakeMSSQLConnectHold? = nil,
-        connectWarning: String? = nil
+        connectWarning: String? = nil,
+        serverVersion: String? = nil
     ) {
         self.connectFailure = connectFailure
         self.connectDelay = connectDelay
         self.connectHold = connectHold
         self.connectWarning = connectWarning
+        self.signInServerVersion = serverVersion
     }
 
     func connect() async throws {
@@ -190,8 +206,12 @@ final class FakeMSSQLPluginDriver: PluginDriverStub, @unchecked Sendable {
         }
         if let connectFailure { throw connectFailure }
         reportedWarning.withLock { $0 = connectWarning }
+        connectedServerVersion.withLock { $0 = signInServerVersion }
     }
-    func disconnect() { disconnectCallCount += 1 }
+    func disconnect() {
+        disconnectCallCount += 1
+        connectedServerVersion.withLock { $0 = nil }
+    }
 
     // SQL Server moves a live session with USE, so a statement pinned to a database after a reconnect lands.
     func switchDatabase(to database: String) async throws {}

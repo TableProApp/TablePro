@@ -358,9 +358,12 @@ struct ConnectionSwitcherPopover: View {
             )
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(connection.name)
-                    .font(.body.weight(entry.isActive ? .semibold : .regular))
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(connection.name)
+                        .font(.body.weight(entry.isActive ? .semibold : .regular))
+                        .lineLimit(1)
+                    ConnectionEnvironmentLabel(environment: ConnectionEnvironment.stored(in: connection.additionalFields))
+                }
 
                 HStack(spacing: 6) {
                     Text(connection.connectionSubtitle)

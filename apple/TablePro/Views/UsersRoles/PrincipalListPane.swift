@@ -29,22 +29,16 @@ struct PrincipalListPane: View {
             .paneBarBackground(Color(nsColor: .controlBackgroundColor))
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                Divider()
-                HStack {
-                    AddRemoveControlGroup(
-                        addLabel: String(localized: "New User or Role"),
-                        removeLabel: String(localized: "Drop"),
-                        canRemove: !viewModel.selectedRefs.isEmpty && !viewModel.isResolvingDrop,
-                        addIdentifier: "usersroles-add",
-                        removeIdentifier: "usersroles-remove",
-                        onAdd: { viewModel.activeSheet = .create },
-                        onRemove: { Task { await viewModel.requestDrop(viewModel.selectedRefs) } }
-                    )
-                    Spacer()
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+            ListBar {
+                AddRemoveControlGroup(
+                    addLabel: String(localized: "New User or Role"),
+                    removeLabel: String(localized: "Drop"),
+                    canRemove: !viewModel.selectedRefs.isEmpty && !viewModel.isResolvingDrop,
+                    addIdentifier: "usersroles-add",
+                    removeIdentifier: "usersroles-remove",
+                    onAdd: { viewModel.activeSheet = .create },
+                    onRemove: { Task { await viewModel.requestDrop(viewModel.selectedRefs) } }
+                )
             }
             .paneBarBackground(Color(nsColor: .controlBackgroundColor))
         }

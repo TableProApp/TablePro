@@ -15,7 +15,7 @@ struct SidebarTreeView: View {
     // Also carries the all-schema listing the view model's scan reads, so a listing that lands redraws the verdicts.
     @ObservedObject var catalog: ConnectionSidebarCatalog
 
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var sidebarDisplay = SidebarDisplayPreferences.shared
 
     private var activeDatabase: String? {
         let name = coordinator?.browseDatabaseName ?? ""
@@ -35,7 +35,7 @@ struct SidebarTreeView: View {
             schemaService.schemas(for: connectionId),
             systemSchemas: systemSchemas,
             activeSchema: coordinator?.toolbarState.currentSchema,
-            showsSystem: settingsManager.general.showSystemContainers,
+            showsSystem: sidebarDisplay.options.showSystemContainers,
             selected: sidebarState.schemaFilter(for: activeDatabase),
             pinned: Set(pendingTruncates.union(pendingDeletes).compactMap(\.qualifyingSchema))
         )
@@ -45,8 +45,7 @@ struct SidebarTreeView: View {
         viewModel.filterQuery
     }
 
-    /// The same verdict the outline applies, so the empty state and the rows can never disagree about
-    /// whether a schema survived the filter.
+    // The outline's own verdict, so the empty state and the rows never disagree.
     private var visibleSchemas: [String] {
         guard !searchText.isEmpty else { return schemas }
         // The listing of the database the schemas were read from, which during a switch is the one being left.
@@ -92,8 +91,6 @@ struct SidebarTreeView: View {
         }
     }
 
-    /// Same outline the other two sidebar shapes use. See `SidebarView.tableList` for why a SwiftUI
-    /// `List` cannot serve here.
     private var treeList: some View {
         DatabaseTreeOutlineView(
             connectionId: connectionId,
@@ -109,10 +106,10 @@ struct SidebarTreeView: View {
             activeDatabase: activeDatabase,
             activeSchema: coordinator?.toolbarState.currentSchema,
             selectedTables: windowState.selectedTables,
-            showRecentTables: settingsManager.general.showRecentTables,
-            showSystemContainers: settingsManager.general.showSystemContainers,
-            showsPartitions: settingsManager.general.showPartitions,
-            rowSizePreference: settingsManager.general.sidebarRowSize
+            showRecentTables: sidebarDisplay.options.showRecentTables,
+            showSystemContainers: sidebarDisplay.options.showSystemContainers,
+            showsPartitions: sidebarDisplay.options.showPartitions,
+            rowSizePreference: sidebarDisplay.options.rowSize
         )
     }
 

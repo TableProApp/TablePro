@@ -1,49 +1,73 @@
 import AppKit
 import SwiftUI
 
-struct CommandLineToolSection: View {
+struct CommandLineToolPage: View {
     private let tool: CommandLineShim
+    @ObservedObject private var visit: SettingsPaneVisit
 
-    @State private var status: CommandLineShimStatus = .notLinked
-    @State private var command: String?
+    @State private var link: CommandLineToolLink?
 
-    init(tool: CommandLineShim = CommandLineShim()) {
+    init(visit: SettingsPaneVisit, tool: CommandLineShim = CommandLineShim()) {
         self.tool = tool
-        _command = State(initialValue: tool.linkCommand)
+        self._visit = ObservedObject(wrappedValue: visit)
     }
 
     var body: some View {
-        Section {
-            LabeledContent {
-                Text(statusText)
-                    .foregroundStyle(.secondary)
-            } label: {
-                Text("tablepro command")
-                Text(tool.linkPath)
-                    .font(.system(.caption, design: .monospaced))
-            }
+        Form {
+            Section {
+                LabeledContent {
+                    if let link {
+                        Text(link.statusText)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("command-line-status")
+                    }
+                } label: {
+                    Text("tablepro command")
+                    Text("Opens database URLs and files, runs queries and exports tables from the terminal. Run `tablepro help` to see every command.")
+                }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(instruction)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                LabeledContent("Location") {
+                    Text(verbatim: tool.linkPath)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
 
-                if let command {
-                    CopyableCodeBlock(text: command)
+                if let link {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(link.instruction)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if let command = link.command {
+                            CopyableCodeBlock(text: command)
+                        }
+                    }
                 }
             }
-        } header: {
-            Text("Command Line")
-        } footer: {
-            Text("Opens database URLs and files, runs queries and exports tables from the terminal. Run `tablepro help` to see every command.")
         }
-        .onAppear(perform: syncStatus)
+        .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(SettingsPage.commandLineTool.pageIdentifier)
+        .task(id: visit.count) { refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            syncStatus()
+            refresh()
         }
     }
 
-    private var statusText: String {
+    // The link changes from Terminal, so it is read on every show and every return to the app.
+    private func refresh() {
+        let status = tool.status()
+        link = CommandLineToolLink(status: status, command: tool.command(for: status))
+    }
+}
+
+private struct CommandLineToolLink: Equatable {
+    let status: CommandLineShimStatus
+    let command: String?
+
+    var statusText: String {
         switch status {
         case .linked:
             String(localized: "Linked")
@@ -54,7 +78,7 @@ struct CommandLineToolSection: View {
         }
     }
 
-    private var instruction: String {
+    var instruction: String {
         guard command != nil else {
             return String(localized: "TablePro is running from a disk image or a temporary location. Move it to the Applications folder first, then open it from there.")
         }
@@ -66,10 +90,5 @@ struct CommandLineToolSection: View {
         case .otherFile:
             return String(localized: "To replace that file with a link to this app, run this in Terminal:")
         }
-    }
-
-    private func syncStatus() {
-        status = tool.status()
-        command = tool.command(for: status)
     }
 }

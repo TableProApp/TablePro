@@ -56,11 +56,15 @@ struct CommandPreviewThemeTests {
 
     @Test("The tunnel command's Will Run preview sits in an editor-themed well")
     func tunnelPreviewWearsTheEditorTheme() throws {
-        let coordinator = ConnectionFormCoordinator(connectionId: nil)
-        coordinator.tunnelCommand.state.config.method = .custom
-        coordinator.tunnelCommand.state.config.command = "ssh -N -L {port}:{host}:{remotePort} bastion"
-        try #require(coordinator.tunnelCommandPreview != nil)
-        let form = Form { TunnelCommandTransportSections(coordinator: coordinator) }.formStyle(.grouped)
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .mysql, parsedURL: nil))
+        store.selectTransport(.tunnelCommand)
+        store.update {
+            $0.tunnelCommand.config.method = .custom
+            $0.tunnelCommand.config.command = "ssh -N -L {port}:{host}:{remotePort} bastion"
+        }
+        try #require(store.tunnelCommandPreview != nil)
+        let form = Form { TransportCommandRow(row: .tunnelCommandPreview, store: store) }.formStyle(.grouped)
 
         try ThemeTestFixture.adopting(ThemeTestFixture.pair([.editorBackground: "#FF00FF"]), appearance: .light) {
             let themed = try magentaCount(form, size: Self.formSize)

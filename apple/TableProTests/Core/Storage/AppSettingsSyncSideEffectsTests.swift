@@ -75,4 +75,20 @@ struct AppSettingsSyncSideEffectsTests {
         #expect(recorder.calls.isEmpty)
         #expect(!flagDefaults.bool(forKey: KeychainHelper.passwordSyncEnabledKey))
     }
+
+    @Test("Writing the sync settings already held neither calls the coordinator nor rewrites the Keychain flag")
+    func unchangedSyncSettingsDoNothing() throws {
+        let flagDefaults = try pool.make().defaults
+        let recorder = SyncSwitchRecorder()
+        let root = Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manager = try makeManager(flagDefaults: flagDefaults, recorder: recorder, root: root)
+        flagDefaults.set(true, forKey: KeychainHelper.passwordSyncEnabledKey)
+
+        let current = manager.sync
+        manager.sync = current
+
+        #expect(recorder.calls.isEmpty)
+        #expect(flagDefaults.bool(forKey: KeychainHelper.passwordSyncEnabledKey))
+    }
 }

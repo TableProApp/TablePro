@@ -1,10 +1,6 @@
-//
-//  AccountSettingsModel.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
+import TableProHTTP
 
 internal struct AccountRemote<Value: Equatable>: Equatable {
     var value: Value?
@@ -19,6 +15,26 @@ internal struct AccountActionFailure: Equatable, Identifiable {
     var id: String { title + message }
 }
 
+internal struct AccountSignOutConfirmation: Equatable {
+    let discardsTeamChanges: Bool
+    let removesOfflineFile: Bool
+
+    var discardsSomething: Bool {
+        discardsTeamChanges || removesOfflineFile
+    }
+
+    var message: String {
+        var sentences = [String(localized: "Paid features stop on this Mac until you sign in again.")]
+        if discardsTeamChanges {
+            sentences.append(String(localized: "Team library changes that were not sent yet are discarded."))
+        }
+        if removesOfflineFile {
+            sentences.append(String(localized: "The imported offline file is removed."))
+        }
+        return sentences.joined(separator: " ")
+    }
+}
+
 @MainActor
 internal final class AccountSettingsModel: ObservableObject {
     enum Activity: Equatable {
@@ -30,6 +46,20 @@ internal final class AccountSettingsModel: ObservableObject {
         case usingKey
     }
 
+    struct Loader {
+        var profile: @MainActor () async throws(AccountError) -> AccountProfile
+        var devices: @MainActor () async throws(AccountError) -> [AccountDevice]
+
+        static func live(_ services: AccountServices) -> Loader {
+            Loader(
+                profile: { () async throws(AccountError) -> AccountProfile in try await services.fetchProfile() },
+                devices: { () async throws(AccountError) -> [AccountDevice] in try await services.fetchDevices() }
+            )
+        }
+    }
+
+    static let freshness: TimeInterval = 60
+
     @Published private(set) var profile = AccountRemote<AccountProfile>()
     @Published private(set) var devices = AccountRemote<[AccountDevice]>()
     @Published private(set) var activity: Activity?
@@ -40,15 +70,34 @@ internal final class AccountSettingsModel: ObservableObject {
     // Read once when the sheet opens, not on every render: it comes from the Keychain.
     @Published private(set) var licenseKeyPrefill: String?
     @Published var presentsOfflineImporter = false
+    @Published var pendingRemoval: AccountSettingsContent.DeviceRow?
+    // Taken when Sign Out… is clicked, so the dialog names what this Mac held at that moment.
+    @Published private(set) var signOutConfirmation: AccountSignOutConfirmation?
 
     let services: AccountServices
+    private let loader: Loader
     private let now: () -> Date
+    private let openURL: @MainActor (URL) -> Void
+    private let hasUnsentTeamChanges: @MainActor () -> Bool
     private var stateObserver: AnyCancellable?
     private var loadedSignedIn: Bool?
+    // Bumped when the loaded data is dropped, so a load still out for the old account lands nowhere.
+    private var generation = 0
+    private var lastLoad: Date?
+    private var returnsFromPortal = false
 
-    init(services: AccountServices, now: @escaping () -> Date = { Date() }) {
+    init(
+        services: AccountServices,
+        loader: Loader? = nil,
+        now: @escaping () -> Date = { Date() },
+        openURL: @escaping @MainActor (URL) -> Void = { _ = WebPageOpener.open($0, scope: .httpsOrLoopbackHTTP) },
+        hasUnsentTeamChanges: @escaping @MainActor () -> Bool = { TeamLibrarySync.shared.hasUnsentChanges }
+    ) {
         self.services = services
+        self.loader = loader ?? .live(services)
         self.now = now
+        self.openURL = openURL
+        self.hasUnsentTeamChanges = hasUnsentTeamChanges
         stateObserver = services.access.$state
             .dropFirst()
             .sink { [weak self] state in
@@ -80,6 +129,29 @@ internal final class AccountSettingsModel: ObservableObject {
         activity != nil
     }
 
+    var confirmsSignOut: Bool {
+        signOutConfirmation != nil
+    }
+
+    // Every show of the pane and every return to the window: a portal visit may have changed the account.
+    func refreshOnVisit() async {
+        guard returnsFromPortal else {
+            await reloadIfStale()
+            return
+        }
+        returnsFromPortal = false
+        await services.checkNow()
+        await reload()
+    }
+
+    func reloadIfStale() async {
+        if services.access.state.isSignedIn == loadedSignedIn, let lastLoad,
+           now().timeIntervalSince(lastLoad) < Self.freshness {
+            return
+        }
+        await reload()
+    }
+
     // Keeps what it loaded before when a load fails; a sign-in or sign-out drops it first.
     func reload() async {
         let isSignedIn = services.access.state.isSignedIn
@@ -88,32 +160,55 @@ internal final class AccountSettingsModel: ObservableObject {
             loadedSignedIn = isSignedIn
         }
         guard isSignedIn else { return }
-        async let profileLoad: Void = loadProfile()
-        async let devicesLoad: Void = loadDevices()
-        _ = await (profileLoad, devicesLoad)
+        let started = generation
+        async let profileLoad = loadProfile()
+        async let devicesLoad = loadDevices()
+        let (profileLoaded, devicesLoaded) = await (profileLoad, devicesLoad)
+        guard started == generation, profileLoaded, devicesLoaded else { return }
+        lastLoad = now()
     }
 
-    func loadProfile() async {
-        if profile.value == nil {
-            profile.isLoading = true
-        }
+    @discardableResult
+    func loadProfile() async -> Bool {
+        let started = generation
+        profile.isLoading = true
         do throws(AccountError) {
-            profile = AccountRemote(value: try await services.fetchProfile())
+            let value = try await loader.profile()
+            guard started == generation else { return false }
+            profile = AccountRemote(value: value)
+            return true
+        } catch .canceled {
+            if started == generation {
+                profile.isLoading = false
+            }
+            return false
         } catch {
+            guard started == generation else { return false }
             profile.isLoading = false
             profile.failure = error.friendlyDescription ?? String(localized: "Could not load your teams.")
+            return false
         }
     }
 
-    func loadDevices() async {
-        if devices.value == nil {
-            devices.isLoading = true
-        }
+    @discardableResult
+    func loadDevices() async -> Bool {
+        let started = generation
+        devices.isLoading = true
         do throws(AccountError) {
-            devices = AccountRemote(value: try await services.fetchDevices())
+            let value = try await loader.devices()
+            guard started == generation else { return false }
+            devices = AccountRemote(value: value)
+            return true
+        } catch .canceled {
+            if started == generation {
+                devices.isLoading = false
+            }
+            return false
         } catch {
+            guard started == generation else { return false }
             devices.isLoading = false
             devices.failure = error.friendlyDescription ?? String(localized: "Could not load your devices.")
+            return false
         }
     }
 
@@ -130,7 +225,19 @@ internal final class AccountSettingsModel: ObservableObject {
         presentDeviceLimitIfReached()
     }
 
+    func requestSignOut() {
+        signOutConfirmation = AccountSignOutConfirmation(
+            discardsTeamChanges: hasUnsentTeamChanges(),
+            removesOfflineFile: services.access.state.entitlement?.isOffline == true
+        )
+    }
+
+    func cancelSignOut() {
+        signOutConfirmation = nil
+    }
+
     func signOut() async {
+        signOutConfirmation = nil
         activity = .signingOut
         defer { activity = nil }
         await services.signOut()
@@ -143,7 +250,14 @@ internal final class AccountSettingsModel: ObservableObject {
         await reload()
     }
 
+    // The next return to the window checks the account again: billing, devices and teams change in the portal.
+    func openPortal(_ url: URL) {
+        returnsFromPortal = true
+        openURL(url)
+    }
+
     func removeDevice(_ device: AccountSettingsContent.DeviceRow) async {
+        pendingRemoval = nil
         activity = .removing(device.id)
         defer { activity = nil }
         do throws(AccountError) {
@@ -171,20 +285,30 @@ internal final class AccountSettingsModel: ObservableObject {
         }
     }
 
-    // Nil when the key signed this Mac in; the message to show beside the key otherwise.
+    func offlineFilePickerFailed(_ error: any Error) {
+        actionFailure = AccountActionFailure(
+            title: String(localized: "Could not import the offline file"),
+            message: error.localizedDescription
+        )
+    }
+
+    // Nil when the key signed this Mac in or the exchange was canceled; the message to show beside the key otherwise.
     func useLicenseKey(_ key: String) async -> String? {
         activity = .usingKey
         defer { activity = nil }
         do throws(AccountError) {
             _ = try await services.useLicenseKey(key)
+        } catch .canceled {
+            return nil
         } catch {
             return error.licenseKeyDescription ?? String(localized: "Could not use this license key.")
         }
         presentsLicenseKey = false
         presentDeviceLimitIfReached()
-        // The key may belong to another account than the one signed in before.
+        // The key may belong to another account than the one signed in before. The sheet closing cancels its own
+        // task, so the reload runs outside it.
         forgetLoaded()
-        await reload()
+        Task { await reload() }
         return nil
     }
 
@@ -200,6 +324,8 @@ internal final class AccountSettingsModel: ObservableObject {
     }
 
     private func forgetLoaded() {
+        generation += 1
+        lastLoad = nil
         profile = AccountRemote()
         devices = AccountRemote()
     }

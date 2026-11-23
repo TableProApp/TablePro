@@ -260,19 +260,20 @@ struct ConnectionCommitModeStorageTests {
     @MainActor
     @Test("The form's Manual Commit toggle is off and refuses a change where the engine can't hold")
     func formToggleIsDisabledWhereUnavailable() {
-        let coordinator = ConnectionFormCoordinator(connectionId: nil)
-        coordinator.network.type = .mysql
-        coordinator.customization.commitMode = .manual
-        #expect(!coordinator.isManualCommitAvailable)
-        #expect(!coordinator.effectiveManualCommit)
-        coordinator.effectiveManualCommit = false
-        #expect(coordinator.customization.commitMode == .manual)
+        let mysql = ConnectionTypeTraits.live(for: .mysql, pluginManager: .shared)
+        let postgres = ConnectionTypeTraits.live(for: .postgresql, pluginManager: .shared)
+        var draft = ConnectionDraft.new(type: .mysql, traits: mysql)
+        draft.safety.commitMode = .manual
+        #expect(!mysql.manualCommitAvailable)
+        #expect(!ConnectionEditorEngine.effectiveManualCommit(draft, mysql))
+        draft.setManualCommit(false, traits: mysql)
+        #expect(draft.safety.commitMode == .manual)
 
-        coordinator.network.type = .postgresql
-        #expect(coordinator.isManualCommitAvailable)
-        #expect(coordinator.effectiveManualCommit)
-        coordinator.effectiveManualCommit = false
-        #expect(coordinator.customization.commitMode == .automatic)
+        draft.retype(to: postgres, from: mysql)
+        #expect(postgres.manualCommitAvailable)
+        #expect(ConnectionEditorEngine.effectiveManualCommit(draft, postgres))
+        draft.setManualCommit(false, traits: postgres)
+        #expect(draft.safety.commitMode == .automatic)
     }
 
     @Test("The form writes Manual Commit into the saved fields, and turning it off removes the key")

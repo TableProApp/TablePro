@@ -1,10 +1,3 @@
-//
-//  SidebarView.swift
-//  TablePro
-//
-//  Created by Ngo Quoc Dat on 16/12/25.
-//
-
 import SwiftUI
 import TableProPluginKit
 import TableProUtilities
@@ -12,9 +5,8 @@ import TableProUtilities
 struct SidebarView: View {
     @ObservedObject private var featureAccess = FeatureAccess.shared
     @StateObject private var viewModel: SidebarViewModel
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var sidebarDisplay = SidebarDisplayPreferences.shared
     @State private var showsSchemaProgress = false
-    /// See `presentedSchemaState`.
     @State private var showsLoadedCatalog = false
 
     @ObservedObject private var catalog: ConnectionSidebarCatalog
@@ -83,9 +75,7 @@ struct SidebarView: View {
         }
     }
 
-    /// The schemas the flat outline lists below its own sections. Counted here too, or a search
-    /// whose only matches are in another schema is shown as "No Results" and the outline that would
-    /// have listed them is never drawn.
+    // Counted too, or a search matching only another schema shows No Results and never draws the outline.
     private var otherSchemaMatches: [String] {
         guard rootShape == .flat, !viewModel.filterQuery.isEmpty, let database = activeDatabase,
               DatabaseTreeMetadataService.listsTablesPerSchema(groupingStrategy) else { return [] }
@@ -98,7 +88,7 @@ struct SidebarView: View {
             database: database,
             browsedSchema: coordinator?.toolbarState.currentSchema,
             searchText: searchText,
-            hiddenSchemas: settingsManager.general.showSystemContainers ? [] : systemSchemas,
+            hiddenSchemas: sidebarDisplay.options.showSystemContainers ? [] : systemSchemas,
             listingMatches: viewModel.schemaListingMatches(database: database, searchText: searchText),
             keptSchemas: SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: database)?
                 .union(pending),
@@ -119,16 +109,13 @@ struct SidebarView: View {
         PluginManager.shared.databaseGroupingStrategy(for: viewModel.databaseType)
     }
 
-    /// Only the flat list is scoped to one schema. The tree already shows every schema as a node,
-    /// so a picker there would name a schema the list is not filtered by.
+    // The tree shows every schema as a node, so a picker there would name a schema the list is not filtered by.
     private var supportsSchemaFooter: Bool {
         guard PluginManager.shared.supportsSchemaSwitching(for: viewModel.databaseType) else { return false }
         return rootShape == .flat
     }
 
-    /// The one derivation of the sidebar's shape. The outline's coordinator calls the same resolver
-    /// with the same inputs, so the wrapper this view picks and the root the outline builds can
-    /// never describe different sidebars.
+    // The outline's coordinator calls the same resolver, so the wrapper and the root never describe different sidebars.
     private var rootShape: SidebarRootShape {
         SidebarRootShapeResolver.resolve(
             groupingStrategy: groupingStrategy,
@@ -167,8 +154,6 @@ struct SidebarView: View {
         )
     }
 
-    // MARK: - Body
-
     var body: some View {
         VStack(spacing: 0) {
             switch sidebarState.selectedSidebarTab {
@@ -193,7 +178,7 @@ struct SidebarView: View {
 
             sidebarFooter
         }
-        .onChange(of: settingsManager.general.showRecentTables) { _ in
+        .onChange(of: sidebarDisplay.options.showRecentTables) { _ in
             sidebarState.reloadRecentTablesFromStore()
         }
         // A new session, or a database whose session is another connection, holds its own temporary tables.
@@ -241,9 +226,7 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Footer
-
-    /// The Tables tab's bar. Favorites draws its own, because its commands belong to that view.
+    // Favorites draws its own bar, because its commands belong to that view.
     @ViewBuilder
     private var sidebarFooter: some View {
         if sidebarState.selectedSidebarTab == .tables {
@@ -283,8 +266,6 @@ struct SidebarView: View {
             hidesDatabaseWrites: false
         )
     }
-
-    // MARK: - Tables Content
 
     @ViewBuilder
     private var tablesContent: some View {
@@ -385,9 +366,7 @@ struct SidebarView: View {
         viewModel.databaseType.browsingRequiresSelectedDatabase && activeDatabase == nil
     }
 
-    /// Asked above the switch rather than inside its loading branch, so which of the two the
-    /// column renders stays a decision of the pure resolver that already owns every other one,
-    /// and is tested there rather than buried in a view.
+    // Resolved above the switch, so the pure, tested resolver decides every branch.
     @ViewBuilder
     private var flatContent: some View {
         let presentation = objectListPresentation
@@ -454,8 +433,6 @@ struct SidebarView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Table List
-
     private var activeDatabase: String? {
         let name = coordinator?.browseDatabaseName ?? ""
         return name.isEmpty ? nil : name
@@ -480,10 +457,10 @@ struct SidebarView: View {
             activeDatabase: activeDatabase,
             activeSchema: coordinator?.toolbarState.currentSchema,
             selectedTables: windowState.selectedTables,
-            showRecentTables: settingsManager.general.showRecentTables,
-            showSystemContainers: settingsManager.general.showSystemContainers,
-            showsPartitions: settingsManager.general.showPartitions,
-            rowSizePreference: settingsManager.general.sidebarRowSize
+            showRecentTables: sidebarDisplay.options.showRecentTables,
+            showSystemContainers: sidebarDisplay.options.showSystemContainers,
+            showsPartitions: sidebarDisplay.options.showPartitions,
+            rowSizePreference: sidebarDisplay.options.rowSize
         )
     }
 
@@ -508,8 +485,6 @@ private struct TemporaryTableReadKey: Hashable {
     let database: String?
     let isConnected: Bool
 }
-
-// MARK: - Preview
 
 #Preview {
     SidebarView(

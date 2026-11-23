@@ -338,9 +338,11 @@ struct ConnectionURLFormatter {
         colorHex(connection.color).map { "statusColor=\($0)" }
     }
 
+    // The stored name, which ConnectionURLParser.environment(named:) reads back in any language.
     private static func envParameter(_ connection: DatabaseConnection) -> String? {
-        guard let tagId = connection.tagIds.first, let tag = TagStorage.shared.tag(for: tagId) else { return nil }
-        return "env=\(formEncode(tag.name))"
+        let environment = ConnectionEnvironment.stored(in: connection.additionalFields)
+        guard environment != .none else { return nil }
+        return "env=\(environment.rawValue)"
     }
 
     // The standard option names, so the URL opens in other MongoDB tools as well as here: the fields, then the typed

@@ -104,7 +104,7 @@ struct WelcomeRowPresentationTests {
         return connection
     }
 
-    private func shared(iconName: String?) -> LinkedConnection {
+    private func shared(iconName: String?, additionalFields: [String: String]? = nil) -> LinkedConnection {
         let exportable = ExportableConnection(
             name: "Shared",
             host: "db.acme.io",
@@ -119,7 +119,7 @@ struct WelcomeRowPresentationTests {
             sshProfileId: nil,
             safeModeLevel: nil,
             aiPolicy: nil,
-            additionalFields: nil,
+            additionalFields: additionalFields,
             redisDatabase: nil,
             startupCommands: nil,
             localOnly: nil
@@ -158,8 +158,7 @@ struct WelcomeRowPresentationTests {
         #expect(unknown.iconName == Self.undrawableIcon)
     }
 
-    /// The tile draws `LibraryGlyph.connectionImage`, which takes the engine's glyph whenever this
-    /// resolves to nil. A name kept from a newer release must not draw an empty tile.
+    // The tile takes the engine's glyph whenever this is nil, so a name from a newer release never draws an empty tile.
     @Test("A tile falls back to the engine for no icon or one this Mac cannot draw")
     func tileFallsBackToEngine() {
         #expect(LibraryGlyph.customSymbol(nil) == nil)
@@ -196,7 +195,7 @@ struct WelcomeRowPresentationTests {
         #expect(row.groupLabel?.symbolName == LibraryGlyph.groupSymbol(Self.customIcon))
     }
 
-    /// A custom icon replaces the engine logo, so the tooltip is where the engine stays visible.
+    // A custom icon replaces the engine logo, so the tooltip is where the engine stays visible.
     @Test("The tooltip names the engine, for a saved and for a shared connection")
     func tooltipNamesEngine() {
         let saved = WelcomeRowPresentation.tooltip(
@@ -228,8 +227,7 @@ struct WelcomeRowPresentationTests {
         #expect(engine.isTemplate)
     }
 
-    /// CockroachDB's logo is a 2500pt artboard. The rename field's image view is constrained in width
-    /// only, so an unfitted logo would take that as its height and spill over the rows around it.
+    // CockroachDB's logo is a 2500pt artboard, which the width-only rename image view would take as its height.
     @Test("An engine logo in the rename field fits the glyph's 16pt box")
     func renameGlyphFitsTheField() throws {
         let side = WelcomeRowPresentation.renameGlyphSide
@@ -238,5 +236,107 @@ struct WelcomeRowPresentationTests {
             #expect(glyph.size.width <= side && glyph.size.height <= side, "\(type.rawValue): \(glyph.size)")
             #expect(glyph.size.width > 0 && glyph.size.height > 0, "\(type.rawValue)")
         }
+    }
+
+    // MARK: - Environment
+
+    private func withEnvironment(_ environment: ConnectionEnvironment) -> DatabaseConnection {
+        var connection = makeConnection(iconName: nil)
+        connection.additionalFields[ConnectionEnvironment.fieldKey] = environment.rawValue
+        return connection
+    }
+
+    private func savedRow(_ connection: DatabaseConnection) -> WelcomeConnectionRowModel {
+        WelcomeRowPresentation.savedConnection(
+            connection, section: .connections, tags: [], group: nil, groupPath: [], isDriverRejected: false
+        )
+    }
+
+    private func row(status: ConnectionDisplayStatus) -> WelcomeConnectionRowModel {
+        WelcomeConnectionRowModel(
+            id: UUID(),
+            name: "Prod",
+            detail: "db.acme.io/app",
+            type: .postgresql,
+            iconName: nil,
+            identityColor: nil,
+            environment: .production,
+            tags: [],
+            hiddenTagCount: 0,
+            groupLabel: nil,
+            isLocalOnly: false,
+            isDriverRejected: false,
+            tooltip: "",
+            status: status
+        )
+    }
+
+    @Test("A saved row carries its environment, and a connection without one shows none")
+    func savedRowCarriesEnvironment() {
+        #expect(savedRow(withEnvironment(.production)).environment == .production)
+        #expect(savedRow(withEnvironment(.local)).environment == .local)
+        #expect(savedRow(makeConnection(iconName: nil)).environment == .none)
+    }
+
+    @Test("A linked row reads the environment from its file")
+    func sharedRowCarriesEnvironment() {
+        let staging = shared(iconName: nil, additionalFields: [ConnectionEnvironment.fieldKey: "staging"])
+        let plain = shared(iconName: nil)
+
+        #expect(WelcomeRowPresentation.sharedConnection(staging, section: .linkedFolders).environment == .staging)
+        #expect(WelcomeRowPresentation.sharedConnection(plain, section: .linkedFolders).environment == .none)
+    }
+
+    @Test("VoiceOver reads the environment with the name and the engine, and nothing for none")
+    func accessibilityLabelNamesEnvironment() {
+        #expect(savedRow(withEnvironment(.production)).accessibilityLabel == "Prod, PostgreSQL, Production environment")
+        #expect(savedRow(withEnvironment(.development)).accessibilityLabel == "Prod, PostgreSQL, Development environment")
+        #expect(savedRow(makeConnection(iconName: nil)).accessibilityLabel == "Prod, PostgreSQL")
+    }
+
+    @Test("The accessibility value keeps what the row shows: flags, endpoint, group and tags")
+    func accessibilityValueKeepsRowContent() {
+        let group = ConnectionGroup(name: "Acme")
+        var connection = DatabaseConnection(name: "Prod", host: "db.acme.io", database: "app", type: .postgresql)
+        connection.localOnly = true
+        connection.groupId = group.id
+        let model = WelcomeRowPresentation.savedConnection(
+            connection,
+            section: .favorites,
+            tags: [tag("api"), tag("eu"), tag("billing")],
+            group: group,
+            groupPath: ["Acme"],
+            isDriverRejected: true
+        )
+
+        #expect(model.accessibilityValue.components(separatedBy: ", ")
+            == ["Plugin not loaded", "Local only", model.detail, "Acme", "api", "eu", "+1"])
+    }
+
+    @Test("A row reads its status only while it shows a mark")
+    func accessibilityValueReadsVisibleStatus() {
+        #expect(row(status: .connecting).accessibilityValue == "Connecting, db.acme.io/app")
+        #expect(row(status: .failed(cause: nil)).accessibilityValue == "Couldn't connect, db.acme.io/app")
+        #expect(row(status: .connected).accessibilityValue == "db.acme.io/app")
+        #expect(row(status: .notConnected).accessibilityValue == "db.acme.io/app")
+    }
+
+    @Test("A connection named after its address shows the address once")
+    func addressNamedRowShowsItOnce() {
+        var unnamed = DatabaseConnection(name: "", host: "db.example.com", database: "app", type: .postgresql)
+        unnamed.name = unnamed.connectionSubtitle
+        let named = DatabaseConnection(name: "Prod", host: "db.example.com", database: "app", type: .postgresql)
+
+        let unnamedModel = WelcomeRowPresentation.savedConnection(
+            unnamed, section: .connections, tags: [], group: nil, groupPath: [], isDriverRejected: false
+        )
+        let namedModel = WelcomeRowPresentation.savedConnection(
+            named, section: .connections, tags: [], group: nil, groupPath: [], isDriverRejected: false
+        )
+
+        #expect(unnamedModel.detail.isEmpty)
+        #expect(!unnamedModel.hasSecondLine)
+        #expect(namedModel.detail == named.connectionSubtitle)
+        #expect(namedModel.hasSecondLine)
     }
 }

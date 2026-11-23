@@ -57,7 +57,7 @@ struct SSLHandshakeErrorTests {
     func testClientKeyInvalid() {
         let error = SSLHandshakeError.clientKeyInvalid(serverMessage: "not a PEM")
         #expect(error.errorDescription?.contains("malformed") == true)
-        #expect(error.recoverySuggestion?.contains("Client Key") == true)
+        #expect(error.recoverySuggestion?.contains("Client Certificates") == true)
     }
 
     @Test("cipherMismatch suggests server update")

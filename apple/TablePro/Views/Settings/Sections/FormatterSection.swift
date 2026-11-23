@@ -1,136 +1,166 @@
-//
-//  FormatterSection.swift
-//  TablePro
-//
-
 import AppKit
 import os
 import SwiftUI
 import TableProAutocomplete
 import UniformTypeIdentifiers
 
-struct FormatterSection: View {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "FormatterSection")
-    private static let previewMaxLines = 18
-    private static let previewSQL = """
-        select u.id as user_id, u.name as user_name, count(o.id) as order_count \
-        from users u left join orders o on u.id = o.user_id \
-        where u.status = 'active' and cast(o.created_at as date) >= '2026-01-01' \
-        group by u.id, u.name order by order_count desc;
-        """
-    private static let indentWidths = [2, 4, 8]
-    private static let lineWidths = [0, 80, 100, 120]
+struct SQLFormattingPage: View {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFormattingPage")
+    static let indentWidths = [2, 4, 8]
+    static let lineWidths = [80, 100, 120]
+
+    enum IndentWidthChoice: Hashable {
+        case editor
+        case fixed(Int)
+
+        init(_ settings: SQLFormatterSettings) {
+            self = settings.indentFollowsTabWidth ? .editor : .fixed(settings.rules.indentWidth)
+        }
+
+        // One whole-value write, so the follow flag and the width never land separately.
+        func applied(to settings: SQLFormatterSettings) -> SQLFormatterSettings {
+            var updated = settings
+            switch self {
+            case .editor:
+                updated.indentFollowsTabWidth = true
+            case .fixed(let width):
+                updated.indentFollowsTabWidth = false
+                updated.rules.indentWidth = width
+            }
+            return updated
+        }
+    }
+
+    enum KeywordCaseChoice: Hashable {
+        case editor
+        case fixed(SQLFormatterCase)
+
+        init(_ settings: SQLFormatterSettings) {
+            self = settings.keywordCaseFollowsEditor ? .editor : .fixed(settings.rules.keywordCase)
+        }
+
+        func applied(to settings: SQLFormatterSettings) -> SQLFormatterSettings {
+            var updated = settings
+            switch self {
+            case .editor:
+                updated.keywordCaseFollowsEditor = true
+            case .fixed(let formatterCase):
+                updated.keywordCaseFollowsEditor = false
+                updated.rules.keywordCase = formatterCase
+            }
+            return updated
+        }
+    }
 
     @Binding var settings: SQLFormatterSettings
     let editor: EditorSettings
-    @ObservedObject private var themeEngine = ThemeEngine.shared
+    let font: NSFont
 
     @State private var isImporting = false
     @State private var exportDocument: SQLFormatterRulesDocument?
     @State private var importError: String?
     @State private var exportError: String?
 
-    private enum IndentWidthChoice: Hashable {
-        case tabWidth
-        case fixed(Int)
-    }
-
-    private enum KeywordCaseChoice: Hashable {
-        case editor
-        case fixed(SQLFormatterCase)
-    }
-
     var body: some View {
-        Section {
-            Picker("Indent with:", selection: $settings.rules.indentStyle) {
-                Text("Spaces").tag(SQLFormatterIndentStyle.spaces)
-                Text("Tabs").tag(SQLFormatterIndentStyle.tabs)
+        Form {
+            Section {
+                FormatterPreview(options: settings.options(for: editor), font: font)
+                    .equatable()
             }
-            Picker("Indent width:", selection: indentWidthChoice) {
-                Text(String(format: String(localized: "Tab width (%d)"), editor.clampedTabWidth))
-                    .tag(IndentWidthChoice.tabWidth)
-                ForEach(Self.options(Self.indentWidths, including: settings.rules.indentWidth), id: \.self) { width in
-                    Text(String(format: String(localized: "%d spaces"), width)).tag(IndentWidthChoice.fixed(width))
-                }
-            }
-            Picker("Keyword case:", selection: keywordCaseChoice) {
-                Text(String(format: String(localized: "Same as editor (%@)"), caseName(editorKeywordCase)))
-                    .tag(KeywordCaseChoice.editor)
-                ForEach(SQLFormatterCase.allCases, id: \.self) { formatterCase in
-                    Text(caseName(formatterCase)).tag(KeywordCaseChoice.fixed(formatterCase))
-                }
-            }
-            Picker("Function case:", selection: $settings.rules.functionCase) {
-                ForEach(SQLFormatterCase.allCases, id: \.self) { formatterCase in
-                    Text(caseName(formatterCase)).tag(formatterCase)
-                }
-            }
-            .help(Text("Engines that match function names by exact case, such as ClickHouse, keep the case you typed."))
-            Picker("Data type case:", selection: $settings.rules.dataTypeCase) {
-                ForEach(SQLFormatterCase.allCases, id: \.self) { formatterCase in
-                    Text(caseName(formatterCase)).tag(formatterCase)
-                }
-            }
-            .help(Text("Engines that match type names by exact case, such as ClickHouse, keep the case you typed."))
-            Picker("Commas:", selection: $settings.rules.commaPosition) {
-                Text("At the end of the line").tag(SQLFormatterCommaPosition.trailing)
-                Text("At the start of the line").tag(SQLFormatterCommaPosition.leading)
-            }
-            Picker("AND and OR:", selection: $settings.rules.logicalOperatorNewline) {
-                Text("At the start of the line").tag(SQLFormatterLogicalOperatorNewline.before)
-                Text("At the end of the line").tag(SQLFormatterLogicalOperatorNewline.after)
-            }
-            .help(Text("Where AND and OR go when a WHERE or HAVING condition breaks across lines."))
-            Picker("Line width:", selection: $settings.rules.lineWidth) {
-                ForEach(Self.options(Self.lineWidths, including: settings.rules.lineWidth), id: \.self) { width in
-                    Text(lineWidthName(width)).tag(width)
-                }
-            }
-            .help(Text("A SELECT list, SET list or WHERE condition that fits in this width stays on one line."))
-            Picker("Clause items:", selection: $settings.rules.clauseItems) {
-                Text("Beside the keyword").tag(SQLFormatterClauseItems.sameLine)
-                Text("Below the keyword").tag(SQLFormatterClauseItems.newLine)
-            }
-            .help(Text("""
-                Where the items of a SELECT list, SET list, WITH list, or WHERE or HAVING condition start once it \
-                breaks across lines. A single item stays beside its keyword.
-                """))
-            Picker("Join condition:", selection: $settings.rules.joinCondition) {
-                Text("On its own line").tag(SQLFormatterJoinCondition.newLine)
-                Text("On the JOIN line").tag(SQLFormatterJoinCondition.sameLine)
-            }
-            Toggle("Align column aliases", isOn: $settings.rules.alignAliases)
 
-            preview
+            Section {
+                Picker("Indent with", selection: $settings.rules.indentStyle) {
+                    Text("Spaces").tag(SQLFormatterIndentStyle.spaces)
+                    Text("Tabs").tag(SQLFormatterIndentStyle.tabs)
+                }
+                .accessibilityIdentifier("formatter-indent-style")
+                indentWidthPicker
+            } header: {
+                Text("Indentation")
+            }
 
-            LabeledContent("Rules file:") {
-                HStack {
-                    Button("Import…") { isImporting = true }
-                        .fileImporter(isPresented: $isImporting, allowedContentTypes: [.json]) { result in
-                            importRules(result)
-                        }
-                    Button("Export…") { exportRules() }
-                        .fileExporter(
-                            isPresented: isExporting,
-                            document: exportDocument,
-                            contentType: .json,
-                            defaultFilename: SQLFormatterRulesFile.exportFileName
-                        ) { result in
-                            if case .failure(let error) = result, (error as? CocoaError)?.code != .userCancelled {
-                                reportExportFailure(error)
-                            }
-                        }
-                    Button("Restore Defaults") { settings = .default }
+            Section {
+                keywordCasePicker
+                Picker("Functions", selection: $settings.rules.functionCase) {
+                    caseItems
+                }
+                .accessibilityIdentifier("formatter-function-case")
+                Picker(selection: $settings.rules.dataTypeCase) {
+                    caseItems
+                } label: {
+                    Text("Data types")
+                    Text("Engines that match function and type names by exact case, such as ClickHouse, keep the case you typed.")
+                }
+                .accessibilityIdentifier("formatter-data-type-case")
+            } header: {
+                Text("Case")
+            }
+
+            Section {
+                lineWidthPicker
+                Picker(selection: $settings.rules.clauseItems) {
+                    Text("Beside the keyword").tag(SQLFormatterClauseItems.sameLine)
+                    Text("Below the keyword").tag(SQLFormatterClauseItems.newLine)
+                } label: {
+                    Text("Clause items")
+                    Text("Where a broken SELECT, SET, WITH, WHERE or HAVING list starts. A single item stays beside its keyword.")
+                }
+                .accessibilityIdentifier("formatter-clause-items")
+                Picker("Commas", selection: $settings.rules.commaPosition) {
+                    Text("At the end of the line").tag(SQLFormatterCommaPosition.trailing)
+                    Text("At the start of the line").tag(SQLFormatterCommaPosition.leading)
+                }
+                .accessibilityIdentifier("formatter-commas")
+                Picker(selection: $settings.rules.logicalOperatorNewline) {
+                    Text("At the start of the line").tag(SQLFormatterLogicalOperatorNewline.before)
+                    Text("At the end of the line").tag(SQLFormatterLogicalOperatorNewline.after)
+                } label: {
+                    Text("AND and OR")
+                    Text("Where they go when a WHERE or HAVING condition breaks.")
+                }
+                .accessibilityIdentifier("formatter-logical-operators")
+                Picker("Join condition", selection: $settings.rules.joinCondition) {
+                    Text("On its own line").tag(SQLFormatterJoinCondition.newLine)
+                    Text("On the JOIN line").tag(SQLFormatterJoinCondition.sameLine)
+                }
+                .accessibilityIdentifier("formatter-join-condition")
+                Toggle(isOn: $settings.rules.alignAliases) {
+                    Text("Align column aliases")
+                    Text("Lines up the AS of each SELECT item that sits on one line.")
+                }
+                .accessibilityIdentifier("formatter-align-aliases")
+            } header: {
+                Text("Line Breaks")
+            }
+
+            Section {
+                LabeledContent {
+                    HStack(spacing: 8) {
+                        importButton
+                        exportButton
+                    }
+                } label: {
+                    Text("Rules file")
+                    Text("A .sql-formatter.json in a linked SQL folder replaces these rules for files opened from that folder.")
+                }
+            } header: {
+                Text("Rules File")
+            }
+
+            Section {
+                LabeledContent {
+                    Button(String(localized: "Restore Defaults")) { settings = .default }
                         .disabled(settings == .default)
+                        .accessibilityIdentifier("formatter-restore-defaults")
+                } label: {
+                    Text("Restore default rules")
+                    Text("Returns every rule on this page to its default.")
                 }
             }
-        } header: {
-            Text("Formatter")
-        } footer: {
-            Text("A .sql-formatter.json in a linked SQL folder replaces these rules for the files opened from that folder.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
+        .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(SettingsPage.sqlFormatting.pageIdentifier)
         .alert(
             String(localized: "Couldn't Import Formatter Rules"),
             isPresented: isShowingImportError,
@@ -138,7 +168,7 @@ struct FormatterSection: View {
         ) { _ in
             Button(String(localized: "OK")) {}
         } message: { message in
-            Text(message)
+            Text(verbatim: message)
         }
         .alert(
             String(localized: "Couldn't Export Formatter Rules"),
@@ -147,88 +177,103 @@ struct FormatterSection: View {
         ) { _ in
             Button(String(localized: "OK")) {}
         } message: { message in
-            Text(message)
+            Text(verbatim: message)
         }
     }
 
-    // MARK: - Preview
-
-    private var previewText: String {
-        let formatted = try? SQLFormatterService().format(
-            Self.previewSQL,
-            dialect: .mysql,
-            options: settings.options(for: editor)
-        )
-        return formatted?.formattedSQL ?? Self.previewSQL
+    private var indentWidthPicker: some View {
+        let widths = SettingsChoices.options(Self.indentWidths, including: settings.rules.indentWidth)
+        return Picker("Indent width", selection: indentWidthChoice) {
+            Text("Same as editor (\(editor.clampedTabWidth))").tag(IndentWidthChoice.editor)
+            Divider()
+            ForEach(widths.fixed, id: \.self) { width in
+                indentWidthTitle(width).tag(IndentWidthChoice.fixed(width))
+            }
+            if let extra = widths.extra {
+                Divider()
+                indentWidthTitle(extra).tag(IndentWidthChoice.fixed(extra))
+            }
+        }
+        .accessibilityIdentifier("formatter-indent-width")
     }
 
-    // Unwrapped, since a wrapped preview would hide the line breaks the line width decides.
-    private var preview: some View {
-        let text = previewText
-        let lineCount = min(text.split(separator: "\n", omittingEmptySubsequences: false).count, Self.previewMaxLines)
-        let lineHeight = NSLayoutManager().defaultLineHeight(for: themeEngine.editorFonts.font)
-        return HighlightedSQLTextView(
-            sql: text,
-            databaseType: .mysql,
-            accessibilityIdentifier: "formatter-preview"
-        )
-        .frame(height: CGFloat(lineCount) * lineHeight + Self.previewChromeHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        )
+    // A tab counts as indent width columns when a line's width is measured.
+    private func indentWidthTitle(_ width: Int) -> Text {
+        settings.rules.indentStyle == .tabs
+            ? Text("^[\(width) column](inflect: true)")
+            : Text("^[\(width) space](inflect: true)")
     }
 
-    // The text view's top and bottom inset, plus a legacy horizontal scroller when one takes room.
-    private static var previewChromeHeight: CGFloat {
-        let scroller = NSScroller.preferredScrollerStyle == .legacy
-            ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
-            : 0
-        return 24 + scroller
+    private var keywordCasePicker: some View {
+        Picker("Keywords", selection: keywordCaseChoice) {
+            Text("Same as editor (\(Self.caseName(editorKeywordCase)))").tag(KeywordCaseChoice.editor)
+            Divider()
+            ForEach(SQLFormatterCase.allCases, id: \.self) { formatterCase in
+                Text(verbatim: Self.caseName(formatterCase)).tag(KeywordCaseChoice.fixed(formatterCase))
+            }
+        }
+        .accessibilityIdentifier("formatter-keyword-case")
     }
 
-    // MARK: - Bindings
+    private var caseItems: some View {
+        ForEach(SQLFormatterCase.allCases, id: \.self) { formatterCase in
+            Text(verbatim: Self.caseName(formatterCase)).tag(formatterCase)
+        }
+    }
+
+    private var lineWidthPicker: some View {
+        let widths = Self.lineWidthOptions(including: settings.rules.lineWidth)
+        return Picker(selection: $settings.rules.lineWidth) {
+            Text("One item per line").tag(0)
+            Divider()
+            ForEach(widths.fixed, id: \.self) { width in
+                Text("^[\(width) character](inflect: true)").tag(width)
+            }
+            if let extra = widths.extra {
+                Divider()
+                Text("^[\(extra) character](inflect: true)").tag(extra)
+            }
+        } label: {
+            Text("Line width")
+            Text("A SELECT list, SET list or WHERE condition that fits stays on one line.")
+        }
+        .accessibilityIdentifier("formatter-line-width")
+    }
+
+    private var importButton: some View {
+        Button(String(localized: "Import…")) { isImporting = true }
+            .fileImporter(isPresented: $isImporting, allowedContentTypes: [.json]) { result in
+                importRules(result)
+            }
+            .accessibilityIdentifier("formatter-import")
+    }
+
+    private var exportButton: some View {
+        Button(String(localized: "Export…")) { exportRules() }
+            .fileExporter(
+                isPresented: isExporting,
+                document: exportDocument,
+                contentType: .json,
+                defaultFilename: SQLFormatterRulesFile.exportFileName
+            ) { result in
+                if case .failure(let error) = result, (error as? CocoaError)?.code != .userCancelled {
+                    reportExportFailure(error)
+                }
+            }
+            .accessibilityIdentifier("formatter-export")
+    }
 
     private var indentWidthChoice: Binding<IndentWidthChoice> {
         Binding(
-            get: {
-                settings.indentFollowsTabWidth
-                    ? .tabWidth
-                    : .fixed(settings.rules.indentWidth)
-            },
-            set: { choice in
-                var formatter = settings
-                switch choice {
-                case .tabWidth:
-                    formatter.indentFollowsTabWidth = true
-                case .fixed(let width):
-                    formatter.indentFollowsTabWidth = false
-                    formatter.rules.indentWidth = width
-                }
-                settings = formatter
-            }
+            get: { IndentWidthChoice(settings) },
+            set: { settings = $0.applied(to: settings) }
         )
     }
 
     private var keywordCaseChoice: Binding<KeywordCaseChoice> {
         Binding(
-            get: {
-                settings.keywordCaseFollowsEditor
-                    ? .editor
-                    : .fixed(settings.rules.keywordCase)
-            },
-            set: { choice in
-                var formatter = settings
-                switch choice {
-                case .editor:
-                    formatter.keywordCaseFollowsEditor = true
-                case .fixed(let formatterCase):
-                    formatter.keywordCaseFollowsEditor = false
-                    formatter.rules.keywordCase = formatterCase
-                }
-                settings = formatter
-            }
+            get: { KeywordCaseChoice(settings) },
+            set: { settings = $0.applied(to: settings) }
         )
     }
 
@@ -243,8 +288,6 @@ struct FormatterSection: View {
     private var isShowingExportError: Binding<Bool> {
         Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })
     }
-
-    // MARK: - Import and export
 
     private func importRules(_ result: Result<URL, Error>) {
         guard case .success(let url) = result else { return }
@@ -272,13 +315,11 @@ struct FormatterSection: View {
         exportError = error.localizedDescription
     }
 
-    // MARK: - Labels
-
     private var editorKeywordCase: SQLFormatterCase {
         editor.keywordCase.prefersUppercase ? .upper : .lower
     }
 
-    private func caseName(_ formatterCase: SQLFormatterCase) -> String {
+    static func caseName(_ formatterCase: SQLFormatterCase) -> String {
         switch formatterCase {
         case .upper: return String(localized: "UPPERCASE")
         case .lower: return String(localized: "lowercase")
@@ -286,15 +327,67 @@ struct FormatterSection: View {
         }
     }
 
-    private func lineWidthName(_ width: Int) -> String {
-        width == 0
-            ? String(localized: "One item per line")
-            : String(format: String(localized: "%d characters"), width)
+    // 0 is "One item per line", listed on its own above the widths.
+    static func lineWidthOptions(including current: Int) -> (fixed: [Int], extra: Int?) {
+        current == 0 ? (lineWidths, nil) : SettingsChoices.options(lineWidths, including: current)
+    }
+}
+
+// Formats the sample only when its options or font change; other writes and theme ticks skip the body.
+struct FormatterPreview: View, Equatable {
+    static let maxLines = 12
+    static let sampleSQL = """
+        select u.id as user_id, u.name as user_name, count(o.id) as order_count \
+        from users u left join orders o on u.id = o.user_id \
+        where u.status = 'active' and cast(o.created_at as date) >= '2026-01-01' \
+        group by u.id, u.name order by order_count desc;
+        """
+
+    let options: SQLFormatterOptions
+    let font: NSFont
+
+    static func == (lhs: FormatterPreview, rhs: FormatterPreview) -> Bool {
+        lhs.options == rhs.options && lhs.font == rhs.font
     }
 
-    // A value from an imported file that the picker does not offer still shows as selected.
-    private static func options(_ values: [Int], including current: Int) -> [Int] {
-        values.contains(current) ? values : (values + [current]).sorted()
+    // Unwrapped, since a wrapped preview would hide the line breaks the line width decides.
+    var body: some View {
+        let text = Self.formattedSample(options: options)
+        HighlightedSQLTextView(
+            sql: text,
+            databaseType: .mysql,
+            accessibilityIdentifier: "formatter-preview",
+            accessibilityLabel: String(localized: "Formatted preview"),
+            lineLayout: .unwrapped
+        )
+        .frame(height: Self.height(lineCount: Self.lineCount(of: text), font: font))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        )
+    }
+
+    static func formattedSample(options: SQLFormatterOptions) -> String {
+        let formatted = try? SQLFormatterService().format(sampleSQL, dialect: .mysql, options: options)
+        return formatted?.formattedSQL ?? sampleSQL
+    }
+
+    static func lineCount(of text: String) -> Int {
+        text.split(separator: "\n", omittingEmptySubsequences: false).count
+    }
+
+    static func height(lineCount: Int, font: NSFont) -> CGFloat {
+        let lineHeight = NSLayoutManager().defaultLineHeight(for: font)
+        return CGFloat(min(max(lineCount, 1), maxLines)) * lineHeight + chromeHeight
+    }
+
+    // The text view's top and bottom inset, plus a legacy horizontal scroller when one takes room.
+    static var chromeHeight: CGFloat {
+        let scroller = NSScroller.preferredScrollerStyle == .legacy
+            ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+            : 0
+        return 24 + scroller
     }
 }
 

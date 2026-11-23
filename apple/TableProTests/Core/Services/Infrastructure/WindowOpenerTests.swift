@@ -1,28 +1,23 @@
-//
-//  WindowOpenerTests.swift
-//  TableProTests
-//
-
 @testable import TablePro
 import XCTest
 
 @MainActor
 final class WindowOpenerTests: XCTestCase {
     private var openedRequests: [ConnectionFormRequest] = []
-    private var openedSettingsPanes: [SettingsPane?] = []
+    private var openedSettings: [SettingsRequest] = []
 
     override func setUp() async throws {
         try await super.setUp()
         _ = WelcomeRouter.shared.consumePendingRequest()
         openedRequests = []
-        openedSettingsPanes = []
+        openedSettings = []
         WindowOpener.shared.setWelcomePresenter {}
-        WindowOpener.shared.setConnectionFormPresenter { [weak self] request in
+        WindowOpener.shared.setConnectionFormPresenter { [weak self] request, _ in
             self?.openedRequests.append(request)
         }
         WindowOpener.shared.setIntegrationsActivityPresenter {}
-        WindowOpener.shared.setSettingsPresenter { [weak self] pane in
-            self?.openedSettingsPanes.append(pane)
+        WindowOpener.shared.setSettingsPresenter { [weak self] request in
+            self?.openedSettings.append(request)
         }
     }
 
@@ -138,13 +133,12 @@ final class WindowOpenerTests: XCTestCase {
         opener.openConnectionForm(editing: connectionId)
         XCTAssertTrue(opened.isEmpty, "No presenter yet, so the call has to wait")
 
-        opener.setConnectionFormPresenter { opened.append($0) }
+        opener.setConnectionFormPresenter { request, _ in opened.append(request) }
 
         XCTAssertEqual(opened, [.edit(connectionId: connectionId)])
     }
 
-    /// Registering one window's presenter must not drop another window's queued call, which is
-    /// what lets the windows migrate to AppKit one at a time.
+    // Lets the windows migrate to AppKit one at a time.
     func testRegisteringOneWindowDoesNotDiscardAnotherWindowsQueuedCall() {
         let opener = WindowOpener()
         var opened: [ConnectionFormRequest] = []
@@ -154,7 +148,7 @@ final class WindowOpenerTests: XCTestCase {
         opener.setWelcomePresenter {}
         XCTAssertTrue(opened.isEmpty, "The connection form still has no presenter")
 
-        opener.setConnectionFormPresenter { opened.append($0) }
+        opener.setConnectionFormPresenter { request, _ in opened.append(request) }
 
         XCTAssertEqual(opened, [.edit(connectionId: connectionId)])
     }
@@ -162,39 +156,38 @@ final class WindowOpenerTests: XCTestCase {
     func testTheRequestedSettingsPaneReachesThePresenter() {
         WindowOpener.shared.openSettings(tab: .plugins)
 
-        XCTAssertEqual(openedSettingsPanes, [.plugins])
+        XCTAssertEqual(openedSettings, [.open(.root(.plugins))])
     }
 
     func testOpeningSettingsWithoutAPaneAsksForNone() {
         WindowOpener.shared.openSettings()
 
-        XCTAssertEqual(openedSettingsPanes, [SettingsPane?.none])
+        XCTAssertEqual(openedSettings, [.open(nil)])
     }
 
-    /// The pane used to travel through UserDefaults, so a call made before the presenter existed
-    /// wrote the preference and then opened on whatever was stored.
+    // The pane used to travel through UserDefaults, so a queued call opened on whatever was stored.
     func testASettingsCallQueuedBeforeItsPresenterKeepsItsPane() {
         let opener = WindowOpener()
-        var opened: [SettingsPane?] = []
+        var opened: [SettingsRequest] = []
 
         opener.openSettings(tab: .ai)
         XCTAssertTrue(opened.isEmpty, "No presenter yet, so the call has to wait")
 
         opener.setSettingsPresenter { opened.append($0) }
 
-        XCTAssertEqual(opened, [.ai])
+        XCTAssertEqual(opened, [.open(.root(.ai))])
     }
 
     func testASettingsLinkRoutesItsPaneToThePresenter() async {
-        await LaunchIntentRouter.shared.route(.openSettings(.mcp))
+        await LaunchIntentRouter.shared.route(.openSettings(.root(.mcp)))
 
-        XCTAssertEqual(openedSettingsPanes, [.mcp])
+        XCTAssertEqual(openedSettings, [.open(.root(.mcp))])
     }
 
     func testABareSettingsLinkAsksForNoPane() async {
         await LaunchIntentRouter.shared.route(.openSettings(nil))
 
-        XCTAssertEqual(openedSettingsPanes, [SettingsPane?.none])
+        XCTAssertEqual(openedSettings, [.open(nil)])
     }
 
     func testEditingTheSameConnectionTwiceRequestsTheSameWindow() {

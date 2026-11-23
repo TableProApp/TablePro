@@ -28,9 +28,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         var connectAttempt: ConnectAttempt?
         var connectionMayBeOpen = false
         var disconnectInProgress = false
-        /// Read from the driver when its connect is adopted, so it outlives the `disconnect()` Test Connection
-        /// makes before anyone asks for it.
+        // Read from the driver when its connect is adopted, so both outlive the `disconnect()` Test Connection makes
+        // before anyone asks: a driver forgets its server's version when it disconnects.
         var connectionWarning: String?
+        var signInServerVersion: String?
         // Only a yes is kept, so the driver's own code is not asked again on every read.
         var buildsBrowseQueries = false
     }
@@ -54,7 +55,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         pluginDriver.hasLostConnection || credentialLease?.hasEnded == true
     }
 
-    var serverVersion: String? { pluginDriver.serverVersion }
+    var serverVersion: String? { pluginDriver.serverVersion ?? state.withLock { $0.signInServerVersion } }
     var connectionWarning: String? { state.withLock { $0.connectionWarning } }
     var sessionLexicalState: PluginSessionLexicalState? { pluginDriver.sessionLexicalState }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
@@ -164,6 +165,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             let generation = state.nextConnectGeneration
             state.status = .connecting
             state.connectionWarning = nil
+            state.signInServerVersion = nil
             state.connectAttempt = ConnectAttempt(generation: generation, gate: gate, deadline: connectionDeadline.instant)
             return generation
         }
@@ -355,6 +357,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         error: Error?
     ) {
         let warning = succeeded ? pluginDriver.connectionWarning : nil
+        let version = succeeded ? pluginDriver.serverVersion : nil
         let shouldDisconnect = state.withLock { state in
             guard let attempt = state.connectAttempt, attempt.generation == generation else {
                 return false
@@ -365,6 +368,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
                 state.connectionMayBeOpen = true
                 state.status = .connected
                 state.connectionWarning = warning
+                state.signInServerVersion = version
                 return false
             }
             if let error, adopted {

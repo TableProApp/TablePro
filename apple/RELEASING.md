@@ -123,6 +123,31 @@ gh pr merge --auto --squash
 - A conflict on a fragment: `git rm` it. On `CHANGELOG.md`: keep both sections, in version order.
 - Once the release publishes, `python3 apple/scripts/release/notes.py docs X.Y.Z --ref vX.Y.Z --mdx ../tablepro-docs/changelog.mdx` goes into a `docs(changelog): vX.Y.Z` PR in TableProApp/docs, merged by hand once green.
 
+## Homebrew
+
+- The `tablepro` cask is `Casks/t/tablepro.rb` in Homebrew/homebrew-cask. BrewTestBot bumps its `version` and `sha256` a few hours after a stable publishes. Betas never reach it.
+- The bump keeps the DMG name. The cask fetches the universal `TablePro-#{version}.dmg`, which no stable from a line whose `feed.py` has `ARCHES` ships, so the bump stops there until the cask names a DMG per arch.
+- Once such a stable publishes, this prints 0 while the change is still needed:
+
+  ```bash
+  gh api -H 'Accept: application/vnd.github.raw' repos/Homebrew/homebrew-cask/contents/Casks/t/tablepro.rb | grep -c '#{arch}'
+  gh release view vX.Y.Z --json assets -q '.assets[] | select(.name | endswith(".dmg")) | "\(.name) \(.digest)"'
+  ```
+
+- The change replaces the cask's `version`, `sha256` and `url` lines with these, taking each `sha256` from the second command without its `sha256:` prefix. The rest stays:
+
+  ```ruby
+    arch arm: "arm64", intel: "x86_64"
+
+    version "X.Y.Z"
+    sha256 arm:   "<TablePro-X.Y.Z-arm64.dmg>",
+           intel: "<TablePro-X.Y.Z-x86_64.dmg>"
+
+    url "https://github.com/TableProApp/TablePro/releases/download/v#{version}/TablePro-#{version}-#{arch}.dmg"
+  ```
+
+- Edit it in `"$(brew --repository homebrew/cask)"` with `HOMEBREW_NO_INSTALL_FROM_API=1`, run `brew style --fix tablepro`, `brew audit --cask --online --strict --arch=all tablepro` and `brew livecheck --cask tablepro` (prints X.Y.Z), and open a `tablepro X.Y.Z` PR with homebrew-cask's template. The template has its author answer review comments without AI, so the maintainer opens it. Later stables bump on their own, as they did up to 0.81.0.
+
 ## When a run fails
 
 Nothing reaches users before the `github-release` job of `release.yml`.

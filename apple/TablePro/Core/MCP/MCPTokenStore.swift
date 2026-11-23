@@ -62,6 +62,9 @@ struct MCPAuthToken: Codable, Identifiable, Sendable {
 
     var isEffectivelyActive: Bool { isActive && !isExpired }
 
+    // TablePro mints the bridge and Claude Agent tokens itself, so Settings and the activity window leave them out.
+    var isUserManaged: Bool { !isBridgeCredential && !isClaudeAgentCredential }
+
     func renamed(_ name: String) -> MCPAuthToken {
         MCPAuthToken(
             id: id,
@@ -238,6 +241,17 @@ enum TokenPermissions: String, Codable, Sendable, CaseIterable, Identifiable {
         }
     }
 
+    var summary: String {
+        switch self {
+        case .readOnly:
+            String(localized: "Read schema and run SELECT queries.")
+        case .readWrite:
+            String(localized: "Read schema and run any non-destructive query, including INSERT, UPDATE, and DELETE.")
+        case .fullAccess:
+            String(localized: "Full access including destructive DDL after explicit confirmation.")
+        }
+    }
+
     var scopes: Set<MCPScope> {
         switch self {
         case .readOnly:
@@ -257,6 +271,9 @@ actor MCPTokenStore {
     static let defaultTokenLifetime: TimeInterval = 90 * 24 * 60 * 60
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPTokenStore")
+
+    // Fires when a user-managed token is added, revoked or removed; never for a last-used stamp.
+    nonisolated let membershipChanges = MCPChangeSignal()
 
     private var tokens: [MCPAuthToken] = []
     // Stored entries this build cannot decode, kept as JSON so a save writes them back.
@@ -363,6 +380,9 @@ actor MCPTokenStore {
 
         Self.logger.info("Generated MCP token '\(name, privacy: .private(mask: .hash))'")
         MCPAuditLogger.logTokenCreated(tokenId: token.id, tokenName: name)
+        if token.isUserManaged {
+            membershipChanges.send()
+        }
         return (token, plaintext)
     }
 
@@ -391,8 +411,12 @@ actor MCPTokenStore {
         tokens[index].isActive = false
         let revokedName = tokens[index].name
         let withdrawn = tokens[index].subjectWithdrawnWhenEnded
+        let isUserManaged = tokens[index].isUserManaged
         let persisted = save()
         notifyRevocationObservers(tokenId: tokenId, withdrawing: withdrawn)
+        if isUserManaged {
+            membershipChanges.send()
+        }
 
         Self.logger.info("Revoked MCP token '\(revokedName, privacy: .private(mask: .hash))'")
         MCPAuditLogger.logTokenRevoked(tokenId: tokenId, tokenName: revokedName)
@@ -444,9 +468,13 @@ actor MCPTokenStore {
 
         let name = tokens[index].name
         let withdrawn = withdrawsApprovals ? tokens[index].subjectWithdrawnWhenEnded : nil
+        let isUserManaged = tokens[index].isUserManaged
         tokens.remove(at: index)
         let persisted = save()
         notifyRevocationObservers(tokenId: tokenId, withdrawing: withdrawn)
+        if isUserManaged {
+            membershipChanges.send()
+        }
 
         Self.logger.info("Deleted MCP token '\(name, privacy: .private(mask: .hash))'")
         return persisted
@@ -500,15 +528,24 @@ actor MCPTokenStore {
 
         let staleCount = tokens.filter(Self.isStaleBridge).count
         tokens.removeAll(where: Self.isStaleBridge)
+        let expiredAgentCount = tokens.filter(Self.isExpiredAgentToken).count
+        tokens.removeAll(where: Self.isExpiredAgentToken)
         let renamedCount = tokens.filter(Self.claimsAgentName).count
         tokens = tokens.map(Self.releasingAgentName)
-        guard staleCount > 0 || renamedCount > 0 else { return }
+        guard staleCount > 0 || expiredAgentCount > 0 || renamedCount > 0 else { return }
         save()
-        Self.logger.info("Cleaned up \(staleCount) stale bridge token(s), renamed \(renamedCount) client token(s)")
+        Self.logger.info(
+            "Cleaned up \(staleCount) stale bridge and \(expiredAgentCount) expired agent token(s), renamed \(renamedCount) client token(s)"
+        )
     }
 
     private static func isStaleBridge(_ token: MCPAuthToken) -> Bool {
         token.isBridgeCredential || token.name == stdioBridgeTokenName
+    }
+
+    // A turn that crashed never retired its token; once expired it opens nothing and only clutters the list.
+    private static func isExpiredAgentToken(_ token: MCPAuthToken) -> Bool {
+        token.isClaudeAgentCredential && token.isExpired
     }
 
     // Builds before the agent's name was reserved let a pairing client take it.
@@ -575,7 +612,7 @@ actor MCPTokenStore {
         storedTokensUnread = false
         let minted = Set(tokens.map(\.id))
         tokens = stored.tokens
-            .filter { !minted.contains($0.id) && !Self.isStaleBridge($0) }
+            .filter { !minted.contains($0.id) && !Self.isStaleBridge($0) && !Self.isExpiredAgentToken($0) }
             .map(Self.releasingAgentName) + tokens
         undecodedEntries = stored.undecoded
         Self.logger.info("Read the stored MCP tokens after an earlier failure")
@@ -674,6 +711,28 @@ actor MCPTokenStore {
             result |= lhsBytes[index] ^ rhsBytes[index]
         }
         return result == 0
+    }
+}
+
+// Fans one change out to every listener; a listener that falls behind holds one pending change, not each.
+final class MCPChangeSignal: Sendable {
+    private let listeners = OSAllocatedUnfairLock<[UUID: AsyncStream<Void>.Continuation]>(initialState: [:])
+
+    func changes() -> AsyncStream<Void> {
+        let (stream, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let id = UUID()
+        listeners.withLock { $0[id] = continuation }
+        continuation.onTermination = { [weak self] _ in
+            self?.listeners.withLock { _ = $0.removeValue(forKey: id) }
+        }
+        return stream
+    }
+
+    func send() {
+        let current = listeners.withLock { Array($0.values) }
+        for continuation in current {
+            continuation.yield()
+        }
     }
 }
 

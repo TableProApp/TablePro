@@ -784,7 +784,9 @@ struct WorkspaceRailCellTextTests {
 
         #expect(coloured.fillsWithIdentity)
         #expect(!plain.fillsWithIdentity)
-        #expect(plain.glyphTint == NSColor(makeEntry().connection.brandColor))
+        let brand = NSColor(makeEntry().connection.brandColor)
+        #expect(resolved(plain.glyphTint, in: .aqua) == resolved(brand, in: .aqua))
+        #expect(resolved(plain.glyphTint, in: .darkAqua) == resolved(ConnectionTileMetrics.glyphColor(brand: brand), in: .darkAqua))
     }
 
     @Test("A failed connection's tile keeps the engine glyph, the mark carries the state")
@@ -792,7 +794,8 @@ struct WorkspaceRailCellTextTests {
         let failed = try #require(configuredCell(for: makeEntry(status: .failed(cause: nil))).renderedTile)
         let connected = try #require(configuredCell(for: makeEntry()).renderedTile)
         #expect(pixels(failed.image) == pixels(connected.image))
-        #expect(failed.glyphTint == connected.glyphTint)
+        #expect(resolved(failed.glyphTint, in: .aqua) == resolved(connected.glyphTint, in: .aqua))
+        #expect(resolved(failed.glyphTint, in: .darkAqua) == resolved(connected.glyphTint, in: .darkAqua))
     }
 
     private static let railLayouts: [WorkspaceRailMetrics.Layout] = [
@@ -851,6 +854,13 @@ struct WorkspaceRailCellTextTests {
     // MARK: - Custom icon
 
     private static let customIcon = "server.rack"
+
+    // The glyph tint is a dynamic colour, so two of them only compare once resolved in one appearance.
+    private func resolved(_ color: NSColor?, in name: NSAppearance.Name) -> CGColor? {
+        var cgColor: CGColor?
+        NSAppearance(named: name)?.performAsCurrentDrawingAppearance { cgColor = color?.cgColor }
+        return cgColor
+    }
 
     private func pixels(_ image: NSImage?) -> Data? {
         image?.tiffRepresentation

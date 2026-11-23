@@ -1,11 +1,13 @@
-//
-//  WindowOpener.swift
-//  TablePro
-//
-
 import AppKit
 import Combine
 import os
+
+internal enum SettingsRequest: Equatable, Sendable {
+    // nil opens the last-used pane.
+    case open(SettingsLocation?)
+    // A nil id asks for the first plugin that needs an update.
+    case revealPlugin(String?)
+}
 
 @MainActor
 internal final class WindowOpener: ObservableObject {
@@ -14,14 +16,13 @@ internal final class WindowOpener: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WindowOpener")
 
     private var openWelcomeAction: (() -> Void)?
-    private var openConnectionFormAction: ((ConnectionFormRequest) -> Void)?
+    private var openConnectionFormAction: ((ConnectionFormRequest, ConnectionEditorFacetChoice?) -> Void)?
     private var openIntegrationsActivityAction: (() -> Void)?
-    private var openSettingsAction: ((SettingsPane?) -> Void)?
+    private var openSettingsAction: ((SettingsRequest) -> Void)?
     private var stagedDraftId: UUID?
     private var pendingCalls: [() -> Void] = []
 
-    /// Not private so a test can exercise the queue on an instance with no presenters
-    /// registered. Production code uses `shared`.
+    // Not private so a test can exercise the queue on an instance with no presenters registered.
     internal init() {}
 
     internal func openWelcome() {
@@ -33,10 +34,22 @@ internal final class WindowOpener: ObservableObject {
         }
     }
 
-    internal func openSettings(tab: SettingsPane? = nil) {
+    internal func openSettings(_ location: SettingsLocation? = nil) {
+        requestSettings(.open(location))
+    }
+
+    internal func openSettings(tab pane: SettingsPane?) {
+        openSettings(pane.map { SettingsLocation.root($0) })
+    }
+
+    internal func openSettings(revealingPlugin pluginId: String?) {
+        requestSettings(.revealPlugin(pluginId))
+    }
+
+    private func requestSettings(_ request: SettingsRequest) {
         perform { opener in
             guard let present = opener.openSettingsAction else { return false }
-            present(tab)
+            present(request)
             return true
         }
     }
@@ -47,10 +60,10 @@ internal final class WindowOpener: ObservableObject {
         }
     }
 
-    internal func openConnectionForm(editing connectionId: UUID) {
+    internal func openConnectionForm(editing connectionId: UUID, facet: ConnectionEditorFacetChoice? = nil) {
         perform { opener in
             guard let present = opener.openConnectionFormAction else { return false }
-            present(.edit(connectionId: connectionId))
+            present(.edit(connectionId: connectionId), facet)
             return true
         }
     }
@@ -73,7 +86,7 @@ internal final class WindowOpener: ObservableObject {
         stagedDraftId = nil
         perform { opener in
             guard let present = opener.openConnectionFormAction else { return false }
-            present(.create(draftId: draftId))
+            present(.create(draftId: draftId), nil)
             return true
         }
     }
@@ -105,7 +118,7 @@ internal final class WindowOpener: ObservableObject {
         drainPendingCalls()
     }
 
-    internal func setConnectionFormPresenter(_ present: @escaping (ConnectionFormRequest) -> Void) {
+    internal func setConnectionFormPresenter(_ present: @escaping (ConnectionFormRequest, ConnectionEditorFacetChoice?) -> Void) {
         openConnectionFormAction = present
         drainPendingCalls()
     }
@@ -115,14 +128,12 @@ internal final class WindowOpener: ObservableObject {
         drainPendingCalls()
     }
 
-    internal func setSettingsPresenter(_ present: @escaping (SettingsPane?) -> Void) {
+    internal func setSettingsPresenter(_ present: @escaping (SettingsRequest) -> Void) {
         openSettingsAction = present
         drainPendingCalls()
     }
 
-    /// Returns false when the presenter for that window has not been registered yet, which
-    /// queues the call. Each window registers independently, so one that has already migrated
-    /// to AppKit never waits on one that has not.
+    // A block returns false while its window has no presenter yet, which queues the call.
     private func perform(_ block: @escaping (WindowOpener) -> Bool) {
         AppActivationPolicyController.shared.enterForeground()
         guard !block(self) else { return }

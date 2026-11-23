@@ -119,6 +119,7 @@ internal final class OperationCompletionReporter {
             content.subtitle = subtitle
         }
         content.body = plan.body
+        content.sound = .default
         content.categoryIdentifier = plan.categoryIdentifier
         content.threadIdentifier = plan.threadIdentifier
         content.userInfo = OperationNotificationPayload(plan: plan).userInfo

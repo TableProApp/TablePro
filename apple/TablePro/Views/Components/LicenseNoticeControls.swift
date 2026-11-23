@@ -1,8 +1,3 @@
-//
-//  LicenseNoticeControls.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 import TableProHTTP
@@ -21,8 +16,10 @@ struct LicenseNoticeActionButton: View {
         case .purchase, .upgrade, .renew:
             Link(action.title, destination: SupportLinks.pricing(referrer))
                 .countsUpgradeClicks(from: referrer)
-        case .openAccountSettings:
-            Button(action.title) { WindowOpener.shared.openSettings(tab: .account) }
+        case .openAccountSettings(let page):
+            Button(action.title) {
+                WindowOpener.shared.openSettings(page.map(SettingsLocation.init(page:)) ?? .root(.account))
+            }
         case .retryValidation:
             HStack(spacing: 6) {
                 Button(action.title) {
@@ -50,20 +47,12 @@ struct LicenseCheckFailureLine: View {
 
     var body: some View {
         if let failure = LicensePresentation.checkFailureMessage(featureAccess.state.refresh) {
-            Label {
-                Text(failure)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-            }
-            .font(.callout)
+            NoticeLabel(failure, severity: .warning)
+                .font(.subheadline)
         }
     }
 }
 
-// A control a plan unlocks says what it needs and offers the way there.
 struct LicenseGateRow: View {
     let feature: ProFeature
 
@@ -76,7 +65,7 @@ struct LicenseGateRow: View {
                     Text(notice.title)
 
                     Text(notice.message)
-                        .font(.callout)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -112,8 +101,8 @@ extension LicenseNoticeAction {
         case .purchase, .upgrade, .renew:
             Telemetry.shared.upgradeClicked(from: referrer)
             WebPageOpener.open(SupportLinks.pricing(referrer), scope: .https)
-        case .openAccountSettings:
-            WindowOpener.shared.openSettings(tab: .account)
+        case .openAccountSettings(let page):
+            WindowOpener.shared.openSettings(page.map(SettingsLocation.init(page:)) ?? .root(.account))
         case .retryValidation:
             WindowOpener.shared.openSettings(tab: .account)
             Task { await AccountServices.shared.checkNow() }

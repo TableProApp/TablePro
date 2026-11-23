@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import Combine
 import Foundation
 
@@ -28,53 +29,67 @@ final class DatabaseTypeChooserModel: ObservableObject {
         highlightedType = type
     }
 
+    private var query: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
     var filteredTypes: [DatabaseType] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return allTypes }
-        let needle = trimmed.lowercased()
-        return allTypes.filter { type in
-            if type.rawValue.lowercased().contains(needle) { return true }
-            if let tagline = type.tagline, tagline.lowercased().contains(needle) { return true }
-            if type.category.displayName.lowercased().contains(needle) { return true }
-            return false
-        }
+        let query = query
+        guard !query.isEmpty else { return allTypes }
+        return allTypes.filter { Self.rank(of: $0, for: query) != nil }
     }
 
+    // While searching, the best match leads: its section first, and within a section the closer names first.
     var groupedTypes: [(category: DatabaseCategory, types: [DatabaseType])] {
+        let query = query
         let grouped = Dictionary(grouping: filteredTypes, by: { $0.category })
+        guard !query.isEmpty else {
+            return grouped
+                .map { (category: $0.key, types: $0.value.sorted { $0.rawValue < $1.rawValue }) }
+                .sorted { $0.category.sortOrder < $1.category.sortOrder }
+        }
+        func rank(_ type: DatabaseType) -> Int { Self.rank(of: type, for: query) ?? .max }
         return grouped
-            .map { (category: $0.key, types: $0.value.sorted { $0.rawValue < $1.rawValue }) }
-            .sorted { $0.category.sortOrder < $1.category.sortOrder }
+            .map { entry in
+                (category: entry.key, types: entry.value.sorted { lhs, rhs in
+                    rank(lhs) == rank(rhs) ? lhs.rawValue < rhs.rawValue : rank(lhs) < rank(rhs)
+                })
+            }
+            .sorted { lhs, rhs in
+                let left = lhs.types.first.map(rank) ?? .max
+                let right = rhs.types.first.map(rank) ?? .max
+                return left == right ? lhs.category.sortOrder < rhs.category.sortOrder : left < right
+            }
     }
 
-    /// The rows as the list draws them, which is category order and then alphabetical, not the
-    /// order `filteredTypes` happens to produce. Arrowing has to follow what is on screen.
+    // Arrowing follows the rows as drawn.
     var orderedTypes: [DatabaseType] {
         groupedTypes.flatMap(\.types)
     }
 
-    /// The match a query most plausibly meant, or nil when the query matched nothing.
-    ///
-    /// Ranked, and that is the whole point: the filter also matches taglines and category names, so
-    /// the first row on screen is routinely not the best answer. "PostgreSQL" matches CockroachDB
-    /// ("Distributed SQL, PostgreSQL-compatible") and PGlite, and CockroachDB sorts ahead of
-    /// PostgreSQL alphabetically inside Relational. Arming the first row would let Return commit a
-    /// driver the user never looked at, and on an existing connection a type change resets its
-    /// credentials, SSL, driver options and transport.
+    // A name match, never a tagline or category hit among several: Return would commit a driver the user never
+    // looked at. A sole result is unambiguous whatever matched.
     var bestMatch: DatabaseType? {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !trimmed.isEmpty else { return nil }
+        let query = query
+        guard !query.isEmpty else { return nil }
         let candidates = orderedTypes
-        if let exact = candidates.first(where: { $0.rawValue.lowercased() == trimmed }) {
-            return exact
-        }
-        if let prefixed = candidates.first(where: { $0.rawValue.lowercased().hasPrefix(trimmed) }) {
-            return prefixed
-        }
-        if let named = candidates.first(where: { $0.rawValue.lowercased().contains(trimmed) }) {
-            return named
+        if let first = candidates.first, let rank = Self.rank(of: first, for: query), rank < Self.otherMatch {
+            return first
         }
         return candidates.count == 1 ? candidates.first : nil
+    }
+
+    private static let otherMatch = 3
+
+    // 0 the exact name, 1 a name prefix, 2 inside the name, 3 the tagline or category; nil no match.
+    private static func rank(of type: DatabaseType, for query: String) -> Int? {
+        let name = type.rawValue.lowercased()
+        if name == query { return 0 }
+        if name.hasPrefix(query) { return 1 }
+        if name.contains(query) { return 2 }
+        if let tagline = type.tagline, tagline.lowercased().contains(query) { return otherMatch }
+        if type.category.displayName.lowercased().contains(query) { return otherMatch }
+        return nil
     }
 
     func moveHighlight(by offset: Int) {
@@ -89,12 +104,58 @@ final class DatabaseTypeChooserModel: ObservableObject {
         highlightedType = items[target]
     }
 
-    /// Keeps a highlight the query still shows, and otherwise arms the best match, or nothing.
-    ///
-    /// Never falls back to the first row: a query that matched only taglines leaves the highlight
-    /// nil and Continue dimmed, which is correct, because no row is a defensible default there.
+    // Each query arms its best match, so typing on past a prefix PGlite matched lands on PostgreSQL. Without one the
+    // highlight stays while it is still on screen, and a tagline-only query arms nothing.
     private func settleHighlight() {
+        if let best = bestMatch {
+            highlightedType = best
+            return
+        }
         if let current = highlightedType, orderedTypes.contains(current) { return }
-        highlightedType = bestMatch
+        highlightedType = nil
+    }
+}
+
+// The check Welcome runs after the chooser (WelcomeViewModel+ConnectionCreation), shared so a type change
+// inside the editor asks the same question before it applies.
+@MainActor
+internal enum DatabaseTypeInstallCheck {
+    internal enum Requirement: Equatable, Sendable {
+        case ready
+        case install
+    }
+
+    // A bundled driver that did not load is disabled or damaged: no download fixes it, the connect says which.
+    nonisolated internal static func requirement(isInstalled: Bool, isDownloadable: Bool) -> Requirement {
+        !isInstalled && isDownloadable ? .install : .ready
+    }
+
+    internal static func requirement(for type: DatabaseType) -> Requirement {
+        requirement(
+            isInstalled: PluginManager.shared.isDriverInstalled(for: type),
+            isDownloadable: type.isDownloadablePlugin
+        )
+    }
+
+    // True when the type can be used now: installed already, or the user agreed and the install finished.
+    internal static func ensureInstalled(_ type: DatabaseType, window: NSWindow?) async -> Bool {
+        if !PluginManager.shared.isDriverInstalled(for: type) {
+            await PluginManager.shared.waitForInitialLoad()
+        }
+        guard requirement(for: type) == .install else { return true }
+
+        let confirmed = await AlertHelper.confirm(
+            title: String(localized: "Plugin Not Installed"),
+            message: String(
+                format: String(localized: "The %@ plugin is not installed. Would you like to install it?"),
+                type.displayName
+            ),
+            confirmButton: String(localized: "Install"),
+            window: window
+        )
+        guard confirmed else { return false }
+        return await PluginInstallPrompt.run(pluginName: type.displayName, window: window) { onBegin in
+            try await PluginManager.shared.installMissingPlugin(for: type, onBegin: onBegin)
+        }
     }
 }

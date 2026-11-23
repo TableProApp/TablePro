@@ -76,6 +76,17 @@ struct OperationCompletionReporterTests {
         #expect(content.body == "3 rows in 1m 00s")
     }
 
+    @Test("The notification carries the default sound, so the system Play sound switch decides")
+    func notificationCarriesDefaultSound() async throws {
+        let presenter = FakeNotificationPresenter()
+        let reporter = makeReporter(presenter: presenter)
+
+        await reporter.report(completion())?.value
+
+        let content = try #require(presenter.posted.first?.content)
+        #expect(content.sound == .default)
+    }
+
     @Test("Work the user cancelled posts nothing")
     func cancelledPostsNothing() async throws {
         let presenter = FakeNotificationPresenter()

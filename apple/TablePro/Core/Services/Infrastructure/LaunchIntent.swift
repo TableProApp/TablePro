@@ -1,8 +1,3 @@
-//
-//  LaunchIntent.swift
-//  TablePro
-//
-
 import Foundation
 import TableProImport
 
@@ -26,8 +21,8 @@ internal enum LaunchIntent: @unchecked Sendable {
     case openSharedLink(token: String)
     case pairIntegration(PairingRequest)
     case startMCPServer
-    /// nil opens the last-used pane.
-    case openSettings(SettingsPane?)
+    // nil opens the last-used pane.
+    case openSettings(SettingsLocation?)
     case openDatabaseURL(URL)
     case installPlugin(URL)
     case reopenClosedTab(RecentlyClosedTabEntry)

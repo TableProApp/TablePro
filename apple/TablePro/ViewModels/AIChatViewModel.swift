@@ -114,6 +114,11 @@ final class AIChatViewModel: ObservableObject {
     var inFlightSchemaLoad: Task<Void, Never>?
     var relevantTableNames: [String] = []
     var schemaRanker: @Sendable (AISchemaRankingInput) -> [String] = AISchemaContext.relevantTableNames(for:)
+    var customSlashCommandNamed: @MainActor (String) -> CustomSlashCommand? = {
+        CustomSlashCommandStorage.shared.command(named: $0)
+    }
+    // A custom command picked from the menu keeps its identity, so Send runs it even when a built-in shares its name.
+    var composedCustomCommand: CustomSlashCommand?
     @Published var tableMentions = TableMentionIndex.empty
     var tableMentionSource: [TableInfo] = []
     var tableMentionBuild: Task<Void, Never>?
@@ -194,8 +199,30 @@ final class AIChatViewModel: ObservableObject {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || !attachedImages.isEmpty else { return }
 
+        if let composed = composedCustomCommand,
+           let invocation = SlashCommand.invocation(in: text),
+           invocation.name.caseInsensitiveCompare(composed.name) == .orderedSame,
+           composed.isValid {
+            guard !isStreaming else { return }
+            composedCustomCommand = nil
+            inputText = ""
+            Task { await runCustomSlashCommand(composed, body: invocation.body) }
+            return
+        }
+        composedCustomCommand = nil
+
         if let parsed = SlashCommand.parse(text) {
             runSlashCommand(parsed.command, body: parsed.body)
+            return
+        }
+
+        if let invocation = SlashCommand.invocation(in: text),
+           let command = customSlashCommandNamed(invocation.name),
+           command.isValid {
+            guard !isStreaming else { return }
+            // Cleared now, so a second Return before the task runs finds nothing to send.
+            inputText = ""
+            Task { await runCustomSlashCommand(command, body: invocation.body) }
             return
         }
 

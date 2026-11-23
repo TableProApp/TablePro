@@ -1,8 +1,3 @@
-//
-//  UserTypeRowView.swift
-//  TablePro
-//
-
 import SwiftUI
 
 enum UserTypeRowLogic {
@@ -10,8 +5,7 @@ enum UserTypeRowLogic {
         "\(type.kind.displayName): \(type.name)"
     }
 
-    /// The row shows the name; what the type is made of goes here, because that is what tells an
-    /// enum from a domain before the reader opens either.
+    // What the type is made of tells an enum from a domain before the reader opens either.
     static func tooltip(for type: UserDefinedTypeInfo) -> String {
         var lines = [type.qualifiedName, type.kind.displayName]
         switch type.kind {
@@ -32,8 +26,8 @@ enum UserTypeRowLogic {
 }
 
 struct UserTypeRowView: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let type: UserDefinedTypeInfo
+    let showsIcon: Bool
 
     var body: some View {
         Label {
@@ -45,7 +39,7 @@ struct UserTypeRowView: View {
                 .selectionAwareTint(Color.accentColor)
                 .frame(width: 16)
         }
-        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+        .sidebarRowIcon(visible: showsIcon)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(UserTypeRowLogic.accessibilityLabel(for: type))
         .help(UserTypeRowLogic.tooltip(for: type))

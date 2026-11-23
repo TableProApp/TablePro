@@ -222,8 +222,7 @@ struct IntegrationsActivityLogPane: View {
         }
 
         if let store = mcpServerManager.tokenStore {
-            // TablePro mints these afresh every rotation and every agent turn, so they are filtered by name.
-            tokens = await store.list().filter { !$0.isBridgeCredential && !$0.isClaudeAgentCredential }
+            tokens = await store.list().filter(\.isUserManaged)
         }
         connections = ConnectionStorage.shared.loadConnections()
 

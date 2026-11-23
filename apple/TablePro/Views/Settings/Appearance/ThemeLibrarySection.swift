@@ -3,15 +3,9 @@ import SwiftUI
 import TableProTheme
 import UniformTypeIdentifiers
 
-/// Every theme on this Mac in one list: the built-ins, the user's own, and the files that did not
-/// load. The add and remove pair and the action pull-down sit under it the way macOS puts them under
-/// a list. A context menu acts on the row under the pointer, which is not always the selected one.
+// A context menu acts on the row under the pointer, which is not always the selected one.
 internal struct ThemeLibrarySection: View {
-    @StateObject private var model = ThemeLibraryModel(
-        catalog: .shared,
-        selection: AppSettingsManager.shared,
-        editors: ThemeEditorWindows.shared
-    )
+    @ObservedObject private var model: ThemeLibraryModel
 
     @Environment(\.undoManager) private var undoManager
 
@@ -33,80 +27,73 @@ internal struct ThemeLibrarySection: View {
     // A two-line theme row. The table sizes a row it has not measured at this estimate, and an
     // accessibility read makes it drop and remeasure off-screen rows, so any other value moves the rows.
     private static let rowHeight: CGFloat = 42
-    /// A grouped Form centers its sections at most this wide (measured on macOS 27), so the list keeps
-    /// the edges of the sections above it.
-    private static let formContentWidth: CGFloat = 704
-    private static let formMargin: CGFloat = 20
-    /// How far a grouped Form indents its section headers from the section's edge.
-    private static let headerInset: CGFloat = 10
 
-    internal var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Themes")
-                .font(.headline)
-                .padding(.horizontal, Self.headerInset)
-                .accessibilityAddTraits(.isHeader)
-            list
-                .alert(
-                    model.alert?.title ?? "",
-                    isPresented: isPresented($model.alert),
-                    presenting: model.alert
-                ) { _ in
-                    Button(String(localized: "OK")) {}
-                } message: { alert in
-                    Text(alert.message)
-                }
-                .alert(
-                    pendingTrash?.title ?? "",
-                    isPresented: isPresented($pendingTrash),
-                    presenting: pendingTrash
-                ) { confirmation in
-                    Button(String(localized: "Move to Trash"), role: .destructive) {
-                        trash(confirmation.item)
-                    }
-                    Button(String(localized: "Cancel"), role: .cancel) {}
-                } message: { confirmation in
-                    Text(confirmation.message)
-                }
-                .fileImporter(isPresented: $isImporting, allowedContentTypes: [.json], allowsMultipleSelection: true) { result in
-                    guard case let .success(urls) = result else { return }
-                    importThemes(urls)
-                }
-                .fileExporter(
-                    isPresented: isPresented($exporting),
-                    document: exporting?.document,
-                    contentType: .json,
-                    defaultFilename: exporting?.fileName
-                ) { _ in }
-        }
-        .frame(maxWidth: Self.formContentWidth)
-        .padding(.horizontal, Self.formMargin)
-        .padding(.bottom, Self.formMargin)
-        .frame(maxWidth: .infinity)
+    internal init(model: ThemeLibraryModel) {
+        self._model = ObservedObject(wrappedValue: model)
     }
 
-    // MARK: - List
+    internal var body: some View {
+        SettingsFullPageList {
+            list
+        } bar: {
+            bar
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(SettingsPage.manageThemes.pageIdentifier)
+        .alert(
+            model.alert?.title ?? "",
+            isPresented: isPresented($model.alert),
+            presenting: model.alert
+        ) { _ in
+            Button(String(localized: "OK")) {}
+        } message: { alert in
+            Text(alert.message)
+        }
+        .alert(
+            pendingTrash?.title ?? "",
+            isPresented: isPresented($pendingTrash),
+            presenting: pendingTrash
+        ) { confirmation in
+            Button(String(localized: "Move to Trash"), role: .destructive) {
+                trash(confirmation.item)
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: { confirmation in
+            Text(confirmation.message)
+        }
+        .fileImporter(isPresented: $isImporting, allowedContentTypes: [.json], allowsMultipleSelection: true) { result in
+            guard case let .success(urls) = result else { return }
+            importThemes(urls)
+        }
+        .fileExporter(
+            isPresented: isPresented($exporting),
+            document: exporting?.document,
+            contentType: .json,
+            defaultFilename: exporting?.fileName
+        ) { _ in }
+    }
 
-    /// The user's own themes come first: fourteen built-ins above them would push the rows a person
-    /// creates, renames and trashes out of sight.
+    // The user's own themes come first: the built-ins above them would push the rows a person
+    // creates, renames and trashes out of sight.
     private var list: some View {
-        ScrollViewReader { proxy in
+        let inUse = model.inUseThemeIds
+        return ScrollViewReader { proxy in
             List(selection: $selection) {
                 Section(String(localized: "Custom")) {
                     if model.customThemes.isEmpty {
-                        Text("Duplicate a theme or import one to customize colors.")
+                        Text("Click + to add a theme, or drop a TablePro or VS Code theme file here.")
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("appearance-themes-custom-empty")
                     }
                     ForEach(model.customThemes) { theme in
-                        themeRow(theme)
+                        themeRow(theme, isInUse: inUse.contains(theme.id))
                             .tag(ThemeLibraryItem.theme(theme.id))
                             .id(ThemeLibraryItem.theme(theme.id))
                     }
                 }
 
                 if !model.notLoaded.isEmpty {
-                    Section(String(localized: "Not Loaded")) {
+                    Section(String(localized: "Couldn't Load")) {
                         ForEach(model.notLoaded) { record in
                             notLoadedRow(record)
                                 .tag(ThemeLibraryItem.notLoaded(path: record.path))
@@ -117,49 +104,57 @@ internal struct ThemeLibrarySection: View {
 
                 Section(String(localized: "Built-in")) {
                     ForEach(model.builtInThemes) { theme in
-                        themeRow(theme)
+                        themeRow(theme, isInUse: inUse.contains(theme.id))
                             .tag(ThemeLibraryItem.theme(theme.id))
                             .id(ThemeLibraryItem.theme(theme.id))
                     }
                 }
             }
-            .listStyle(.bordered(alternatesRowBackgrounds: false))
             .environment(\.defaultMinListRowHeight, Self.rowHeight)
-            .frame(minHeight: Self.minimumListHeight, maxHeight: .infinity)
-            .accessibilityIdentifier("appearance-themes-list")
             .contextMenu(forSelectionType: ThemeLibraryItem.self) { items in
-                rowMenu(for: items.first)
+                if let item = items.first {
+                    menuItems(for: item, dimsUnavailable: false)
+                } else {
+                    emptyAreaMenu
+                }
             } primaryAction: { items in
                 guard case let .theme(id) = items.first else { return }
                 model.edit(id)
             }
-            .onDeleteCommand { requestTrash(selection) }
+            .onDeleteCommand {
+                if model.canTrash(selection) {
+                    requestTrash(selection)
+                } else {
+                    NSSound.beep()
+                }
+            }
             .dropDestination(for: URL.self) { urls, _ in
                 let files = urls.filter(\.isFileURL)
                 guard !files.isEmpty else { return false }
                 importThemes(files)
                 return true
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                footer
-            }
             .onChange(of: selection) { item in
                 guard let item else { return }
                 proxy.scrollTo(item)
             }
+            .frame(minHeight: Self.minimumListHeight, maxHeight: .infinity)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("appearance-themes-list")
         }
     }
 
     @ViewBuilder
-    private func themeRow(_ theme: ThemeDefinition) -> some View {
+    private func themeRow(_ theme: ThemeDefinition, isInUse: Bool) -> some View {
         if renamingId == theme.id {
             renameField(for: theme)
         } else {
+            // No combined element: the UI tests find a row by its name's text.
             VStack(alignment: .leading, spacing: 1) {
                 Text(theme.name)
                     .lineLimit(1)
-                Text(ThemeLibraryModel.appearanceLabel(theme.appearance))
-                    .font(.caption)
+                Text(ThemeLibraryModel.rowSubtitle(theme.appearance, isInUse: isInUse))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             .padding(.vertical, 2)
@@ -181,7 +176,7 @@ internal struct ThemeLibrarySection: View {
                 .accessibilityIdentifier("appearance-theme-rename-field")
             if let renameError {
                 NoticeLabel(renameError, severity: .error)
-                    .font(.caption)
+                    .font(.subheadline)
                     .accessibilityIdentifier("appearance-theme-rename-error")
             }
         }
@@ -193,7 +188,7 @@ internal struct ThemeLibrarySection: View {
             Text(record.fileName)
                 .lineLimit(1)
             Text(record.reason)
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -202,137 +197,104 @@ internal struct ThemeLibrarySection: View {
         .help(record.reason)
     }
 
-    /// A contextual menu leaves out what does not apply; the pull-down below dims it instead.
-    @ViewBuilder
-    private func rowMenu(for item: ThemeLibraryItem?) -> some View {
-        if let theme = model.theme(for: item) {
-            if theme.isEditable {
-                Button(String(localized: "Edit…")) { model.edit(theme.id) }
-            }
-            Button(String(localized: "Duplicate")) { duplicate(theme.id) }
-            if theme.isEditable {
-                RenameButton()
-                    .renameAction { beginRename(theme) }
-            }
-            Button(String(localized: "Export…")) { export(theme.id) }
-            if let slot = model.availableSlot(for: theme) {
-                Button(useTitle(for: slot)) { model.use(theme.id, for: slot) }
-            }
-            if theme.isEditable {
-                Button(String(localized: "Show in Finder")) { model.revealInFinder(item) }
+    private var bar: some View {
+        SettingsListBar(
+            addLabel: String(localized: "Add Theme"),
+            removeLabel: String(localized: "Move to Trash"),
+            canRemove: model.canTrash(selection),
+            addIdentifier: "appearance-theme-add",
+            removeIdentifier: "appearance-theme-remove",
+            addMenu: { addMenuItems },
+            onRemove: { requestTrash(selection) },
+            actionsLabel: String(localized: "Theme Actions"),
+            actionsIdentifier: "appearance-theme-actions",
+            actions: {
+                menuItems(for: selection, dimsUnavailable: true)
                 Divider()
-                Button(String(localized: "Move to Trash")) { requestTrash(item) }
+                showThemesFolderButton
             }
-        } else if let item, model.record(for: item) != nil {
-            Button(String(localized: "Show in Finder")) { model.revealInFinder(item) }
-            Button(String(localized: "Try Again")) { model.retryLoading() }
-            Divider()
-            Button(String(localized: "Move to Trash")) { requestTrash(item) }
-        }
+        )
     }
 
-    private func useTitle(for slot: ThemeAppearance) -> String {
-        switch slot {
-        case .light: return String(localized: "Use for Light Appearance")
-        case .dark: return String(localized: "Use for Dark Appearance")
-        }
+    @ViewBuilder
+    private var addMenuItems: some View {
+        newThemeMenu
+        Divider()
+        importButton
     }
 
-    // MARK: - Footer
+    @ViewBuilder
+    private var emptyAreaMenu: some View {
+        newThemeMenu
+        importButton
+        Divider()
+        showThemesFolderButton
+    }
 
-    private var footer: some View {
-        VStack(spacing: 0) {
-            Divider()
-            HStack(spacing: 0) {
-                ControlGroup {
-                    addMenu
-
-                    Button {
-                        requestTrash(selection)
-                    } label: {
-                        Label(String(localized: "Move to Trash"), systemImage: "minus")
-                            .labelStyle(.iconOnly)
-                    }
-                    .help(String(localized: "Move to Trash"))
-                    .accessibilityLabel(String(localized: "Move to Trash"))
-                    .accessibilityIdentifier("appearance-theme-remove")
-                    .disabled(!model.canTrash(selection))
-
-                    actionsMenu
-                }
-                .controlGroupStyle(.navigation)
-                .controlSize(.small)
-                .fixedSize()
-
-                Spacer()
+    private var newThemeMenu: some View {
+        Menu(String(localized: "New Theme Based On")) {
+            ForEach(model.builtInThemes) { theme in
+                Button(theme.name) { createTheme(basedOn: theme.id) }
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
-        }
-        .background(.bar)
-    }
-
-    /// An icon-only `Menu` is named only through `.contain` plus a label on the menu itself; a
-    /// label inside its label closure leaves VoiceOver reading "More", or nothing on CI.
-    private var addMenu: some View {
-        Menu {
-            Menu(String(localized: "New Theme Based On")) {
-                ForEach(model.builtInThemes) { theme in
+            if !model.customThemes.isEmpty {
+                Divider()
+                ForEach(model.customThemes) { theme in
                     Button(theme.name) { createTheme(basedOn: theme.id) }
                 }
-                if !model.customThemes.isEmpty {
-                    Divider()
-                    ForEach(model.customThemes) { theme in
-                        Button(theme.name) { createTheme(basedOn: theme.id) }
-                    }
-                }
             }
-            Divider()
-            Button(String(localized: "Import…")) { isImporting = true }
-        } label: {
-            Label(String(localized: "Add Theme"), systemImage: "plus")
-                .labelStyle(.iconOnly)
         }
-        .menuIndicator(.hidden)
-        .help(String(localized: "Add Theme"))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(String(localized: "Add Theme"))
-        .accessibilityIdentifier("appearance-theme-add")
     }
 
-    private var actionsMenu: some View {
-        let theme = model.theme(for: selection)
-        return Menu {
-            Button(String(localized: "Edit…")) {
-                if let theme { model.edit(theme.id) }
-            }
-            .disabled(theme == nil)
-            Button(String(localized: "Duplicate")) {
-                if let theme { duplicate(theme.id) }
-            }
-            .disabled(theme == nil)
-            Button(String(localized: "Rename")) {
-                if let theme { beginRename(theme) }
-            }
-            .disabled(theme?.isEditable != true)
-            Button(String(localized: "Export…")) {
-                if let theme { export(theme.id) }
-            }
-            .disabled(theme == nil)
-            Divider()
-            Button(String(localized: "Show in Finder")) { model.revealInFinder(selection) }
-        } label: {
-            Label(String(localized: "Theme Actions"), systemImage: "ellipsis.circle")
-                .labelStyle(.iconOnly)
-        }
-        .menuIndicator(.hidden)
-        .help(String(localized: "Theme Actions"))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(String(localized: "Theme Actions"))
-        .accessibilityIdentifier("appearance-theme-actions")
+    private var importButton: some View {
+        Button(String(localized: "Import…")) { isImporting = true }
     }
 
-    // MARK: - Actions
+    private var showThemesFolderButton: some View {
+        Button(String(localized: "Show Themes Folder in Finder")) { model.revealThemesFolder() }
+    }
+
+    // The context menu leaves out what does not apply; the pull-down dims it.
+    private func menuItems(for item: ThemeLibraryItem?, dimsUnavailable: Bool) -> some View {
+        let entries = model.menuEntries(for: item).filter { dimsUnavailable || $0.isEnabled }
+        return ForEach(Array(entries.enumerated()), id: \.element.action) { index, entry in
+            if entry.startsGroup, index > 0 {
+                Divider()
+            }
+            if entry.action == .rename, !dimsUnavailable {
+                RenameButton()
+                    .renameAction { perform(.rename, on: item) }
+            } else {
+                Button(entry.action.title) { perform(entry.action, on: item) }
+                    .disabled(!entry.isEnabled)
+            }
+        }
+    }
+
+    private func perform(_ action: ThemeLibraryAction, on item: ThemeLibraryItem?) {
+        switch action {
+        case .edit, .showInEditor:
+            guard case let .theme(id) = item else { return }
+            model.edit(id)
+        case .duplicate:
+            guard case let .theme(id) = item else { return }
+            duplicate(id)
+        case .rename:
+            guard let theme = model.theme(for: item) else { return }
+            beginRename(theme)
+        case .export:
+            guard case let .theme(id) = item else { return }
+            export(id)
+        case let .use(slot):
+            guard case let .theme(id) = item else { return }
+            model.use(id, for: slot)
+        case .showInFinder:
+            model.revealInFinder(item)
+        case .tryAgain:
+            model.retryLoading()
+        case .moveToTrash:
+            requestTrash(item)
+        }
+    }
 
     private func duplicate(_ id: String) {
         guard let copy = model.duplicate(id, undoManager: undoManager) else { return }
@@ -364,7 +326,7 @@ internal struct ThemeLibrarySection: View {
         renamingId = theme.id
     }
 
-    /// A taken name keeps the field open with the reason, the way Finder refuses one.
+    // A taken name keeps the field open with the reason, the way Finder refuses one.
     private func commitRename(_ id: String) {
         guard renamingId == id else { return }
         switch model.rename(id, to: renameText, undoManager: undoManager) {

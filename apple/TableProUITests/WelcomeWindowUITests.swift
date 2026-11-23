@@ -66,16 +66,11 @@ final class WelcomeWindowUITests: UITestCase {
         let updateLink = welcome.descendants(matching: .any).matching(identifier: "welcome-update-link").firstMatch
         XCTAssertFalse(updateLink.exists, "With nothing pending the welcome window offers no update link")
 
-        app.typeShortcut(.settings)
-        let settings = window("settings", in: app)
-        XCTAssertTrue(settings.waitToExist(timeout: 10), "Command-comma must open Settings")
-        let generalPaneButton = settings.toolbars.buttons["General"]
-        XCTAssertTrue(generalPaneButton.waitToExist(timeout: 10))
-        generalPaneButton.click()
+        let settings = openSettings(in: app)
+        selectSettingsPane("general", page: "software-update", in: settings)
 
-        // The Form builds every row, so the row reads without scrolling to it.
         let action = settings.descendants(matching: .any).matching(identifier: "software-update-action").firstMatch
-        XCTAssertTrue(action.waitToExist(timeout: 10), "General must show the Software Update row")
+        XCTAssertTrue(action.waitToExist(timeout: 10), "The Software Update page must show its status row")
         XCTAssertEqual(action.label, "Check Now")
 
         let headline = settings.descendants(matching: .any).matching(identifier: "software-update-headline").firstMatch
