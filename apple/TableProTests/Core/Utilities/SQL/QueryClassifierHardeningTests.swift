@@ -682,6 +682,10 @@ struct QueryClassifierNonSqlTests {
 
     @Test("etcd verbs separate reads, writes, deletes and snapshots")
     func etcdTiers() {
+        // Grid browse, exact count and the driver's refusal marker only read (#4385).
+        #expect(!QueryClassifier.isWriteQuery("ETCD_RANGE:e30=", databaseType: .etcd))
+        #expect(!QueryClassifier.isWriteQuery("ETCD_COUNT:e30=", databaseType: .etcd))
+        #expect(!QueryClassifier.isWriteQuery("ETCD_REFUSAL:unsupported filter", databaseType: .etcd))
         #expect(!QueryClassifier.isWriteQuery("get /keys", databaseType: .etcd))
         #expect(!QueryClassifier.isWriteQuery("watch /keys", databaseType: .etcd))
         #expect(QueryClassifier.isWriteQuery("put /keys value", databaseType: .etcd))
@@ -773,6 +777,8 @@ struct QueryClassifierNonSqlTests {
 
     @Test("Elasticsearch separates read verbs from writes and deletes")
     func elasticsearchTiers() {
+        // The grid builds a search as an opaque tag that renders a read (#4385).
+        #expect(!QueryClassifier.isWriteQuery("ELASTICSEARCH_SEARCH:e30=", databaseType: .elasticsearch))
         #expect(!QueryClassifier.isWriteQuery("GET /index/_search", databaseType: .elasticsearch))
         #expect(!QueryClassifier.isWriteQuery("POST /index/_search\n{}", databaseType: .elasticsearch))
         #expect(QueryClassifier.isWriteQuery("PUT /index/_doc/1", databaseType: .elasticsearch))
@@ -814,6 +820,8 @@ struct QueryClassifierNonSqlTests {
 
     @Test("Typesense separates search from writes and deletes")
     func typesenseTiers() {
+        // The grid builds a search as an opaque tag that renders a read (#4385).
+        #expect(!QueryClassifier.isWriteQuery("TYPESENSE_SEARCH:e30=", databaseType: .typesense))
         #expect(!QueryClassifier.isWriteQuery("GET /collections", databaseType: .typesense))
         #expect(!QueryClassifier.isWriteQuery("POST /multi_search {}", databaseType: .typesense))
         #expect(
@@ -1077,6 +1085,72 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.classifyTier("PUT events/\"a{b\" {\"cf:a\": null}", databaseType: .bigtable) == .write)
         #expect(QueryClassifier.classifyTier("DELETE events/k", databaseType: .bigtable) == .write)
         #expect(QueryClassifier.isWriteQuery("SELECT * FROM events", databaseType: .bigtable))
+    }
+
+    @Test("BigQuery grid browse tags read; real SQL keeps its tier (#4385)")
+    func bigQueryTiers() {
+        for tag in ["BIGQUERY_BROWSE:", "BIGQUERY_COMBINED:", "BIGQUERY_FILTER:", "BIGQUERY_SEARCH:"] {
+            #expect(!QueryClassifier.isWriteQuery(tag + "e30=", databaseType: .bigQuery), "\(tag)")
+        }
+        #expect(!QueryClassifier.isWriteQuery("SELECT 1", databaseType: .bigQuery))
+        #expect(QueryClassifier.classifyTier("INSERT INTO t (a) VALUES (1)", databaseType: .bigQuery) == .write)
+        #expect(QueryClassifier.classifyTier("DROP TABLE t", databaseType: .bigQuery) == .destructive)
+        // A raw filter renders verbatim SQL, so a tag carrying one is not blessed as a read.
+        let raw = #"{"filters":[{"column":"__RAW__","value":"1)); DELETE FROM d.t WHERE TRUE; --"}]}"#
+        let injected = "BIGQUERY_FILTER:" + Data(raw.utf8).base64EncodedString()
+        #expect(QueryClassifier.isWriteQuery(injected, databaseType: .bigQuery))
+        // A \u-escaped raw column decodes to __RAW__ in the driver, so the JSON must be normalised first.
+        let escaped = #"{"filters":[{"column":"__RAW__","value":"1)); DROP TABLE t; --"}]}"#
+        let injectedEscaped = "BIGQUERY_FILTER:" + Data(escaped.utf8).base64EncodedString()
+        #expect(QueryClassifier.isWriteQuery(injectedEscaped, databaseType: .bigQuery))
+    }
+
+    @Test("Spanner grid browse tag reads; real SQL keeps its tier (#4385)")
+    func spannerTiers() {
+        #expect(!QueryClassifier.isWriteQuery("SPANNER_BROWSE:e30=", databaseType: .spanner))
+        #expect(!QueryClassifier.isWriteQuery("SELECT 1", databaseType: .spanner))
+        #expect(QueryClassifier.classifyTier("INSERT INTO t (a) VALUES (1)", databaseType: .spanner) == .write)
+        #expect(QueryClassifier.classifyTier("DROP TABLE t", databaseType: .spanner) == .destructive)
+        let raw = #"{"filters":[{"column":"__RAW__","value":"1)); DELETE FROM t WHERE TRUE; --"}]}"#
+        let injected = "SPANNER_BROWSE:" + Data(raw.utf8).base64EncodedString()
+        #expect(QueryClassifier.isWriteQuery(injected, databaseType: .spanner))
+    }
+
+    @Test("A browse tag reads the same on any SQL engine, and a raw filter in it still does not")
+    func browseTagIsEngineBlind() {
+        #expect(!QueryClassifier.isWriteQuery("SPANNER_BROWSE:e30=", databaseType: .postgresql))
+        let raw = #"{"filters":[{"column":"__RAW__","value":"1)); DELETE FROM t WHERE TRUE; --"}]}"#
+        let injected = "BIGQUERY_FILTER:" + Data(raw.utf8).base64EncodedString()
+        #expect(QueryClassifier.isWriteQuery(injected, databaseType: .postgresql))
+    }
+
+    // Every grid browse/search/count sentinel a driver may hand the gate must read as a read, or Read-Only
+    // Safe Mode blocks the grid's Fetch All and MCP browse_table (#4385). Forces the classifier to keep pace
+    // with ExternalStatementGate.driverRequestMarkers: a new read marker there without recognition here fails
+    // the test. Plugin tag constants live in unimportable targets, so they stay a separate hand-kept list.
+    @Test("Driver browse, search and count request markers classify as reads")
+    func driverBrowseMarkersReadAsReads() {
+        let readVerbs: Set<String> = ["BROWSE", "COMBINED", "FILTER", "SEARCH", "RANGE", "COUNT"]
+        let engineByPrefix: [String: DatabaseType] = [
+            "BIGQUERY": .bigQuery, "BIGTABLE": .bigtable, "ELASTICSEARCH": .elasticsearch,
+            "ETCD": .etcd, "FIREBASE": .firestore, "MEMCACHED": .memcached,
+            "QDRANT": .qdrant, "SPANNER": .spanner, "TYPESENSE": .typesense, "WEAVIATE": .weaviate,
+        ]
+        var checked = 0
+        for marker in ExternalStatementGate.driverRequestMarkers {
+            let head = marker.split(separator: ":").first.map(String.init) ?? ""
+            let parts = head.split(separator: "_").map(String.init)
+            guard parts.count >= 2, let verb = parts.last, readVerbs.contains(verb),
+                  let engine = engineByPrefix[parts[0]]
+            else { continue }
+            checked += 1
+            // e30= is base64 "{}": a well-formed empty payload the SQL-engine sentinels decode.
+            #expect(
+                QueryClassifier.classifyTier(marker + "e30=", databaseType: engine) == .safe,
+                "\(marker) must read as a read"
+            )
+        }
+        #expect(checked >= 9)
     }
 
     @Test("Cypher reads unless a clause writes, wherever the clause sits")
