@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProUtilities
 
 // Everything a deleted connection leaves on this device, in one place: three delete sites each kept a list and drifted.
 @MainActor
@@ -39,24 +40,15 @@ internal enum ConnectionLocalState {
 
         for connectionId in connectionIds {
             purgeLiveState(connectionId)
-            appSettings.saveLastDatabase(nil, for: connectionId)
-            appSettings.saveLastSchema(nil, for: connectionId)
             purgeFavorites(
                 connectionId,
                 leavesTombstones: origin.leavesTombstones,
                 tables: favoriteTables,
                 databases: favoriteDatabases
             )
-            SidebarPersistenceKey.removeAll(connectionId: connectionId)
-            RecentTablesStore.shared.removeEntries(for: connectionId)
-            HistoryPanelPreferencesStorage.remove(for: connectionId)
-            QueryInsightsPreferencesStorage.remove(for: connectionId)
-            ServerDashboardTileStorage().remove(for: connectionId)
-            RoutineDebugOptionStore(defaults: { [defaults] in defaults }).remove(for: connectionId)
-            MCPServerStore.shared.forgetConnection(connectionId)
             agentSessions.removeSessions(for: connectionId)
         }
-        purgeTrailingPaneKeys(connectionIds, defaults: defaults)
+        purgeViewState(connectionIds, appSettings: appSettings, defaults: defaults)
 
         for store in tableScopedStores {
             store.purgeConnections(connectionIds, leavesTombstones: origin.leavesTombstones)
@@ -65,15 +57,6 @@ internal enum ConnectionLocalState {
             syncTracker.discardTombstones(ownedBy: connectionIds)
             syncTracker.keepOffSync(owners: connectionIds)
         }
-        DatabaseTreeFilterStorage.shared.removeFilters(for: connectionIds)
-        LoadableExtensionApprovalStore.shared.revoke(for: connectionIds)
-        for store in ConnectionApprovalStore.all {
-            for connectionId in connectionIds {
-                store.revoke(for: connectionId)
-            }
-        }
-        RecentlyClosedTabStore.shared.removeEntries(for: connectionIds)
-        WorkspaceRailOrderStore.shared.removeEntries(for: connectionIds)
         Task {
             await purgeAsyncStores(
                 connectionIds,
@@ -116,6 +99,58 @@ internal enum ConnectionLocalState {
                     "Tab versions for a deleted connection could not be cleared: \(connectionId, privacy: .public)"
                 )
             }
+        }
+    }
+
+    /// What a connection leaves on this device that is neither synced nor content: the defaults its
+    /// windows, sidebar, panels and approvals wrote under its id. Query history, saved queries and
+    /// favorites stay out of it, so a connection that was never saved keeps its history.
+    internal static func purgeViewState(
+        _ connectionIds: Set<UUID>,
+        appSettings: AppSettingsStorage = .shared,
+        defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
+        removeAutosaveRecords: (UUID) -> Void = { SplitViewAutosaveName.removeRecords(connectionId: $0) }
+    ) {
+        guard !connectionIds.isEmpty else { return }
+        for connectionId in connectionIds {
+            appSettings.saveLastDatabase(nil, for: connectionId)
+            appSettings.saveLastSchema(nil, for: connectionId)
+            SidebarPersistenceKey.removeAll(connectionId: connectionId)
+            WindowSidebarState.removeExpansion(connectionId: connectionId, defaults: defaults)
+            QuickSwitcherFrecencyStore(connectionId: connectionId, defaults: defaults).clearHistory()
+            removeAutosaveRecords(connectionId)
+            RecentTablesStore.shared.removeEntries(for: connectionId)
+            HistoryPanelPreferencesStorage.remove(for: connectionId)
+            QueryInsightsPreferencesStorage.remove(for: connectionId)
+            ServerDashboardTileStorage().remove(for: connectionId)
+            RoutineDebugOptionStore(defaults: { [defaults] in defaults }).remove(for: connectionId)
+            MCPServerStore.shared.forgetConnection(connectionId)
+        }
+        purgeTrailingPaneKeys(connectionIds, defaults: defaults)
+        DatabaseTreeFilterStorage.shared.removeFilters(for: connectionIds)
+        LoadableExtensionApprovalStore.shared.revoke(for: connectionIds)
+        for store in ConnectionApprovalStore.all {
+            for connectionId in connectionIds {
+                store.revoke(for: connectionId)
+            }
+        }
+        RecentlyClosedTabStore.shared.removeEntries(for: connectionIds)
+        WorkspaceRailOrderStore.shared.removeEntries(for: connectionIds)
+    }
+
+    /// For a connection opened from a file or a link that no window can reach again: its view state,
+    /// its tab state and each table-scoped store's file. No tombstones, since it was never saved.
+    internal static func purgeUnreachable(
+        _ connectionIds: Set<UUID>,
+        tableScopedStores: [any TableScopedSettingsStore] = TableScopedSettingsRegistry.stores
+    ) {
+        guard !connectionIds.isEmpty else { return }
+        purgeViewState(connectionIds)
+        for connectionId in connectionIds {
+            TabDiskActor.clearSync(connectionId: connectionId)
+        }
+        for store in tableScopedStores {
+            store.purgeConnections(connectionIds, leavesTombstones: false)
         }
     }
 

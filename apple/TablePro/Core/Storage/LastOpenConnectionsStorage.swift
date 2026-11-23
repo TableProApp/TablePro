@@ -15,6 +15,8 @@ final class LastOpenConnectionsStorage {
     private let legacyFile: JSONFileStore<[UUID]>
     private let sessionFile: JSONFileStore<LastSession>
     private var isSealed = false
+    // What both files hold, known only after every write of a save returned.
+    private var lastSaved: LastSession?
 
     private convenience init() {
         let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
@@ -30,20 +32,36 @@ final class LastOpenConnectionsStorage {
     // A missing legacy list means an older build removed it, so this never leaves the session alone:
     // a first save writes the list before the session, and every later save writes the session first
     // so one cut short leaves the session the newer file. The list is written even when empty.
+    // A key window and nine other callers save; the same session with both files in place writes nothing.
     func save(_ session: LastSession) {
         guard !isSealed else { return }
         guard !session.connections.isEmpty else {
             clear()
             return
         }
-        let reconnecting = session.reconnectingIds
         let hasLegacy = legacyFile.exists
+        if session == lastSaved, hasLegacy, sessionFile.exists { return }
+        lastSaved = nil
+        let reconnecting = session.reconnectingIds
+        var wroteAll = true
         if !hasLegacy {
-            try? legacyFile.write(reconnecting)
+            wroteAll = write(reconnecting, to: legacyFile) && wroteAll
         }
-        try? sessionFile.write(session)
+        wroteAll = write(session, to: sessionFile) && wroteAll
         if hasLegacy {
-            try? legacyFile.write(reconnecting)
+            wroteAll = write(reconnecting, to: legacyFile) && wroteAll
+        }
+        if wroteAll {
+            lastSaved = session
+        }
+    }
+
+    private func write<Value: Encodable>(_ value: Value, to file: JSONFileStore<Value>) -> Bool {
+        do {
+            try file.write(value)
+            return true
+        } catch {
+            return false
         }
     }
 
@@ -60,6 +78,7 @@ final class LastOpenConnectionsStorage {
     }
 
     func clear() {
+        lastSaved = nil
         try? legacyFile.remove()
         try? sessionFile.remove()
     }

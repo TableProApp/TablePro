@@ -297,7 +297,6 @@ extension QueryExecutionCoordinator {
         parent.setActiveTableRows(newTableRows, for: existingTabId, viewport: viewport, source: source)
         // A pre-change count can land late with the old total; a kept total over the auto-count threshold stops this read's count.
         let answeredRowsChange = parent.tabSessionRegistry.recordRead(read, for: existingTabId)
-        let usesBrowseSearch = parent.filterCoordinator.usesBrowseSearch
 
         parent.tabManager.mutate(at: idx) { tab in
             tab.schemaVersion += 1
@@ -311,10 +310,6 @@ extension QueryExecutionCoordinator {
 
             if answeredRowsChange {
                 tab.pagination.retireDerivedRowCount()
-            }
-            if let metadata, let approxCount = metadata.approximateRowCount, approxCount > 0,
-               !tab.filterState.narrowsRows(browseSearchIsSupported: usesBrowseSearch) {
-                tab.pagination.applyDerivedRowCount(approxCount, isApproximate: true)
             }
             if hasSchema {
                 tab.metadataVersion += 1
@@ -478,7 +473,8 @@ extension QueryExecutionCoordinator {
                 resolveRowCount(
                     tableName: tableName,
                     tabId: tabId,
-                    connectionType: connectionType
+                    connectionType: connectionType,
+                    readsEstimate: true
                 )
                 return parent.rowCountTasks[tabId]?.task
             }
@@ -628,7 +624,6 @@ extension QueryExecutionCoordinator {
             )
         }
 
-        let usesBrowseSearch = parent.filterCoordinator.usesBrowseSearch
         parent.tabManager.mutate(tabId: tabId) { tab in
             if !parsed.primaryKeyColumns.isEmpty {
                 tab.tableContext.primaryKeyColumns = parsed.primaryKeyColumns
@@ -639,10 +634,6 @@ extension QueryExecutionCoordinator {
             tab.display.activeResultSet?.origin?.viewRowEditing = parsed.viewRowEditing
             tab.display.activeResultSet?.origin?.isView = tab.tableContext.isView
             tab.display.activeResultSet?.origin?.objectType = tab.tableContext.objectType
-            if let approxCount = parsed.approximateRowCount, approxCount > 0,
-               !tab.filterState.narrowsRows(browseSearchIsSupported: usesBrowseSearch) {
-                tab.pagination.applyDerivedRowCount(approxCount, isApproximate: true)
-            }
             tab.metadataVersion += 1
         }
 
@@ -674,21 +665,26 @@ extension QueryExecutionCoordinator {
             tableName: tableName,
             tabId: tabId,
             connectionType: connectionType,
+            readsEstimate: false,
             traceToken: traceToken
         )
     }
 
     // Checks content identity, not the execution claim: the claim settles before phase 2 dispatches, so the count never landed.
+    // `readsEstimate` is set where a definition read ran beside the rows, the one place the estimate was read before.
     func resolveRowCount(
         tableName: String,
         tabId: UUID,
         connectionType: DatabaseType,
+        readsEstimate: Bool,
         traceToken: TableLoadTraceToken? = nil
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
         let countsAutomatically = PluginManager.shared.countsRowsAutomatically(for: connectionType)
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let token = UUID()
+        // An engine whose plan reads the estimate itself would read it twice.
+        let readsEstimateFirst = readsEstimate && !(isNonSQL && countsAutomatically)
 
         parent.tabManager.mutate(tabId: tabId) { $0.pagination.isCountPending = true }
 
@@ -696,6 +692,15 @@ extension QueryExecutionCoordinator {
             defer { TableLoadTracer.shared.endPhase2(traceToken) }
             guard let self else { return }
             guard !parent.isTearingDown else { return }
+
+            if readsEstimateFirst, let scope = await MainActor.run(body: { self.rowEstimateScope(tabId: tabId) }) {
+                let estimate = try? await DatabaseManager.shared.withMetadataRead(scope: scope, workload: .interactive) { driver in
+                    try await driver.fetchApproximateRowCount(table: tableName, schema: scope.schema)
+                }
+                await MainActor.run {
+                    self.applyRowEstimate(estimate, tabId: tabId, contentEpoch: contentEpoch)
+                }
+            }
 
             typealias PreparedCount = (
                 plan: RowCountPlan, count: ExactCountInput?, scope: DatabaseScope?, countScope: RowCountScope?
@@ -792,6 +797,24 @@ extension QueryExecutionCoordinator {
             }
         }
         parent.setRowCountTask(task, token: token, for: tabId)
+    }
+
+    // A filtered tab shows no estimate, and an exact total refuses one, so neither sends the read.
+    private func rowEstimateScope(tabId: UUID) -> DatabaseScope? {
+        guard let tab = parent.tabManager.tabs.first(where: { $0.id == tabId }),
+              !tab.filterState.narrowsRows(browseSearchIsSupported: parent.filterCoordinator.usesBrowseSearch),
+              !tab.pagination.hasExactRowCount
+        else { return nil }
+        return parent.scope(for: tab)
+    }
+
+    private func applyRowEstimate(_ estimate: Int?, tabId: UUID, contentEpoch: Int) {
+        guard let estimate, estimate > 0, parent.tabExecution.isSameContent(contentEpoch, for: tabId) else { return }
+        let usesBrowseSearch = parent.filterCoordinator.usesBrowseSearch
+        parent.tabManager.mutate(tabId: tabId) { tab in
+            guard !tab.filterState.narrowsRows(browseSearchIsSupported: usesBrowseSearch) else { return }
+            tab.pagination.applyDerivedRowCount(estimate, isApproximate: true)
+        }
     }
 
     // Split out so `resolveRowCount` has one exit that clears `isCountPending`.

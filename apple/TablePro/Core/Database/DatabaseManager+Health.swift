@@ -124,6 +124,7 @@ extension DatabaseManager {
         // Debug drivers are dedicated connections the pool's fence does not hold back.
         await RoutineDebugSessions.shared.stopAll(connectionId: connectionId)
         defer { RoutineDebugSessions.shared.reopenAdmission(for: connectionId) }
+        SchemaService.shared.markAllStale(connectionId: connectionId)
         await SchemaService.shared.prepareForReload(connectionId: connectionId)
         await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: connectionId)
         // A switch that landed during the suspensions installed a connection that never failed.
@@ -428,6 +429,7 @@ extension DatabaseManager {
             session.status = .connecting
         }
 
+        SchemaService.shared.markAllStale(connectionId: sessionId)
         await SchemaService.shared.prepareForReload(connectionId: sessionId)
         await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: sessionId)
         // Only a rebuilt tunnel or a session that stopped answering moves the pooled transport; a switch

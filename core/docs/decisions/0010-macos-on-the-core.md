@@ -1,6 +1,6 @@
 # 0010: The macOS app moves to the core in slices, starting with the connection library
 
-- **Status**: Accepted; later slices for importers, the MCP server and SSH amended by [0043](0043-macos-later-slices-importers-mcp-ssh.md)
+- **Status**: Accepted; later slices for importers, the MCP server and SSH amended by [0043](0043-macos-later-slices-importers-mcp-ssh.md); an account slice, and a slice for SSH profiles, credential profiles, favourites and table folders, amended by [0044](0044-sync-through-one-service-run-by-us-or-on-premises.md)
 - **Date**: 2026-11-04
 
 ## Context

@@ -494,6 +494,16 @@ extension MainContentCoordinator {
 
     // MARK: - Database Switching
 
+    private func keepsShownCatalog() -> Bool {
+        let schemaService = services.schemaService
+        guard schemaService.hasLoadedContent(for: connectionId),
+              schemaService.isCatalogCurrent(for: connectionId),
+              let scope = services.databaseManager.browseScope(for: connectionId),
+              schemaService.loadedScope(for: connectionId) == scope
+        else { return false }
+        return SchemaProviderRegistry.shared.isPopulated(scope)
+    }
+
     /// Moves the browse cursor: what the sidebar lists and which database a new tab
     /// opens in. It never retargets an open tab. Once it lands, the window shows that database's
     /// entry, unless a newer move from this window has been asked for since.
@@ -511,7 +521,11 @@ extension MainContentCoordinator {
 
             await SchemaService.shared.prepareForReload(connectionId: connectionId)
 
-            await refreshTables(currentDatabaseOnly: true)
+            if keepsShownCatalog() {
+                pruneStaleSidebarState()
+            } else {
+                await refreshTables(currentDatabaseOnly: true)
+            }
             syncSidebarObjectSelection()
             return true
         } catch {

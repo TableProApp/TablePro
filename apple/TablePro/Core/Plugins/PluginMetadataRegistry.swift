@@ -176,6 +176,10 @@ struct PluginMetadataSnapshot: Sendable {
         // Set, a table page reads a large binary value's size through it and loads the value on demand.
         var binaryLengthFunction: String?
 
+        // Whether a table's DDL can state a CHECK value list in the form `QuerySqlParser` reads. False where the
+        // server rewrites the clause into another shape, or where the driver fills `allowedValues` itself.
+        var readsCheckListsFromDDL: Bool = true
+
         var readOnlyEnforcement: ReadOnlyEnforcement = .loginPrivileges
 
         // The driver is what refuses a destructive or server-code effect for an external caller, because the host
@@ -864,6 +868,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     .supportsPrincipalConnectionLimit ?? true,
                 supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true,
                 binaryLengthFunction: existingSnapshot?.capabilities.binaryLengthFunction,
+                readsCheckListsFromDDL: existingSnapshot?.capabilities.readsCheckListsFromDDL ?? true,
                 readOnlyEnforcement: existingSnapshot?.capabilities.readOnlyEnforcement ?? .loginPrivileges,
                 statementPolicyInDriver: existingSnapshot?.capabilities.statementPolicyInDriver ?? false,
                 dataCommands: existingSnapshot?.capabilities.dataCommands

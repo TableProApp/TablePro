@@ -470,8 +470,7 @@ struct CatalogChangeWindowTests {
         )
         let schema = FetchedTableSchema(
             columns: [ColumnInfo(name: "id", dataType: "INT", isNullable: false, isPrimaryKey: true)],
-            foreignKeys: nil,
-            approximateRowCount: nil
+            foreignKeys: nil
         )
 
         let before = coordinator.adoptLoadedDefinition(

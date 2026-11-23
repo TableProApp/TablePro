@@ -417,12 +417,27 @@ extension RowEditingCoordinator {
         )
         guard let savedTabIndex = reloadIndex else { return }
 
-        /// An insert or a delete changes the number this tab is reporting, so a count
-        /// the user asked for before the save no longer describes the table. Without
-        /// retiring it the reload's automatic count refuses to replace it, and the bar
-        /// keeps the pre-save total with no `Count Exactly` offered to correct it.
-        parent.tabManager.mutate(at: savedTabIndex) { $0.pagination.retireDerivedRowCount() }
+        // A retired total lets the reload's count replace a count the save made stale.
+        let effect = savedRowsCountEffect(onTabAt: savedTabIndex, truncatedTables: truncatedTables)
+        parent.tabManager.mutate(at: savedTabIndex) { tab in
+            switch effect {
+            case .estimate: tab.pagination.keepTotalAsEstimate()
+            case .retire: tab.pagination.retireDerivedRowCount()
+            }
+        }
         parent.reloadActiveResult(onTab: parent.tabManager.tabs[savedTabIndex].id)
+    }
+
+    private func savedRowsCountEffect(onTabAt index: Int, truncatedTables: Set<DatabaseTreeTableRef>) -> SavedRowsCountEffect {
+        let tab = parent.tabManager.tabs[index]
+        return SavedRowsCountEffect.effect(
+            on: SavedRowsCountEffect.Tab(
+                narrowsRows: tab.filterState.narrowsRows(browseSearchIsSupported: parent.filterCoordinator.usesBrowseSearch),
+                showsTruncatedTable: self.tab(at: index, shows: truncatedTables),
+                totalRowCount: tab.pagination.totalRowCount
+            ),
+            threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan
+        )
     }
 
     // The saving tab reloads itself and is left out.

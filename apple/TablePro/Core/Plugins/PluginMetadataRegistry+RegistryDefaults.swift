@@ -342,7 +342,8 @@ extension PluginMetadataRegistry {
                     defaultSSLMode: .preferred,
                     supportsPerConnectionCertificatePaths: false,
                     supportsPrincipalConnectionLimit: false,
-                    supportsRoleLogin: false
+                    supportsRoleLogin: false,
+                    readsCheckListsFromDDL: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "dbo",
@@ -674,6 +675,7 @@ extension PluginMetadataRegistry {
                     tlsImpliedPorts: [8_443, 443],
                     verifiesServerWithSystemTrust: true,
                     requestedTLSVerifiesIdentity: true,
+                    readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .engineEnforced
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(

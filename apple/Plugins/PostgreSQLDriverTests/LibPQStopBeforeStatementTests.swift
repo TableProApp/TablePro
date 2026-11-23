@@ -7,8 +7,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-// A Stop that arrives while the driver runs a round trip of its own (the savepoint probe, the cursor read's savepoint)
-// is spent on that round trip, so the user's statement must not go out after it.
+// A Stop that arrives while the driver runs a round trip of its own (the savepoint probe before a user's BEGIN, the
+// cursor read's savepoint) is spent on that round trip, so the user's statement must not go out after it.
 @Suite(.timeLimit(.minutes(1)))
 struct LibPQStopBeforeStatementTests {
     private final class ConnectionBox: @unchecked Sendable {
@@ -48,17 +48,17 @@ struct LibPQStopBeforeStatementTests {
 
         var failure: Error?
         do {
-            _ = try await connection.boundedQuery("DELETE FROM big WHERE flagged", rowCap: 1_000)
+            _ = try await connection.executeQuery("BEGIN", probesBeforeBlock: true)
         } catch {
             failure = error
         }
 
         let sent = server.queries
         let probed = sent.contains { $0.contains("tablepro_probe") }
-        let deleteSent = sent.contains { $0.contains("DELETE FROM big") }
+        let beginSent = sent.contains("BEGIN")
         #expect(failure is CancellationError)
         #expect(probed)
-        #expect(!deleteSent)
+        #expect(!beginSent)
     }
 
     @Test("A Stop during the cursor read's savepoint sends no cursor and reports cancelled")
@@ -77,8 +77,7 @@ struct LibPQStopBeforeStatementTests {
         let connection = try await Self.connected(to: server, box: box)
         defer { connection.disconnect() }
 
-        _ = try await connection.boundedQuery("SELECT 1", rowCap: 10)
-        _ = try await connection.executeQuery("BEGIN")
+        _ = try await connection.executeQuery("BEGIN", probesBeforeBlock: true)
         var failure: Error?
         do {
             _ = try await connection.boundedQuery("SELECT * FROM events", rowCap: 1_000)

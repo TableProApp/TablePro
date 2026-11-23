@@ -35,6 +35,12 @@ struct LibPQReadBound: Equatable, Sendable {
         rows.count > rowCap ? Array(rows.prefix(rowCap)) : rows
     }
 
+    // What a read that runs to its end keeps of a capped result: the cap and the row telling "more", within the
+    // emergency limit.
+    static func keepLimit(rowCap: Int) -> Int {
+        rowCap < PluginRowLimits.emergencyMax ? max(rowCap, 0) + 1 : PluginRowLimits.emergencyMax
+    }
+
     static let largestFetch = 1_000
 
     // How many rows the next cursor FETCH asks for, given what was read so far. Without a byte limit, all the cap still

@@ -292,11 +292,13 @@ private struct ShareTotals: Sendable {
     let exact: Int?
     let estimate: Int?
 
+    // Only a table tab's count describes its rows; on a query tab it would be the whole table's, whatever the WHERE.
     @MainActor
     init(_ tab: QueryTab) {
         let pagination = tab.pagination
-        exact = pagination.isApproximateRowCount ? nil : pagination.totalRowCount
-        estimate = pagination.isApproximateRowCount ? pagination.totalRowCount : nil
+        let counted = tab.tabType == .table ? pagination.totalRowCount : nil
+        exact = pagination.isApproximateRowCount ? nil : counted
+        estimate = pagination.isApproximateRowCount ? counted : nil
     }
 
     // The true total when counted; an estimate when it is above the rows held; else the rows, or nil if more exist.

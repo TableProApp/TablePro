@@ -106,6 +106,87 @@ struct SQLiteBindingTests {
     }
 }
 
+struct SQLiteCappedParameterReadTests {
+    // Row 5 fails to compute, so a read that steps past the cap's one extra row throws instead of returning.
+    @Test("A capped read with parameters takes at most one step past its cap and reports truncated")
+    func cappedReadStopsAtItsCap() async throws {
+        try await withDriver { driver, _ in
+            try await fillCounting(driver, to: 10_000)
+            let result = try await driver.executeUserQuery(
+                query: "SELECT id, json_extract(CASE WHEN id > CAST(? AS INTEGER) THEN 'not json' ELSE '1' END, '$') FROM t",
+                rowCap: 3,
+                parameters: [.text("4")]
+            )
+
+            #expect(result.rows.count == 3)
+            #expect(result.isTruncated)
+            #expect(result.rows.last?.first?.asText == "3")
+        }
+    }
+
+    @Test("A capped WITH ... DELETE ... RETURNING with parameters deletes every row it names")
+    func cappedReturningDeletesEveryRow() async throws {
+        try await withDriver { driver, _ in
+            try await fillCounting(driver, to: 50)
+            let result = try await driver.executeUserQuery(
+                query: """
+                    WITH doomed AS (SELECT id FROM t WHERE id > CAST(? AS INTEGER))
+                    DELETE FROM t WHERE id IN (SELECT id FROM doomed) RETURNING id
+                    """,
+                rowCap: 3,
+                parameters: [.text("0")]
+            )
+            let left = try await driver.execute(query: "SELECT count(*) FROM t").rows
+
+            #expect(result.rows.count == 3)
+            #expect(result.isTruncated)
+            #expect(left.first?.first?.asText == "0")
+        }
+    }
+
+    // A write commits, and checks a deferred key, only at its last step, so a capped one has to get there.
+    @Test("A capped write that returns rows runs to its end, so a deferred key it breaks fails it and nothing stays")
+    func cappedWriteMeetsItsDeferredKey() async throws {
+        try await withDriver { driver, _ in
+            _ = try await driver.execute(query: "PRAGMA foreign_keys = ON")
+            _ = try await driver.execute(query: "CREATE TABLE parent (id INTEGER PRIMARY KEY)")
+            _ = try await driver.execute(query: """
+                CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent (id) DEFERRABLE INITIALLY DEFERRED)
+                """)
+
+            await #expect(throws: (any Error).self) {
+                _ = try await driver.executeUserQuery(
+                    query: """
+                        WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 10)
+                        INSERT INTO child (id, parent_id) SELECT x, CAST(? AS INTEGER) FROM n RETURNING id
+                        """,
+                    rowCap: 3,
+                    parameters: [.text("99")]
+                )
+            }
+            let left = try await driver.execute(query: "SELECT count(*) FROM child").rows
+            #expect(left.first?.first?.asText == "0")
+        }
+    }
+
+    @Test("A read with parameters and no cap reads every row, and a capped write reports every row it changed")
+    func uncappedReadAndCappedWriteRunWhole() async throws {
+        try await withDriver { driver, _ in
+            try await fillCounting(driver, to: 10_000)
+            let read = try await driver.executeUserQuery(
+                query: "SELECT id FROM t WHERE id > CAST(? AS INTEGER)", rowCap: nil, parameters: [.text("0")]
+            )
+            let write = try await driver.executeUserQuery(
+                query: "UPDATE t SET id = id + 0 WHERE id > CAST(? AS INTEGER)", rowCap: 3, parameters: [.text("0")]
+            )
+
+            #expect(read.rows.count == 10_000)
+            #expect(!read.isTruncated)
+            #expect(write.rowsAffected == 10_000)
+        }
+    }
+}
+
 struct SQLiteOpenFlagTests {
     @Test("A read-only open reads the file and refuses a write")
     func readOnlyOpenRefusesWrites() async throws {

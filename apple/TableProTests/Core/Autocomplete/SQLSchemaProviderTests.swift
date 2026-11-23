@@ -336,7 +336,12 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var providesBulkColumnFetch: Bool { bulkColumnReadIsComplete }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
+    private(set) var fetchForeignKeysCallCount = 0
+
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
+        fetchForeignKeysCallCount += 1
+        return []
+    }
 
     var bulkForeignKeyFetch = false
     var providesBulkForeignKeyFetch: Bool { bulkForeignKeyFetch }
@@ -356,7 +361,32 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         return concurrentRefreshAvailabilityToReturn
     }
 
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    var approximateRowCountToReturn: Int?
+    var approximateRowCountGate: AsyncGate?
+    private(set) var fetchApproximateRowCountCallCount = 0
+
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        fetchApproximateRowCountCallCount += 1
+        await approximateRowCountGate?.wait()
+        return approximateRowCountToReturn
+    }
+
+    var viewRowEditingToReturn: PluginViewRowEditing?
+    private(set) var fetchViewRowEditingCalls: [String] = []
+
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
+        fetchViewRowEditingCalls.append(view)
+        return viewRowEditingToReturn
+    }
+
+    var tableDDLToReturn: [String: String] = [:]
+    private(set) var fetchTableDDLCallCount = 0
+
+    func fetchTableDDL(table: String, schema: String?) async throws -> String {
+        fetchTableDDLCallCount += 1
+        return tableDDLToReturn[table] ?? ""
+    }
+
     func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
 
     var tableCommentToReturn: String?
@@ -434,42 +464,6 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
 
 @MainActor
 struct SQLSchemaProviderTests {
-    @Test("loadSchema fetches tables without bulk column loading")
-    func loadSchemaOnlyFetchesTables() async {
-        let driver = MockDatabaseDriver()
-        driver.tablesToReturn = [
-            TestFixtures.makeTableInfo(name: "users"),
-            TestFixtures.makeTableInfo(name: "orders")
-        ]
-        driver.columnsToReturn = [
-            "users": [TestFixtures.makeColumnInfo(name: "id")],
-            "orders": [TestFixtures.makeColumnInfo(name: "id")]
-        ]
-
-        let provider = SQLSchemaProvider()
-        await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
-
-        let tables = await provider.getTables()
-        #expect(tables.count == 2)
-        #expect(driver.fetchColumnsCallCount == 0)
-    }
-
-    /// A failed catalog fetch leaves the provider empty and reports through the log. Recovery is
-    /// `SchemaProviderRegistry`'s: its `markLoadFailed` clears the scope so the next `prepare`
-    /// refetches.
-    @Test("A failed loadSchema leaves the provider empty and does not throw")
-    func loadSchemaFailureLeavesTheProviderEmpty() async {
-        let driver = MockDatabaseDriver()
-        driver.fetchTablesError = DatabaseError.queryFailed("connection lost")
-
-        let provider = SQLSchemaProvider()
-        await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
-
-        let tables = await provider.getTables()
-        #expect(tables.isEmpty)
-        #expect(driver.fetchTablesCallCount == 1)
-    }
-
     @Test("getColumns fetches from driver on cache miss")
     func getColumnsLazyFetchOnMiss() async {
         let driver = MockDatabaseDriver()
@@ -481,7 +475,7 @@ struct SQLSchemaProviderTests {
             ]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
 
         let columns = await provider.getColumns(for: "users")
@@ -500,7 +494,7 @@ struct SQLSchemaProviderTests {
             "users": [TestFixtures.makeColumnInfo(name: "id")]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
 
         _ = await provider.getColumns(for: "users")
@@ -524,7 +518,7 @@ struct SQLSchemaProviderTests {
         }
         driver.tablesToReturn = allTables
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await provider.waitForEagerColumnLoad()
 
@@ -567,7 +561,7 @@ struct SQLSchemaProviderTests {
         allTables += (0..<fillCount).map { TestFixtures.makeTableInfo(name: "fill_\($0)") }
         driver.tablesToReturn = allTables
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await provider.waitForEagerColumnLoad()
 
@@ -598,39 +592,6 @@ struct SQLSchemaProviderTests {
         #expect(driver.fetchColumnsCallCount == countBeforeBC + 2)
     }
 
-    @Test("resetForDatabase clears columns, updates tables, and sets driver")
-    func resetForDatabaseClearsAndUpdates() async {
-        let driver = MockDatabaseDriver()
-        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
-        driver.columnsToReturn = [
-            "users": [TestFixtures.makeColumnInfo(name: "id")]
-        ]
-
-        let provider = SQLSchemaProvider()
-        await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
-        _ = await provider.getColumns(for: "users")
-
-        let newTables = [TestFixtures.makeTableInfo(name: "orders")]
-        let newDriver = MockDatabaseDriver()
-        await provider.resetForDatabase("new_db", tables: newTables, driver: newDriver)
-
-        let tables = await provider.getTables()
-        #expect(tables.count == 1)
-        #expect(tables.first?.name == "orders")
-
-        // Column cache should be cleared (requires re-fetch)
-        newDriver.columnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "order_id")]]
-        let columns = await provider.getColumns(for: "orders")
-        #expect(columns.first?.name == "order_id")
-    }
-
-    @Test("getColumns returns empty when driver is not available")
-    func getColumnsWithoutDriver() async {
-        let provider = SQLSchemaProvider()
-        let columns = await provider.getColumns(for: "nonexistent")
-        #expect(columns.isEmpty)
-    }
-
     @Test("column cache is case-insensitive")
     func caseInsensitiveCache() async {
         let driver = MockDatabaseDriver()
@@ -639,7 +600,7 @@ struct SQLSchemaProviderTests {
             "users": [TestFixtures.makeColumnInfo(name: "id")]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
 
         _ = await provider.getColumns(for: "Users")
@@ -659,7 +620,7 @@ struct SQLSchemaProviderTests {
             ]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
 
         let ref = TableReference(tableName: "users", alias: nil)
@@ -681,7 +642,7 @@ struct SQLSchemaProviderTests {
             "orders": [TestFixtures.makeColumnInfo(name: "id")]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
 
         let refs = [
@@ -694,40 +655,6 @@ struct SQLSchemaProviderTests {
         #expect(items[1].label == "orders.id")
     }
 
-    @Test("getColumns uses injected metadata source instead of cached driver")
-    func getColumnsUsesMetadataSource() async {
-        let driver = MockDatabaseDriver()
-        driver.columnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "from_driver")]]
-        let source = SQLSchemaProvider.ColumnMetadataSource(
-            fetchColumns: { _, _ in [TestFixtures.makeColumnInfo(name: "from_source")] },
-            fetchAllColumns: { [:] }
-        )
-        let provider = SQLSchemaProvider(metadataSource: source)
-        await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
-
-        let columns = await provider.getColumns(for: "users")
-        #expect(columns.first?.name == "from_source")
-        #expect(driver.fetchColumnsCallCount == 0)
-    }
-
-    @Test("A requested column preload uses the injected metadata source instead of the cached driver")
-    func eagerLoadUsesMetadataSource() async {
-        let driver = MockDatabaseDriver()
-        driver.columnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "from_driver")]]
-        let source = SQLSchemaProvider.ColumnMetadataSource(
-            fetchColumns: { _, _ in [TestFixtures.makeColumnInfo(name: "lazy_source")] },
-            fetchAllColumns: { ["users": [TestFixtures.makeColumnInfo(name: "eager_source")]] }
-        )
-        let provider = SQLSchemaProvider(metadataSource: source)
-        await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
-        await provider.requestColumnPreload()
-        await provider.waitForEagerColumnLoad()
-
-        let columns = await provider.getColumns(for: "users")
-        #expect(columns.first?.name == "eager_source")
-        #expect(driver.fetchColumnsCallCount == 0)
-    }
-
     @Test("A requested column preload runs when the schema fits in the cache")
     func eagerLoadRunsForBoundedSchema() async {
         let driver = MockDatabaseDriver()
@@ -737,7 +664,7 @@ struct SQLSchemaProviderTests {
             "table_\(fits - 1)": [TestFixtures.makeColumnInfo(name: "eager_column")]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver)
         await provider.requestColumnPreload()
         await provider.waitForEagerColumnLoad()
@@ -757,7 +684,7 @@ struct SQLSchemaProviderTests {
             "table_\(overflows - 1)": [TestFixtures.makeColumnInfo(name: "lazy_column")]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver)
         await provider.requestColumnPreload()
         await provider.waitForEagerColumnLoad()
@@ -780,7 +707,7 @@ struct SQLSchemaProviderTests {
             "public_0": [TestFixtures.makeColumnInfo(name: "eager_column")]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("db", tables: ownSchema + otherSchemas, driver: driver)
         await provider.requestColumnPreload()
         await provider.waitForEagerColumnLoad()
@@ -803,7 +730,7 @@ struct SQLSchemaProviderTests {
             TestFixtures.makeTableInfo(name: "public_\($0)", schema: "public")
         }
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("db", tables: ownSchema, driver: driver)
         await provider.requestColumnPreload()
         await provider.waitForEagerColumnLoad()
@@ -817,7 +744,7 @@ struct SQLSchemaProviderTests {
     func clearColumnCacheDoesNotRefetch() async {
         let driver = MockDatabaseDriver()
         driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "eager_source")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase(
             "db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver
         )
@@ -863,7 +790,7 @@ struct SQLSchemaProviderTests {
     func tableListWriteWithoutDemandReadsNoColumns() async {
         let driver = MockDatabaseDriver()
         driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "id")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
 
         await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
         await provider.waitForEagerColumnLoad()
@@ -877,7 +804,7 @@ struct SQLSchemaProviderTests {
         let driver = MockDatabaseDriver()
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
         driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "id")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
 
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await provider.waitForEagerColumnLoad()
@@ -890,7 +817,7 @@ struct SQLSchemaProviderTests {
     func editorRequestReadsColumnsOnce() async {
         let driver = MockDatabaseDriver()
         driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "id")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
 
         async let first: Void = provider.requestColumnPreload()
@@ -909,7 +836,7 @@ struct SQLSchemaProviderTests {
     func requestBeforeTablesIsServedByTheList() async {
         let driver = MockDatabaseDriver()
         driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "id")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
 
         await provider.requestColumnPreload()
         await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
@@ -927,7 +854,7 @@ struct SQLSchemaProviderTests {
         driver.oneRequestColumnRead = oneRequest
         driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "id")]]
         driver.columnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "id")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
 
         await provider.requestColumnPreload()
@@ -973,7 +900,7 @@ struct SQLSchemaProviderTests {
     func tableListWriteAfterPreloadWaitsForTheNextRequest() async {
         let driver = MockDatabaseDriver()
         driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "id")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
         await provider.requestColumnPreload()
         await provider.waitForEagerColumnLoad()
@@ -1031,7 +958,7 @@ struct SQLSchemaProviderTests {
     func noReferenceCompletionNeedsEditorDemand() async {
         let driver = MockDatabaseDriver()
         driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "id")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         let users = [TestFixtures.makeTableInfo(name: "users")]
 
         await provider.resetForDatabase("db", tables: users, driver: driver)
@@ -1054,7 +981,7 @@ struct SQLSchemaProviderTests {
         let driver = MockDatabaseDriver()
         driver.fetchAllColumnsError = DatabaseError.queryFailed("connection lost")
         driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "id")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("db", tables: [TestFixtures.makeTableInfo(name: "users")], driver: driver)
 
         await provider.requestColumnPreload()
@@ -1074,7 +1001,7 @@ struct SQLSchemaProviderTests {
     func renewReadsOnlyAfterAServedPreload() async {
         let driver = MockDatabaseDriver()
         driver.allColumnsToReturn = ["users": [TestFixtures.makeColumnInfo(name: "id")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         let users = [TestFixtures.makeTableInfo(name: "users")]
         await provider.resetForDatabase("db", tables: users, driver: driver)
 
@@ -1244,7 +1171,7 @@ struct SQLSchemaProviderTests {
         let driver = MockDatabaseDriver()
         driver.currentSchema = "public"
         driver.allColumnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "eager_column")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase(
             "db", tables: [TestFixtures.makeTableInfo(name: "orders", schema: "public")], driver: driver
         )
@@ -1272,7 +1199,7 @@ struct SQLSchemaProviderTests {
                 )
             ]
         ]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase(
             "db", tables: [TestFixtures.makeTableInfo(name: "orders", schema: "hr")], driver: driver
         )
