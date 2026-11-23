@@ -718,9 +718,9 @@ extension QueryExecutionCoordinator {
                 )
                 guard let request = plan.countRequest else { return (plan, nil, scope, countScope) }
                 let queryColumns = parent.queryColumns(for: tab)
-                let rerun = tab.filterState.rerunFilters
-                let filters = request.filtered ? rerun.filters : []
-                let logicMode = rerun.logicMode
+                let applied = tab.filterState.applied
+                let filters = request.filtered ? applied?.filters ?? [] : []
+                let logicMode = applied?.logicMode ?? .and
                 var sql = request.limit.flatMap { limit in
                     parent.queryBuilder.buildCappedCountQuery(
                         tableName: tableName,
@@ -884,16 +884,15 @@ extension QueryExecutionCoordinator {
         if let browseSearch {
             return countsAutomatically ? .browseSearch(browseSearch, tableSizeLimit: threshold) : .skip
         }
-        let rerun = filterState.rerunFilters
+        let applied = filterState.applied
         guard countsAutomatically else {
-            return rerun.filters.isEmpty ? .skip : .clear
+            return applied == nil ? .skip : .clear
         }
         if isNonSQL {
-            return rerun.filters.isEmpty
-                ? .approximate
-                : .filteredNonSQL(filters: rerun.filters, logicMode: rerun.logicMode)
+            guard let applied else { return .approximate }
+            return .filteredNonSQL(filters: applied.filters, logicMode: applied.logicMode)
         }
-        let isFiltered = !rerun.filters.isEmpty
+        let isFiltered = applied != nil
         if (approximateRowCount ?? 0) >= threshold {
             return isFiltered ? .clear : .skip
         }

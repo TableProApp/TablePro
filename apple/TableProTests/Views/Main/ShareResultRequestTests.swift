@@ -259,8 +259,7 @@ extension GlobalStateSuites {
 
             fixture.tabManager.mutate(tabId: tab.id) {
                 $0.filterState.filters = [TableFilter(columnName: "email", filterOperator: .equal, value: "jane@example.com")]
-                $0.filterState.commit = .all
-                $0.filterState.adoptAppliedFiltersAsRunning()
+                $0.filterState = $0.filterState.applyingCheckedRows()
             }
             #expect(await loader(1_000) == nil)
         }

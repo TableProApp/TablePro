@@ -2,13 +2,13 @@ import XCTest
 
 // #2927: the completion list over a filter field preselected its first row, so Return took a suggestion
 // and left the filter unapplied. #3066: a cell's menu filters the table by the clicked value.
-// Clear proves a filter ran: it is enabled only while one is applied.
+// Turn Off proves a filter ran: it is enabled only while one is applied.
 final class FilterBarReturnUITests: UITestCase {
     func testFilteringFromACellAndFromTheFilterBar() throws {
         let (launch, grid) = try launchWithFixtureTable("album")
         let window = launch.window
         let app = launch.app
-        let clear = window.buttons["Clear"].firstMatch
+        let turnOff = window.buttons["Turn Off"].firstMatch
 
         app.typeShortcut(.toggleFilters)
         // A raw SQL row wraps its text, so its field is not assumed to be a single-line text field.
@@ -37,7 +37,7 @@ final class FilterBarReturnUITests: UITestCase {
         app.typeKey(.return, modifierFlags: [])
 
         XCTAssertTrue(
-            waitForPredicate(timeout: 15) { clear.exists && clear.isEnabled },
+            waitForPredicate(timeout: 15) { turnOff.exists && turnOff.isEnabled },
             "Return must apply the filter while the completion list is open"
         )
         XCTAssertTrue(
@@ -69,6 +69,6 @@ final class FilterBarReturnUITests: UITestCase {
             "Choosing the condition must narrow the table to the clicked row"
         )
         XCTAssertEqual(grid.value(row: 1, column: 2), "West", "The row that was clicked must stay")
-        XCTAssertTrue(clear.isEnabled, "The filter bar must report a filter applied")
+        XCTAssertTrue(turnOff.isEnabled, "The filter bar must report a filter applied")
     }
 }

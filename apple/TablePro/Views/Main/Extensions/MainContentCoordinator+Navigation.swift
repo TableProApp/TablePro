@@ -420,7 +420,7 @@ extension MainContentCoordinator {
     var isActiveTabReusable: Bool {
         guard let tab = tabManager.selectedTab, !tab.isPinned else { return false }
         if selectedTabHoldsProtectedContent { return false }
-        if selectedTabFilterState.hasAppliedFilters
+        if selectedTabFilterState.isFiltering
             || tab.hasUserActiveSort
             || tab.display.hasPinnedResults {
             return false

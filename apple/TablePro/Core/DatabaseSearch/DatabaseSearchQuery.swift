@@ -103,7 +103,7 @@ internal struct DatabaseSearchMatch: Equatable, Sendable {
     // Past the cap a column can match only in rows that were never read, so the tab keeps every searched column.
     internal var filterState: TabFilterState {
         let filters = isCapped || matchedFilters.isEmpty ? searchedFilters : matchedFilters
-        return TabFilterState(filters: filters, commit: .all, isVisible: true, filterLogicMode: .or)
+        return TabFilterState.applying(filters, logicMode: .or)
     }
 }
 

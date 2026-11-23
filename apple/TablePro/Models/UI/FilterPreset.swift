@@ -4,12 +4,21 @@ struct FilterPreset: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
     var filters: [TableFilter]
+    // Absent in presets saved before it was kept; loading one leaves the tab's mode as it is.
+    var logicMode: FilterLogicMode?
     var createdAt: Date
 
-    init(id: UUID = UUID(), name: String, filters: [TableFilter], createdAt: Date = Date()) {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        filters: [TableFilter],
+        logicMode: FilterLogicMode? = nil,
+        createdAt: Date = Date()
+    ) {
         self.id = id
         self.name = name
         self.filters = filters
+        self.logicMode = logicMode
         self.createdAt = createdAt
     }
 }
@@ -24,7 +33,7 @@ struct FilterPreset: Identifiable, Codable, Equatable {
 
     private init() {}
 
-    func savePreset(_ preset: FilterPreset) {
+    func savePreset(_ preset: FilterPreset) throws {
         var presets = loadAllPresets()
 
         if let index = presets.firstIndex(where: { $0.id == preset.id }) {
@@ -38,7 +47,7 @@ struct FilterPreset: Identifiable, Codable, Equatable {
             presets.append(adjusted)
         }
 
-        saveAllPresets(presets)
+        try saveAllPresets(presets)
     }
 
     private static func uniqueName(for base: String, existingNames: Set<String>) -> String {
@@ -63,10 +72,10 @@ struct FilterPreset: Identifiable, Codable, Equatable {
         return sorted
     }
 
-    func deletePreset(_ preset: FilterPreset) {
+    func deletePreset(_ preset: FilterPreset) throws {
         var presets = loadAllPresets()
         presets.removeAll { $0.id == preset.id }
-        saveAllPresets(presets)
+        try saveAllPresets(presets)
     }
 
     func deleteAllPresets() {
@@ -74,20 +83,8 @@ struct FilterPreset: Identifiable, Codable, Equatable {
         cachedPresets = nil
     }
 
-    func renamePreset(_ preset: FilterPreset, to newName: String) {
-        var updatedPreset = preset
-        updatedPreset.name = newName
-        savePreset(updatedPreset)
-    }
-
-    // MARK: - Private
-
-    private func saveAllPresets(_ presets: [FilterPreset]) {
-        do {
-            try defaults.write(presets, to: Self.presetsKey)
-        } catch {
-            return
-        }
+    private func saveAllPresets(_ presets: [FilterPreset]) throws {
+        try defaults.write(presets, to: Self.presetsKey)
         cachedPresets = presets.sorted { $0.createdAt > $1.createdAt }
     }
 }

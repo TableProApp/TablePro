@@ -25,19 +25,6 @@ struct DataFileFilterPanel: View {
 }
 
 extension DataFileController: FilterPanelActions {
-    func clearAppliedFiltersAndReload() {
-        filterState.commit = nil
-        filterState.adoptAppliedFiltersAsRunning()
-        runQuery()
-    }
-
-    func removeAllFiltersAndReload() {
-        filterState.filters = []
-        filterState.commit = nil
-        filterState.adoptAppliedFiltersAsRunning()
-        runQuery()
-    }
-
     func closeFilterPanel() {
         filterState.isVisible = false
         focusGrid()
@@ -45,6 +32,10 @@ extension DataFileController: FilterPanelActions {
 
     func focusGrid() {
         gridModel.focus()
+    }
+
+    func openFilterSettings() {
+        WindowOpener.shared.openSettings(tab: .data)
     }
 
     func addBlankFilter(columnName: String) {

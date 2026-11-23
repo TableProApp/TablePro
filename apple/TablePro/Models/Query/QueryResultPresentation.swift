@@ -63,7 +63,7 @@ struct QueryResultInputs: Equatable {
     var executionRowsAffected = 0
     var executionTime: TimeInterval?
     var executionStatusMessage: String?
-    var hasAppliedFilters = false
+    var isFiltering = false
     var isFilterPanelVisible = false
 }
 
@@ -172,7 +172,7 @@ struct QueryResultPresentation: Equatable {
     // A filtered table that filtered everything away keeps the grid: the filter chrome is how the reader gets rows back.
     private static func resolveEmptyRows(_ inputs: QueryResultInputs) -> QueryResultContent? {
         guard inputs.tabType == .query else { return nil }
-        guard inputs.loadedRowCount == 0, !inputs.hasAppliedFilters else { return nil }
+        guard inputs.loadedRowCount == 0, !inputs.isFiltering else { return nil }
         return .noRows(executionTime: inputs.activeResultExecutionTime ?? inputs.executionTime)
     }
 

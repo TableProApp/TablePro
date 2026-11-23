@@ -279,9 +279,8 @@ internal struct ShareTableView: Equatable, Sendable {
 
     @MainActor
     init(_ tab: QueryTab, search: BrowseSearchState?) {
-        let rerun = tab.filterState.rerunFilters
-        filters = rerun.filters
-        logicMode = rerun.logicMode
+        filters = tab.filterState.applied?.filters ?? []
+        logicMode = tab.filterState.applied?.logicMode ?? .and
         self.search = search
         sort = tab.sortState.columns
     }

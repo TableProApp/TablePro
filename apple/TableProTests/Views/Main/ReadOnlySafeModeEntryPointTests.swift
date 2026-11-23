@@ -205,9 +205,7 @@ struct ReadOnlySafeModeEntryPointTests {
         )
         let filter = TableFilter.rawCondition("purge_orders() IS NULL")
         tab.filterState.filters = [filter]
-        tab.filterState.commit = .all
-        tab.filterState.executedFilters = [filter]
-        tab.filterState.executedLogicMode = .and
+        tab.filterState.applied = .checkedRows(of: [filter], logicMode: .and)
         return tab
     }
 

@@ -7,10 +7,11 @@ struct FilterPanelView: View {
     let actions: any FilterPanelActions
 
     @State private var showSQLSheet = false
-    @State private var showSettingsPopover = false
     @State private var generatedSQL = ""
     @State private var showSavePresetAlert = false
     @State private var newPresetName = ""
+    @State private var showRemoveAllConfirmation = false
+    @State private var presetError: String?
     @State private var focusedFilterId: UUID?
 
     private let maxFilterListHeight: CGFloat = 200
@@ -47,6 +48,25 @@ struct FilterPanelView: View {
                 SQLPreviewSheet(sql: generatedSQL, databaseType: sqlPreview.filterPreviewDatabaseType)
             }
         }
+        .confirmationDialog(
+            String(localized: "Remove all filters?"),
+            isPresented: $showRemoveAllConfirmation
+        ) {
+            Button(String(localized: "Remove All"), role: .destructive) {
+                actions.removeAllFilters()
+                actions.focusGrid()
+            }
+        } message: {
+            Text("Every filter row for this table is deleted, and the table shows all rows.")
+        }
+        .alert(
+            String(localized: "Could Not Save Presets"),
+            isPresented: Binding(get: { presetError != nil }, set: { if !$0 { presetError = nil } })
+        ) {
+            Button(String(localized: "OK"), role: .cancel) {}
+        } message: {
+            Text(presetError ?? "")
+        }
     }
 
     private var filterHeader: some View {
@@ -61,8 +81,8 @@ struct FilterPanelView: View {
                     state: TristateCheckbox.State(allEnabled: state.allEnabledState),
                     action: toggleAllFiltersEnabled
                 )
-                .help(String(localized: "Enable or disable all filters"))
-                .accessibilityLabel(String(localized: "Enable or disable all filters"))
+                .help(String(localized: "Check or uncheck all filters"))
+                .accessibilityLabel(String(localized: "Check or uncheck all filters"))
             }
 
             Text("Filters")
@@ -80,25 +100,35 @@ struct FilterPanelView: View {
                 .help(String(localized: "Match all filters or any filter"))
             }
 
-            Spacer()
+            Spacer(minLength: FilterRowView.spacing)
+
+            if let statusText {
+                Text(statusText)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .accessibilityIdentifier("filter-status")
+            }
 
             filterOptionsMenu
 
-            Button("Clear") {
-                actions.clearAppliedFiltersAndReload()
+            Button("Turn Off") {
+                actions.turnOffFilters()
                 actions.focusGrid()
             }
             .buttonStyle(.bordered)
-            .disabled(!state.hasAppliedFilters)
-            .help(String(localized: "Clear applied filters without removing filter rows"))
+            .disabled(!state.isFiltering)
+            .help(String(localized: "Show every row again. The filters stay here."))
 
             Button("Apply") {
-                applyAllValidFilters()
+                actions.applyCheckedFilters()
+                actions.focusGrid()
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.return, modifiers: .command)
-            .disabled(enabledValidFilterCount == 0 && !state.hasAppliedFilters)
-            .help(String(localized: "Apply active filters (Cmd+Return)"))
+            .disabled(!state.canApplyCheckedRows)
+            .help(String(localized: "Apply all checked filters (⌘↩)"))
         }
         .controlSize(.small)
         .padding(.horizontal, FilterRowView.horizontalInset)
@@ -114,6 +144,15 @@ struct FilterPanelView: View {
             }
         } message: {
             Text("Enter a name for this filter preset")
+        }
+    }
+
+    private var statusText: String? {
+        switch state.status {
+        case .notApplied: String(localized: "Not applied")
+        case .changesNotApplied: String(localized: "Changes not applied")
+        case .appliedAlone: String(localized: "Only one filter applied")
+        case .applied, .empty: nil
         }
     }
 
@@ -138,17 +177,16 @@ struct FilterPanelView: View {
             }
 
             Button(role: .destructive) {
-                actions.removeAllFiltersAndReload()
-                actions.focusGrid()
+                showRemoveAllConfirmation = true
             } label: {
-                Label(String(localized: "Remove All Filters"), systemImage: "xmark.circle")
+                Label(String(localized: "Remove All Filters…"), systemImage: "trash")
             }
             .disabled(state.filters.isEmpty)
 
             Divider()
 
             Button {
-                showSettingsPopover.toggle()
+                actions.openFilterSettings()
             } label: {
                 Label(String(localized: "Filter Settings…"), systemImage: "gearshape")
             }
@@ -158,11 +196,9 @@ struct FilterPanelView: View {
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
+        .fixedSize()
         .foregroundStyle(.secondary)
         .help(String(localized: "Filter options"))
-        .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {
-            FilterSettingsPopover()
-        }
     }
 
     @ViewBuilder
@@ -196,7 +232,7 @@ struct FilterPanelView: View {
             Menu("Delete Preset") {
                 ForEach(presets) { preset in
                     Button(preset.name, role: .destructive) {
-                        presetStore.deletePreset(preset)
+                        writePresets { try presetStore.deletePreset(preset) }
                     }
                 }
             }
@@ -218,13 +254,24 @@ struct FilterPanelView: View {
                     offersRawFilter: configuration.offersRawFilter,
                     rawFilterLabel: configuration.rawFilterLabel,
                     reservesElementScope: reservesElementScope,
+                    isAppliedAlone: state.aloneFilterID == filter.id,
                     onAdd: {
-                        focusedFilterId = addDefaultFilter(columns: configuration.columns)
+                        focusedFilterId = addDefaultFilter(columns: configuration.columns, after: filter.id)
                     },
                     onDuplicate: { duplicateFilter(filter) },
                     onRemove: { removeFilter(filter) },
-                    onApply: { applySoloFilter(filter) },
-                    onSubmit: { applyAllValidFilters() },
+                    onApplyAlone: {
+                        actions.applyFilterAlone(filter.id)
+                        actions.focusGrid()
+                    },
+                    onApplyChecked: {
+                        actions.applyCheckedFilters()
+                        actions.focusGrid()
+                    },
+                    onSubmit: {
+                        actions.applyFiltersInCurrentMode()
+                        actions.focusGrid()
+                    },
                     onCancel: { closePanelAndFocusGrid() },
                     isReorderEnabled: state.filters.count > 1,
                     canMoveUp: state.canMoveFilter(filter.id, direction: .up),
@@ -263,10 +310,6 @@ struct FilterPanelView: View {
         }
     }
 
-    private var enabledValidFilterCount: Int {
-        state.filters.count { $0.isEnabled && $0.isValid }
-    }
-
     private var completionItems: [String] {
         configuration.columns + configuration.valueCompletionKeywords
     }
@@ -283,12 +326,13 @@ struct FilterPanelView: View {
         )
     }
 
-    private func addDefaultFilter(columns: [String]) -> UUID {
+    private func addDefaultFilter(columns: [String], after anchorID: UUID? = nil) -> UUID {
         state.addFilter(
             settings: FilterSettingsStorage.shared.loadSettings(),
             columns: columns,
             primaryKeyColumn: configuration.primaryKeyColumn,
-            offersRawFilter: configuration.offersRawFilter
+            offersRawFilter: configuration.offersRawFilter,
+            after: anchorID
         )
     }
 
@@ -304,19 +348,27 @@ struct FilterPanelView: View {
         state.setAllFiltersEnabled(isEnabled)
     }
 
+    // The last row closes the bar, so focus goes back to the grid with it.
     private func removeFilter(_ filter: TableFilter) {
-        var next = state
-        let outcome = next.removeFilter(filter)
-        state = next
-        actions.reload(after: outcome)
-        guard next.filters.isEmpty else { return }
-        actions.closeFilterPanel()
-        actions.focusGrid()
+        let removesLastRow = state.filters.count == 1
+        actions.removeFilter(filter.id)
+        if removesLastRow {
+            actions.focusGrid()
+        }
     }
 
     private func savePreset(named name: String) {
         guard !name.isEmpty, let presetStore = configuration.presetStore else { return }
-        presetStore.savePreset(FilterPreset(name: name, filters: state.filters))
+        let preset = FilterPreset(name: name, filters: state.filters, logicMode: state.filterLogicMode)
+        writePresets { try presetStore.savePreset(preset) }
+    }
+
+    private func writePresets(_ write: () throws -> Void) {
+        do {
+            try write()
+        } catch {
+            presetError = error.localizedDescription
+        }
     }
 
     private func presetColumnsMatch(_ preset: FilterPreset) -> Bool {
@@ -325,16 +377,6 @@ struct FilterPanelView: View {
             if filter.isRawSQL { return configuration.offersRawFilter }
             return configuration.columns.contains(filter.columnName) || knownPaths.contains(filter.columnName)
         }
-    }
-
-    private func applyAllValidFilters() {
-        actions.applyAllFilters()
-        actions.focusGrid()
-    }
-
-    private func applySoloFilter(_ filter: TableFilter) {
-        actions.applySoloFilter(filter)
-        actions.focusGrid()
     }
 
     private func closePanelAndFocusGrid() {

@@ -73,7 +73,7 @@ struct TabRetargetSessionStateTests {
         #expect(tab.content.query.contains("customers"))
         #expect(tab.title.contains("customers"))
         #expect(tab.sortState.isSorting == false)
-        #expect(tab.filterState.hasAppliedFilters == false)
+        #expect(tab.filterState.isFiltering == false)
         #expect(tab.columnLayout.hiddenColumns.isEmpty)
     }
 

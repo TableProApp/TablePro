@@ -79,6 +79,10 @@ struct CellFilterApplyTests {
         )
     }
 
+    private func conditions(_ filters: [TableFilter]?) -> [String] {
+        (filters ?? []).map { "\($0.columnName) \($0.filterOperator.rawValue) \($0.value)" }
+    }
+
     private func clearSavedFilters(_ harness: Harness) {
         FilterSettingsStorage.shared.clearLastFilters(
             for: "orders",
@@ -110,10 +114,12 @@ struct CellFilterApplyTests {
         item.submenu?.performActionForItem(at: 0)
 
         let state = try #require(harness.tabManager.tabs.first { $0.id == harness.tabId }?.filterState)
-        #expect(state.executedFilters.map(\.columnName) == ["status"])
-        #expect(state.executedFilters.map(\.filterOperator) == [.equal])
-        #expect(state.executedFilters.map(\.value) == ["paid"])
-        #expect(state.appliedFilters.map(\.id) == state.executedFilters.map(\.id))
+        let applied = try #require(state.applied)
+        #expect(applied.filters.map(\.columnName) == ["status"])
+        #expect(applied.filters.map(\.filterOperator) == [.equal])
+        #expect(applied.filters.map(\.value) == ["paid"])
+        #expect(state.filters.map(\.id) == applied.filters.map(\.id))
+        #expect(state.status == .applied)
         #expect(state.isVisible)
     }
 
@@ -131,10 +137,36 @@ struct CellFilterApplyTests {
             .submenu?.performActionForItem(at: 2)
 
         let state = try #require(harness.tabManager.tabs.first { $0.id == harness.tabId }?.filterState)
-        #expect(state.executedFilters.map { "\($0.columnName) \($0.filterOperator.rawValue) \($0.value)" } == [
-            "status != paid", "id > 2"
-        ])
+        #expect(conditions(state.applied?.filters) == ["status != paid", "id > 2"])
+        #expect(state.applied?.logicMode == .and)
         #expect(state.filterLogicMode == .and)
+    }
+
+    @Test("A row applied alone under Match any keeps running, and a cell's condition joins it under Match all")
+    func conditionJoinsTheRowAppliedAlone() throws {
+        let harness = makeHarness()
+        defer {
+            clearSavedFilters(harness)
+            harness.coordinator.teardown()
+        }
+        let notOpen = TestFixtures.makeTableFilter(column: "status", op: .notEqual, value: "open")
+        let second = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "2")
+        harness.tabManager.mutate(tabId: harness.tabId) {
+            $0.filterState.filters = [notOpen, second]
+            $0.filterState.filterLogicMode = .or
+        }
+        harness.coordinator.filterCoordinator.applyFilterAlone(notOpen.id)
+        try #require(harness.tabManager.tabs.first { $0.id == harness.tabId }?.filterState.aloneFilterID == notOpen.id)
+
+        try #require(harness.filterMenuItem(row: 0, dataColumn: 0))
+            .submenu?.performActionForItem(at: 0)
+
+        let state = try #require(harness.tabManager.tabs.first { $0.id == harness.tabId }?.filterState)
+        #expect(conditions(state.applied?.filters) == ["status != open", "id = 1"])
+        #expect(state.applied?.logicMode == .and)
+        #expect(state.aloneFilterID == nil)
+        #expect(state.filterLogicMode == .and)
+        #expect(state.filters.map(\.isEnabled) == [true, false, true])
     }
 
     // Pretends an alert is already up, which `confirmDiscardChangesIfNeeded` answers false to once there are edits.

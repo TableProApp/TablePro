@@ -15,7 +15,7 @@ enum FilterDefaultColumn: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
-        case .rawSQL: return "Raw SQL"
+        case .rawSQL: return String(localized: "Raw SQL")
         case .primaryKey: return String(localized: "Primary Key")
         case .anyColumn: return String(localized: "Any Column")
         }

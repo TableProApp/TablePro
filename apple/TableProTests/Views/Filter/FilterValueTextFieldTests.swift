@@ -203,10 +203,7 @@ struct FilterValueTextFieldTests {
         #expect(FilterValueTextField.selection(movedBy: -1, from: 0, count: 0) == nil)
     }
 
-    /// #2927: the popup used to select its first row the moment it opened, so `Return` accepted a
-    /// suggestion the user never asked for and the filter went unapplied until they pressed
-    /// `Escape` first. Driven through the coordinator rather than a sleep, so it measures the key
-    /// handling and not the debounce.
+    // #2927: a first row selected on open took Return, so the filter went unapplied. No debounce wait here.
     @MainActor
     @Test("Return applies the filter while the list is open and unselected")
     func testReturn_appliesTheFilterWhileNothingIsSelected() throws {
@@ -255,6 +252,61 @@ struct FilterValueTextFieldTests {
         #expect(!harness.send(#selector(NSResponder.moveDown(_:))))
         #expect(harness.send(#selector(NSResponder.insertNewline(_:))))
         #expect(harness.submitted == "zzz")
+    }
+
+    @Test("Option-Command with Return or keypad Enter applies a row alone")
+    func testApplyAloneKey_optionCommandReturnOrEnter() {
+        #expect(FilterValueTextField.isApplyAloneKey(characters: "\r", modifierFlags: [.option, .command]))
+        #expect(FilterValueTextField.isApplyAloneKey(characters: "\u{3}", modifierFlags: [.option, .command, .numericPad]))
+        #expect(FilterValueTextField.isApplyAloneKey(characters: "\r", modifierFlags: [.option, .command, .capsLock]))
+        #expect(FilterValueTextField.isApplyAloneKey(characters: "\u{3}", modifierFlags: [.option, .command, .function]))
+    }
+
+    @Test("Return with any other modifiers, or another key, does not apply a row alone")
+    func testApplyAloneKey_otherChordsDoNot() {
+        let chords: [(name: String, flags: NSEvent.ModifierFlags)] = [
+            ("Command-Return", [.command]),
+            ("Shift-Command-Return", [.shift, .command]),
+            ("Option-Return", [.option]),
+            ("Option-Shift-Command-Return", [.option, .shift, .command]),
+            ("Control-Option-Command-Return", [.control, .option, .command]),
+        ]
+        for chord in chords {
+            #expect(!FilterValueTextField.isApplyAloneKey(characters: "\r", modifierFlags: chord.flags), "\(chord.name)")
+        }
+        #expect(!FilterValueTextField.isApplyAloneKey(characters: "a", modifierFlags: [.option, .command]))
+        #expect(!FilterValueTextField.isApplyAloneKey(characters: nil, modifierFlags: [.option, .command]))
+    }
+
+    @MainActor
+    @Test("Option-Command-Return in the field runs its row's Apply Only This Filter, and is not taken without one")
+    func testApplyAloneKey_reachesTheRow() throws {
+        let event = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.option, .command],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "\r",
+            charactersIgnoringModifiers: "\r",
+            isARepeat: false,
+            keyCode: 36
+        ))
+        let coordinator = FilterValueTextField(text: .constant("a"), focusedId: .constant(nil), identity: UUID())
+            .makeCoordinator()
+        #expect(!coordinator.handleKeyEquivalent(event))
+
+        let counter = ApplyAloneCounter()
+        coordinator.onApplyAlone = { counter.count += 1 }
+
+        #expect(coordinator.handleKeyEquivalent(event))
+        #expect(counter.count == 1)
+    }
+
+    @MainActor
+    private final class ApplyAloneCounter {
+        var count = 0
     }
 
     @MainActor

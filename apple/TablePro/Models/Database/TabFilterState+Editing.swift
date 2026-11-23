@@ -17,12 +17,6 @@ internal extension TabFilterState {
         let destination: Int
     }
 
-    enum RemoveFilterOutcome: Equatable {
-        case noChange
-        case clear
-        case reapply([TableFilter])
-    }
-
     static func newFilter(
         settings: FilterSettings,
         columns: [String],
@@ -43,12 +37,14 @@ internal extension TabFilterState {
         )
     }
 
+    // A row's add button puts the new row right under it, as NSRuleEditor does; without one it goes last.
     @discardableResult
     mutating func addFilter(
         settings: FilterSettings,
         columns: [String],
         primaryKeyColumn: String?,
-        offersRawFilter: Bool
+        offersRawFilter: Bool,
+        after anchorID: UUID? = nil
     ) -> UUID {
         let filter = Self.newFilter(
             settings: settings,
@@ -56,7 +52,11 @@ internal extension TabFilterState {
             primaryKeyColumn: primaryKeyColumn,
             offersRawFilter: offersRawFilter
         )
-        filters.append(filter)
+        if let anchorID, let index = filters.firstIndex(where: { $0.id == anchorID }) {
+            filters.insert(filter, at: index + 1)
+        } else {
+            filters.append(filter)
+        }
         return filter.id
     }
 
@@ -74,17 +74,20 @@ internal extension TabFilterState {
         }
     }
 
-    mutating func setReferenceFilter(_ filter: TableFilter) {
-        filters = [filter]
-        commit = .all
-        isVisible = true
-        filterLogicMode = .and
+    // The search becomes the panel's rows, so a page turn reruns it and the reader can see and edit it.
+    func searchingAllRows(term: String, columns: [String]) -> TabFilterState {
+        var next = self
+        next.filters = Self.crossColumnSearchFilters(term: term, columns: columns)
+        next.filterLogicMode = .or
+        next.applied = .checkedRows(of: next.filters, logicMode: .or)
+        next.isVisible = true
+        return next
     }
 
-    mutating func applySingleFilter(_ filter: TableFilter) {
-        guard filter.isValid else { return }
+    mutating func setReferenceFilter(_ filter: TableFilter) {
         filters = [filter]
-        commit = .all
+        filterLogicMode = .and
+        applied = .checkedRows(of: filters, logicMode: .and)
         isVisible = true
     }
 
@@ -104,50 +107,79 @@ internal extension TabFilterState {
         filters[index] = filter
     }
 
-    /// Judged against what is running rather than the draft, so a running row whose text was
-    /// erased without Apply still stops running when the reader removes it.
-    @discardableResult
-    mutating func removeFilter(_ filter: TableFilter) -> RemoveFilterOutcome {
-        let outcome = Self.removeFilterOutcome(removing: filter, from: rerunFilters.filters)
-        filters.removeAll { $0.id == filter.id }
-        if case .solo(let id) = commit, id == filter.id {
-            commit = nil
+    func applyingCheckedRows() -> TabFilterState {
+        var next = self
+        next.applied = .checkedRows(of: filters, logicMode: filterLogicMode)
+        return next
+    }
+
+    func applyingAlone(_ filterID: UUID) -> TabFilterState? {
+        guard let row = filters.first(where: { $0.id == filterID }),
+              let alone = AppliedFilters.alone(row, logicMode: filterLogicMode) else { return nil }
+        var next = self
+        next.applied = alone
+        return next
+    }
+
+    func applyingCurrentMode() -> TabFilterState {
+        var next = self
+        next.applied = applicationInCurrentMode
+        return next
+    }
+
+    func turningOff() -> TabFilterState {
+        var next = self
+        next.applied = nil
+        return next
+    }
+
+    // Removing a row stops only that row: the rest keep running as they ran, unapplied edits stay drafts.
+    // The bar closes with its last row, as it does after Remove All.
+    func removingFilter(_ filterID: UUID) -> TabFilterState {
+        var next = self
+        next.filters.removeAll { $0.id == filterID }
+        next.applied = applied?.removing(filterID)
+        if next.filters.isEmpty {
+            next.isVisible = false
         }
-        return outcome
+        return next
     }
 
-    static func removeFilterOutcome(
-        removing filter: TableFilter,
-        from appliedFilters: [TableFilter]
-    ) -> RemoveFilterOutcome {
-        guard appliedFilters.contains(where: { $0.id == filter.id }) else { return .noChange }
-        let remaining = appliedFilters.filter { $0.id != filter.id }
-        return remaining.isEmpty ? .clear : .reapply(remaining)
+    func removingAllFilters() -> TabFilterState {
+        var next = self
+        next.filters = []
+        next.applied = nil
+        next.isVisible = false
+        return next
     }
 
-    /// Whether a row in the draft or in what is running compares on one of these columns, so an edit
-    /// to them changes the filters and has to rerun them and be undoable with them.
+    mutating func clearFilters() {
+        filters = []
+        applied = nil
+    }
+
     func filtersOnAnyColumn(in names: Set<String>) -> Bool {
-        (filters + executedFilters).contains { !$0.isRawSQL && names.contains($0.columnName) }
+        (filters + (applied?.filters ?? [])).contains { !$0.isRawSQL && names.contains($0.columnName) }
     }
 
-    /// A column the rows filter on was renamed: the draft and what is running both follow it, or a
-    /// rerun would look for the old name and drop the condition.
+    // The draft and what runs both follow a renamed column, or a rerun would look for the old name.
     mutating func renameFilterColumn(from oldName: String, to newName: String) {
-        let rename = { (rows: inout [TableFilter]) in
-            for index in rows.indices where !rows[index].isRawSQL && rows[index].columnName == oldName {
-                rows[index].columnName = newName
+        let rename = { (rows: [TableFilter]) -> [TableFilter] in
+            rows.map { row in
+                guard !row.isRawSQL, row.columnName == oldName else { return row }
+                var renamed = row
+                renamed.columnName = newName
+                return renamed
             }
         }
-        rename(&filters)
-        rename(&executedFilters)
+        filters = rename(filters)
+        applied = applied?.mapFilters(rename)
     }
 
-    /// Columns were removed, so no row can filter on them any more, in the draft or what is running.
     mutating func removeFilters(onColumns names: Set<String>) {
-        let readsRemoved = { (row: TableFilter) in !row.isRawSQL && names.contains(row.columnName) }
-        filters.removeAll(where: readsRemoved)
-        executedFilters.removeAll(where: readsRemoved)
+        let keeps = { (row: TableFilter) in row.isRawSQL || !names.contains(row.columnName) }
+        filters = filters.filter(keeps)
+        applied = applied?.mapFilters { $0.filter(keeps) }
     }
 
     mutating func setAllFiltersEnabled(_ isEnabled: Bool) {
@@ -156,13 +188,11 @@ internal extension TabFilterState {
         }
     }
 
-    mutating func clearFilters() {
-        filters = []
-        commit = nil
-    }
-
     mutating func loadPreset(_ preset: FilterPreset) {
         filters = preset.filters
+        if let logicMode = preset.logicMode {
+            filterLogicMode = logicMode
+        }
     }
 
     static func filterMove(
@@ -206,28 +236,20 @@ internal extension TabFilterState {
         Self.filterMove(in: filters, moving: filterID, direction: direction) != nil
     }
 
-    /// Whether the rows on screen were already fetched with this condition, so adding it would
-    /// change nothing but the page.
+    // Adding a condition the rows were already fetched with would change nothing but the page.
     static func isRunning(_ filter: TableFilter, in state: TabFilterState) -> Bool {
-        guard state.executedFilters.contains(where: { $0.hasSameCondition(as: filter) }) else { return false }
-        return (state.executedLogicMode ?? state.filterLogicMode) == .and || state.executedFilters.count == 1
+        guard let applied = state.applied,
+              applied.filters.contains(where: { $0.hasSameCondition(as: filter) }) else { return false }
+        return applied.logicMode == .and || applied.filters.count == 1
     }
 
-    /// The filter state that shows what the grid showed, and only rows matching `filter` too.
-    ///
-    /// What the grid showed is `executedFilters`, never `appliedFilters`: rows typed and never
-    /// applied, and rows left in the panel by Clear, resolve as applied under `.all` without having
-    /// run. So a row stays checked only when it is running, every other row is unchecked rather than
-    /// removed, and the commit becomes `.all` over exactly the checked rows, which is also what the
-    /// saved state restores. A row that already holds the condition is checked instead of repeated.
-    ///
-    /// Under Match any, a condition can only be added to one running row or none, where the two
-    /// modes agree and the mode becomes Match all. With two or more running rows the condition
-    /// cannot join them, so it runs alone.
+    // What the grid showed, narrowed by `filter` too. A row stays checked only when it is running, so
+    // the checked rows are exactly what runs, which is also what the saved state restores. Under
+    // Match any, a condition can join one running row or none; with two or more it runs alone.
     static func cellFilterState(_ state: TabFilterState, adding filter: TableFilter) -> TabFilterState {
-        let executedIDs = Set(state.executedFilters.map(\.id))
-        let runningIDs = Set(state.filters.lazy.map(\.id).filter(executedIDs.contains))
-        let keepsRunningRows = (state.executedLogicMode ?? state.filterLogicMode) == .and || runningIDs.count <= 1
+        let applied = state.applied
+        let runningIDs = Set(applied?.filters.map(\.id) ?? []).intersection(state.filters.map(\.id))
+        let keepsRunningRows = applied.map { $0.logicMode == .and || $0.filters.count <= 1 } ?? true
         let keptIDs = keepsRunningRows ? runningIDs : []
         let existingID = state.filters.first { $0.hasSameCondition(as: filter) }?.id
 
@@ -245,7 +267,7 @@ internal extension TabFilterState {
         if keepsRunningRows {
             next.filterLogicMode = .and
         }
-        next.commit = .all
+        next.applied = .checkedRows(of: next.filters, logicMode: next.filterLogicMode)
         next.isVisible = true
         return next
     }
