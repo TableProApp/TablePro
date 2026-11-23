@@ -7,7 +7,8 @@ import AppKit
 
 extension DataGridViewController {
     // Builds both panes' column lists from the model. Never culls a column with isHidden: each write costs
-    // O(attached columns), and seconds at 500 columns with mounted views (probe section 5).
+    // O(attached columns), and seconds at 500 columns with mounted views (probe section 5). Leaves the header text
+    // to the caller, which refreshes it once after the sort indicators.
     func reconcileColumns(widening changedPresentations: IndexSet = []) {
         isRebuildingColumns = true
         defer { isRebuildingColumns = false }
@@ -53,7 +54,6 @@ extension DataGridViewController {
         main.forgetColumns(except: ids)
         savedWidthIDs = nextSaved
         updateFrozenPane()
-        refreshHeaders()
     }
 
     // A width saved before accessories reserved room, and never set by the user, is measured again.

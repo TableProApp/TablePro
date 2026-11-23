@@ -191,8 +191,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         viewModel = view.viewModel
 
         let activeChanged = activeDatabase != view.activeDatabase || activeSchema != view.activeSchema
+        let searchChanged = searchText != view.searchText
         let changed = connectionChanged
-            || searchText != view.searchText
+            || searchChanged
             || isConnected != view.isConnected
             || activeChanged
             || pendingTruncates != view.pendingTruncates
@@ -218,6 +219,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         }
 
         guard hasRenderedOnce, !changed else {
+            // The filter paces the next key by how long this rebuild takes.
+            if searchChanged { viewModel?.noteSearchRebuild(for: searchText) }
             hasRenderedOnce = true
             refresh()
             return

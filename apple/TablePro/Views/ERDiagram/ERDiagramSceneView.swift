@@ -118,7 +118,7 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
         return baked
     }
 
-    override var isFlipped: Bool { true }
+    override nonisolated var isFlipped: Bool { true }
 
     override var isOpaque: Bool { false }
 

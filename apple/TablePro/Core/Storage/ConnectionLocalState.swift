@@ -32,7 +32,8 @@ internal enum ConnectionLocalState {
         sqlFavorites: SQLFavoriteManager = .shared,
         queryHistory: QueryHistoryManager = .shared,
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared
+        syncTracker: SyncChangeTracker = .shared,
+        agentSessions: AgentSessionRegistry = .shared
     ) {
         guard !connectionIds.isEmpty else { return }
 
@@ -53,6 +54,7 @@ internal enum ConnectionLocalState {
             ServerDashboardTileStorage().remove(for: connectionId)
             RoutineDebugOptionStore(defaults: { [defaults] in defaults }).remove(for: connectionId)
             MCPServerStore.shared.forgetConnection(connectionId)
+            agentSessions.removeSessions(for: connectionId)
         }
         purgeTrailingPaneKeys(connectionIds, defaults: defaults)
 

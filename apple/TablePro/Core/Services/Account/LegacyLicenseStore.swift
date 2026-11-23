@@ -67,9 +67,10 @@ internal struct LegacyLicenseStore: Sendable {
         return verifiedPayload()?.licenseKey
     }
 
+    // The payload first: it lives in defaults, so a Mac without one makes no Keychain read at launch.
     func entitlement() -> LegacyEntitlement? {
-        guard !isSetAside() else { return nil }
-        return verifiedPayload().flatMap(LegacyEntitlement.init(payload:))
+        guard let payload = verifiedPayload(), !isSetAside() else { return nil }
+        return LegacyEntitlement(payload: payload)
     }
 
     // A key the server refused, or whose session was signed out: it stays stored, for Use License Key…, but grants
@@ -79,8 +80,9 @@ internal struct LegacyLicenseStore: Sendable {
         defaults.set(Self.digest(of: key), forKey: Self.setAsideKey)
     }
 
+    // The digest first, so a Mac with nothing set aside never reads the key from the Keychain.
     func isSetAside() -> Bool {
-        guard let key = licenseKey(), let digest = defaults.string(forKey: Self.setAsideKey) else { return false }
+        guard let digest = defaults.string(forKey: Self.setAsideKey), let key = licenseKey() else { return false }
         return digest == Self.digest(of: key)
     }
 

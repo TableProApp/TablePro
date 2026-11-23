@@ -263,7 +263,10 @@ internal final class WelcomeOutlineCoordinator: NSObject, NSOutlineViewDataSourc
     internal func focusList(selectFirstRow: Bool) {
         guard let outlineView, let window = outlineView.window else { return }
         window.makeFirstResponder(outlineView)
-        guard selectFirstRow, outlineView.selectedRowIndexes.isEmpty else { return }
+        guard selectFirstRow else { return }
+        // SwiftUI hands over a new revision on its next update pass, after this call has picked a row.
+        update(revision: viewModel.outlineRevision)
+        guard outlineView.selectedRowIndexes.isEmpty else { return }
         let firstSelectable = (0..<outlineView.numberOfRows).first { index in
             guard let item = outlineView.item(atRow: index) as? WelcomeOutlineItem else { return false }
             return !item.isSection

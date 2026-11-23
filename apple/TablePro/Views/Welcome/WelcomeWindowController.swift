@@ -4,27 +4,7 @@
 //
 
 import AppKit
-import SwiftUI
 import TableProConnectionLibrary
-
-@MainActor
-private final class WelcomeWindow: NSWindow {
-    override var toolbar: NSToolbar? {
-        didSet {
-            guard let toolbar else { return }
-            Self.fixAtIconOnly(toolbar)
-        }
-    }
-
-    private static func fixAtIconOnly(_ toolbar: NSToolbar) {
-        toolbar.displayMode = .iconOnly
-        toolbar.allowsUserCustomization = false
-        toolbar.autosavesConfiguration = false
-        if #available(macOS 15.0, *) {
-            toolbar.allowsDisplayModeCustomization = false
-        }
-    }
-}
 
 @MainActor
 internal final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
@@ -37,6 +17,7 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
     private static var shared: WelcomeWindowController?
 
     private let viewModel: WelcomeViewModel
+    private let toolbarController: WelcomeToolbarController
 
     internal static func present() {
         let controller = shared ?? WelcomeWindowController(viewModel: WelcomeViewModel())
@@ -50,7 +31,7 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
     }
 
     internal static func makeWelcomeWindow() -> NSWindow {
-        let window = WelcomeWindow(
+        let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: Self.contentSize),
             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
@@ -64,14 +45,15 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
         window.isRestorable = false
         window.tabbingMode = .disallowed
         window.collectionBehavior.insert([.fullScreenNone, .fullScreenDisallowsTiling])
-        window.toolbar = NSToolbar(identifier: "com.TablePro.welcome.toolbar")
-        window.toolbarStyle = .unified
         return window
     }
 
     private init(viewModel: WelcomeViewModel) {
         self.viewModel = viewModel
         let window = Self.makeWelcomeWindow()
+        let toolbarController = WelcomeToolbarController(viewModel: viewModel)
+        toolbarController.install(in: window)
+        self.toolbarController = toolbarController
         window.contentViewController = WelcomeSplitViewController(viewModel: viewModel)
         window.contentMinSize = Self.contentSize
         window.contentMaxSize = Self.contentSize
@@ -104,8 +86,7 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
 
     @objc
     internal func performFind(_ sender: Any?) {
-        let searchItem = window?.toolbar?.items.compactMap { $0 as? NSSearchToolbarItem }.first
-        searchItem?.beginSearchInteraction()
+        toolbarController.beginSearch()
     }
 
     @objc

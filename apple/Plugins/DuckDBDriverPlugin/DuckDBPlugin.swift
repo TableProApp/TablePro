@@ -1078,7 +1078,8 @@ nonisolated final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     // DuckDB reads statement text as a C string, which ends at a NUL, so each one is joined in with chr(0).
     func escapeStringLiteral(_ value: String) -> String {
-        value.unicodeScalars.split(separator: "\0", omittingEmptySubsequences: false)
+        guard value.utf8.contains(0) else { return SQLQuoting.stringLiteralBody(value) }
+        return value.unicodeScalars.split(separator: "\0", omittingEmptySubsequences: false)
             .map { SQLQuoting.stringLiteralBody(String(Substring($0))) }
             .joined(separator: "'||chr(0)||'")
     }

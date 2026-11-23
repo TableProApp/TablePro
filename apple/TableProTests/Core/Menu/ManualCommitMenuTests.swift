@@ -29,13 +29,38 @@ struct ManualCommitMenuTests {
         #expect(items[safeMode + 2].identifier == DatabaseMenuBuilder.manualCommitFootnoteIdentifier)
         #expect(items[safeMode + 2].isHidden)
         #expect(items[safeMode + 3].identifier == DatabaseMenuBuilder.manualCommitUnavailableFootnoteIdentifier)
-        #expect(items[safeMode + 3].attributedTitle?.string.replacingOccurrences(of: "\n", with: " ")
-            == ManualCommit.unavailableExplanation)
+        #expect(items[safeMode + 3].title == ManualCommit.unavailableExplanation)
         #expect(items[safeMode + 3].isHidden)
         #expect(items[safeMode + 4].title == String(localized: "Commit Transaction"))
         #expect(items[safeMode + 4].action == #selector(MainSplitViewController.commitOpenTransaction(_:)))
         #expect(items[safeMode + 5].title == String(localized: "Roll Back Transaction"))
         #expect(items[safeMode + 5].action == #selector(MainSplitViewController.rollBackOpenTransaction(_:)))
+    }
+
+    @Test("The footnotes are laid out only when validation first shows one")
+    func footnoteWrapsWhenShown() throws {
+        let items = try databaseMenu().items
+        let footnotes = items.filter { item in
+            item.identifier.map { MainSplitViewController.manualCommitFootnotes.contains($0) } ?? false
+        }
+        try #require(footnotes.count == 2)
+        #expect(footnotes.allSatisfy { $0.attributedTitle == nil })
+
+        let unavailable = DatabaseMenuBuilder.manualCommitUnavailableFootnoteIdentifier
+        MainSplitViewController.showManualCommitFootnote(unavailable, among: items)
+
+        let shown = try #require(footnotes.first { $0.identifier == unavailable })
+        let other = try #require(footnotes.first { $0.identifier != unavailable })
+        #expect(!shown.isHidden)
+        let lines = try #require(shown.attributedTitle?.string.components(separatedBy: "\n"))
+        #expect(lines.count > 1)
+        #expect(lines.joined(separator: " ") == ManualCommit.unavailableExplanation)
+        #expect(other.isHidden)
+        #expect(other.attributedTitle == nil)
+
+        MainSplitViewController.showManualCommitFootnote(nil, among: items)
+        #expect(shown.isHidden)
+        #expect(shown.attributedTitle?.string == lines.joined(separator: "\n"))
     }
 
     @Test("Commit and Roll Back Transaction are Keyboard rows with no default chord")

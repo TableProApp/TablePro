@@ -70,6 +70,16 @@ struct AccessibilityTests {
     }
 
     @Test
+    func accessibilityNumberOfCharactersCountsUTF16Units() {
+        let text = "a\u{1F600}e\u{0301}"
+        let view = TextView(string: text)
+        let count = view.accessibilityNumberOfCharacters()
+        #expect(count == (text as NSString).length)
+        #expect(count == 5)
+        #expect(view.accessibilityString(for: NSRange(location: 0, length: count)) == text)
+    }
+
+    @Test
     func accessibilityStringForRange() {
         let range = NSRange(location: 0, length: 6)
         let result = textView.accessibilityString(for: range)

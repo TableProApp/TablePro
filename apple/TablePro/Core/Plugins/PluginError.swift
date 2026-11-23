@@ -6,6 +6,7 @@ enum PluginError: LocalizedError {
     case checksumMismatch
     case incompatibleVersion(required: Int, current: Int)
     case pluginOutdated(pluginVersion: Int, requiredVersion: Int)
+    case missingArchitecture
     case cannotUninstallBuiltIn
     case notFound
     case registryUnreachable
@@ -34,6 +35,8 @@ enum PluginError: LocalizedError {
         case .pluginOutdated(let pluginVersion, let requiredVersion):
             let format = String(localized: "Plugin was built for PluginKit version %d; this release of TablePro needs version %d.")
             return String(format: format, pluginVersion, requiredVersion)
+        case .missingArchitecture:
+            return PluginBundleLoader.missingArchitectureReason
         case .cannotUninstallBuiltIn:
             return String(localized: "Built-in plugins cannot be uninstalled")
         case .notFound:

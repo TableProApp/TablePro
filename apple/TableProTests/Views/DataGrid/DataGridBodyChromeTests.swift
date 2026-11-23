@@ -235,6 +235,101 @@ struct DataGridBodyChromeTests {
         #expect(DataGridBodyChrome.stripeColor(forRow: 1, of: tableView, scope: .live) == resolved[.gridAlternateRow])
     }
 
+    // MARK: - Opaque rows
+
+    @Test("A row view with its controller and table says it is opaque, and with either missing it does not")
+    func rowViewOpacityFollowsItsDrawingPath() throws {
+        let grid = makeGrid(columns: ["id", "name"])
+        defer { grid.close() }
+        let rowView = try #require(grid.main.rowView(atRow: 0, makeIfNecessary: true) as? DataGridRowView)
+        let controller = rowView.controller
+        let table = rowView.gridTable
+        defer {
+            rowView.controller = controller
+            rowView.gridTable = table
+        }
+        #expect(rowView.isOpaque)
+
+        rowView.gridTable = nil
+        #expect(!rowView.isOpaque)
+
+        rowView.gridTable = table
+        rowView.controller = nil
+        #expect(!rowView.isOpaque)
+        #expect(!DataGridRowView(frame: .zero).isOpaque)
+    }
+
+    @Test("A row's background has full alpha in both appearances, on a translucent stripe and under a row tint")
+    func rowBackgroundIsOpaque() throws {
+        let grid = makeGrid(columns: ["id", "name"])
+        defer { grid.close() }
+        grid.main.usesAlternatingRowBackgroundColors = true
+        grid.owner.visualStates[.existing(1)] = RowVisualState(isDeleted: true, isInserted: false, modifiedColumns: [])
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = try #require(NSAppearance(named: name))
+            for row in 0..<3 {
+                let rowView = try #require(grid.main.rowView(atRow: row, makeIfNecessary: true) as? DataGridRowView)
+                let bounds = rowView.bounds
+                let rep = try bitmap(width: bounds.width, height: bounds.height)
+                try drawFlipped(into: rep, height: bounds.height, appearance: appearance) {
+                    rowView.drawBackground(in: bounds)
+                }
+                for x in [1, rep.pixelsWide / 2, rep.pixelsWide - 2] {
+                    let alpha = try #require(rep.colorAt(x: x, y: rep.pixelsHigh / 2)).alphaComponent
+                    #expect(alpha == 1, "row \(row), \(name.rawValue), x \(x)")
+                }
+            }
+        }
+    }
+
+    @Test("Even and odd rows fill the pixels of the fill they replace, also over a table background left stale")
+    func rowFillMatchesTheTwoStepFill() throws {
+        let themed = ThemeScope.fixed(try ThemeTestFixture.theme(.light, [
+            .gridBackground: "#10203080",
+            .gridAlternateRow: "#C0402060",
+        ]))
+        let table = NSTableView()
+        table.usesAlternatingRowBackgroundColors = true
+        let rect = NSRect(x: 0, y: 0, width: 4, height: 4)
+        for scope in [ThemeScope.live, themed] {
+            for name in [NSAppearance.Name.aqua, .darkAqua] {
+                let appearance = try #require(NSAppearance(named: name))
+                for isStale in [false, true] {
+                    DataGridBodyChrome.applyThemeColors(to: table, scope: scope)
+                    if isStale {
+                        table.backgroundColor = .systemRed
+                    }
+                    for row in 0..<2 {
+                        let expected = try bitmap(width: rect.width, height: rect.height)
+                        try drawFlipped(into: expected, height: rect.height, appearance: appearance) {
+                            twoStepFill(rect, row: row, of: table, scope: scope)
+                        }
+                        let drawn = try bitmap(width: rect.width, height: rect.height)
+                        try drawFlipped(into: drawn, height: rect.height, appearance: appearance) {
+                            DataGridBodyChrome.fillRowBackground(rect, row: row, of: table, scope: scope)
+                        }
+                        #expect(pixel(of: drawn) == pixel(of: expected), "row \(row), \(name.rawValue), stale \(isStale)")
+                    }
+                }
+            }
+        }
+    }
+
+    // The fill rows drew before: the table's background, then the stripe blended over it.
+    private func twoStepFill(_ rect: NSRect, row: Int, of table: NSTableView, scope: ThemeScope) {
+        table.backgroundColor.setFill()
+        rect.fill()
+        guard let stripe = DataGridBodyChrome.stripeColor(forRow: row, of: table, scope: scope) else { return }
+        stripe.setFill()
+        rect.fill(using: .sourceOver)
+    }
+
+    private func pixel(of rep: NSBitmapImageRep) -> [Int] {
+        var samples = [Int](repeating: 0, count: 4)
+        rep.getPixel(&samples, atX: rep.pixelsWide / 2, y: rep.pixelsHigh / 2)
+        return samples
+    }
+
     private func singleBlend(over background: NSColor, of row: Int, appearance: NSAppearance) -> NSColor? {
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,

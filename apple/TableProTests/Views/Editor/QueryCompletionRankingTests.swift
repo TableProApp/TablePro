@@ -112,7 +112,7 @@ struct QueryCompletionRankingTests {
         let service = MongoCompletionService(schemaProvider: nil, databaseType: .mongodb)
         let text = "db.orders.aggregate([{ $" as NSString
 
-        let session = await service.completions(in: text, at: text.length, isManualTrigger: true)
+        let session = await service.completions(in: text, at: text.length, statement: nil, isManualTrigger: true)
 
         #expect(session != nil)
         #expect((session?.candidates.count ?? 0) <= 400)
@@ -127,8 +127,8 @@ struct QueryCompletionRankingTests {
         let inComment = "/*\n" + notes + "db.ord" as NSString
         let afterComment = "/*\n" + notes + "it's done */\ndb.ord" as NSString
 
-        let silent = await service.completions(in: inComment, at: inComment.length, isManualTrigger: true)
-        let completed = await service.completions(in: afterComment, at: afterComment.length, isManualTrigger: true)
+        let silent = await service.completions(in: inComment, at: inComment.length, statement: nil, isManualTrigger: true)
+        let completed = await service.completions(in: afterComment, at: afterComment.length, statement: nil, isManualTrigger: true)
 
         #expect(silent == nil)
         #expect(completed != nil)

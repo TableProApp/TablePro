@@ -1,8 +1,3 @@
-//
-//  ConsoleRequestFormatterTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -86,7 +81,7 @@ struct ConsoleRequestFormatterTests {
         }
     }
 
-    /// Each line is one record to these endpoints, so indenting a lone document splits it into broken records.
+    // Each line is one record to these endpoints, so indenting a lone document splits it into broken records.
     @Test("A line-delimited body keeps one document per line, even when it holds only one")
     func lineDelimitedBodyIsVerbatim() throws {
         let typesenseImport = """
@@ -102,8 +97,8 @@ struct ConsoleRequestFormatterTests {
         #expect(try formatted(bulkDelete) == bulkDelete)
     }
 
-    /// Formatting a selection puts the selection's own leading and trailing whitespace back, so the
-    /// formatter returning it as well doubled it.
+    // Formatting a selection puts the selection's own leading and trailing whitespace back, so the
+    // formatter returning it as well doubled it.
     @Test("The result is trimmed like every other formatter's")
     func resultIsTrimmed() throws {
         let selection = "\nGET /a/_search\n{\"size\":1}\n"
@@ -122,13 +117,21 @@ struct ConsoleRequestFormatterTests {
         #expect(QueryFormatterFactory.make(for: .postgresql) is SQLQueryFormatter)
     }
 
-    /// The SQL formatter turned `HSET user:1` into `HSET user :1`, `put /config/name` into
-    /// `put / config / name`, and `person:tobie` into `person :tobie`: each a different command.
+    // The SQL formatter turned `HSET user:1` into `HSET user :1`, `put /config/name` into
+    // `put / config / name`, and `person:tobie` into `person :tobie`: each a different command.
     @Test("A command line or a plugin's own language is not run through the SQL formatter", arguments: [
         DatabaseType.redis, .etcd, .surrealdb, .kafka
     ])
     func commandLanguagesHaveNoFormatter(databaseType: DatabaseType) {
         #expect(QueryFormatterFactory.make(for: databaseType) == nil)
         #expect(!QueryFormatterFactory.supportsFormatting(databaseType))
+    }
+
+    @Test("Format indents a request body over half a million characters")
+    func formatsALargeBody() throws {
+        let blob = String(repeating: "a", count: 600_000)
+        let request = "POST /products/_doc\n{\"blob\":\"\(blob)\",\"size\":1}"
+
+        #expect(try formatted(request) == "POST /products/_doc\n{\n  \"blob\": \"\(blob)\",\n  \"size\": 1\n}")
     }
 }

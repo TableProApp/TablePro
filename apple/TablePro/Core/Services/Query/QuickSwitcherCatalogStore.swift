@@ -17,6 +17,11 @@ import Foundation
 /// the cross-connection catalog's own version key. Anything the key does not cover has to be
 /// signalled: favorites and query history change without the browse scope moving, so this listens
 /// for their events and bumps a per-connection revision.
+///
+/// The catalog is kept in two parts. The containers, routines, triggers and types come from the
+/// server; the favorites and history are local reads. Opening a table records history, so one
+/// version for both made the next open refetch the database and schema lists for a change that
+/// cannot touch them. Each part misses only on what it is built from.
 @MainActor
 internal final class QuickSwitcherCatalogStore {
     internal struct Version: Hashable {
@@ -36,12 +41,63 @@ internal final class QuickSwitcherCatalogStore {
         /// its catalog under the epoch it started with, so the entry it leaves behind can never be
         /// served to the reconnected session.
         internal let sessionEpoch: Int
+
+        fileprivate var containerKey: ContainerKey {
+            ContainerKey(
+                browseScope: browseScope,
+                schemaGeneration: schemaGeneration,
+                isRefreshing: isRefreshing,
+                databaseFilter: databaseFilter,
+                schemaFilter: schemaFilter,
+                containerNames: containerNames,
+                sessionEpoch: sessionEpoch
+            )
+        }
+
+        fileprivate var contentKey: ContentKey {
+            ContentKey(contentRevision: contentRevision, sessionEpoch: sessionEpoch)
+        }
+    }
+
+    fileprivate struct ContainerKey: Hashable {
+        let browseScope: DatabaseScope?
+        let schemaGeneration: Int
+        let isRefreshing: Bool
+        let databaseFilter: [String]
+        let schemaFilter: [String]
+        let containerNames: [String]
+        let sessionEpoch: Int
+    }
+
+    fileprivate struct ContentKey: Hashable {
+        let contentRevision: Int
+        let sessionEpoch: Int
+    }
+
+    private struct Part<Key: Hashable> {
+        var items: [UUID: [QuickSwitcherItem]] = [:]
+        var keys: [UUID: Key] = [:]
+
+        func items(for connectionId: UUID, key: Key) -> [QuickSwitcherItem]? {
+            guard keys[connectionId] == key else { return nil }
+            return items[connectionId]
+        }
+
+        mutating func store(_ catalog: [QuickSwitcherItem], for connectionId: UUID, key: Key) {
+            items[connectionId] = catalog
+            keys[connectionId] = key
+        }
+
+        mutating func remove(_ connectionId: UUID) {
+            items.removeValue(forKey: connectionId)
+            keys.removeValue(forKey: connectionId)
+        }
     }
 
     internal static let shared = QuickSwitcherCatalogStore()
 
-    private var items: [UUID: [QuickSwitcherItem]] = [:]
-    private var versions: [UUID: Version] = [:]
+    private var containers = Part<ContainerKey>()
+    private var content = Part<ContentKey>()
     private var contentRevisions: [UUID: Int] = [:]
     private var sessionEpochs: [UUID: Int] = [:]
     private var cancellables: Set<AnyCancellable> = []
@@ -70,7 +126,7 @@ internal final class QuickSwitcherCatalogStore {
 
     private func bumpContentRevision(for connectionId: UUID?) {
         guard let connectionId else {
-            let known = Set(contentRevisions.keys).union(versions.keys)
+            let known = Set(contentRevisions.keys).union(containers.keys.keys).union(content.keys.keys)
             for key in known {
                 contentRevisions[key, default: 0] &+= 1
             }
@@ -87,31 +143,42 @@ internal final class QuickSwitcherCatalogStore {
         sessionEpochs[connectionId] ?? 0
     }
 
-    /// Nil whenever the catalog has to be rebuilt, so a caller that gets a value can skip the
-    /// fetches entirely rather than racing them.
-    internal func catalog(for connectionId: UUID, version: Version) -> [QuickSwitcherItem]? {
-        guard versions[connectionId] == version else { return nil }
-        return items[connectionId]
+    /// The databases, schemas, routines, triggers and types, or nil when they have to be fetched
+    /// again, so a caller that gets a value can skip the fetches entirely rather than racing them.
+    internal func containers(for connectionId: UUID, version: Version) -> [QuickSwitcherItem]? {
+        containers.items(for: connectionId, key: version.containerKey)
+    }
+
+    /// The saved queries and history, or nil when they have to be read again.
+    internal func content(for connectionId: UUID, version: Version) -> [QuickSwitcherItem]? {
+        content.items(for: connectionId, key: version.contentKey)
     }
 
     /// The panel keeps no tables here. They change without any of the version's inputs moving, a
     /// schema listed after the panel opened or a tab opened since, so it merges them in live. Open
     /// state is stripped all the same, so nothing stored can badge a tab the user has closed.
-    internal func store(_ catalog: [QuickSwitcherItem], for connectionId: UUID, version: Version) {
-        items[connectionId] = catalog.map { item in
+    internal func storeContainers(_ catalog: [QuickSwitcherItem], for connectionId: UUID, version: Version) {
+        containers.store(Self.closed(catalog), for: connectionId, key: version.containerKey)
+    }
+
+    internal func storeContent(_ catalog: [QuickSwitcherItem], for connectionId: UUID, version: Version) {
+        content.store(Self.closed(catalog), for: connectionId, key: version.contentKey)
+    }
+
+    private static func closed(_ catalog: [QuickSwitcherItem]) -> [QuickSwitcherItem] {
+        catalog.map { item in
             var stored = item
             stored.isOpenInTab = false
             return stored
         }
-        versions[connectionId] = version
     }
 
     /// The epoch deliberately survives removal. Disconnecting resets the schema generation and the
     /// content revision, so a reconnected session recomputes the same version it had before, and a
     /// catalog written by a load that outlived the disconnect would be served as if it were fresh.
     internal func removeConnection(_ connectionId: UUID) {
-        items.removeValue(forKey: connectionId)
-        versions.removeValue(forKey: connectionId)
+        containers.remove(connectionId)
+        content.remove(connectionId)
         contentRevisions.removeValue(forKey: connectionId)
         sessionEpochs[connectionId, default: 0] &+= 1
     }

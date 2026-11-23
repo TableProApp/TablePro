@@ -35,6 +35,7 @@ final class SQLCompletionService: QueryCompletionService {
     }
 
     var triggerCharacters: Set<String> { [".", " ", ":", "(", ","] }
+    var statementGrammar: SQLLexicalGrammar? { grammar }
 
     // Read per request, so a changed setting applies to the next keystroke rather than the next connection.
     private var keywordCase: SQLKeywordCase { AppSettingsManager.shared.editor.keywordCase }
@@ -63,9 +64,14 @@ final class SQLCompletionService: QueryCompletionService {
         )
     }
 
-    func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession? {
+    func completions(
+        in text: NSString,
+        at offset: Int,
+        statement: QueryStatementHint?,
+        isManualTrigger: Bool
+    ) async -> QueryCompletionSession? {
         guard !SQLCompletionTriggerPolicy.suppressesAfterStatementBreak(in: text, at: offset),
-              let window = await SQLCompletionWindow.cut(text as String, around: offset, grammar: grammar),
+              let window = await cut(text, around: offset, statement: statement),
               let result = await engine.getCompletions(
                   text: window.text,
                   cursorPosition: offset - window.start,
@@ -88,5 +94,13 @@ final class SQLCompletionService: QueryCompletionService {
             quotedName: context.quotedName,
             candidatesTruncated: result.candidatesTruncated
         )
+    }
+
+    // A statement split with another grammar can end somewhere else, so only a matching one skips the scan.
+    private func cut(_ text: NSString, around offset: Int, statement: QueryStatementHint?) async -> (text: String, start: Int)? {
+        guard let statement, statement.grammar == grammar else {
+            return await SQLCompletionWindow.cut(text as String, around: offset, grammar: grammar)
+        }
+        return await SQLCompletionWindow.cut(text as String, around: offset, statement: statement.range, grammar: grammar)
     }
 }

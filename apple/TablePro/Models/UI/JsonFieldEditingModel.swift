@@ -1,30 +1,12 @@
-//
-//  JsonFieldEditingModel.swift
-//  TablePro
-//
-
 import Foundation
 
-/// The editing model behind the row inspector's JSON field: what the editor shows, and when that
-/// text and the stored value have to be reconciled.
-///
-/// It lives outside the view because the defect it exists to prevent is a fixpoint between two
-/// mirrors of one value, and a fixpoint is only testable if it can be driven without a window.
-///
-/// The rule is ``lastSynced``: the editor's text and the stored value are known to agree at that
-/// string, so a value arriving from the store that still means the same thing is this editor's own
-/// write coming back and is ignored. A value stored on one line is staged compacted, so the two agree
-/// in meaning rather than in bytes, and a comparison against the editor's displayed text cannot tell
-/// an echo from an external change on its own.
-///
-/// Adopting an echo is what let a keystroke be overwritten by the value it had just replaced, and
-/// then pushed back, forever: one keystroke produced 6,944 body evaluations in 30 seconds at 100%
-/// CPU, and the typed character was discarded (#3051).
+// The inspector JSON field's text and the stored value are two mirrors of one value. They agree at `lastSynced`, so
+// a value from the store that still means the same thing is this editor's own write coming back and is ignored.
+// Adopting that echo overwrote a keystroke with the value it replaced and pushed it back, forever (#3051).
 internal struct JsonFieldEditingModel: Equatable, Sendable {
     private(set) var displayText: String
 
-    /// The last text the editor published, in display form. Never the stored form, which has been
-    /// through `JsonReindenter.normalize` and would compare unequal to everything the editor holds.
+    // In display form: the stored form went through `JsonReindenter.normalize` and never equals what the editor holds.
     private var lastSynced: String
 
     internal init(storedValue: String) {
@@ -33,28 +15,27 @@ internal struct JsonFieldEditingModel: Equatable, Sendable {
         self.lastSynced = opening
     }
 
-    /// The user typed. Returns the value to write into the field's binding, or nil when the text
-    /// already agrees with the store and writing it would only start another round.
+    // Nil when the text already agrees with the store and writing it would only start another round.
     internal mutating func typed(_ text: String) -> String? {
         displayText = text
-        guard text != lastSynced else { return nil }
+        guard !Self.isLiterallyEqual(text, lastSynced) else { return nil }
         lastSynced = text
         return text
     }
 
-    /// The field's binding delivered a value. Returns whether the editor adopted it.
-    ///
-    /// Anything that still means what ``lastSynced`` means is this editor's own write coming back,
-    /// compacted by `MultiRowEditState` or dropped by it because the value matched the stored one
-    /// again. Everything else is a real external change: Set NULL, Set DEFAULT, Set EMPTY, an SQL
-    /// function, or a commit from the pop-out value window.
-    ///
-    /// `JsonReindenter.normalize` returns its source unchanged when the document does not parse, so
-    /// a half-typed value is compared exactly rather than reported equal to something else.
+    // Whether the editor adopted the value. One that normalizes to `lastSynced` is an echo, compacted or dropped by
+    // `MultiRowEditState`; anything else is external: Set NULL, Set DEFAULT, Set EMPTY, an SQL function, the value window.
+    // `normalize` returns invalid JSON unchanged, so a half-typed value compares exactly.
     internal mutating func received(_ value: String) -> Bool {
-        guard JsonReindenter.normalize(value) != JsonReindenter.normalize(lastSynced) else { return false }
+        guard !Self.isLiterallyEqual(value, lastSynced),
+              JsonReindenter.normalize(value) != JsonReindenter.normalize(lastSynced) else { return false }
         displayText = JsonReindenter.reindent(value)
         lastSynced = displayText
         return true
+    }
+
+    // String's == walks a bridged multi-megabyte text through Unicode normalization; the editor's text is bridged.
+    private static func isLiterallyEqual(_ lhs: String, _ rhs: String) -> Bool {
+        (lhs as NSString).isEqual(to: rhs)
     }
 }
