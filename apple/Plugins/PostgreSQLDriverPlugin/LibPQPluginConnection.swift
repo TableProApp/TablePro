@@ -1419,12 +1419,18 @@ final class LibPQPluginConnection: @unchecked Sendable {
             break
         }
 
+        // Drained with no cancel sent, an error past the cap is the statement's own: inside the user's block it aborted
+        // the block, and a truncated success would leave a later COMMIT to roll back what looked done.
+        var drainFailure: LibPQPluginError?
         let outcome = truncated
-            ? cancelAndDrain(conn, suppressCancel: suppressCancel)
+            ? cancelAndDrain(conn, suppressCancel: suppressCancel, inspecting: { result in
+                guard suppressCancel, drainFailure == nil, PQresultStatus(result) == PGRES_FATAL_ERROR else { return }
+                drainFailure = getResultError(from: result)
+            })
             : finishPendingResults(conn, cancellingOutput: cancelsOutput)
         recordTransactionState(of: conn)
 
-        if let failedStatement {
+        if let failedStatement = failedStatement ?? drainFailure {
             if cancellationGate.isCancelled(generation) { throw CancellationError() }
             throw lostConnection(failedStatement, on: conn, sent: true)
         }
@@ -1659,8 +1665,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
         !suppressServerSideCancel && PQtransactionStatus(conn) != PQTRANS_INTRANS
     }
 
-    private func finishPendingResults(_ conn: OpaquePointer, cancellingOutput: Bool) -> LibPQDrainOutcome {
-        let outcome = LibPQCopyState.finishPendingResults(conn, cancellingOutput: cancellingOutput)
+    private func finishPendingResults(
+        _ conn: OpaquePointer,
+        cancellingOutput: Bool,
+        inspecting inspect: (OpaquePointer) -> Void = { _ in }
+    ) -> LibPQDrainOutcome {
+        let outcome = LibPQCopyState.finishPendingResults(conn, cancellingOutput: cancellingOutput, inspecting: inspect)
         guard let stuck = outcome.stuckInCopy else { return outcome }
         Self.logger.fault(
             "libpq stayed in \(String(describing: stuck.direction), privacy: .public); dropping the connection"
@@ -1672,7 +1682,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Streaming Query
 
-    private func cancelAndDrain(_ conn: OpaquePointer, suppressCancel: Bool) -> LibPQDrainOutcome {
+    private func cancelAndDrain(
+        _ conn: OpaquePointer,
+        suppressCancel: Bool,
+        inspecting inspect: (OpaquePointer) -> Void = { _ in }
+    ) -> LibPQDrainOutcome {
         if !suppressCancel {
             let cancelObj = PQgetCancel(conn)
             if let cancelObj {
@@ -1681,7 +1695,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 PQfreeCancel(cancelObj)
             }
         }
-        return finishPendingResults(conn, cancellingOutput: false)
+        return finishPendingResults(conn, cancellingOutput: false, inspecting: inspect)
     }
 
     // The abort is polled by the producer rather than acted on from `onTermination`, because both

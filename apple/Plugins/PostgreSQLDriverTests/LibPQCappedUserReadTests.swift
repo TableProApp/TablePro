@@ -111,6 +111,24 @@ struct LibPQCappedUserReadTests {
         #expect(await driver.sessionTransactionState() == .inTransaction)
     }
 
+    @Test("Inside the user's block an error past the cap fails the capped read instead of reporting the kept rows")
+    func insideBlockErrorPastTheCapFails() async throws {
+        let failure = LibPQScriptedServer.Failure(sqlState: "22012", message: "division by zero")
+        let server = try Self.server(answering: [
+            Self.events: .init(columns: Self.columns, rows: Self.rows(50), failureAfterRows: failure),
+        ])
+        defer { server.close() }
+        server.start()
+        let driver = try await Self.connectedDriver(to: server)
+        defer { driver.disconnect() }
+
+        _ = try await driver.execute(query: "BEGIN")
+        await #expect(throws: (any Error).self) {
+            _ = try await driver.executeUserQuery(query: Self.events, rowCap: 3, parameters: [.text("0")])
+        }
+        #expect(server.cancelRequests == 0)
+    }
+
     @Test("Without a server cancel a capped read with parameters is drained and keeps the cap")
     func suppressedCancelDrains() async throws {
         let server = try Self.server(answering: [Self.events: .init(columns: Self.columns, rows: Self.rows(50))])
