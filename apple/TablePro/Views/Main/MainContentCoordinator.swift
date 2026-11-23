@@ -836,11 +836,16 @@ final class MainContentCoordinator: ObservableObject {
     // Never from `onDisappear`: a workspace switch unparents panes the connection comes back to. Releases synchronously, not via deinit.
     // `endsTabSession` is false when only the session went: the workspace stays and reconnects into the same tab set.
     func teardown(endsTabSession: Bool = true) {
+        // Once: a window close tears the coordinator down and then its workspace, and the provider hold is refcounted.
+        let alreadyTornDown = _didTeardown.withLock { done in
+            defer { done = true }
+            return done
+        }
+        guard !alreadyTornDown else { return }
         let start = Date()
         Self.lifecycleLogger.info(
             "[close] MainContentCoordinator.teardown start connId=\(self.connection.id, privacy: .public) tabs=\(self.tabManager.tabs.count) windowId=\(self.windowId?.uuidString ?? "nil", privacy: .public)"
         )
-        _didTeardown.withLock { $0 = true }
 
         sheetWork.stopAll()
         unregisterFromPersistence()
