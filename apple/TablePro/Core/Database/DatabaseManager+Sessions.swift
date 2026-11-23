@@ -164,7 +164,7 @@ extension DatabaseManager {
             )
             dialedConnections[connection.id] = routedConnection
             session.commitMode = session.connection.commitMode
-            session.driver = driver
+            session.install(driver)
             session.status = driver.status
             session.effectiveConnection = effectiveConnection
             session.connectionWarning = openingWarning(driver: driver, startupFailures: startupFailures, for: connection.id)

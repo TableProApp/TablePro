@@ -34,8 +34,8 @@ extension AIChatViewModel {
     struct ResolvedToolApprovals {
         let blocks: [ToolUseBlock]
         let explicitlyApproved: Set<String>
-        // The scope each card named, by call id; an approved call runs there.
-        var shownScopes: [String: DatabaseScope] = [:]
+        // The target each card named, by call id; an approved call runs there.
+        var shownTargets: [String: ChatRunTarget] = [:]
     }
 
     // Resolved when the card is drawn, with only the parts execution honors, so the card names where the call runs. A
@@ -45,7 +45,7 @@ extension AIChatViewModel {
         for block: ToolUseBlock,
         initial: ToolApprovalState,
         registry: ChatToolRegistry? = nil
-    ) -> (state: ToolApprovalState, shownScope: DatabaseScope?) {
+    ) -> (state: ToolApprovalState, shown: ChatRunTarget?) {
         guard case .pending = initial, let connectionId = connection?.id,
               (registry ?? ChatToolRegistry.shared).runsInScope(toolName: block.name)
         else { return (initial, nil) }
@@ -57,7 +57,8 @@ extension AIChatViewModel {
                 runsStatements: true,
                 manager: services.databaseManager
             )
-            return (initial, scope)
+            let generation = services.databaseManager.session(for: connectionId)?.driverGeneration
+            return (initial, ChatRunTarget(scope: scope, driverGeneration: generation))
         } catch {
             return (.denied(reason: error.localizedDescription), nil)
         }
@@ -68,9 +69,9 @@ extension AIChatViewModel {
         assistantID: UUID,
         registry: ChatToolRegistry? = nil
     ) async -> ResolvedToolApprovals {
-        let (initialBlocks, shownScopes) = await MainActor.run { [weak self] () -> ([ToolUseBlock], [String: DatabaseScope]) in
+        let (initialBlocks, shownTargets) = await MainActor.run { [weak self] () -> ([ToolUseBlock], [String: ChatRunTarget]) in
             guard let self else { return (assembledBlocks, [:]) }
-            var shownScopes: [String: DatabaseScope] = [:]
+            var shownTargets: [String: ChatRunTarget] = [:]
             let initial = assembledBlocks.map { block -> ToolUseBlock in
                 var state: ToolApprovalState
                 if case .denied = block.approvalState {
@@ -80,7 +81,7 @@ extension AIChatViewModel {
                 }
                 let card = self.cardState(for: block, initial: state, registry: registry)
                 state = card.state
-                shownScopes[block.id] = card.shownScope
+                shownTargets[block.id] = card.shown
                 return ToolUseBlock(
                     id: block.id,
                     name: block.name,
@@ -96,10 +97,10 @@ extension AIChatViewModel {
             ToolApprovalCenter.shared.expect(
                 sessionId: self.sessionId,
                 toolUseIds: waiting.map(\.id),
-                shownScopes: shownScopes
+                shownScopes: shownTargets.mapValues(\.scope)
             )
             self.appendPendingToolUseBlocks(initial, assistantID: assistantID)
-            return (initial, shownScopes)
+            return (initial, shownTargets)
         }
         let sessionId = await MainActor.run { self.sessionId }
         defer {
@@ -150,7 +151,7 @@ extension AIChatViewModel {
         return ResolvedToolApprovals(
             blocks: resolved,
             explicitlyApproved: explicitlyApproved,
-            shownScopes: shownScopes.filter { explicitlyApproved.contains($0.key) }
+            shownTargets: shownTargets.filter { explicitlyApproved.contains($0.key) }
         )
     }
 
@@ -311,7 +312,7 @@ extension AIChatViewModel {
     ) async {
         let card = cardState(for: block, initial: computeInitialApprovalState(for: block.name))
         let initialState = card.state
-        let shown = card.shownScope
+        let shown = card.shown
         let pendingBlock = ToolUseBlock(
             id: block.id,
             name: block.name,
@@ -323,7 +324,7 @@ extension AIChatViewModel {
             ToolApprovalCenter.shared.expect(
                 sessionId: sessionId,
                 toolUseIds: [block.id],
-                shownScopes: shown.map { [block.id: $0] } ?? [:]
+                shownScopes: shown.map { [block.id: $0.scope] } ?? [:]
             )
         }
         appendPendingToolUseBlocks([pendingBlock], assistantID: assistantID)
@@ -355,7 +356,7 @@ extension AIChatViewModel {
         }
         let callContext = context.carrying(
             approvalWasExplicit: approvalWasExplicit,
-            shownScope: approvalWasExplicit ? shown : nil
+            shownTarget: approvalWasExplicit ? shown : nil
         )
 
         let scope = ChatToolScope(sessionId: sessionId, connectionId: connection?.id, mode: mode)

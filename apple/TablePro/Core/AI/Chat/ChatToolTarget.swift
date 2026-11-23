@@ -92,24 +92,30 @@ internal enum ChatToolTarget {
 
 extension ChatToolTarget {
     // A call the user approved on its card runs where the card said, so a database or schema switch made before the
-    // click cannot move it.
-    internal static func runScope(
+    // click cannot move it, and a reconnect since the card refuses it.
+    internal static func runTarget(
         context: ChatToolContext,
         connectionId: UUID,
         database: String?,
         schema: String?
-    ) async throws -> DatabaseScope {
-        guard let shown = context.shownScope else {
-            return try await context.bridge.resolveStatementScope(connectionId: connectionId, database: database, schema: schema)
+    ) async throws -> ChatRunTarget {
+        guard let shown = context.shownTarget else {
+            let scope = try await context.bridge.resolveStatementScope(
+                connectionId: connectionId, database: database, schema: schema
+            )
+            return ChatRunTarget(scope: scope, driverGeneration: await context.bridge.driverGeneration(of: connectionId))
         }
-        guard shown.connectionId == connectionId else { throw ChatToolTargetError.outsideSession }
+        guard shown.scope.connectionId == connectionId else { throw ChatToolTargetError.outsideSession }
         let scope = try await context.bridge.resolveStatementScope(
             connectionId: connectionId,
-            database: shown.database,
-            schema: shown.schema
+            database: shown.scope.database,
+            schema: shown.scope.schema
         )
-        guard scope == shown else { throw ChatToolTargetError.targetMoved }
-        return scope
+        guard scope == shown.scope else { throw ChatToolTargetError.targetMoved }
+        guard await context.bridge.driverGeneration(of: connectionId) == shown.driverGeneration else {
+            throw DatabaseAccessBridge.connectionChanged
+        }
+        return shown
     }
 }
 

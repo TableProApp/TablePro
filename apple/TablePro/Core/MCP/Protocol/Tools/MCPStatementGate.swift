@@ -81,6 +81,7 @@ enum MCPStatementGate {
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> ApprovedOperation {
+        let generation = await services.connectionBridge.driverGeneration(of: scope.connectionId)
         let pending = pendingOperation(
             statements,
             kind: kind,
@@ -88,6 +89,7 @@ enum MCPStatementGate {
             gradedSQL: gradedSQL,
             displayStatements: displayStatements,
             scope: scope,
+            driverGeneration: generation,
             meta: meta,
             allowsDestructive: allowsDestructive,
             allowsMultiStatement: allowsMultiStatement,
@@ -120,6 +122,7 @@ enum MCPStatementGate {
         gradedSQL: String? = nil,
         displayStatements: [String]? = nil,
         scope: DatabaseScope,
+        driverGeneration: UUID?,
         meta: ToolConnectionMetadata,
         allowsDestructive: Bool,
         allowsMultiStatement: Bool = false,
@@ -140,6 +143,7 @@ enum MCPStatementGate {
         }
         return PendingOperation(
             scope: scope,
+            driverGeneration: driverGeneration,
             databaseType: meta.databaseType,
             statements: statements,
             kind: kind,

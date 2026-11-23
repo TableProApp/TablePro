@@ -40,7 +40,10 @@ struct ChatToolShownScopeTests {
             chatMode: .agent,
             sessionId: UUID(),
             approvalWasExplicit: true,
-            shownScope: shown,
+            shownTarget: ChatRunTarget(
+                scope: shown,
+                driverGeneration: DatabaseManager.shared.session(for: shown.connectionId)?.driverGeneration
+            ),
             policyLookup: { _ in .alwaysAllow }
         )
     }
@@ -90,6 +93,24 @@ struct ChatToolShownScopeTests {
         #expect(request.scope?.schema == "archive")
     }
 
+    @Test("A call approved on its card is refused once the connection reconnected, before any dialog")
+    func reconnectAfterTheCardRefuses() async throws {
+        let driver = session(database: "staging")
+        let id = driver.connection.id
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let gate = RequestRecordingGate(allows: true)
+        let approved = context(driver, gate: gate, shown: DatabaseScope(connectionId: id, database: "staging", schema: nil))
+
+        let reconnected = ScriptAnsweringDriver(connection: driver.connection) { _ in .empty }
+        DatabaseManager.shared.updateSession(id) { $0.install(reconnected) }
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await ConfirmDestructiveOperationChatTool().execute(input: Self.dropOrders, context: approved)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
+        #expect(await gate.requests.isEmpty)
+    }
+
     @Test("The card resolves its scope when it is drawn, and the Run click carries that scope to the call")
     func cardPinsItsScope() async throws {
         let driver = session(database: "staging")
@@ -115,7 +136,7 @@ struct ChatToolShownScopeTests {
 
         #expect(drawn?.database == "staging")
         #expect(resolved.explicitlyApproved == ["call_1"])
-        #expect(resolved.shownScopes["call_1"]?.database == "staging")
+        #expect(resolved.shownTargets["call_1"]?.scope.database == "staging")
     }
 
     // Saved as staging, signed in to production; `reported` is what the connect captured from the driver.

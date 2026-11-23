@@ -156,7 +156,7 @@ extension DatabaseManager {
                 for: connectionId
             )
             updateSession(connectionId) { session in
-                session.driver = result.driver
+                session.install(result.driver)
                 session.effectiveConnection = result.effectiveConnection
                 session.status = .connected
                 session.connectionWarning = warning
@@ -532,7 +532,7 @@ extension DatabaseManager {
                 driver: driver, startupFailures: startupFailures, restoreWarning: restoreWarning, for: sessionId
             )
             updateSession(sessionId) { session in
-                session.driver = driver
+                session.install(driver)
                 session.status = .connected
                 session.effectiveConnection = effectiveConnection
                 session.connectionWarning = warning

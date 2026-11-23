@@ -257,7 +257,7 @@ extension AIChatViewModel {
                         scope: scope,
                         context: context,
                         explicitlyApproved: approvals.explicitlyApproved,
-                        shownScopes: approvals.shownScopes,
+                        shownTargets: approvals.shownTargets,
                         registry: registry
                     )
                     let toolResultBlocks = Self.synthesizeResults(
@@ -737,7 +737,7 @@ extension AIChatViewModel {
         scope: ChatToolScope,
         context: ChatToolContext,
         explicitlyApproved: Set<String> = [],
-        shownScopes: [String: DatabaseScope] = [:],
+        shownTargets: [String: ChatRunTarget] = [:],
         registry: ChatToolRegistry? = nil
     ) async -> [ToolResultBlock] {
         let onlyReads = await MainActor.run {
@@ -750,7 +750,7 @@ extension AIChatViewModel {
             for block in blocks {
                 let blockContext = context.carrying(
                     approvalWasExplicit: explicitlyApproved.contains(block.id),
-                    shownScope: shownScopes[block.id]
+                    shownTarget: shownTargets[block.id]
                 )
                 results.append(await runToolUse(block, scope: scope, context: blockContext, registry: registry))
             }
@@ -760,7 +760,7 @@ extension AIChatViewModel {
             for (index, block) in blocks.enumerated() {
                 let blockContext = context.carrying(
                     approvalWasExplicit: explicitlyApproved.contains(block.id),
-                    shownScope: shownScopes[block.id]
+                    shownTarget: shownTargets[block.id]
                 )
                 group.addTask {
                     (index, await runToolUse(block, scope: scope, context: blockContext, registry: registry))

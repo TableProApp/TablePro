@@ -175,7 +175,7 @@ struct ApprovedTargetTests {
         }
     }
 
-    private func inject(_ connection: DatabaseConnection, driver: CachedTargetDriver, opened: String) {
+    private func inject(_ connection: DatabaseConnection, driver: CachedTargetDriver, opened: String?) {
         var session = ConnectionSession(
             connection: connection,
             driver: PluginDriverAdapter(connection: connection, pluginDriver: driver)
@@ -208,5 +208,83 @@ struct ApprovedTargetTests {
         #expect(scope.database == "a.sqlite")
         #expect(replacing.events.isEmpty)
         #expect(approved.events.isEmpty)
+    }
+
+    private func approvedDrop(on connectionId: UUID, type: DatabaseType) async throws -> ApprovedOperation {
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveStatementScope(connectionId: connectionId, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DROP TABLE orders", maxRows: 10)
+        return try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: type)
+    }
+
+    @Test("A DROP approved on an Oracle session that reported no database never reaches the session that replaced it")
+    func replacedOracleSessionNeverTakesTheStatement() async throws {
+        let connection = TestFixtures.makeConnection(database: "PROD", type: .oracle)
+        let approved = CachedTargetDriver()
+        inject(connection, driver: approved, opened: nil)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let operation = try await approvedDrop(on: connection.id, type: .oracle)
+
+        let replacing = CachedTargetDriver()
+        DatabaseManager.shared.removeSession(for: connection.id)
+        inject(connection, driver: replacing, opened: nil)
+
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await DatabaseAccessBridge().runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+        #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
+        #expect(operation.scope.isServerScoped)
+        #expect(replacing.events.isEmpty)
+        #expect(approved.events.isEmpty)
+    }
+
+    @Test("A DROP approved on an Oracle session runs on it while it is the connect the approval was made on")
+    func unchangedSessionRunsTheStatement() async throws {
+        let connection = TestFixtures.makeConnection(database: "PROD", type: .oracle)
+        let approved = CachedTargetDriver()
+        inject(connection, driver: approved, opened: nil)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let operation = try await approvedDrop(on: connection.id, type: .oracle)
+
+        _ = try await DatabaseAccessBridge().runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+
+        #expect(approved.events.contains("DROP TABLE orders"))
+    }
+
+    @Test("A statement approved before a health reconnect is refused on the connection the reconnect opened")
+    func healthReconnectRefusesTheApproval() async throws {
+        FakeMSSQLPluginRegistration.registerIfNeeded()
+        let manager = DatabaseManager()
+        var connection = TestFixtures.makeConnection(name: "Prod")
+        connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
+        let approved = CachedTargetDriver()
+        var session = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: approved)
+        )
+        session.status = .connected
+        session.browseDatabase = "app"
+        manager.injectSession(session, for: connection.id)
+        FakeMSSQLPlugin.recordConfigurations(for: connection.id)
+        let bridge = DatabaseAccessBridge(manager: manager)
+        let scope = try await bridge.resolveStatementScope(connectionId: connection.id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DELETE FROM orders", maxRows: 10)
+        let operation = try await ApprovedOperationFixture.approve(
+            [statement], scope: scope, databaseType: connection.type, manager: manager
+        )
+
+        let outcome = await manager.recoverNow(connection.id, cause: .stoppedResponding)
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+
+        #expect(outcome == .success)
+        #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
+        #expect(approved.events.isEmpty)
+        manager.endRecoveryLoop(for: connection.id)
+        await manager.stopHealthMonitor(for: connection.id)
+        manager.removeSession(for: connection.id)
+        FakeMSSQLPlugin.clearConfigurations(for: connection.id)
+        await SchemaService.shared.invalidate(connectionId: connection.id)
     }
 }

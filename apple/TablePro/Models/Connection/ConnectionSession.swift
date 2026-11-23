@@ -13,6 +13,8 @@ struct ConnectionSession: Identifiable {
     // What the driver dialed: a tunnel's local endpoint rather than `connection`.
     var effectiveConnection: DatabaseConnection?
     var driver: DatabaseDriver?
+    // Renewed by each connect and reconnect, so an approval made on one connect never runs on the next.
+    private(set) var driverGeneration = UUID()
     var status: ConnectionStatus = .disconnected
     var effectiveQueryTimeoutSeconds: Int
     // Whether `driver` can be believed; `status` reads `.connecting` through an ordinary reconnect-to-switch.
@@ -74,6 +76,12 @@ struct ConnectionSession: Identifiable {
 
     mutating func markActive() {
         lastActiveAt = Date()
+    }
+
+    // A database switch moves between this session's own connections and keeps the generation.
+    mutating func install(_ driver: DatabaseDriver) {
+        self.driver = driver
+        driverGeneration = UUID()
     }
 
     // `status` alone says connecting through a reconnect the app already stopped believing in.

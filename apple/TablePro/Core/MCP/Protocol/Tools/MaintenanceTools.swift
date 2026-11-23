@@ -196,12 +196,14 @@ public struct RunMaintenanceTool: MCPToolImplementation {
             }
         }
         let operationLabel = String(format: String(localized: "maintenance operation %@"), operation)
+        let generation = await services.connectionBridge.driverGeneration(of: scope.connectionId)
         let consent = try MCPStatementGate.consent(
             for: zip(planned, classifications).map { plannedStatement, classification in
                 MCPStatementGate.pendingOperation(
                     [plannedStatement],
                     kind: OperationKind.from(classification.tier),
                     scope: scope,
+                    driverGeneration: generation,
                     meta: meta,
                     allowsDestructive: true,
                     forcesUserConsent: true,

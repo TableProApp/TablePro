@@ -87,6 +87,7 @@ enum MCPToolConsent {
     static func target(of operation: PendingOperation) -> String {
         let fields: JsonValue = .object([
             "connection": .string(operation.scope.connectionId.uuidString),
+            "session": operation.driverGeneration.map { .string($0.uuidString) } ?? .null,
             "database": .string(operation.scope.database),
             "schema": operation.scope.schema.map(JsonValue.string) ?? .null,
             "kind": .string(String(describing: operation.kind)),

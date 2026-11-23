@@ -54,6 +54,7 @@ internal enum ShortcutsRowWriter {
             database: target.database,
             schema: target.schema
         )
+        let generation = await bridge.driverGeneration(of: request.connectionId)
 
         // Built on the driver that read the columns: a driver that types values from what it read about the table,
         // as MongoDB's does, keeps that reading on the connection it read it on.
@@ -77,6 +78,7 @@ internal enum ShortcutsRowWriter {
         let operation = try await ExternalStatementGate.approve(
             PendingOperation(
                 scope: scope,
+                driverGeneration: generation,
                 databaseType: databaseType,
                 statements: plan.statements.map(OperationStatement.init(bound:)),
                 kind: .writeQuery,

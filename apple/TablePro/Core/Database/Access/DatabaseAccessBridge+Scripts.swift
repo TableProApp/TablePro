@@ -87,7 +87,7 @@ extension DatabaseAccessBridge {
         let outcome = try await runBatches(
             batches,
             of: script.sql,
-            scope: scope,
+            approved: operation,
             databaseType: databaseType,
             rowCap: maxRows,
             timeoutSeconds: timeoutSeconds,
@@ -128,7 +128,7 @@ extension DatabaseAccessBridge {
     private func runBatches(
         _ batches: [ExecutableBatch],
         of text: String,
-        scope: DatabaseScope,
+        approved operation: ApprovedOperation,
         databaseType: DatabaseType,
         rowCap: Int,
         timeoutSeconds: Int,
@@ -137,6 +137,7 @@ extension DatabaseAccessBridge {
         budget: ExternalAnswerBudget?,
         reach: DriverReach
     ) async throws -> ScriptOutcome {
+        let scope = operation.scope
         let classification = QueryClassifier.classify(text, databaseType: databaseType)
         let connectionId = scope.connectionId
         let owner = DriverLeaseOwner()
@@ -174,6 +175,7 @@ extension DatabaseAccessBridge {
         do {
             run = try await runRacingTimeout(
                 scope: scope,
+                approvedGeneration: operation.driverGeneration,
                 route: route,
                 policy: policy,
                 owner: owner,

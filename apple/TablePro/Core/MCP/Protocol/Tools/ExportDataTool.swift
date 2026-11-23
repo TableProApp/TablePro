@@ -295,12 +295,14 @@ public struct ExportDataTool: MCPToolImplementation {
                 throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
             }
         }
+        let generation = await services.connectionBridge.driverGeneration(of: scope.connectionId)
         let consent = try MCPStatementGate.consent(
             for: zip(planned, classifications).map { plannedStatement, classification in
                 MCPStatementGate.pendingOperation(
                     [plannedStatement],
                     kind: OperationKind.from(classification.tier),
                     scope: scope,
+                    driverGeneration: generation,
                     meta: meta,
                     allowsDestructive: false,
                     operationLabel: operationLabel,

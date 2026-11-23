@@ -146,6 +146,26 @@ extension GlobalStateSuites {
             #expect(rig.driver.received.contains { $0.contains("DROP TABLE orders") })
         }
 
+        @Test("An approval given before a reconnect is asked again, and nothing runs on the new connection")
+        func reconnectAfterApprovalAsksAgain() async throws {
+            let rig = rig()
+            defer { rig.tearDown() }
+            let tool = ConfirmDestructiveOperationTool.name
+
+            let first = try #require(try await elicitation(tool, dropOrders(rig), on: rig))
+            let state = try #require(first.requestState)
+
+            let reconnected = WritePolicyDriver()
+            DatabaseManager.shared.updateSession(rig.connection.id) {
+                $0.install(PluginDriverAdapter(connection: rig.connection, pluginDriver: reconnected))
+            }
+            let second = try await elicitation(tool, dropOrders(rig), on: rig, answering: state)
+
+            #expect(second != nil)
+            #expect(rig.driver.received.isEmpty)
+            #expect(reconnected.received.isEmpty)
+        }
+
         @Test(
             "A two-table export asks once, listing both statements, and the approval runs both",
             arguments: [SafeModeLevel.alertFull, .safeModeFull]

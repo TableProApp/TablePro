@@ -415,6 +415,31 @@ internal actor DatabaseAccessBridge {
         .forbidden(String(localized: "This operation is not the one that was approved."))
     }
 
+    static var connectionChanged: DatabaseAccessError {
+        .forbidden(String(localized: "The connection changed after this was approved, so nothing ran. Ask again."))
+    }
+
+    // Read by whoever builds an approval, so the approval holds only on the connect its scope was resolved on.
+    internal func driverGeneration(of connectionId: UUID) async -> UUID? {
+        let manager = await databaseManager
+        return await MainActor.run { manager.session(for: connectionId)?.driverGeneration }
+    }
+
+    // A reconnect or a replaced session since the approval runs nothing. A fixed engine is never pinned to a database,
+    // so the one its driver reported has to be the approved one as well.
+    nonisolated static func requireApprovedConnect(
+        _ generation: UUID?,
+        on connectionId: UUID,
+        reporting database: String? = nil,
+        manager: DatabaseManager
+    ) async throws {
+        let current = await MainActor.run {
+            manager.session(for: connectionId).map { (generation: $0.driverGeneration, opened: $0.openedDatabase) }
+        }
+        guard let current, current.generation == generation, database == nil || current.opened == database
+        else { throw connectionChanged }
+    }
+
     // MARK: - Run
 
     internal struct StatementOutcome: Sendable {
@@ -499,6 +524,7 @@ internal actor DatabaseAccessBridge {
         do {
             (result, tableEdits, transactionNotice) = try await runRacingTimeout(
                 scope: scope,
+                approvedGeneration: operation.driverGeneration,
                 route: route,
                 policy: policy,
                 owner: owner,
@@ -624,6 +650,7 @@ internal actor DatabaseAccessBridge {
         do {
             (result, tableEdits, transactionNotice) = try await runRacingTimeout(
                 scope: scope,
+                approvedGeneration: operation.driverGeneration,
                 route: route,
                 policy: policy,
                 owner: owner,
@@ -700,6 +727,7 @@ internal actor DatabaseAccessBridge {
             cancellation: .protectedWrite,
             sessionWork: .statements
         ) { driver -> (affected: Int, notice: String?) in
+            try await Self.requireApprovedConnect(operation.driverGeneration, on: scope.connectionId, manager: manager)
             reach.mark()
             // The hold and savepoint execute_query gets, so a Manual Commit insert waits for Commit too.
             let ran = try await agentGuard.running(
@@ -752,6 +780,7 @@ internal actor DatabaseAccessBridge {
         let manager = await databaseManager
         let schema = scope.schema
         return try await manager.withMetadataDriver(scope: scope) { driver -> (count: Int?, isApproximate: Bool) in
+            try await Self.requireApprovedConnect(operation.driverGeneration, on: scope.connectionId, manager: manager)
             reach.mark()
             if exact {
                 let value = try await driver.fetchExactRowCount(
@@ -798,6 +827,7 @@ internal actor DatabaseAccessBridge {
             cancellation: .protectedWrite,
             sessionWork: .statements
         ) { driver in
+            try await Self.requireApprovedConnect(operation.driverGeneration, on: scope.connectionId, manager: manager)
             reach.mark()
             switch action {
             case "begin":
@@ -824,6 +854,7 @@ internal actor DatabaseAccessBridge {
         let connectionId = operation.scope.connectionId
         let (driver, _) = try await resolveDriver(connectionId)
         let manager = await databaseManager
+        try await Self.requireApprovedConnect(operation.driverGeneration, on: connectionId, manager: manager)
         try await manager.trackOperation(sessionId: connectionId) {
             try await driver.createDatabase(CreateDatabaseRequest(name: name, values: options))
         }
@@ -839,6 +870,7 @@ internal actor DatabaseAccessBridge {
             manager.sessionLanes.close(database: name, for: connectionId)
         }
         let (driver, _) = try await resolveDriver(connectionId)
+        try await Self.requireApprovedConnect(operation.driverGeneration, on: connectionId, manager: manager)
         try await manager.trackOperation(sessionId: connectionId) {
             try await driver.dropDatabase(name: name)
         }
@@ -853,6 +885,7 @@ internal actor DatabaseAccessBridge {
         // Pinned to the approved database, so a switch while the dialog was open cannot move the drop.
         let route = await MainActor.run { manager.schemaChangeRoute(for: scope) }
         try await manager.withScopedDriver(scope: scope, route: route, cancellation: .protectedWrite) { driver in
+            try await Self.requireApprovedConnect(operation.driverGeneration, on: scope.connectionId, manager: manager)
             try await driver.dropSchema(name: name)
         }
         CatalogChangeService.post(
@@ -895,6 +928,7 @@ internal actor DatabaseAccessBridge {
             route: route,
             cancellation: .protectedWrite
         ) { driver in
+            try await Self.requireApprovedConnect(operation.driverGeneration, on: scope.connectionId, manager: manager)
             reach.mark()
             try await before(driver, ownsConnection)
             return try await DataWriteExecutor.run(plan, commitMode: .automatic, on: driver, context: context)
@@ -919,6 +953,7 @@ internal actor DatabaseAccessBridge {
 
     internal func runRacingTimeout<Output: Sendable>(
         scope: DatabaseScope,
+        approvedGeneration: UUID?,
         route: ScopedDriverRoute,
         policy: DriverCancellationPolicy,
         owner: DriverLeaseOwner,
@@ -928,32 +963,21 @@ internal actor DatabaseAccessBridge {
     ) async throws -> Output {
         let connectionId = scope.connectionId
         let manager = await databaseManager
-        let (approvedSchema, fixedSession) = await MainActor.run { () -> (String?, Date?) in
+        let (approvedSchema, fixedDatabase) = await MainActor.run { () -> (String?, String?) in
             guard let session = manager.session(for: connectionId) else { return (nil, nil) }
             let type = session.connection.type
+            let pinsDatabase = scope.isServerScoped || manager.pluginManager.supportsDatabaseSwitching(for: type)
             return (
                 manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: type) ? scope.schema : nil,
-                manager.pluginManager.supportsDatabaseSwitching(for: type) ? nil : session.connectedAt
+                pinsDatabase ? nil : scope.database
             )
         }
         // The pin trusts the driver's cached schema, which a SET search_path in the same session leaves stale.
         // An aborted transaction refuses everything but a rollback, the SET included, and runs no name to misroute.
         let pinned: @Sendable (DatabaseDriver) async throws -> Output = { driver in
-            // A fixed engine is never pinned to a database, so a session replaced since the approval would take the
-            // statement: the database it reported has to be the approved one, or with none named, the session the same.
-            if let fixedSession {
-                let current = await MainActor.run {
-                    manager.session(for: connectionId).map { (opened: $0.openedDatabase, generation: $0.connectedAt) }
-                }
-                let unchanged = scope.isServerScoped
-                    ? current?.generation == fixedSession
-                    : current?.opened == scope.database
-                guard unchanged else {
-                    throw DatabaseAccessError.forbidden(
-                        String(localized: "The connection changed after this was approved, so nothing ran. Ask again.")
-                    )
-                }
-            }
+            try await Self.requireApprovedConnect(
+                approvedGeneration, on: connectionId, reporting: fixedDatabase, manager: manager
+            )
             if let approvedSchema, let switchable = driver as? SchemaSwitchable,
                await driver.sessionTransactionState() != .abortedTransaction {
                 try await switchable.switchSchema(to: approvedSchema)
