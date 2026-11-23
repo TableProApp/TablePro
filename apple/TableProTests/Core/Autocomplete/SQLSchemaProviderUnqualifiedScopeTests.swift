@@ -30,7 +30,7 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
     @Test("A table in a schema the tab does not resolve names in is not offered without its schema")
     func expandedSchemaTableIsNotOfferedBare() async {
         let driver = Self.postgresDriver()
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase(
             "db", tables: [Self.users, Self.timesheet], driver: driver, connection: driver.connection
         )
@@ -119,7 +119,7 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
     @Test("A bare name before a dot resolves only to a table the tab can name without its schema")
     func bareNameResolvesWithinTheUnqualifiedScope() async {
         let driver = Self.postgresDriver()
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase(
             "db", tables: [Self.users, Self.timesheet], driver: driver, connection: driver.connection
         )
@@ -137,7 +137,7 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
         let implicitSchema = try #require(connection.type.implicitSchemaName)
         let driver = MockDatabaseDriver(connection: connection)
         driver.currentSchema = "sales"
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase(
             "db",
             tables: [

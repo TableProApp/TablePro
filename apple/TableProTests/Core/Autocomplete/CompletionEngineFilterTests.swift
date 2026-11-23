@@ -97,7 +97,7 @@ struct CompletionEngineFilterTests {
             "orders": [TestFixtures.makeColumnInfo(name: "total")]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("testdb", tables: driver.tablesToReturn, driver: driver)
         _ = await provider.getColumns(for: "users")
         _ = await provider.getColumns(for: "orders")

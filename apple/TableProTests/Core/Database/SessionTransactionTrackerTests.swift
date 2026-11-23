@@ -214,6 +214,24 @@ struct SessionTransactionTrackerTests {
         #expect(tracker.holds(for: key.connectionId).isEmpty)
     }
 
+    @Test("The standing follows the last answer: a hold, a timed-out read, then an idle one")
+    func standingFollowsTheLastAnswer() {
+        let driver = PluginDriverAdapter(connection: TestFixtures.makeConnection(), pluginDriver: TransactionScriptedDriver())
+        let tracker = SessionTransactionTracker { _, _ in true }
+        let key = SessionTransactionTracker.Key(connectionId: UUID(), lane: nil)
+        #expect(tracker.standing(of: key.connectionId) == .none)
+
+        tracker.record(.inTransaction, on: driver, for: key)
+        #expect(tracker.standing(of: key.connectionId) == .held)
+
+        tracker.record(.idle, on: driver, for: key)
+        tracker.record(.unknown, on: driver, for: key)
+        #expect(tracker.standing(of: key.connectionId) == .unknown)
+
+        tracker.record(.idle, on: driver, for: key)
+        #expect(tracker.standing(of: key.connectionId) == .none)
+    }
+
     @Test("A late answer from a retired driver leaves the replacement's hold alone")
     func retiredDriverCannotClearTheReplacement() {
         let retired = PluginDriverAdapter(connection: TestFixtures.makeConnection(), pluginDriver: TransactionScriptedDriver())

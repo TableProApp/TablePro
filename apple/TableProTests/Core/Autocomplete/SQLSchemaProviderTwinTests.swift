@@ -9,7 +9,7 @@ struct SQLSchemaProviderTwinTests {
 
     private static func seeded(_ driver: MockDatabaseDriver, tables: [TableInfo]) async -> SQLSchemaProvider {
         driver.bulkColumnReadIsComplete = true
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("db", tables: tables, driver: driver)
         await provider.seedColumnCatalog()
         await provider.waitForEagerColumnLoad()
