@@ -125,10 +125,6 @@ final class WelcomeViewModelTests {
         return walk(outline.section(.connections)?.nodes ?? [])
     }
 
-    private func token(_ id: UUID) -> WelcomeTagToken {
-        WelcomeTagToken(id: id, name: id.uuidString, color: .none)
-    }
-
     // MARK: - Groups
 
     @Test func testCreateGroupShowsImmediatelyInTheOutline() throws {
@@ -360,7 +356,7 @@ final class WelcomeViewModelTests {
         viewModel.loadConnections()
 
         viewModel.tagMatch = .all
-        viewModel.searchTokens = [token(first), token(second)]
+        viewModel.tagFilterIds = [first, second]
 
         #expect(viewModel.listState == .noFilterMatch)
     }
@@ -537,19 +533,19 @@ final class WelcomeViewModelTests {
         #expect(viewModel.selection.isEmpty, "A row the list no longer shows must not stay selected")
     }
 
-    @Test func testDeletingTheLastTaggedConnectionDropsItsTokenFromTheSearch() {
+    @Test func testDeletingTheLastTaggedConnectionDropsItsTagFilter() {
         let tagId = UUID()
         var tagged = DatabaseConnection(name: "Prod", type: .mysql, sortOrder: 0)
         tagged.tagIds = [tagId]
         let plain = DatabaseConnection(name: "Dev", type: .mysql, sortOrder: 1)
         save([tagged, plain])
         viewModel.loadConnections()
-        viewModel.searchTokens = [token(tagId)]
+        viewModel.tagFilterIds = [tagId]
 
         viewModel.connectionsToDelete = [tagged]
         viewModel.deleteSelectedConnections()
 
-        #expect(viewModel.searchTokens.isEmpty, "A token for a tag nothing carries hides every connection")
+        #expect(viewModel.tagFilterIds.isEmpty, "A filter on a tag nothing carries hides every connection")
         #expect(viewModel.outline.connectionIds(in: .connections) == [plain.id])
         #expect(viewModel.listState == .content)
     }
