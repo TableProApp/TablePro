@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @testable import TablePro
 import Testing
@@ -238,18 +239,56 @@ struct TabDiskUnchangedSaveTests {
         #expect(loaded?.tabs.map(\.title) == ["Renamed"])
     }
 
-    @Test("Byte comparison tells canonically equal queries apart and matches shared storage")
-    func byteComparison() {
+    @Test("Literal comparison tells canonically equal queries apart and matches shared storage")
+    func literalComparison() {
         let query = String(repeating: "SELECT 1;\n", count: 1_000)
         let copy = query
-        #expect(TabDiskInput.sameBytes(query, copy))
+        #expect(TabDiskInput.sameText(query, copy))
         var unshared = query
         unshared.append(";")
         unshared.removeLast()
-        #expect(TabDiskInput.sameBytes(query, unshared))
-        #expect(!TabDiskInput.sameBytes("caf\u{E9}", "cafe\u{301}"))
-        #expect(!TabDiskInput.sameBytes(query, query + " "))
-        #expect(TabDiskInput.sameBytes("", ""))
-        #expect(TabDiskInput.sameBytes(NSString(string: "SELECT 2") as String, "SELECT 2"))
+        #expect(TabDiskInput.sameText(query, unshared))
+        #expect(!TabDiskInput.sameText("caf\u{E9}", "cafe\u{301}"))
+        #expect(!TabDiskInput.sameText(query, query + " "))
+        #expect(TabDiskInput.sameText("", ""))
+        #expect(TabDiskInput.sameText(NSString(string: "SELECT 2") as String, "SELECT 2"))
+    }
+
+    @Test("Editor text, bridged from its text storage, compares literally")
+    func editorTextComparison() {
+        let native = String(repeating: "SELECT 'caf\u{E9}';\n", count: 1_000)
+        let storage = NSTextStorage(string: native)
+        let edited = storage.string
+        #expect(TabDiskInput.sameText(edited, edited))
+        #expect(TabDiskInput.sameText(edited, native))
+        #expect(TabDiskInput.sameText(native, edited))
+
+        storage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "-")
+        #expect(!TabDiskInput.sameText(storage.string, edited))
+
+        let decomposed = NSTextStorage(string: native.replacingOccurrences(of: "\u{E9}", with: "e\u{301}")).string
+        #expect(edited == decomposed)
+        #expect(!TabDiskInput.sameText(edited, decomposed))
+    }
+
+    @Test("An unchanged save of editor text leaves the file alone, and a typed character is saved")
+    func editorTextSave() async throws {
+        let connectionId = UUID()
+        defer { TabDiskActor.clearSync(connectionId: connectionId) }
+        let tabId = UUID()
+        let storage = NSTextStorage(string: String(repeating: "SELECT 1;\n", count: 1_000))
+        let text = storage.string
+
+        try await save([tab(id: tabId, title: "One", query: text)], connectionId: connectionId)
+        let written = try fileNumber(stateURL(connectionId))
+        try await save([tab(id: tabId, title: "One", query: text)], connectionId: connectionId)
+        #expect(try fileNumber(stateURL(connectionId)) == written)
+
+        storage.replaceCharacters(in: NSRange(location: storage.length, length: 0), with: "-")
+        let typed = storage.string
+        try await save([tab(id: tabId, title: "One", query: typed)], connectionId: connectionId)
+        #expect(try fileNumber(stateURL(connectionId)) != written)
+        let loaded = await TabDiskActor.shared.load(connectionId: connectionId)
+        #expect(loaded?.tabs.first.map { ($0.query as NSString).isEqual(to: typed) } == true)
     }
 }

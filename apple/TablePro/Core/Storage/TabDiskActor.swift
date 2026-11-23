@@ -58,9 +58,8 @@ internal struct TabDiskWrittenState {
 }
 
 // A save's input split in two: the state with every query emptied, which is small to encode, and the
-// query texts, compared by their bytes. `String ==` is canonical equivalence, so an NFC query edited to
-// its NFD form would compare equal and never be saved. An untouched tab shares its storage with the
-// last save, so its query compares by address without reading it.
+// query texts, compared literally. `String ==` is canonical equivalence, so an NFC query edited to its
+// NFD form would compare equal and never be saved.
 internal struct TabDiskInput {
     let stateDigest: SHA256.Digest
     let queries: [String]
@@ -83,21 +82,14 @@ internal struct TabDiskInput {
 
     func matches(_ other: TabDiskInput) -> Bool {
         guard stateDigest == other.stateDigest, queries.count == other.queries.count else { return false }
-        return zip(queries, other.queries).allSatisfy { Self.sameBytes($0, $1) }
+        return zip(queries, other.queries).allSatisfy { Self.sameText($0, $1) }
     }
 
-    static func sameBytes(_ lhs: String, _ rhs: String) -> Bool {
-        let contiguous = lhs.utf8.withContiguousStorageIfAvailable { left in
-            rhs.utf8.withContiguousStorageIfAvailable { right -> Bool in
-                guard left.count == right.count else { return false }
-                guard let leftBase = left.baseAddress, let rightBase = right.baseAddress else { return true }
-                return leftBase == rightBase || memcmp(leftBase, rightBase, left.count) == 0
-            }
-        }
-        if let contiguous, let result = contiguous {
-            return result
-        }
-        return lhs.utf8.elementsEqual(rhs.utf8)
+    // Edited text is the editor's NSTextStorage string, bridged with no contiguous UTF-8, so walking its
+    // `utf8` view cost about 100 ms per 2 MB on every tick. NSString equality returns at once for the
+    // object the last save held, and compares UTF-16 code units otherwise.
+    static func sameText(_ lhs: String, _ rhs: String) -> Bool {
+        (lhs as NSString).isEqual(to: rhs)
     }
 }
 
