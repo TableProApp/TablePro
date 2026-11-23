@@ -82,7 +82,6 @@ extension PluginMetadataRegistry {
                 connectionMode: .apiOnly, supportsDatabaseSwitching: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
-                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: false,
@@ -288,7 +287,6 @@ extension PluginMetadataRegistry {
                 connectionMode: .apiOnly, supportsDatabaseSwitching: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
-                    schemaSwitchScopesUnqualifiedNames: false,
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: false,
@@ -481,7 +479,6 @@ extension PluginMetadataRegistry {
                 connectionMode: .apiOnly, supportsDatabaseSwitching: true,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
-                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: false,

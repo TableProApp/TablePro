@@ -50,12 +50,6 @@ struct VimVisualExtent {
     let lastColumn: Int
 }
 
-// `3iX<Esc>` types X three times; `3oX<Esc>` opens a line for each.
-struct VimInsertRepeat {
-    let count: Int
-    let opensLine: Bool
-}
-
 struct VimVisualChange {
     let extent: VimVisualExtent
     let operatorKeys: [VimChangeKey]
@@ -133,7 +127,6 @@ final class VimEngine {
     var lastChange: VimChange?
     var changeDraft: VimChangeDraft?
     var isRepeatingChange = false
-    var insertRepeat: VimInsertRepeat?
     var marks: [Character: Int] = [:]
     var namedRegisters: [Character: VimRegister] = [:]
     var numberedRegisters: [VimRegister] = Array(repeating: VimRegister(), count: 10)
@@ -208,13 +201,11 @@ final class VimEngine {
         editsOnCurrentLine = 0
         lastEditedLine = nil
         changeDraft = nil
-        insertRepeat = nil
     }
 
     func reset() {
         cancelPendingCommand()
         changeDraft = nil
-        insertRepeat = nil
         mode = .normal
     }
 

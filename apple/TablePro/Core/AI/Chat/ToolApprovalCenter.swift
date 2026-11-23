@@ -44,20 +44,11 @@ final class ToolApprovalCenter {
     private var pending: [ApprovalRequestID: CheckedContinuation<ToolApprovalDecision, Never>] = [:]
     private var expected: Set<ApprovalRequestID> = []
     private var decided: [ApprovalRequestID: ToolApprovalDecision] = [:]
-    private var shown: [ApprovalRequestID: DatabaseScope] = [:]
 
     /// Announces the calls this turn will await, so a decision on any of them is honoured from the
     /// moment its card is on screen rather than from the moment the stream reaches it.
-    func expect(sessionId: UUID, toolUseIds: [String], shownScopes: [String: DatabaseScope] = [:]) {
+    func expect(sessionId: UUID, toolUseIds: [String]) {
         expected.formUnion(toolUseIds.map { ApprovalRequestID(sessionId: sessionId, toolUseId: $0) })
-        for (toolUseId, scope) in shownScopes {
-            shown[ApprovalRequestID(sessionId: sessionId, toolUseId: toolUseId)] = scope
-        }
-    }
-
-    // Where a waiting card says its call runs; the call is bound to the same scope.
-    func shownScope(sessionId: UUID, toolUseId: String) -> DatabaseScope? {
-        shown[ApprovalRequestID(sessionId: sessionId, toolUseId: toolUseId)]
     }
 
     /// Releases a turn's claim on its ids, whatever happened to them.
@@ -65,7 +56,6 @@ final class ToolApprovalCenter {
         for id in toolUseIds.map({ ApprovalRequestID(sessionId: sessionId, toolUseId: $0) }) {
             expected.remove(id)
             decided.removeValue(forKey: id)
-            shown.removeValue(forKey: id)
         }
     }
 
@@ -126,7 +116,6 @@ final class ToolApprovalCenter {
         let snapshot = pending
         pending.removeAll()
         decided.removeAll()
-        shown.removeAll()
         for key in expected {
             decided[key] = .cancel
         }

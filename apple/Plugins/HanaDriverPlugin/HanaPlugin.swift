@@ -28,7 +28,6 @@ final class HanaPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsModifyPrimaryKey = false
     static let supportsDatabaseSwitching = false
     static let supportsSchemaSwitching = true
-    static let schemaSwitchScopesUnqualifiedNames = true
     static let supportsImport = false
     static let supportsExport = true
     static let supportsHealthMonitor = true

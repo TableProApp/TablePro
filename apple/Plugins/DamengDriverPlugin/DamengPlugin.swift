@@ -21,7 +21,6 @@ final class DamengPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsSSL = false
     static let supportsDatabaseSwitching = false
     static let supportsSchemaSwitching = true
-    static let schemaSwitchScopesUnqualifiedNames = true
     static let supportsRoutines = true
     static let supportsDatabaseTriggerBrowse = true
     static let defaultSchemaName = ""

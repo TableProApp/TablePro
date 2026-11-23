@@ -49,9 +49,6 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         lock.withLock { _projectId }
     }
 
-    // The project it signed in to, which the connection's database field does not decide.
-    var currentDatabase: String? { projectId }
-
     var serverVersion: String? {
         lock.withLock { _serverVersion }
     }

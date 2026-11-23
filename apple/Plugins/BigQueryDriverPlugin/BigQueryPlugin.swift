@@ -38,7 +38,6 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsSchemaEditing = false
     static let supportsDatabaseSwitching = false
     static let supportsSchemaSwitching = true
-    static let schemaSwitchScopesUnqualifiedNames = true
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
     static let supportsImport = false
     static let supportsExport = true

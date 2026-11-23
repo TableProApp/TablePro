@@ -209,5 +209,4 @@ final class VimTextBufferMock: VimTextBuffer {
 
     func undo() { undoCallCount += 1 }
     func redo() { redoCallCount += 1 }
-    func performAsOneUndoStep(_ edits: () -> Void) { edits() }
 }

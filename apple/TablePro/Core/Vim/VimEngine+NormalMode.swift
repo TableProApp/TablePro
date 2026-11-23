@@ -198,7 +198,8 @@ extension VimEngine {
                 pendingTextObjectAround = false
                 return true
             }
-            beginInsert(count: consumeCount())
+            countPrefix = 0
+            setMode(.insert)
             return true
         case "a":
             if pendingOperator != nil {
@@ -206,22 +207,22 @@ extension VimEngine {
                 pendingTextObjectAround = true
                 return true
             }
-            let count = consumeCount()
+            countPrefix = 0
             let pos = buffer.selectedRange().location
             // On an empty line the caret is on the line break, and the text goes before it.
             if pos < contentEnd(ofLineAt: pos, in: buffer) {
                 buffer.setSelectedRange(NSRange(location: characterEnd(at: pos, in: buffer), length: 0))
             }
-            beginInsert(count: count)
+            setMode(.insert)
             return true
         case "I":
-            let count = consumeCount()
+            countPrefix = 0
             let target = firstNonBlankOffset(from: buffer.selectedRange().location, in: buffer)
             buffer.setSelectedRange(NSRange(location: target, length: 0))
-            beginInsert(count: count)
+            setMode(.insert)
             return true
         case "A":
-            let count = consumeCount()
+            countPrefix = 0
             moveToLineEnd(in: buffer)
             let pos = buffer.selectedRange().location
             let lineRange = buffer.lineRange(forOffset: pos)
@@ -229,10 +230,10 @@ extension VimEngine {
             let targetEnd = lineEnd > lineRange.location && lineEnd <= buffer.length
                 && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
             buffer.setSelectedRange(NSRange(location: targetEnd, length: 0))
-            beginInsert(count: count)
+            setMode(.insert)
             return true
         case "o":
-            let count = consumeCount()
+            countPrefix = 0
             let pos = buffer.selectedRange().location
             let lineRange = buffer.lineRange(forOffset: pos)
             let lineEnd = lineRange.location + lineRange.length
@@ -241,15 +242,15 @@ extension VimEngine {
             replace(NSRange(location: lineEnd, length: 0), with: "\n", in: buffer)
             let cursorPos = lineEndsWithNewline ? lineEnd : lineEnd + 1
             buffer.setSelectedRange(NSRange(location: cursorPos, length: 0))
-            beginInsert(count: count, opensLine: true)
+            setMode(.insert)
             return true
         case "O":
-            let count = consumeCount()
+            countPrefix = 0
             let pos = buffer.selectedRange().location
             let lineRange = buffer.lineRange(forOffset: pos)
             replace(NSRange(location: lineRange.location, length: 0), with: "\n", in: buffer)
             buffer.setSelectedRange(NSRange(location: lineRange.location, length: 0))
-            beginInsert(count: count, opensLine: true)
+            setMode(.insert)
             return true
 
         case "v":

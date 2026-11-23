@@ -56,7 +56,6 @@ final class SnowflakePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsHealthMonitor = false
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = true
-    static let schemaSwitchScopesUnqualifiedNames = true
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
     static let supportsImport = true
     static let supportsExport = true

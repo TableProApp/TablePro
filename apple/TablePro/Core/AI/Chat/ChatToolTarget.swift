@@ -9,15 +9,9 @@ import TableProMCP
 internal enum ChatToolTargetError: LocalizedError, Equatable {
     case outsideSession
     case noConnection
-    case targetMoved
 
     internal var errorDescription: String? {
         switch self {
-        case .targetMoved:
-            return String(localized: """
-                The connection moved to another database or schema after this call was approved, so it did not run. \
-                Propose it again to run it where the connection is now.
-                """)
         case .outsideSession:
             return String(localized: """
                 This conversation works on one connection, and that is the only one it can reach. \
@@ -87,29 +81,6 @@ internal enum ChatToolTarget {
             )
         }
         return connectionId
-    }
-}
-
-extension ChatToolTarget {
-    // A call the user approved on its card runs where the card said, so a database or schema switch made before the
-    // click cannot move it.
-    internal static func runScope(
-        context: ChatToolContext,
-        connectionId: UUID,
-        database: String?,
-        schema: String?
-    ) async throws -> DatabaseScope {
-        guard let shown = context.shownScope else {
-            return try await context.bridge.resolveStatementScope(connectionId: connectionId, database: database, schema: schema)
-        }
-        guard shown.connectionId == connectionId else { throw ChatToolTargetError.outsideSession }
-        let scope = try await context.bridge.resolveStatementScope(
-            connectionId: connectionId,
-            database: shown.database,
-            schema: shown.schema
-        )
-        guard scope == shown else { throw ChatToolTargetError.targetMoved }
-        return scope
     }
 }
 

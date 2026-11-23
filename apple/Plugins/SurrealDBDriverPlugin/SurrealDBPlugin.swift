@@ -36,7 +36,6 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = true
-    static let schemaSwitchScopesUnqualifiedNames = true
     static let databaseGroupingStrategy: GroupingStrategy = .bySchema
     static let containerEntityName = "Namespace"
     static let schemaEntityName = "Database"

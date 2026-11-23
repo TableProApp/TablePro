@@ -166,7 +166,7 @@ public struct ExportDataTool: MCPToolImplementation {
             try MCPStatementGate.classify(sql: statement.sql, meta: meta, allowsDestructive: false, context: context)
         }
 
-        let scope = try await MCPScopeArguments.resolveForStatements(
+        let scope = try await MCPScopeArguments.resolve(
             arguments,
             connectionId: connectionId,
             services: services
@@ -179,21 +179,24 @@ public struct ExportDataTool: MCPToolImplementation {
         // Every table of the call shares one answer, so each gets what the ones before it left.
         var budget = ExternalAnswerBudget.export
 
-        let operationLabel = String(localized: "an export")
-        let (planned, consent) = try await Self.plan(
-            statements, classifications: classifications, scope: scope, maxRows: maxRows, meta: meta,
-            operationLabel: operationLabel, context: context, services: services
-        )
-
-        for ((statement, classification), plannedStatement) in zip(zip(statements, classifications), planned) {
+        for (statement, classification) in zip(statements, classifications) {
+            let planned: OperationStatement
+            do {
+                planned = try await services.connectionBridge.plannedStatement(
+                    scope: scope,
+                    query: statement.sql,
+                    maxRows: maxRows + 1
+                )
+            } catch {
+                throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
+            }
             let operation = try await MCPStatementGate.approve(
-                [plannedStatement],
+                [planned],
                 kind: OperationKind.from(classification.tier),
                 scope: scope,
                 meta: meta,
                 allowsDestructive: false,
-                operationLabel: operationLabel,
-                consent: consent,
+                operationLabel: String(localized: "an export"),
                 context: context,
                 services: services
             )
@@ -270,48 +273,6 @@ public struct ExportDataTool: MCPToolImplementation {
                 )
             ]
         )
-    }
-
-    // Every statement planned before any runs, so one elicitation lists them all.
-    private static func plan(
-        _ statements: [ExportStatement],
-        classifications: [QueryClassification],
-        scope: DatabaseScope,
-        maxRows: Int,
-        meta: ToolConnectionMetadata,
-        operationLabel: String,
-        context: MCPRequestContext,
-        services: MCPToolServices
-    ) async throws -> (planned: [OperationStatement], consent: MCPCallConsent) {
-        var planned: [OperationStatement] = []
-        for statement in statements {
-            do {
-                planned.append(try await services.connectionBridge.plannedStatement(
-                    scope: scope,
-                    query: statement.sql,
-                    maxRows: maxRows + 1
-                ))
-            } catch {
-                throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
-            }
-        }
-        let consent = try MCPStatementGate.consent(
-            for: zip(planned, classifications).map { plannedStatement, classification in
-                MCPStatementGate.pendingOperation(
-                    [plannedStatement],
-                    kind: OperationKind.from(classification.tier),
-                    scope: scope,
-                    meta: meta,
-                    allowsDestructive: false,
-                    operationLabel: operationLabel,
-                    context: context
-                )
-            },
-            meta: meta,
-            operationLabel: operationLabel,
-            context: context
-        )
-        return (planned, consent)
     }
 
     struct ExportStatement {

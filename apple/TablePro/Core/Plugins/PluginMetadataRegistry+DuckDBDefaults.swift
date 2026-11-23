@@ -30,7 +30,6 @@ extension PluginMetadataRegistry {
                 structureEditing: SchemaEditingSupport(foreignKeyEdit: .alter),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
-                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: true,
                     supportsExport: true,
                     // Remote mode dials a TCP server, so a forward can carry it. TLS is Quack's own model, set in

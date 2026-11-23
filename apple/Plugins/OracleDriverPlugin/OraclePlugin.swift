@@ -113,7 +113,6 @@ nonisolated final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, Se
     static let supportsForeignKeyDisable = false
     static let supportsDatabaseSwitching = false
     static let supportsSchemaSwitching = true
-    static let schemaSwitchScopesUnqualifiedNames = true
     static let defaultSchemaName = ""
     static let containerEntityName = "Schema"
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]

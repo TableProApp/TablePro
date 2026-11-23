@@ -16,14 +16,12 @@ private actor DiscardingHistory: QueryHistoryRecording {
 // dialog, so the statement has to run in exactly what the input names.
 @MainActor
 struct ConfirmDestructiveOperationScopeTests {
-    // `reported` is what the connect captures from the driver as the database it opened; SQLite reports its file.
-    private func session(database: String, type: DatabaseType = .postgresql, reported: String? = nil) -> ScriptAnsweringDriver {
+    private func session(database: String, type: DatabaseType = .postgresql) -> ScriptAnsweringDriver {
         var connection = TestFixtures.makeConnection(database: database, type: type)
         connection.aiPolicy = .alwaysAllow
         let driver = ScriptAnsweringDriver(connection: connection) { _ in .empty }
         var session = ConnectionSession(connection: connection)
         session.driver = driver
-        session.openedDatabase = reported
         DatabaseManager.shared.injectSession(session, for: connection.id)
         return driver
     }
@@ -90,7 +88,7 @@ struct ConfirmDestructiveOperationScopeTests {
 
     @Test("On a connection that cannot change database, naming another one is refused before anything is asked or run")
     func unreachableDatabaseIsRefused() async {
-        let driver = session(database: "prod.sqlite", type: .sqlite, reported: "prod.sqlite")
+        let driver = session(database: "prod.sqlite", type: .sqlite)
         defer { DatabaseManager.shared.removeSession(for: driver.connection.id) }
         let gate = RequestRecordingGate(allows: true)
 
@@ -107,7 +105,7 @@ struct ConfirmDestructiveOperationScopeTests {
 
     @Test("Naming the database a fixed connection is already on still runs there")
     func currentDatabaseOfAFixedConnectionIsTaken() async throws {
-        let driver = session(database: "prod.sqlite", type: .sqlite, reported: "prod.sqlite")
+        let driver = session(database: "prod.sqlite", type: .sqlite)
         defer { DatabaseManager.shared.removeSession(for: driver.connection.id) }
         let gate = RequestRecordingGate(allows: false)
 

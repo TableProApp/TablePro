@@ -34,7 +34,6 @@ struct PluginMetadataSnapshot: Sendable {
 
     struct CapabilityFlags: Sendable {
         let supportsSchemaSwitching: Bool
-        var schemaSwitchScopesUnqualifiedNames: Bool = false
         let supportsImport: Bool
         let supportsExport: Bool
         let supportsSSH: Bool
@@ -787,7 +786,6 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             structureEditing: existingSnapshot?.structureEditing ?? SchemaEditingSupport(),
             capabilities: PluginMetadataSnapshot.CapabilityFlags(
                 supportsSchemaSwitching: driverType.supportsSchemaSwitching,
-                schemaSwitchScopesUnqualifiedNames: driverType.schemaSwitchScopesUnqualifiedNames,
                 supportsImport: driverType.supportsImport,
                 supportsExport: driverType.supportsExport,
                 supportsSSH: driverType.supportsSSH,

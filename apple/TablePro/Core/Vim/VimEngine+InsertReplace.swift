@@ -18,7 +18,6 @@ extension VimEngine {
 
     func processInsert(_ char: Character) -> Bool {
         if char == "\u{1B}" {
-            repeatCountedInsert()
             lastInsertOffset = buffer?.selectedRange().location
             setMode(.normal)
             if let buffer, buffer.selectedRange().location > 0 {

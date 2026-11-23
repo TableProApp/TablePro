@@ -135,7 +135,7 @@ public struct ExplainQueryTool: MCPToolImplementation {
             context: context
         )
 
-        let scope = try await MCPScopeArguments.resolveForStatements(
+        let scope = try await MCPScopeArguments.resolve(
             arguments,
             connectionId: connectionId,
             services: services

@@ -187,8 +187,6 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     // MARK: - UI/Capability Metadata
 
     static let supportsSchemaSwitching = true
-    // The server resolves an unqualified name through the login's default schema, whatever the browsed one is.
-    static let schemaSwitchScopesUnqualifiedNames = false
     static let urlSchemes: [String] = ["sqlserver", "mssql"]
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession, .selectSchemaFromLastSession]
     static let brandColorHex = "#E34517"

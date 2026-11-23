@@ -30,7 +30,6 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsSchemaEditing = true
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = true
-    static let schemaSwitchScopesUnqualifiedNames = true
     static let requiresReconnectForDatabaseSwitch = false
     static let databaseGroupingStrategy: GroupingStrategy = .hierarchicalSchema
     static let defaultGroupName = "default"

@@ -94,8 +94,7 @@ struct ExecuteQueryChatTool: ChatTool {
             settings: mcpSettings
         )
 
-        let scope = try await ChatToolTarget.runScope(
-            context: context,
+        let scope = try await context.bridge.resolveScope(
             connectionId: connectionId,
             database: database,
             schema: schema

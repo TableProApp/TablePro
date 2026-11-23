@@ -24,10 +24,6 @@ struct ChatToolContext: Sendable {
     // this statement on this connection. A grant from `aiAlwaysAllowedTools` is consent to the tool, not the statement.
     let approvalWasExplicit: Bool
 
-    // Where this call's card said it runs, resolved when the card was drawn; the call runs there, not wherever the
-    // connection browses by the time the user answers.
-    let shownScope: DatabaseScope?
-
     private let policyLookup: PolicyLookup
 
     init(
@@ -37,7 +33,6 @@ struct ChatToolContext: Sendable {
         chatMode: AIChatMode,
         sessionId: UUID? = nil,
         approvalWasExplicit: Bool = false,
-        shownScope: DatabaseScope? = nil,
         policyLookup: @escaping PolicyLookup = ChatToolContext.savedPolicy
     ) {
         self.connectionId = connectionId
@@ -46,12 +41,11 @@ struct ChatToolContext: Sendable {
         self.chatMode = chatMode
         self.sessionId = sessionId
         self.approvalWasExplicit = approvalWasExplicit
-        self.shownScope = shownScope
         self.policyLookup = policyLookup
     }
 
     // One context serves a round's blocks, some running at once, so each block's approval is bound to a copy.
-    func carrying(approvalWasExplicit: Bool, shownScope: DatabaseScope? = nil) -> ChatToolContext {
+    func carrying(approvalWasExplicit: Bool) -> ChatToolContext {
         ChatToolContext(
             connectionId: connectionId,
             bridge: bridge,
@@ -59,7 +53,6 @@ struct ChatToolContext: Sendable {
             chatMode: chatMode,
             sessionId: sessionId,
             approvalWasExplicit: approvalWasExplicit,
-            shownScope: shownScope,
             policyLookup: policyLookup
         )
     }

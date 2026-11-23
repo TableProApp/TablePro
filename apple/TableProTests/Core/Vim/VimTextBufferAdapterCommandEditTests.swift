@@ -7,58 +7,19 @@ import TableProEditorKit
 import TableProTextEngine
 import Testing
 
-// Tells the engine about every edit before it lands, as `SQLEditorCoordinator` does in the app.
-@MainActor
-private final class EditForwarder: TextViewCoordinator, TextViewDelegate {
-    weak var engine: VimEngine?
-
-    func prepareCoordinator(controller: TextViewController) {}
-
-    func textView(_ textView: TextView, willReplaceContentsIn range: NSRange, with string: String) {
-        let undoManager = textView.undoManager
-        let source: VimEditSource = undoManager?.isUndoing == true ? .undo
-            : undoManager?.isRedoing == true ? .redo : .edit
-        engine?.textWillChange(in: range, with: string, source: source)
-    }
-}
-
 @MainActor
 struct VimTextBufferAdapterCommandEditTests {
-    // A key the engine leaves to the editor is typed into it, as the editor does with it.
     private func run(_ keys: String, on text: String, at offset: Int) -> String {
-        let forwarder = EditForwarder()
-        let controller = EditorControllerFixture.make(string: text, coordinators: [forwarder])
+        let controller = EditorControllerFixture.make(string: text)
         let adapter = VimTextBufferAdapter(controller: controller)
         let engine = VimEngine(buffer: adapter)
-        forwarder.engine = engine
-        return withExtendedLifetime((controller, forwarder)) {
+        return withExtendedLifetime(controller) {
             adapter.setSelectedRange(NSRange(location: offset, length: 0))
-            for key in keys where !engine.process(key, shift: key.isUppercase) {
-                let textView: TextView = controller.textView
-                textView.replaceCharacters(in: textView.selectedRange(), with: String(key))
+            for key in keys {
+                _ = engine.process(key, shift: key.isUppercase)
             }
             return controller.textView.string
         }
-    }
-
-    @Test("u after . of cw with typed text puts the changed word back")
-    func undoTakesBackTheWholeRepeatedChange() {
-        #expect(run("cwX\u{1B}w.u", on: "one two three", at: 0) == "X two three")
-    }
-
-    @Test("u after . of 3iX takes back all three X")
-    func undoTakesBackARepeatedCountedInsert() {
-        #expect(run("3iX\u{1B}w.u", on: "abc def", at: 0) == "XXXabc def")
-    }
-
-    @Test("u after . of 3iXY takes back all three XY")
-    func undoTakesBackARepeatedCountedInsertOfSeveralCharacters() {
-        #expect(run("3iXY\u{1B}w.u", on: "abc def", at: 0) == "XYXYXYabc def")
-    }
-
-    @Test("u after . of dd puts the line back")
-    func undoTakesBackARepeatedLineDelete() {
-        #expect(run("ddj.u", on: "one\ntwo\nthree\nfour\n", at: 0) == "two\nthree\nfour\n")
     }
 
     @Test("x on an open bracket deletes that bracket only")

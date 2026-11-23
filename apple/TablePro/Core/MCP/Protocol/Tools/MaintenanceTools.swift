@@ -183,49 +183,29 @@ public struct RunMaintenanceTool: MCPToolImplementation {
             try MCPStatementGate.classify(sql: statement, meta: meta, allowsDestructive: true, context: context)
         }
 
-        var planned: [OperationStatement] = []
-        for statement in statements {
+        var results: [JsonValue] = []
+        for (statement, classification) in zip(statements, classifications) {
+            let planned: OperationStatement
             do {
-                planned.append(try await services.connectionBridge.plannedStatement(
+                planned = try await services.connectionBridge.plannedStatement(
                     scope: scope,
                     query: statement,
                     maxRows: Self.rowLimit
-                ))
+                )
             } catch {
                 throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
             }
-        }
-        let operationLabel = String(format: String(localized: "maintenance operation %@"), operation)
-        let consent = try MCPStatementGate.consent(
-            for: zip(planned, classifications).map { plannedStatement, classification in
-                MCPStatementGate.pendingOperation(
-                    [plannedStatement],
-                    kind: OperationKind.from(classification.tier),
-                    scope: scope,
-                    meta: meta,
-                    allowsDestructive: true,
-                    forcesUserConsent: true,
-                    operationLabel: operationLabel,
-                    context: context
-                )
-            },
-            meta: meta,
-            forcesUserConsent: true,
-            operationLabel: operationLabel,
-            context: context
-        )
-
-        var results: [JsonValue] = []
-        for (plannedStatement, classification) in zip(planned, classifications) {
             let approved = try await MCPStatementGate.approve(
-                [plannedStatement],
+                [planned],
                 kind: OperationKind.from(classification.tier),
                 scope: scope,
                 meta: meta,
                 allowsDestructive: true,
                 forcesUserConsent: true,
-                operationLabel: operationLabel,
-                consent: consent,
+                operationLabel: String(
+                    format: String(localized: "maintenance operation %@"),
+                    operation
+                ),
                 context: context,
                 services: services
             )
