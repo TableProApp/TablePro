@@ -27,7 +27,7 @@ struct DefinitionReadEstimateTests {
         var tab = QueryTab(title: "users", query: "SELECT * FROM users", tabType: .table, tableName: "users")
         if filtered {
             tab.filterState.filters = [TestFixtures.makeTableFilter()]
-            tab.filterState.commit = .all
+            tab.filterState.applied = .checkedRows(of: tab.filterState.filters, logicMode: .and)
         }
         if let exactTotal {
             tab.pagination.totalRowCount = exactTotal
