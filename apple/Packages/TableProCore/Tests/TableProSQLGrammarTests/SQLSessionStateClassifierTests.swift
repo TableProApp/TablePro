@@ -435,6 +435,31 @@ struct SQLSessionStateClassifierTests {
         #expect(movesDatabase("/*! USE production */ \(versions)", .mySQL))
     }
 
+    @Test("Code the reader cannot see into may switch the database too", arguments: [
+        ("EXECUTE IMMEDIATE 'USE production'", SQLSessionDialect.mySQL),
+        ("PREPARE s FROM 'SELECT 1'; EXECUTE s", .mySQL),
+        ("CALL archive_orders()", .mySQL),
+        ("BEGIN NOT ATOMIC USE production; END", .mySQL),
+        ("outer: BEGIN NOT ATOMIC SELECT 1; END", .mySQL),
+        ("EXEC('USE production')", .sqlServer),
+        ("EXECUTE sp_executesql N'USE production'", .sqlServer),
+        ("sp_executesql N'USE production'", .sqlServer),
+        ("EXEC dbo.archive_orders", .sqlServer),
+    ])
+    func opaqueCodeMovesTheDatabase(sql: String, dialect: SQLSessionDialect) {
+        #expect(movesDatabase(sql, dialect))
+    }
+
+    @Test("A transaction's BEGIN, or a word that only contains a trigger, moves nothing", arguments: [
+        ("BEGIN", SQLSessionDialect.mySQL),
+        ("SELECT executed_at, CASE WHEN id > 1 THEN 1 END FROM users", .mySQL),
+        ("SELECT * FROM t FOR UPDATE", .mySQL),
+        ("SELECT executor FROM jobs", .sqlServer),
+    ])
+    func lookalikesMoveNothing(sql: String, dialect: SQLSessionDialect) {
+        #expect(!movesDatabase(sql, dialect))
+    }
+
     @Test("A statement that only names a database, or an engine whose session cannot move, moves nothing", arguments: [
         ("SELECT * FROM production.orders", SQLSessionDialect.mySQL),
         ("SELECT 'use production'", .mySQL),

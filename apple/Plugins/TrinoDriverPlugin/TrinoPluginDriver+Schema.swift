@@ -44,6 +44,9 @@ extension TrinoPluginDriver {
         return result.rows.compactMap { firstText($0) }
     }
 
+    // The catalog every request names, kept from the server's own answer to a `USE`.
+    var currentDatabase: String? { currentCatalog }
+
     func switchDatabase(to database: String) async throws {
         session.setCatalog(database)
     }

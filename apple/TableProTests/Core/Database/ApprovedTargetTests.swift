@@ -601,4 +601,50 @@ struct ApprovedTargetTests {
         #expect(error?.message == DatabaseAccessBridge.databaseUnknown.message)
         #expect(!driver.events.contains { $0.hasPrefix("DROP") })
     }
+
+    @Test("A DELETE approved naming no database is refused after EXECUTE IMMEDIATE 'USE production'")
+    func executeImmediateUseRefusesAPendingDelete() async throws {
+        let (id, driver) = session(.mysql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DELETE FROM orders WHERE id = 1", maxRows: 10)
+        let operation = try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .mysql)
+
+        _ = try await bridge.runStatement(
+            scope: scope, query: "EXECUTE IMMEDIATE 'USE production'", maxRows: 10, timeoutSeconds: 30, cancellation: nil
+        )
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.databaseUnknown.message)
+        #expect(!driver.events.contains { $0.hasPrefix("DELETE") })
+    }
+
+    // The real driver, not connected: the statement is counted before it fails, as one that ran would be.
+    @Test("ClickHouse with no database runs SELECT 1, then a call naming none resolves to the database it reports")
+    func clickHouseAnswersWithItsRequestDatabase() async throws {
+        let plugin = try BundledPlugin.driver("ClickHouseDriver").init()
+        let connection = TestFixtures.makeConnection(database: "", type: .clickhouse)
+        let pluginDriver = plugin.createDriver(config: DriverConnectionConfig(
+            host: "127.0.0.1", port: 8_123, username: "", password: "", database: ""
+        ))
+        var session = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
+        )
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let sessionDriver = try #require(DatabaseManager.shared.driver(for: connection.id))
+
+        _ = try? await sessionDriver.execute(query: "SELECT 1")
+        let scope = try await DatabaseAccessBridge().resolveStatementScope(
+            connectionId: connection.id, database: nil, schema: nil
+        )
+
+        #expect(sessionDriver.databaseMoves > 0)
+        #expect(scope.database == (sessionDriver as? DatabaseReporting)?.currentDatabase)
+    }
 }

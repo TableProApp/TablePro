@@ -562,6 +562,9 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
     // MARK: - Database Switching
 
+    // Sent with every request, so no statement moves it; empty sends none and the server's default answers.
+    var currentDatabase: String? { lock.withLock { _currentDatabase } }
+
     func switchDatabase(to database: String) async throws {
         lock.withLock { _currentDatabase = database }
     }

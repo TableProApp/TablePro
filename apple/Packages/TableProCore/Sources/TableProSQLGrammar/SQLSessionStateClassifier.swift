@@ -524,19 +524,28 @@ extension SQLSessionStateClassifier {
 // MARK: - Current database
 
 extension SQLSessionStateClassifier {
+    // MariaDB runs `EXECUTE IMMEDIATE` and these blocks outside a routine, and a prepared statement or a procedure runs
+    // text written elsewhere, so each may switch the database where no reading reaches.
+    private static let mySQLMoveHeads: Set<String> = [
+        "USE", "CALL", "EXECUTE", "IF", "WHILE", "LOOP", "REPEAT", "CASE", "FOR",
+    ]
+    // `EXEC` runs a procedure or a string, `sp_executesql` a string, and either can hold a `USE`.
+    private static let sqlServerMoveWords: Set<String> = ["USE", "EXEC", "EXECUTE", "SP_EXECUTESQL"]
+
     // Whether the statements may leave the session in another database, which a host that pins its own driver cannot
-    // see. Of the dialects read here only MySQL's and SQL Server's `USE` move a live session, and neither engine takes one
-    // inside a procedure. Text it cannot read whole, too long or with more executable-comment versions than the reader
-    // takes, is not ruled out, and neither is one holding an executable comment, whose body the quick test cannot see.
+    // see. Of the dialects read here only MySQL's and SQL Server's move a live session: a `USE`, or code the reader cannot
+    // see into. Text it cannot read whole, too long or with more executable-comment versions than the reader takes, is
+    // not ruled out, and neither is one holding an executable comment, whose body the quick test cannot see.
     public static func mayChangeDatabase(
         ofStatements statements: [String],
         dialect: SQLSessionDialect,
         grammar: SQLLexicalGrammar
     ) -> Bool {
         guard dialect == .mySQL || dialect == .sqlServer else { return false }
+        let words = dialect == .mySQL ? mySQLMoveHeads.union(["BEGIN"]) : sqlServerMoveWords
         return statements.contains { text in
             guard (text as NSString).length <= classifiedPrefixLength else { return true }
-            guard text.range(of: "use", options: .caseInsensitive) != nil || text.contains("\\")
+            guard text.contains("\\") || holdsWord(of: words, in: text)
                 || SQLExecutableCommentReadings.holdsExecutableComment(text, grammar: grammar)
             else { return false }
             return SQLStatementClassifier.statements(of: text, grammar: grammar).contains { statement in
@@ -551,13 +560,46 @@ extension SQLSessionStateClassifier {
     }
 
     // The mysql client's `\u name` is the same command, should a driver pass it through. A T-SQL batch runs statements
-    // with no `;` between them, so a `USE` anywhere in one counts, a `USE HINT` included.
+    // with no `;` between them, so a word anywhere in one counts, a `USE HINT` or a `GRANT EXECUTE` included.
     private static func selectsDatabase(_ piece: String, dialect: SQLSessionDialect, grammar: SQLLexicalGrammar) -> Bool {
         if piece.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("\\u") { return true }
         let code = StatementCode(piece, grammar: grammar)
-        guard dialect == .mySQL else { return code.tokens.contains { $0.word == "USE" } }
-        guard let start = code.tokens.firstIndex(where: { $0.kind != .open }) else { return false }
-        return code.word(at: start) == "USE"
+        guard dialect == .mySQL else {
+            return code.tokens.contains { $0.word.map(sqlServerMoveWords.contains) == true }
+        }
+        guard var start = code.tokens.firstIndex(where: { $0.kind != .open }) else { return false }
+        // A labelled block, `outer: BEGIN NOT ATOMIC`, opens past its label.
+        if code.isSymbol(colon, at: start + 1) {
+            start += 2
+        }
+        guard let head = code.word(at: start) else { return false }
+        return mySQLMoveHeads.contains(head) || (head == "BEGIN" && code.word(at: start + 1) == "NOT")
+    }
+
+    // Whole words, so `users` or `executed_at` does not cost the full read.
+    private static func holdsWord(of words: Set<String>, in text: String) -> Bool {
+        let units = text as NSString
+        let longest = words.map(\.utf16.count).max() ?? 0
+        var start = 0
+        var index = 0
+        while index <= units.length {
+            if index < units.length, isWordUnit(units.character(at: index)) {
+                index += 1
+                continue
+            }
+            let length = index - start
+            if length >= 2, length <= longest,
+               words.contains(units.substring(with: NSRange(location: start, length: length)).uppercased()) {
+                return true
+            }
+            index += 1
+            start = index
+        }
+        return false
+    }
+
+    private static func isWordUnit(_ unit: UInt16) -> Bool {
+        (0x30...0x39).contains(unit) || (0x41...0x5A).contains(unit) || (0x61...0x7A).contains(unit) || unit == 0x5F
     }
 }
 
