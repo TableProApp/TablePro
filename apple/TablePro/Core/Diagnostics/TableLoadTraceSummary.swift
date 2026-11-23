@@ -5,7 +5,7 @@
 
 import Foundation
 
-/// The closed vocabulary of ways a table load can end. A persisted history has to carry a set an
+/// The closed vocabulary of ways a table load can end. A summary has to carry a set an
 /// external report can group by, which a free-form string cannot be: `finish` used to take one, and
 /// the failure case interpolated a Swift type name into it. The type name now rides in the log-only
 /// `detail`, so the log line is unchanged and the recorded field is closed.

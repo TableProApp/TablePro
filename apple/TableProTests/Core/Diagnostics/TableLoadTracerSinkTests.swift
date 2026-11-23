@@ -1,6 +1,5 @@
 import Foundation
 @testable import TablePro
-import TableProTestSupport
 import Testing
 
 private final class RecordingSink: TableLoadSummarySink, @unchecked Sendable {
@@ -149,22 +148,66 @@ struct TableLoadTracerSinkTests {
         #expect(sink.records.isEmpty)
     }
 
-    @Test("The shared tracer keeps a finished load in the history file, under a test host as in the app")
-    func sharedTracerRecordsToTheHistoryFile() async throws {
-        let marker = "TracerProbe-\(UUID().uuidString)"
-        let tracer = TableLoadTracer.shared
-        let token = tracer.begin(
-            tabId: UUID(),
-            table: "users",
-            origin: .sidebar,
-            environment: TableLoadEnvironment(databaseTypeId: marker, usesSSH: false, openTabCount: 1)
-        )
+    @Test("A tracer with no sink still ends a load")
+    func tracerWithoutSinkEndsALoad() {
+        let tracer = TableLoadTracer(sink: nil)
+        let token = tracer.begin(tabId: UUID(), table: "users", origin: .sidebar, environment: environment)
+        tracer.finish(token: token, outcome: .completed)
+        #expect(tracer.isActive(token) == false)
+    }
+
+    @Test("The standard error sink writes one prefixed JSON line per load")
+    func standardErrorSinkWritesOneLine() throws {
+        let written = LockedLines()
+        let tracer = TableLoadTracer(sink: TableLoadStandardErrorSink { written.append($0) })
+        let token = tracer.begin(tabId: UUID(), table: "users", origin: .sidebar, environment: environment)
         tracer.finish(token: token, outcome: .completed)
 
-        let fileURL = TableLoadHistoryStore.defaultFileURL()
-        try await waitUntil {
-            let data = (try? Data(contentsOf: fileURL)) ?? Data()
-            return String(decoding: data, as: UTF8.self).contains(marker)
-        }
+        let lines = written.lines
+        #expect(lines.count == 1)
+        let line = try #require(lines.first)
+        #expect(line.last == UInt8(ascii: "\n"))
+        let prefix = Data(TableLoadStandardErrorSink.linePrefix.utf8)
+        #expect(line.starts(with: prefix))
+        let json = line.dropFirst(prefix.count).dropLast()
+        let record = try TableLoadPerformanceRecord.makeDecoder().decode(TableLoadPerformanceRecord.self, from: Data(json))
+        #expect(record.outcome == TableLoadOutcome.completed.rawValue)
+        #expect(record.databaseTypeId == "ClickHouse")
+    }
+
+    @Test("The history file older builds kept is removed, and nothing beside it")
+    func retiredHistoryFileIsRemoved() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RetiredTableLoadHistory-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let history = directory.appendingPathComponent(RetiredTableLoadHistory.fileName)
+        let neighbour = directory.appendingPathComponent("connections.json")
+        try Data("{}\n".utf8).write(to: history)
+        try Data("[]".utf8).write(to: neighbour)
+
+        RetiredTableLoadHistory.remove(in: directory)
+        #expect(FileManager.default.fileExists(atPath: history.path) == false)
+        #expect(FileManager.default.fileExists(atPath: neighbour.path))
+
+        RetiredTableLoadHistory.remove(in: directory)
+        #expect(FileManager.default.fileExists(atPath: neighbour.path))
+    }
+}
+
+private final class LockedLines: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Data] = []
+
+    var lines: [Data] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func append(_ line: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        storage.append(line)
     }
 }

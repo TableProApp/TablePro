@@ -69,8 +69,6 @@ paths:
   - "apple/TablePro/Core/AI/ChatGPTCodex/ChatGPTCodexModels.swift"
   - "apple/TablePro/Core/ConnectionLibrary/RecentConnectionsStore.swift"
   - "apple/TablePro/Core/ConnectionLibrary/ConnectionListPreferences.swift"
-  - "apple/TablePro/Core/Diagnostics/TableLoadHistoryStore.swift"
-  - "apple/TablePro/Core/Diagnostics/TableLoadPerformanceRecord.swift"
   - "apple/TablePro/Core/DataWrite/Rewind/RewindCipher.swift"
   - "apple/TablePro/Core/DataWrite/Rewind/RewindRecord.swift"
   - "apple/TablePro/Core/MCP/Outside/MCPServerStore.swift"
@@ -203,5 +201,5 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Deletions the server reported for a sync category that is off, applied when the category is next read | UserDefaults, device-local, never synced | `SyncMetadataStorage.deferredDeletions` |
 | The iCloud account this device last saved the CloudKit change subscription for; cleared when sync turns on, on Upload Again, when the data is found removed, and when an activation brings a change no notice announced | UserDefaults `com.TablePro.sync.subscribedAccountId`, device-local, never synced | `SyncMetadataStorage.subscribedAccountId` through `SyncPushChannel` |
 | Where a connection came from (`origin`): this Mac, imported, iCloud | `connections.json`, never synced or exported | `ConnectionStorage` |
-| Table load timings (no identifying data, never uploaded) | JSON lines | `TableLoadHistoryStore` |
+| Connections opened from a database file or a link and never saved, whose view state, tab state and table-scoped files the next launch removes once no window holds them; never recorded while the library failed to load | UserDefaults `com.TablePro.connections.transientIds`, device-local, never synced | `TransientConnectionLedger`, written by `DatabaseManager.registerPendingSession`, swept by `PostLaunchWork` |
 | Reopen Last Session list (`LastSession.json`, plus `LastOpenConnections.json` holding only the ids that reconnect, which older builds read) | JSON | `LastOpenConnectionsStorage` |

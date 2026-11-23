@@ -28,7 +28,7 @@ extension MainContentCoordinator {
         guard periodicSaveTask == nil else { return }
         periodicSaveTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: Self.periodicSaveInterval)
+                try? await Task.sleep(for: Self.periodicSaveInterval, tolerance: .seconds(10))
                 guard let self, !Task.isCancelled, !Self.isAppTerminating, !self.isTearingDown else { return }
                 guard self.isFirstCoordinatorForConnection() else { continue }
                 self.persistence.saveAggregated()

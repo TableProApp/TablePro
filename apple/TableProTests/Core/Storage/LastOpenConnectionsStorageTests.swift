@@ -189,4 +189,67 @@ struct LastOpenConnectionsStorageTests {
         #expect(!FileManager.default.fileExists(atPath: sessionURL.path))
         #expect(storage.load() == .empty)
     }
+
+    private func inode(of url: URL) throws -> Int {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        return try #require(attributes[.systemFileNumber] as? Int)
+    }
+
+    @Test("Saving the same session again leaves both files alone")
+    func sameSessionKeepsBothFiles() throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let session = LastSession(connections: [LastSession.Connection(id: UUID(), reconnects: true)])
+        storage.save(session)
+        let legacyInode = try inode(of: legacyURL)
+        let sessionInode = try inode(of: sessionURL)
+
+        storage.save(session)
+        storage.save(session)
+
+        #expect(try inode(of: legacyURL) == legacyInode)
+        #expect(try inode(of: sessionURL) == sessionInode)
+    }
+
+    @Test("A list an older build removed is written again by the same session")
+    func removedLegacyListIsWrittenAgain() throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let id = UUID()
+        let session = LastSession(connections: [LastSession.Connection(id: id, reconnects: true)])
+        storage.save(session)
+        try FileManager.default.removeItem(at: legacyURL)
+
+        storage.save(session)
+
+        #expect(try legacyIds() == [id])
+        #expect(storage.load() == session)
+    }
+
+    @Test("A changed shown connection is written")
+    func changedShownConnectionIsWritten() throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = LastSession.Connection(id: UUID(), reconnects: true)
+        let second = LastSession.Connection(id: UUID(), reconnects: true)
+        storage.save(LastSession(connections: [first, second], shownConnectionId: first.id))
+        let sessionInode = try inode(of: sessionURL)
+
+        let shown = LastSession(connections: [first, second], shownConnectionId: second.id)
+        storage.save(shown)
+
+        #expect(try inode(of: sessionURL) != sessionInode)
+        #expect(LastOpenConnectionsStorage(directory: directory).load() == shown)
+    }
+
+    @Test("After an empty session the same session is written again")
+    func sameSessionAfterEmptyIsWritten() {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let session = LastSession(connections: [LastSession.Connection(id: UUID(), reconnects: true)])
+        storage.save(session)
+        storage.save(.empty)
+
+        storage.save(session)
+
+        #expect(FileManager.default.fileExists(atPath: legacyURL.path))
+        #expect(FileManager.default.fileExists(atPath: sessionURL.path))
+        #expect(LastOpenConnectionsStorage(directory: directory).load() == session)
+    }
 }

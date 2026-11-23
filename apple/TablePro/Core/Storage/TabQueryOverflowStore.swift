@@ -15,6 +15,8 @@ internal enum TabQueryOverflowStore {
     internal struct WrittenSidecars {
         var digests: [String: SHA256.Digest] = [:]
         var keptByLastPrune: Set<String>?
+        // Whether the last `externalize` left a query inline because its sidecar could not be written.
+        var lastWriteFailed = false
     }
 
     static func directory(inside tabStateDirectory: URL) -> URL {
@@ -34,6 +36,7 @@ internal enum TabQueryOverflowStore {
     ) -> [PersistedTab] {
         let overflowDirectory = directory(inside: tabStateDirectory)
         var kept: Set<String> = []
+        written.lastWriteFailed = false
 
         let processed = tabs.map { tab -> PersistedTab in
             guard (tab.query as NSString).length > TabQueryContent.maxPersistableQuerySize else { return tab }
@@ -42,7 +45,10 @@ internal enum TabQueryOverflowStore {
             let path = overflowDirectory.appendingPathComponent(name).path
             if written.digests[name] != digest || !FileManager.default.fileExists(atPath: path) {
                 written.digests[name] = nil
-                guard write(tab.query, named: name, in: overflowDirectory) else { return tab }
+                guard write(tab.query, named: name, in: overflowDirectory) else {
+                    written.lastWriteFailed = true
+                    return tab
+                }
                 written.digests[name] = digest
             }
             kept.insert(name)
