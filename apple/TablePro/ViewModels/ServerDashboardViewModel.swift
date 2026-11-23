@@ -195,7 +195,7 @@ final class ServerDashboardViewModel: ObservableObject {
         services: AppServices
     ) -> @MainActor (String) async throws -> QueryResult {
         { [scope, services] query in
-            try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
+            try await services.databaseManager.withMetadataRead(scope: scope) { driver in
                 try await driver.executeCatalogRead(query: query)
             }
         }
@@ -311,11 +311,11 @@ final class ServerDashboardViewModel: ObservableObject {
     // MARK: - Kill Session
 
     // The list now holds the session the query tabs run on, so a cancel or terminate aimed at its
-    // running statement goes over a connection of its own, or it would wait for that statement.
+    // running statement goes over a connection of its own. Where the metadata route is the session
+    // itself (server scope, an embedded engine), a turn there would wait for that statement.
     private func runSessionAction(_ sql: String) async throws {
         let manager = services.databaseManager
-        if let session = manager.session(for: connectionId), manager.canPool(session),
-           let scope = manager.browseScope(for: connectionId) {
+        if let scope = manager.browseScope(for: connectionId), manager.metadataRoute(for: scope).isPooled {
             try await manager.withMetadataDriver(scope: scope) { driver in
                 _ = try await driver.execute(query: sql)
             }
