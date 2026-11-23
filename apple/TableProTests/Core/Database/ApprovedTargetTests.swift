@@ -506,4 +506,52 @@ struct ApprovedTargetTests {
         #expect(unnamed.isServerScoped)
         #expect(scope.database == "staging")
     }
+
+    // The bridge refuses a text that is only comments as empty, so it runs from an editor tab, which notes it the same way.
+    @Test("A DELETE approved naming no database is refused after a USE behind more comment versions than are read")
+    func useBehindTooManyVersionsRefuses() async throws {
+        let (id, driver) = session(.mysql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DELETE FROM orders WHERE id = 1", maxRows: 10)
+        let operation = try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .mysql)
+        let versions = (10_000...10_032).map { "/*!\($0) */" }.joined(separator: " ")
+        let sessionDriver = try #require(DatabaseManager.shared.driver(for: id))
+
+        await DatabaseManager.shared.noteSessionStatements(
+            ["/*! USE production */ \(versions)"], ranOn: sessionDriver, scope: scope
+        )
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.databaseUnknown.message)
+        #expect(!driver.events.contains { $0.hasPrefix("DELETE") })
+    }
+
+    // The SQL Server stand-in plugin connects for real, and SQL Server reads USE as MySQL does.
+    @Test("A startup USE leaves the database unknown after connect and again after a reconnect")
+    func startupUseLeavesTheDatabaseUnknown() async throws {
+        FakeMSSQLPluginRegistration.registerIfNeeded()
+        var connection = TestFixtures.makeConnection(database: "", type: .mssql)
+        connection.startupCommands = "USE production"
+        let bridge = DatabaseAccessBridge()
+        func unnamedDeleteIsRefused() async {
+            let error = await #expect(throws: DatabaseAccessError.self) {
+                _ = try await bridge.resolveStatementScope(connectionId: connection.id, database: nil, schema: nil)
+            }
+            #expect(error?.message == DatabaseAccessBridge.databaseUnknown.message)
+        }
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        try await DatabaseManager.shared.ensureConnected(connection)
+        await unnamedDeleteIsRefused()
+        try await DatabaseManager.shared.reconnectSession(connection.id)
+        await unnamedDeleteIsRefused()
+
+        #expect(DatabaseManager.shared.session(for: connection.id)?.resolvedBrowseDatabase == "")
+        await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
+        DatabaseManager.shared.driver(for: connection.id)?.disconnect()
+    }
 }

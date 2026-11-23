@@ -526,7 +526,8 @@ extension SQLSessionStateClassifier {
 extension SQLSessionStateClassifier {
     // Whether the statements may leave the session in another database, which a host that pins its own driver cannot
     // see. Of the dialects read here only MySQL's and SQL Server's `USE` move a live session, and neither engine takes one
-    // inside a procedure. A text too long to read whole is not ruled out.
+    // inside a procedure. Text it cannot read whole, too long or with more executable-comment versions than the reader
+    // takes, is not ruled out, and neither is one holding an executable comment, whose body the quick test cannot see.
     public static func mayChangeDatabase(
         ofStatements statements: [String],
         dialect: SQLSessionDialect,
@@ -535,11 +536,12 @@ extension SQLSessionStateClassifier {
         guard dialect == .mySQL || dialect == .sqlServer else { return false }
         return statements.contains { text in
             guard (text as NSString).length <= classifiedPrefixLength else { return true }
-            guard text.range(of: "use", options: .caseInsensitive) != nil || text.contains("\\") else { return false }
+            guard text.range(of: "use", options: .caseInsensitive) != nil || text.contains("\\")
+                || SQLExecutableCommentReadings.holdsExecutableComment(text, grammar: grammar)
+            else { return false }
             return SQLStatementClassifier.statements(of: text, grammar: grammar).contains { statement in
-                let readings = SQLExecutableCommentReadings.texts(of: statement, grammar: grammar).map { Array($0) }
-                    ?? [statement]
-                return readings.contains { reading in
+                guard let readings = SQLExecutableCommentReadings.texts(of: statement, grammar: grammar) else { return true }
+                return Array(readings).contains { reading in
                     SQLStatementClassifier.runnableStatements(of: reading, grammar: grammar).contains {
                         selectsDatabase($0, dialect: dialect, grammar: grammar)
                     }

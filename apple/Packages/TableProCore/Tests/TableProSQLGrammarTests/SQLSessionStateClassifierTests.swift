@@ -428,6 +428,13 @@ struct SQLSessionStateClassifierTests {
         #expect(movesDatabase(sql, dialect))
     }
 
+    // Past the reader's version limit it reads nothing, and the text as written blanks every executable comment.
+    @Test("A USE behind more executable-comment versions than the reader takes is not ruled out")
+    func useBehindTooManyVersionsMoves() {
+        let versions = (10_000...10_032).map { "/*!\($0) */" }.joined(separator: " ")
+        #expect(movesDatabase("/*! USE production */ \(versions)", .mySQL))
+    }
+
     @Test("A statement that only names a database, or an engine whose session cannot move, moves nothing", arguments: [
         ("SELECT * FROM production.orders", SQLSessionDialect.mySQL),
         ("SELECT 'use production'", .mySQL),

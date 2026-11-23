@@ -169,6 +169,9 @@ extension DatabaseManager {
                     session.cachedPassword = cachedPassword
                 }
             }
+            if result.startupMovedDatabase {
+                noteExecutionDatabase(nil, on: result.driver, for: connectionId)
+            }
             markSessionLive(connectionId)
             AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connectionId))
             return .success
@@ -265,6 +268,7 @@ extension DatabaseManager {
         let effectiveConnection: DatabaseConnection
         let cachedPassword: String?
         let startupFailures: [StartupCommandFailure]
+        let startupMovedDatabase: Bool
         let restoreWarning: String?
     }
 
@@ -325,6 +329,7 @@ extension DatabaseManager {
             startupCommands: session.connection.startupCommands,
             connectionName: session.connection.name
         )
+        let startupMovedDatabase = await startupMayMoveDatabase(session.connection.startupCommands, on: driver)
         let restoreWarning = await restoreSchemaAndDatabase(
             on: driver,
             savedSchema: session.browseSchema,
@@ -336,6 +341,7 @@ extension DatabaseManager {
             effectiveConnection: connectionForDriver,
             cachedPassword: connectResult.cachedPassword,
             startupFailures: startupFailures,
+            startupMovedDatabase: startupMovedDatabase,
             restoreWarning: restoreWarning
         )
     }
@@ -518,6 +524,7 @@ extension DatabaseManager {
                 startupCommands: session.connection.startupCommands,
                 connectionName: session.connection.name
             )
+            let startupMovedDatabase = await startupMayMoveDatabase(session.connection.startupCommands, on: driver)
             let restoreWarning = await restoreSchemaAndDatabase(
                 on: driver,
                 savedSchema: activeSessions[sessionId]?.browseSchema,
@@ -544,6 +551,9 @@ extension DatabaseManager {
                 {
                     session.cachedPassword = cachedPassword
                 }
+            }
+            if startupMovedDatabase {
+                noteExecutionDatabase(nil, on: driver, for: sessionId)
             }
             markSessionLive(sessionId)
 

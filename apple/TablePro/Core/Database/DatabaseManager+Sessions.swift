@@ -137,15 +137,8 @@ extension DatabaseManager {
                 startupCommands: resolvedConnection.startupCommands,
                 connectionName: connection.name
             )
-
-            if let schemaDriver = driver as? SchemaSwitchable {
-                activeSessions[connection.id]?.browseSchema = schemaDriver.currentSchema
-            }
-            if let reportingDriver = driver as? DatabaseReporting,
-               let openedDatabase = reportingDriver.currentDatabase, !openedDatabase.isEmpty {
-                activeSessions[connection.id]?.browseDatabase = openedDatabase
-                activeSessions[connection.id]?.openedDatabase = openedDatabase
-            }
+            let startupMovedDatabase = await startupMayMoveDatabase(resolvedConnection.startupCommands, on: driver)
+            adoptReportedPosition(of: driver, for: connection.id)
 
             await executePostConnectActions(
                 for: connection, resolvedConnection: resolvedConnection, driver: driver
@@ -181,6 +174,7 @@ extension DatabaseManager {
                 }
             }
             setSession(session, for: connection.id)
+            if startupMovedDatabase { noteExecutionDatabase(nil, on: driver, for: connection.id) }
 
             // Before `finish`, so the clear is still the current attempt's to make.
             clearConnectionStage(for: connection.id)
@@ -275,6 +269,18 @@ extension DatabaseManager {
                 attempt: attempt
             )
             throw error
+        }
+    }
+
+    // Where the driver says it opened, before any post-connect action moves it.
+    private func adoptReportedPosition(of driver: DatabaseDriver, for connectionId: UUID) {
+        if let schemaDriver = driver as? SchemaSwitchable {
+            activeSessions[connectionId]?.browseSchema = schemaDriver.currentSchema
+        }
+        if let reportingDriver = driver as? DatabaseReporting,
+           let openedDatabase = reportingDriver.currentDatabase, !openedDatabase.isEmpty {
+            activeSessions[connectionId]?.browseDatabase = openedDatabase
+            activeSessions[connectionId]?.openedDatabase = openedDatabase
         }
     }
 

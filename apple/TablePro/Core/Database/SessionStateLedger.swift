@@ -84,7 +84,7 @@ extension DatabaseManager {
     }
 
     // A statement that may move the session's driver to another database leaves where it executes unknown, so a call
-    // naming no database is refused rather than run wherever that is. An engine with no dialect here is not ruled out.
+    // naming no database is refused rather than run wherever that is.
     private func noteDatabaseMoves(
         _ statements: [String],
         ranOn driver: DatabaseDriver,
@@ -93,10 +93,31 @@ extension DatabaseManager {
         grammar: SQLLexicalGrammar
     ) async {
         guard let session = activeSessions[connectionId], session.driver === driver,
-              pluginManager.supportsDatabaseSwitching(for: session.connection.type)
+              await mayMoveDatabase(statements, databaseType: session.connection.type, dialect: dialect, grammar: grammar)
         else { return }
-        if let dialect, await !Self.mayChangeDatabase(statements, dialect: dialect, grammar: grammar) { return }
         noteExecutionDatabase(nil, on: driver, for: connectionId)
+    }
+
+    // Startup SQL runs before its driver is the session's, so whether it may have moved that driver is read when it runs
+    // and noted once the driver is installed.
+    internal func startupMayMoveDatabase(_ commands: String?, on driver: DatabaseDriver) async -> Bool {
+        let databaseType = driver.connection.type
+        let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
+        let statements = Self.startupStatements(from: commands, databaseType: databaseType, grammar: grammar)
+        let dialect = SQLSessionDialect(TransactionEngineFamily.of(databaseType))
+        return await mayMoveDatabase(statements, databaseType: databaseType, dialect: dialect, grammar: grammar)
+    }
+
+    // An engine with no dialect read here is not ruled out.
+    private func mayMoveDatabase(
+        _ statements: [String],
+        databaseType: DatabaseType,
+        dialect: SQLSessionDialect?,
+        grammar: SQLLexicalGrammar
+    ) async -> Bool {
+        guard !statements.isEmpty, pluginManager.supportsDatabaseSwitching(for: databaseType) else { return false }
+        guard let dialect else { return true }
+        return await Self.mayChangeDatabase(statements, dialect: dialect, grammar: grammar)
     }
 
     @concurrent
