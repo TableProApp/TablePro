@@ -67,12 +67,14 @@ extension DatabaseManager {
     // Called inside the user's own lease, where the driver is the one the text ran on. A statement that failed counts:
     // it can have created a temporary table before its error.
     internal func noteSessionStatements(_ statements: [String], ranOn driver: DatabaseDriver, scope: DatabaseScope) async {
-        guard !statements.isEmpty, let session = activeSessions[scope.connectionId] else { return }
+        guard !statements.isEmpty,
+              let session = activeSessions[scope.connectionId],
+              let dialect = SQLSessionDialect(TransactionEngineFamily.of(session.connection.type)),
+              let key = sessionKey(for: scope),
+              isLiveSessionDriver(driver, for: key)
+        else { return }
         let databaseType = session.connection.type
-        let dialect = SQLSessionDialect(TransactionEngineFamily.of(databaseType))
         let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
-        await noteDatabaseMoves(statements, ranOn: driver, connectionId: scope.connectionId, dialect: dialect, grammar: grammar)
-        guard let dialect, let key = sessionKey(for: scope), isLiveSessionDriver(driver, for: key) else { return }
         // A reconnect runs the startup commands again, so what they set up is never lost.
         let startup = Self.startupStatements(
             from: session.connection.startupCommands, databaseType: databaseType, grammar: grammar
@@ -81,52 +83,6 @@ extension DatabaseManager {
         let effect = await Self.sessionStateEffect(of: statements, reading: reading)
         guard !effect.isEmpty else { return }
         sessionStateLedger.record(effect, on: driver, for: key)
-    }
-
-    // A statement that may move the session's driver to another database leaves where it executes unknown, so a call
-    // naming no database is refused rather than run wherever that is.
-    private func noteDatabaseMoves(
-        _ statements: [String],
-        ranOn driver: DatabaseDriver,
-        connectionId: UUID,
-        dialect: SQLSessionDialect?,
-        grammar: SQLLexicalGrammar
-    ) async {
-        guard let session = activeSessions[connectionId], session.driver === driver,
-              await mayMoveDatabase(statements, databaseType: session.connection.type, dialect: dialect, grammar: grammar)
-        else { return }
-        noteExecutionDatabase(nil, on: driver, for: connectionId)
-    }
-
-    // Startup SQL runs before its driver is the session's, so whether it may have moved that driver is read when it runs
-    // and noted once the driver is installed.
-    internal func startupMayMoveDatabase(_ commands: String?, on driver: DatabaseDriver) async -> Bool {
-        let databaseType = driver.connection.type
-        let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
-        let statements = Self.startupStatements(from: commands, databaseType: databaseType, grammar: grammar)
-        let dialect = SQLSessionDialect(TransactionEngineFamily.of(databaseType))
-        return await mayMoveDatabase(statements, databaseType: databaseType, dialect: dialect, grammar: grammar)
-    }
-
-    // An engine with no dialect read here is not ruled out.
-    private func mayMoveDatabase(
-        _ statements: [String],
-        databaseType: DatabaseType,
-        dialect: SQLSessionDialect?,
-        grammar: SQLLexicalGrammar
-    ) async -> Bool {
-        guard !statements.isEmpty, pluginManager.supportsDatabaseSwitching(for: databaseType) else { return false }
-        guard let dialect else { return true }
-        return await Self.mayChangeDatabase(statements, dialect: dialect, grammar: grammar)
-    }
-
-    @concurrent
-    nonisolated private static func mayChangeDatabase(
-        _ statements: [String],
-        dialect: SQLSessionDialect,
-        grammar: SQLLexicalGrammar
-    ) async -> Bool {
-        SQLSessionStateClassifier.mayChangeDatabase(ofStatements: statements, dialect: dialect, grammar: grammar)
     }
 
     // A Run All of a long script reads every statement, which would hold the main actor.

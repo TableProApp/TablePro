@@ -507,7 +507,7 @@ struct ApprovedTargetTests {
         #expect(scope.database == "staging")
     }
 
-    // The bridge refuses a text that is only comments as empty, so it runs from an editor tab, which notes it the same way.
+    // The bridge refuses a text that is only comments as empty, so it runs from an editor tab, straight on the driver.
     @Test("A DELETE approved naming no database is refused after a USE behind more comment versions than are read")
     func useBehindTooManyVersionsRefuses() async throws {
         let (id, driver) = session(.mysql, database: "")
@@ -519,9 +519,7 @@ struct ApprovedTargetTests {
         let versions = (10_000...10_032).map { "/*!\($0) */" }.joined(separator: " ")
         let sessionDriver = try #require(DatabaseManager.shared.driver(for: id))
 
-        await DatabaseManager.shared.noteSessionStatements(
-            ["/*! USE production */ \(versions)"], ranOn: sessionDriver, scope: scope
-        )
+        _ = try await sessionDriver.execute(query: "/*! USE production */ \(versions)")
         let error = await #expect(throws: DatabaseAccessError.self) {
             _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
         }
@@ -553,5 +551,54 @@ struct ApprovedTargetTests {
         #expect(DatabaseManager.shared.session(for: connection.id)?.resolvedBrowseDatabase == "")
         await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
         DatabaseManager.shared.driver(for: connection.id)?.disconnect()
+    }
+
+    private func approvedNoDatabaseDrop(on id: UUID, bridge: DatabaseAccessBridge) async throws -> ApprovedOperation {
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DROP TABLE orders", maxRows: 10)
+        return try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .mssql)
+    }
+
+    // The plan fails, as it can, and the USE it ran under SHOWPLAN stays: an error does not move the session back.
+    @Test("On SQL Server a pending DROP naming no database is refused after an analyzed plan of USE production")
+    func analyzedPlanOfAUseRefusesAPendingDrop() async throws {
+        let (id, driver) = session(.mssql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let drop = try await approvedNoDatabaseDrop(on: id, bridge: bridge)
+        let explain = try await ApprovedOperationFixture.approve(
+            [OperationStatement(sql: "USE production")], scope: drop.scope, databaseType: .mssql
+        )
+
+        _ = try? await bridge.runExplainPlan(
+            explain,
+            step: ExplainRequest.DriverStep(variantId: "actual", runsStatement: true),
+            timeoutSeconds: 30,
+            cancellation: nil
+        )
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runStatement(drop, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+
+        #expect(drop.scope.isServerScoped)
+        #expect(error?.message == DatabaseAccessBridge.databaseUnknown.message)
+        #expect(!driver.events.contains { $0.hasPrefix("DROP") })
+    }
+
+    @Test("An in-app Explain of USE production leaves a pending approval naming no database refused")
+    func inAppExplainOfAUseRefusesAPendingDrop() async throws {
+        let (id, driver) = session(.mssql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let drop = try await approvedNoDatabaseDrop(on: id, bridge: bridge)
+        let sessionDriver = try #require(DatabaseManager.shared.driver(for: id))
+
+        _ = try? await QueryExecutor.fetchExplainPlan(driver: sessionDriver, statement: "USE production", variantId: "estimated")
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runStatement(drop, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.databaseUnknown.message)
+        #expect(!driver.events.contains { $0.hasPrefix("DROP") })
     }
 }

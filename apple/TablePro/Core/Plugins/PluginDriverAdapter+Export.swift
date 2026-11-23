@@ -6,6 +6,7 @@ extension PluginDriverAdapter {
         if let error = StatementTextValidator.error(for: query) {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
+        noteDatabaseMoves([query])
         return pluginDriver.streamRows(query: query, context: streamContext(query, safeModeIsReadOnly))
     }
 
@@ -16,6 +17,7 @@ extension PluginDriverAdapter {
         if let error = StatementTextValidator.error(for: query) {
             return AsyncThrowingStream { $0.finish(throwing: error) }
         }
+        noteDatabaseMoves([query])
         return pluginDriver.streamExportRows(query: query, context: streamContext(query, safeModeIsReadOnly))
     }
 

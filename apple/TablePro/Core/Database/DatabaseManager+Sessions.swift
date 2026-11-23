@@ -137,7 +137,6 @@ extension DatabaseManager {
                 startupCommands: resolvedConnection.startupCommands,
                 connectionName: connection.name
             )
-            let startupMovedDatabase = await startupMayMoveDatabase(resolvedConnection.startupCommands, on: driver)
             adoptReportedPosition(of: driver, for: connection.id)
 
             await executePostConnectActions(
@@ -174,7 +173,6 @@ extension DatabaseManager {
                 }
             }
             setSession(session, for: connection.id)
-            if startupMovedDatabase { noteExecutionDatabase(nil, on: driver, for: connection.id) }
 
             // Before `finish`, so the clear is still the current attempt's to make.
             clearConnectionStage(for: connection.id)

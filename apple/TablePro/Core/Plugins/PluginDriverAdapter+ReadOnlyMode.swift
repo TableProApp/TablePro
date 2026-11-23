@@ -12,7 +12,7 @@ extension PluginDriverAdapter {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int, context: PluginStatementContext) async throws -> QueryResult? {
-        try StatementTextValidator.validate(query)
+        try admit(query)
         try refuseUnenforcedPolicy(context)
         guard let pluginResult = try await pluginDriver.executeBoundedQuery(
             query: query,

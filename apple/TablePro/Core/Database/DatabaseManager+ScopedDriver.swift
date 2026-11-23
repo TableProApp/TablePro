@@ -37,11 +37,12 @@ private enum TableReadTurn: Sendable {
     case moved(ScopedDriverRoute)
 }
 
-// Weak and compared by identity: a reconnect's driver is not the one a pin moved. A nil database is unknown: a
-// statement may have moved the driver where no pin can see.
+// Weak and compared by identity: a reconnect's driver is not the one a pin moved. `moves` is the driver's count of texts
+// that may move its database when the host placed it, so a later one makes the position unknown.
 internal struct ExecutionPosition {
     weak var driver: AnyObject?
-    let database: String?
+    let database: String
+    let moves: Int
 }
 
 extension DatabaseManager {
@@ -822,18 +823,21 @@ extension DatabaseManager {
         try await schemaDriver.switchSchemaIfNeeded(to: schema)
     }
 
-    // Where the session's driver executes, nil when unknown. A pin moves it without moving the browse cursor; one no pin
-    // or statement has moved is where its connect, restore or switch put it, which is the browse cursor. After a
-    // statement that may have moved it, a driver that reports its database answers.
+    // Where the session's driver executes, nil when unknown. A pin moves it without moving the browse cursor; one the
+    // host has not moved is where its connect, restore or switch put it, which is the browse cursor. Once a text it sent
+    // may have moved it, startup SQL included, only a driver that reports its database can say where.
     func executionDatabase(for connectionId: UUID) -> String? {
         guard let session = activeSessions[connectionId] else { return nil }
-        guard let position = executionPositions[connectionId], let driver = session.driver, position.driver === driver
-        else { return session.resolvedBrowseDatabase }
-        return position.database ?? (driver as? DatabaseReporting)?.currentDatabase
+        guard let driver = session.driver else { return session.resolvedBrowseDatabase }
+        let position = executionPositions[connectionId].flatMap { $0.driver === driver ? $0 : nil }
+        guard driver.databaseMoves > (position?.moves ?? 0) else {
+            return position?.database ?? session.resolvedBrowseDatabase
+        }
+        return (driver as? DatabaseReporting)?.currentDatabase
     }
 
-    func noteExecutionDatabase(_ database: String?, on driver: DatabaseDriver, for connectionId: UUID) {
+    func noteExecutionDatabase(_ database: String, on driver: DatabaseDriver, for connectionId: UUID) {
         guard activeSessions[connectionId]?.driver === driver else { return }
-        executionPositions[connectionId] = ExecutionPosition(driver: driver, database: database)
+        executionPositions[connectionId] = ExecutionPosition(driver: driver, database: database, moves: driver.databaseMoves)
     }
 }
