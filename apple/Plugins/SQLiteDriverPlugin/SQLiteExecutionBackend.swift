@@ -522,26 +522,27 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         var rows: [[PluginCellValue]] = []
         var truncated = false
         let rowLimit = bound?.rowCap ?? PluginRowLimits.emergencyMax
+        // A statement that writes runs to its end: an autocommit write commits there, and a deferred constraint it
+        // breaks fails only there, so stopping early would report rows the rollback took back.
+        let stopsAtLimit = sqlite3_stmt_readonly(statement) != 0
         var bytes = 0
         var stepResult = firstStep.result
         while stepResult == SQLITE_ROW {
-            if rows.count >= rowLimit {
+            if !truncated, rows.count >= rowLimit {
                 truncated = true
-                break
-            }
-            let row = Self.readRow(statement, columnCount: columnCount)
-            rows.append(row)
-            if let byteLimit = bound?.byteLimit {
-                bytes += SQLiteReadBound.byteCount(of: row)
-                if bytes > byteLimit {
-                    truncated = true
-                    break
+            } else if !truncated {
+                let row = Self.readRow(statement, columnCount: columnCount)
+                rows.append(row)
+                if let byteLimit = bound?.byteLimit {
+                    bytes += SQLiteReadBound.byteCount(of: row)
+                    truncated = bytes > byteLimit
                 }
             }
+            if truncated, stopsAtLimit { break }
             stepResult = sqlite3_step(statement)
         }
 
-        if !truncated, stepResult != SQLITE_DONE {
+        if stepResult != SQLITE_DONE, !(truncated && stopsAtLimit) {
             throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
         }
 

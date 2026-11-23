@@ -144,6 +144,31 @@ struct SQLiteCappedParameterReadTests {
         }
     }
 
+    // A write commits, and checks a deferred key, only at its last step, so a capped one has to get there.
+    @Test("A capped write that returns rows runs to its end, so a deferred key it breaks fails it and nothing stays")
+    func cappedWriteMeetsItsDeferredKey() async throws {
+        try await withDriver { driver, _ in
+            _ = try await driver.execute(query: "PRAGMA foreign_keys = ON")
+            _ = try await driver.execute(query: "CREATE TABLE parent (id INTEGER PRIMARY KEY)")
+            _ = try await driver.execute(query: """
+                CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent (id) DEFERRABLE INITIALLY DEFERRED)
+                """)
+
+            await #expect(throws: (any Error).self) {
+                _ = try await driver.executeUserQuery(
+                    query: """
+                        WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 10)
+                        INSERT INTO child (id, parent_id) SELECT x, CAST(? AS INTEGER) FROM n RETURNING id
+                        """,
+                    rowCap: 3,
+                    parameters: [.text("99")]
+                )
+            }
+            let left = try await driver.execute(query: "SELECT count(*) FROM child").rows
+            #expect(left.first?.first?.asText == "0")
+        }
+    }
+
     @Test("A read with parameters and no cap reads every row, and a capped write reports every row it changed")
     func uncappedReadAndCappedWriteRunWhole() async throws {
         try await withDriver { driver, _ in
