@@ -50,6 +50,11 @@ internal enum SQLTypeFamily: String, Hashable, Sendable, CaseIterable {
     /// MySQL reads a `BIT` back as the number it holds; PostgreSQL and DuckDB read theirs as a string of digits.
     internal var readsBitsAsDecimal: Bool { self == .mysql }
 
+    /// SQLite stores a date or timestamp as the text it is given and interprets any offset on read, so
+    /// `datetime('2024-01-01 10:00:00+05:30')` is a different instant from the stripped value. Reshaping a
+    /// temporal value for it would lose information rather than make it acceptable, so it is left as it came.
+    internal var preservesTemporalText: Bool { self == .sqlite }
+
     /// Whether `BIT` names a string of digits here rather than a boolean or a number.
     internal func readsAsBitString(_ rawType: String) -> Bool {
         guard case .bitString = SQLTypeParser.parse(rawType, family: self).kind else { return false }
