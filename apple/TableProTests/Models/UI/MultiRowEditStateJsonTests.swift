@@ -1,8 +1,3 @@
-//
-//  MultiRowEditStateJsonTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -91,5 +86,18 @@ struct MultiRowEditStateJsonTests {
         #expect(state.fields[0].hasEdit == true)
         state.updateField(at: 0, value: "hello")
         #expect(state.fields[0].hasEdit == false)
+    }
+
+    @Test("A whitespace-only edit of a value over half a million characters is not staged; a real one is, compact")
+    func valueInTheBand() {
+        let blob = String(repeating: "a", count: 600_000)
+        let original = "{\"blob\":\"\(blob)\",\"id\":1}"
+        let state = makeState(value: original, type: .json(rawType: "jsonb"))
+
+        state.updateField(at: 0, value: "{\n  \"blob\": \"\(blob)\",\n  \"id\": 1\n}")
+        #expect(state.fields[0].hasEdit == false)
+
+        state.updateField(at: 0, value: "{\n  \"blob\": \"\(blob)\",\n  \"id\": 2\n}")
+        #expect(state.fields[0].pendingValue == "{\"blob\":\"\(blob)\",\"id\":2}")
     }
 }

@@ -1,8 +1,3 @@
-//
-//  JsonRowConverter.swift
-//  TablePro
-//
-
 import Foundation
 import TableProPluginKit
 
@@ -10,9 +5,10 @@ internal struct JsonRowConverter {
     internal let columns: [String]
     internal let columnTypes: [ColumnType]
 
-    private static let maxRows = 50_000
+    static let maxRows = 50_000
 
-    func generateJson(rows: [[PluginCellValue]]) -> String {
+    // A cancelled call stops within 256 rows and returns what it wrote, which the caller drops.
+    func generateJson(rows: [[PluginCellValue]], isCancelled: () -> Bool = { false }) -> String {
         let cappedRows = rows.prefix(Self.maxRows)
         let rowCount = cappedRows.count
 
@@ -21,11 +17,12 @@ internal struct JsonRowConverter {
         }
 
         var result = String()
-        result.reserveCapacity(rowCount * columns.count * 100)
-
         result.append("[\n")
 
         for (rowIdx, row) in cappedRows.enumerated() {
+            if rowIdx & 255 == 0, isCancelled() {
+                return result
+            }
             result.append("  {\n")
 
             for (colIdx, column) in columns.enumerated() {
@@ -121,13 +118,10 @@ internal struct JsonRowConverter {
         var iter = scalars.makeIterator()
         guard var ch = iter.next() else { return false }
 
-        // Optional leading minus
         if ch == "-" { guard let next = iter.next() else { return false }; ch = next }
 
-        // Integer part: "0" or [1-9][0-9]*
         guard ch >= "0" && ch <= "9" else { return false }
         if ch == "0" {
-            // "0" must not be followed by another digit
             if let next = iter.next() { ch = next } else { return true }
         } else {
             while true {
@@ -137,7 +131,6 @@ internal struct JsonRowConverter {
             }
         }
 
-        // Optional fractional part
         if ch == "." {
             guard let next = iter.next(), next >= "0" && next <= "9" else { return false }
             while true {
@@ -147,7 +140,6 @@ internal struct JsonRowConverter {
             }
         }
 
-        // Optional exponent
         if ch == "e" || ch == "E" {
             guard var next = iter.next() else { return false }
             if next == "+" || next == "-" {
@@ -159,7 +151,7 @@ internal struct JsonRowConverter {
                 guard remaining >= "0" && remaining <= "9" else { return false }
             }
         } else {
-            return false // Unexpected trailing character
+            return false
         }
 
         return true

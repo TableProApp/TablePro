@@ -1,20 +1,7 @@
-//
-//  CTTypesetter+SuggestLineBreak.swift
-//  TableProTextEngine
-//
-//  Created by Khan Winter on 4/24/25.
-//
-
 import AppKit
 
 extension CTTypesetter {
-    /// Suggest a line break for the given line break strategy.
-    /// - Parameters:
-    ///   - typesetter: The typesetter to use.
-    ///   - strategy: The strategy that determines a valid line break.
-    ///   - startingOffset: Where to start breaking.
-    ///   - constrainingWidth: The available space for the line.
-    /// - Returns: An offset relative to the entire string indicating where to break.
+    // Returns an offset into the whole string, not a length.
     func suggestLineBreak(
         using string: NSAttributedString,
         strategy: LineBreakStrategy,
@@ -37,20 +24,12 @@ extension CTTypesetter {
         }
     }
 
-    /// Suggest a line break for the character break strategy.
-    /// - Parameters:
-    ///   - typesetter: The typesetter to use.
-    ///   - startingOffset: Where to start breaking.
-    ///   - constrainingWidth: The available space for the line.
-    /// - Returns: An offset relative to the entire string indicating where to break.
     private func suggestLineBreakForCharacter(
         string: NSAttributedString,
         startingOffset: Int,
         constrainingWidth: CGFloat
     ) -> Int {
         var breakIndex: Int
-        // Check if we need to skip to an attachment
-
         breakIndex = startingOffset + CTTypesetterSuggestClusterBreak(self, startingOffset, constrainingWidth)
         guard breakIndex < string.length else {
             return breakIndex
@@ -64,12 +43,6 @@ extension CTTypesetter {
         return breakIndex
     }
 
-    /// Suggest a line break for the word break strategy.
-    /// - Parameters:
-    ///   - typesetter: The typesetter to use.
-    ///   - startingOffset: Where to start breaking.
-    ///   - constrainingWidth: The available space for the line.
-    /// - Returns: An offset relative to the entire string indicating where to break.
     private func suggestLineBreakForWord(
         string: NSAttributedString,
         subrange: NSRange,
@@ -79,11 +52,12 @@ extension CTTypesetter {
         if breakIndex >= subrange.max {
             return breakIndex
         }
-        if checkIfLineBreakOnCRLF(breakIndex, for: string) {
+        let text = string.string as NSString
+        if LineBreakCharacters.isCRLF(endingAt: breakIndex, in: text) {
             return breakIndex + 1
         }
 
-        let hangingEnd = endOfHangingSpaces(from: breakIndex, before: subrange.max, in: string)
+        let hangingEnd = endOfHangingSpaces(from: breakIndex, before: subrange.max, in: text)
         if hangingEnd > breakIndex {
             return hangingEnd
         }
@@ -101,7 +75,7 @@ extension CTTypesetter {
         // breaks after the nearest punctuation rather than mid-word.
         var index = breakIndex - 1
         while breakIndex - index < 100 && index > subrange.location {
-            if ensureCharacterCanBreakLine(at: index, for: string) {
+            if LineBreakCharacters.canBreakLine(at: index, in: text) {
                 return index + 1
             }
             index -= 1
@@ -110,9 +84,8 @@ extension CTTypesetter {
         return breakIndex
     }
 
-    /// Spaces and tabs past the edge stay on the line they follow instead of opening the next one.
-    private func endOfHangingSpaces(from index: Int, before end: Int, in string: NSAttributedString) -> Int {
-        let text = string.string as NSString
+    // Spaces and tabs past the edge stay on the line they follow instead of opening the next one.
+    private func endOfHangingSpaces(from index: Int, before end: Int, in text: NSString) -> Int {
         var hangingEnd = index
         while hangingEnd < end {
             let character = text.character(at: hangingEnd)
@@ -121,26 +94,28 @@ extension CTTypesetter {
         }
         return hangingEnd
     }
+}
 
-    /// Ensures the character at the given index can break a line.
-    /// - Parameter index: The index to check at.
-    /// - Returns: True, if the character is a whitespace or punctuation character.
-    private func ensureCharacterCanBreakLine(at index: Int, for string: NSAttributedString) -> Bool {
-        let subrange = (string.string as NSString).rangeOfComposedCharacterSequence(at: index)
-        let set = CharacterSet(charactersIn: (string.string as NSString).substring(with: subrange))
-        return set.isSubset(of: .whitespacesAndNewlines) || set.isSubset(of: .punctuationCharacters)
-    }
+enum LineBreakCharacters {
+    private static let whitespace = CharacterSet.whitespacesAndNewlines
+    private static let punctuation = CharacterSet.punctuationCharacters
 
-    /// Check if the break index is on a CRLF (`\r\n`) character, indicating a valid break position.
-    /// - Parameter breakIndex: The index to check in the string.
-    /// - Returns: True, if the break index lies after the `\n` character in a `\r\n` sequence.
-    private func checkIfLineBreakOnCRLF(_ breakIndex: Int, for string: NSAttributedString) -> Bool {
-        guard breakIndex - 1 > 0 && breakIndex + 1 <= string.length else {
+    // True when the composed sequence at `index` is all whitespace or all punctuation. A unit that is a whole
+    // scalar in neither set already rules its sequence out, so a letter or digit costs no substring.
+    static func canBreakLine(at index: Int, in text: NSString) -> Bool {
+        let unit = text.character(at: index)
+        if !UTF16.isLeadSurrogate(unit), !UTF16.isTrailSurrogate(unit), let scalar = Unicode.Scalar(unit),
+           !whitespace.contains(scalar), !punctuation.contains(scalar) {
             return false
         }
-        let substringRange = NSRange(location: breakIndex - 1, length: 2)
-        let substring = string.attributedSubstring(from: substringRange).string
+        let scalars = text.substring(with: text.rangeOfComposedCharacterSequence(at: index)).unicodeScalars
+        return scalars.allSatisfy { whitespace.contains($0) } || scalars.allSatisfy { punctuation.contains($0) }
+    }
 
-        return substring == LineEnding.carriageReturnLineFeed.rawValue
+    static func isCRLF(endingAt breakIndex: Int, in text: NSString) -> Bool {
+        guard breakIndex - 1 > 0 && breakIndex + 1 <= text.length else {
+            return false
+        }
+        return text.character(at: breakIndex - 1) == 0x0D && text.character(at: breakIndex) == 0x0A
     }
 }
