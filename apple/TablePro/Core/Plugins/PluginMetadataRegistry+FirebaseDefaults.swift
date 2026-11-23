@@ -53,6 +53,7 @@ extension PluginMetadataRegistry {
     private func firebaseCapabilities(realtimeDatabase: Bool) -> PluginMetadataSnapshot.CapabilityFlags {
         PluginMetadataSnapshot.CapabilityFlags(
             supportsSchemaSwitching: false,
+            statementsCanSwitchDatabase: false,
             supportsImport: false,
             supportsExport: true,
             supportsSSH: false,

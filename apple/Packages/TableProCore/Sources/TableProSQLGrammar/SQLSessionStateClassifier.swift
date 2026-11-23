@@ -524,56 +524,93 @@ extension SQLSessionStateClassifier {
 // MARK: - Current database
 
 extension SQLSessionStateClassifier {
-    // MariaDB runs `EXECUTE IMMEDIATE` and these blocks outside a routine, and a prepared statement or a procedure runs
-    // text written elsewhere, so each may switch the database where no reading reaches.
-    private static let mySQLMoveHeads: Set<String> = [
-        "USE", "CALL", "EXECUTE", "IF", "WHILE", "LOOP", "REPEAT", "CASE", "FOR",
+    // The MySQL statements that cannot leave a session in another database: reads and writes of rows, definitions, a
+    // plain variable assignment, transaction control, locks, table maintenance and privileges. Everything else may: a
+    // `USE`, `SET STATEMENT ... FOR`, `HANDLER`, `LOAD`, `DO`, code run by `EXECUTE` or `CALL`, a block, an unknown word.
+    private static let mySQLStayHeads: Set<String> = [
+        "SELECT", "WITH", "TABLE", "VALUES", "INSERT", "REPLACE", "UPDATE", "DELETE", "SHOW", "CREATE", "ALTER", "DROP",
+        "TRUNCATE", "RENAME", "SET", "START", "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE", "XA", "LOCK", "UNLOCK",
+        "ANALYZE", "OPTIMIZE", "CHECK", "CHECKSUM", "REPAIR", "GRANT", "REVOKE", "FLUSH", "KILL", "HELP",
     ]
-    // `EXEC` runs a procedure or a string, `sp_executesql` a string, and either can hold a `USE`.
+    private static let mySQLExplainHeads: Set<String> = ["EXPLAIN", "DESCRIBE", "DESC"]
+    private static let mySQLExplainModifiers: Set<String> = [
+        "ANALYZE", "EXTENDED", "PARTITIONS", "FORMAT", "JSON", "TREE", "TRADITIONAL",
+    ]
+    // An explained subject that opens a statement of its own rather than naming a table or a query.
+    private static let mySQLStatementWords: Set<String> = ["USE", "CALL", "EXECUTE", "DO", "HANDLER", "LOAD", "PREPARE"]
+
+    // T-SQL runs a batch's statements with no `;` between them, so these count anywhere in one. A batch that opens
+    // with a word not listed below calls a procedure by its name, or is read as one.
     private static let sqlServerMoveWords: Set<String> = ["USE", "EXEC", "EXECUTE", "SP_EXECUTESQL"]
+    private static let sqlServerStayHeads: Set<String> = [
+        "SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "MERGE", "CREATE", "ALTER", "DROP", "TRUNCATE", "DECLARE", "SET",
+        "BEGIN", "COMMIT", "ROLLBACK", "SAVE", "PRINT", "IF", "ELSE", "WHILE", "RETURN", "GRANT", "REVOKE", "DENY",
+        "BACKUP", "RESTORE", "DBCC", "RAISERROR", "THROW", "WAITFOR", "OPEN", "FETCH", "CLOSE", "DEALLOCATE", "BULK",
+        "CHECKPOINT", "KILL", "GOTO", "BREAK", "CONTINUE", "END", "ENABLE", "DISABLE", "REVERT", "RECONFIGURE",
+    ]
 
     // Whether the statements may leave the session in another database, which a host that pins its own driver cannot
-    // see. Of the dialects read here only MySQL's and SQL Server's move a live session: a `USE`, or code the reader cannot
-    // see into. Text it cannot read whole, too long or with more executable-comment versions than the reader takes, is
-    // not ruled out, and neither is one holding an executable comment, whose body the quick test cannot see.
+    // see. Only MySQL's and SQL Server's sessions move, and only a statement known to stay is ruled out. Text it cannot
+    // read whole, too long or with more executable-comment versions than the reader takes, is not ruled out.
     public static func mayChangeDatabase(
         ofStatements statements: [String],
         dialect: SQLSessionDialect,
         grammar: SQLLexicalGrammar
     ) -> Bool {
         guard dialect == .mySQL || dialect == .sqlServer else { return false }
-        let words = dialect == .mySQL ? mySQLMoveHeads.union(["BEGIN"]) : sqlServerMoveWords
         return statements.contains { text in
             guard (text as NSString).length <= classifiedPrefixLength else { return true }
-            guard text.contains("\\") || holdsWord(of: words, in: text)
-                || SQLExecutableCommentReadings.holdsExecutableComment(text, grammar: grammar)
-            else { return false }
+            if dialect == .sqlServer, holdsWord(of: sqlServerMoveWords, in: text) { return true }
+            if opensWithStayHead(text, dialect: dialect) { return false }
             return SQLStatementClassifier.statements(of: text, grammar: grammar).contains { statement in
                 guard let readings = SQLExecutableCommentReadings.texts(of: statement, grammar: grammar) else { return true }
                 return Array(readings).contains { reading in
                     SQLStatementClassifier.runnableStatements(of: reading, grammar: grammar).contains {
-                        selectsDatabase($0, dialect: dialect, grammar: grammar)
+                        mayMove($0, dialect: dialect, grammar: grammar)
                     }
                 }
             }
         }
     }
 
-    // The mysql client's `\u name` is the same command, should a driver pass it through. A T-SQL batch runs statements
-    // with no `;` between them, so a word anywhere in one counts, a `USE HINT` or a `GRANT EXECUTE` included.
-    private static func selectsDatabase(_ piece: String, dialect: SQLSessionDialect, grammar: SQLLexicalGrammar) -> Bool {
-        if piece.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("\\u") { return true }
+    // One plain statement whose first word is known to stay, read without the grammar: no `;`, comment or backslash can
+    // hide a second statement. SET, BEGIN and the explain words need the word after them, so they take the full read.
+    private static func opensWithStayHead(_ text: String, dialect: SQLSessionDialect) -> Bool {
+        guard !text.contains(";"), !text.contains("/*"), !text.contains("--"), !text.contains("#"), !text.contains("\\")
+        else { return false }
+        let head = text.drop { $0.isWhitespace || $0 == "(" }.prefix { $0.isASCII && ($0.isLetter || $0 == "_") }.uppercased()
+        guard head != "SET", head != "BEGIN" else { return false }
+        return dialect == .mySQL ? mySQLStayHeads.contains(head) : sqlServerStayHeads.contains(head)
+    }
+
+    // The mysql client's `\u name` is a `USE`, should a driver pass it through. A label opens a block.
+    private static func mayMove(_ piece: String, dialect: SQLSessionDialect, grammar: SQLLexicalGrammar) -> Bool {
+        if piece.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("\\") { return true }
         let code = StatementCode(piece, grammar: grammar)
+        guard let start = code.tokens.firstIndex(where: { $0.kind != .open }) else { return false }
+        guard let head = code.word(at: start), !code.isSymbol(colon, at: start + 1) else { return true }
         guard dialect == .mySQL else {
-            return code.tokens.contains { $0.word.map(sqlServerMoveWords.contains) == true }
+            return !sqlServerStayHeads.contains(head)
+                || code.tokens.contains { $0.word.map(sqlServerMoveWords.contains) == true }
         }
-        guard var start = code.tokens.firstIndex(where: { $0.kind != .open }) else { return false }
-        // A labelled block, `outer: BEGIN NOT ATOMIC`, opens past its label.
-        if code.isSymbol(colon, at: start + 1) {
-            start += 2
+        switch head {
+        case "SET":
+            return code.word(at: start + 1) == "STATEMENT"
+        case "BEGIN":
+            return code.word(at: start + 1) == "NOT"
+        default:
+            guard mySQLExplainHeads.contains(head) else { return !mySQLStayHeads.contains(head) }
+            return explainedSubjectMoves(code, after: start)
         }
-        guard let head = code.word(at: start) else { return false }
-        return mySQLMoveHeads.contains(head) || (head == "BEGIN" && code.word(at: start + 1) == "NOT")
+    }
+
+    // `EXPLAIN FORMAT=JSON SELECT ...` reads past its modifiers to the subject, and `DESCRIBE orders` names a table.
+    private static func explainedSubjectMoves(_ code: StatementCode, after start: Int) -> Bool {
+        var index = start + 1
+        while code.word(at: index).map(mySQLExplainModifiers.contains) == true || code.isSymbol(equals, at: index) {
+            index += 1
+        }
+        return code.word(at: index).map(mySQLStatementWords.contains) == true
     }
 
     // Whole words, so `users` or `executed_at` does not cost the full read.

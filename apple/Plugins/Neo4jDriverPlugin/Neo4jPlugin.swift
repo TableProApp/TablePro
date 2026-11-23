@@ -13,6 +13,8 @@ final class Neo4jPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "Neo4j"
     static let iconName = "neo4j-icon"
     static let defaultPort = 7_687
+    // Each request names its database, and a Cypher `USE` clause scopes one query.
+    static let statementsCanSwitchDatabase = false
     static let isDownloadable = true
 
     static let connectionMode: ConnectionMode = .network

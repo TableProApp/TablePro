@@ -450,6 +450,37 @@ struct SQLSessionStateClassifierTests {
         #expect(movesDatabase(sql, dialect))
     }
 
+    @Test("Only a statement known to stay is ruled out: a wrapped USE, HANDLER, DO, LOAD or an unknown word may move", arguments: [
+        ("SET STATEMENT max_statement_time=1 FOR USE production", SQLSessionDialect.mySQL),
+        ("HANDLER orders OPEN", .mySQL),
+        ("DO SLEEP(0)", .mySQL),
+        ("LOAD DATA INFILE 'rows.csv' INTO TABLE orders", .mySQL),
+        ("FROBNICATE production", .mySQL),
+        ("EXPLAIN USE production", .mySQL),
+        ("archive_orders 1", .sqlServer),
+    ])
+    func unknownOrWrappedStatementsMove(sql: String, dialect: SQLSessionDialect) {
+        #expect(movesDatabase(sql, dialect))
+    }
+
+    @Test("A statement on the stay list moves nothing, alone or among others", arguments: [
+        "SELECT 1", "WITH a AS (SELECT 1) SELECT * FROM a", "INSERT INTO t VALUES (1)", "REPLACE INTO t VALUES (1)",
+        "UPDATE t SET a = 1", "DELETE FROM t", "SHOW TABLES", "DESCRIBE orders", "DESC orders", "EXPLAIN SELECT 1",
+        "EXPLAIN FORMAT=JSON SELECT 1", "CREATE TABLE t (a INT)", "ALTER TABLE t ADD b INT", "DROP TABLE t",
+        "TRUNCATE TABLE t", "RENAME TABLE a TO b", "SET @x = 1", "SET NAMES utf8mb4", "START TRANSACTION", "BEGIN",
+        "COMMIT", "ROLLBACK", "SAVEPOINT s", "RELEASE SAVEPOINT s", "LOCK TABLES t READ", "UNLOCK TABLES",
+        "ANALYZE TABLE t", "OPTIMIZE TABLE t", "CHECK TABLE t", "REPAIR TABLE t", "GRANT SELECT ON app.* TO reader",
+        "REVOKE SELECT ON app.* FROM reader", "SELECT 1; UPDATE t SET a = 1; COMMIT",
+    ])
+    func stayListMovesNothing(sql: String) {
+        #expect(!movesDatabase(sql, .mySQL))
+    }
+
+    @Test("A T-SQL batch of statements that stay moves nothing, temporary tables included")
+    func tsqlStayBatchMovesNothing() {
+        #expect(!movesDatabase("SELECT * FROM #orders\nDECLARE @n int = 1\nIF @n > 0 PRINT 'x'", .sqlServer))
+    }
+
     @Test("A transaction's BEGIN, or a word that only contains a trigger, moves nothing", arguments: [
         ("BEGIN", SQLSessionDialect.mySQL),
         ("SELECT executed_at, CASE WHEN id > 1 THEN 1 END FROM users", .mySQL),

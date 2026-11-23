@@ -437,10 +437,12 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         noteDatabaseMoves([statement])
     }
 
-    // An engine the classifier has no reading for is not ruled out.
+    // An engine the classifier has no reading for is not ruled out, unless no statement can move its database at all.
     func noteDatabaseMoves(_ texts: [String]) {
-        guard !texts.isEmpty else { return }
         let databaseType = connection.type
+        guard !texts.isEmpty,
+              PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.statementsCanSwitchDatabase ?? true
+        else { return }
         if let dialect = SQLSessionDialect(TransactionEngineFamily.of(databaseType)) {
             let grammar = SQLLexicalResolver.readings(for: databaseType, session: pluginDriver.sessionLexicalState).execution
             guard SQLSessionStateClassifier.mayChangeDatabase(ofStatements: texts, dialect: dialect, grammar: grammar)

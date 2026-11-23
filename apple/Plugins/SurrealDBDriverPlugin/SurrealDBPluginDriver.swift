@@ -132,9 +132,6 @@ final class SurrealDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    // The namespace header every HTTP request carries, so a `USE NS` in one query does not outlast it.
-    var currentDatabase: String? { lock.withLock { namespace } }
-
     func switchDatabase(to database: String) async throws {
         lock.withLock {
             namespace = database

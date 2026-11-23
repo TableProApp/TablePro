@@ -20,6 +20,8 @@ nonisolated final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin
     static let databaseDisplayName = "ClickHouse"
     static let iconName = "clickhouse-icon"
     static let defaultPort = 8123
+    // Each HTTP request names its own database and keeps no session, so no statement moves it.
+    static let statementsCanSwitchDatabase = false
     // The trust delegate evaluates the pre-tunnel host through a forward.
     static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
 
@@ -561,9 +563,6 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
     }
 
     // MARK: - Database Switching
-
-    // Sent with every request, so no statement moves it; empty sends none and the server's default answers.
-    var currentDatabase: String? { lock.withLock { _currentDatabase } }
 
     func switchDatabase(to database: String) async throws {
         lock.withLock { _currentDatabase = database }

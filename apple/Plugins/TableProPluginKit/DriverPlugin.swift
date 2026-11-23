@@ -36,6 +36,8 @@ public protocol DriverPlugin: TableProPlugin {
     static var supportsSchemaSwitching: Bool { get }
     // False when `switchSchema` only records the browsed schema and the server still resolves unqualified names elsewhere.
     static var schemaSwitchScopesUnqualifiedNames: Bool { get }
+    // False when no statement can move the session's database: each request, or the session object, names its own.
+    static var statementsCanSwitchDatabase: Bool { get }
     static var supportsImport: Bool { get }
     static var supportsExport: Bool { get }
     static var supportsHealthMonitor: Bool { get }
@@ -143,6 +145,7 @@ public extension DriverPlugin {
     static var supportsDatabaseSwitching: Bool { true }
     static var supportsSchemaSwitching: Bool { false }
     static var schemaSwitchScopesUnqualifiedNames: Bool { false }
+    static var statementsCanSwitchDatabase: Bool { true }
     static var supportsImport: Bool { true }
     static var supportsExport: Bool { true }
     static var supportsHealthMonitor: Bool { true }

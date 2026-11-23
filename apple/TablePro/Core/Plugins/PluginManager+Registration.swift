@@ -335,6 +335,10 @@ extension PluginManager {
             .capabilities.supportsSchemaSwitching ?? false
     }
 
+    func statementsCanSwitchDatabase(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.statementsCanSwitchDatabase ?? true
+    }
+
     func schemaSwitchScopesUnqualifiedNames(for databaseType: DatabaseType) -> Bool {
         supportsSchemaSwitching(for: databaseType)
             && PluginMetadataRegistry.shared.snapshot(for: databaseType)?

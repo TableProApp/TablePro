@@ -655,6 +655,7 @@ extension PluginMetadataRegistry {
                 structureEditing: SchemaEditingSupport(columnReorder: .alter, foreignKeyEdit: .unsupported),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
+                    statementsCanSwitchDatabase: false,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -976,6 +977,7 @@ extension PluginMetadataRegistry {
                 structureEditing: SchemaEditingSupport(columnReorder: .rebuild, foreignKeyEdit: .rebuild),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
+                    statementsCanSwitchDatabase: false,
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: false,

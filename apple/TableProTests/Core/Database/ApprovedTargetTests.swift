@@ -622,8 +622,8 @@ struct ApprovedTargetTests {
         #expect(!driver.events.contains { $0.hasPrefix("DELETE") })
     }
 
-    // The real driver, not connected: the statement is counted before it fails, as one that ran would be.
-    @Test("ClickHouse with no database runs SELECT 1, then a call naming none resolves to the database it reports")
+    // The real driver, not connected: a statement it sends cannot move a database each request names.
+    @Test("ClickHouse with no database runs SELECT 1, then a call naming none still resolves")
     func clickHouseAnswersWithItsRequestDatabase() async throws {
         let plugin = try BundledPlugin.driver("ClickHouseDriver").init()
         let connection = TestFixtures.makeConnection(database: "", type: .clickhouse)
@@ -644,7 +644,44 @@ struct ApprovedTargetTests {
             connectionId: connection.id, database: nil, schema: nil
         )
 
-        #expect(sessionDriver.databaseMoves > 0)
-        #expect(scope.database == (sessionDriver as? DatabaseReporting)?.currentDatabase)
+        #expect(sessionDriver.databaseMoves == 0)
+        #expect(scope.isServerScoped)
+    }
+
+    @Test("On MariaDB a DELETE approved naming no database is refused after SET STATEMENT ... FOR USE production")
+    func wrappedUseRefusesAPendingDelete() async throws {
+        let (id, driver) = session(.mariadb, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DELETE FROM orders WHERE id = 1", maxRows: 10)
+        let operation = try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .mariadb)
+
+        _ = try await bridge.runStatement(
+            scope: scope,
+            query: "SET STATEMENT max_statement_time=1 FOR USE production",
+            maxRows: 10,
+            timeoutSeconds: 30,
+            cancellation: nil
+        )
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.databaseUnknown.message)
+        #expect(!driver.events.contains { $0.hasPrefix("DELETE") })
+    }
+
+    @Test("Neo4j with no database runs RETURN 1, then a call naming none resolves")
+    func neo4jStatementLeavesTheDatabaseKnown() async throws {
+        let (id, _) = session(.neo4j, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let sessionDriver = try #require(DatabaseManager.shared.driver(for: id))
+
+        _ = try await sessionDriver.execute(query: "RETURN 1")
+        let scope = try await DatabaseAccessBridge().resolveStatementScope(connectionId: id, database: nil, schema: nil)
+
+        #expect(sessionDriver.databaseMoves == 0)
+        #expect(scope.isServerScoped)
     }
 }

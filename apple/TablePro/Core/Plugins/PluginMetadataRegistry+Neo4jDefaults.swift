@@ -24,6 +24,7 @@ extension PluginMetadataRegistry {
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     schemaSwitchScopesUnqualifiedNames: false,
+                    statementsCanSwitchDatabase: false,
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: true,
