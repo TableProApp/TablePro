@@ -273,6 +273,24 @@ struct SchemaServiceTests {
         #expect(service.isCatalogCurrent(for: connection.id))
     }
 
+    @Test("A catalog whose schema list failed to load is read again when shown")
+    func aFailedSchemaListMakesTheCatalogStale() async {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: "public")
+        let billing = DatabaseScope(connectionId: connection.id, database: "billing", schema: "public")
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        driver.fetchSchemasError = DatabaseError.queryFailed("gone")
+        let service = SchemaService()
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+        service.show(scope: billing, type: connection.type)
+
+        service.show(scope: sales, type: connection.type)
+
+        #expect(service.tables(for: connection.id).map(\.name) == ["orders"])
+        #expect(!service.isCatalogCurrent(for: connection.id))
+    }
+
     @Test("A catalog whose last refresh failed is read again when shown")
     func aFailedRefreshMakesTheCatalogStale() async {
         let (service, connection, sales, billing) = await keptSalesCatalog()

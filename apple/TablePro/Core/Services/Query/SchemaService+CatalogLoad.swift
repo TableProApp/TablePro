@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 extension SchemaService {
@@ -86,14 +87,15 @@ extension SchemaService {
 
     /// The other kinds one load reads, each with its own outcome.
     struct SideReads: Sendable {
-        var schemas: [String]?
+        var schemas: MetadataFetchOutcome<[String]>?
         var routines: MetadataFetchOutcome<[RoutineInfo]>?
         var triggers: MetadataFetchOutcome<[TriggerInfo]>?
         var types: MetadataFetchOutcome<[UserDefinedTypeInfo]>?
         var serverObjects: [String: MetadataFetchOutcome<[ServerObjectInfo]>] = [:]
 
         var failed: Bool {
-            let fetched = [routines?.didFetch, triggers?.didFetch, types?.didFetch] + serverObjects.values.map(\.didFetch)
+            let fetched = [schemas?.didFetch, routines?.didFetch, triggers?.didFetch, types?.didFetch]
+                + serverObjects.values.map(\.didFetch)
             return fetched.contains(false)
         }
     }
@@ -179,11 +181,15 @@ extension SchemaService {
         return reads
     }
 
-    private func readSchemas(_ run: LoadRun, driver: DatabaseDriver) async -> [String]? {
+    private func readSchemas(_ run: LoadRun, driver: DatabaseDriver) async -> MetadataFetchOutcome<[String]>? {
         guard run.supportsSchemas || run.listsAttached else { return nil }
-        return await Self.fetchSchemasSafely(key: run.loadKey, dedup: schemasDedup) {
-            try await driver.fetchSchemas()
-        }
+        return await Self.fetchObjectsSafely(
+            key: run.loadKey,
+            connectionId: run.connectionId,
+            label: "schemas",
+            dedup: schemasDedup,
+            fetch: { try await driver.fetchSchemas() }
+        )
     }
 
     private func readRoutines(_ run: LoadRun, driver: DatabaseDriver) async -> MetadataFetchOutcome<[RoutineInfo]> {
@@ -222,23 +228,6 @@ extension SchemaService {
             dedup: typesDedup,
             fetch: { try await driver.fetchUserDefinedTypes(schema: schema) }
         )
-    }
-
-    static func fetchSchemasSafely(
-        key: LoadKey,
-        dedup: OnceTask<LoadKey, [String]>,
-        fetch: @Sendable @escaping () async throws -> [String]
-    ) async -> [String]? {
-        do {
-            return try await dedup.execute(key: key, work: fetch)
-        } catch is CancellationError {
-            return nil
-        } catch {
-            Self.logger.warning(
-                "[schema] fetchSchemas failed connId=\(key.connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
-            )
-            return nil
-        }
     }
 
     // One fetch per declared kind, side by side; each settles its own group.

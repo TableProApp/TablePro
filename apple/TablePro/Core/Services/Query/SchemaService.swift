@@ -1167,7 +1167,7 @@ final class SchemaService: ObservableObject {
         if reads.failed {
             markStale(key)
         }
-        if let loadedSchemas = reads.schemas {
+        if case .fetched(let loadedSchemas)? = reads.schemas {
             if run.listsAttached {
                 attachedSchemasInOrder[key] = loadedSchemas
             } else {

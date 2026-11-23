@@ -163,7 +163,11 @@ final class CatalogChangeService {
         if !held.isEmpty, standing(connectionId) != .none {
             uncommittedKinds[connectionId, default: []].formUnion(held)
         }
-        let kinds = effect.kinds.union(settledKinds(connectionId: connectionId, endsTransaction: effect.endsTransaction))
+        var kinds = effect.kinds.union(settledKinds(connectionId: connectionId, endsTransaction: effect.endsTransaction))
+        // A run that ends its own transaction has committed whatever a function inside it changed.
+        if effect.endsTransaction {
+            kinds.formUnion(held)
+        }
         guard !kinds.isEmpty else { return }
         schedule(CatalogChange(connectionId: connectionId, kinds: kinds))
     }

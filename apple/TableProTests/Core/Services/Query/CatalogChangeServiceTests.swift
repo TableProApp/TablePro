@@ -275,6 +275,22 @@ struct CatalogChangeServiceTests {
         #expect(target.changes.map(\.kinds) == [[.objects, .schemas]])
     }
 
+    @Test("a run that calls an unlisted function and commits in one go refreshes objects and schemas")
+    func functionCallCommittedInOneRunRefreshes() async {
+        let target = RecordingCatalogTarget()
+        let service = makeService(target: target)
+        let connectionId = UUID()
+
+        service.record(.statementsRan(
+            connectionId: connectionId,
+            statements: ["BEGIN", "SELECT make_partition('orders')", "COMMIT"],
+            databaseType: .postgresql
+        ))
+        await service.waitUntilIdle(connectionId: connectionId)
+
+        #expect(target.changes.map(\.kinds) == [[.objects, .schemas]])
+    }
+
     @Test("a COMMIT on one lane while another still holds a transaction refreshes and keeps what that one changed")
     func commitOnOneLaneKeepsAnotherLanesChanges() async {
         let target = RecordingCatalogTarget()
