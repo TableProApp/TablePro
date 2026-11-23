@@ -111,9 +111,13 @@ extension QueryExecutionCoordinator {
             // A run that ends before it needs the read withdraws from it, as a cancelled open does from its own.
             defer { confirmation?.cancel() }
             let schemaTask = confirmation.map {
-                parent.startSchemaFetch(tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope, columnsFrom: $0)
+                parent.startSchemaFetch(
+                    tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope,
+                    rereadsDefinition: needsDefinition, columnsFrom: $0
+                )
             } ?? parent.startSchemaFetch(
-                tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope, knownColumns: knownColumns
+                tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope,
+                rereadsDefinition: needsDefinition, knownColumns: knownColumns
             )
 
             let leaseTiming = traceToken == nil ? nil : TableLoadLeaseTiming()

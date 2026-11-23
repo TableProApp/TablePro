@@ -290,24 +290,33 @@ final class QueryExecutor {
         isView: Bool,
         isCataloged: Bool = false,
         scope: DatabaseScope,
-        knownColumns: [ColumnInfo]? = nil
+        knownColumns: [ColumnInfo]? = nil,
+        listedForeignKeys: (@MainActor @Sendable () -> [ForeignKeyInfo]?)? = nil
     ) -> Task<FetchedTableSchema, Error>? {
         guard let tableName else { return nil }
         return Task {
             try await fetchTableSchema(
-                scope: scope, tableName: tableName, isView: isView, isCataloged: isCataloged, knownColumns: knownColumns
+                scope: scope,
+                tableName: tableName,
+                isView: isView,
+                isCataloged: isCataloged,
+                knownColumns: knownColumns,
+                listedForeignKeys: listedForeignKeys
             )
         }
     }
 
     // A cancel lands between reads, never on the wire: a late server cancel can reach the next statement on that connection.
     // `isCataloged`: the live catalog lists the name as a table, so a missing key does not make it a view to ask about.
+    // `listedForeignKeys` answers from the schema's own read once it landed, asked after the columns so a first open
+    // whose bulk read is still running reads the table's keys itself.
     static func fetchTableSchema(
         scope: DatabaseScope,
         tableName: String,
         isView: Bool,
         isCataloged: Bool = false,
-        knownColumns: [ColumnInfo]? = nil
+        knownColumns: [ColumnInfo]? = nil,
+        listedForeignKeys: (@MainActor @Sendable () -> [ForeignKeyInfo]?)? = nil
     ) async throws -> FetchedTableSchema {
         queryExecutorLog.info(
             "[fk] schema fetch start table=\(tableName, privacy: .private(mask: .hash)) db=\(scope.database, privacy: .private(mask: .hash)) schema=\(scope.schema ?? "default", privacy: .private(mask: .hash))"
@@ -330,7 +339,12 @@ final class QueryExecutor {
             return (columns, viewRowEditing)
         }
         try Task.checkCancellation()
-        let foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
+        let foreignKeys: [ForeignKeyInfo]?
+        if let listed = listedForeignKeys?() {
+            foreignKeys = listed
+        } else {
+            foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
+        }
         queryExecutorLog.info(
             "[fk] schema fetch done table=\(tableName, privacy: .private(mask: .hash)) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"
         )

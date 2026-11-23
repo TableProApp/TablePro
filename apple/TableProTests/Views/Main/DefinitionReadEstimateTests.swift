@@ -69,6 +69,24 @@ struct DefinitionReadEstimateTests {
         withExtendedLifetime(fixture) {}
     }
 
+    @Test("Keys the schema's read holds answer the definition read without a read of the table's own")
+    func listedKeysSkipTheTableRead() async throws {
+        let driver = MockDatabaseDriver()
+        driver.columnsToReturn = ["users": Self.keyed]
+        let (fixture, scope) = makeFixture(driver)
+        let listed = [TestFixtures.makeForeignKeyInfo(column: "role_id", referencedTable: "roles")]
+
+        let answered = try await QueryExecutor.fetchTableSchema(
+            scope: scope, tableName: "users", isView: false, listedForeignKeys: { listed }
+        )
+        #expect(answered.foreignKeys?.map { $0.column } == ["role_id"])
+        #expect(driver.fetchForeignKeysCallCount == 0)
+
+        _ = try await QueryExecutor.fetchTableSchema(scope: scope, tableName: "users", isView: false, listedForeignKeys: { nil })
+        #expect(driver.fetchForeignKeysCallCount == 1)
+        withExtendedLifetime(fixture) {}
+    }
+
     // MARK: - Which relations the catalog vouches for
 
     private func loadedCatalog(

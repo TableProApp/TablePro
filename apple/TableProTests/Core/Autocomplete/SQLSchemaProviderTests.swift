@@ -336,7 +336,12 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var providesBulkColumnFetch: Bool { bulkColumnReadIsComplete }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
+    private(set) var fetchForeignKeysCallCount = 0
+
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
+        fetchForeignKeysCallCount += 1
+        return []
+    }
 
     var bulkForeignKeyFetch = false
     var providesBulkForeignKeyFetch: Bool { bulkForeignKeyFetch }

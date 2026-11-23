@@ -175,6 +175,7 @@ extension MainContentCoordinator {
         uncached: Bool,
         isView: Bool,
         scope: DatabaseScope,
+        rereadsDefinition: Bool = false,
         knownColumns: [ColumnInfo]? = nil
     ) -> Task<FetchedTableSchema, Error>? {
         if let tableName, !tableName.isEmpty { prefetchForeignKeys(scope: scope) }
@@ -184,7 +185,8 @@ extension MainContentCoordinator {
             isView: isView,
             isCataloged: catalogListsAsTable(tableName, in: scope),
             scope: scope,
-            knownColumns: knownColumns
+            knownColumns: knownColumns,
+            listedForeignKeys: rereadsDefinition ? nil : listedForeignKeys(of: tableName, in: scope)
         )
     }
 
@@ -194,17 +196,37 @@ extension MainContentCoordinator {
         uncached: Bool,
         isView: Bool,
         scope: DatabaseScope,
+        rereadsDefinition: Bool = false,
         columnsFrom confirmation: Task<FirstLoadColumnRead?, Never>
     ) -> Task<FetchedTableSchema, Error>? {
         guard uncached, let tableName, !tableName.isEmpty else {
-            return startSchemaFetch(tableName, uncached: uncached, isView: isView, scope: scope)
+            return startSchemaFetch(
+                tableName, uncached: uncached, isView: isView, scope: scope, rereadsDefinition: rereadsDefinition
+            )
         }
         prefetchForeignKeys(scope: scope)
         let isCataloged = catalogListsAsTable(tableName, in: scope)
+        let listed = rereadsDefinition ? nil : listedForeignKeys(of: tableName, in: scope)
         return Task {
             let known = await confirmation.value?.columns
             return try await QueryExecutor.fetchTableSchema(
-                scope: scope, tableName: tableName, isView: isView, isCataloged: isCataloged, knownColumns: known
+                scope: scope,
+                tableName: tableName,
+                isView: isView,
+                isCataloged: isCataloged,
+                knownColumns: known,
+                listedForeignKeys: listed
+            )
+        }
+    }
+
+    // Asked when the read reaches its keys. A definition change still being applied may not have reached the store,
+    // which a structure save invalidates only after it announces the table.
+    func listedForeignKeys(of tableName: String, in scope: DatabaseScope) -> @MainActor @Sendable () -> [ForeignKeyInfo]? {
+        { [weak self] in
+            guard let self, !services.catalogChangeService.isApplyingChange(for: connectionId) else { return nil }
+            return SchemaForeignKeyStore.shared.listedForeignKeys(
+                of: tableName, in: scope, nameIsCataloged: catalogListsAsTable(tableName, in: scope)
             )
         }
     }
