@@ -23,7 +23,11 @@ extension SchemaService {
         leasingFrom provider: any ScopedMetadataProviding,
         afterTables: (@MainActor () async -> Void)? = nil
     ) async throws {
-        guard needsLoad(connectionId, scope: scope) else { return }
+        // A catalog already loaded still hands its tables over: completion may have dropped its copy.
+        guard needsLoad(connectionId, scope: scope) else {
+            await afterTables?()
+            return
+        }
         if PluginManager.shared.databaseGroupingStrategy(for: connection.type) == .hierarchicalSchema {
             _ = try await provider.withMetadataDriver(scope: scope) { [self] driver in
                 await runLoad(connectionId: connectionId, driver: driver, connection: connection, scope: scope)

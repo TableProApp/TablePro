@@ -178,6 +178,20 @@ struct SchemaLeasingLoadTests {
         #expect(readsAtSync == ["tables"])
     }
 
+    @Test("A catalog already loaded reads nothing and still hands its tables to completion")
+    func loadedCatalogStillSyncsCompletion() async throws {
+        let service = SchemaService()
+        let provider = makeProvider()
+        try await load(service, from: provider)
+        let leases = provider.leases
+        var synced = false
+
+        try await load(service, from: provider) { synced = true }
+
+        #expect(synced)
+        #expect(provider.leases == leases)
+    }
+
     @Test("A tables lease that cannot be had throws and leaves the catalog untouched")
     func tablesLeaseFailureLeavesStateAlone() async {
         let service = SchemaService()
