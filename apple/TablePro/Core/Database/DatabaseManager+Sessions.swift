@@ -480,6 +480,7 @@ extension DatabaseManager {
                         throw DatabaseError.notConnected
                     }
                     try await plugin.switchDatabase(to: database)
+                    noteExecutionDatabase(database, on: current, for: connectionId)
                     let schemaDriver = current as? SchemaSwitchable
                     if grouping == .bySchema, let schemaDriver {
                         await resetSchema(on: schemaDriver, to: pm?.schema.defaultSchemaName)
@@ -1276,6 +1277,7 @@ extension DatabaseManager {
         postDisconnectScripts.fire(for: connectionId)
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
         sessionLanes.closeAll(for: connectionId)
+        executionPositions.removeValue(forKey: connectionId)
         monitorPingedDrivers.removeValue(forKey: connectionId)
         sessionDriverGate.drain(connectionId: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)

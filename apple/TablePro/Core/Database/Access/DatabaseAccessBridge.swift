@@ -286,14 +286,15 @@ internal actor DatabaseAccessBridge {
         use: ScopeUse,
         manager: DatabaseManager
     ) throws -> DatabaseScope {
-        guard let scope = manager.resolvedScope(database: database, schema: schema, for: connectionId) else {
+        guard let resolved = manager.resolvedScope(database: database, schema: schema, for: connectionId) else {
             throw DatabaseAccessError.invalidArgument(
                 String(localized: "No database to run against. Pass a database name.")
             )
         }
-        if let refusal = databaseRefusal(named: database, for: scope, manager: manager) {
+        if let refusal = databaseRefusal(named: database, for: resolved, manager: manager) {
             throw DatabaseAccessError.invalidArgument(refusal)
         }
+        let scope = executingScope(resolved, manager: manager)
         guard use != .catalog, let session = manager.session(for: connectionId) else { return scope }
         let databaseType = session.connection.type
         // A fixed engine reaches only the database its driver reported, so with no report the call names none.
@@ -314,6 +315,17 @@ internal actor DatabaseAccessBridge {
             ))
         }
         return DatabaseScope(connectionId: scope.connectionId, database: runsIn, schema: nil)
+    }
+
+    // With no database browsed, a switching engine's driver still executes wherever a pin last moved it, so a scope
+    // naming none names that database and is pinned to it.
+    @MainActor
+    private static func executingScope(_ scope: DatabaseScope, manager: DatabaseManager) -> DatabaseScope {
+        guard scope.isServerScoped, let session = manager.session(for: scope.connectionId),
+              manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type),
+              let executing = manager.executionDatabase(for: scope.connectionId), !executing.isEmpty
+        else { return scope }
+        return DatabaseScope(connectionId: scope.connectionId, database: executing, schema: scope.schema)
     }
 
     // A fixed-database engine can neither run SQL in another database nor read its catalog, so the call would answer
@@ -463,8 +475,8 @@ internal actor DatabaseAccessBridge {
 
     // A reconnect or a replaced session since the approval runs nothing. A fixed engine is never pinned, so a database
     // the approval took from its driver's report has to be the one it reports still. A switching engine pins a named
-    // database, and nothing pins none, so a session that moved to a database since an approval naming none would take
-    // the work there.
+    // database, and nothing pins none, so a driver a pin or a switch moved to a database since an approval naming none
+    // would take the work there.
     nonisolated static func requireApproved(
         _ scope: DatabaseScope,
         as kind: ApprovedScopeKind,
@@ -479,7 +491,7 @@ internal actor DatabaseAccessBridge {
             case (.statement, false), (.server, false):
                 return scope.namedDatabase.map { $0 == session.openedDatabase } ?? true
             case (.statement, true), (.catalog, true):
-                return scope.namedDatabase != nil || session.resolvedBrowseDatabase.isEmpty
+                return scope.namedDatabase != nil || (manager.executionDatabase(for: scope.connectionId) ?? "").isEmpty
             case (.catalog, false), (.server, true):
                 return true
             }

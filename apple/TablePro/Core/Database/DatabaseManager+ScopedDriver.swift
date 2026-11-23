@@ -37,6 +37,12 @@ private enum TableReadTurn: Sendable {
     case moved(ScopedDriverRoute)
 }
 
+// Weak and compared by identity: a reconnect's driver is not the one a pin moved.
+internal struct ExecutionPosition {
+    weak var driver: AnyObject?
+    let database: String
+}
+
 extension DatabaseManager {
     /// A metadata read needs no transaction, no temp tables and no cancellation handle,
     /// so it takes a pooled connection and leaves the shared driver where it is.
@@ -808,9 +814,25 @@ extension DatabaseManager {
                 }
             } else if let plugin = driver.plugin {
                 try await plugin.switchDatabase(to: scope.database)
+                noteExecutionDatabase(scope.database, on: driver, for: scope.connectionId)
             }
         }
         guard let schema = scope.schema, let schemaDriver = driver as? SchemaSwitchable else { return }
         try await schemaDriver.switchSchemaIfNeeded(to: schema)
+    }
+
+    // Where the session's driver executes. A pin moves it without moving the browse cursor; one no pin has moved is
+    // where its connect, restore or switch put it, which is the browse cursor.
+    func executionDatabase(for connectionId: UUID) -> String? {
+        guard let session = activeSessions[connectionId] else { return nil }
+        if let position = executionPositions[connectionId], let driver = session.driver, position.driver === driver {
+            return position.database
+        }
+        return session.resolvedBrowseDatabase
+    }
+
+    func noteExecutionDatabase(_ database: String, on driver: DatabaseDriver, for connectionId: UUID) {
+        guard activeSessions[connectionId]?.driver === driver else { return }
+        executionPositions[connectionId] = ExecutionPosition(driver: driver, database: database)
     }
 }

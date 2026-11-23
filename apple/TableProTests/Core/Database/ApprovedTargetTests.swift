@@ -422,4 +422,47 @@ struct ApprovedTargetTests {
         #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
         #expect(!driver.events.contains("COUNT orders"))
     }
+
+    // A call naming production pins the shared driver there and leaves the browse cursor on no database.
+    private func pinToProduction(_ id: UUID, bridge: DatabaseAccessBridge) async throws {
+        let named = try await bridge.resolveStatementScope(connectionId: id, database: "production", schema: nil)
+        _ = try await bridge.runStatement(scope: named, query: "SELECT 1", maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+    }
+
+    @Test("After a call pinned production, a DELETE naming no database is approved naming production and runs only there")
+    func deleteAfterAPinNamesWhereTheDriverIs() async throws {
+        let (id, driver) = session(.mysql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        try await pinToProduction(id, bridge: bridge)
+
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DELETE FROM orders WHERE id = 1", maxRows: 10)
+        let operation = try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .mysql)
+        _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+
+        #expect(DatabaseManager.shared.session(for: id)?.resolvedBrowseDatabase == "")
+        #expect(scope.database == "production")
+        let deleted = try #require(driver.events.lastIndex(of: "DELETE FROM orders WHERE id = 1"))
+        #expect(driver.events[..<deleted].last { $0.hasPrefix("DATABASE") } == "DATABASE production")
+    }
+
+    @Test("A DELETE approved naming no database is refused once a call pinned the driver to production")
+    func pinAfterANoDatabaseApprovalRefuses() async throws {
+        let (id, driver) = session(.mysql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DELETE FROM orders WHERE id = 1", maxRows: 10)
+        let operation = try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .mysql)
+
+        try await pinToProduction(id, bridge: bridge)
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+
+        #expect(scope.isServerScoped)
+        #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
+        #expect(!driver.events.contains { $0.hasPrefix("DELETE") })
+    }
 }
