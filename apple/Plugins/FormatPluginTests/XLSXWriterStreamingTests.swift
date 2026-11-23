@@ -164,8 +164,8 @@ struct XLSXWriterStreamingTests {
         defer { try? FileManager.default.removeItem(at: destination) }
         let writer = XLSXWriter()
         try writer.beginSheet(name: "t", columns: ["v"], includeHeader: true, convertNullToEmpty: true)
-        let row: [PluginCellValue] = [.text(String(repeating: "x", count: 64 * 1_024))]
-        for _ in 0..<13 {
+        let row: [PluginCellValue] = [.text(String(repeating: "x", count: XLSXWriter.maximumCellLength))]
+        for _ in 0..<26 {
             try writer.addRows(Array(repeating: row, count: 100), convertNullToEmpty: true)
         }
         try writer.finishSheet()
@@ -188,7 +188,7 @@ struct XLSXWriterStreamingTests {
         #expect(produced == entry.uncompressedSize)
 
         let sheet = try XLSXImportSheet.read(at: destination, hasHeaderRow: true, isCancelled: { false })
-        #expect(sheet.rowCount == 1_300)
+        #expect(sheet.rowCount == 2_600)
     }
 
     @Test("A sheet past the ZIP size limit fails while its rows are still arriving")

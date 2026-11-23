@@ -42,6 +42,13 @@ nonisolated final class XLSXWriter {
     private var currentRowNumber: Int = 0
     private var rowDigits: [UInt8] = []
 
+    // Excel repairs a workbook with a longer text cell, and keeps its first 32,767 characters (UTF-16 units). Checked
+    // in Excel 16 for Mac: it shows "Excel was able to open the file by repairing or removing the unreadable content".
+    static let maximumCellLength = 32_767
+
+    // How many values were cut to `maximumCellLength`, for the export's warning.
+    private(set) var cutValueCount = 0
+
     enum CellValue: Equatable {
         case string(String)
         case number(String)
@@ -119,8 +126,11 @@ nonisolated final class XLSXWriter {
         if includeHeader {
             beginRow(in: part)
             for (index, name) in columns.enumerated() {
+                let fitted = Self.fittingExcelCell(name)
+                if fitted.wasCut { cutValueCount += 1 }
                 XLSXRowEncoder.appendStringCell(
-                    name, column: columnLetterCache[index], rowDigits: rowDigits, isHeader: true, to: &part.pending
+                    fitted.text, column: columnLetterCache[index], rowDigits: rowDigits, isHeader: true,
+                    to: &part.pending
                 )
             }
             XLSXRowEncoder.appendRowClose(to: &part.pending)
@@ -151,8 +161,10 @@ nonisolated final class XLSXWriter {
                 }
                 switch cell {
                 case .string(let text):
+                    let fitted = Self.fittingExcelCell(text)
+                    if fitted.wasCut { cutValueCount += 1 }
                     XLSXRowEncoder.appendStringCell(
-                        text, column: columnLetterCache[index], rowDigits: rowDigits, isHeader: false,
+                        fitted.text, column: columnLetterCache[index], rowDigits: rowDigits, isHeader: false,
                         to: &part.pending
                     )
                 case .number(let literal):
@@ -219,6 +231,17 @@ nonisolated final class XLSXWriter {
         @unknown default:
             return .string(text)
         }
+    }
+
+    // The text cut to `maximumCellLength` UTF-16 units, on a scalar boundary so a surrogate pair is never split.
+    // UTF-16 never holds more units than UTF-8 holds bytes, so a short value costs one length read.
+    static func fittingExcelCell(_ text: String) -> (text: String, wasCut: Bool) {
+        guard text.utf8.count > maximumCellLength, text.utf16.count > maximumCellLength else { return (text, false) }
+        var end = text.utf16.index(text.utf16.startIndex, offsetBy: maximumCellLength)
+        while end.samePosition(in: text.unicodeScalars) == nil {
+            end = text.utf16.index(before: end)
+        }
+        return (String(text.unicodeScalars[..<end]), true)
     }
 
     // ZEROFILL pads an integer for display, and a number cell would drop the padding.
@@ -505,11 +528,11 @@ nonisolated private extension Data {
 
 // MARK: - Sheet Part
 
-// Level 1: TablePro's own import refuses an entry that inflates past 250 to 1 (`DecompressionBudget.standard`),
-// and zlib's level 1 stays under it on any input, where the default level packs one repeated byte about 620 to 1.
-private let sheetDeflateLevel = GzipDeflater.Level.fastest
-
 nonisolated private final class XLSXSheetPart {
+    // Level 1: TablePro's own import refuses an entry that inflates past 250 to 1 (`DecompressionBudget.standard`),
+    // and zlib's level 1 stays under it on any input, where the default level packs one repeated byte about 620 to 1.
+    static let deflateLevel = GzipDeflater.Level.fastest
+
     let name: String
     let fileURL: URL
     var pending: [UInt8] = []
@@ -528,7 +551,7 @@ nonisolated private final class XLSXSheetPart {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSURLErrorKey: fileURL])
         }
         handle = try FileHandle(forWritingTo: fileURL)
-        deflater = try GzipDeflater(container: .raw, level: sheetDeflateLevel)
+        deflater = try GzipDeflater(container: .raw, level: XLSXSheetPart.deflateLevel)
         pending.reserveCapacity(bufferCapacity + 64 * 1_024)
     }
 
@@ -589,7 +612,7 @@ nonisolated private struct ZipFileEntry {
     init(path: String, data: Data) throws {
         self.path = path
         var compressed = Data()
-        let deflater = try GzipDeflater(container: .raw, level: sheetDeflateLevel)
+        let deflater = try GzipDeflater(container: .raw, level: XLSXSheetPart.deflateLevel)
         let sink: (UnsafeRawBufferPointer) throws -> Void = { compressed.append($0.assumingMemoryBound(to: UInt8.self)) }
         try data.withUnsafeBytes { try deflater.deflate($0, into: sink) }
         try deflater.finish(into: sink)

@@ -123,6 +123,12 @@ nonisolated final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, 
         if didSplitSheets {
             warnings.append("Data exceeded Excel's row limit (1,048,576) and was split across multiple sheets.")
         }
+        if writer.cutValueCount > 0 {
+            warnings.append(String(
+                format: String(localized: "Values cut to Excel's limit of 32,767 characters: %lld. Export as CSV to keep them whole."),
+                Int64(writer.cutValueCount)
+            ))
+        }
         return ExportFormatResult(warnings: warnings)
     }
 }
