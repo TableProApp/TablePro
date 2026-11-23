@@ -147,6 +147,42 @@ struct VimEngineDotRepeatTests {
         #expect(buffer.text == "X\nYcd\nX\nYgh\n")
     }
 
+    @Test("A count on . after an insert types the text that many times")
+    func countedDotRepeatsTheInsertThatManyTimes() {
+        load("abc def")
+        keys("iX\u{1B}w3.")
+        #expect(buffer.text == "Xabc XXXdef")
+    }
+
+    @Test("3iX types X three times")
+    func countedInsertTypesTheTextThatManyTimes() {
+        load("abc")
+        keys("3iX\u{1B}")
+        #expect(buffer.text == "XXXabc")
+        #expect(caret == 2)
+    }
+
+    @Test("2A; appends two semicolons")
+    func countedAppendTypesTheTextThatManyTimes() {
+        load("SELECT 1\nSELECT 2\n")
+        keys("2A;\u{1B}")
+        #expect(buffer.text == "SELECT 1;;\nSELECT 2\n")
+    }
+
+    @Test("3oX opens three lines, each with X")
+    func countedOpenLineOpensThatManyLines() {
+        load("abc\ndef")
+        keys("3oX\u{1B}")
+        #expect(buffer.text == "abc\nX\nX\nX\ndef")
+    }
+
+    @Test(". with no count after 3iX types X three times again")
+    func dotAfterACountedInsertKeepsItsCount() {
+        load("abc def")
+        keys("3iX\u{1B}w.")
+        #expect(buffer.text == "XXXabc XXXdef")
+    }
+
     @Test("A yank between a change and . leaves the change to repeat")
     func yankIsNotAChange() {
         load("abcdef\nxyz\n")

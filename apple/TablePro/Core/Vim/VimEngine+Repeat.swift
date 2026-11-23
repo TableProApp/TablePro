@@ -98,6 +98,49 @@ extension VimEngine {
         updateVisualSelection(cursorPos: end, linewise: extent.linewise, in: buffer)
     }
 
+    func beginInsert(count: Int, opensLine: Bool = false) {
+        insertRepeat = count > 1 ? VimInsertRepeat(count: count, opensLine: opensLine) : nil
+        setMode(.insert)
+    }
+
+    // At Escape a counted insert types what this one did again, count - 1 more times.
+    func repeatCountedInsert() {
+        guard let pending = insertRepeat else { return }
+        insertRepeat = nil
+        guard !isRepeatingChange, changeDraft != nil, let buffer else { return }
+        if let typed = takeTypedStep() {
+            changeDraft?.insertSteps.append(typed)
+        }
+        let steps = changeDraft?.insertSteps ?? []
+        let recording = macroRecording
+        macroRecording = nil
+        isRepeatingChange = true
+        defer {
+            isRepeatingChange = false
+            macroRecording = recording
+        }
+        applyInsertSteps(steps, times: pending.count - 1, opensLine: pending.opensLine, in: buffer)
+    }
+
+    private func applyInsertSteps(_ steps: [VimInsertStep], times: Int, opensLine: Bool, in buffer: VimTextBuffer) {
+        for _ in 0..<max(0, times) {
+            if opensLine {
+                replace(NSRange(location: buffer.selectedRange().location, length: 0), with: "\n", in: buffer)
+            }
+            for step in steps where mode.isInsert {
+                switch step {
+                case .typed(let deleting, let text):
+                    deleteBeforeCaret(deleting, in: buffer)
+                    if !text.isEmpty {
+                        replace(NSRange(location: buffer.selectedRange().location, length: 0), with: text, in: buffer)
+                    }
+                case .key(let key):
+                    _ = process(key, shift: false)
+                }
+            }
+        }
+    }
+
     // Ends the typed run, which the next edit starts again at the caret.
     private func takeTypedStep() -> VimInsertStep? {
         guard let draft = changeDraft, let range = draft.insertedRange else { return nil }
@@ -184,17 +227,13 @@ extension VimEngine {
                 _ = process(key.character, shift: key.shift)
             }
         }
-        if let buffer {
-            for step in change.insertSteps ?? [] where mode.isInsert {
-                switch step {
-                case .typed(let deleting, let text):
-                    deleteBeforeCaret(deleting, in: buffer)
-                    if !text.isEmpty {
-                        replace(NSRange(location: buffer.selectedRange().location, length: 0), with: text, in: buffer)
-                    }
-                case .key(let key):
-                    _ = process(key, shift: false)
-                }
+        if let buffer, mode.isInsert {
+            let pending = insertRepeat
+            insertRepeat = nil
+            let steps = change.insertSteps ?? []
+            applyInsertSteps(steps, times: 1, opensLine: false, in: buffer)
+            if let pending {
+                applyInsertSteps(steps, times: pending.count - 1, opensLine: pending.opensLine, in: buffer)
             }
         }
         if mode != .normal {
