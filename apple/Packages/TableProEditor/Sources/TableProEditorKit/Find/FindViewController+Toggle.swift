@@ -36,6 +36,7 @@ extension FindViewController {
 
         // Smooth out the animation by placing the find panel just outside the correct position before animating.
         installFindPanel().isHidden = false
+        viewModel.refreshMatchesIfStale()
         findPanelVerticalConstraint?.constant = resolvedTopPadding - viewModel.panelHeight
 
         view.layoutSubtreeIfNeeded()

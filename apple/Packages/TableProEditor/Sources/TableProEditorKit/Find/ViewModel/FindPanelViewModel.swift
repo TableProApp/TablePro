@@ -47,6 +47,14 @@ class FindPanelViewModel: ObservableObject {
     /// Set while Replace or All edits the document, which searches once when the edit is done.
     var isReplacingMatches = false
 
+    // Set when the document changed while the panel was hidden and unfocused. Nothing shows the matches then, so the
+    // search waits for the next command that reads them and uses the caret the edit left.
+    var staleMatchesCaret: StaleMatchesCaret?
+
+    struct StaleMatchesCaret {
+        let location: Int?
+    }
+
     /// Replace is withheld from a document that is read-only, as the native find bar withholds it. With no target
     /// there is nothing to edit either way, and Replace and All already do nothing.
     var canReplace: Bool {
@@ -95,11 +103,9 @@ class FindPanelViewModel: ObservableObject {
 
     // MARK: - Text Listeners
 
-    /// Find target's text content changed, we need to re-search the contents and emphasize results.
     @objc private func textDidChange() {
-        // Only update if we have find text
         if !findText.isEmpty, !isReplacingMatches, !isReplayingUndo {
-            find()
+            findAfterEdit()
         }
     }
 
@@ -112,7 +118,7 @@ class FindPanelViewModel: ObservableObject {
               !findText.isEmpty else {
             return
         }
-        find()
+        findAfterEdit()
     }
 
     private var isReplayingUndo: Bool {
