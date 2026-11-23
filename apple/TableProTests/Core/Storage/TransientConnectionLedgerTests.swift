@@ -87,7 +87,7 @@ struct TransientConnectionLedgerTests {
         library.addConnection(savedLater)
 
         var purged: Set<UUID> = []
-        ledger.purgeUnreachable(library: library, openSessionIds: [open.id]) { purged.formUnion($0) }
+        ledger.purgeUnreachable(library: library, reachableIds: [open.id]) { purged.formUnion($0) }
 
         #expect(purged == [closed.id])
         #expect(ledger.ids == [open.id])
@@ -101,7 +101,7 @@ struct TransientConnectionLedgerTests {
         library.invalidateCache()
 
         var purged: Set<UUID> = []
-        ledger.purgeUnreachable(library: library, openSessionIds: []) { purged.formUnion($0) }
+        ledger.purgeUnreachable(library: library, reachableIds: []) { purged.formUnion($0) }
 
         #expect(purged.isEmpty)
         #expect(ledger.ids == [opened.id])
@@ -159,7 +159,7 @@ struct TransientConnectionLedgerTests {
         let shared = TransientConnectionLedger()
         defer {
             manager.removeSession(for: opened.id)
-            shared.purgeUnreachable(library: library, openSessionIds: []) { _ in }
+            shared.purgeUnreachable(library: library, reachableIds: []) { _ in }
         }
 
         manager.registerPendingSession(opened)

@@ -52,12 +52,13 @@ internal struct TransientConnectionLedger {
     }
 
     /// Purges the ids no window can reach any more: recorded, not saved since, not unreadable, and
-    /// with no session open. An id saved after it was recorded leaves the ledger and keeps its state.
+    /// not reachable (an open session, or a window still hosting the id after a failed connect, kept for
+    /// a retry). An id saved after it was recorded leaves the ledger and keeps its state.
     /// A library that fails to load keeps the ledger for the next launch. An id leaves only after its
     /// purge ran, so a quit in between tries again.
     func purgeUnreachable(
         library: ConnectionStorage,
-        openSessionIds: Set<UUID>,
+        reachableIds: Set<UUID>,
         purge: (Set<UUID>) -> Void
     ) {
         let recorded = ids
@@ -67,7 +68,7 @@ internal struct TransientConnectionLedger {
         let unreadable = library.unreadableConnectionIds
 
         let nowSaved = recorded.filter { saved.contains($0) || unreadable.contains($0) }
-        let unreachable = recorded.subtracting(nowSaved).subtracting(openSessionIds)
+        let unreachable = recorded.subtracting(nowSaved).subtracting(reachableIds)
         purge(unreachable)
         write(recorded.subtracting(nowSaved).subtracting(unreachable))
     }

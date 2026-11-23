@@ -38,7 +38,7 @@ internal enum PostLaunchWork {
         Task { await RegistryClient.shared.fetch(policy: .ifStale) }
         TransientConnectionLedger().purgeUnreachable(
             library: .shared,
-            openSessionIds: Set(DatabaseManager.shared.activeSessions.keys),
+            reachableIds: Set(DatabaseManager.shared.activeSessions.keys).union(WindowManager.shared.allConnectionIds()),
             purge: { ConnectionLocalState.purgeUnreachable($0) }
         )
         Task.detached(priority: .utility) { RegistryStorageSweep.sweepProductionStorage() }
