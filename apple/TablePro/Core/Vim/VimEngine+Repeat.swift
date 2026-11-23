@@ -22,23 +22,80 @@ extension VimEngine {
         buffer.replaceCharacters(in: range, with: string)
     }
 
-    // A change starts at the first key of a Normal mode command, count and register included. Typed keys are not kept:
-    // the text view applies them, so what they did is read from the text.
+    // A change starts at the first key of a Normal mode command, count and register included. In Insert and Replace
+    // mode a key the text view applies is not kept: what it did is read from the text.
     func changeKeyWillProcess(_ char: Character, shift: Bool) {
         guard !isRepeatingChange else { return }
         if changeDraft == nil {
             guard mode == .normal else { return }
             changeDraft = VimChangeDraft()
         }
-        guard mode != .insert else {
-            if changeDraft?.insertedRange != nil, VimInsertControl(rawValue: char) != nil {
+        guard !mode.isInsert else {
+            if changeDraft?.insertedRange != nil, engineApplies(char) {
                 let typed = takeTypedStep()
                 changeDraft?.insertSteps += [typed, .key(char)].compactMap { $0 }
             }
             return
         }
+        if mode.isVisual, !hasPendingVisualKey, let buffer {
+            let commandStart = changeDraft?.keys.count ?? 0
+            changeDraft?.visualExtent = visualExtent(of: buffer.selectedRange(), in: buffer)
+            changeDraft?.visualCommandStart = commandStart
+            changeDraft?.visualRegister = selectedRegister
+        }
         let isCount = mode == .normal && isCountKey(char)
         changeDraft?.keys.append(VimChangeKey(character: char, shift: shift, isCount: isCount))
+    }
+
+    // Replace mode overwrites with every key but Return, which the text view inserts. Escape ends the change.
+    private func engineApplies(_ char: Character) -> Bool {
+        guard char != "\u{1B}" else { return false }
+        if mode == .replace { return char != "\r" && char != "\n" }
+        return VimInsertControl(rawValue: char) != nil
+    }
+
+    private var hasPendingVisualKey: Bool {
+        pendingG || pendingReplaceCharForVisual || pendingTextObject || pendingRegisterSelect
+    }
+
+    private func visualExtent(of selection: NSRange, in buffer: VimTextBuffer) -> VimVisualExtent {
+        let last = selection.length > 0 ? characterStart(at: NSMaxRange(selection) - 1, in: buffer) : selection.location
+        let first = buffer.lineAndColumn(forOffset: selection.location)
+        let end = buffer.lineAndColumn(forOffset: last)
+        let lines = end.line - first.line + 1
+        return VimVisualExtent(
+            linewise: mode.isVisualLinewise,
+            lines: lines,
+            characters: lines == 1 ? buffer.string(in: selection).count : 0,
+            lastColumn: end.column
+        )
+    }
+
+    // The keys of the command that ended Visual mode, behind the register it was given.
+    private func visualOperatorKeys(of draft: VimChangeDraft) -> [VimChangeKey] {
+        let keys = Array(draft.keys[draft.visualCommandStart...])
+        guard let register = draft.visualRegister else { return keys }
+        let named = [Character("\""), register].map { VimChangeKey(character: $0, shift: false, isCount: false) }
+        return named + keys
+    }
+
+    // Selects as much from the caret as the change's selection held, in the same Visual mode.
+    private func selectVisualExtent(_ extent: VimVisualExtent, in buffer: VimTextBuffer) {
+        let caret = buffer.selectedRange().location
+        let lastLine = min(buffer.lineCount - 1, buffer.lineAndColumn(forOffset: caret).line + extent.lines - 1)
+        let end: Int
+        if extent.linewise {
+            end = buffer.offset(forLine: lastLine, column: 0)
+        } else if extent.lines > 1 {
+            end = buffer.offset(forLine: lastLine, column: extent.lastColumn)
+        } else {
+            let lastOnLine = max(caret, contentEnd(ofLineAt: caret, in: buffer) - 1)
+            end = characterOffset(after: caret, count: extent.characters - 1, limit: lastOnLine, in: buffer)
+        }
+        visualAnchor = caret
+        cursorOffset = caret
+        setMode(.visual(linewise: extent.linewise))
+        updateVisualSelection(cursorPos: end, linewise: extent.linewise, in: buffer)
     }
 
     // Ends the typed run, which the next edit starts again at the caret.
@@ -54,12 +111,10 @@ extension VimEngine {
     func changeKeyDidProcess() {
         guard !isRepeatingChange, let draft = changeDraft else { return }
         switch mode {
-        case .insert:
+        case .insert, .replace:
             guard draft.insertedRange == nil else { return }
             changeDraft?.changesText = true
             changeDraft?.insertedRange = NSRange(location: buffer?.selectedRange().location ?? 0, length: 0)
-        case .replace:
-            changeDraft?.changesText = true
         case .normal:
             guard !hasPendingCommand, countPrefix == 0, operatorCount == 0, selectedRegister == nil else { return }
             let typed = takeTypedStep()
@@ -67,15 +122,16 @@ extension VimEngine {
             guard draft.changesText else { return }
             let enteredInsert = draft.insertedRange != nil || !draft.insertSteps.isEmpty
             let steps = draft.insertSteps + [typed].compactMap { $0 }
-            lastChange = VimChange(keys: draft.keys, insertSteps: enteredInsert ? steps : nil)
+            let visual = draft.visualExtent.map { VimVisualChange(extent: $0, operatorKeys: visualOperatorKeys(of: draft)) }
+            lastChange = VimChange(keys: draft.keys, insertSteps: enteredInsert ? steps : nil, visual: visual)
         case .visual, .commandLine:
             return
         }
     }
 
-    // Keeps the range of the text typed since Insert mode began in step with every edit, typed or not.
+    // Keeps the range of the text typed since Insert or Replace mode began in step with every edit, typed or not.
     func noteInsertedText(in range: NSRange, with replacement: String) {
-        guard mode == .insert, let inserted = changeDraft?.insertedRange else { return }
+        guard mode.isInsert, let inserted = changeDraft?.insertedRange else { return }
         let replacementLength = (replacement as NSString).length
         let delta = replacementLength - range.length
         if NSMaxRange(range) < inserted.location {
@@ -118,11 +174,18 @@ extension VimEngine {
             isRepeatingChange = false
             macroRecording = recording
         }
-        for key in change.keys {
-            _ = process(key.character, shift: key.shift)
+        if let visual = change.visual, let buffer {
+            selectVisualExtent(visual.extent, in: buffer)
+            for key in visual.operatorKeys {
+                _ = process(key.character, shift: key.shift)
+            }
+        } else {
+            for key in change.keys {
+                _ = process(key.character, shift: key.shift)
+            }
         }
         if let buffer {
-            for step in change.insertSteps ?? [] where mode == .insert {
+            for step in change.insertSteps ?? [] where mode.isInsert {
                 switch step {
                 case .typed(let deleting, let text):
                     deleteBeforeCaret(deleting, in: buffer)

@@ -20,14 +20,15 @@ struct VimEngineDotRepeatTests {
         buffer.setSelectedRange(NSRange(location: caret, length: 0))
     }
 
-    // A key the engine leaves to the text view is applied as the editor does: Backspace deletes, anything else types.
+    // A key the engine leaves to the text view is applied as the editor does: Backspace deletes, Return breaks the
+    // line, anything else types.
     private func keys(_ chars: String) {
         for char in chars where !engine.process(char, shift: char.isUppercase) {
             if char == "\u{7F}" {
                 guard caret > 0 else { continue }
                 buffer.replaceCharacters(in: NSRange(location: caret - 1, length: 1), with: "")
             } else {
-                buffer.replaceCharacters(in: buffer.selectedRange(), with: String(char))
+                buffer.replaceCharacters(in: buffer.selectedRange(), with: char == "\r" ? "\n" : String(char))
             }
         }
     }
@@ -108,6 +109,42 @@ struct VimEngineDotRepeatTests {
         #expect(buffer.text == "SELECT x\nSELECT defgh")
         keys("j.")
         #expect(buffer.text == "SELECT x\nSELECT x")
+    }
+
+    @Test("A Visual mode delete within a line, then . deletes as many characters from the caret")
+    func dotRepeatsVisualDeleteOverAsManyCharacters() {
+        load("one longer rest")
+        keys("ved")
+        #expect(buffer.text == " longer rest")
+        keys("w.")
+        #expect(buffer.text == " ger rest")
+    }
+
+    @Test("A Visual mode delete over two lines, then . deletes to the same column two lines down")
+    func dotRepeatsVisualDeleteOverAsManyLines() {
+        load("abc def\nghi jkl\nmn opqrst uv\nwxyz wxyz\n")
+        keys("vjed")
+        #expect(buffer.text == " jkl\nmn opqrst uv\nwxyz wxyz\n")
+        keys("j.")
+        #expect(buffer.text == " jkl\nz wxyz\n")
+    }
+
+    @Test("A Visual line delete, then . deletes as many lines")
+    func dotRepeatsVisualLineDeleteOverAsManyLines() {
+        load("1\n2\n3\n4\n5\n6\n", caret: 8)
+        keys("VGd")
+        #expect(buffer.text == "1\n2\n3\n4\n")
+        keys("gg.")
+        #expect(buffer.text == "3\n4\n")
+    }
+
+    @Test("Return in Replace mode breaks the line again on .")
+    func dotRepeatsReturnInReplaceMode() {
+        load("abcd\nefgh\n")
+        keys("RX\rY\u{1B}")
+        #expect(buffer.text == "X\nYcd\nefgh\n")
+        keys("j.")
+        #expect(buffer.text == "X\nYcd\nX\nYgh\n")
     }
 
     @Test("A yank between a change and . leaves the change to repeat")

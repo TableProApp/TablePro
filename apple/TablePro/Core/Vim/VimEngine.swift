@@ -37,23 +37,44 @@ struct VimChangeKey {
 enum VimInsertStep {
     // What the text view did: characters deleted before the caret, then the text typed.
     case typed(deleting: Int, text: String)
-    // A key the engine handles in Insert mode, such as Ctrl-W, which Vim replays as the key.
+    // A key the engine applies in Insert or Replace mode, such as Ctrl-W or an overwrite, which Vim replays as the key.
     case key(Character)
 }
 
-// `:help .`: the keys of the last command that changed the text, and what it did in Insert mode if it went on there.
+// `:help visual-repeat`: the same number of characters within one line, the same number of lines with the same
+// column in the last for several, the same number of lines for a linewise selection.
+struct VimVisualExtent {
+    let linewise: Bool
+    let lines: Int
+    let characters: Int
+    let lastColumn: Int
+}
+
+struct VimVisualChange {
+    let extent: VimVisualExtent
+    let operatorKeys: [VimChangeKey]
+}
+
+// `:help .`: the keys of the last command that changed the text, and what it did in Insert or Replace mode if it went on
+// there. A Visual mode change keeps the selection's extent and the keys of its operator instead of its motions.
 struct VimChange {
     var keys: [VimChangeKey]
     var insertSteps: [VimInsertStep]?
+    var visual: VimVisualChange?
 }
 
 struct VimChangeDraft {
     var keys: [VimChangeKey] = []
     var changesText = false
     var insertSteps: [VimInsertStep] = []
-    // Where the text typed since Insert mode began, or since the last engine key, sits, kept in step with every edit.
+    // Where the text typed since Insert or Replace mode began, or since the last engine key, sits, kept in step with
+    // every edit.
     var insertedRange: NSRange?
     var deletedBeforeInsert = 0
+    // The selection as the last Visual mode command found it, where that command's keys start and the register it got.
+    var visualExtent: VimVisualExtent?
+    var visualCommandStart = 0
+    var visualRegister: Character?
 }
 
 // `:help exclusive`, `:help inclusive`, `:help linewise`.
