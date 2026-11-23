@@ -8457,6 +8457,9 @@
     "%1$@ is at %2$@ of the largest value %3$@ holds." : {
 
     },
+    "%1$@ is compared but not scripted, because its definition was read from %2$@ and can name that schema rather than %3$@." : {
+
+    },
     "%1$@ is covered by %2$@." : {
 
     },
@@ -11800,6 +11803,9 @@
           }
         }
       }
+    },
+    "%d statements failed. What already ran is pending in the transaction on this connection." : {
+
     },
     "%d statements failed. What already ran stays applied. Compare again to see where the target stands." : {
       "localizations" : {
@@ -213674,6 +213680,9 @@
     "The descriptor set names an unknown field type %llu." : {
 
     },
+    "The destination changed while the transfer started. Check it and transfer again." : {
+
+    },
     "The destination has no table named %@" : {
       "localizations" : {
         "fr" : {
@@ -218567,6 +218576,9 @@
 
     },
     "The run button sits in the gutter, which needs line numbers." : {
+
+    },
+    "The run stopped, but the transaction could not be rolled back: %@. Compare again to see where the target stands." : {
 
     },
     "The run was rolled back, but %@ cannot roll back, so the rows already written there stay. Compare again to see where the target stands." : {
@@ -223947,6 +223959,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This connection cannot run against database %1$@, only its own: %2$@. Leave database out or pass %2$@." : {
+
+    },
     "This connection cannot send statements with bound values." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -224053,6 +224068,9 @@
           }
         }
       }
+    },
+    "This connection has no schema to switch to, so it cannot run against schema %@. Leave schema out." : {
+
     },
     "This connection has no tunnel command to run." : {
       "localizations" : {
@@ -229464,6 +229482,12 @@
           }
         }
       }
+    },
+    "This sync ran inside the transaction already open on this connection, which can no longer be committed. Roll it back." : {
+
+    },
+    "This sync ran inside the transaction already open on this connection. Commit it to keep the changes, or roll it back to discard them." : {
+
     },
     "This Tab" : {
 
@@ -246866,6 +246890,9 @@
           }
         }
       }
+    },
+    "Why values are masked, and what happened to the open transaction, when either applies" : {
+
     },
     "Why values are masked, when they are" : {
 

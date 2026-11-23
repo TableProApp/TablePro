@@ -482,24 +482,28 @@ struct SyncRecordMapper {
 
     static func settingsEdit(
         category: String,
-        settingsData: Data,
+        settingsData local: Data,
         in zone: CKRecordZone.ID,
         base: CKRecord?
     ) -> SyncRecordEdit {
-        let record = toCKRecord(category: category, settingsData: settingsData, in: zone, base: base?.copy() as? CKRecord)
         let baseData = base.flatMap(Self.settingsData(from:))
+        let settingsData = SyncSettingsDocument.carryingUnreadOptions(of: baseData, into: local, category: category) ?? local
+        let record = toCKRecord(category: category, settingsData: settingsData, in: zone, base: base?.copy() as? CKRecord)
         // A base an older build wrote in another key order holds the same options, which is no edit.
         let baseAsWritten = SyncJSONMerge.sameDocument(baseData, settingsData) ? record : nil
         let mergesOptions = mergesOptions(of: category)
         return SyncRecordEdit(AppSettingsSyncField.self, record: record, base: base, baseAsWritten: baseAsWritten) { merged, server in
-            guard mergesOptions, let document = SyncJSONMerge.document(
-                base: baseData,
-                local: settingsData,
-                server: Self.settingsData(from: server)
-            ) else { return }
-            merged.fields(AppSettingsSyncField.self)[.settingsJson] = category == CustomSlashCommandStorage.syncCategory
-                ? Self.renamingCommandCollisions(in: document)
-                : document
+            let serverData = Self.settingsData(from: server)
+            let fields = merged.fields(AppSettingsSyncField.self)
+            if mergesOptions, let document = SyncJSONMerge.document(base: baseData, local: settingsData, server: serverData) {
+                fields[.settingsJson] = category == CustomSlashCommandStorage.syncCategory
+                    ? Self.renamingCommandCollisions(in: document)
+                    : document
+            } else if fields[.settingsJson] as? Data == settingsData,
+                      let carried = SyncSettingsDocument.carryingUnreadOptions(of: serverData, into: local, category: category) {
+                // Going up whole, it still keeps the options a newer build wrote on the server.
+                fields[.settingsJson] = carried
+            }
         }
     }
 

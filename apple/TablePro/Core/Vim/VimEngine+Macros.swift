@@ -19,6 +19,8 @@ extension VimEngine {
                 return
             }
             lastInvokedMacro = target
+            // `.` repeats the last change the macro made, not the macro.
+            changeDraft = nil
             let count = max(1, pendingMacroCount)
             pendingMacroCount = 1
             for _ in 0..<count { replayMacro(keys: keys) }

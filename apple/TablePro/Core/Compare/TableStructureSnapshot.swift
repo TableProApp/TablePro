@@ -80,6 +80,34 @@ internal struct TableStructureSnapshot: Hashable {
         return copy
     }
 
+    // A table created in another schema takes its keys to its own schema's tables with it.
+    internal func placingReferences(
+        from sourceSchema: String?,
+        into targetSchema: String?,
+        options: StructureCompareOptions
+    ) -> TableStructureSnapshot {
+        guard let sourceSchema, let targetSchema, !sourceSchema.isEmpty, !targetSchema.isEmpty,
+              options.matchKey(sourceSchema) != options.matchKey(targetSchema) else { return self }
+        return movingReferences(from: sourceSchema, to: targetSchema) { options.matchKey($0) }
+    }
+
+    // A key to `own` schema, or to none, names `replacement` instead; a key to a third schema is left as it is.
+    internal func movingReferences(
+        from own: String,
+        to replacement: String,
+        folding fold: (String) -> String
+    ) -> TableStructureSnapshot {
+        var copy = self
+        copy.foreignKeys = foreignKeys.map { foreignKey in
+            let referenced = foreignKey.referencedSchema ?? ""
+            guard referenced.isEmpty || fold(referenced) == fold(own) else { return foreignKey }
+            var moved = foreignKey
+            moved.referencedSchema = replacement
+            return moved
+        }
+        return copy
+    }
+
     /// The same structure with every definition under one shared `id`, so two reads of a table
     /// nobody touched compare equal. Replacing the three arrays on a copy, rather than rebuilding
     /// the snapshot, keeps every other field in the comparison.

@@ -209,7 +209,7 @@ public class TextViewController: NSViewController {
     /// The gutter's width is reserved on the clip view, so the clip view's own origin moves whenever the gutter shows,
     /// hides or gains a digit. This is the position ``SourceEditorState`` records and restores, so a saved position
     /// means the same text regardless.
-    var scrollPosition: CGPoint {
+    public var scrollPosition: CGPoint {
         get {
             let origin = scrollView.contentView.bounds.origin
             return CGPoint(x: origin.x + scrollView.floatingSubviewInsets.left, y: origin.y)

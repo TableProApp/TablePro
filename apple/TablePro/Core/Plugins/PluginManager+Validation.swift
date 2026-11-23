@@ -3,7 +3,7 @@ import os
 
 extension PluginManager {
     func assertLoadable(_ bundle: Bundle, source: PluginSource) throws {
-        try Self.validateBundleVersions(bundle)
+        try Self.validateBundleVersions(bundle, source: source)
         // A built-in bundle is sealed inside the app's own signature.
         guard source != .builtIn else { return }
         try PluginCodeSignatureVerifier.verify(bundle: bundle)

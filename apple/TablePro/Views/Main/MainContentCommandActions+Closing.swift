@@ -118,10 +118,14 @@ extension MainContentCommandActions {
     }
 
     // False once another tab is in front or the tab is gone: the mounted editors, grid and inspector it saves are the front tab's.
+    private func isShowing(_ tabId: UUID?) -> Bool {
+        guard let manager = coordinator?.tabManager else { return false }
+        return manager.selectedTabId == tabId && (tabId == nil || manager.selectedTabIndex != nil)
+    }
+
     func saveWork(onTab tabId: UUID?) async -> Bool {
         guard let coordinator = coordinator else { return true }
-        let manager = coordinator.tabManager
-        let stillOnTab = { manager.selectedTabId == tabId && (tabId == nil || manager.selectedTabIndex != nil) }
+        let stillOnTab = { self.isShowing(tabId) }
         guard stillOnTab() else { return false }
 
         if isUsersRolesTab, coordinator.usersRolesActions?.hasChanges() == true {
@@ -139,26 +143,27 @@ extension MainContentCommandActions {
         }
         guard await applyDiagramEdits(ofTab: tabId, in: coordinator), stillOnTab() else { return false }
         guard await applyTypeChanges(ofTab: tabId), stillOnTab() else { return false }
+        return await saveRowsThenFile(onTab: tabId)
+    }
 
-        // Data grid changes or pending table operations take priority
+    // A query result's edits and the tab's .sql file are separate work that one Save answers for; it stops at the first failure.
+    func saveRowsThenFile(onTab tabId: UUID?) async -> Bool {
+        guard let coordinator else { return true }
+        guard isShowing(tabId) else { return false }
+        // The grid save writes the inspector's edits too: they are staged in the same change manager.
         if hasDataWork {
-            return await withCheckedContinuation { continuation in
+            guard coordinator.admitsSheetCommand() else { return false }
+            let saved = await withCheckedContinuation { continuation in
                 coordinator.saveCompletionContinuation = continuation
-                saveChanges()
-                // Still there when the command went somewhere other than the grid save, which reports nothing back.
+                saveDataWork()
+                // Still there when the grid save never started, which reports nothing back.
                 coordinator.takeSaveCompletion()?.resume(returning: false)
             }
+            guard saved, isShowing(tabId) else { return false }
+        } else if trailingPaneState.inspector.editState.hasEdits {
+            guard await saveInspectorEditsAwaiting(), isShowing(tabId) else { return false }
         }
-
-        if trailingPaneState.inspector.editState.hasEdits {
-            return await saveInspectorEditsAwaiting()
-        }
-
-        // File save (query editor with source file)
-        if coordinator.tabManager.selectedTab?.content.isFileDirty == true {
-            return await saveSelectedFileAwaiting()
-        }
-
-        return true
+        guard coordinator.tabManager.selectedTab?.content.isFileDirty == true else { return true }
+        return await saveSelectedFileAwaiting()
     }
 }

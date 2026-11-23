@@ -60,7 +60,8 @@ private func writeBundle(
     bundleId: String,
     build: Int,
     kit: Int = PluginManager.currentPluginKitVersion,
-    extraInfo: [String: Any] = [:]
+    extraInfo: [String: Any] = [:],
+    executable: Data? = nil
 ) throws -> URL {
     let contents = url.appendingPathComponent("Contents", isDirectory: true)
     try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
@@ -71,6 +72,10 @@ private func writeBundle(
         "TableProPluginKitVersion": kit
     ]
     info.merge(extraInfo) { _, new in new }
+    if let executable {
+        info["CFBundleExecutable"] = "Driver"
+        try MachOFixture.writeExecutable(executable, named: "Driver", into: url)
+    }
     let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
     try data.write(to: contents.appendingPathComponent("Info.plist"))
     return url
@@ -177,6 +182,7 @@ struct PluginRegistryUpdatePassTests {
         build: Int,
         kit: Int = PluginManager.currentPluginKitVersion,
         extraInfo: [String: Any] = [:],
+        executable: Data? = nil,
         in fixture: Fixture
     ) throws {
         let downloaded = try writeBundle(
@@ -184,7 +190,8 @@ struct PluginRegistryUpdatePassTests {
             bundleId: bundleId,
             build: build,
             kit: kit,
-            extraInfo: extraInfo
+            extraInfo: extraInfo,
+            executable: executable
         )
         try PluginInstaller.stage(
             bundleAt: downloaded,
@@ -1008,6 +1015,86 @@ struct PluginRegistryUpdatePassTests {
 
         #expect(cached.infoDictionary?["TableProPluginKitVersion"] as? Int == outdatedKit)
         try PluginManager.validateBundleVersions(try #require(Bundle(url: url)))
+    }
+
+    // MARK: - Architecture
+
+    @Test("Launch marks a registry plugin without this Mac's architecture for repair, and the pass installs it at once")
+    func missingArchitectureWithSidecarIsRepairedNow() async throws {
+        let installer = FixtureRegistryInstaller()
+        let fixture = try makeFixture(installer: installer)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let bundleId = "com.example.arch.\(UUID().uuidString)"
+        let url = fixture.pluginsDir.appendingPathComponent("Driver.tableplugin", isDirectory: true)
+        try writeBundle(at: url, bundleId: bundleId, build: 20, executable: MachOFixture.thin(MachOFixture.otherArchitecture))
+        manager.saveRegistryMetadata(pluginId: bundleId, pluginURL: url)
+
+        manager.loadPlugins()
+        await manager.waitForInitialLoad()
+
+        let rejected = try #require(manager.rejectedPlugins.first { $0.bundleId == bundleId })
+        #expect(rejected.isOutdated)
+        #expect(rejected.registryId == bundleId)
+        #expect(rejected.reason == PluginBundleLoader.missingArchitectureReason)
+        #expect(manager.registryUpdateTargets(appBuild: 20) == [
+            RegistryUpdateTarget(pluginId: bundleId, build: 0, rejectedURL: rejected.url)
+        ])
+
+        let (client, _) = try makeRegistryClient(servingBuild: 20, pluginIds: [bundleId])
+        _ = await manager.runRegistryUpdatePass(registryClient: client, appBuild: 20)
+
+        let installedIds = await installer.installedIds
+        let stagedIds = await installer.stagedIds
+        #expect(installedIds == [bundleId])
+        #expect(stagedIds.isEmpty)
+        #expect(manager.stagedPluginIds.isEmpty)
+        // The fixture's download has no executable, so the check passes only once it replaced the other-arch copy.
+        try PluginManager.validateArchitecture(at: url)
+    }
+
+    @Test("A sideloaded plugin without this Mac's architecture keeps the architecture message and is never a target")
+    func missingArchitectureWithoutSidecarKeepsItsMessage() async throws {
+        let installer = FixtureRegistryInstaller()
+        let fixture = try makeFixture(installer: installer)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let bundleId = "com.example.arch.\(UUID().uuidString)"
+        let url = fixture.pluginsDir.appendingPathComponent("Driver.tableplugin", isDirectory: true)
+        try writeBundle(at: url, bundleId: bundleId, build: 20, executable: MachOFixture.thin(MachOFixture.otherArchitecture))
+
+        manager.loadPlugins()
+        await manager.waitForInitialLoad()
+        let (client, _) = try makeRegistryClient(servingBuild: 20, pluginIds: [bundleId])
+        let result = await manager.runRegistryUpdatePass(registryClient: client, appBuild: 20)
+        manager.markUnfinishedRejectedPlugins()
+
+        let rejected = try #require(manager.rejectedPlugins.first { $0.bundleId == bundleId })
+        #expect(!rejected.isOutdated)
+        #expect(rejected.reason == PluginBundleLoader.missingArchitectureReason)
+        #expect(result == .finished)
+        let installedIds = await installer.installedIds
+        #expect(installedIds.isEmpty)
+    }
+
+    @Test("A staged update without this Mac's architecture is dropped and the installed copy stays")
+    func stagedUpdateWithoutTheArchitectureIsDropped() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let installedURL = fixture.pluginsDir.appendingPathComponent("Driver.tableplugin", isDirectory: true)
+        try writeBundle(at: installedURL, bundleId: "com.example.driver", build: 1)
+        try stageUpdate(
+            of: "com.example.driver",
+            build: 2,
+            executable: MachOFixture.thin(MachOFixture.otherArchitecture),
+            in: fixture
+        )
+
+        PluginManager.applyStagedUpdates(in: fixture.pluginsDir)
+
+        #expect(PluginManager.bundleBuild(at: installedURL) == 1)
+        let stagedDir = PluginInstaller.stagedUpdateDirectory(for: "com.example.driver", in: fixture.pluginsDir)
+        #expect(!FileManager.default.fileExists(atPath: stagedDir.path))
     }
 
     // MARK: - Launch swap

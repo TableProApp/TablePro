@@ -611,11 +611,62 @@ final class AIChatViewModel: ObservableObject {
     }
 
     func trimMessagesIfNeeded() {
-        if messages.count > Self.maxMessageCount {
-            messages.removeFirst(messages.count - Self.maxMessageCount)
+        let kept = Self.trimmed(messages, limit: Self.maxMessageCount)
+        if kept.count != messages.count {
+            messages = kept
         }
-        while messages.first?.role == .assistant {
-            messages.removeFirst()
+    }
+
+    // Cuts only whole call/result pairs or whole earlier exchanges, oldest first: a result whose call was cut makes
+    // providers refuse the request, and one question can run hundreds of tool rounds, so the exchange being answered
+    // keeps its question and its last turn whatever its length.
+    static func trimmed(_ turns: [ChatTurn], limit: Int) -> [ChatTurn] {
+        var kept = turns
+        if let firstQuestion = kept.firstIndex(where: opensRound), firstQuestion > 0 {
+            kept.removeFirst(firstQuestion)
+        }
+        while kept.count > limit {
+            let questions = kept.indices.filter { opensRound(kept[$0]) }
+            if questions.count > 1 {
+                if let pair = oldestPair(in: kept, before: questions[1]) {
+                    kept.removeSubrange(pair...(pair + 1))
+                } else {
+                    kept.removeFirst(questions[1])
+                }
+                continue
+            }
+            // The last turn is the one being answered, so a pair always ends before it.
+            guard let pair = oldestPair(in: kept, before: kept.count - 1) else { break }
+            kept.removeSubrange(pair...(pair + 1))
+        }
+        return kept
+    }
+
+    private static func opensRound(_ turn: ChatTurn) -> Bool {
+        guard turn.role == .user else { return false }
+        return !turn.blocks.contains { block in
+            if case .toolResult = block.kind { return true }
+            return false
+        }
+    }
+
+    // An assistant turn that calls tools, then a user turn holding only results for those calls. Never the turn at 0.
+    private static func oldestPair(in turns: [ChatTurn], before end: Int) -> Int? {
+        guard end >= 3 else { return nil }
+        return (1..<(end - 1)).first { index in
+            let call = turns[index]
+            let answer = turns[index + 1]
+            guard call.role == .assistant, answer.role == .user else { return false }
+            let calls = Set(call.blocks.compactMap { block -> String? in
+                guard case .toolUse(let use) = block.kind else { return nil }
+                return use.id
+            })
+            let answered = answer.blocks.compactMap { block -> String? in
+                guard case .toolResult(let result) = block.kind else { return nil }
+                return result.toolUseId
+            }
+            return !calls.isEmpty && !answered.isEmpty && answered.count == answer.blocks.count
+                && Set(answered).isSubset(of: calls)
         }
     }
 }

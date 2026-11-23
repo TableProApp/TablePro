@@ -267,6 +267,7 @@ final class TableTransferService: ObservableObject {
                 driver: destinationDriver,
                 databaseType: request.destinationType,
                 targetTable: object.name,
+                targetSchema: request.destinationSchema,
                 columnMapping: mapping,
                 sourceFields: Set(request.sourceColumns[object.name] ?? []),
                 isCancelled: { [flag = cancellationFlag] in flag.isCancelled }

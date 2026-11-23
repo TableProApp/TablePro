@@ -513,6 +513,7 @@ internal enum LibSSH2TunnelFactory {
             let authenticator = try buildJumpAuthenticator(
                 jumpHost: firstJump.formHop ?? SSHJumpHost(),
                 resolved: firstJump.target,
+                credentials: credentials,
                 attempt: attempt,
                 timeoutEndpoint: endpoint
             )
@@ -571,6 +572,7 @@ internal enum LibSSH2TunnelFactory {
             let authenticator = try buildJumpAuthenticator(
                 jumpHost: resolved.jumps[jumpIndex + 1].formHop ?? SSHJumpHost(),
                 resolved: nextTarget,
+                credentials: credentials,
                 attempt: attempt,
                 timeoutEndpoint: endpoint
             )
@@ -755,7 +757,8 @@ internal enum LibSSH2TunnelFactory {
         attempt: SSHConnectionAttempt? = nil,
         timeoutEndpoint: ConnectionTimeoutEndpoint? = nil
     ) throws -> any SSHAuthenticator {
-        let promptProvider = credentials.keyboardInteractivePromptProvider ?? PromptKeyboardInteractiveProvider(
+        let promptProvider = keyboardInteractivePromptProvider(
+            credentials: credentials,
             attempt: attempt,
             timeoutEndpoint: timeoutEndpoint
         )
@@ -827,12 +830,7 @@ internal enum LibSSH2TunnelFactory {
                         promptProvider: promptProvider
                     ),
                 ],
-                endsChainOn: Set(
-                    AgentSocketOrigin.allCases.map(AuthFailureReason.agentUnavailable)
-                        + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoIdentities)
-                        + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoMatchingIdentity)
-                        + [.agentIdentityFileUnreadable, .agentServerClosedConnection]
-                )
+                endsChainOn: agentSuppliedNoFirstFactor
             )
 
         case .keyboardInteractive:
@@ -845,6 +843,24 @@ internal enum LibSSH2TunnelFactory {
         case .none:
             return NoneAuthenticator()
         }
+    }
+
+    private static let agentSuppliedNoFirstFactor = Set(
+        AgentSocketOrigin.allCases.map(AuthFailureReason.agentUnavailable)
+            + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoIdentities)
+            + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoMatchingIdentity)
+            + [.agentIdentityFileUnreadable, .agentServerClosedConnection]
+    )
+
+    private static func keyboardInteractivePromptProvider(
+        credentials: SSHTunnelCredentials,
+        attempt: SSHConnectionAttempt?,
+        timeoutEndpoint: ConnectionTimeoutEndpoint?
+    ) -> any KeyboardInteractivePromptProvider {
+        credentials.keyboardInteractivePromptProvider ?? PromptKeyboardInteractiveProvider(
+            attempt: attempt,
+            timeoutEndpoint: timeoutEndpoint
+        )
     }
 
     private static func effectiveKeyPaths(for resolved: ResolvedSSHTarget) -> [String] {
@@ -980,19 +996,31 @@ internal enum LibSSH2TunnelFactory {
         }
     }
 
-    private static func buildJumpAuthenticator(
+    // A hop signs in on its own, so a bastion asking for a code after the key (publickey,keyboard-interactive)
+    // gets the same second step the SSH host does. A hop has no TOTP secret of its own, so the code is asked for.
+    internal static func buildJumpAuthenticator(
         jumpHost: SSHJumpHost,
         resolved: ResolvedSSHTarget,
-        attempt: SSHConnectionAttempt?,
-        timeoutEndpoint: ConnectionTimeoutEndpoint?
+        credentials: SSHTunnelCredentials,
+        attempt: SSHConnectionAttempt? = nil,
+        timeoutEndpoint: ConnectionTimeoutEndpoint? = nil
     ) throws -> any SSHAuthenticator {
+        let secondFactor = KeyboardInteractiveAuthenticator(
+            password: nil,
+            totpProvider: nil,
+            promptProvider: keyboardInteractivePromptProvider(
+                credentials: credentials,
+                attempt: attempt,
+                timeoutEndpoint: timeoutEndpoint
+            )
+        )
         switch jumpHost.authMethod {
         case .privateKey:
             let keyPaths = effectiveKeyPaths(for: resolved)
             guard !keyPaths.isEmpty else {
                 throw SSHTunnelError.authenticationFailed(reason: .privateKey)
             }
-            let authenticators = keyPaths.map { path in
+            let authenticators: [any SSHAuthenticator] = keyPaths.map { path in
                 KeyFileAuthenticator(
                     keyPath: path,
                     providedPassphrase: nil,
@@ -1002,15 +1030,13 @@ internal enum LibSSH2TunnelFactory {
                     timeoutEndpoint: timeoutEndpoint
                 )
             }
-            return authenticators.count == 1
-                ? authenticators[0]
-                : CompositeAuthenticator(authenticators: authenticators)
+            return CompositeAuthenticator(authenticators: authenticators + [secondFactor])
         case .sshAgent where resolved.agentDisabled:
             let keyPaths = jumpHost.privateKeyPath.isEmpty ? effectiveKeyPaths(for: resolved) : [jumpHost.privateKeyPath]
             guard !keyPaths.isEmpty else {
                 throw SSHTunnelError.authenticationFailed(reason: .agentDisabledByConfig)
             }
-            let authenticators = keyPaths.map { path in
+            let authenticators: [any SSHAuthenticator] = keyPaths.map { path in
                 KeyFileAuthenticator(
                     keyPath: path,
                     providedPassphrase: nil,
@@ -1020,9 +1046,7 @@ internal enum LibSSH2TunnelFactory {
                     timeoutEndpoint: timeoutEndpoint
                 )
             }
-            return authenticators.count == 1
-                ? authenticators[0]
-                : CompositeAuthenticator(authenticators: authenticators)
+            return CompositeAuthenticator(authenticators: authenticators + [secondFactor])
         case .sshAgent:
             let socketPath: String? = resolved.agentSocketPath.isEmpty ? nil : resolved.agentSocketPath
             let agent = AgentAuthenticator(
@@ -1031,18 +1055,18 @@ internal enum LibSSH2TunnelFactory {
                 identityFiles: resolved.identityFiles,
                 identitiesOnly: resolved.identitiesOnly
             )
-            if !jumpHost.privateKeyPath.isEmpty {
-                let keyAuth = KeyFileAuthenticator(
-                    keyPath: jumpHost.privateKeyPath,
-                    providedPassphrase: nil,
-                    useKeychain: resolved.useKeychain,
-                    addKeysToAgent: resolved.addKeysToAgent,
-                    attempt: attempt,
-                    timeoutEndpoint: timeoutEndpoint
-                )
-                return CompositeAuthenticator(authenticators: [agent, keyAuth])
+            guard !jumpHost.privateKeyPath.isEmpty else {
+                return CompositeAuthenticator(authenticators: [agent, secondFactor], endsChainOn: agentSuppliedNoFirstFactor)
             }
-            return agent
+            let keyAuth = KeyFileAuthenticator(
+                keyPath: jumpHost.privateKeyPath,
+                providedPassphrase: nil,
+                useKeychain: resolved.useKeychain,
+                addKeysToAgent: resolved.addKeysToAgent,
+                attempt: attempt,
+                timeoutEndpoint: timeoutEndpoint
+            )
+            return CompositeAuthenticator(authenticators: [agent, keyAuth, secondFactor])
         }
     }
 

@@ -518,14 +518,20 @@ final class PluginManager: ObservableObject {
     }
 
     // Bundle caches Info.plist per path, so a rejected plugin repaired in place still reports its old kit.
-    nonisolated internal static func validateBundleVersions(_ bundle: Bundle) throws {
-        guard let version = infoPlist(at: bundle.bundleURL)["TableProPluginKitVersion"] as? Int else {
+    // A built-in plugin skips the architecture check: it ships inside the app, built for the app's own arch.
+    nonisolated internal static func validateBundleVersions(_ bundle: Bundle, source: PluginSource = .userInstalled) throws {
+        let info = infoPlist(at: bundle.bundleURL)
+        guard let version = info["TableProPluginKitVersion"] as? Int else {
             throw PluginError.pluginOutdated(
                 pluginVersion: 0,
                 requiredVersion: currentPluginKitVersion
             )
         }
-        guard !isCompatibleKit(version) else { return }
+        if isCompatibleKit(version) {
+            guard source != .builtIn else { return }
+            try validateArchitecture(at: bundle.bundleURL, info: info)
+            return
+        }
         if version > currentPluginKitVersion {
             throw PluginError.incompatibleVersion(
                 required: version,
@@ -538,6 +544,41 @@ final class PluginManager: ObservableObject {
         )
     }
 
+    // The process's architecture, not the hardware's: under Rosetta the app loads x86_64 plugins.
+    nonisolated internal static var runningArchitecture: Int {
+        #if arch(arm64)
+        return NSBundleExecutableArchitectureARM64
+        #else
+        return NSBundleExecutableArchitectureX86_64
+        #endif
+    }
+
+    // Read from the executable file, not through Bundle, which caches per path while a repair replaces the bundle there.
+    // No executable, or a file that is not Mach-O, passes: the loader reports those when it loads the bundle.
+    nonisolated internal static func validateArchitecture(
+        at bundleURL: URL,
+        info: [String: Any]? = nil,
+        running: Int = runningArchitecture
+    ) throws {
+        guard let executable = (info ?? infoPlist(at: bundleURL))["CFBundleExecutable"] as? String,
+              !executable.isEmpty else { return }
+        let executableURL = bundleURL.appendingPathComponent("Contents/MacOS", isDirectory: true)
+            .appendingPathComponent(executable, isDirectory: false)
+        guard let architectures = CFBundleCopyExecutableArchitecturesForURL(executableURL as CFURL) as? [NSNumber],
+              !architectures.isEmpty else { return }
+        guard architectures.contains(where: { $0.intValue == running }) else {
+            throw PluginError.missingArchitecture
+        }
+    }
+
+    // A registry plugin built without this Mac's architecture is repaired like an outdated one; a sideloaded one cannot be.
+    nonisolated internal static func isRepairableRejection(_ error: Error, registryId: String?) -> Bool {
+        guard let pluginError = error as? PluginError else { return false }
+        if pluginError.isOutdated { return true }
+        if case .missingArchitecture = pluginError { return registryId != nil }
+        return false
+    }
+
     nonisolated private static func validateAndLoadBundle(
         at url: URL,
         source: PluginSource
@@ -546,7 +587,7 @@ final class PluginManager: ObservableObject {
             throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
         }
 
-        try validateBundleVersions(bundle)
+        try validateBundleVersions(bundle, source: source)
 
         if source != .builtIn {
             try PluginCodeSignatureVerifier.verify(bundle: bundle)
@@ -704,7 +745,7 @@ final class PluginManager: ObservableObject {
                         registryId: registryId,
                         name: Self.rejectedDisplayName(at: winner.url),
                         reason: error.localizedDescription,
-                        isOutdated: (error as? PluginError)?.isOutdated ?? false,
+                        isOutdated: Self.isRepairableRejection(error, registryId: registryId),
                         providedDatabaseTypeIds: Self.databaseTypeIds(of: bundle, registryId: registryId)
                     ))
                 }
@@ -805,7 +846,7 @@ final class PluginManager: ObservableObject {
             throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
         }
 
-        try Self.validateBundleVersions(bundle)
+        try Self.validateBundleVersions(bundle, source: source)
 
         // Discovery loads no code; the signature is checked at load and by sweepPluginSignatures().
         if source == .userInstalled {
