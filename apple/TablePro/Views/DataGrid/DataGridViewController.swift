@@ -315,6 +315,7 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         }
         if previous.defaultSortDirection != settings.defaultSortDirection {
             reconcileColumns()
+            refreshHeaders()
         }
         if previous.dateFormat != settings.dateFormat
             || previous.nullDisplay != settings.nullDisplay

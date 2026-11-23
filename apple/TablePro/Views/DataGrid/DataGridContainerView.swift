@@ -56,7 +56,7 @@ final class DataGridContainerView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override var isFlipped: Bool { true }
+    override nonisolated var isFlipped: Bool { true }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)

@@ -6,6 +6,7 @@
 import AppKit
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import TableProTheme
 import Testing
 
@@ -144,6 +145,40 @@ struct DataGridPaneTests {
         let unsorted = HostedDataGrid(rows: GridFixtureRows.people, configuration: configuration)
         defer { unsorted.close() }
         #expect(unsorted.main.tableColumns.allSatisfy { $0.sortDescriptorPrototype == nil })
+    }
+
+    // Each attach through the default text field cell tiled the table, one resize per column (measured on macOS 27).
+    @Test("Mounting 200 columns resizes the main table a constant number of times, not once per column")
+    func attachingColumnsResizesTheTableOnce() {
+        let owner = GridTestOwner(GridFixtureRows.wide(rows: 3, columns: 200))
+        let model = DataGridModel()
+        model.dataSource = owner
+        model.actions = owner
+        owner.model = model
+        model.reloadRows()
+        let controller = DataGridViewController(model: model)
+        let table = controller.main.tableView
+        var resizes = 0
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification, object: table, queue: nil
+        ) { _ in resizes += 1 }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        let window = GridTestWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 400),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        defer {
+            controller.dismantle()
+            window.orderOut(nil)
+        }
+
+        window.contentView = controller.view
+
+        #expect(table.tableColumns.count == 201)
+        #expect(resizes <= 10)
     }
 
     @Test("The main table runs past its last column by the trailing space")
@@ -338,5 +373,35 @@ struct DataGridPaneTests {
         #expect(grid.main.rowHeight == grid.frozen.rowHeight)
         #expect(grid.main.rowHeight >= CGFloat(AppSettingsManager.shared.dataGrid.rowHeight.rawValue))
         #expect(grid.main.rect(ofRow: 40).minY == grid.frozen.rect(ofRow: 40).minY)
+    }
+}
+
+extension GlobalStateSuites {
+    @Suite(.appSettings { $0.dataGrid.defaultSortDirection = .ascending })
+    @MainActor
+    struct DataGridDefaultSortDirectionTests {
+        @Test("A new first-click sort direction rebuilds the prototypes and leaves the headings' text and labels in place")
+        func defaultSortDirectionKeepsTheHeadings() async throws {
+            var configuration = DataGridConfiguration()
+            configuration.appliesRowSortPreferences = true
+            let grid = HostedDataGrid(rows: GridFixtureRows.people, configuration: configuration)
+            defer { grid.close() }
+            grid.model.setSort(SortState(
+                columns: [SortColumn(columnIndex: 1, direction: .ascending, columnName: "name")],
+                source: .user
+            ))
+            let name = try #require(grid.tableColumn(named: "name"))
+            let tooltip = name.headerToolTip
+            let label = name.headerCell.accessibilityLabel()
+            #expect(name.sortDescriptorPrototype?.ascending == true)
+
+            AppSettingsManager.shared.dataGrid.defaultSortDirection = .descending
+
+            try await waitUntil { name.sortDescriptorPrototype?.ascending == false }
+            #expect(name.headerCell.attributedStringValue.string == "name")
+            #expect(name.headerToolTip == tooltip)
+            #expect(name.headerCell.accessibilityLabel() == label)
+            #expect(name.headerCell.accessibilitySortDirection() == .ascending)
+        }
     }
 }

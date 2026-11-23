@@ -86,6 +86,12 @@ final class DataGridRowView: NSTableRowView {
 
     // MARK: - Drawing
 
+    // drawBackground(in:) fills with an opaque color whenever both are set. Saying so spares AppKit a color lookup per
+    // row and the layer its blending.
+    override var isOpaque: Bool {
+        controller != nil && gridTable != nil
+    }
+
     override func drawBackground(in dirtyRect: NSRect) {
         guard let controller, let gridTable else {
             super.drawBackground(in: dirtyRect)
@@ -145,7 +151,7 @@ final class DataGridRowView: NSTableRowView {
 final class DataGridRowContentView: NSView {
     weak var rowView: DataGridRowView?
 
-    override var isFlipped: Bool { true }
+    override nonisolated var isFlipped: Bool { true }
     override var allowsVibrancy: Bool { false }
 
     override func isAccessibilityElement() -> Bool { false }

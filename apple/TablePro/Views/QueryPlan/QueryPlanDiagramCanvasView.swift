@@ -29,7 +29,7 @@ final class QueryPlanDiagramCanvasView: NSView {
     private var popover: NSPopover?
     private var popoverNodeId: UUID?
 
-    override var isFlipped: Bool { true }
+    override nonisolated var isFlipped: Bool { true }
 
     /// Taking focus on a click is what puts the plan's scroll view on the responder chain, so View >
     /// Zoom In and Edit > Copy act on the plan instead of on the editor above it.
