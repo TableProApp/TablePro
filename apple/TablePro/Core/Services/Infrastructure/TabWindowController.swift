@@ -89,6 +89,12 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     // Set while a close question is open: its sheet attaches a moment after the click, and a second click would ask twice.
     private(set) var pendingCloseAnswer: Task<Void, Never>?
 
+    // Vars so a test can script them instead of showing the alert.
+    var runningWork: (RunningWorkScope) -> [RunningWork] = { RunningWorkRegistry.shared.items(in: $0) }
+    var confirmStoppingWork: (RunningWorkPrompt, NSWindow?) async -> Bool = { prompt, window in
+        await RunningWorkApproval.confirm(prompt, window: window)
+    }
+
     /// `adopting` carries a connection that is moving here from another window, whole. Everything
     /// the user has in it lives on that object, so the window takes it rather than building a
     /// second one around the same connection.
@@ -271,10 +277,9 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     // close() skips this, so the close the answer ends in does not ask again.
     internal func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard pendingCloseAnswer == nil else { return false }
-        guard let host = sender.contentViewController as? MainSplitViewController,
-              let actions = host.closeQuestionActions,
-              actions.holdsWorkOnWindowClose()
-        else { return true }
+        guard let host = sender.contentViewController as? MainSplitViewController else { return true }
+        guard let actions = host.closeQuestionActions else { return asksToStopWork(in: host, closing: sender) }
+        guard actions.holdsWorkOnWindowClose() else { return true }
         let answer: Task<Void, Never>
         if let event = NSApp.currentEvent, WindowCloseReview.closesEveryWindow(event) {
             answer = WindowCloseReview.shared.enlist(actions, window: sender, for: event)
@@ -283,6 +288,21 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         }
         pendingCloseAnswer = Task { [weak self] in
             await answer.value
+            self?.pendingCloseAnswer = nil
+        }
+        return false
+    }
+
+    // No browse content has mounted (Agent mode while still connecting), so nothing is unsaved, yet an agent reply can run.
+    private func asksToStopWork(in host: MainSplitViewController, closing window: NSWindow) -> Bool {
+        let work = runningWork(.window(ids: [], connectionIds: Set(host.workspaces.connectionIds)))
+        guard let prompt = RunningWorkPrompt.make(action: .close, work: work) else { return true }
+        let confirm = confirmStoppingWork
+        pendingCloseAnswer = Task { [weak self, weak window] in
+            if await confirm(prompt, window) {
+                for item in work { item.cancel() }
+                window?.close()
+            }
             self?.pendingCloseAnswer = nil
         }
         return false

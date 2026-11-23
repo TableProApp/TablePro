@@ -68,6 +68,41 @@ struct ConnectionWindowCloseQuestionTests {
         #expect(window.fixture.window.isVisible)
     }
 
+    // Agent mode while still connecting mounts no browse content, so the window has no command actions.
+    @Test("A window with no browse content still asks before stopping an agent reply")
+    func windowWithoutActionsAsksAboutRunningWork() async throws {
+        let fixture = try OffscreenConnectionWindow(size: Self.size)
+        defer { fixture.tearDown() }
+        fixture.window.orderFront(nil)
+        var stopped = 0
+        let reply = RunningWork(
+            kind: .agentReply,
+            subject: "Shipping report",
+            connectionName: "Agent window",
+            connectionIds: [fixture.workspace.connectionId],
+            cancel: { stopped += 1 }
+        )
+        fixture.controller.runningWork = { scope in scope.contains(reply) ? [reply] : [] }
+        var answers = [false, true]
+        let prompts = PromptLog()
+        fixture.controller.confirmStoppingWork = { _, _ in
+            prompts.count += 1
+            return answers.removeFirst()
+        }
+        try #require(fixture.split.closeQuestionActions == nil)
+
+        #expect(!fixture.controller.windowShouldClose(fixture.window))
+        try await waitUntil { fixture.controller.pendingCloseAnswer == nil }
+        #expect(fixture.window.isVisible, "Cancel must keep the window and the reply")
+        #expect(stopped == 0)
+
+        #expect(!fixture.controller.windowShouldClose(fixture.window))
+        try await waitUntil { fixture.controller.pendingCloseAnswer == nil }
+        #expect(prompts.count == 2)
+        #expect(stopped == 1)
+        #expect(!fixture.window.isVisible)
+    }
+
     @Test("Option-click on a close button closes every window; a plain click or a key does not")
     func optionClickClosesEveryWindow() throws {
         let optionUp = try Self.click(.leftMouseUp, modifiers: .option)

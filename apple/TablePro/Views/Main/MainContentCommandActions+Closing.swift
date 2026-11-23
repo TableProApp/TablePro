@@ -22,17 +22,19 @@ extension MainContentCommandActions {
         return hasUnsavedWorkInWindow || !workInWindow.isEmpty
     }
 
+    // Every hosted connection, also one with no coordinator yet: an agent reply runs without one.
     var workInWindow: [RunningWork] {
         let coordinators: [MainContentCoordinator]
+        var connectionIds: Set<UUID>
         if let host = window?.contentViewController as? MainSplitViewController {
             coordinators = host.workspaces.workspaces.compactMap { $0.sessionState?.coordinator }
+            connectionIds = Set(host.workspaces.connectionIds)
         } else {
             coordinators = [coordinator].compactMap { $0 }
+            connectionIds = []
         }
-        return runningWork(.window(
-            ids: Set(coordinators.compactMap(\.windowId)),
-            connectionIds: Set(coordinators.map(\.connectionId))
-        ))
+        connectionIds.formUnion(coordinators.map(\.connectionId))
+        return runningWork(.window(ids: Set(coordinators.compactMap(\.windowId)), connectionIds: connectionIds))
     }
 
     // Asks before closing unsaved work (HIG); like NSDocument, the tab stays open when the save leaves work unsaved.
