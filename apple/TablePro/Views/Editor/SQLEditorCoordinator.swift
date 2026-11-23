@@ -343,6 +343,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         schemaProvider = nil
         controller?.textView?.menu = nil
         contextMenu = nil
+        vimEngine?.closeInsertUndoStep()
         vimEngine = nil
         vimCursorManager = nil
 
@@ -742,6 +743,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         vimCursorManager?.uninstall()
         vimCursorManager = nil
         vimKeyInterceptor = nil
+        vimEngine?.closeInsertUndoStep()
         vimEngine = nil
     }
 
@@ -779,6 +781,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             vimCursorManager?.resumeBlink()
         } else {
             inlineSuggestionManager?.editorDidBlur()
+            vimEngine?.closeInsertUndoStep()
             vimCursorManager?.pauseBlink()
         }
     }

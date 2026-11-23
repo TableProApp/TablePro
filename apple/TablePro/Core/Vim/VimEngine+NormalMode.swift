@@ -233,6 +233,7 @@ extension VimEngine {
             return true
         case "o":
             let count = consumeCount()
+            if count > 1 { openInsertUndoStep() }
             let pos = buffer.selectedRange().location
             let lineRange = buffer.lineRange(forOffset: pos)
             let lineEnd = lineRange.location + lineRange.length
@@ -245,6 +246,7 @@ extension VimEngine {
             return true
         case "O":
             let count = consumeCount()
+            if count > 1 { openInsertUndoStep() }
             let pos = buffer.selectedRange().location
             let lineRange = buffer.lineRange(forOffset: pos)
             replace(NSRange(location: lineRange.location, length: 0), with: "\n", in: buffer)

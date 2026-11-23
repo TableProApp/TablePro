@@ -68,6 +68,19 @@ protocol VimTextBuffer: AnyObject {
 
     func redo()
 
+    // Opens an undo step that every edit joins until `endUndoStep`. False when one is already open, which they join.
+    func beginUndoStep() -> Bool
+
+    func endUndoStep()
+}
+
+extension VimTextBuffer {
     // One undo takes back every edit `edits` makes.
-    func performAsOneUndoStep(_ edits: () -> Void)
+    func performAsOneUndoStep(_ edits: () -> Void) {
+        let opened = beginUndoStep()
+        defer {
+            if opened { endUndoStep() }
+        }
+        edits()
+    }
 }

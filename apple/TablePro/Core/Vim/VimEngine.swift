@@ -105,6 +105,9 @@ final class VimEngine {
 
     private(set) var mode: VimMode = .normal {
         didSet {
+            if oldValue.isInsert, !mode.isInsert {
+                closeInsertUndoStep()
+            }
             if oldValue != mode {
                 onModeChange?(mode)
             }
@@ -137,6 +140,7 @@ final class VimEngine {
     var changeDraft: VimChangeDraft?
     var isRepeatingChange = false
     var insertRepeat: VimInsertRepeat?
+    var insertUndoStepOpen = false
     var marks: [Character: Int] = [:]
     var namedRegisters: [Character: VimRegister] = [:]
     var numberedRegisters: [VimRegister] = Array(repeating: VimRegister(), count: 10)
@@ -212,6 +216,7 @@ final class VimEngine {
         lastEditedLine = nil
         changeDraft = nil
         insertRepeat = nil
+        closeInsertUndoStep()
     }
 
     func reset() {

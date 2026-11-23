@@ -100,7 +100,21 @@ extension VimEngine {
 
     func beginInsert(count: Int, opensLine: Bool = false) {
         insertRepeat = count > 1 ? VimInsertRepeat(count: count, opensLine: opensLine) : nil
+        if count > 1 { openInsertUndoStep() }
         setMode(.insert)
+    }
+
+    // A counted insert is one undo step, as in Vim, from the line `o` opens through the copies typed at Escape.
+    func openInsertUndoStep() {
+        guard !insertUndoStepOpen, let buffer else { return }
+        insertUndoStepOpen = buffer.beginUndoStep()
+    }
+
+    // Insert mode can also end by a reset, another document, an undo, focus leaving the editor or Vim turned off.
+    func closeInsertUndoStep() {
+        guard insertUndoStepOpen else { return }
+        insertUndoStepOpen = false
+        buffer?.endUndoStep()
     }
 
     // At Escape a counted insert types what this one did again, count - 1 more times.
@@ -229,6 +243,7 @@ extension VimEngine {
         changeDraft?.insertCaret = caret
         changeDraft?.editedSinceCaret = false
         insertRepeat = nil
+        closeInsertUndoStep()
     }
 
     // A count given to `.` replaces the change's own, and the change keeps it, as in Vim.

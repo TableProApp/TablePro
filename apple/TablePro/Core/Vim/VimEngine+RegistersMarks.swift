@@ -167,6 +167,8 @@ extension VimEngine {
     // redo that reverses it puts them back, as Vim's undo restores its marks. Typing the same text back is not undo,
     // and an undo reverses only edits, a redo only undos.
     func textWillChange(in range: NSRange, with replacement: String, source: VimEditSource = .edit) {
+        // An undo inside an open step would leave the next edits joining the step before it.
+        if source != .edit { closeInsertUndoStep() }
         noteInsertedText(in: range, with: replacement)
         guard let buffer else { return }
         let hasPositions = !marks.isEmpty || lastJumpOrigin != nil || lastInsertOffset != nil

@@ -70,6 +70,21 @@ struct VimTextBufferAdapterCommandEditTests {
         return editor.text
     }
 
+    @Test("u after 3iXY takes back all three XY")
+    func undoTakesBackACountedInsert() {
+        #expect(run("3iXY\u{1B}u", on: "abc", at: 0) == "abc")
+    }
+
+    @Test("u after 3oX takes back all three lines")
+    func undoTakesBackACountedOpenLine() {
+        #expect(run("3oX\u{1B}u", on: "abc\ndef", at: 0) == "abc\ndef")
+    }
+
+    @Test("u after an insert with no count takes it back as before")
+    func undoTakesBackAnUncountedInsert() {
+        #expect(run("iXY\u{1B}u", on: "abc", at: 0) == "abc")
+    }
+
     @Test("A move in Insert mode starts a new insert, so . repeats only what was typed after it")
     func moveInInsertModeStartsANewInsert() {
         #expect(run("iab\u{F702}X\u{1B}l.", on: "", at: 0) == "aXXb")
