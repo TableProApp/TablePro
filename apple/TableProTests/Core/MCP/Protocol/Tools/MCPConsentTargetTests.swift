@@ -189,5 +189,39 @@ extension GlobalStateSuites {
             #expect(!message.contains("archive"))
             #expect(!message.contains("schema"))
         }
+
+        private func ran(_ tool: String, _ arguments: JsonValue, on rig: WritePolicyRig, answering state: String) async -> Bool {
+            (try? await call(tool, arguments, on: rig, answering: state)).map { !$0.isError } ?? false
+        }
+
+        @Test("An accepted approval runs once, and sending its state again is refused")
+        func replayedApprovalIsRefused() async throws {
+            let rig = rig()
+            defer { rig.tearDown() }
+            let tool = ConfirmDestructiveOperationTool.name
+            let state = try #require(try await elicitation(tool, dropOrders(rig), on: rig)?.requestState)
+
+            _ = try await call(tool, dropOrders(rig), on: rig, answering: state)
+            await #expect(throws: MCPProtocolError.self) {
+                _ = try await call(tool, dropOrders(rig), on: rig, answering: state)
+            }
+
+            #expect(rig.driver.received.filter { $0.contains("DROP TABLE orders") }.count == 1)
+        }
+
+        @Test("Two submissions of one approval at once run the statement exactly once")
+        func concurrentSubmissionsRunOnce() async throws {
+            let rig = rig()
+            defer { rig.tearDown() }
+            let tool = ConfirmDestructiveOperationTool.name
+            let state = try #require(try await elicitation(tool, dropOrders(rig), on: rig)?.requestState)
+
+            let one = Task { await ran(tool, dropOrders(rig), on: rig, answering: state) }
+            let two = Task { await ran(tool, dropOrders(rig), on: rig, answering: state) }
+            let outcomes = [await one.value, await two.value]
+
+            #expect(outcomes.filter { $0 }.count == 1)
+            #expect(rig.driver.received.filter { $0.contains("DROP TABLE orders") }.count == 1)
+        }
     }
 }

@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import os
 import TableProMCP
 import TableProPluginKit
 
@@ -14,6 +15,9 @@ enum MCPConsentOutcome: Sendable, Equatable {
 
 enum MCPToolConsent {
     static let method = "tools/call"
+
+    // Accepted states by the nonce sealed into each, so one runs once. A claim outlives its state's whole lifetime.
+    private static let spent = OSAllocatedUnfairLock<[String: Date]>(initialState: [:])
 
     // `target` is `target(of:)` for the operation the form shows. The arguments alone do not fix it: a name left out
     // resolves to whatever the session browses when the answer comes back.
@@ -49,7 +53,9 @@ enum MCPToolConsent {
         }
 
         // An answer about another connection, database, schema or statement is not an answer about this one.
-        guard sealed["consent"]?.stringValue == key, sealed["target"]?.stringValue == target else {
+        guard sealed["consent"]?.stringValue == key, sealed["target"]?.stringValue == target,
+              let nonce = sealed["nonce"]?.stringValue
+        else {
             throw try inputRequired(ask, context: context, now: clock)
         }
 
@@ -62,7 +68,19 @@ enum MCPToolConsent {
                 String(localized: "The user did not approve this operation.")
             )
         }
+        guard claim(nonce, now: clock) else {
+            throw MCPProtocolError.invalidParams(
+                detail: "This approval was already used. Call again without requestState to ask for a new one."
+            )
+        }
         return .preApproved
+    }
+
+    private static func claim(_ nonce: String, now: Date) -> Bool {
+        spent.withLock { claims in
+            claims = claims.filter { now.timeIntervalSince($0.value) < MCPRequestState.defaultLifetime }
+            return claims.updateValue(now, forKey: nonce) == nil
+        }
     }
 
     // A digest of where and what the operation runs, sealed into the signed state so the client cannot change it.
@@ -110,7 +128,7 @@ enum MCPToolConsent {
 
     private static func inputRequired(_ ask: Question, context: MCPRequestContext, now: Date) throws -> MCPInputRequired {
         let state = try MCPRequestState.seal(
-            .object(["consent": .string(ask.key), "target": .string(ask.target)]),
+            .object(["consent": .string(ask.key), "target": .string(ask.target), "nonce": .string(UUID().uuidString)]),
             principal: context.principal,
             method: method,
             paramsDigest: ask.digest,

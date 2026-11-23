@@ -290,7 +290,8 @@ internal actor DatabaseAccessBridge {
     @MainActor
     private static func databaseRefusal(for scope: DatabaseScope, manager: DatabaseManager) -> String? {
         guard let session = manager.session(for: scope.connectionId) else { return nil }
-        let current = session.resolvedBrowseDatabase
+        // What the connection reaches, not the browse cursor, which a driver's switch can relabel without moving it.
+        let current = session.openedDatabase ?? session.connection.database
         guard !scope.isServerScoped, scope.database != current,
               !manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type)
         else { return nil }
@@ -303,6 +304,16 @@ internal actor DatabaseAccessBridge {
 
     internal func switchDatabase(connectionId: UUID, database: String) async throws {
         let manager = await databaseManager
+        // On such an engine a driver's switch only relabels the cursor, as Oracle's does with its schema, and every later
+        // call would then name a database the connection never reaches.
+        let switches = await MainActor.run {
+            manager.session(for: connectionId).map { manager.pluginManager.supportsDatabaseSwitching(for: $0.connection.type) }
+        }
+        guard switches != false else {
+            throw DatabaseAccessError.invalidArgument(
+                String(localized: "This connection reaches only its own database, so it cannot switch to another.")
+            )
+        }
         try await manager.switchDatabase(to: database, for: connectionId)
     }
 
@@ -909,6 +920,19 @@ internal actor DatabaseAccessBridge {
     ) async throws -> Output {
         let connectionId = scope.connectionId
         let manager = await databaseManager
+        let approvedSchema = await MainActor.run { () -> String? in
+            guard let session = manager.session(for: connectionId),
+                  manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: session.connection.type)
+            else { return nil }
+            return scope.schema
+        }
+        // The pin trusts the driver's cached schema, which a SET search_path in the same session leaves stale.
+        let pinned: @Sendable (DatabaseDriver) async throws -> Output = { driver in
+            if let approvedSchema, let switchable = driver as? SchemaSwitchable {
+                try await switchable.switchSchema(to: approvedSchema)
+            }
+            return try await body(driver)
+        }
         if policy == .protectedWrite {
             return try await Self.awaitProtectedWrite(
                 timeout: .seconds(timeoutSeconds),
@@ -919,7 +943,7 @@ internal actor DatabaseAccessBridge {
                     scope: scope, route: route, cancellation: policy, sessionWork: .statements
                 ) { driver in
                     try enterDriver()
-                    return try await body(driver)
+                    return try await pinned(driver)
                 }
             }
         }
@@ -930,7 +954,7 @@ internal actor DatabaseAccessBridge {
                     route: route,
                     cancellation: policy,
                     sessionWork: .statements,
-                    body
+                    pinned
                 )
             }
             group.addTask {
