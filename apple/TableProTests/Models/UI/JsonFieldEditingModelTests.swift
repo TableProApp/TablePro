@@ -1,8 +1,3 @@
-//
-//  JsonFieldEditingModelTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -121,5 +116,21 @@ struct JsonFieldEditingModelTests {
         #expect(model.displayText == "{\"a\": ", "text the parser refuses is shown as it is")
         let adopted = model.received("{\"b\": ")
         #expect(adopted)
+    }
+
+    @Test("A value over half a million characters opens indented")
+    func valueInTheBandOpensIndented() {
+        let blob = String(repeating: "a", count: 600_000)
+        let model = JsonFieldEditingModel(storedValue: "{\"blob\":\"\(blob)\",\"id\":1}")
+
+        #expect(model.displayText == "{\n  \"blob\": \"\(blob)\",\n  \"id\": 1\n}")
+    }
+
+    @Test("The store answering with the exact text last synced is refused")
+    func literalEchoIsRefused() {
+        var model = JsonFieldEditingModel(storedValue: "{\"a\":1}")
+
+        #expect(!model.received(model.displayText))
+        #expect(model.displayText == JsonReindenter.reindent("{\"a\":1}"))
     }
 }
