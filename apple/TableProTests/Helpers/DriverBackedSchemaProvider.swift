@@ -10,8 +10,6 @@ import Foundation
 @testable import TablePro
 
 extension SQLSchemaProvider {
-    /// Reads columns, all columns and foreign keys from `driver`, as a provider the registry builds
-    /// reads them through its scope's lease.
     static func reading(from driver: DatabaseDriver) -> SQLSchemaProvider {
         SQLSchemaProvider(metadataSource: ColumnMetadataSource(
             fetchColumns: { table, schema in try await driver.fetchColumns(table: table, schema: schema) },
@@ -32,7 +30,6 @@ extension SQLSchemaProvider {
         resetForDatabase(database, tables: tables, facts: CatalogDriverFacts(driver), connection: connection)
     }
 
-    /// Reads the table list from `driver` and pushes it in, as the schema service does after a load.
     func loadSchema(using driver: DatabaseDriver, connection: DatabaseConnection? = nil) async {
         let tables = (try? await driver.fetchTables(schema: nil)) ?? []
         resetForDatabase(nil, tables: tables, facts: CatalogDriverFacts(driver), connection: connection)

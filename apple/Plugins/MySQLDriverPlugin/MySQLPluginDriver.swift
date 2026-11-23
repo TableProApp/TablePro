@@ -70,8 +70,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         set { sessionLock.withLock { _schemaNamesAreCaseSensitive = newValue } }
     }
 
-    /// The `lower_case_table_names` read in flight. Catalog reads that run side by side each ask for
-    /// the setting, and share this one read instead of sending one each.
+    // Catalog reads that run side by side share this one `lower_case_table_names` read.
     private var _schemaNameCaseRead: Task<Bool?, Never>?
 
     internal enum SchemaNameCase {
@@ -89,8 +88,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    /// A read that a disconnect overtook stores nothing, since the next server may answer otherwise,
-    /// and one that failed stores nothing, so the next caller asks again.
+    // A read a disconnect overtook or that failed stores nothing, so the next caller asks again.
     internal func settleSchemaNameCaseRead(_ read: Task<Bool?, Never>, answer: Bool?) {
         sessionLock.withLock {
             guard _schemaNameCaseRead == read else { return }

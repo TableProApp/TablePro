@@ -10,12 +10,8 @@ import os
 import TableProPluginKit
 
 extension SchemaService {
-    /// The first load of a connection's catalog, one lease per read: the tables first, committed before
-    /// anything else is asked, then each other kind on a lease of its own. A column read asked for while
-    /// one of them runs takes the connection before the next, instead of waiting for the whole catalog.
-    ///
-    /// The tables lease is opened before any state moves, so a connection that cannot be had throws
-    /// here with the catalog untouched. `afterTables` runs once the tables are committed.
+    // One lease per read, so a column read asked for meanwhile goes before the next kind instead of after
+    // the whole catalog. The tables lease opens before any state moves: a refused lease leaves it untouched.
     func load(
         connectionId: UUID,
         connection: DatabaseConnection,
@@ -63,7 +59,6 @@ extension SchemaService {
         return !((scope == nil || loadedScope(for: connectionId) == scope) && isCatalogCurrent(for: connectionId))
     }
 
-    /// One load's bookkeeping, fixed when it starts.
     struct LoadRun: Sendable {
         let connectionId: UUID
         let key: CatalogKey
@@ -74,7 +69,7 @@ extension SchemaService {
         let kinds: SideKinds
         let supportsSchemas: Bool
         let listsAttached: Bool
-        /// Nil when the load stops after its tables: cancelled, or overtaken by a newer one.
+        // Nil when the load stops after its tables: cancelled, or overtaken by a newer one.
         var tablesCommitted: Bool?
 
         // A kind the engine does not list takes no lease.
@@ -89,7 +84,6 @@ extension SchemaService {
         }
     }
 
-    /// The other kinds one load reads, each with its own outcome.
     struct SideReads: Sendable {
         var schemas: MetadataFetchOutcome<[String]>?
         var routines: MetadataFetchOutcome<[RoutineInfo]>?
@@ -111,7 +105,6 @@ extension SchemaService {
         }
     }
 
-    /// Every other kind on one driver, side by side.
     func readSideKinds(_ run: LoadRun, driver: DatabaseDriver) async -> SideReads {
         let schema = run.scope?.schema
         async let schemas = readSchemas(run, driver: driver)
@@ -137,8 +130,7 @@ extension SchemaService {
         case schemas, routines, triggers, types, serverObjects
     }
 
-    /// One lease per kind, in a fixed order, each committed as it lands. A lease that cannot be had
-    /// settles its kind and every kind after it, so no section waits on a read nothing is running.
+    // A lease that cannot be had settles its kind and every later one, so no section waits on a read nothing runs.
     private func readSideKinds(
         _ run: LoadRun,
         leasingFrom provider: any ScopedMetadataProviding,

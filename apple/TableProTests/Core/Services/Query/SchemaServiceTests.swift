@@ -291,6 +291,25 @@ struct SchemaServiceTests {
         #expect(!service.isCatalogCurrent(for: connection.id))
     }
 
+    @Test("A hierarchical catalog whose schema list failed to refresh is read again when shown")
+    func aFailedHierarchicalSchemaListMakesTheCatalogStale() async {
+        let connection = TestFixtures.makeConnection(type: .bigQuery)
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let billing = DatabaseScope(connectionId: connection.id, database: "billing", schema: nil)
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.schemasToReturn = ["analytics"]
+        let service = SchemaService()
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+        driver.fetchSchemasError = DatabaseError.queryFailed("gone")
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+        service.show(scope: billing, type: connection.type)
+
+        service.show(scope: sales, type: connection.type)
+
+        #expect(service.hasLoadedContent(for: connection.id))
+        #expect(!service.isCatalogCurrent(for: connection.id))
+    }
+
     @Test("A catalog whose last refresh failed is read again when shown")
     func aFailedRefreshMakesTheCatalogStale() async {
         let (service, connection, sales, billing) = await keptSalesCatalog()

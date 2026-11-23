@@ -42,11 +42,10 @@ internal final class SessionTransactionTracker: ObservableObject {
         var state: State
     }
 
-    /// Whether the connection may still hold a transaction a statement ran inside, on any of its lanes.
     internal enum Standing: Equatable, Sendable {
         case none
         case held
-        /// A live driver's last read could not say: an engine that never answers, or a read that timed out.
+        // An engine that never answers, or a read that timed out.
         case unknown
     }
 

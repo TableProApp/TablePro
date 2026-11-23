@@ -62,7 +62,7 @@ private final class CatalogOrderDriver: PluginDriverStub, @unchecked Sendable {
     }
 }
 
-/// Hands out leases one at a time in the order they were asked for, as a pool entry does.
+// Hands out leases one at a time in the order they were asked for, as a pool entry does.
 @MainActor
 private final class SerialLeaseProvider: ScopedMetadataProviding {
     let driver: DatabaseDriver

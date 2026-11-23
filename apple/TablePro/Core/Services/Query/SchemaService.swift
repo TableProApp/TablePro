@@ -135,17 +135,14 @@ final class SchemaService: ObservableObject {
     private var schemaFreshness = CatalogFreshness<SchemaKey>()
     private var refreshWaiters: [UUID: [RefreshWaiter]] = [:]
     private var nextLoadGeneration = 0
-    /// What the driver that read each catalog's tables said about itself, so completion can take the
-    /// list without leasing a connection to ask again.
+    // So completion can take a catalog's tables without leasing a connection to ask the driver again.
     private var driverFacts: [CatalogKey: CatalogDriverFacts] = [:]
-    /// When each catalog's tables last committed, and the newest load generation at the moment it was
-    /// marked stale: a load that started after the mark clears it, one that started before does not.
+    // staleSince holds the newest load generation at the mark: only a load started after it clears it.
     private var committedAt: [CatalogKey: ContinuousClock.Instant] = [:]
     private var staleSince: [CatalogKey: Int] = [:]
     private let now: @MainActor () -> ContinuousClock.Instant
 
-    /// How long a catalog kept from an earlier visit is shown again without being read: another
-    /// client's change in that window shows after Refresh.
+    // Another client's change inside this window shows after Refresh.
     static let keptCatalogLifetime: Duration = .seconds(300)
 
     init(now: @escaping @MainActor () -> ContinuousClock.Instant = { ContinuousClock.now }) {
@@ -211,9 +208,8 @@ final class SchemaService: ObservableObject {
         return point(key.connectionId, at: key, scope: scope)
     }
 
-    /// A catalog kept from an earlier visit stays current while nothing can have changed it: no catalog
-    /// change reached it, no reconnect or failed read happened, and it is younger than
-    /// `keptCatalogLifetime`. Otherwise it is not current until a load for it commits. The per-schema
+    /// A kept catalog stays current while no change, reconnect or failed read reached it and it is
+    /// younger than `keptCatalogLifetime`; otherwise it is not current until a load commits. The per-schema
     /// lists of the database left are kept as well, and nothing refreshes them while it is away, so
     /// the first reader after a return reads them again.
     @discardableResult
@@ -244,18 +240,14 @@ final class SchemaService: ObservableObject {
         staleSince[key] = nextLoadGeneration
     }
 
-    /// A catalog the change can reach is read again the next time it is shown, rather than shown as kept.
     func markKeptCatalogsStale(reachedBy change: CatalogChange) {
         for key in states.keys where key.connectionId == change.connectionId && change.reaches(database: key.database) {
             markStale(key)
         }
     }
 
-    /// After a reconnect nothing kept from before can be trusted to match the server.
     func markAllStale(connectionId: UUID) {
-        for key in states.keys where key.connectionId == connectionId {
-            markStale(key)
-        }
+        markKeptCatalogsStale(reachedBy: CatalogChange(connectionId: connectionId, kinds: .everything))
     }
 
     private func noteTablesCommitted(_ key: CatalogKey, generation: Int) {
@@ -1105,7 +1097,7 @@ final class SchemaService: ObservableObject {
         )
     }
 
-    /// Nil when the load stops here: cancelled, or overtaken. Otherwise whether a fresh list was committed.
+    // Nil when the load stops here: cancelled, or overtaken. Otherwise whether a fresh list was committed.
     func commitTables(
         _ tables: Result<[TableInfo], any Error>,
         of run: LoadRun,
@@ -1147,7 +1139,7 @@ final class SchemaService: ObservableObject {
         }
     }
 
-    /// False when a newer load owns the catalog, which also means nothing was written.
+    // False when a newer load owns the catalog, which also means nothing was written.
     @discardableResult
     func commitSideReads(_ reads: SideReads, of run: LoadRun) -> Bool {
         let key = run.key
@@ -1270,6 +1262,7 @@ final class SchemaService: ObservableObject {
             Self.logger.warning(
                 "[schema] hierarchical schema list failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
+            markStale(key)
             let moved = adoptShown(key, scope: scope, generation: generation, type: type)
             commitSideObjects(key, routines: routinesOutcome, triggers: triggersOutcome, types: typesOutcome)
             if settleTablesFailed(key, message: error.localizedDescription) || moved {
@@ -1288,6 +1281,9 @@ final class SchemaService: ObservableObject {
         states[key] = .loaded([])
         driverFacts[key] = CatalogDriverFacts(driver)
         noteTablesCommitted(key, generation: generation)
+        if SideReads(routines: routinesOutcome, triggers: triggersOutcome, types: typesOutcome).failed {
+            markStale(key)
+        }
         unrefreshedCatalogs.remove(key)
         bumpGeneration(connectionId)
     }

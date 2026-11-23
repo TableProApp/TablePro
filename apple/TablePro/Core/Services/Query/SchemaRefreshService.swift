@@ -174,11 +174,8 @@ final class SchemaRefreshService {
         return schemaService.hasLoadedContent(for: connectionId, schema: schema)
     }
 
-    /// Push the loaded table list into the autocomplete provider.
-    ///
-    /// The facts about the driver come from the one that read the list, kept beside it, so the push
-    /// leases no connection. The provider reads columns through its own scope's lease, never through
-    /// the shared session driver, which a tab's execution moves without writing session state.
+    // The driver facts kept with the list mean the push leases no connection. Columns are read through the
+    // provider's own scope lease, never the shared session driver a tab's execution moves.
     func syncAutocompleteProvider(connectionId: UUID) async {
         guard case .loaded = schemaService.state(for: connectionId),
               let facts = schemaService.catalogFacts(for: connectionId) else {
@@ -204,7 +201,7 @@ final class SchemaRefreshService {
         await provider.seedColumnCatalog()
     }
 
-    /// The schema list lands after the tables, so a sync made when the tables did names no schemas yet.
+    // The schema list lands after the tables, so a sync made when the tables did names no schemas yet.
     func syncAutocompleteNamespaces(connectionId: UUID) async {
         guard case .loaded = schemaService.state(for: connectionId),
               let browseScope = metadataDriverProvider.browseScope(for: connectionId),

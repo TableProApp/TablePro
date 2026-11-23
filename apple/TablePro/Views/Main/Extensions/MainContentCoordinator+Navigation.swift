@@ -490,8 +490,6 @@ extension MainContentCoordinator {
 
     // MARK: - Database Switching
 
-    /// A catalog kept from an earlier visit that nothing can have changed since, with completion
-    /// still holding its tables, is shown as it is instead of read again.
     private func keepsShownCatalog() -> Bool {
         let schemaService = services.schemaService
         guard schemaService.hasLoadedContent(for: connectionId),

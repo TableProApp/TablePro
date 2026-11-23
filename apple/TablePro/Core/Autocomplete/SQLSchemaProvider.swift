@@ -4,8 +4,7 @@ import TableProAutocomplete
 import TableProPluginKit
 import TableProSQLGrammar
 
-/// What completion needs to know about the driver that read a scope's table list, kept beside the list
-/// so pushing that list into a provider later opens no connection to ask again.
+// Kept beside a scope's table list, so pushing the list into a provider opens no connection to ask again.
 struct CatalogDriverFacts: Sendable, Equatable {
     let currentSchema: String?
     let fetchesAllColumnsInOneRequest: Bool

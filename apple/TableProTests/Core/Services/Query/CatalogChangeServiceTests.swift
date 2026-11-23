@@ -342,6 +342,35 @@ struct CatalogChangeServiceTests {
         #expect(target.changes.last?.kinds == target.changes.first?.kinds)
     }
 
+    @Test("a ROLLBACK refreshes what an app-run edit inside the user's transaction changed")
+    func rollbackRefreshesAnAppEditMadeInsideTheTransaction() async {
+        let target = RecordingCatalogTarget()
+        let box = StandingBox()
+        let service = makeService(target: target, standing: box)
+        let connectionId = UUID()
+
+        box.standing = .held
+        service.record(.changed(CatalogChange(connectionId: connectionId, database: "shop", kinds: .tables)))
+        await service.waitUntilIdle(connectionId: connectionId)
+        box.standing = .none
+        await run("ROLLBACK", on: connectionId, service)
+
+        #expect(target.changes.map(\.kinds) == [.tables, .tables])
+    }
+
+    @Test("an app-run edit outside a transaction leaves nothing for a later COMMIT")
+    func appEditOutsideTransactionLeavesNothingForCommit() async {
+        let target = RecordingCatalogTarget()
+        let service = makeService(target: target)
+        let connectionId = UUID()
+
+        service.record(.changed(CatalogChange(connectionId: connectionId, database: "shop", kinds: .tables)))
+        await service.waitUntilIdle(connectionId: connectionId)
+        await run("COMMIT", on: connectionId, service)
+
+        #expect(target.changes.map(\.kinds) == [.tables])
+    }
+
     @Test("rolling back to a savepoint refreshes nothing")
     func savepointRollbackRefreshesNothing() async {
         let target = RecordingCatalogTarget()

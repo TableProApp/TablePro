@@ -43,8 +43,7 @@ final class CatalogChangeService {
     private var pendingChanges: [UUID: CatalogChange] = [:]
     private var nameHazards: [UUID: TableNameHazards] = [:]
     private var drains: [UUID: Task<Void, Never>] = [:]
-    /// What statements inside a transaction may have changed, which a connection reading outside that
-    /// transaction sees only once it ends.
+    // A connection reading outside a transaction sees what it changed only once it ends.
     private var uncommittedKinds: [UUID: SQLCatalogObjectKinds] = [:]
 
     init(
@@ -121,7 +120,7 @@ final class CatalogChangeService {
             AppCommands.shared.containerChanged.send(
                 DatabaseContainerChange(connectionId: connectionId, container: container, kind: .dropped)
             )
-            schedule(Self.change(for: container, connectionId: connectionId))
+            scheduleEdit(Self.change(for: container, connectionId: connectionId))
         case .containerRenamed(let container, let newName, _):
             adoption.adoptContainerRename(container, to: newName, connectionId: connectionId)
             if container.kind == .database, let database = container.database {
@@ -130,9 +129,9 @@ final class CatalogChangeService {
             AppCommands.shared.containerChanged.send(
                 DatabaseContainerChange(connectionId: connectionId, container: container, kind: .renamed(to: newName))
             )
-            schedule(Self.change(for: container, connectionId: connectionId))
+            scheduleEdit(Self.change(for: container, connectionId: connectionId))
         case .changed(let change):
-            schedule(change)
+            scheduleEdit(change)
         }
     }
 
@@ -182,10 +181,7 @@ final class CatalogChangeService {
         ).kinds.isEmpty
     }
 
-    /// What a transaction that ended, or a connection that no longer stands in one, leaves to refresh.
-    /// The kinds are kept while any lane may still hold a transaction, so a COMMIT on one lane never
-    /// drops what another lane has not committed yet. A connection that cannot say whether it holds one
-    /// refreshes the objects and schemas at every end, whatever ran.
+    // Kept while any lane may hold a transaction, so a COMMIT on one lane never drops another lane's kinds.
     private func settledKinds(connectionId: UUID, endsTransaction: Bool) -> SQLCatalogObjectKinds {
         switch standing(connectionId) {
         case .unknown:
@@ -259,7 +255,7 @@ final class CatalogChangeService {
             )
         }
         let database = databases.count == 1 ? databases.first : nil
-        schedule(CatalogChange(connectionId: connectionId, database: database, kinds: .tables))
+        scheduleEdit(CatalogChange(connectionId: connectionId, database: database, kinds: .tables))
     }
 
     private func recordRenamedTable(_ ref: DatabaseTreeTableRef, to newName: String, connectionId: UUID) {
@@ -270,12 +266,11 @@ final class CatalogChangeService {
                 connectionId: connectionId, scope: scope, name: ref.table.name, kind: .renamed(to: newName)
             )
         )
-        schedule(CatalogChange(connectionId: connectionId, database: scope.database, kinds: .tables))
+        scheduleEdit(CatalogChange(connectionId: connectionId, database: scope.database, kinds: .tables))
     }
 
-    /// DDL inside an open transaction is invisible to the connection a refresh reads through until the
-    /// transaction ends. A function outside the Read-Only list can run DDL the classifier never sees,
-    /// so a call to one counts as changing the objects and schemas.
+    // DDL inside a transaction is invisible to the refresh's connection until it ends, and a function
+    // outside the Read-Only list can run DDL the classifier never sees.
     private static let transactionEndKinds: SQLCatalogObjectKinds = [.objects, .schemas]
 
     private static func change(for container: DatabaseContainerRef, connectionId: UUID) -> CatalogChange {
@@ -285,6 +280,14 @@ final class CatalogChangeService {
         case .schema:
             return CatalogChange(connectionId: connectionId, database: container.database, kinds: [.schemas, .objects])
         }
+    }
+
+    // An edit the app runs on the session driver joins the transaction the user opened there.
+    private func scheduleEdit(_ change: CatalogChange) {
+        if standing(change.connectionId) != .none {
+            uncommittedKinds[change.connectionId, default: []].formUnion(change.kinds)
+        }
+        schedule(change)
     }
 
     private func schedule(_ change: CatalogChange) {
