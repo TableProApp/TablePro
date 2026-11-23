@@ -23,6 +23,8 @@ struct QueryStatementHint: Equatable {
 @MainActor
 protocol QueryCompletionService: AnyObject {
     var triggerCharacters: Set<String> { get }
+    // The grammar a statement hint has to be split with; nil when the service reads no statement.
+    var statementGrammar: SQLLexicalGrammar? { get }
 
     func completions(
         in text: NSString,

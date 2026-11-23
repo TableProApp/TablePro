@@ -414,13 +414,19 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         return statementRunController.statement(at: cursor, in: snapshot, storage: storage)
     }
 
-    func maintainedStatement(at offset: Int, in text: String, storage: NSTextStorage) -> QueryStatementHint? {
-        guard hasInstalledEditorServices, !isDestroyed,
-              storage === controller?.textView?.textStorage,
-              let found = statementRunController.maintainedStatement(at: offset, in: text, storage: storage) else {
+    func completionStatement(
+        at offset: Int,
+        in text: String,
+        storage: NSTextStorage,
+        grammar: SQLLexicalGrammar
+    ) async -> QueryStatementHint? {
+        guard hasInstalledEditorServices, !isDestroyed, storage === controller?.textView?.textStorage,
+              let statement = await statementRunController.warmedStatement(
+                  at: offset, in: text, storage: storage, grammar: grammar
+              ) else {
             return nil
         }
-        return QueryStatementHint(range: found.statement.range, grammar: found.grammar)
+        return QueryStatementHint(range: statement.range, grammar: grammar)
     }
 
     // Matched against the text this editor shows, which the tab's binding can lag; an edited-away statement resolves to nothing.

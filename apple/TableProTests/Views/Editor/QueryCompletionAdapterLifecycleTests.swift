@@ -524,10 +524,12 @@ extension GlobalStateSuites {
         // MARK: - The band's statement
 
         @MainActor
-        private func locator(for band: StatementRunController) -> @MainActor (String, Int, NSTextStorage) -> QueryStatementHint? {
-            { text, offset, storage in
-                band.maintainedStatement(at: offset, in: text, storage: storage).map {
-                    QueryStatementHint(range: $0.statement.range, grammar: $0.grammar)
+        private func locator(
+            for band: StatementRunController
+        ) -> @MainActor (String, Int, NSTextStorage, SQLLexicalGrammar) async -> QueryStatementHint? {
+            { text, offset, storage, grammar in
+                await band.warmedStatement(at: offset, in: text, storage: storage, grammar: grammar).map {
+                    QueryStatementHint(range: $0.range, grammar: grammar)
                 }
             }
         }
@@ -597,7 +599,49 @@ extension GlobalStateSuites {
             #expect(service.statements == [nil])
         }
 
-        // The band reads MySQL with no database type while completion reads ANSI, so the band's statement goes unused.
+        @MainActor
+        @Test("with the band off, completion still reads the caret's statement and rescans only near the caret")
+        func bandOffCompletionWarmsTheIndex() async throws {
+            let grammar = DatabaseType.mysql.lexicalGrammar
+            let controller = EditorControllerFixture.make(
+                string: String(repeating: "SELECT id FROM t WHERE id = 1;\n", count: 10_000)
+            )
+            let band = StatementRunController()
+            band.grammar = grammar
+            band.isHighlightEnabled = false
+            band.install(on: controller)
+            let service = StatementRecordingCompletionService(grammar: grammar)
+            let adapter = QueryCompletionAdapter(serviceForTesting: service)
+            adapter.statementLocator = locator(for: band)
+            let first = CursorPosition(range: NSRange(location: controller.textView.textStorage.length, length: 0))
+            controller.setCursorPositions([first])
+            _ = await adapter.completionSuggestionsRequested(textView: controller, cursorPosition: first, isManualTrigger: true)
+            let scannedAfterWarming = band.caretIndexUnitsScanned
+            let keys = 20
+
+            for _ in 0..<keys {
+                let end = controller.textView.textStorage.length
+                controller.textView.replaceCharacters(in: NSRange(location: end, length: 0), with: "s")
+                let caret = CursorPosition(range: NSRange(location: end + 1, length: 0))
+                controller.setCursorPositions([caret])
+                _ = await adapter.completionSuggestionsRequested(textView: controller, cursorPosition: caret, isManualTrigger: true)
+            }
+
+            let text = controller.textView.string
+            let fresh = SQLStatementScanner.locatedStatementAtCursor(
+                in: text, cursorPosition: (text as NSString).length, grammar: grammar
+            )
+            #expect(service.statements.count == keys + 1)
+            #expect(service.statements.allSatisfy { $0 != nil })
+            #expect(service.statements.last??.range == fresh.range)
+            #expect(scannedAfterWarming > 0)
+            #expect(
+                band.caretIndexUnitsScanned - scannedAfterWarming
+                    <= keys * (SQLStatementCursorIndex.defaultCheckpointSpacing + 40)
+            )
+        }
+
+        // The band reads MySQL with no database type while completion reads ANSI, so no statement is passed.
         @MainActor
         @Test("an editor with no database type completes as it does with no statement passed")
         func editorWithNoDatabaseTypeCompletesAsWithoutAStatement() async {
@@ -668,6 +712,7 @@ private extension Trait where Self == AppSettingsTrait {
 private final class TokenBoundCompletionService: QueryCompletionService {
     private let items: [SQLCompletionItem]
     var whileAnswering: (@MainActor () -> Void)?
+    var statementGrammar: SQLLexicalGrammar? { nil }
 
     init(labels: [String]) {
         items = labels.map { SQLCompletionItem.keyword($0) }
@@ -712,6 +757,7 @@ private final class RankingInputRecordingCompletionService: QueryCompletionServi
     private let items: [SQLCompletionItem]
     private let poolLimit: Int
     private(set) var rankingInputCounts: [Int] = []
+    var statementGrammar: SQLLexicalGrammar? { nil }
 
     init(items: [SQLCompletionItem], poolLimit: Int) {
         self.items = items
@@ -753,6 +799,11 @@ private final class RankingInputRecordingCompletionService: QueryCompletionServi
 @MainActor
 private final class StatementRecordingCompletionService: QueryCompletionService {
     private(set) var statements: [QueryStatementHint?] = []
+    let statementGrammar: SQLLexicalGrammar?
+
+    init(grammar: SQLLexicalGrammar? = DatabaseType.mysql.lexicalGrammar) {
+        statementGrammar = grammar
+    }
 
     var triggerCharacters: Set<String> { [] }
 

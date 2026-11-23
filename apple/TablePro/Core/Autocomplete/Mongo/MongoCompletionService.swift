@@ -1,6 +1,7 @@
 import Foundation
 import TableProAutocomplete
 import TableProPluginKit
+import TableProSQLGrammar
 
 @MainActor
 final class MongoCompletionService: QueryCompletionService {
@@ -16,6 +17,7 @@ final class MongoCompletionService: QueryCompletionService {
     }
 
     var triggerCharacters: Set<String> { [".", "$", "{", "[", "\"", "'", ":", " "] }
+    var statementGrammar: SQLLexicalGrammar? { nil }
 
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         favoriteKeywords = keywords

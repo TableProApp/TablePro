@@ -49,7 +49,10 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
     private var service: QueryCompletionService
     private var configuration: Configuration?
     // The caret's statement from the index the editor keeps, read on the request's own text.
-    var statementLocator: (@MainActor (_ text: String, _ offset: Int, _ storage: NSTextStorage) -> QueryStatementHint?)?
+    var statementLocator: (
+        @MainActor (_ text: String, _ offset: Int, _ storage: NSTextStorage, _ grammar: SQLLexicalGrammar) async
+            -> QueryStatementHint?
+    )?
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
     private var session: Session?
 
@@ -132,8 +135,13 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         let offset = liveCursorPosition.range.location
         guard offset >= 0, offset <= text.length else { return nil }
 
+        let service = service
         let localStart = service.tokenStart(in: text, endingAt: offset)
-        let statement = storage.flatMap { statementLocator?(snapshot, offset, $0) }
+        var statement: QueryStatementHint?
+        if let storage, let grammar = service.statementGrammar, let locate = statementLocator {
+            statement = await locate(snapshot, offset, storage, grammar)
+            guard !Task.isCancelled else { return nil }
+        }
 
         guard let result = await service.completions(
             in: text,

@@ -449,4 +449,101 @@ struct StatementRunControllerTests {
         let swapped = subject.maintainedStatement(at: caret, in: other.textView.string, storage: otherStorage)
         expectFreshScan(swapped?.statement, at: caret, in: other.textView.string, grammar: TestGrammar.standard)
     }
+
+    // MARK: - Completion's statement where the band does not keep the index
+
+    @Test("Past the size limit completion's statement is warmed off the main thread and equals a fresh scan")
+    func warmedStatementPastTheSizeLimitEqualsAFreshScan() async throws {
+        let controller = makeController(text: String(repeating: Self.mixedScript, count: 30))
+        let subject = makeSubject(grammar: TestGrammar.mysql, sizeLimit: 100)
+        subject.install(on: controller)
+        let storage = try #require(controller.textView.textStorage)
+        var seed: UInt64 = 0x51_7CC1_B727_220A
+        func next(_ bound: Int) -> Int {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Int((seed >> 33) % UInt64(max(bound, 1)))
+        }
+
+        for _ in 0..<20 {
+            controller.textView.replaceCharacters(
+                in: NSRange(location: next(storage.length + 1), length: 0),
+                with: [";", "'", "x", "\n", "#"][next(5)]
+            )
+            let text = controller.textView.string
+            for _ in 0..<3 {
+                let caret = next((text as NSString).length + 1)
+                let statement = await subject.warmedStatement(
+                    at: caret, in: text, storage: storage, grammar: TestGrammar.mysql
+                )
+                expectFreshScan(statement, at: caret, in: text, grammar: TestGrammar.mysql)
+            }
+        }
+    }
+
+    @Test("A warmed index is kept, so the next request near the caret rescans only near it")
+    func warmedIndexIsKeptForTheNextRequest() async throws {
+        let controller = makeController(text: String(repeating: "SELECT 1;\n", count: 5_000))
+        let subject = makeSubject(sizeLimit: 100)
+        subject.install(on: controller)
+        let storage = try #require(controller.textView.textStorage)
+        _ = await subject.warmedStatement(
+            at: storage.length, in: controller.textView.string, storage: storage, grammar: TestGrammar.standard
+        )
+        let warmed = subject.caretIndexUnitsScanned
+        #expect(warmed >= storage.length)
+
+        controller.textView.replaceCharacters(in: NSRange(location: storage.length, length: 0), with: "SELECT ")
+        let text = controller.textView.string
+        let statement = await subject.warmedStatement(
+            at: storage.length, in: text, storage: storage, grammar: TestGrammar.standard
+        )
+
+        expectFreshScan(statement, at: storage.length, in: text, grammar: TestGrammar.standard)
+        #expect(subject.caretIndexUnitsScanned - warmed <= SQLStatementCursorIndex.defaultCheckpointSpacing + 40)
+    }
+
+    @Test("An edit made while a warm runs trims the index it leaves to the text as it is now")
+    func editDuringAWarmTrimsTheIndex() throws {
+        let script = String(repeating: "SELECT 1;\n", count: 3_000)
+        let controller = makeController(text: script)
+        let subject = makeSubject(sizeLimit: 100)
+        subject.install(on: controller)
+        let storage = try #require(controller.textView.textStorage)
+        let caret = storage.length
+
+        let ticket = subject.beginWarm(storage: storage)
+        var warmed = ticket.index
+        let statement = warmed.statementAtCursor(caret, in: script)
+        controller.textView.replaceCharacters(in: NSRange(location: 15_000, length: 0), with: "/*")
+        subject.finishWarm(ticket, warmed: warmed, cursor: caret, statement: statement)
+
+        let text = controller.textView.string
+        let ends = [storage.length, 20_000, 14_000]
+        for end in ends {
+            expectFreshScan(
+                subject.statement(at: end, in: text, storage: storage),
+                at: end, in: text, grammar: TestGrammar.standard
+            )
+        }
+    }
+
+    @Test("A warm that comes back after the grammar changed is not kept, and another grammar gets no statement")
+    func warmAcrossAGrammarChangeIsDropped() async throws {
+        let controller = makeController(text: String(repeating: "SELECT 1;\n", count: 1_000))
+        let subject = makeSubject(sizeLimit: 100)
+        subject.install(on: controller)
+        let storage = try #require(controller.textView.textStorage)
+
+        let ticket = subject.beginWarm(storage: storage)
+        var warmed = ticket.index
+        let statement = warmed.statementAtCursor(storage.length, in: controller.textView.string)
+        subject.grammar = TestGrammar.mysql
+        subject.finishWarm(ticket, warmed: warmed, cursor: storage.length, statement: statement)
+
+        #expect(subject.caretIndexUnitsScanned == 0)
+        let other = await subject.warmedStatement(
+            at: 0, in: controller.textView.string, storage: storage, grammar: TestGrammar.standard
+        )
+        #expect(other == nil)
+    }
 }

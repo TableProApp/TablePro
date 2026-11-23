@@ -35,6 +35,7 @@ final class SQLCompletionService: QueryCompletionService {
     }
 
     var triggerCharacters: Set<String> { [".", " ", ":", "(", ","] }
+    var statementGrammar: SQLLexicalGrammar? { grammar }
 
     // Read per request, so a changed setting applies to the next keystroke rather than the next connection.
     private var keywordCase: SQLKeywordCase { AppSettingsManager.shared.editor.keywordCase }
