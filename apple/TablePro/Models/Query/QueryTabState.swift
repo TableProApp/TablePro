@@ -264,7 +264,6 @@ struct SortState: Equatable {
 }
 
 extension QueryTab {
-    // Named by the caller: a query tab counts the table its statement reads, which its context may not name yet.
     func rowCountScope(table: String) -> RowCountScope {
         let rerun = filterState.rerunFilters
         return RowCountScope(

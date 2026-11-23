@@ -241,6 +241,7 @@ extension QueryExecutionCoordinator {
                 parent.launchPhase2AfterApply(
                     tableName: tableName,
                     isEditable: isEditable,
+                    isTableTab: isTableTab,
                     tabId: tabId,
                     trigger: trigger,
                     needsMetadataFetch: needsMetadataFetch,

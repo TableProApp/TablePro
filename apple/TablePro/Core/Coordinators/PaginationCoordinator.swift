@@ -23,7 +23,7 @@ final class PaginationCoordinator: ObservableObject {
     // MARK: - Pagination
 
     func goToNextPage() {
-        guard canSeek, let (tab, _) = parent.tabManager.selectedTabAndIndex else { return }
+        guard canSeek, let (tab, _) = parent.tabManager.selectedTabAndIndex, tab.tabType == .table else { return }
         let loadedRowCount = parent.tabSessionRegistry.tableRows(for: tab.id).rows.count
         guard tab.pagination.canGoToNextPage(loadedRowCount: loadedRowCount) else { return }
         paginateAfterConfirmation(tabId: tab.id) { $0.goToNextPage(loadedRowCount: loadedRowCount) }
@@ -68,6 +68,7 @@ final class PaginationCoordinator: ObservableObject {
     func showAllRows() {
         guard canSeek,
               let (tab, _) = parent.tabManager.selectedTabAndIndex,
+              tab.tabType == .table,
               tab.pagination.hasExactRowCount,
               let total = tab.pagination.totalRowCount, total > 0 else { return }
 
@@ -111,11 +112,13 @@ final class PaginationCoordinator: ObservableObject {
         }
     }
 
+    // A query tab has no pages: the reload would write a generated table page over the user's SQL.
     private func paginateIfPossible(
         where condition: (PaginationState) -> Bool = { _ in true },
         mutate: @escaping (inout PaginationState) -> Void
     ) {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
+              tab.tabType == .table,
               condition(tab.pagination) else { return }
         paginateAfterConfirmation(tabId: tab.id, mutate: mutate)
     }
@@ -288,23 +291,12 @@ final class PaginationCoordinator: ObservableObject {
             return
         }
 
-        let loadedCount = parent.tabSessionRegistry.tableRows(for: tab.id).rows.count
-        let totalEstimate = tab.pagination.totalRowCount
-
-        let message: String
-        if let total = totalEstimate {
-            let remaining = max(0, total - loadedCount)
-            message = String(
-                format: String(localized: "This will fetch approximately %@ more rows. Large result sets use significant memory. Continue?"),
-                remaining.formatted()
-            )
-        } else {
-            message = String(localized: "This will fetch all remaining rows. Large result sets use significant memory. Continue?")
-        }
-
+        // No number: only a query tab fetches all, and nothing counts a query's own rows.
         confirmLargeFetch(
             messageText: String(localized: "Fetch All Rows"),
-            informativeText: message,
+            informativeText: String(
+                localized: "This will fetch all remaining rows. Large result sets use significant memory. Continue?"
+            ),
             confirmTitle: String(localized: "Fetch All")
         ) { [weak self] in
             guard let self else { return }
