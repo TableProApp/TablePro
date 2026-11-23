@@ -193233,6 +193233,9 @@
     "The connection “%@” has open transactions. Changes you don’t commit are rolled back." : {
 
     },
+    "The connection changed after this was approved, so nothing ran. Ask again." : {
+
+    },
     "The connection closed." : {
 
     },

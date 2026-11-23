@@ -278,6 +278,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
 
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {
         inlineSuggestionManager?.handleSelectionChange()
+        vimEngine?.selectionDidChange()
         vimCursorManager?.updatePosition()
         statementRunController.refreshHighlight(in: controller)
 

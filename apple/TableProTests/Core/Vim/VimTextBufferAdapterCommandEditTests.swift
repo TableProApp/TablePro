@@ -20,25 +20,78 @@ private final class EditForwarder: TextViewCoordinator, TextViewDelegate {
             : undoManager?.isRedoing == true ? .redo : .edit
         engine?.textWillChange(in: range, with: string, source: source)
     }
+
+    func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {
+        engine?.selectionDidChange()
+    }
+}
+
+@MainActor
+private final class VimEditor {
+    static let leftArrow: Character = "\u{F702}"
+
+    let forwarder = EditForwarder()
+    let controller: TextViewController
+    let adapter: VimTextBufferAdapter
+    let engine: VimEngine
+
+    init(_ text: String, caret: Int) {
+        controller = EditorControllerFixture.make(string: text, coordinators: [forwarder])
+        adapter = VimTextBufferAdapter(controller: controller)
+        engine = VimEngine(buffer: adapter)
+        forwarder.engine = engine
+        adapter.setSelectedRange(NSRange(location: caret, length: 0))
+    }
+
+    var text: String { controller.textView.string }
+
+    // The left arrow goes to the editor, as Vim routes it in Insert mode; a key the engine leaves is typed.
+    func keys(_ keys: String) {
+        let textView: TextView = controller.textView
+        for key in keys {
+            if key == Self.leftArrow {
+                textView.doCommand(by: #selector(NSResponder.moveLeft(_:)))
+            } else if !engine.process(key, shift: key.isUppercase) {
+                textView.replaceCharacters(in: textView.selectedRange(), with: String(key))
+            }
+        }
+    }
+
+    func click(at offset: Int) {
+        controller.textView.selectionManager.setSelectedRange(NSRange(location: offset, length: 0))
+    }
 }
 
 @MainActor
 struct VimTextBufferAdapterCommandEditTests {
-    // A key the engine leaves to the editor is typed into it, as the editor does with it.
     private func run(_ keys: String, on text: String, at offset: Int) -> String {
-        let forwarder = EditForwarder()
-        let controller = EditorControllerFixture.make(string: text, coordinators: [forwarder])
-        let adapter = VimTextBufferAdapter(controller: controller)
-        let engine = VimEngine(buffer: adapter)
-        forwarder.engine = engine
-        return withExtendedLifetime((controller, forwarder)) {
-            adapter.setSelectedRange(NSRange(location: offset, length: 0))
-            for key in keys where !engine.process(key, shift: key.isUppercase) {
-                let textView: TextView = controller.textView
-                textView.replaceCharacters(in: textView.selectedRange(), with: String(key))
-            }
-            return controller.textView.string
-        }
+        let editor = VimEditor(text, caret: offset)
+        editor.keys(keys)
+        return editor.text
+    }
+
+    @Test("A move in Insert mode starts a new insert, so . repeats only what was typed after it")
+    func moveInInsertModeStartsANewInsert() {
+        #expect(run("iab\u{F702}X\u{1B}l.", on: "", at: 0) == "aXXb")
+    }
+
+    @Test("A click in Insert mode starts a new insert, so . repeats only what was typed after it")
+    func clickInInsertModeStartsANewInsert() {
+        let editor = VimEditor("", caret: 0)
+        editor.keys("iab")
+        editor.click(at: 1)
+        editor.keys("X\u{1B}l.")
+        #expect(editor.text == "aXXb")
+    }
+
+    @Test("An insert with no move repeats all of it")
+    func insertWithoutAMoveRepeatsAllOfIt() {
+        #expect(run("iab\u{1B}l.", on: "", at: 0) == "aabb")
+    }
+
+    @Test("The closing bracket the editor adds while typing is part of what . repeats")
+    func autoClosedBracketIsRepeated() {
+        #expect(run("i(x\u{1B}.", on: "", at: 0) == "((x)x)")
     }
 
     @Test("u after . of cw with typed text puts the changed word back")

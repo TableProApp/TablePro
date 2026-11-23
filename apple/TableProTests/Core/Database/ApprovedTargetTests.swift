@@ -174,4 +174,39 @@ struct ApprovedTargetTests {
             _ = try await DatabaseAccessBridge().resolveStatementScope(connectionId: id, database: "staging", schema: nil)
         }
     }
+
+    private func inject(_ connection: DatabaseConnection, driver: CachedTargetDriver, opened: String) {
+        var session = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: driver)
+        )
+        session.openedDatabase = opened
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+    }
+
+    @Test("A statement approved on a.sqlite never reaches the session that replaced it with b.sqlite")
+    func replacedSessionNeverTakesTheStatement() async throws {
+        let connection = TestFixtures.makeConnection(database: "a.sqlite", type: .sqlite)
+        let approved = CachedTargetDriver()
+        inject(connection, driver: approved, opened: "a.sqlite")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveStatementScope(connectionId: connection.id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DROP TABLE orders", maxRows: 10)
+        let operation = try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .sqlite)
+
+        var replacement = connection
+        replacement.database = "b.sqlite"
+        let replacing = CachedTargetDriver()
+        DatabaseManager.shared.removeSession(for: connection.id)
+        inject(replacement, driver: replacing, opened: "b.sqlite")
+
+        await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+        #expect(scope.database == "a.sqlite")
+        #expect(replacing.events.isEmpty)
+        #expect(approved.events.isEmpty)
+    }
 }

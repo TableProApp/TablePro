@@ -928,15 +928,32 @@ internal actor DatabaseAccessBridge {
     ) async throws -> Output {
         let connectionId = scope.connectionId
         let manager = await databaseManager
-        let approvedSchema = await MainActor.run { () -> String? in
-            guard let session = manager.session(for: connectionId),
-                  manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: session.connection.type)
-            else { return nil }
-            return scope.schema
+        let (approvedSchema, fixedSession) = await MainActor.run { () -> (String?, Date?) in
+            guard let session = manager.session(for: connectionId) else { return (nil, nil) }
+            let type = session.connection.type
+            return (
+                manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: type) ? scope.schema : nil,
+                manager.pluginManager.supportsDatabaseSwitching(for: type) ? nil : session.connectedAt
+            )
         }
         // The pin trusts the driver's cached schema, which a SET search_path in the same session leaves stale.
         // An aborted transaction refuses everything but a rollback, the SET included, and runs no name to misroute.
         let pinned: @Sendable (DatabaseDriver) async throws -> Output = { driver in
+            // A fixed engine is never pinned to a database, so a session replaced since the approval would take the
+            // statement: the database it reported has to be the approved one, or with none named, the session the same.
+            if let fixedSession {
+                let current = await MainActor.run {
+                    manager.session(for: connectionId).map { (opened: $0.openedDatabase, generation: $0.connectedAt) }
+                }
+                let unchanged = scope.isServerScoped
+                    ? current?.generation == fixedSession
+                    : current?.opened == scope.database
+                guard unchanged else {
+                    throw DatabaseAccessError.forbidden(
+                        String(localized: "The connection changed after this was approved, so nothing ran. Ask again.")
+                    )
+                }
+            }
             if let approvedSchema, let switchable = driver as? SchemaSwitchable,
                await driver.sessionTransactionState() != .abortedTransaction {
                 try await switchable.switchSchema(to: approvedSchema)

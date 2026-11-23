@@ -156,8 +156,11 @@ extension VimEngine {
         switch mode {
         case .insert, .replace:
             guard draft.insertedRange == nil else { return }
+            let caret = buffer?.selectedRange().location ?? 0
             changeDraft?.changesText = true
-            changeDraft?.insertedRange = NSRange(location: buffer?.selectedRange().location ?? 0, length: 0)
+            changeDraft?.insertedRange = NSRange(location: caret, length: 0)
+            changeDraft?.insertCaret = caret
+            changeDraft?.editedSinceCaret = false
         case .normal:
             guard !hasPendingCommand, countPrefix == 0, operatorCount == 0, selectedRegister == nil else { return }
             let typed = takeTypedStep()
@@ -175,15 +178,16 @@ extension VimEngine {
     // Keeps the range of the text typed since Insert or Replace mode began in step with every edit, typed or not.
     func noteInsertedText(in range: NSRange, with replacement: String) {
         guard mode.isInsert, let inserted = changeDraft?.insertedRange else { return }
+        changeDraft?.editedSinceCaret = true
         let replacementLength = (replacement as NSString).length
         let delta = replacementLength - range.length
         if NSMaxRange(range) < inserted.location {
             changeDraft?.insertedRange = NSRange(location: inserted.location + delta, length: inserted.length)
         } else if range.location > NSMaxRange(inserted) {
-            // Typing somewhere else starts the insert over there, as moving the cursor in Insert mode does in Vim.
-            changeDraft?.insertSteps = []
-            changeDraft?.deletedBeforeInsert = 0
+            // Typing somewhere else means the caret moved there first.
+            restartInsert(at: range.location)
             changeDraft?.insertedRange = NSRange(location: range.location, length: replacementLength)
+            changeDraft?.editedSinceCaret = true
         } else {
             // Backspace past where the typing began deletes text the repeat has to delete too.
             let deletedBefore = inserted.location - range.location - replacementLength
@@ -199,6 +203,32 @@ extension VimEngine {
                 : NSMaxRange(inserted) + delta
             changeDraft?.insertedRange = NSRange(location: start, length: max(0, end - start))
         }
+    }
+
+    // A selection change right after an edit is where that edit left the caret, and one to the same place repeats it.
+    // Any other is a move: arrows, Home and End, a click. In Vim a move in Insert or Replace mode starts a new insert
+    // where it lands, and `.` repeats only what is typed after it.
+    func selectionDidChange() {
+        guard mode.isInsert, !isRepeatingChange, let draft = changeDraft, draft.insertedRange != nil,
+              let caret = buffer?.selectedRange().location else { return }
+        if draft.editedSinceCaret {
+            changeDraft?.insertCaret = caret
+            changeDraft?.editedSinceCaret = false
+        } else if caret != draft.insertCaret {
+            restartInsert(at: caret)
+        }
+    }
+
+    private func restartInsert(at caret: Int) {
+        let command: Character = mode == .replace ? "R" : "i"
+        changeDraft?.keys = [VimChangeKey(character: command, shift: command == "R", isCount: false)]
+        changeDraft?.insertSteps = []
+        changeDraft?.deletedBeforeInsert = 0
+        changeDraft?.visualExtent = nil
+        changeDraft?.insertedRange = NSRange(location: caret, length: 0)
+        changeDraft?.insertCaret = caret
+        changeDraft?.editedSinceCaret = false
+        insertRepeat = nil
     }
 
     // A count given to `.` replaces the change's own, and the change keeps it, as in Vim.

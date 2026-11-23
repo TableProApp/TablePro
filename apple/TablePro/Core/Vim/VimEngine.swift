@@ -77,6 +77,9 @@ struct VimChangeDraft {
     // every edit.
     var insertedRange: NSRange?
     var deletedBeforeInsert = 0
+    // Where the last edit left the caret, so a move no edit made shows.
+    var insertCaret = 0
+    var editedSinceCaret = false
     // The selection as the last Visual mode command found it, where that command's keys start and the register it got.
     var visualExtent: VimVisualExtent?
     var visualCommandStart = 0
