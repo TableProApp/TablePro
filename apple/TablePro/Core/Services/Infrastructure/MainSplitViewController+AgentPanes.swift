@@ -82,7 +82,7 @@ internal extension MainSplitViewController {
                     ConnectionRecoveryBar(
                         content: ConnectionRecoveryBarContent(connectionName: connection.name, progress: recovery)
                     ) { [weak self] in
-                        self?.cancelRecovery(for: workspace.connectionId)
+                        self?.cancelRecovery(for: connection.id)
                     }
                 }
                 AgentConversationView(

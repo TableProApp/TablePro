@@ -103656,6 +103656,9 @@
         }
       }
     },
+    "If you don't review your windows, all your changes will be lost." : {
+
+    },
     "Ignore" : {
 
     },
@@ -173491,6 +173494,9 @@
           }
         }
       }
+    },
+    "Review Changes…" : {
+
     },
     "Review the current query against its tables" : {
       "localizations" : {
@@ -248611,6 +248617,9 @@
           }
         }
       }
+    },
+    "You have %lld windows with unsaved changes. Do you want to review these changes before closing?" : {
+
     },
     "You have no saved queries to publish." : {
       "localizations" : {

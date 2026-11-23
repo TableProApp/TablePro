@@ -1129,11 +1129,7 @@ enum DatabaseDriverFactory {
             throw refusal
         }
 
-        var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
-        if let sslClientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id),
-           !sslClientKeyPassphrase.isEmpty {
-            additionalFields["sslClientKeyPassphrase"] = sslClientKeyPassphrase
-        }
+        var additionalFields = await readAdditionalFields(for: connection, plugin: plugin)
         if connection.usesIAMToken {
             additionalFields["enableCleartextPlugin"] = "true"
         }
@@ -1372,9 +1368,76 @@ enum DatabaseDriverFactory {
         "connectTimeoutMilliseconds",
     ]
 
-    // A key-document field holds the document or the path of a key file here. A stored plain value arrived from a file,
-    // a link or another device, so only an inline document counts; the Keychain value the person entered is read below.
+    // The fields `buildAdditionalFields` gives plus the SSL key passphrase, with their Keychain reads run off the main
+    // actor: one batch, and a second only for a profile that holds no value for a field it declares.
+    static func readAdditionalFields(
+        for connection: DatabaseConnection,
+        plugin: any DriverPlugin,
+        connectionStorage: ConnectionStorage = .shared,
+        profileStorage: CredentialProfileStorage = .shared
+    ) async -> [String: String] {
+        let fieldIds = emptySecureFieldIds(in: baseAdditionalFields(for: connection, plugin: plugin), of: connection.type)
+        let credentialProfile = fieldIds.isEmpty ? nil : linkedCredentialProfile(of: connection, in: profileStorage)
+        let profileFieldIds = Set(fieldIds.filter { credentialProfile?.secureFieldIds.contains($0) == true })
+        let fieldReads: [(fieldId: String, read: DeferredSecretRead)] = fieldIds.map { fieldId in
+            if let credentialProfile, profileFieldIds.contains(fieldId) {
+                return (fieldId, profileStorage.secureFieldRead(fieldId: fieldId, for: credentialProfile.id))
+            }
+            return (fieldId, connectionStorage.pluginSecureFieldRead(fieldId: fieldId, for: connection.id))
+        }
+        let passphraseRead = connectionStorage.sslClientKeyPassphraseRead(for: connection.id)
+        let found = await DeferredSecretRead.run(fieldReads.map { $0.read } + [passphraseRead])
+
+        var secrets: [String: String] = [:]
+        var fallbackReads: [(fieldId: String, read: DeferredSecretRead)] = []
+        for (fieldId, read) in fieldReads {
+            if let value = found[read.key] {
+                secrets[fieldId] = value
+            } else if profileFieldIds.contains(fieldId) {
+                fallbackReads.append((fieldId, connectionStorage.pluginSecureFieldRead(fieldId: fieldId, for: connection.id)))
+            }
+        }
+        if !fallbackReads.isEmpty {
+            let fallbackFound = await DeferredSecretRead.run(fallbackReads.map { $0.read })
+            for (fieldId, read) in fallbackReads {
+                secrets[fieldId] = fallbackFound[read.key]
+            }
+        }
+
+        var fields = buildAdditionalFields(for: connection, plugin: plugin) { secrets[$0] }
+        if let sslClientKeyPassphrase = found[passphraseRead.key], !sslClientKeyPassphrase.isEmpty {
+            fields["sslClientKeyPassphrase"] = sslClientKeyPassphrase
+        }
+        return fields
+    }
+
     static func buildAdditionalFields(
+        for connection: DatabaseConnection,
+        plugin: any DriverPlugin
+    ) -> [String: String] {
+        let credentialProfile = linkedCredentialProfile(of: connection, in: .shared)
+        return buildAdditionalFields(for: connection, plugin: plugin) { fieldId in
+            // A profile that declares the field holds its secret once, under the profile's id.
+            if let credentialProfile, credentialProfile.secureFieldIds.contains(fieldId),
+               let profileValue = CredentialProfileStorage.shared.loadSecureField(
+                   fieldId: fieldId, for: credentialProfile.id
+               ) {
+                return profileValue
+            }
+            return ConnectionStorage.shared.loadPluginSecureField(fieldId: fieldId, for: connection.id)
+        }
+    }
+
+    private static func linkedCredentialProfile(
+        of connection: DatabaseConnection,
+        in profileStorage: CredentialProfileStorage
+    ) -> CredentialProfile? {
+        connection.credentialMode.profileId.flatMap { profileStorage.profile(for: $0) }
+    }
+
+    // A key-document field holds the document or the path of a key file here. A stored plain value arrived from a file,
+    // a link or another device, so only an inline document counts; the Keychain value the person entered fills it later.
+    private static func baseAdditionalFields(
         for connection: DatabaseConnection,
         plugin: any DriverPlugin
     ) -> [String: String] {
@@ -1383,28 +1446,27 @@ enum DatabaseDriverFactory {
             return !ConnectionFieldCatalog.keyDocumentFieldIds.contains(key)
                 || ConnectionFieldCatalog.isInlineKeyDocument(value)
         }
-
         if let variant = type(of: plugin).driverVariant(for: connection.type.rawValue) {
             fields["driverVariant"] = variant
         }
+        return fields
+    }
 
-        // Every secure field the type declares, not only what the form renders: a Redshift row with `awsAuth` still
-        // reads `awsSecretAccessKey` from here after its variant stopped offering the AWS section.
-        let credentialProfile = connection.credentialMode.profileId
-            .flatMap { CredentialProfileStorage.shared.profile(for: $0) }
-        for fieldId in PluginManager.shared.secureConnectionFieldIds(for: connection.type) {
-            if fields[fieldId] == nil || fields[fieldId]?.isEmpty == true {
-                // A profile that declares the field holds its secret once, under the profile's id.
-                if let credentialProfile, credentialProfile.secureFieldIds.contains(fieldId),
-                   let profileValue = CredentialProfileStorage.shared.loadSecureField(
-                       fieldId: fieldId, for: credentialProfile.id
-                   ) {
-                    fields[fieldId] = profileValue
-                } else if let secureValue = ConnectionStorage.shared.loadPluginSecureField(
-                    fieldId: fieldId, for: connection.id
-                ) {
-                    fields[fieldId] = secureValue
-                }
+    // Every secure field the type declares, not only what the form renders: a Redshift row with `awsAuth` still
+    // reads `awsSecretAccessKey` from here after its variant stopped offering the AWS section.
+    private static func emptySecureFieldIds(in fields: [String: String], of databaseType: DatabaseType) -> [String] {
+        PluginManager.shared.secureConnectionFieldIds(for: databaseType).filter { fields[$0]?.isEmpty ?? true }
+    }
+
+    private static func buildAdditionalFields(
+        for connection: DatabaseConnection,
+        plugin: any DriverPlugin,
+        secret: (String) -> String?
+    ) -> [String: String] {
+        var fields = baseAdditionalFields(for: connection, plugin: plugin)
+        for fieldId in emptySecureFieldIds(in: fields, of: connection.type) {
+            if let value = secret(fieldId) {
+                fields[fieldId] = value
             }
         }
 

@@ -33,7 +33,8 @@ internal enum ConnectionLocalState {
         sqlFavorites: SQLFavoriteManager = .shared,
         queryHistory: QueryHistoryManager = .shared,
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared
+        syncTracker: SyncChangeTracker = .shared,
+        agentSessions: AgentSessionRegistry = .shared
     ) {
         guard !connectionIds.isEmpty else { return }
 
@@ -45,6 +46,7 @@ internal enum ConnectionLocalState {
                 tables: favoriteTables,
                 databases: favoriteDatabases
             )
+            agentSessions.removeSessions(for: connectionId)
         }
         purgeViewState(connectionIds, appSettings: appSettings, defaults: defaults)
 
