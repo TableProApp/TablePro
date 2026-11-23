@@ -614,8 +614,17 @@ final class AIChatViewModel: ObservableObject {
         if messages.count > Self.maxMessageCount {
             messages.removeFirst(messages.count - Self.maxMessageCount)
         }
-        while messages.first?.role == .assistant {
+        // Cut between rounds: a tool result whose call was cut away makes providers refuse the whole request.
+        while let first = messages.first, !Self.opensRound(first) {
             messages.removeFirst()
+        }
+    }
+
+    private static func opensRound(_ turn: ChatTurn) -> Bool {
+        guard turn.role == .user else { return false }
+        return !turn.blocks.contains { block in
+            if case .toolResult = block.kind { return true }
+            return false
         }
     }
 }

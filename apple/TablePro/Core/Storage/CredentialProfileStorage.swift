@@ -183,7 +183,7 @@ final class CredentialProfileStorage {
         profiles[index] = profile
         guard saveProfiles(profiles) else { return false }
         // Best effort: the connect path resolves the username from the profile either way.
-        if !writeUsernameThrough(profile) {
+        if !writeUsernameThrough(profile, byUser: true) {
             Self.logger.error(
                 "Saved credential profile \(profile.id.uuidString, privacy: .public) but could not update the connections linked to it"
             )
@@ -200,7 +200,7 @@ final class CredentialProfileStorage {
         var current = profiles.first { $0.id == profile.id } ?? profile
         current.secureFieldIds = Array(Set(current.secureFieldIds).union(profile.secureFieldIds)).sorted()
         profiles.removeAll { $0.id == profile.id }
-        guard unlinkConnections(from: current) else { return false }
+        guard unlinkConnections(from: current, byUser: true) else { return false }
         guard saveProfiles(profiles) else { return false }
         syncTracker.markDeleted(.credentialProfile, id: profile.id.uuidString)
 
@@ -210,7 +210,7 @@ final class CredentialProfileStorage {
 
     // connection.username stays filled for a linked connection: the IAM signer, ~/.pgpass, dump flags and sync read it raw.
     @discardableResult
-    func writeUsernameThrough(_ profile: CredentialProfile, byUser: Bool = true) -> Bool {
+    func writeUsernameThrough(_ profile: CredentialProfile, byUser: Bool) -> Bool {
         let storage = connectionStorageProvider()
         let linked = Set(
             storage.loadConnections()
@@ -222,8 +222,9 @@ final class CredentialProfileStorage {
         }
     }
 
+    // `byUser` false (a sync pull) never signs connections.json, which may hold a command nobody here approved.
     @discardableResult
-    func unlinkConnections(from profile: CredentialProfile) -> Bool {
+    func unlinkConnections(from profile: CredentialProfile, byUser: Bool) -> Bool {
         let storage = connectionStorageProvider()
         // An unreadable library may hold connections that use this profile, and they would be left pointing at nothing.
         guard !storage.isLibraryUnreadable else {
@@ -249,7 +250,7 @@ final class CredentialProfileStorage {
         }
 
         let carriesSource = storeIsTrusted
-        let converted = storage.mutateConnections(ids: Set(linked.map { $0.id })) { connection in
+        let converted = storage.mutateConnections(ids: Set(linked.map { $0.id }), byUser: byUser) { connection in
             connection.credentialMode = .inline
             connection.username = profile.username
             // Every inline password flag is written, or a stale prompt or pgpass flag overrides the password just copied in.

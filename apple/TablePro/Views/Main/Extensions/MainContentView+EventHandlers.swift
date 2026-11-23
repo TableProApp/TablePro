@@ -147,6 +147,7 @@ extension MainContentView {
     func updateSidebarEditState() {
         // A selection change, refresh or undo rebuilds the fields, so the typed run ends here, not in another row's step.
         coordinator.endInspectorEditRun()
+        trailingPaneState.inspector.editState.detachedStager = coordinator.rowEditingCoordinator
         // A structure definition is edited by the structure inspector, not the row fields.
         switch gridSelectionOwner {
         case .schemaGrid, .none:
@@ -191,6 +192,7 @@ extension MainContentView {
             }
         }
         trailingPaneState.inspector.editState.configure(
+            tabId: tab.id,
             rowIDs: selectedRows.map(\.id),
             allRows: stringRows,
             absentCells: selectedRows.map { tableRows.absentColumns(of: $0.id) },
@@ -251,16 +253,6 @@ extension MainContentView {
         trailingPaneState.inspector.editState.onFieldRemoved = { columnIndex, rowIDs in
             capturedCoordinator.stageInspectorFieldRemoval(columnIndex: columnIndex, rowIDs: rowIDs)
         }
-        trailingPaneState.inspector.editState.onDetachedFieldChanged = { columnIndex, newValue, rowIDs, isExpression in
-            // A value window commits per keystroke like its field, so its typing folds into one undo step the same way.
-            capturedCoordinator.rowEditingCoordinator.stageInspectorFieldEdit(
-                columnIndex: columnIndex,
-                value: newValue,
-                rowIDs: rowIDs,
-                continuity: .typing,
-                isExpression: isExpression
-            )
-        }
     }
 
     // Only the editor comes from the format; the value stays raw, since a formatted timestamp saved back would corrupt it.
@@ -303,6 +295,5 @@ extension MainContentView {
         trailingPaneState.inspector.editState.onFieldValuesChanged = nil
         trailingPaneState.inspector.editState.onFieldReverted = nil
         trailingPaneState.inspector.editState.onFieldRemoved = nil
-        trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
     }
 }

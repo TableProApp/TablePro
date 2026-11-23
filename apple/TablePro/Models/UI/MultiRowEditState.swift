@@ -106,6 +106,22 @@ struct InspectorFieldEdit: Equatable {
     var isExpression = false
 }
 
+// RowIDs are positions a re-run or a sort hands to other records, so a value window also holds each row as it was read.
+struct InspectorDetachedTarget: Equatable {
+    let tabId: UUID
+    let columnIndex: Int
+    let columnName: String
+    let rowIDs: [RowID]
+    let rowsAsRead: [[PluginCellValue]]
+}
+
+@MainActor
+protocol InspectorDetachedStaging: AnyObject {
+    // Nil once the tab cannot take an edit, or a row is gone or deleted.
+    func holdInspectorRows(tabId: UUID, columnIndex: Int, rowIDs: [RowID]) -> InspectorDetachedTarget?
+    func stageDetachedInspectorEdit(_ text: String, to target: InspectorDetachedTarget)
+}
+
 @MainActor
 final class MultiRowEditState: ObservableObject {
     @Published var fields: [FieldEditState] = []
@@ -124,11 +140,12 @@ final class MultiRowEditState: ObservableObject {
 
     @Published var onFieldRemoved: ((Int, [RowID]) -> Void)?
 
-    // A value window outliving its selection names its rows, since its fields are gone; the flag says the value is SQL.
-    @Published var onDetachedFieldChanged: ((Int, PluginCellValue, [RowID], Bool) -> Void)?
+    // Kept while another tab or no editable row is selected: a value window writes to the tab it opened from.
+    weak var detachedStager: (any InspectorDetachedStaging)?
 
     // The rows an edit is staged against, captured when the selection was configured, never a display position.
     @Published private(set) var rowIDs: [RowID] = []
+    private(set) var tabId: UUID?
 
     @Published private(set) var allRows: [[String?]] = []
     // Per row of allRows: the columns it has no field for.
@@ -140,7 +157,6 @@ final class MultiRowEditState: ObservableObject {
     @Published private(set) var columnTypes: [ColumnType] = []
     // By column, not editor id: every selection change reissues those. Cleared when the columns change.
     @Published private(set) var expandedColumn: Int?
-    private var nonNullableColumns: Set<String> = []
 
     // Nil and .none offer no Set Value command and promote nothing.
     private(set) var databaseType: DatabaseType?
@@ -162,6 +178,7 @@ final class MultiRowEditState: ObservableObject {
     }
 
     func configure(
+        tabId: UUID? = nil,
         rowIDs: [RowID],
         allRows: [[String?]],
         absentCells: [Set<Int>] = [],
@@ -182,8 +199,9 @@ final class MultiRowEditState: ObservableObject {
         cellWriter: CellWriterSupport = .none
     ) {
         let columnsChanged = self.columns != columns
-        let selectionChanged = self.rowIDs != rowIDs
+        let selectionChanged = self.rowIDs != rowIDs || self.tabId != tabId
 
+        self.tabId = tabId
         self.rowIDs = rowIDs
         self.allRows = allRows
         self.absentCells = absentCells
@@ -191,7 +209,6 @@ final class MultiRowEditState: ObservableObject {
         self.expressionCells = expressionCells
         self.columns = columns
         self.columnTypes = columnTypes
-        self.nonNullableColumns = nonNullableColumns
         self.databaseType = databaseType
         if columnsChanged { expandedColumn = nil }
         self.cellWriter = cellWriter
@@ -457,20 +474,24 @@ final class MultiRowEditState: ObservableObject {
         Set(rowIDs.indices.filter { expressionCells[safe: $0]?.contains(index) == true }.map { rowIDs[$0] })
     }
 
-    // Once the selection has moved, the value goes to the rows the window was opened for, not to what is selected now.
-    func updateDetachedField(columnIndex: Int, rowIDs: [RowID], value: String?) {
-        guard !rowIDs.isEmpty else { return }
-        if self.rowIDs == rowIDs, fields.indices.contains(columnIndex) {
-            updateField(at: columnIndex, value: value)
-            return
+    func holdDetachedField(columnIndex: Int) -> InspectorDetachedTarget? {
+        guard let tabId, !rowIDs.isEmpty, columns.indices.contains(columnIndex) else { return nil }
+        return detachedStager?.holdInspectorRows(tabId: tabId, columnIndex: columnIndex, rowIDs: rowIDs)
+    }
+
+    // The window writes to the tab and records it opened on, whatever is selected now. False once those records are
+    // gone, deleted or replaced, and the window closes.
+    func commitDetachedField(_ value: String, to target: InspectorDetachedTarget) -> Bool {
+        guard let stager = detachedStager,
+              stager.holdInspectorRows(tabId: target.tabId, columnIndex: target.columnIndex, rowIDs: target.rowIDs) == target
+        else { return false }
+        if tabId == target.tabId, rowIDs == target.rowIDs, columns[safe: target.columnIndex] == target.columnName,
+           fields.indices.contains(target.columnIndex) {
+            updateField(at: target.columnIndex, value: value)
+        } else {
+            stager.stageDetachedInspectorEdit(value, to: target)
         }
-        if let value, let sql = typedExpression(value, columnType: columnTypes[safe: columnIndex]) {
-            onDetachedFieldChanged?(columnIndex, .text(sql), rowIDs, true)
-            return
-        }
-        let staged = PluginCellValue.entered(value, columnType: columnTypes[safe: columnIndex])
-        if staged.isNull, columns[safe: columnIndex].map(nonNullableColumns.contains) == true { return }
-        onDetachedFieldChanged?(columnIndex, staged, rowIDs, false)
+        return true
     }
 
     private static func resolvePendingValue(_ value: String?, original: String?, isJson: Bool) -> String? {
@@ -608,7 +629,8 @@ final class MultiRowEditState: ObservableObject {
         onFieldValuesChanged = nil
         onFieldReverted = nil
         onFieldRemoved = nil
-        onDetachedFieldChanged = nil
+        detachedStager = nil
+        tabId = nil
         rowIDs = []
         allRows = []
         absentCells = []
@@ -616,7 +638,6 @@ final class MultiRowEditState: ObservableObject {
         expressionCells = []
         columns = []
         columnTypes = []
-        nonNullableColumns = []
         expandedColumn = nil
         databaseType = nil
         cellWriter = .none

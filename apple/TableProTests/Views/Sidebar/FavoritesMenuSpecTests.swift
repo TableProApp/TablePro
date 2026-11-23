@@ -155,8 +155,9 @@ struct FavoritesMenuSpecTests {
         #expect(issued.contains(.removeTableFavorite(row.entry)))
     }
 
-    @Test("A diagram the tab could not tell apart from the browsed schema's is not offered")
-    func unrepresentableDiagramIsNotOffered() {
+    // The diagram tab records the schema it was opened on, so neither case loses it to the browsed one.
+    @Test("A table in a schema named default, or with no active database, still offers its own diagram")
+    func diagramIsOfferedWhateverTheSchemaIsCalled() {
         let noDatabase = commands(FavoritesMenuSpec.sections(for: context(
             clicked: .table(table(schema: "sales", otherSchema: "sales")),
             activeDatabase: nil
@@ -169,8 +170,8 @@ struct FavoritesMenuSpecTests {
             activeDatabase: nil
         )))
 
-        #expect(!noDatabase.contains { if case .showERDiagram = $0 { true } else { false } })
-        #expect(!markerSchema.contains { if case .showERDiagram = $0 { true } else { false } })
+        #expect(noDatabase.contains(.showERDiagram(schema: "sales")))
+        #expect(markerSchema.contains(.showERDiagram(schema: "default")))
         #expect(browsedSchema.contains(.showERDiagram(schema: nil)))
     }
 

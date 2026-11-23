@@ -686,7 +686,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private func installVimKeyInterceptor(controller: TextViewController) {
         guard let textView = controller.textView else { return }
 
-        let adapter = VimTextBufferAdapter(textView: textView)
+        let adapter = VimTextBufferAdapter(controller: controller)
         let engine = VimEngine(buffer: adapter)
 
         engine.onModeChange = { [weak self] mode in

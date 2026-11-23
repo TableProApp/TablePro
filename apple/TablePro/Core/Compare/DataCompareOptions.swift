@@ -167,11 +167,25 @@ internal struct CellValueComparator {
     }
 
     private func compareInstants(_ lhs: String, _ rhs: String) -> ValueComparison {
+        let (lhs, rhs) = Self.wallClocksWhenOneSideIsZoned(lhs, rhs)
         guard let left = TimestampValue.parse(lhs), let right = TimestampValue.parse(rhs) else {
             return ValueComparison(isEqual: false, rule: .exactValue)
         }
         let equal = left.equals(right, fractionalDigits: options.timestampFractionalDigits)
         return ValueComparison(isEqual: equal, rule: .timestampPrecision)
+    }
+
+    // A value with no zone names no instant. A zoned one written into it keeps its wall clock (the copier and the sync
+    // strip the offset, PostgreSQL ignores it), and a zone-less one written into a zoned column reads back at the
+    // session's offset, so a pair with one zoned side meets on the wall clock or a sync never converges.
+    private static func wallClocksWhenOneSideIsZoned(_ lhs: String, _ rhs: String) -> (String, String) {
+        let left = CrossEngineValueCoercer.strippingTimeZoneOffset(lhs.trimmingCharacters(in: .whitespaces))
+        let right = CrossEngineValueCoercer.strippingTimeZoneOffset(rhs.trimmingCharacters(in: .whitespaces))
+        switch (left, right) {
+        case (let left?, nil): return (left, rhs)
+        case (nil, let right?): return (lhs, right)
+        default: return (lhs, rhs)
+        }
     }
 }
 

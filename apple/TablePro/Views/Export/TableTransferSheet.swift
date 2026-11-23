@@ -29,6 +29,10 @@ struct TableTransferSheet: View {
     @State private var destinationDatabase = ""
     @State private var availableDestinations: [DatabaseConnection] = []
     @State private var destinationDatabases: [String] = []
+    @State private var destinationSchemas: [String] = []
+    @State private var destinationSchema = ""
+    // Loads of the destination's databases and schemas still running: until they end, the scope is not known.
+    @State private var resolvingDestination = 0
     @State private var sourceTables: [ExportObjectItem] = []
     @State private var deleteExistingRows = false
     @State private var wrapInTransaction = true
@@ -55,7 +59,7 @@ struct TableTransferSheet: View {
     }
 
     private var canTransfer: Bool {
-        !isRunning && !selectedTables.isEmpty && destinationConnection != nil && !hasContestedMapping
+        !isRunning && !selectedTables.isEmpty && destinationScope != nil && !hasContestedMapping
     }
 
     /// Two source columns mapped to one destination column build an INSERT naming it twice, which
@@ -127,16 +131,44 @@ struct TableTransferSheet: View {
                 }
             }
             .onChange(of: destinationConnectionId) { _ in
+                resolvingDestination += 1
                 Task {
+                    defer { resolvingDestination -= 1 }
                     await loadDestinationDatabases()
-                    await loadColumnsForSelection()
+                    await loadDestinationSchemas()
+                    await reloadDestinationColumns()
                 }
             }
 
             if !destinationDatabases.isEmpty {
-                Picker("Database", selection: $destinationDatabase) {
+                Picker("Database", selection: Binding(
+                    get: { destinationDatabase },
+                    set: { database in
+                        destinationDatabase = database
+                        resolvingDestination += 1
+                        Task {
+                            defer { resolvingDestination -= 1 }
+                            await loadDestinationSchemas()
+                            await reloadDestinationColumns()
+                        }
+                    }
+                )) {
                     ForEach(destinationDatabases, id: \.self) { database in
                         Text(database).tag(database)
+                    }
+                }
+            }
+
+            if !destinationSchemas.isEmpty {
+                Picker("Schema", selection: Binding(
+                    get: { destinationSchema },
+                    set: { schema in
+                        destinationSchema = schema
+                        Task { await reloadDestinationColumns() }
+                    }
+                )) {
+                    ForEach(destinationSchemas, id: \.self) { schema in
+                        Text(schema).tag(schema)
                     }
                 }
             }
@@ -295,7 +327,7 @@ struct TableTransferSheet: View {
                 guard let index = sourceTables.firstIndex(where: { $0.id == table.id }) else { return }
                 sourceTables[index].isSelected = isOn
                 guard isOn else { return }
-                Task { await loadColumnsForSelection() }
+                Task { await loadColumnsForSelection(on: destinationScope) }
             }
         )
     }
@@ -350,6 +382,60 @@ struct TableTransferSheet: View {
         }
     }
 
+    // Without a schema the writes resolved to wherever the destination session was, often another table of that name.
+    @MainActor
+    private func loadDestinationSchemas() async {
+        destinationSchemas = []
+        destinationSchema = ""
+        guard let destinationConnection,
+              PluginManager.shared.supportsSchemaSwitching(for: destinationConnection.type) else { return }
+        let database = destinationDatabase.isEmpty ? destinationConnection.database : destinationDatabase
+        let scope = DatabaseScope(connectionId: destinationConnection.id, database: database, schema: nil)
+        do {
+            let schemas = try await DatabaseManager.shared.withMetadataDriver(
+                scope: scope, workload: .interactive
+            ) { driver in
+                try await driver.fetchSchemas()
+            }
+            guard destinationConnectionId == scope.connectionId, destinationDatabaseName == database else { return }
+            destinationSchemas = schemas
+            destinationSchema = Self.defaultDestinationSchema(
+                source: sourceScope.schema,
+                current: DatabaseManager.shared.resolvedScope(
+                    database: database, schema: nil, for: destinationConnection.id
+                )?.schema,
+                engineDefault: PluginManager.shared.defaultSchemaName(for: destinationConnection.type),
+                available: schemas
+            )
+        } catch {
+            Self.logger.warning("Failed to list destination schemas: \(error.localizedDescription)")
+        }
+    }
+
+    // The source's own schema when the destination has one of that name, then where the destination is browsing.
+    nonisolated static func defaultDestinationSchema(
+        source: String?,
+        current: String?,
+        engineDefault: String?,
+        available: [String]
+    ) -> String {
+        for candidate in [source, current, engineDefault] {
+            if let candidate, available.contains(candidate) { return candidate }
+        }
+        return available.first ?? ""
+    }
+
+    @MainActor
+    private func reloadDestinationColumns() async {
+        destinationColumns = [:]
+        await loadColumnsForSelection(on: Self.destinationScope(
+            connection: destinationConnection,
+            database: destinationDatabase,
+            schema: destinationSchema,
+            isResolving: false
+        ))
+    }
+
     private func transferTitle(destination: DatabaseConnection) -> String {
         let template = selectedTables.count == 1
             ? String(localized: "Transfer %1$lld table into %2$@?")
@@ -373,7 +459,7 @@ struct TableTransferSheet: View {
     /// before anything is written. Only the ticked ones, because a database of four hundred tables
     /// would otherwise pay for four hundred column reads to open a sheet.
     @MainActor
-    private func loadColumnsForSelection() async {
+    private func loadColumnsForSelection(on destinationScope: DatabaseScope?) async {
         let tables = selectedTables.map(\.name)
         guard !tables.isEmpty, let destinationConnection else { return }
         isMatching = true
@@ -385,6 +471,13 @@ struct TableTransferSheet: View {
         guard let destinationScope else { return }
         for table in tables where destinationColumns[table] == nil {
             let found = await columns(of: table, on: destinationScope)
+            // A schema or database picked while this read ran owns the columns now.
+            guard Self.destinationScope(
+                connection: destinationConnection,
+                database: destinationDatabase,
+                schema: destinationSchema,
+                isResolving: false
+            ) == destinationScope else { return }
             destinationColumns[table] = found.isEmpty ? nil : found
         }
     }
@@ -417,16 +510,34 @@ struct TableTransferSheet: View {
         )
     }
 
-    /// The database the user picked, not wherever the destination connection was last parked. Both
-    /// the column read and the write go through this: the picker used to bind to a value nothing
-    /// read, so choosing a database changed the label and sent the rows somewhere else.
     private var destinationScope: DatabaseScope? {
+        Self.destinationScope(
+            connection: destinationConnection,
+            database: destinationDatabase,
+            schema: destinationSchema,
+            isResolving: resolvingDestination > 0
+        )
+    }
+
+    private var destinationDatabaseName: String? {
         guard let destinationConnection else { return nil }
-        let database = destinationDatabase.isEmpty
-            ? destinationConnection.database
-            : destinationDatabase
+        return destinationDatabase.isEmpty ? destinationConnection.database : destinationDatabase
+    }
+
+    // The database and schema the user picked, not wherever the destination session was last parked. None while they
+    // are still loading: a scope taken then named no schema, and the writes went to the session's own.
+    nonisolated static func destinationScope(
+        connection: DatabaseConnection?,
+        database: String,
+        schema: String,
+        isResolving: Bool
+    ) -> DatabaseScope? {
+        guard let connection, !isResolving else { return nil }
         return DatabaseScope(
-            connectionId: destinationConnection.id, database: database, schema: nil)
+            connectionId: connection.id,
+            database: database.isEmpty ? connection.database : database,
+            schema: schema.isEmpty ? nil : schema
+        )
     }
 
     // MARK: - Running
@@ -461,7 +572,17 @@ struct TableTransferSheet: View {
             job.end()
         }
 
-        await loadColumnsForSelection()
+        await loadColumnsForSelection(on: destinationScope)
+        // The mapping is read from the scope this run writes to, or not at all.
+        guard Self.destinationScope(
+            connection: destinationConnection,
+            database: destinationDatabase,
+            schema: destinationSchema,
+            isResolving: false
+        ) == destinationScope else {
+            errorMessage = String(localized: "The destination changed while the transfer started. Check it and transfer again.")
+            return
+        }
 
         var mappings: [String: [String: String]] = [:]
         var unmapped: [String] = []
@@ -484,6 +605,7 @@ struct TableTransferSheet: View {
             objects: selectedTables,
             sourceType: sourceConnection.type,
             destinationType: destinationConnection.type,
+            destinationSchema: destinationScope.schema,
             columnMapping: mappings,
             sourceColumns: sourceColumns,
             deleteExistingRows: deleteExistingRows,

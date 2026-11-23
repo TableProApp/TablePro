@@ -11,7 +11,6 @@ import Testing
 @MainActor
 private final class StagedFieldRecorder {
     var values: [Int: PluginCellValue] = [:]
-    var detachedValues: [Int: PluginCellValue] = [:]
 }
 
 @MainActor
@@ -19,7 +18,6 @@ struct MultiRowEditStateClearedFieldTests {
     private static let columns = ["id", "deleted_at", "name", "doc", "created_at"]
     private static let deletedAt = 1
     private static let name = 2
-    private static let doc = 3
     private static let createdAt = 4
 
     private func makeState(_ recorder: StagedFieldRecorder) -> MultiRowEditState {
@@ -38,7 +36,6 @@ struct MultiRowEditStateClearedFieldTests {
             nonNullableColumns: ["created_at"]
         )
         state.onFieldChanged = { index, value, _ in recorder.values[index] = value }
-        state.onDetachedFieldChanged = { index, value, _, _ in recorder.detachedValues[index] = value }
         return state
     }
 
@@ -86,15 +83,5 @@ struct MultiRowEditStateClearedFieldTests {
 
         #expect(recorder.values[Self.createdAt] == .text("2023-12-01 09:00:00"))
         #expect(state.fields[Self.createdAt].hasEdit == false)
-    }
-
-    @Test("A detached window's cleared JSON goes to its rows as NULL")
-    func clearedDetachedJSONStagesNull() {
-        let recorder = StagedFieldRecorder()
-        let state = makeState(recorder)
-
-        state.updateDetachedField(columnIndex: Self.doc, rowIDs: [.existing(7)], value: "")
-
-        #expect(recorder.detachedValues[Self.doc] == .null)
     }
 }

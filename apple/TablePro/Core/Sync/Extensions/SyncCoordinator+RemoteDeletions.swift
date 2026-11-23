@@ -153,13 +153,8 @@ extension SyncCoordinator {
         return true
     }
 
-    /// Unlinking reads a profile's secrets, so it runs while they still exist. Dropping the record
-    /// alone left every connection using it addressing a profile id that no longer resolved, and
-    /// left its keychain items with nothing able to name them.
-    ///
-    /// Returns false when a conversion could not be persisted, which withholds the pull token: the
-    /// alternative is acknowledging a delete whose connections still point at the profile, with the
-    /// conversion lost and no tombstone left to replay it.
+    // Unlinking reads the profile's secrets, so it runs while they still exist. False withholds the pull token:
+    // acknowledging the delete would leave connections pointing at the profile with nothing left to replay it.
     private func applyRemoteSSHProfileDeletions(_ profileIds: Set<UUID>) -> Bool {
         guard !profileIds.isEmpty else { return true }
 
@@ -167,7 +162,7 @@ extension SyncCoordinator {
         let deleted = profiles.filter { profileIds.contains($0.id) }
         profiles.removeAll { profileIds.contains($0.id) }
 
-        for profile in deleted where !services.sshProfileStorage.unlinkConnections(fromProfile: profile) {
+        for profile in deleted where !services.sshProfileStorage.unlinkConnections(fromProfile: profile, byUser: false) {
             Self.logger.error(
                 "Kept SSH profile \(profile.id.uuidString, privacy: .public): its connections could not be converted"
             )
@@ -181,8 +176,7 @@ extension SyncCoordinator {
         return true
     }
 
-    /// A profile deleted on another Mac hands its credentials to the connections using it here
-    /// too, so they keep connecting rather than losing the password the link took away.
+    // A profile deleted on another Mac hands its credentials to the connections using it here, so they keep connecting.
     private func applyRemoteCredentialProfileDeletions(_ profileIds: Set<UUID>) -> Bool {
         guard !profileIds.isEmpty else { return true }
 
@@ -197,7 +191,7 @@ extension SyncCoordinator {
         let deleted = profiles.filter { profileIds.contains($0.id) }
         profiles.removeAll { profileIds.contains($0.id) }
 
-        for profile in deleted where !services.credentialProfileStorage.unlinkConnections(from: profile) {
+        for profile in deleted where !services.credentialProfileStorage.unlinkConnections(from: profile, byUser: false) {
             Self.logger.error(
                 "Kept credential profile \(profile.id.uuidString, privacy: .public): its connections could not be converted"
             )

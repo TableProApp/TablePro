@@ -115,6 +115,28 @@ struct TeamCatalogPublisherTests {
         #expect(!raw.contains("passwordSource"))
     }
 
+    @Test("Published file carries neither the tunnel command nor the startup commands")
+    func publishLeavesCommandsOut() throws {
+        let folder = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var connection = DatabaseConnection(name: "Prod DB", type: .postgresql)
+        connection.tunnelCommandMode = .inline(TunnelCommandConfiguration(
+            method: .custom,
+            command: "cloudflared access tcp --url localhost:{port} --service-token-secret S3cret"
+        ))
+        connection.startupCommands = "SET app.token = 'S3cret';"
+        try #require(ConnectionBundleExporter().portableSettings(for: connection).tunnelCommand != nil)
+
+        let written = try TeamCatalogPublisher.publish([connection], to: folder)
+
+        let data = try Data(contentsOf: try #require(written.first))
+        let settings = try #require(try ConnectionBundleCodec.decode(data).connections.first?.settings)
+        #expect(settings.name == "Prod DB")
+        #expect(settings.tunnelCommand == nil)
+        #expect(settings.startupCommands == nil)
+        #expect(!(String(bytes: data, encoding: .utf8) ?? "").contains("S3cret"))
+    }
+
     @Test("Filename is filesystem-safe and keyed by connection id")
     func filenameIsFilesystemSafeAndStable() {
         let connection = DatabaseConnection(name: "Prod / DB: primary")
