@@ -130,7 +130,9 @@ struct JsonFieldEditingModelTests {
     func literalEchoIsRefused() {
         var model = JsonFieldEditingModel(storedValue: "{\"a\":1}")
 
-        #expect(!model.received(model.displayText))
+        let adopted = model.received(model.displayText)
+
+        #expect(!adopted)
         #expect(model.displayText == JsonReindenter.reindent("{\"a\":1}"))
     }
 }

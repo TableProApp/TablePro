@@ -156,11 +156,23 @@ struct JsonReindenterTests {
         #expect(JsonReindenter.normalize(source) == "[" + elements.joined(separator: ",") + "]")
     }
 
+    // The reference recurses with bigger frames than the writer, and 512 levels overflow a test thread's stack.
     @Test("The writer lays out what the syntax parser's tree lays out, indented and compact")
-    func writerMatchesTheParsersTree() {
-        for source in Self.corpus {
-            #expect(JsonReindenter.reindentIfValid(source) == ReferenceLayout.pretty(source), "\(source.debugDescription)")
-            #expect(JsonReindenter.normalize(source) == ReferenceLayout.compact(source), "\(source.debugDescription)")
+    func writerMatchesTheParsersTree() async {
+        let mismatches = await Self.onLargeStack {
+            Self.corpus.filter { source in
+                JsonReindenter.reindentIfValid(source) != ReferenceLayout.pretty(source)
+                    || JsonReindenter.normalize(source) != ReferenceLayout.compact(source)
+            }
+        }
+        #expect(mismatches.isEmpty, "\(mismatches.prefix(3).map { $0.debugDescription })")
+    }
+
+    private static func onLargeStack<Value: Sendable>(_ body: @escaping @Sendable () -> Value) async -> Value {
+        await withCheckedContinuation { continuation in
+            let thread = Thread { continuation.resume(returning: body()) }
+            thread.stackSize = 16 << 20
+            thread.start()
         }
     }
 

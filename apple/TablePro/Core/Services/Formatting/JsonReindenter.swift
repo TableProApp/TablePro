@@ -84,7 +84,7 @@ private struct JsonLayoutWriter {
         guard writeValue() else { return nil }
         skipWhitespace()
         guard index == source.count, written <= maximumLength else { return nil }
-        return String(decoding: output, as: UTF8.self)
+        return String(decoding: output, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
     }
 
     private mutating func writeValue() -> Bool {
