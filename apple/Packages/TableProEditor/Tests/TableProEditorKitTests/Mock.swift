@@ -225,13 +225,15 @@ enum Mock {
         textView: TextView,
         highlightProviders: [HighlightProviding],
         attributeProvider: ThemeAttributesProviding,
-        language: CodeLanguage = .default
+        language: CodeLanguage = .default,
+        maxHighlightableLength: Int = EditorHighlighting.maxHighlightableCharacters
     ) -> Highlighter {
         let highlighter = Highlighter(
             textView: textView,
             providers: highlightProviders,
             attributeProvider: attributeProvider,
-            language: language
+            language: language,
+            maxHighlightableLength: maxHighlightableLength
         )
         // `TextViewController.setUpHighlighter` does this, and it is the only route an edit takes to a highlighter.
         // Leaving it to each call site is what left two max-length tests asserting against a highlighter nothing

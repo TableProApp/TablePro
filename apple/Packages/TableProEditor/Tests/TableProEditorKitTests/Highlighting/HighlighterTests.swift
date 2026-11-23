@@ -9,6 +9,7 @@ final class HighlighterTests {
     class MockHighlightProvider: HighlightProviding {
         var setUpCount = 0
         var queryCount = 0
+        var editCount = 0
         var queryResponse: @MainActor () -> (Result<[HighlightRange], Error>)
 
         init(setUpCount: Int = 0, queryResponse: @escaping () -> Result<[HighlightRange], Error> = { .success([]) }) {
@@ -26,6 +27,7 @@ final class HighlighterTests {
             delta: Int,
             completion: @escaping @MainActor (Result<IndexSet, Error>) -> Void
         ) {
+            editCount += 1
             completion(.success(.init(integersIn: NSRange(location: 0, length: 10))))
         }
 
@@ -286,12 +288,14 @@ final class HighlighterTests {
         let highlighter = Mock.highlighter(
             textView: textView,
             highlightProviders: [highlightProvider],
-            attributeProvider: attributeProvider
+            attributeProvider: attributeProvider,
+            maxHighlightableLength: 32
         )
-        highlighter.maxHighlightableLength = 32
 
         let baseline = highlightProvider.queryCount
-        textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "b")
+        withExtendedLifetime(highlighter) {
+            textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "b")
+        }
 
         #expect(highlightProvider.queryCount == baseline, "Editing a document over maxHighlightableLength must not query highlights")
     }
@@ -306,11 +310,13 @@ final class HighlighterTests {
         let highlighter = Mock.highlighter(
             textView: textView,
             highlightProviders: [highlightProvider],
-            attributeProvider: attributeProvider
+            attributeProvider: attributeProvider,
+            maxHighlightableLength: 1_000
         )
-        highlighter.maxHighlightableLength = 1_000
 
-        textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "x")
+        withExtendedLifetime(highlighter) {
+            textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "x")
+        }
 
         #expect(highlightProvider.queryCount > 0, "A document under maxHighlightableLength should still be highlighted")
     }

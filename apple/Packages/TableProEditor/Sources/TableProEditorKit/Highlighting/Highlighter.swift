@@ -12,11 +12,8 @@ import SwiftTreeSitter
 import TableProGrammars
 import TableProTextEngine
 
-/// Thresholds for degrading language services on large documents.
 public enum EditorHighlighting {
-    /// Documents longer than this (UTF-16 character count) are not syntax highlighted by default. Above it the
-    /// per-edit re-parse and re-highlight cost dominates, so the editor stops highlighting to keep typing, scrolling,
-    /// and deleting responsive, the same way DataGrip and VS Code degrade large files.
+    // In UTF-16 units. Past it the per-edit parse and restyle cost dominates, so the document shows as plain text.
     public static let maxHighlightableCharacters = 2_000_000
 }
 
@@ -89,7 +86,10 @@ class Highlighter: NSObject {
     /// Counts upwards to provide unique IDs for new highlight providers.
     private var providerIdCounter: Int
 
-    var maxHighlightableLength: Int = EditorHighlighting.maxHighlightableCharacters
+    let maxHighlightableLength: Int
+
+    // Over the limit the providers are not set up and hear of no edit, so coming back under sets them up again.
+    private var isWithinLimit: Bool
 
     // MARK: - Init
 
@@ -97,11 +97,14 @@ class Highlighter: NSObject {
         textView: TextView,
         providers: [HighlightProviding],
         attributeProvider: ThemeAttributesProviding,
-        language: CodeLanguage
+        language: CodeLanguage,
+        maxHighlightableLength: Int = EditorHighlighting.maxHighlightableCharacters
     ) {
         self.language = language
         self.textView = textView
         self.attributeProvider = attributeProvider
+        self.maxHighlightableLength = maxHighlightableLength
+        self.isWithinLimit = textView.length <= maxHighlightableLength
 
         self.visibleRangeProvider = VisibleRangeProvider(textView: textView)
 
@@ -121,15 +124,22 @@ class Highlighter: NSObject {
                 highlightProvider: provider,
                 textView: textView,
                 visibleRangeProvider: visibleRangeProvider,
-                language: language
+                language: language,
+                setsUpProvider: isWithinLimit
             )
         }
     }
 
     // MARK: - Public
 
-    /// Invalidates all text in the editor, so every provider is asked for its captures again.
     func invalidate() {
+        guard isWithinLimit else {
+            // A font or letter spacing change still has to reach the plain text.
+            if let textView {
+                removeStyles(from: textView)
+            }
+            return
+        }
         highlightProviders.forEach { $0.invalidate() }
     }
 
@@ -141,23 +151,41 @@ class Highlighter: NSObject {
     }
 
     func invalidate(_ set: IndexSet) {
+        guard isWithinLimit else { return }
         highlightProviders.forEach { $0.invalidate(set) }
     }
 
-    /// Sets the language and causes a re-highlight of the entire text.
-    /// - Parameter language: The language to update to.
     func setLanguage(language: CodeLanguage) {
         guard let textView = self.textView else { return }
+        self.language = language
 
         // Remove all current highlights. Makes the language setting feel snappier and tells the user we're doing
         // something immediately.
-        textView.textStorage.setAttributes(
-            attributeProvider?.attributesFor(nil) ?? [:],
-            range: NSRange(location: 0, length: textView.textStorage.length)
-        )
-        textView.layoutManager.invalidateLayoutForRect(textView.visibleRect)
+        removeStyles(from: textView)
 
+        guard isWithinLimit else { return }
         highlightProviders.forEach { $0.setLanguage(language: language) }
+    }
+
+    private func removeStyles(from textView: TextView) {
+        let documentRange = NSRange(location: 0, length: textView.textStorage.length)
+        textView.textStorage.setAttributes(attributeProvider?.attributesFor(nil) ?? [:], range: documentRange)
+        textView.layoutManager.invalidateLayoutForRange(documentRange)
+    }
+
+    private func stopHighlighting() {
+        isWithinLimit = false
+        guard let textView else { return }
+        styleContainer.reset(documentLength: textView.textStorage.length)
+        removeStyles(from: textView)
+    }
+
+    private func resumeHighlighting() {
+        isWithinLimit = true
+        guard let textView else { return }
+        styleContainer.reset(documentLength: textView.textStorage.length)
+        highlightProviders.forEach { $0.setLanguage(language: language) }
+        visibleRangeProvider.visibleTextChanged()
     }
 
     /// Updates the highlight providers the highlighter is using, removing any that don't appear in the given array,
@@ -197,17 +225,20 @@ class Highlighter: NSObject {
                 }
                 // Set up a new provider and insert it with a unique ID
                 providerIdCounter += 1
-                let state = HighlightProviderState( // This will call setup on the highlight provider
+                let state = HighlightProviderState(
                     id: providerIdCounter,
                     delegate: styleContainer,
                     highlightProvider: newProvider,
                     textView: textView,
                     visibleRangeProvider: visibleRangeProvider,
-                    language: language
+                    language: language,
+                    setsUpProvider: isWithinLimit
                 )
                 highlightProviders.insert(state, at: offset)
                 styleContainer.addProvider(providerIdCounter, priority: offset, documentLength: textView.length)
-                state.invalidate() // Invalidate this new one
+                if isWithinLimit {
+                    state.invalidate()
+                }
             case let .remove(offset, _, associatedOffset):
                 if let associatedOffset {
                     // Moved, add it to the move map
@@ -242,8 +273,16 @@ extension Highlighter: @preconcurrency NSTextStorageDelegate {
         // This method is called whenever attributes are updated, so to avoid re-highlighting the entire document
         // each time an attribute is applied, we check to make sure this is in response to an edit.
         guard editedMask.contains(.editedCharacters) else { return }
-        let docLength = textView?.textStorage.length ?? 0
-        guard docLength <= maxHighlightableLength else { return }
+        guard textStorage.length <= maxHighlightableLength else {
+            if isWithinLimit {
+                stopHighlighting()
+            }
+            return
+        }
+        guard isWithinLimit else {
+            resumeHighlighting()
+            return
+        }
 
         styleContainer.storageUpdated(editedRange: editedRange, changeInLength: delta)
 
@@ -272,7 +311,8 @@ extension Highlighter: @preconcurrency NSTextStorageDelegate {
 
 extension Highlighter: StyledRangeContainerDelegate {
     func styleContainerDidUpdate(in range: NSRange) {
-        guard let textView, let attributeProvider else { return }
+        // A provider can still answer for an edit made before the document went over the limit.
+        guard isWithinLimit, let textView, let attributeProvider else { return }
         textView.textStorage.beginEditing()
 
         let storage = textView.textStorage
@@ -302,7 +342,7 @@ extension Highlighter: StyledRangeContainerDelegate {
 
 extension Highlighter: VisibleRangeProviderDelegate {
     func visibleSetDidUpdate(_ newIndices: IndexSet) {
-        guard textView?.textStorage.length ?? 0 <= maxHighlightableLength else { return }
+        guard isWithinLimit else { return }
         highlightProviders.forEach { $0.highlightInvalidRanges() }
     }
 }
