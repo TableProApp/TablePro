@@ -47,10 +47,11 @@ struct SQLiteCheckValueListTests {
         #expect(SQLiteCheckConstraintParser.foldedName("Status") == "status")
     }
 
-    @Test("Two checks on one column keep the values both allow")
-    func twoChecksIntersect() {
-        let body = "status TEXT CHECK (status IN ('a', 'b', 'c')), CHECK (status IN ('b', 'c', 'd'))"
-        #expect(lists(body) == ["status": ["b", "c"]])
+    @Test("Two lists on one column give no list: what both allow depends on its collation and NULLs")
+    func twoChecksGiveNoList() {
+        #expect(lists("status TEXT CHECK (status IN ('a', 'b')), CHECK (status IN ('b', 'c'))").isEmpty)
+        #expect(lists("status TEXT COLLATE NOCASE CHECK (status IN ('a', 'b')), CHECK (status IN ('A', 'b'))").isEmpty)
+        #expect(lists("status TEXT CHECK (status IN ('a', 'b')), CHECK (status IN ('a', NULL))").isEmpty)
     }
 
     @Test("Anything but a whole IN list of strings gives no list", arguments: [

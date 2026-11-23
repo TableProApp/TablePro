@@ -33,14 +33,17 @@ nonisolated enum SQLiteCheckConstraintParser {
     static func valueLists(inCreateStatement statement: String) -> [String: [String]] {
         guard let parsed = SQLiteTableDDL.parse(createTableSQL: statement) else { return [:] }
         var lists: [String: [String]] = [:]
+        var listedTwice: Set<String> = []
         for entry in parsed.entries {
             for expression in checkExpressions(in: entry.text) {
                 guard let (column, values) = valueList(in: expression) else { continue }
                 let key = foldedName(column)
-                lists[key] = lists[key].map { kept in kept.filter { values.contains($0) } } ?? values
+                if lists[key] != nil { listedTwice.insert(key) }
+                lists[key] = values
             }
         }
-        return lists.filter { !$0.value.isEmpty }
+        // Two lists on one column meet under the column's collation and NULL rules, which a plain intersection misses.
+        return lists.filter { !$0.value.isEmpty && !listedTwice.contains($0.key) }
     }
 
     static func foldedName(_ name: String) -> String {
