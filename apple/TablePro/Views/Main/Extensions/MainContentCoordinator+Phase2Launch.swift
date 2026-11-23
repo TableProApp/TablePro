@@ -50,9 +50,11 @@ extension MainContentCoordinator {
         phase2Works.removeAll()
     }
 
+    // A query tab has no pages and shows no total, so its result never counts the table it reads.
     func launchPhase2AfterApply(
         tableName: String?,
         isEditable: Bool,
+        isTableTab: Bool,
         tabId: UUID,
         trigger: TableLoadTrigger,
         needsMetadataFetch: Bool,
@@ -60,7 +62,7 @@ extension MainContentCoordinator {
         claim: TabExecutionClaim,
         traceToken: TableLoadTraceToken? = nil
     ) {
-        if isEditable, let tableName, trigger.countsRows {
+        if isEditable, let tableName, isTableTab, trigger.countsRows {
             // Marked pending here: phase 1 clears `isLoading` first, so without it the tab looks settled and offers Count Exactly early.
             tabManager.mutate(tabId: tabId) { $0.pagination.isCountPending = true }
             launchPhase2(
@@ -72,7 +74,7 @@ extension MainContentCoordinator {
                 traceToken: traceToken
             )
         } else if isEditable, let tableName, needsMetadataFetch {
-            // A tick keeps the count it has; only a manual Refresh recounts.
+            // A tick keeps the count it has; only a manual Refresh recounts. A query tab reads keys and defaults only.
             launchPhase2Work(
                 tableName: tableName,
                 tabId: tabId,

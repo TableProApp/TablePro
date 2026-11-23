@@ -336,7 +336,12 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var providesBulkColumnFetch: Bool { bulkColumnReadIsComplete }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
+    private(set) var fetchForeignKeysCallCount = 0
+
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
+        fetchForeignKeysCallCount += 1
+        return []
+    }
 
     var bulkForeignKeyFetch = false
     var providesBulkForeignKeyFetch: Bool { bulkForeignKeyFetch }
@@ -356,7 +361,32 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         return concurrentRefreshAvailabilityToReturn
     }
 
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    var approximateRowCountToReturn: Int?
+    var approximateRowCountGate: AsyncGate?
+    private(set) var fetchApproximateRowCountCallCount = 0
+
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        fetchApproximateRowCountCallCount += 1
+        await approximateRowCountGate?.wait()
+        return approximateRowCountToReturn
+    }
+
+    var viewRowEditingToReturn: PluginViewRowEditing?
+    private(set) var fetchViewRowEditingCalls: [String] = []
+
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
+        fetchViewRowEditingCalls.append(view)
+        return viewRowEditingToReturn
+    }
+
+    var tableDDLToReturn: [String: String] = [:]
+    private(set) var fetchTableDDLCallCount = 0
+
+    func fetchTableDDL(table: String, schema: String?) async throws -> String {
+        fetchTableDDLCallCount += 1
+        return tableDDLToReturn[table] ?? ""
+    }
+
     func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
 
     var tableCommentToReturn: String?

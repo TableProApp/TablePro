@@ -48,6 +48,14 @@ struct LibPQReadBoundTests {
         #expect(bound.kept(four) == three)
     }
 
+    @Test("A read that runs to its end keeps the cap and one row more, never past the emergency limit")
+    func keepLimit() {
+        #expect(LibPQReadBound.keepLimit(rowCap: 3) == 4)
+        #expect(LibPQReadBound.keepLimit(rowCap: PluginRowLimits.emergencyMax - 1) == PluginRowLimits.emergencyMax)
+        #expect(LibPQReadBound.keepLimit(rowCap: PluginRowLimits.emergencyMax) == PluginRowLimits.emergencyMax)
+        #expect(LibPQReadBound.keepLimit(rowCap: .max) == PluginRowLimits.emergencyMax)
+    }
+
     @Test("Without a byte limit a cursor fetches all the cap still allows, the row that tells 'more' included")
     func fetchCountWithoutByteLimit() {
         let bound = LibPQReadBound(rowCap: 3, byteLimit: nil)

@@ -264,7 +264,6 @@ struct SortState: Equatable {
 }
 
 extension QueryTab {
-    // Named by the caller: a query tab counts the table its statement reads, which its context may not name yet.
     func rowCountScope(table: String) -> RowCountScope {
         let rerun = filterState.rerunFilters
         return RowCountScope(
@@ -425,6 +424,12 @@ struct PaginationState: Equatable {
     mutating func retireDerivedRowCount() {
         totalRowCount = nil
         isApproximateRowCount = false
+        settledRowCountScope = nil
+    }
+
+    // Marked approximate on purpose: a large table's count may have moved, and a capped recount would only blank it.
+    mutating func keepTotalAsEstimate() {
+        isApproximateRowCount = totalRowCount != nil
         settledRowCountScope = nil
     }
 

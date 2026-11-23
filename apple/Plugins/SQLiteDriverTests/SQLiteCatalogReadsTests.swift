@@ -55,6 +55,44 @@ struct SQLiteCatalogReadsTests {
         #expect(columns[2].generationExpression == nil)
     }
 
+    @Test("A CHECK value list fills the column's allowed values from the same CREATE statement, whatever the name's case")
+    func columnsCarryCheckValueLists() async throws {
+        let runner = RecordingRunner([
+            [
+                ["0", "id", "INTEGER", "1", nil, "1", "0"],
+                ["1", "Status", "TEXT", "0", nil, "0", "0"],
+            ],
+            [["table", "CREATE TABLE t (id INTEGER PRIMARY KEY, Status TEXT CHECK (status IN ('open', 'closed')))"]],
+        ])
+
+        let columns = try await SQLiteCatalogReads.columns(table: "t", schema: "auth", run: runner.run)
+
+        #expect(await runner.sent == [
+            "SELECT * FROM pragma_table_xinfo('t', 'auth')",
+            SQLiteTemporarySchema.definitionQuery(name: "t", types: ["table"], schema: "auth"),
+        ])
+        #expect(columns[0].allowedValues == nil)
+        #expect(columns[1].allowedValues == ["open", "closed"])
+    }
+
+    @Test("All columns carry each table's CHECK value lists from the one read")
+    func allColumnsCarryCheckValueLists() async throws {
+        let createA = "CREATE TABLE a (id INTEGER, kind TEXT, CONSTRAINT k CHECK (\"KIND\" IN ('x', 'y')))"
+        let runner = RecordingRunner([
+            [
+                ["a", "0", "id", "INTEGER", "0", nil, "0", "0", .text(createA)],
+                ["a", "1", "kind", "TEXT", "0", nil, "0", "0", .text(createA)],
+                ["b", "0", "kind", "TEXT", "0", nil, "0", "0", "CREATE TABLE b (kind TEXT)"],
+            ],
+        ])
+
+        let columns = try await SQLiteCatalogReads.allColumns(schema: "auth", run: runner.run)
+
+        #expect(await runner.sent.count == 1)
+        #expect(columns["a"]?.map { $0.allowedValues } == [nil, ["x", "y"]])
+        #expect(columns["b"]?.first?.allowedValues == nil)
+    }
+
     @Test("Check constraints are parsed from the table's own CREATE statement")
     func checkConstraintsReadTheCreateStatement() async throws {
         let runner = RecordingRunner([

@@ -1216,6 +1216,7 @@ final class MainContentCoordinator: ObservableObject {
         }
 
         if result.isEmpty,
+           services.pluginManager.readsCheckListsFromDDL(for: connectionType),
            let scope,
            let createSQL = try? await services.databaseManager.withMetadataDriver(scope: scope, { driver in
                try await driver.fetchTableDDL(table: tableName, schema: scope.schema)

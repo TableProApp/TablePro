@@ -185,6 +185,10 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         return "START TRANSACTION \(readWriteAccessModeClause)"
     }
 
+    func isOwnTransactionStart(_ sql: String) -> Bool {
+        sql == beginTransactionStatement(mode: .readWrite) || sql == beginTransactionStatement(mode: .serverDefault)
+    }
+
     private var readWriteAccessModeClause: String {
         switch self {
         case .mysql, .mariadb:

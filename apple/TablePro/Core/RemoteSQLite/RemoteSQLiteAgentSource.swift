@@ -415,6 +415,8 @@ def execute(lib, db, sql, parameters, row_cap, must_read=False):
         send(OP_HEADER, header)
 
         total_changes_before = lib.sqlite3_total_changes(db)
+        # A statement that writes runs to its end: its changes and deferred constraint checks land only there.
+        stops_at_cap = lib.sqlite3_stmt_readonly(stmt) != 0
         batch = []
         batch_bytes = 0
         row_count = 0
@@ -423,9 +425,13 @@ def execute(lib, db, sql, parameters, row_cap, must_read=False):
             step = lib.sqlite3_step(stmt)
             if step != SQLITE_ROW:
                 break
+            if truncated:
+                continue
             if row_cap > 0 and row_count >= row_cap:
                 truncated = True
-                break
+                if stops_at_cap:
+                    break
+                continue
             row = read_row(lib, stmt, column_count)
             batch.append(row)
             row_count += 1
@@ -437,7 +443,7 @@ def execute(lib, db, sql, parameters, row_cap, must_read=False):
                 batch_bytes = 0
         if batch:
             send_rows(column_count, batch)
-        if step != SQLITE_ROW and step != SQLITE_DONE and not truncated:
+        if step != SQLITE_ROW and step != SQLITE_DONE:
             send(OP_ERROR, struct.pack(">I", step & 0xFFFFFFFF) + encode_str(lib.sqlite3_errmsg(db).decode("utf-8", "replace")))
             return
         # sqlite3_changes keeps the last write's count, so a statement that wrote nothing would repeat it.

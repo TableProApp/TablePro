@@ -117,8 +117,49 @@ enum QuerySqlParser {
         ), match.numberOfRanges > 1 else {
             return nil
         }
-        let valuesString = nsString.substring(with: match.range(at: 1))
-        return EnumValueParser.parseMySQLEnumOrSet(from: "ENUM(\(valuesString))")
+        return quotedListValues(nsString.substring(with: match.range(at: 1)))
+    }
+
+    // Each item a quoted literal, a cast after it allowed (CockroachDB writes `'a':::STRING`), or a bare NULL, which offers
+    // no value. Any other item means the list is not a set of strings to pick from.
+    private static func quotedListValues(_ list: String) -> [String]? {
+        var values: [String] = []
+        var rest = Substring(list)
+        while true {
+            rest = rest.drop(while: \.isWhitespace)
+            if rest.prefix(4).uppercased() == "NULL" {
+                rest = rest.dropFirst(4)
+            } else if rest.first == "'" {
+                var value = ""
+                var index = rest.index(after: rest.startIndex)
+                var closed = false
+                while index < rest.endIndex {
+                    let character = rest[index]
+                    index = rest.index(after: index)
+                    if character == "'" {
+                        guard index < rest.endIndex, rest[index] == "'" else {
+                            closed = true
+                            break
+                        }
+                        index = rest.index(after: index)
+                    }
+                    value.append(character)
+                }
+                guard closed else { return nil }
+                values.append(value)
+                rest = rest[index...].drop(while: \.isWhitespace)
+                if rest.hasPrefix("::") {
+                    rest = rest.drop { $0 != "," }
+                }
+            } else {
+                return nil
+            }
+            rest = rest.drop(while: \.isWhitespace)
+            guard let next = rest.first else { break }
+            guard next == "," else { return nil }
+            rest = rest.dropFirst()
+        }
+        return values.isEmpty ? nil : values
     }
 }
 
