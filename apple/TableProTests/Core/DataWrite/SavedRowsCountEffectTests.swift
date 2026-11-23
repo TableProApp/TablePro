@@ -70,9 +70,12 @@ struct SavedRowsCountEffectTests {
         _ plan: DataWritePlan,
         tab: SavedRowsCountEffect.Tab = SavedRowsCountEffectTests.tab(),
         threshold: Int = SavedRowsCountEffectTests.threshold,
+        updatesKeepRowCount: Bool = true,
         triggers: [TriggerInfo]? = []
     ) -> SavedRowsCountEffect {
-        SavedRowsCountEffect.effect(of: plan, on: tab, threshold: threshold, triggers: triggers)
+        SavedRowsCountEffect.effect(
+            of: plan, on: tab, threshold: threshold, updatesKeepRowCount: updatesKeepRowCount, triggers: triggers
+        )
     }
 
     @Test("Updates alone on an unfiltered table with no trigger keep the total")
@@ -127,6 +130,23 @@ struct SavedRowsCountEffectTests {
     func triggerElsewhereKeeps() {
         let triggers = [Self.trigger(table: "customers", schema: "public"), Self.trigger(table: "orders", schema: "audit")]
         #expect(effect(Self.plan([.update]), triggers: triggers) == .keep)
+    }
+
+    // SQLite's `ON CONFLICT REPLACE` deletes the row an update collides with, and fires no trigger doing it.
+    @Test("An engine whose update can remove rows by itself recounts, and keeps a large total as an estimate")
+    func updatesThatCanRemoveRowsRetire() {
+        #expect(effect(Self.plan([.update]), updatesKeepRowCount: false) == .retire)
+        #expect(effect(Self.plan([.update]), tab: Self.tab(total: 5_000_000), updatesKeepRowCount: false) == .estimate)
+    }
+
+    @Test("Only the curated engines say an update keeps the row count")
+    func curatedEnginesKeepTheCount() {
+        for type in [DatabaseType.postgresql, .pglite, .mysql, .mariadb] {
+            #expect(PluginManager.shared.updatesKeepRowCount(for: type))
+        }
+        for type in [DatabaseType.sqlite, .libsql, .cassandra, .mssql, DatabaseType(rawValue: "UncuratedSQLEngine")] {
+            #expect(!PluginManager.shared.updatesKeepRowCount(for: type))
+        }
     }
 
     @Test("A trigger list not loaded for the scope, or one the engine never lists, recounts")

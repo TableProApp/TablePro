@@ -445,6 +445,7 @@ extension RowEditingCoordinator {
                 totalRowCount: tab.pagination.totalRowCount
             ),
             threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan,
+            updatesKeepRowCount: parent.services.pluginManager.updatesKeepRowCount(for: plan.databaseType),
             triggers: loadedTriggers(for: plan.scope)
         )
     }
