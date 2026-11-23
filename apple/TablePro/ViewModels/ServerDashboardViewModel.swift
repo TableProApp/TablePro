@@ -189,12 +189,13 @@ final class ServerDashboardViewModel: ObservableObject {
     // refresh, a slow size read no longer holds the user's query, and inside the user's transaction
     // `now()` would be the transaction's start. The session's own connection then shows in the list.
     // An embedded engine stays on its session driver through the same route.
+    // One scope for the whole refresh, so a database switch mid-refresh never mixes two databases' numbers.
     private static func readExecutor(
-        connectionId: UUID,
+        scope: DatabaseScope,
         services: AppServices
     ) -> @MainActor (String) async throws -> QueryResult {
-        { [connectionId, services] query in
-            try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+        { [scope, services] query in
+            try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
                 try await driver.executeCatalogRead(query: query)
             }
         }
@@ -248,9 +249,11 @@ final class ServerDashboardViewModel: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
 
-        let execute = Self.readExecutor(connectionId: connectionId, services: services)
+        guard let scope = services.databaseManager.browseScope(for: connectionId) else { return }
+        let execute = Self.readExecutor(scope: scope, services: services)
 
         var plan = fetchPlan
+        plan.readsIn(database: scope.database)
         let snapshot = await provider.fetchSnapshot(
             plan: &plan,
             now: ContinuousClock.now,

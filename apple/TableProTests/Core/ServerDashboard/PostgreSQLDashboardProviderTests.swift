@@ -406,4 +406,28 @@ struct PostgreSQLDashboardProviderTests {
         #expect(!procpid.contains("state OPERATOR"))
         #expect(procpid.contains("'<command string not found>'"))
     }
+
+    @Test("Another database's size is never shown: a switch reads the size at once")
+    func databaseSwitchReadsTheSizeAgain() async throws {
+        let provider = PostgreSQLDashboardProvider(activityCatalog: .current)
+        let recorder = Recorder()
+        var plan = DashboardFetchPlan()
+        let start = ContinuousClock.now
+        plan.readsIn(database: "shop")
+        _ = await provider.fetchSnapshot(plan: &plan, now: start, readsEveryMetric: false, execute: execute(recorder))
+
+        recorder.asked = []
+        plan.readsIn(database: "shop")
+        _ = await provider.fetchSnapshot(
+            plan: &plan, now: start + .seconds(5), readsEveryMetric: false, execute: execute(recorder)
+        )
+        #expect(!recorder.asked.contains { $0.contains("pg_database_size") })
+
+        recorder.asked = []
+        plan.readsIn(database: "billing")
+        _ = await provider.fetchSnapshot(
+            plan: &plan, now: start + .seconds(10), readsEveryMetric: false, execute: execute(recorder)
+        )
+        #expect(recorder.asked.contains { $0.contains("pg_database_size") })
+    }
 }

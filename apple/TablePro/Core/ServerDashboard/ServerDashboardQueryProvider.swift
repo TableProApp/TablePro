@@ -44,6 +44,15 @@ struct DashboardFetchPlan {
     var combinedSummaryRefused = false
     var slowMetricValues: [String: String] = [:]
     var slowMetricsReadAt: ContinuousClock.Instant?
+    /// The database the slow metrics were read in. A size kept from another database is never shown.
+    private(set) var slowMetricsDatabase: String?
+
+    mutating func readsIn(database: String) {
+        guard database != slowMetricsDatabase else { return }
+        slowMetricsDatabase = database
+        slowMetricValues = [:]
+        slowMetricsReadAt = nil
+    }
 
     func readsSlowMetrics(at now: ContinuousClock.Instant, readsEveryMetric: Bool) -> Bool {
         guard !readsEveryMetric, let slowMetricsReadAt else { return true }
