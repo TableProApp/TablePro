@@ -13,6 +13,8 @@ struct SQLiteAgentCappedWriteTests {
     private static func withAgent(_ body: (SQLitePluginDriver) async throws -> Void) async throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent("agent-capped-\(UUID().uuidString).db").path
         defer { try? FileManager.default.removeItem(atPath: path) }
+        // The agent opens a database that is there; an empty file is an empty one.
+        FileManager.default.createFile(atPath: path, contents: nil)
         let loopback = try SQLiteAgentLoopback(arguments: SQLiteAgentLoopback.shippedArguments)
         defer { loopback.close() }
         let fields = [SQLiteAgentProtocol.backendFieldKey: SQLiteAgentProtocol.agentBackendValue]

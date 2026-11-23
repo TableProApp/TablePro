@@ -144,8 +144,8 @@ struct LibPQCappedUserReadTests {
         #expect(server.cancelRequests == 0)
     }
 
-    // The editor's bounded read drains instead of cancelling inside the user's block or with cancels off.
-    @Test("A bounded read drained without a cancel fails on an error past its cap")
+    // Inside the user's block with no savepoint answer there is no cursor, so the editor's bounded read drains the rest.
+    @Test("A bounded read drained inside the user's block fails on an error past its cap")
     func drainedBoundedReadFailsOnALaterError() async throws {
         let failure = LibPQScriptedServer.Failure(sqlState: "22012", message: "division by zero")
         let server = try Self.server(answering: [
@@ -154,21 +154,18 @@ struct LibPQCappedUserReadTests {
         defer { server.close() }
         server.start()
         let connection = LibPQPluginConnection(
-            host: "127.0.0.1",
-            port: server.port,
-            user: "postgres",
-            password: nil,
-            database: "postgres",
-            suppressServerSideCancel: true
+            host: "127.0.0.1", port: server.port, user: "postgres", password: nil, database: "postgres"
         )
         try await connection.connect()
         try await connection.finishConnecting()
         defer { connection.disconnect() }
 
+        _ = try await connection.executeQuery("BEGIN")
         await #expect(throws: (any Error).self) {
             _ = try await connection.boundedQuery(Self.plainEvents, rowCap: 3)
         }
         #expect(server.cancelRequests == 0)
+        #expect(!server.queries.contains { $0.hasPrefix("DECLARE") })
     }
 
     // Share Result reads a truncated result again through this call.
