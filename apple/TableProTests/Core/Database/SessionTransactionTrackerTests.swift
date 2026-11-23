@@ -350,69 +350,6 @@ struct SessionTransactionTrackerTests {
         #expect(!Self.tracker.cannotReportState(connectionId: connection.id, container: "app"))
     }
 
-    private static func readTable(on connectionId: UUID, failing: Bool = false) async throws {
-        _ = try await DatabaseManager.shared.withTableReadDriver(
-            scope: Self.scope(connectionId), cancellation: .untracked
-        ) { driver in
-            if failing { throw TransactionScriptedFailure() }
-            return try await driver.execute(query: "SELECT * FROM t")
-        }
-    }
-
-    @Test("A table read after a table read that found the session idle asks nothing; any other turn asks again")
-    func consecutiveIdleTableReadsAskOnce() async throws {
-        let (connection, driver) = Self.seed()
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
-
-        try await Self.readTable(on: connection.id)
-        try await Self.readTable(on: connection.id)
-        #expect(driver.stateReads == 1)
-
-        try await Self.run("SELECT 1", on: connection.id)
-        #expect(driver.stateReads == 2)
-        try await Self.readTable(on: connection.id)
-        #expect(driver.stateReads == 3)
-        try await Self.readTable(on: connection.id)
-        #expect(driver.stateReads == 3)
-    }
-
-    @Test("A table read keeps asking while a transaction is open, and after a read that failed")
-    func tableReadsKeepAskingInATransactionOrAfterAFailure() async throws {
-        let (connection, driver) = Self.seed()
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        try await Self.run("BEGIN", on: connection.id)
-        let afterBegin = driver.stateReads
-
-        try await Self.readTable(on: connection.id)
-        try await Self.readTable(on: connection.id)
-        #expect(driver.stateReads == afterBegin + 2)
-        #expect(Self.states(connection.id) == [.open])
-
-        try await Self.run("COMMIT", on: connection.id)
-        try await Self.readTable(on: connection.id)
-        let afterIdleRead = driver.stateReads
-        await #expect(throws: TransactionScriptedFailure.self) {
-            try await Self.readTable(on: connection.id, failing: true)
-        }
-        try await Self.readTable(on: connection.id)
-        #expect(driver.stateReads == afterIdleRead + 2)
-    }
-
-    @Test("A new driver on the lane asks on its first table read")
-    func aNewDriverAsksAgain() {
-        let first = PluginDriverAdapter(connection: TestFixtures.makeConnection(), pluginDriver: TransactionScriptedDriver())
-        let second = PluginDriverAdapter(connection: TestFixtures.makeConnection(), pluginDriver: TransactionScriptedDriver())
-        let tracker = SessionTransactionTracker { _, _ in true }
-        let key = SessionTransactionTracker.Key(connectionId: UUID(), lane: nil)
-
-        tracker.record(.idle, on: first, for: key, readsOnly: true, readsTable: true)
-
-        #expect(tracker.lastTableReadFoundIdle(on: first, for: key))
-        #expect(!tracker.lastTableReadFoundIdle(on: second, for: key))
-        tracker.record(.idle, on: first, for: key, readsOnly: true)
-        #expect(!tracker.lastTableReadFoundIdle(on: first, for: key))
-    }
-
     @Test("A table read leaves the hold's revision alone, and a write lease that owns no session state moves it")
     func readOnlyTurnKeepsTheRevision() async throws {
         let (connection, _) = Self.seed()
@@ -871,16 +808,7 @@ private final class TransactionScriptedDriver: PluginDriverStub, @unchecked Send
         return .empty
     }
 
-    private var reads = 0
-
-    var stateReads: Int { lock.withLock { reads } }
-
-    func sessionTransactionState() async -> PluginSessionTransactionState {
-        lock.withLock {
-            reads += 1
-            return current
-        }
-    }
+    func sessionTransactionState() async -> PluginSessionTransactionState { state }
 
     // A turn pins a MySQL scope to its database first, as a real session does.
     func switchDatabase(to database: String) async throws {}

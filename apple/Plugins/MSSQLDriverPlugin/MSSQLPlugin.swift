@@ -422,10 +422,9 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         self.freeTDSConn = conn
 
-        // One round trip for both: each connection of a session asks them before any work.
-        let identity = (try? await executeInternal(MSSQLSessionIdentity.query))
-            .map { MSSQLSessionIdentity(columns: $0.rows.first?.map(\.asText) ?? []) }
-        if let serverSchema = identity?.schema {
+        if let result = try? await executeInternal("SELECT SCHEMA_NAME()"),
+           let serverSchema = result.rows.first?.first?.asText,
+           !serverSchema.isEmpty {
             currentSchemaName = serverSchema
         } else {
             Self.logger.warning("SELECT SCHEMA_NAME() returned no value; keeping \(self.currentSchemaName, privacy: .private(mask: .hash))")
@@ -436,8 +435,9 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             currentSchemaName = formSchema
         }
 
-        if let version = identity?.version {
-            _serverVersion = MSSQLServerBanner.displayText(from: version)
+        if let result = try? await executeInternal("SELECT @@VERSION"),
+           let versionStr = result.rows.first?.first?.asText {
+            _serverVersion = MSSQLServerBanner.displayText(from: versionStr)
         }
     }
 

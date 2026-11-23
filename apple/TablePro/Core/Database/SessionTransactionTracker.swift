@@ -59,15 +59,9 @@ internal final class SessionTransactionTracker: ObservableObject {
 
     @Published private(set) var holds: [Key: Hold] = [:]
 
-    private struct IdleTableRead {
-        weak var driver: AnyObject?
-    }
-
     private var drivers: [Key: Entry] = [:]
     private var revisions: [Key: Int] = [:]
     private var readers: [Key: Reader] = [:]
-    // The driver whose last turn on the lane was a table read that found no transaction.
-    private var idleTableReads: [Key: IdleTableRead] = [:]
     private let isLive: @MainActor (Key, DatabaseDriver) -> Bool
 
     internal init(isLive: @escaping @MainActor (Key, DatabaseDriver) -> Bool) {
@@ -120,19 +114,12 @@ internal final class SessionTransactionTracker: ObservableObject {
         _ state: PluginSessionTransactionState,
         on driver: DatabaseDriver,
         for key: Key,
-        readsOnly: Bool = false,
-        readsTable: Bool = false
+        readsOnly: Bool = false
     ) {
         // A turn can outlive its session's teardown; its late answer must not touch the replacement's hold.
         guard isLive(key, driver) else {
             if drivers[key]?.driver === driver { clear(key) }
-            idleTableReads.removeValue(forKey: key)
             return
-        }
-        if readsTable, state == .idle {
-            idleTableReads[key] = IdleTableRead(driver: driver)
-        } else {
-            idleTableReads.removeValue(forKey: key)
         }
         noteReader(driver, answered: state != .unknown, for: key)
         let next = heldState(after: state, from: driver, for: key)
@@ -156,10 +143,6 @@ internal final class SessionTransactionTracker: ObservableObject {
             return isLive(key, driver)
         }
         return unsure ? .unknown : .none
-    }
-
-    internal func lastTableReadFoundIdle(on driver: DatabaseDriver, for key: Key) -> Bool {
-        idleTableReads[key]?.driver === driver
     }
 
     // True once the live driver of a lane the container runs on has only ever answered `.unknown`.
@@ -212,10 +195,6 @@ internal final class SessionTransactionTracker: ObservableObject {
         for (key, reader) in readers where key.connectionId == connectionId {
             if let driver = reader.driver as? DatabaseDriver, isLive(key, driver) { continue }
             readers.removeValue(forKey: key)
-        }
-        for (key, read) in idleTableReads where key.connectionId == connectionId {
-            if let driver = read.driver as? DatabaseDriver, isLive(key, driver) { continue }
-            idleTableReads.removeValue(forKey: key)
         }
     }
 

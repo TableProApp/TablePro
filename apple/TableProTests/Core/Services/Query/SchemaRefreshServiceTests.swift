@@ -225,6 +225,22 @@ struct SchemaRefreshServiceTests {
         #expect(schemaService.catalogFacts(for: connection.id)?.currentSchema == "sales")
     }
 
+    @Test("A schema switch that keeps the catalog moves the completion facts to the new schema")
+    func schemaSwitchMovesTheFacts() async {
+        let schemaService = SchemaService()
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let hr = DatabaseScope(connectionId: connection.id, database: "app", schema: "hr")
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.currentSchema = "hr"
+        await schemaService.load(connectionId: connection.id, driver: driver, connection: connection, scope: hr)
+
+        schemaService.noteScopeCovered(
+            DatabaseScope(connectionId: connection.id, database: "app", schema: "sales"), for: connection.id
+        )
+
+        #expect(schemaService.catalogFacts(for: connection.id)?.currentSchema == "sales")
+    }
+
     @Test("the sync creates the browse scope's provider when no tab has one yet")
     func autocompleteSyncCreatesTheBrowseScopeProvider() async throws {
         let driver = MockDatabaseDriver()

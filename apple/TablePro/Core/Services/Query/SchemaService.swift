@@ -316,6 +316,10 @@ final class SchemaService: ObservableObject {
               let shown = shownCatalogs[connectionId],
               shown.scope.database == scope.database else { return }
         shownCatalogs[connectionId] = ShownCatalog(key: shown.key, scope: scope)
+        // The session moved to the new schema, so completion's unqualified names resolve there now.
+        if let facts = driverFacts[shown.key] {
+            driverFacts[shown.key] = facts.on(schema: scope.schema)
+        }
     }
 
     func waitForRefresh(connectionId: UUID) async {

@@ -24,6 +24,14 @@ struct CatalogDriverFacts: Sendable, Equatable {
             providesBulkColumnFetch: driver.providesBulkColumnFetch
         )
     }
+
+    func on(schema: String?) -> CatalogDriverFacts {
+        CatalogDriverFacts(
+            currentSchema: schema,
+            fetchesAllColumnsInOneRequest: fetchesAllColumnsInOneRequest,
+            providesBulkColumnFetch: providesBulkColumnFetch
+        )
+    }
 }
 
 actor SQLSchemaProvider {
